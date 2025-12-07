@@ -117,7 +117,7 @@ dependencies = [
  "tokio-rustls 0.26.0",
  "tokio-stream",
  "url",
- "uuid",
+ "uuid 1.18.1",
  "warp",
  "webbrowser",
  "zip 0.6.6",
@@ -1667,7 +1667,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "time 0.3.36",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -2095,7 +2095,7 @@ checksum = "d38f2da7a0a2c4ccf0065be06397cc26a81f4e528be095826eee9d4adbb8c60f"
 dependencies = [
  "byteorder",
  "fnv",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -2376,7 +2376,7 @@ dependencies = [
  "smartstring",
  "static_assertions",
  "url",
- "uuid",
+ "uuid 1.18.1",
  "void",
 ]
 
@@ -3806,7 +3806,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef552e6f588e446098f6ba40d89ac146c8c7b64aade83c051ee00bb5d2bc18d"
 dependencies = [
  "serde",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -3890,7 +3890,7 @@ dependencies = [
  "deno_features",
  "thiserror 2.0.12",
  "tokio",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -4092,7 +4092,7 @@ dependencies = [
  "spki 0.7.3",
  "thiserror 2.0.12",
  "tokio",
- "uuid",
+ "uuid 1.18.1",
  "x25519-dalek 2.0.1",
 ]
 
@@ -4277,7 +4277,7 @@ dependencies = [
  "pin-project",
  "rand 0.8.5",
  "tokio",
- "uuid",
+ "uuid 1.18.1",
  "winapi 0.3.9",
  "windows-sys 0.59.0",
 ]
@@ -4749,7 +4749,7 @@ dependencies = [
  "tokio",
  "tokio-metrics",
  "twox-hash",
- "uuid",
+ "uuid 1.18.1",
  "winapi 0.3.9",
  "windows-sys 0.59.0",
 ]
@@ -4871,7 +4871,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.12",
  "tokio",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -4958,7 +4958,7 @@ dependencies = [
  "num-bigint",
  "prost 0.13.5",
  "serde",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -4984,7 +4984,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "url",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -5008,7 +5008,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
- "uuid",
+ "uuid 1.18.1",
  "v8_valueserializer",
 ]
 
@@ -7431,7 +7431,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.63",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -8234,7 +8234,7 @@ dependencies = [
  "unwrap_to",
  "url",
  "url2",
- "uuid",
+ "uuid 1.18.1",
  "wasmer",
  "wasmer-middlewares",
 ]
@@ -8846,7 +8846,7 @@ dependencies = [
  "subtle",
  "thiserror 2.0.12",
  "tracing",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -9021,7 +9021,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "toml 0.8.19",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -11745,7 +11745,7 @@ dependencies = [
  "smallvec",
  "tagptr",
  "thiserror 1.0.63",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -14654,7 +14654,7 @@ checksum = "180da684f0a188977d3968f139eb44260192ef8d9a5b7b7cbd01d881e0353179"
 dependencies = [
  "r2d2",
  "rusqlite",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -15406,7 +15406,7 @@ dependencies = [
  "revision-derive 0.11.0",
  "roaring",
  "rust_decimal",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -15514,7 +15514,7 @@ dependencies = [
  "rkyv_derive 0.7.45",
  "seahash",
  "tinyvec",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -15533,7 +15533,7 @@ dependencies = [
  "rend 0.5.2",
  "rkyv_derive 0.8.10",
  "tinyvec",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -16443,7 +16443,7 @@ dependencies = [
  "serde",
  "serde_json",
  "url",
- "uuid",
+ "uuid 1.18.1",
 ]
 
 [[package]]
@@ -17894,7 +17894,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
- "uuid",
+ "uuid 1.18.1",
  "wasm-bindgen-futures",
  "wasmtimer",
  "ws_stream_wasm",
@@ -17986,7 +17986,7 @@ dependencies = [
  "ulid",
  "unicase",
  "url",
- "uuid",
+ "uuid 1.18.1",
  "vart 0.8.1",
  "wasm-bindgen-futures",
  "wasmtimer",
@@ -18840,7 +18840,7 @@ dependencies = [
  "thiserror 2.0.12",
  "time 0.3.36",
  "url",
- "uuid",
+ "uuid 1.18.1",
  "walkdir",
 ]
 
@@ -18983,7 +18983,7 @@ dependencies = [
  "toml 0.9.5",
  "url",
  "urlpattern",
- "uuid",
+ "uuid 1.18.1",
  "walkdir",
 ]
 
@@ -20482,6 +20482,15 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
+dependencies = [
+ "getrandom 0.2.15",
+]
+
+[[package]]
+name = "uuid"
 version = "1.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f87b8aa10b915a06587d0dec516c282ff295b475d94abf425d62b57710070a2"
@@ -21080,11 +21089,13 @@ version = "0.1.0"
 dependencies = [
  "ad4m-client",
  "ad4m-executor",
+ "dirs 5.0.1",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "uuid 0.8.2",
 ]
 
 [[package]]
