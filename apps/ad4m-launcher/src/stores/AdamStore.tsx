@@ -5,6 +5,8 @@ import { Space } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 export { type Ad4mClient, PerspectiveProxy } from '@coasys/ad4m';
 
+import { buildAd4mClient } from '@/utils/ad4mClient';
+
 // TODO:
 // + move ai to separate stores
 // + rename to AppStore
@@ -48,7 +50,10 @@ export function AdamStoreProvider(props: ParentProps) {
         appIconPath: 'https://avatars.githubusercontent.com/u/34165012',
         capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
       });
-      return await connect.getAd4mClient();
+      console.log('AdamStore: getAdamClient connecting...', connect);
+      const client = await connect.getAd4mClient();
+      console.log('AdamStore: getAdamClient connected', client);
+      return client;
     } catch (error) {
       console.error('AdamStore: getAdamClient error', error);
     }
@@ -86,11 +91,16 @@ export function AdamStoreProvider(props: ParentProps) {
   // }
 
   async function initialiseStore(): Promise<void> {
-    const client = await getAdamClient();
-    if (!client) return;
-    setAdamClient(client);
+    // Try to get port from Tauri backend
+    const ad4mClient = await buildAd4mClient();
+    console.log('AdamStore: initialiseStore got ad4mClient 222', ad4mClient);
+    const perspectives = await ad4mClient.perspective.all();
+    console.log('AdamStore: initialiseStore got perspectives', perspectives);
+    // const client = await getAdamClient();
+    // if (!client) return;
+    // setAdamClient(client);
 
-    await Promise.all([getMe(client), getMySpaces(client)]);
+    // await Promise.all([getMe(client), getMySpaces(client)]);
 
     setLoading(false);
   }

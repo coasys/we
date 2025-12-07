@@ -1,25 +1,83 @@
 [package]
-name = "tauri-app"
-version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+name = "ad4m-launcher"
+version = "0.11.2-dev"
+description = "Administration of ad4m services"
+authors = ["Kaichao Sun"]
+license = ""
+repository = ""
+default-run = "ad4m-launcher"
 edition = "2021"
+rust-version = "1.57"
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "tauri_app_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+log4rs = "1.0.0"
+nix = "0.23.1"
+libc = "0.2"
+directories = "4.0.1"
+opener = "0.5.0"
+open = "2.0.1"
+sysinfo = "0.29.7"
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+uuid = { version = "0.8", features = ["v4"] }
+localtunnel-client = "0.0.12"
+tokio = { version = "1.19.2", features = ["full"] }
+tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
+remove_dir_all = "0.7.0"
+reqwest = { version = "0.11.20", features = ["json", "native-tls"] }
+ad4m-client = { path = "../../../../ad4m/rust-client" }
+ad4m-executor = { path = "../../../../ad4m/rust-executor" }
+chrono = "0.4"
+env_logger = "0.10.0"
+colored = "2.0"
+tracing = { version = "0.1.37", features = ["log-always"] }
+tracing-subscriber = "0.2"
+webbrowser = "0.8.12"
+tauri-plugin-os = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-http = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-process = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2.0.0-alpha.2"
+tauri-plugin-shell = "2"
+dirs = "5"
+tauri-plugin-opener = "2.2.6"
+ahash = "=0.8.12"
+hashbrown = "=0.14.5"
+indexmap = "=2.9.0"
 
+[features]
+# by default Tauri runs in production mode
+# when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
+default = [ "custom-protocol"]
+# Pass metal and cuda features through to ad4m-executor
+metal = ["ad4m-executor/metal"]
+cuda = ["ad4m-executor/cuda"]
+
+
+dev = []
+# this feature is used used for production builds where `devPath` points to the filesystem
+# DO NOT remove this
+custom-protocol = [ "tauri/custom-protocol"]
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "rlib"]
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-updater = "2"
+
+[patch.crates-io]
+traitobject = { path = "../patches/traitobject" }
