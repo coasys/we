@@ -18796,19 +18796,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-app"
-version = "0.1.0"
-dependencies = [
- "ad4m-client",
- "ad4m-executor",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
-]
-
-[[package]]
 name = "tauri-build"
 version = "2.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -21085,6 +21072,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d77d62229e38db83eac32bacb5f61ebb952366ab0dae90cf2b3c07a65eea894"
 dependencies = [
  "wast",
+]
+
+[[package]]
+name = "we-ad4m-launcher"
+version = "0.1.0"
+dependencies = [
+ "ad4m-client",
+ "ad4m-executor",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
 ]
 
 [[package]]
