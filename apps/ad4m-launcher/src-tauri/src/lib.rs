@@ -16,10 +16,10 @@ pub fn run() {
     // Generate a credential token
     let req_credential = Uuid::new_v4().to_string();
     
-    // Get app data directory
-    let app_data_path = dirs::data_dir()
-        .expect("Failed to get data directory")
-        .join("ad4m-launcher");
+    // Get the users ad4m directory (~/.ad4m) to access existing agent data
+    let app_data_path = dirs::home_dir()
+        .expect("Failed to get home directory")
+        .join(".ad4m");
     
     std::fs::create_dir_all(&app_data_path)
         .expect("Failed to create app data directory");
