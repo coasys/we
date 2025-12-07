@@ -70,7 +70,7 @@ export function AdamStoreProvider(props: ParentProps) {
   async function getMySpaces(client: Ad4mClient): Promise<void> {
     try {
       const perspectives = await client.perspective.all();
-      // console.log('AdamStore: getMySpaces perspectives', perspectives);
+      console.log('*** await client.perspective.all()', perspectives);
       const spaces = await Promise.all(perspectives.map(async (perspective) => (await Space.findAll(perspective))[0]));
       // console.log('AdamStore: getMySpaces spaces', spaces);
       const filteredSpaces = spaces.filter((s) => s).sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
@@ -91,18 +91,47 @@ export function AdamStoreProvider(props: ParentProps) {
   // }
 
   async function initialiseStore(): Promise<void> {
-    // Try to get port from Tauri backend
-    const ad4mClient = await buildAd4mClient();
-    console.log('AdamStore: initialiseStore got ad4mClient 222', ad4mClient);
-    const perspectives = await ad4mClient.perspective.all();
-    console.log('AdamStore: initialiseStore got perspectives', perspectives);
-    // const client = await getAdamClient();
-    // if (!client) return;
-    // setAdamClient(client);
+    try {
+      // Get AD4M client from Tauri backend
+      const ad4mClient = await buildAd4mClient();
+      console.log('AdamStore: initialiseStore got ad4mClient', ad4mClient);
 
-    // await Promise.all([getMe(client), getMySpaces(client)]);
+      // Check agent status
+      const status = await ad4mClient.agent.status();
+      console.log('AdamStore: agent status', status);
 
-    setLoading(false);
+      // // Check if agent exists (has DID) - if not, need to generate the agent first
+      if (!status.did) {
+        console.log('AdamStore: No agent found, need to generate agent first');
+      }
+
+      // If agent exists but is locked, unlock it
+      if (!status.isUnlocked) {
+        console.log('AdamStore: agent is locked, unlocking...');
+        // TODO: Replace with actual password input UI
+        const password = 'test';
+        
+        try {
+          // 
+          const unlockResult = await ad4mClient.agent.unlock(password, true);
+          console.log('AdamStore: unlock result', unlockResult);
+          console.log('AdamStore: agent unlocked successfully');
+        } catch (err) {
+          console.error('AdamStore: Error during agent.unlock() - wrong password!', err);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Now we can safely fetch data
+      setAdamClient(ad4mClient);
+      await Promise.all([getMe(ad4mClient), getMySpaces(ad4mClient)]);
+
+      setLoading(false);
+    } catch (error) {
+      console.error('AdamStore: initialiseStore error', error);
+      setLoading(false);
+    }
   }
 
   function addNewSpace(space: Space): void {
