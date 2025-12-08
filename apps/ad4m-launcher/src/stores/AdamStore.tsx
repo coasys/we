@@ -1,5 +1,4 @@
 import { Ad4mClient, Agent } from '@coasys/ad4m';
-import Ad4mConnect from '@coasys/ad4m-connect';
 import { useNavigate } from '@solidjs/router';
 import { Space } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
@@ -10,7 +9,6 @@ import { buildAd4mClient } from '@/utils/ad4mClient';
 // TODO:
 // + move ai to separate stores
 // + rename to AppStore
-// + set up seperate route store?
 
 type NavigateFunction = ReturnType<typeof useNavigate>;
 
@@ -36,28 +34,26 @@ export function AdamStoreProvider(props: ParentProps) {
   const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
   const [adamClient, setAdamClient] = createSignal<Ad4mClient | undefined>(undefined);
   const [me, setMe] = createSignal<Agent | undefined>(undefined);
-  const [mySpaces, setMySpaces] = createSignal<Space[]>([
-    // { name: 'A', uuid: 'a' },
-    // { name: 'B', uuid: 'b' },
-  ]);
+  const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
 
-  async function getAdamClient() {
-    try {
-      const connect = Ad4mConnect({
-        appName: 'WE',
-        appDesc: 'Social media for the new internet',
-        appDomain: 'ad4m.weco.io',
-        appIconPath: 'https://avatars.githubusercontent.com/u/34165012',
-        capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
-      });
-      console.log('AdamStore: getAdamClient connecting...', connect);
-      const client = await connect.getAd4mClient();
-      console.log('AdamStore: getAdamClient connected', client);
-      return client;
-    } catch (error) {
-      console.error('AdamStore: getAdamClient error', error);
-    }
-  }
+  // import Ad4mConnect from '@coasys/ad4m-connect';
+  // async function getAdamClient() {
+  //   try {
+  //     const connect = Ad4mConnect({
+  //       appName: 'WE',
+  //       appDesc: 'Social media for the new internet',
+  //       appDomain: 'ad4m.weco.io',
+  //       appIconPath: 'https://avatars.githubusercontent.com/u/34165012',
+  //       capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
+  //     });
+  //     console.log('AdamStore: getAdamClient connecting...', connect);
+  //     const client = await connect.getAd4mClient();
+  //     console.log('AdamStore: getAdamClient connected', client);
+  //     return client;
+  //   } catch (error) {
+  //     console.error('AdamStore: getAdamClient error', error);
+  //   }
+  // }
 
   async function getMe(client: Ad4mClient): Promise<void> {
     try {
@@ -92,13 +88,12 @@ export function AdamStoreProvider(props: ParentProps) {
 
   async function initialiseStore(): Promise<void> {
     try {
-      // Get AD4M client from Tauri backend
-      const ad4mClient = await buildAd4mClient();
-      console.log('AdamStore: initialiseStore got ad4mClient', ad4mClient);
+      // Small delay to ensure executor has time to start
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Check agent status
-      const status = await ad4mClient.agent.status();
-      console.log('AdamStore: agent status', status);
+      // Build the Ad4m client
+      const { client, status } = await buildAd4mClient();
+      setAdamClient(client);
 
       // // Check if agent exists (has DID) - if not, need to generate the agent first
       if (!status.did) {
@@ -110,22 +105,20 @@ export function AdamStoreProvider(props: ParentProps) {
         console.log('AdamStore: agent is locked, unlocking...');
         // TODO: Replace with actual password input UI
         const password = 'test';
-        
+
         try {
-          // 
-          const unlockResult = await ad4mClient.agent.unlock(password, true);
+          // Attempt login
+          const unlockResult = await client.agent.unlock(password, true);
           console.log('AdamStore: unlock result', unlockResult);
-          console.log('AdamStore: agent unlocked successfully');
         } catch (err) {
-          console.error('AdamStore: Error during agent.unlock() - wrong password!', err);
+          console.error('AdamStore: wrong password!', err);
           setLoading(false);
           return;
         }
       }
 
       // Now we can safely fetch data
-      setAdamClient(ad4mClient);
-      await Promise.all([getMe(ad4mClient), getMySpaces(ad4mClient)]);
+      await Promise.all([getMe(client), getMySpaces(client)]);
 
       setLoading(false);
     } catch (error) {

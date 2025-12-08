@@ -11,7 +11,8 @@
     "build": "we-build",
     "serve": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev -- --release"
+    "tauri:dev": "tauri dev -- --release",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@apollo/client": "^3.7.10",
