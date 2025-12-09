@@ -160,8 +160,16 @@ function resolvePickProp(pick: PickProp, stores: Props, context: Props, memo: Me
 // Resolves $if props: { $if: { condition, then, else } }
 function resolveIfProp(value: unknown, stores: Props, context: Props, memo: Memo): unknown {
   const { condition, then: thenValue, else: elseValue } = (value as { $if: IfProp }).$if;
-  const conditionMet = resolveProp(condition, stores, context, memo);
-  return resolveProp(conditionMet ? thenValue : elseValue, stores, context, memo);
+
+  // Wrap in memo to reactively re-evaluate when condition changes
+  return memo(() => {
+    const conditionResult = resolveProp(condition, stores, context, memo);
+    // Unwrap signal accessor if condition resolved to one
+    const conditionMet = typeof conditionResult === 'function' ? conditionResult() : conditionResult;
+    const branchResult = resolveProp(conditionMet ? thenValue : elseValue, stores, context, memo);
+    // Unwrap signal accessor if branch result is one
+    return typeof branchResult === 'function' ? branchResult() : branchResult;
+  });
 }
 
 // Resolves $eq (equal) props: { $eq: [a, b] }
