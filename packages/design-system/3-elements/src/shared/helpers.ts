@@ -13,6 +13,7 @@ import {
 } from '@we/design-system-utils';
 
 const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
+
 const HOST_PROP_KEYS = [
   'width',
   'height',
@@ -28,6 +29,7 @@ const HOST_PROP_KEYS = [
   'zIndex',
   ...marginKeys,
 ] as Array<keyof DesignSystemProps>;
+
 const BASE_PROP_KEYS = designSystemKeys.filter(
   (key) =>
     !HOST_PROP_KEYS.includes(key as (typeof HOST_PROP_KEYS)[number]) &&
@@ -56,6 +58,7 @@ function updateCustomVars(el: HTMLElement, props: Partial<DesignSystemProps>, st
   setProperty(el, `${prefix}right`, props.right);
   setProperty(el, `${prefix}bottom`, props.bottom);
   setProperty(el, `${prefix}left`, props.left);
+  setProperty(el, `${prefix}transition`, props.transition);
   setProperty(el, `${prefix}z-index`, props.zIndex?.toString());
   setProperty(el, `${prefix}margin`, hasMargin ? getMarginValues(props) : undefined);
 
@@ -63,19 +66,13 @@ function updateCustomVars(el: HTMLElement, props: Partial<DesignSystemProps>, st
   const { main, cross } = mapFlexAxes(props, props.direction ?? 'row');
   const hasPadding = paddingKeys.some((k) => typeof props[k] !== 'undefined' && props[k] !== null);
   const hasRadius = radiusKeys.some((k) => typeof props[k] !== 'undefined' && props[k] !== null);
-
-  // Colors
   setProperty(el, `${prefix}bg`, props.bg ? tokenVar('color', props.bg, '') : undefined);
   setProperty(el, `${prefix}color`, props.color ? tokenVar('color', props.color, '') : undefined);
-
-  // Visual Effects
   setProperty(el, `${prefix}opacity`, props.opacity?.toString());
   setProperty(el, `${prefix}border`, props.border);
   setProperty(el, `${prefix}shadow`, props.shadow);
   setProperty(el, `${prefix}transform`, props.transform);
   setProperty(el, `${prefix}transition`, props.transition);
-
-  // Typography
   setProperty(el, `${prefix}text-align`, props.textAlign);
   setProperty(el, `${prefix}font-weight`, props.fontWeight);
   setProperty(el, `${prefix}font-size`, props.fontSize ? tokenVar('font', props.fontSize) : undefined);
@@ -83,12 +80,8 @@ function updateCustomVars(el: HTMLElement, props: Partial<DesignSystemProps>, st
   setProperty(el, `${prefix}letter-spacing`, props.letterSpacing);
   setProperty(el, `${prefix}text-decoration`, props.textDecoration);
   setProperty(el, `${prefix}text-transform`, props.textTransform);
-
-  // Interaction
   setProperty(el, `${prefix}cursor`, props.cursor);
   setProperty(el, `${prefix}pointer-events`, props.pointerEvents);
-
-  // Layout
   setProperty(el, `${prefix}display`, props.display);
   setProperty(el, `${prefix}direction`, props.direction);
   setProperty(el, `${prefix}main-axis`, main);
@@ -96,8 +89,6 @@ function updateCustomVars(el: HTMLElement, props: Partial<DesignSystemProps>, st
   setProperty(el, `${prefix}wrap`, 'wrap' in props ? (props.wrap ? 'wrap' : 'nowrap') : undefined);
   setProperty(el, `${prefix}gap`, props.gap ? tokenVar('space', props.gap) : undefined);
   setProperty(el, `${prefix}overflow`, props.overflow);
-
-  // Spacing & Radius
   setProperty(el, `${prefix}padding`, hasPadding ? getPaddingValues(props) : undefined);
   setProperty(el, `${prefix}radius`, hasRadius ? getRadiusValues(props) : undefined);
 }
@@ -113,10 +104,12 @@ function updateAllCustomVars(el: HTMLElement, props: DesignSystemProps) {
   });
 }
 
+const defaultTransitionSpeed = '0.2s';
+
 const hostStyles = `
   display: flex;
-  transition: all .2s;
 
+  transition: var(--we-transition, ${defaultTransitionSpeed});
   width: var(--we-width);
   height: var(--we-height);
   min-width: var(--we-min-width);
@@ -133,18 +126,17 @@ const hostStyles = `
 `.trim();
 
 const baseStyles = `
-  display: var(--we-display, flex);
   width: 100%;
   height: 100%;
-  transition: var(--we-transition, all .2s);
 
+  transition: var(--we-transition, ${defaultTransitionSpeed});
+  display: var(--we-display, flex);
   background: var(--we-bg);
   color: var(--we-color);
   opacity: var(--we-opacity);
   border: var(--we-border);
   box-shadow: var(--we-shadow);
   transform: var(--we-transform);
-  
   text-align: var(--we-text-align);
   font-weight: var(--we-font-weight);
   font-size: var(--we-font-size);
@@ -152,17 +144,14 @@ const baseStyles = `
   letter-spacing: var(--we-letter-spacing);
   text-decoration: var(--we-text-decoration);
   text-transform: var(--we-text-transform);
-  
   cursor: var(--we-cursor);
   pointer-events: var(--we-pointer-events);
-  
   flex-direction: var(--we-direction);
   justify-content: var(--we-main-axis);
   align-items: var(--we-cross-axis);
   flex-wrap: var(--we-wrap);
   gap: var(--we-gap);
   overflow: var(--we-overflow);
-  
   padding: var(--we-padding);
   border-radius: var(--we-radius);
 `.trim();
@@ -170,6 +159,7 @@ const baseStyles = `
 function hostStateStyles(state: ElementState) {
   const prefix = `--we-${state}-`;
   return `
+    transition: var(${prefix}transition, var(--we-transition, ${defaultTransitionSpeed}));
     width: var(${prefix}width, var(--we-width));
     height: var(${prefix}height, var(--we-height));
     min-width: var(${prefix}min-width, var(--we-min-width));
@@ -189,14 +179,13 @@ function hostStateStyles(state: ElementState) {
 function baseStateStyles(state: ElementState) {
   const prefix = `--we-${state}-`;
   return `
+    transition: var(${prefix}transition, var(--we-transition, ${defaultTransitionSpeed}));
     background: var(${prefix}bg, var(--we-bg));
     color: var(${prefix}color, var(--we-color));
     opacity: var(${prefix}opacity, var(--we-opacity));
     border: var(${prefix}border, var(--we-border));
     box-shadow: var(${prefix}shadow, var(--we-shadow));
     transform: var(${prefix}transform, var(--we-transform));
-    transition: var(${prefix}transition, var(--we-transition));
-    
     text-align: var(${prefix}text-align, var(--we-text-align));
     font-weight: var(${prefix}font-weight, var(--we-font-weight));
     font-size: var(${prefix}font-size, var(--we-font-size));
@@ -204,10 +193,8 @@ function baseStateStyles(state: ElementState) {
     letter-spacing: var(${prefix}letter-spacing, var(--we-letter-spacing));
     text-decoration: var(${prefix}text-decoration, var(--we-text-decoration));
     text-transform: var(${prefix}text-transform, var(--we-text-transform));
-    
     cursor: var(${prefix}cursor, var(--we-cursor));
     pointer-events: var(${prefix}pointer-events, var(--we-pointer-events));
-    
     display: var(${prefix}display, var(--we-display, flex));
     flex-direction: var(${prefix}direction, var(--we-direction));
     justify-content: var(${prefix}main-axis, var(--we-main-axis));
@@ -215,7 +202,6 @@ function baseStateStyles(state: ElementState) {
     flex-wrap: var(${prefix}wrap, var(--we-wrap));
     gap: var(${prefix}gap, var(--we-gap));
     overflow: var(${prefix}overflow, var(--we-overflow));
-    
     padding: var(${prefix}padding, var(--we-padding));
     border-radius: var(${prefix}radius, var(--we-radius));
   `.trim();
