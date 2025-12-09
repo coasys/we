@@ -26,12 +26,14 @@ export type {
   ColorLightnessToken,
   HexColor,
   Percentage,
+  ColorToken,
+  ColorValue,
 } from './color.js';
 export type { ScrollbarToken } from './component.js';
 export type { DepthToken } from './effect.js';
 export type { FontFamilyToken, FontSizeToken } from './font.js';
-export type { SizeToken, RadiusToken, AvatarSizeToken } from './size.js';
-export type { SpaceToken } from './space.js';
+export type { SizeToken, RadiusToken, AvatarSizeToken, RadiusValue } from './size.js';
+export type { SpaceToken, SpaceValue } from './space.js';
 
 /**
  * Complete design token system.

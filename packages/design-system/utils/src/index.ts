@@ -1,13 +1,47 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-system-types';
 
 const colorKeys = ['bg', 'color'] as const;
-const layoutKeys = ['height', 'width', 'direction', 'ax', 'ay', 'wrap', 'gap'] as const;
+const visualEffectKeys = ['opacity', 'border', 'shadow', 'transform', 'transition'] as const;
+const typographyKeys = [
+  'textAlign',
+  'fontWeight',
+  'fontSize',
+  'lineHeight',
+  'letterSpacing',
+  'textDecoration',
+  'textTransform',
+] as const;
+const interactionKeys = ['cursor', 'pointerEvents'] as const;
+const layoutKeys = [
+  'height',
+  'width',
+  'minWidth',
+  'minHeight',
+  'maxWidth',
+  'maxHeight',
+  'display',
+  'direction',
+  'ax',
+  'ay',
+  'wrap',
+  'gap',
+  'overflow',
+  'zIndex',
+  'position',
+  'top',
+  'right',
+  'bottom',
+  'left',
+] as const;
 export const stateKeys = ['hoverProps', 'activeProps', 'focusProps', 'disabledProps'] as const;
 export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;
 export const marginKeys = ['m', 'mx', 'my', 'mt', 'mr', 'mb', 'ml'] as const;
 export const radiusKeys = ['r', 'rr', 'rt', 'rb', 'rl', 'rtl', 'rtr', 'rbr', 'rbl'] as const;
 export const designSystemKeys = [
   ...colorKeys,
+  ...visualEffectKeys,
+  ...typographyKeys,
+  ...interactionKeys,
   ...layoutKeys,
   ...paddingKeys,
   ...marginKeys,
@@ -27,16 +61,17 @@ const flexMainAxisMap = {
 
 const flexCrossAxisMap = { start: 'flex-start', center: 'center', end: 'flex-end', stretch: 'stretch' } as const;
 
-function isHexColor(value: string): boolean {
-  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value);
+function isRawCSSValue(value: string): boolean {
+  // Check for raw CSS values: px, rem, em, %, vh, vw, rgba, rgb, hsl, etc.
+  return /^(#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex))/.test(value);
 }
 
 export function tokenVar(prefix: string, token?: string, fallback = '0') {
   // If no token, return fallback
   if (!token) return fallback;
 
-  // Allow raw hex values for color tokens
-  if (prefix === 'color' && isHexColor(token)) return token;
+  // Allow raw CSS values (hex colors, px, rem, %, rgba, etc.)
+  if (isRawCSSValue(token)) return token;
 
   // Otherwise return CSS variable
   return `var(--we-${prefix}-${token})`;

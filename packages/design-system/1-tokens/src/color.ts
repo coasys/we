@@ -27,6 +27,12 @@ export type ColorLightnessToken =
   | '900'
   | '1000';
 
+// Unified color token type
+export type ColorToken = ColorBaseToken | `${ColorHueToken}-${ColorLightnessToken}`;
+
+// Branded type to allow both tokens and raw color values while preserving autocomplete
+export type ColorValue = ColorToken | (string & {});
+
 /**
  * Color system configuration values.
  * These control how colors are calculated and transformed for different themes.

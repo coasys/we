@@ -6,6 +6,9 @@
 // Literal union type for numbered space values
 export type SpaceToken = '0' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '1000';
 
+// Branded type to allow both tokens and raw spacing values (px, rem, %, etc.) while preserving autocomplete
+export type SpaceValue = SpaceToken | (string & {});
+
 /**
  * Spacing scale from 100-1000.
  * These values define standardized spacing for margins, padding, and layout.

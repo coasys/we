@@ -28,6 +28,9 @@ export const size = {
  */
 export type RadiusToken = 'none' | 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'pill' | 'full';
 
+// Branded type to allow both tokens and raw radius values (px, rem, %, etc.) while preserving autocomplete
+export type RadiusValue = RadiusToken | (string & {});
+
 export const radius = {
   none: '0',
   xxs: '0.125rem', // 2px

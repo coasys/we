@@ -6,6 +6,7 @@ import { BaseElement } from '../shared/base-element';
 import type { DesignSystemProps } from '@we/design-system-types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
+  cursor: 'pointer',
   bg: 'primary-100',
   color: 'primary-800',
   r: 'md',
@@ -14,7 +15,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ax: 'center',
   ay: 'center',
   gap: '300',
-  // TODO: add disabledProps: { opacity: '50', cursor: 'not-allowed'} when opacity and cursor are supported
+  disabledProps: { cursor: 'default', opacity: 0.5 },
 };
 
 const CSS_STYLES = css`
@@ -24,12 +25,6 @@ const CSS_STYLES = css`
   [part='base'] {
     all: unset;
     box-sizing: border-box;
-    cursor: pointer;
-  }
-  [part='base']:disabled,
-  [part='base'][aria-disabled='true'] {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 `;
 
