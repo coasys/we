@@ -106,37 +106,19 @@ export function AdamStoreProvider(props: ParentProps) {
       const { client, status } = await buildAd4mClient();
       setAdamClient(client);
 
-      // TODO: set up agent generation here if no agent exists
-      if (!status.did) {
-        console.log('AdamStore: No agent found, need to generate agent first');
-        setBootState('createAgent');
-      }
+      // TODO: If not agent found, go to create agent screen
+      if (!status.did) setBootState('createAgent');
 
-      // If agent exists but is locked, show login UI
-      if (!status.isUnlocked) {
-        console.log('AdamStore: agent is locked, need to unlock');
-        setBootState('login');
-        // // TODO: Replace with actual password input UI
-        // const password = 'test';
+      // If agent is locked, go to login
+      if (!status.isUnlocked) setBootState('login');
 
-        // try {
-        //   // Attempt login
-        //   const unlockResult = await client.agent.unlock(password, true);
-        //   console.log('AdamStore: unlock result', unlockResult);
+      // TODO: Load initial data
 
-        //   // Now we can safely fetch data
-        //   await Promise.all([getMe(client), getMySpaces(client)]);
-        // } catch (err) {
-        //   console.error('AdamStore: wrong password!', err);
-        //   // setLoading(false);
-        //   // return;
-        // }
-      }
-
-      // setLoading(false);
+      // Set bootstate ready to hide the loading screen
+      setBootState('ready');
     } catch (error) {
       console.error('AdamStore: initialiseStore error', error);
-      // setLoading(false);
+      setBootState('error');
     }
   }
 
@@ -144,9 +126,10 @@ export function AdamStoreProvider(props: ParentProps) {
     const client = adamClient();
     if (!client) return;
 
+    setPasswordError(false);
     try {
       await client.agent.unlock(password(), true);
-      setPasswordError(false);
+      setBootState('ready');
     } catch (err) {
       console.error('AdamStore: wrong password!', err);
       setPasswordError(true);
