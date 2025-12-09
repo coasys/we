@@ -17,6 +17,7 @@ export interface AdamStore {
   bootState: Accessor<BootState>;
   password: Accessor<string>;
   showPassword: Accessor<boolean>;
+  passwordError?: Accessor<boolean>;
   adamClient: Accessor<Ad4mClient | undefined>;
   me: Accessor<Agent | undefined>;
   mySpaces: Accessor<Space[]>;
@@ -40,6 +41,7 @@ export function AdamStoreProvider(props: ParentProps) {
   const [bootState, setBootState] = createSignal<BootState>('initialising');
   const [password, setPassword] = createSignal('');
   const [showPassword, setShowPassword] = createSignal(false);
+  const [passwordError, setPasswordError] = createSignal(false);
   const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
   const [adamClient, setAdamClient] = createSignal<Ad4mClient | undefined>(undefined);
   const [me, setMe] = createSignal<Agent | undefined>(undefined);
@@ -143,12 +145,11 @@ export function AdamStoreProvider(props: ParentProps) {
     if (!client) return;
 
     try {
-      console.log('attempting to unlock agent with provided password', password());
       await client.agent.unlock(password(), true);
-      console.log('AdamStore: Agent unlocked');
+      setPasswordError(false);
     } catch (err) {
       console.error('AdamStore: wrong password!', err);
-      return;
+      setPasswordError(true);
     }
   }
 
@@ -173,6 +174,7 @@ export function AdamStoreProvider(props: ParentProps) {
     bootState,
     password,
     showPassword,
+    passwordError,
     adamClient,
     me,
     mySpaces,

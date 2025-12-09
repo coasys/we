@@ -96,8 +96,8 @@ export default class Input extends LitElement {
   @property({ type: String, reflect: true }) size = '';
   @property({ type: String, reflect: true }) step = '';
   @property({ type: String, reflect: true }) placeholder = '';
-  @property({ type: String, reflect: true }) errorText = '';
-  @property({ type: String, reflect: true }) helpText = '';
+  @property({ type: String, reflect: true }) errortext = '';
+  @property({ type: String, reflect: true }) helptext = '';
   @property({ type: String, reflect: true }) autocomplete = '';
   @property({ type: Boolean, reflect: true }) autovalidate = false;
   @property({ type: Boolean, reflect: true }) autofocus = false;
@@ -124,7 +124,7 @@ export default class Input extends LitElement {
 
   validate() {
     this.error = !this.renderRoot.querySelector('input')?.checkValidity();
-    if (this.error) this.errorText = this.errorText || this.renderRoot.querySelector('input')?.validationMessage || '';
+    if (this.error) this.errortext = this.errortext || this.renderRoot.querySelector('input')?.validationMessage || '';
     this.dispatchEvent(new CustomEvent('validate'));
     return this.error;
   }
@@ -191,11 +191,11 @@ export default class Input extends LitElement {
           <slot part="end" name="end"></slot>
         </div>
         ${this.error
-          ? this.errorText
-            ? html`<div part="error-text">${this.errorText}</div>`
+          ? this.errortext
+            ? html`<div part="error-text">${this.errortext}</div>`
             : null
-          : this.helpText
-            ? html`<div part="help-text">${this.helpText}</div>`
+          : this.helptext
+            ? html`<div part="help-text">${this.helptext}</div>`
             : null}
       </div>
     `;

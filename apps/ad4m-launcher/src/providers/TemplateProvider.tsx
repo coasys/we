@@ -127,6 +127,10 @@ export default function TemplateProvider() {
                             type: 'we-input',
                             props: {
                               placeholder: 'Password...',
+                              value: { $store: 'adamStore.password' },
+                              onInput: { $action: 'adamStore.setPassword' },
+                              error: { $store: 'adamStore.passwordError' },
+                              errortext: 'Incorrect password',
                               type: {
                                 $if: {
                                   condition: { $store: 'adamStore.showPassword' },
@@ -134,8 +138,6 @@ export default function TemplateProvider() {
                                   else: 'password',
                                 },
                               },
-                              value: { $store: 'adamStore.password' },
-                              onInput: { $action: 'adamStore.setPassword' },
                             },
                           },
                           {
