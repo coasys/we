@@ -198,6 +198,17 @@ function resolveNeProp(value: unknown, stores: Props, context: Props, memo: Memo
   return resolvedA !== resolvedB;
 }
 
+// Resolves $not (logical not) props: { $not: { $store: 'adamStore.showPassword' } }
+function resolveNotProp(value: unknown, stores: Props, context: Props, memo: Memo): unknown {
+  const operand = (value as { $not: unknown }).$not;
+  let resolved = resolveProp(operand, stores, context, memo);
+
+  // Unwrap signal accessor if needed
+  if (typeof resolved === 'function') resolved = resolved();
+
+  return !resolved;
+}
+
 // Resolve any prop based on its token type
 export function resolveProp(value: unknown, stores: Props, context: Props, memo: Memo = noMemo): unknown {
   if (Array.isArray(value)) return value;
@@ -207,6 +218,7 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
   if (hasToken(value, '$map', 'object')) return resolveMapProp(value['$map'] as MapProp, stores, context, memo);
   if (hasToken(value, '$pick', 'object')) return resolvePickProp(value['$pick'] as PickProp, stores, context, memo);
   if (hasToken(value, '$if', 'object')) return resolveIfProp(value, stores, context, memo);
+  if (hasToken(value, '$not', 'object')) return resolveNotProp(value, stores, context, memo);
   if (hasToken(value, '$eq', 'array')) return resolveEqProp(value, stores, context, memo);
   if (hasToken(value, '$ne', 'array')) return resolveNeProp(value, stores, context, memo);
   return value;
