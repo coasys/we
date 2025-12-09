@@ -90,6 +90,15 @@ function resolveActionProp(value: unknown, context: Props, stores: Props, memo: 
   // Return a callable function if the method exists
   if (typeof method === 'function') {
     return (...callArgs: unknown[]) => {
+      // Extract value from DOM events (input, textarea, select elements)
+      const processedArgs = callArgs.map((arg) => {
+        // Check if arg is an Event with target.value (common for input events)
+        if (arg instanceof Event && arg.target && 'value' in arg.target) {
+          return (arg.target as HTMLInputElement).value;
+        }
+        return arg;
+      });
+
       // Handle special case for relative paths used in router navigation
       if (storeName === 'routeStore' && methodName === 'navigate' && typeof resolvedArgs[0] === 'string') {
         const path = resolvedArgs[0].trim();
@@ -103,8 +112,8 @@ function resolveActionProp(value: unknown, context: Props, stores: Props, memo: 
         }
       }
 
-      // Otherwise just call the method with resolved args
-      const finalArgs = resolvedArgs.length > 0 ? resolvedArgs : callArgs;
+      // Call the method with resolved args (from schema) or processed args (from runtime)
+      const finalArgs = resolvedArgs.length > 0 ? resolvedArgs : processedArgs;
       return method.apply(store, finalArgs);
     };
   }
