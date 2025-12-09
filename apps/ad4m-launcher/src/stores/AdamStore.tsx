@@ -16,12 +16,14 @@ export interface AdamStore {
   // State
   bootState: Accessor<BootState>;
   password: Accessor<string>;
+  showPassword: Accessor<boolean>;
   adamClient: Accessor<Ad4mClient | undefined>;
   me: Accessor<Agent | undefined>;
   mySpaces: Accessor<Space[]>;
 
   // Setters
   setPassword: (password: string) => void;
+  setShowPassword: (showPassword: boolean) => void;
   setNavigateFunction: (navigate: NavigateFunction) => void;
 
   // Actions
@@ -37,6 +39,7 @@ const AdamContext = createContext<AdamStore>();
 export function AdamStoreProvider(props: ParentProps) {
   const [bootState, setBootState] = createSignal<BootState>('initialising');
   const [password, setPassword] = createSignal('');
+  const [showPassword, setShowPassword] = createSignal(false);
   const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
   const [adamClient, setAdamClient] = createSignal<Ad4mClient | undefined>(undefined);
   const [me, setMe] = createSignal<Agent | undefined>(undefined);
@@ -169,12 +172,14 @@ export function AdamStoreProvider(props: ParentProps) {
     // State
     bootState,
     password,
+    showPassword,
     adamClient,
     me,
     mySpaces,
 
     // Setters
     setPassword,
+    setShowPassword,
     setNavigateFunction,
 
     // Actions

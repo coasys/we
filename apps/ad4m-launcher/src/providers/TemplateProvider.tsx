@@ -120,13 +120,49 @@ export default function TemplateProvider() {
                       { type: 'we-icon', props: { name: 'key', color: 'ui-600', size: 'lg' } },
                       { type: 'we-text', props: { size: '600', weight: '600' }, children: ['Unlock your agent'] },
                       {
-                        type: 'we-input',
-                        props: {
-                          placeholder: 'Password...',
-                          type: 'password',
-                          value: { $store: 'adamStore.password' },
-                          onInput: { $action: 'adamStore.setPassword' },
-                        },
+                        type: 'Row',
+                        props: { gap: '200' },
+                        children: [
+                          {
+                            type: 'we-input',
+                            props: {
+                              placeholder: 'Password...',
+                              type: {
+                                $if: {
+                                  condition: { $store: 'adamStore.showPassword' },
+                                  then: 'text',
+                                  else: 'password',
+                                },
+                              },
+                              value: { $store: 'adamStore.password' },
+                              onInput: { $action: 'adamStore.setPassword' },
+                            },
+                          },
+                          {
+                            type: 'we-button',
+                            props: {
+                              onClick: {
+                                $action: 'adamStore.setShowPassword',
+                                args: [{ $not: { $store: 'adamStore.showPassword' } }],
+                              },
+                            },
+                            children: [
+                              {
+                                type: 'we-icon',
+                                props: {
+                                  name: {
+                                    $if: {
+                                      condition: { $store: 'adamStore.showPassword' },
+                                      then: 'eye',
+                                      else: 'eye-slash',
+                                    },
+                                  },
+                                  color: 'ui-1000',
+                                },
+                              },
+                            ],
+                          },
+                        ],
                       },
                       { type: 'we-button', props: { text: 'Login', onClick: { $action: 'adamStore.unlockAgent' } } },
                     ],
