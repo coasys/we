@@ -14,23 +14,29 @@ type NavigateFunction = ReturnType<typeof useNavigate>;
 
 export interface AdamStore {
   // State
-  loading: Accessor<boolean>;
+  bootState: Accessor<BootState>;
+  password: Accessor<string>;
   adamClient: Accessor<Ad4mClient | undefined>;
   me: Accessor<Agent | undefined>;
   mySpaces: Accessor<Space[]>;
 
   // Setters
+  setPassword: (password: string) => void;
   setNavigateFunction: (navigate: NavigateFunction) => void;
 
   // Actions
+  unlockAgent: () => Promise<void>;
   navigate: (to: string, options?: Record<string, unknown>) => void;
   addNewSpace: (space: Space) => void;
 }
 
+type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
+
 const AdamContext = createContext<AdamStore>();
 
 export function AdamStoreProvider(props: ParentProps) {
-  const [loading, setLoading] = createSignal(true);
+  const [bootState, setBootState] = createSignal<BootState>('initialising');
+  const [password, setPassword] = createSignal('');
   const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
   const [adamClient, setAdamClient] = createSignal<Ad4mClient | undefined>(undefined);
   const [me, setMe] = createSignal<Agent | undefined>(undefined);
@@ -55,26 +61,26 @@ export function AdamStoreProvider(props: ParentProps) {
   //   }
   // }
 
-  async function getMe(client: Ad4mClient): Promise<void> {
-    try {
-      setMe(await client.agent.me());
-    } catch (error) {
-      console.error('AdamStore: getMyAgentData error', error);
-    }
-  }
+  // async function getMe(client: Ad4mClient): Promise<void> {
+  //   try {
+  //     setMe(await client.agent.me());
+  //   } catch (error) {
+  //     console.error('AdamStore: getMyAgentData error', error);
+  //   }
+  // }
 
-  async function getMySpaces(client: Ad4mClient): Promise<void> {
-    try {
-      const perspectives = await client.perspective.all();
-      console.log('*** await client.perspective.all()', perspectives);
-      const spaces = await Promise.all(perspectives.map(async (perspective) => (await Space.findAll(perspective))[0]));
-      // console.log('AdamStore: getMySpaces spaces', spaces);
-      const filteredSpaces = spaces.filter((s) => s).sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
-      setMySpaces(filteredSpaces);
-    } catch (error) {
-      console.error('AdamStore: getMySpaces error', error);
-    }
-  }
+  // async function getMySpaces(client: Ad4mClient): Promise<void> {
+  //   try {
+  //     const perspectives = await client.perspective.all();
+  //     console.log('*** await client.perspective.all()', perspectives);
+  //     const spaces = await Promise.all(perspectives.map(async (perspective) => (await Space.findAll(perspective))[0]));
+  //     // console.log('AdamStore: getMySpaces spaces', spaces);
+  //     const filteredSpaces = spaces.filter((s) => s).sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+  //     setMySpaces(filteredSpaces);
+  //   } catch (error) {
+  //     console.error('AdamStore: getMySpaces error', error);
+  //   }
+  // }
 
   // async function getMyAI(client: Ad4mClient): Promise<void> {
   //   try {
@@ -95,35 +101,51 @@ export function AdamStoreProvider(props: ParentProps) {
       const { client, status } = await buildAd4mClient();
       setAdamClient(client);
 
-      // // Check if agent exists (has DID) - if not, need to generate the agent first
+      // TODO: set up agent generation here if no agent exists
       if (!status.did) {
         console.log('AdamStore: No agent found, need to generate agent first');
+        setBootState('createAgent');
       }
 
-      // If agent exists but is locked, unlock it
+      // If agent exists but is locked, show login UI
       if (!status.isUnlocked) {
-        console.log('AdamStore: agent is locked, unlocking...');
-        // TODO: Replace with actual password input UI
-        const password = 'test';
+        console.log('AdamStore: agent is locked, need to unlock');
+        setBootState('login');
+        // // TODO: Replace with actual password input UI
+        // const password = 'test';
 
-        try {
-          // Attempt login
-          const unlockResult = await client.agent.unlock(password, true);
-          console.log('AdamStore: unlock result', unlockResult);
-        } catch (err) {
-          console.error('AdamStore: wrong password!', err);
-          setLoading(false);
-          return;
-        }
+        // try {
+        //   // Attempt login
+        //   const unlockResult = await client.agent.unlock(password, true);
+        //   console.log('AdamStore: unlock result', unlockResult);
+
+        //   // Now we can safely fetch data
+        //   await Promise.all([getMe(client), getMySpaces(client)]);
+        // } catch (err) {
+        //   console.error('AdamStore: wrong password!', err);
+        //   // setLoading(false);
+        //   // return;
+        // }
       }
 
-      // Now we can safely fetch data
-      await Promise.all([getMe(client), getMySpaces(client)]);
-
-      setLoading(false);
+      // setLoading(false);
     } catch (error) {
       console.error('AdamStore: initialiseStore error', error);
-      setLoading(false);
+      // setLoading(false);
+    }
+  }
+
+  async function unlockAgent() {
+    const client = adamClient();
+    if (!client) return;
+
+    try {
+      console.log('attempting to unlock agent with provided password', password());
+      await client.agent.unlock(password(), true);
+      console.log('AdamStore: Agent unlocked');
+    } catch (err) {
+      console.error('AdamStore: wrong password!', err);
+      return;
     }
   }
 
@@ -131,8 +153,6 @@ export function AdamStoreProvider(props: ParentProps) {
     // console.log('AdamStore: addNewSpace', space);
     setMySpaces((prev) => [...prev, space]);
   }
-
-  createEffect(initialiseStore);
 
   function navigate(to: string, options?: Record<string, unknown>) {
     // Skip if already on target path
@@ -143,17 +163,22 @@ export function AdamStoreProvider(props: ParentProps) {
     else console.warn('Navigate function not available yet');
   }
 
+  createEffect(initialiseStore);
+
   const store: AdamStore = {
     // State
-    loading,
+    bootState,
+    password,
     adamClient,
     me,
     mySpaces,
 
     // Setters
+    setPassword,
     setNavigateFunction,
 
     // Actions
+    unlockAgent,
     navigate,
     addNewSpace,
   };

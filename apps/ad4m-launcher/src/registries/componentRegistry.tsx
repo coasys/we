@@ -11,6 +11,8 @@ export const componentRegistry: ComponentRegistry = {
   'we-icon': (props) => <we-icon {...props} />,
   'we-tabs': (props) => <we-tabs {...props}>{props.children}</we-tabs>,
   'we-tab': (props) => <we-tab {...props}>{props.children}</we-tab>,
+  'we-spinner': (props) => <we-spinner {...props} />,
+  'we-input': (props) => <we-input {...props} />,
 
   // @we/components
   Column,
