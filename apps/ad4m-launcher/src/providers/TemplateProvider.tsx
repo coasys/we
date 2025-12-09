@@ -6,6 +6,7 @@ import type { JSX, ParentProps } from 'solid-js';
 import { createEffect, createMemo } from 'solid-js';
 
 import { componentRegistry as registry } from '@/registries/componentRegistry';
+import { bootScreenSchema } from '@/schemas/fragments/BootScreen.schema';
 import { useAdamStore, useModalStore, useRouteStore, useSpaceStore, useTemplateStore, useThemeStore } from '@/stores';
 import type { Stores } from '@/types';
 
@@ -71,116 +72,15 @@ export default function TemplateProvider() {
   const routeStore = useRouteStore();
   const stores = { adamStore, spaceStore, modalStore, themeStore, templateStore, routeStore };
 
-  // Get the current template schema
+  // Get the current template schema and build its routes
   const templateSchema = templateStore.currentTemplate;
-
-  const appSchema: TemplateSchema = {
-    meta: { name: 'AppLayout', description: 'Root application layout', icon: '' },
-    children: [
-      {
-        type: '$if',
-        props: {
-          condition: { $ne: [{ $store: 'adamStore.bootState' }, 'ready'] },
-          then: {
-            type: 'Column',
-            props: {
-              width: '100%',
-              height: '100%',
-              ax: 'center',
-              ay: 'center',
-              gap: '400',
-              bg: '#ddd',
-              position: 'absolute',
-              opacity: 0.8,
-            },
-            children: [
-              { type: 'we-text', props: { size: '800', weight: '600' }, children: ['WE'] },
-              {
-                type: '$if',
-                props: {
-                  condition: { $eq: [{ $store: 'adamStore.bootState' }, 'initialising'] },
-                  then: {
-                    type: 'Row',
-                    props: { gap: '300', ay: 'center' },
-                    children: [
-                      { type: 'we-spinner', props: { size: 'sm' } },
-                      { type: 'we-text', children: ['Initialising AD4M client...'] },
-                    ],
-                  },
-                },
-              },
-              {
-                type: '$if',
-                props: {
-                  condition: { $eq: [{ $store: 'adamStore.bootState' }, 'login'] },
-                  then: {
-                    type: 'Column',
-                    props: { gap: '400', ax: 'center' },
-                    children: [
-                      { type: 'we-icon', props: { name: 'key', color: 'ui-600', size: 'lg' } },
-                      { type: 'we-text', props: { size: '600', weight: '600' }, children: ['Unlock your agent'] },
-                      {
-                        type: 'Row',
-                        props: { gap: '200' },
-                        children: [
-                          {
-                            type: 'we-input',
-                            props: {
-                              placeholder: 'Password...',
-                              value: { $store: 'adamStore.password' },
-                              onInput: { $action: 'adamStore.setPassword' },
-                              error: { $store: 'adamStore.passwordError' },
-                              errortext: 'Incorrect password',
-                              type: {
-                                $if: {
-                                  condition: { $store: 'adamStore.showPassword' },
-                                  then: 'text',
-                                  else: 'password',
-                                },
-                              },
-                            },
-                          },
-                          {
-                            type: 'we-button',
-                            props: {
-                              onClick: {
-                                $action: 'adamStore.setShowPassword',
-                                args: [{ $not: { $store: 'adamStore.showPassword' } }],
-                              },
-                            },
-                            children: [
-                              {
-                                type: 'we-icon',
-                                props: {
-                                  name: {
-                                    $if: {
-                                      condition: { $store: 'adamStore.showPassword' },
-                                      then: 'eye',
-                                      else: 'eye-slash',
-                                    },
-                                  },
-                                  color: 'ui-1000',
-                                },
-                              },
-                            ],
-                          },
-                        ],
-                      },
-                      { type: 'we-button', props: { text: 'Login', onClick: { $action: 'adamStore.unlockAgent' } } },
-                    ],
-                  },
-                },
-              },
-            ],
-          },
-        },
-      },
-      templateSchema,
-    ],
-  };
-
-  // Build the routes
   const routes = createMemo(() => flattenRoutes(stores, templateSchema.routes ?? []));
+
+  // Build the full app schema
+  const appSchema: TemplateSchema = {
+    meta: { name: 'App Layout', description: 'Root application layout', icon: '' },
+    children: [bootScreenSchema, templateSchema],
+  };
 
   // Return the router with the root layout and routes
   return (
