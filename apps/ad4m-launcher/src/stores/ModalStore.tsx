@@ -1,37 +1,40 @@
 import { Accessor, createContext, createSignal, ParentProps, useContext } from 'solid-js';
 
-export type ModalName = 'create-space'; // | 'edit-profile' | 'settings';
+export type ModalName = 'app-settings' | 'create-space';
 
 export interface ModalStore {
   // State
+  appSettingsModalOpen?: Accessor<boolean>;
   createSpaceModalOpen: Accessor<boolean>;
 
   // Actions
-  openModal: (modal: ModalName) => void;
-  closeModal: (modal: ModalName) => void;
+  openModal: (modalName: ModalName) => void;
+  closeModal: (modalName: ModalName) => void;
 }
 
 const ModalContext = createContext<ModalStore>();
 
 export function ModalStoreProvider(props: ParentProps) {
-  // Individual signals for each modal
+  // State
+  const [appSettingsModalOpen, setAppSettingsModalOpen] = createSignal(false);
   const [createSpaceModalOpen, setCreateSpaceModalOpen] = createSignal(false);
-  // Add more signals as you add more modals
 
   // Actions
-  function openModal(modal: ModalName) {
-    // console.log('open modal: ', modal);
-    if (modal === 'create-space') setCreateSpaceModalOpen(true);
+  function openModal(modalName: ModalName) {
+    if (modalName === 'app-settings') setAppSettingsModalOpen(true);
+    if (modalName === 'create-space') setCreateSpaceModalOpen(true);
   }
 
-  function closeModal(modal: ModalName) {
-    // console.log('close modal: ', modal);
-    if (modal === 'create-space') setCreateSpaceModalOpen(false);
+  function closeModal(modalName: ModalName) {
+    if (modalName === 'app-settings') setAppSettingsModalOpen(false);
+    if (modalName === 'create-space') setCreateSpaceModalOpen(false);
   }
 
   const store: ModalStore = {
     // State
+    appSettingsModalOpen,
     createSpaceModalOpen,
+
     // Actions
     openModal,
     closeModal,
@@ -47,43 +50,3 @@ export function useModalStore(): ModalStore {
 }
 
 export default ModalStoreProvider;
-
-// import { createContext, ParentProps, useContext } from 'solid-js';
-// import { createStore } from 'solid-js/store';
-
-// export type ModalName = 'createSpace'; // | 'editProfile' | 'settings';
-
-// export type ModalState = {
-//   [K in `${ModalName}ModalOpen`]: boolean;
-// };
-
-// export interface ModalStore {
-//   state: ModalState;
-//   actions: {
-//     openModal: (modalName: ModalName) => void;
-//     closeModal: (modalName: ModalName) => void;
-//   };
-// }
-
-// const modalContext = createContext<ModalStore>();
-
-// export function ModalProvider(props: ParentProps) {
-//   const [state, setState] = createStore<ModalStore['state']>({
-//     createSpaceModalOpen: false,
-//   });
-
-//   const actions = {
-//     openModal: (modalName: ModalName) => setState({ [`${modalName}ModalOpen`]: true }),
-//     closeModal: (modalName: ModalName) => setState({ [`${modalName}ModalOpen`]: false }),
-//   };
-
-//   return <modalContext.Provider value={{ state, actions }}>{props.children}</modalContext.Provider>;
-// }
-
-// export function useModalStore(): ModalStore {
-//   const context = useContext(modalContext);
-//   if (!context) throw new Error('useModalStore must be used within the ModalProvider');
-//   return context;
-// }
-
-// export default ModalProvider;

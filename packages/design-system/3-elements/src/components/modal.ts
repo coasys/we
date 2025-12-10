@@ -9,10 +9,11 @@ import type { DesignSystemProps } from '@we/design-system-types';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'ui-0',
   r: 'xl',
-  p: '800',
+  p: '900',
   ax: 'center',
   ay: 'center',
   gap: '300',
+  direction: 'column',
 };
 
 const CSS_STYLES = css`

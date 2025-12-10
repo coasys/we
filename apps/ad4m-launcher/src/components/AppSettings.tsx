@@ -50,7 +50,7 @@ export default function AppSettings() {
               <PopoverMenu
                 options={themeStore.themes}
                 selectedOption={themeStore.currentTheme}
-                onSelect={themeStore.setCurrentTheme}
+                onSelect={(option) => themeStore.setCurrentTheme(option.id)}
               />
             </Row>
 
@@ -58,7 +58,7 @@ export default function AppSettings() {
               color="ui-1000"
               bg="ui-100"
               r="pill"
-              hover={{ bg: 'ui-200' }}
+              hoverProps={{ bg: 'ui-200' }}
               onClick={templateStore.removeTemplate}
             >
               Remove Template
@@ -80,7 +80,7 @@ export default function AppSettings() {
                 color="ui-1000"
                 bg="ui-100"
                 r="pill"
-                hover={{ bg: 'ui-200' }}
+                hoverProps={{ bg: 'ui-200' }}
                 onClick={() => templateStore.saveTemplate(newTemplateName())}
                 disabled={newTemplateName().trim() === ''}
               >

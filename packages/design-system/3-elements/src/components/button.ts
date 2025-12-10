@@ -43,7 +43,7 @@ export default class Button extends DesignSystemElement {
     return DEFAULT_PROPS;
   }
 
-  private _handleClick = (e: MouseEvent) => {
+  private _onClick = (e: MouseEvent) => {
     if (this.disabled || this.loading) {
       e.preventDefault();
       e.stopPropagation();
@@ -70,7 +70,7 @@ export default class Button extends DesignSystemElement {
           part="base"
           href=${this.href}
           aria-disabled=${this.disabled || this.loading ? 'true' : 'false'}
-          @click=${this._handleClick}
+          @click=${this._onClick}
           style=${styleMap(inline)}
         >
           ${this._content()}
@@ -79,12 +79,7 @@ export default class Button extends DesignSystemElement {
     }
 
     return html`
-      <button
-        part="base"
-        ?disabled=${this.disabled || this.loading}
-        @click=${this._handleClick}
-        style=${styleMap(inline)}
-      >
+      <button part="base" ?disabled=${this.disabled || this.loading} @click=${this._onClick} style=${styleMap(inline)}>
         ${this._content()}
       </button>
     `;

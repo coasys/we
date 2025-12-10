@@ -6,6 +6,7 @@ import type { JSX, ParentProps } from 'solid-js';
 import { createEffect, createMemo } from 'solid-js';
 
 import { componentRegistry as registry } from '@/registries/componentRegistry';
+import { appSettingsSchema } from '@/schemas/fragments/AppSettings.schema';
 import { bootScreenSchema } from '@/schemas/fragments/BootScreen.schema';
 import { useAdamStore, useModalStore, useRouteStore, useSpaceStore, useTemplateStore, useThemeStore } from '@/stores';
 import type { Stores } from '@/types';
@@ -79,7 +80,7 @@ export default function TemplateProvider() {
   // Build the full app schema
   const appSchema: TemplateSchema = {
     meta: { name: 'App Layout', description: 'Root application layout', icon: '' },
-    children: [bootScreenSchema, templateSchema],
+    children: [bootScreenSchema, appSettingsSchema, templateSchema],
   };
 
   // Return the router with the root layout and routes

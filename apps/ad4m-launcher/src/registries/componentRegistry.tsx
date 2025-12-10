@@ -13,6 +13,7 @@ export const componentRegistry: ComponentRegistry = {
   'we-tab': (props) => <we-tab {...props}>{props.children}</we-tab>,
   'we-spinner': (props) => <we-spinner {...props} />,
   'we-input': (props) => <we-input {...props} />,
+  'we-modal': (props) => <we-modal {...props}>{props.children}</we-modal>,
 
   // @we/components
   Column,
