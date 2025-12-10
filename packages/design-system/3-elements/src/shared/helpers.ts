@@ -52,8 +52,13 @@ function setProperty(el: HTMLElement, name: string, value?: string) {
 }
 
 // Update custom properties for given props and optional state
-function updateCustomVars(el: HTMLElement, props: Partial<DesignSystemProps>, state?: ElementState) {
-  const prefix = state ? `--we-${state}-` : '--we-';
+function updateCustomVars(
+  el: HTMLElement,
+  componentName: string,
+  props: Partial<DesignSystemProps>,
+  state?: ElementState,
+) {
+  const prefix = state ? `--we-${componentName}-${state}-` : `--we-${componentName}-`;
 
   // Host variables (layout in parent - applied to :host)
   const hasMargin = marginKeys.some((k) => typeof props[k] !== 'undefined' && props[k] !== null);
@@ -103,117 +108,125 @@ function updateCustomVars(el: HTMLElement, props: Partial<DesignSystemProps>, st
   setProperty(el, `${prefix}radius`, hasRadius ? getRadiusValues(props) : undefined);
 }
 
-function updateAllCustomVars(el: HTMLElement, props: DesignSystemProps) {
+function updateAllCustomVars(el: HTMLElement, componentName: string, props: DesignSystemProps) {
   // Core variables
-  updateCustomVars(el, props);
+  updateCustomVars(el, componentName, props);
 
   // State variables
   ELEMENT_STATES.forEach((state) => {
     const stateProps = props[`${state}Props`];
-    if (stateProps && typeof stateProps === 'object') updateCustomVars(el, stateProps, state);
+    if (stateProps && typeof stateProps === 'object') updateCustomVars(el, componentName, stateProps, state);
   });
 }
 
 const defaultTransitionSpeed = '0.2s';
 
-const hostStyles = `
-  display: flex;
-
-  transition: var(--we-transition, ${defaultTransitionSpeed});
-  width: var(--we-width);
-  height: var(--we-height);
-  min-width: var(--we-min-width);
-  min-height: var(--we-min-height);
-  max-width: var(--we-max-width);
-  max-height: var(--we-max-height);
-  position: var(--we-position);
-  top: var(--we-top);
-  right: var(--we-right);
-  bottom: var(--we-bottom);
-  left: var(--we-left);
-  z-index: var(--we-z-index);
-  margin: var(--we-margin);
-`.trim();
-
-const baseStyles = `
-  width: 100%;
-  height: 100%;
-
-  transition: var(--we-transition, ${defaultTransitionSpeed});
-  display: var(--we-display, flex);
-  background: var(--we-bg);
-  color: var(--we-color);
-  opacity: var(--we-opacity);
-  border: var(--we-border);
-  box-shadow: var(--we-shadow);
-  transform: var(--we-transform);
-  text-align: var(--we-text-align);
-  font-weight: var(--we-font-weight);
-  font-size: var(--we-font-size);
-  line-height: var(--we-line-height);
-  letter-spacing: var(--we-letter-spacing);
-  text-decoration: var(--we-text-decoration);
-  text-transform: var(--we-text-transform);
-  cursor: var(--we-cursor);
-  pointer-events: var(--we-pointer-events);
-  flex-direction: var(--we-direction);
-  justify-content: var(--we-main-axis);
-  align-items: var(--we-cross-axis);
-  flex-wrap: var(--we-wrap);
-  gap: var(--we-gap);
-  overflow: var(--we-overflow);
-  padding: var(--we-padding);
-  border-radius: var(--we-radius);
-`.trim();
-
-function hostStateStyles(state: ElementState) {
-  const prefix = `--we-${state}-`;
+function hostStyles(componentName: string) {
+  const prefix = `--we-${componentName}-`;
   return `
-    transition: var(${prefix}transition, var(--we-transition, ${defaultTransitionSpeed}));
-    width: var(${prefix}width, var(--we-width));
-    height: var(${prefix}height, var(--we-height));
-    min-width: var(${prefix}min-width, var(--we-min-width));
-    min-height: var(${prefix}min-height, var(--we-min-height));
-    max-width: var(${prefix}max-width, var(--we-max-width));
-    max-height: var(${prefix}max-height, var(--we-max-height));
-    position: var(${prefix}position, var(--we-position));
-    top: var(${prefix}top, var(--we-top));
-    right: var(${prefix}right, var(--we-right));
-    bottom: var(${prefix}bottom, var(--we-bottom));
-    left: var(${prefix}left, var(--we-left));
-    z-index: var(${prefix}z-index, var(--we-z-index));
-    margin: var(${prefix}margin, var(--we-margin));
+    display: flex;
+
+    transition: var(${prefix}transition, ${defaultTransitionSpeed});
+    width: var(${prefix}width);
+    height: var(${prefix}height);
+    min-width: var(${prefix}min-width);
+    min-height: var(${prefix}min-height);
+    max-width: var(${prefix}max-width);
+    max-height: var(${prefix}max-height);
+    position: var(${prefix}position);
+    top: var(${prefix}top);
+    right: var(${prefix}right);
+    bottom: var(${prefix}bottom);
+    left: var(${prefix}left);
+    z-index: var(${prefix}z-index);
+    margin: var(${prefix}margin);
   `.trim();
 }
 
-function baseStateStyles(state: ElementState) {
-  const prefix = `--we-${state}-`;
+function baseStyles(componentName: string) {
+  const prefix = `--we-${componentName}-`;
   return `
-    transition: var(${prefix}transition, var(--we-transition, ${defaultTransitionSpeed}));
-    background: var(${prefix}bg, var(--we-bg));
-    color: var(${prefix}color, var(--we-color));
-    opacity: var(${prefix}opacity, var(--we-opacity));
-    border: var(${prefix}border, var(--we-border));
-    box-shadow: var(${prefix}shadow, var(--we-shadow));
-    transform: var(${prefix}transform, var(--we-transform));
-    text-align: var(${prefix}text-align, var(--we-text-align));
-    font-weight: var(${prefix}font-weight, var(--we-font-weight));
-    font-size: var(${prefix}font-size, var(--we-font-size));
-    line-height: var(${prefix}line-height, var(--we-line-height));
-    letter-spacing: var(${prefix}letter-spacing, var(--we-letter-spacing));
-    text-decoration: var(${prefix}text-decoration, var(--we-text-decoration));
-    text-transform: var(${prefix}text-transform, var(--we-text-transform));
-    cursor: var(${prefix}cursor, var(--we-cursor));
-    pointer-events: var(${prefix}pointer-events, var(--we-pointer-events));
-    display: var(${prefix}display, var(--we-display, flex));
-    flex-direction: var(${prefix}direction, var(--we-direction));
-    justify-content: var(${prefix}main-axis, var(--we-main-axis));
-    align-items: var(${prefix}cross-axis, var(--we-cross-axis));
-    flex-wrap: var(${prefix}wrap, var(--we-wrap));
-    gap: var(${prefix}gap, var(--we-gap));
-    overflow: var(${prefix}overflow, var(--we-overflow));
-    padding: var(${prefix}padding, var(--we-padding));
-    border-radius: var(${prefix}radius, var(--we-radius));
+    width: 100%;
+    height: 100%;
+
+    transition: var(${prefix}transition, ${defaultTransitionSpeed});
+    display: var(${prefix}display, flex);
+    background: var(${prefix}bg);
+    color: var(${prefix}color);
+    opacity: var(${prefix}opacity);
+    border: var(${prefix}border);
+    box-shadow: var(${prefix}shadow);
+    transform: var(${prefix}transform);
+    text-align: var(${prefix}text-align);
+    font-weight: var(${prefix}font-weight);
+    font-size: var(${prefix}font-size);
+    line-height: var(${prefix}line-height);
+    letter-spacing: var(${prefix}letter-spacing);
+    text-decoration: var(${prefix}text-decoration);
+    text-transform: var(${prefix}text-transform);
+    cursor: var(${prefix}cursor);
+    pointer-events: var(${prefix}pointer-events);
+    flex-direction: var(${prefix}direction);
+    justify-content: var(${prefix}main-axis);
+    align-items: var(${prefix}cross-axis);
+    flex-wrap: var(${prefix}wrap);
+    gap: var(${prefix}gap);
+    overflow: var(${prefix}overflow);
+    padding: var(${prefix}padding);
+    border-radius: var(${prefix}radius);
+  `.trim();
+}
+
+function hostStateStyles(componentName: string, state: ElementState) {
+  const defaultPrefix = `--we-${componentName}-`;
+  const statePrefix = `${defaultPrefix}${state}-`;
+  return `
+    transition: var(${statePrefix}transition, var(${defaultPrefix}transition, ${defaultTransitionSpeed}));
+    width: var(${statePrefix}width, var(${defaultPrefix}width));
+    height: var(${statePrefix}height, var(${defaultPrefix}height));
+    min-width: var(${statePrefix}min-width, var(${defaultPrefix}min-width));
+    min-height: var(${statePrefix}min-height, var(${defaultPrefix}min-height));
+    max-width: var(${statePrefix}max-width, var(${defaultPrefix}max-width));
+    max-height: var(${statePrefix}max-height, var(${defaultPrefix}max-height));
+    position: var(${statePrefix}position, var(${defaultPrefix}position));
+    top: var(${statePrefix}top, var(${defaultPrefix}top));
+    right: var(${statePrefix}right, var(${defaultPrefix}right));
+    bottom: var(${statePrefix}bottom, var(${defaultPrefix}bottom));
+    left: var(${statePrefix}left, var(${defaultPrefix}left));
+    z-index: var(${statePrefix}z-index, var(${defaultPrefix}z-index));
+    margin: var(${statePrefix}margin, var(${defaultPrefix}margin));
+  `.trim();
+}
+
+function baseStateStyles(componentName: string, state: ElementState) {
+  const defaultPrefix = `--we-${componentName}-`;
+  const statePrefix = `${defaultPrefix}${state}-`;
+  return `
+    transition: var(${statePrefix}transition, var(${defaultPrefix}transition, ${defaultTransitionSpeed}));
+    background: var(${statePrefix}bg, var(${defaultPrefix}bg));
+    color: var(${statePrefix}color, var(${defaultPrefix}color));
+    opacity: var(${statePrefix}opacity, var(${defaultPrefix}opacity));
+    border: var(${statePrefix}border, var(${defaultPrefix}border));
+    box-shadow: var(${statePrefix}shadow, var(${defaultPrefix}shadow));
+    transform: var(${statePrefix}transform, var(${defaultPrefix}transform));
+    text-align: var(${statePrefix}text-align, var(${defaultPrefix}text-align));
+    font-weight: var(${statePrefix}font-weight, var(${defaultPrefix}font-weight));
+    font-size: var(${statePrefix}font-size, var(${defaultPrefix}font-size));
+    line-height: var(${statePrefix}line-height, var(${defaultPrefix}line-height));
+    letter-spacing: var(${statePrefix}letter-spacing, var(${defaultPrefix}letter-spacing));
+    text-decoration: var(${statePrefix}text-decoration, var(${defaultPrefix}text-decoration));
+    text-transform: var(${statePrefix}text-transform, var(${defaultPrefix}text-transform));
+    cursor: var(${statePrefix}cursor, var(${defaultPrefix}cursor));
+    pointer-events: var(${statePrefix}pointer-events, var(${defaultPrefix}pointer-events));
+    display: var(${statePrefix}display, var(${defaultPrefix}display, flex));
+    flex-direction: var(${statePrefix}direction, var(${defaultPrefix}direction));
+    justify-content: var(${statePrefix}main-axis, var(${defaultPrefix}main-axis));
+    align-items: var(${statePrefix}cross-axis, var(${defaultPrefix}cross-axis));
+    flex-wrap: var(${statePrefix}wrap, var(${defaultPrefix}wrap));
+    gap: var(${statePrefix}gap, var(${defaultPrefix}gap));
+    overflow: var(${statePrefix}overflow, var(${defaultPrefix}overflow));
+    padding: var(${statePrefix}padding, var(${defaultPrefix}padding));
+    border-radius: var(${statePrefix}radius, var(${defaultPrefix}radius));
   `.trim();
 }
 
@@ -228,8 +241,11 @@ function hasPropOverride(
 
 // Generate the complete design system CSS for an element based on its props
 export function getDesignSystemCSS(el: HTMLElement, props: Partial<DesignSystemProps>): string {
+  // Extract component name from tag for variable prefixes
+  const componentName = el.tagName.toLowerCase().replace('we-', '');
+
   // Update custom variables
-  updateAllCustomVars(el, props);
+  updateAllCustomVars(el, componentName, props);
 
   // Now set ready attribute so we can ensure the design system CSS is applied after static CSS defined in the elements file
   const ready = 'data-we-static-css-ready';
@@ -237,8 +253,8 @@ export function getDesignSystemCSS(el: HTMLElement, props: Partial<DesignSystemP
 
   // Build core styles
   const styles: string[] = [];
-  styles.push(`:host([${ready}]) { ${hostStyles} }`);
-  styles.push(`:host([${ready}]) [part='base'] { ${baseStyles} }`);
+  styles.push(`:host([${ready}]) { ${hostStyles(componentName)} }`);
+  styles.push(`:host([${ready}]) [part='base'] { ${baseStyles(componentName)} }`);
 
   // Build state styles
   for (const state of ELEMENT_STATES) {
@@ -255,7 +271,7 @@ export function getDesignSystemCSS(el: HTMLElement, props: Partial<DesignSystemP
     if (hasHostChange) {
       // Build host state styles
       const hostStateSelector = state === 'disabled' ? `:host([${ready}][disabled])` : `:host([${ready}]:${state})`;
-      styles.push(`${hostStateSelector} { ${hostStateStyles(state)} }`);
+      styles.push(`${hostStateSelector} { ${hostStateStyles(componentName, state)} }`);
     }
 
     if (hasBaseChange) {
@@ -264,7 +280,7 @@ export function getDesignSystemCSS(el: HTMLElement, props: Partial<DesignSystemP
         state === 'disabled'
           ? `:host([${ready}]) [part='base']:disabled, :host([${ready}]) [part='base'][aria-disabled='true']`
           : `:host([${ready}]) [part='base']:${state}:not(:disabled):not([aria-disabled='true'])`;
-      styles.push(`${baseStateSelector} { ${baseStateStyles(state)} }`);
+      styles.push(`${baseStateSelector} { ${baseStateStyles(componentName, state)} }`);
     }
   }
 
