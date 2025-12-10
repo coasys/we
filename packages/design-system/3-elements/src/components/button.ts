@@ -2,7 +2,7 @@ import { html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import sharedStyles from '../shared/styles';
-import { BaseElement } from '../shared/base-element';
+import { DesignSystemElement } from '../shared/design-system-element';
 import type { DesignSystemProps } from '@we/design-system-types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
@@ -29,7 +29,7 @@ const CSS_STYLES = css`
 `;
 
 @customElement('we-button')
-export default class Button extends BaseElement {
+export default class Button extends DesignSystemElement {
   static styles = [sharedStyles, CSS_STYLES];
 
   @property({ type: String }) text?: string;

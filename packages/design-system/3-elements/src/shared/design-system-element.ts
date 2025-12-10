@@ -1,16 +1,16 @@
 import { LitElement } from 'lit';
 import { getDesignSystemCSS } from './helpers';
 import type { DesignSystemProps } from '@we/design-system-types';
-import { DesignSystemElement } from './ds-mixin';
+import { DesignSystemMixin } from './design-system-mixin';
 
 // Base class for all design system elements
-export abstract class BaseElement extends DesignSystemElement(LitElement) {
+export abstract class DesignSystemElement extends DesignSystemMixin(LitElement) {
+  // Style element to hold design system CSS
   protected _dsStyle?: HTMLStyleElement;
 
+  // Update the design system CSS based on current props
   private _updateDesignSystem() {
     if (!this._dsStyle) return;
-
-    // Add the latest design system CSS to the style element
     this._dsStyle.textContent = getDesignSystemCSS(this, this.getInstanceProps());
   }
 

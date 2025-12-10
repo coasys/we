@@ -2,14 +2,14 @@ import { css, html } from 'lit';
 import { customElement, property, queryAssignedElements } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import sharedStyles from '../shared/styles';
-import { BaseElement } from '../shared/base-element';
+import { DesignSystemElement } from '../shared/design-system-element';
 import type { DesignSystemProps } from '@we/design-system-types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {};
 const CSS_STYLES = css``;
 
 @customElement('we-tabs')
-export class Tabs extends BaseElement {
+export class Tabs extends DesignSystemElement {
   static styles = [sharedStyles, CSS_STYLES];
 
   @property({ type: String }) activeKey: string = '';

@@ -12,6 +12,14 @@ import {
   stateKeys,
 } from '@we/design-system-utils';
 
+/**
+ * Design System CSS Generator
+ *
+ * Generates dynamic CSS for web components based on design system props.
+ * Separates styles into host (:host) for layout/positioning and base ([part="base"])
+ * for appearance, with support for state variants (hover, focus, active, disabled).
+ */
+
 const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
 
 const HOST_PROP_KEYS = [
@@ -37,15 +45,17 @@ const BASE_PROP_KEYS = designSystemKeys.filter(
     key !== 'styles',
 ) as Array<keyof DesignSystemProps>;
 
+// Helper to set or remove a CSS property on an element
 function setProperty(el: HTMLElement, name: string, value?: string) {
   if (value !== undefined && value !== null && value !== '') el.style.setProperty(name, value);
   else el.style.removeProperty(name);
 }
 
+// Update custom properties for given props and optional state
 function updateCustomVars(el: HTMLElement, props: Partial<DesignSystemProps>, state?: ElementState) {
   const prefix = state ? `--we-${state}-` : '--we-';
 
-  // Host variables (layout in parent)
+  // Host variables (layout in parent - applied to :host)
   const hasMargin = marginKeys.some((k) => typeof props[k] !== 'undefined' && props[k] !== null);
   setProperty(el, `${prefix}width`, props.width);
   setProperty(el, `${prefix}height`, props.height);
@@ -62,7 +72,7 @@ function updateCustomVars(el: HTMLElement, props: Partial<DesignSystemProps>, st
   setProperty(el, `${prefix}z-index`, props.zIndex?.toString());
   setProperty(el, `${prefix}margin`, hasMargin ? getMarginValues(props) : undefined);
 
-  // Base variables (inner appearance)
+  // Base variables (inner appearance - applied to [part="base"])
   const { main, cross } = mapFlexAxes(props, props.direction ?? 'row');
   const hasPadding = paddingKeys.some((k) => typeof props[k] !== 'undefined' && props[k] !== null);
   const hasRadius = radiusKeys.some((k) => typeof props[k] !== 'undefined' && props[k] !== null);
@@ -207,6 +217,7 @@ function baseStateStyles(state: ElementState) {
   `.trim();
 }
 
+// Check if any of the given keys have overrides in stateProps compared to props
 function hasPropOverride(
   keys: (keyof DesignSystemProps)[],
   stateProps: Partial<DesignSystemProps>,
@@ -215,6 +226,7 @@ function hasPropOverride(
   return keys.some((k) => stateProps[k] !== null && stateProps[k] !== props[k]);
 }
 
+// Generate the complete design system CSS for an element based on its props
 export function getDesignSystemCSS(el: HTMLElement, props: Partial<DesignSystemProps>): string {
   // Update custom variables
   updateAllCustomVars(el, props);
