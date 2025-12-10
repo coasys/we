@@ -75,11 +75,12 @@ function resolveExpressionProp(value: unknown, context: Props): unknown {
 }
 
 // Resolves $action props: { $action: 'routeStore.navigate', args: ['/home'] }
+// Supports $arg token for extracting properties from callback arguments: args: ['$arg.id']
 function resolveActionProp(value: unknown, context: Props, stores: Props, memo: Memo): unknown {
   // Split the $action string into store name and method name
   const [storeName, methodName] = (value as { $action: string }).$action.split('.');
 
-  // Retrieve args and resolve any expressions within them
+  // Retrieve args and resolve any expressions within them (but not $arg tokens yet)
   const args = (value as { args?: unknown[] }).args ?? [];
   const resolvedArgs = args.map((arg) => resolveProp(arg, stores, context, memo));
 
@@ -112,25 +113,60 @@ function resolveActionProp(value: unknown, context: Props, stores: Props, memo: 
         }
       }
 
-      // Call the method with resolved args (from schema) or processed args (from runtime)
-      const finalArgs = resolvedArgs.length > 0 ? resolvedArgs : processedArgs;
-      return method.apply(store, finalArgs);
+      // Process $arg tokens - extract properties from callback arguments
+      const finalArgs = resolvedArgs.map((arg) => {
+        if (typeof arg === 'string' && arg.startsWith('$arg')) {
+          // Handle $arg.property.path syntax to extract nested properties
+          if (arg.startsWith('$arg.')) {
+            const path = arg.slice(5).split('.');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            let result: any = processedArgs[0]; // Get first callback argument
+            for (const prop of path) result = result?.[prop];
+            return result;
+          }
+        }
+        return arg;
+      });
+
+      // Use finalArgs if any were defined in schema, otherwise use processedArgs
+      const argsToUse = resolvedArgs.length > 0 ? finalArgs : processedArgs;
+      return method.apply(store, argsToUse);
     };
   }
 }
 
 // Resolves $map props: { $map: { items: { "$store": "templateStore.templates" }, select: { "name": "$item.meta.name", "icon": "$item.meta.icon" } } }
+// Supports both arrays and single objects
 function resolveMapProp(map: MapProp, stores: Props, context: Props, memo: Memo): unknown {
   return memo(() => {
     const items = resolveProp(map.items, stores, context, memo);
-    const itemsArray = typeof items === 'function' ? items() : items;
-    if (!Array.isArray(itemsArray)) return [];
-    return itemsArray.map((item) => {
+    const resolvedItems = typeof items === 'function' ? items() : items;
+
+    // Handle arrays - map over each item
+    if (Array.isArray(resolvedItems)) {
+      return resolvedItems.map((item) => {
+        const result: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(map.select)) {
+          if (typeof value === 'string' && value.startsWith('$item.')) {
+            const path = value.slice(6).split('.');
+            let current = item;
+            for (const p of path) current = current?.[p];
+            result[key] = current;
+          } else {
+            result[key] = value;
+          }
+        }
+        return result;
+      });
+    }
+
+    // Handle single object - transform it
+    if (resolvedItems && typeof resolvedItems === 'object') {
       const result: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(map.select)) {
         if (typeof value === 'string' && value.startsWith('$item.')) {
           const path = value.slice(6).split('.');
-          let current = item;
+          let current = resolvedItems;
           for (const p of path) current = current?.[p];
           result[key] = current;
         } else {
@@ -138,7 +174,10 @@ function resolveMapProp(map: MapProp, stores: Props, context: Props, memo: Memo)
         }
       }
       return result;
-    });
+    }
+
+    // Return empty array for null/undefined
+    return [];
   });
 }
 
