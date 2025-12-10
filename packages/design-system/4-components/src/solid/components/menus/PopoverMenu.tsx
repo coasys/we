@@ -11,11 +11,20 @@ export interface PopoverMenuProps<T extends Option> {
   styles?: JSX.CSSProperties;
 }
 
-// TODO: close menu when an option is selected (look at how we did this in flux and maybe update we-popover/we-menu to support this natively)
-
 export function PopoverMenu<T extends Option>(props: PopoverMenuProps<T>) {
+  let popoverRef: HTMLElement | undefined;
+
+  const handleSelect = (option: T) => {
+    // Call the onSelect callback with the chosen option
+    props.onSelect(option);
+
+    // Close the popover after selection
+    popoverRef?.removeAttribute('open');
+  };
+
   return (
     <we-popover
+      ref={popoverRef}
       class={`we-popover-menu ${props.class || ''}`}
       styles={props.styles}
       placement="bottom-end"
@@ -28,7 +37,7 @@ export function PopoverMenu<T extends Option>(props: PopoverMenuProps<T>) {
 
       <we-menu slot="content">
         {props.options().map((option) => (
-          <we-menu-item key={option.name} onClick={() => props.onSelect(option)}>
+          <we-menu-item key={option.name} onClick={() => handleSelect(option)}>
             <we-icon slot="start" name={option.icon} />
             {option.name}
           </we-menu-item>
