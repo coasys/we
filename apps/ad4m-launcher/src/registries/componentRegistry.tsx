@@ -14,6 +14,7 @@ export const componentRegistry: ComponentRegistry = {
   'we-spinner': (props) => <we-spinner {...props} />,
   'we-input': (props) => <we-input {...props} />,
   'we-modal': (props) => <we-modal {...props}>{props.children}</we-modal>,
+  'we-iframe': (props) => <we-iframe {...props} />,
 
   // @we/components
   Column,
