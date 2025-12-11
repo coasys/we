@@ -14,6 +14,10 @@ const CSS_STYLES = css`
   [part='trigger'] {
     cursor: pointer;
   }
+
+  [part='content'] {
+    background: none;
+  }
 `;
 
 @customElement('we-popover')

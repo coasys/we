@@ -6,6 +6,7 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import type { DesignSystemProps } from '@we/design-system-types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {};
+
 const CSS_STYLES = css``;
 
 @customElement('we-tabs')

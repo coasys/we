@@ -14,7 +14,6 @@ export const bootScreenSchema: SchemaNode = {
         gap: '400',
         bg: 'ui-0',
         position: 'absolute',
-        // opacity: 0.8,
       },
       children: [
         { type: 'we-text', props: { size: '800', weight: '600' }, children: ['WE'] },
