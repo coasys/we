@@ -2,10 +2,11 @@ import { html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import sharedStyles from '../shared/styles';
-import { BaseElement } from '../shared/base-element';
+import { DesignSystemElement } from '../shared/design-system-element';
 import type { DesignSystemProps } from '@we/design-system-types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
+  cursor: 'pointer',
   bg: 'primary-100',
   color: 'primary-800',
   r: 'md',
@@ -14,7 +15,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ax: 'center',
   ay: 'center',
   gap: '300',
-  // TODO: add disabledProps: { opacity: '50', cursor: 'not-allowed'} when opacity and cursor are supported
+  disabledProps: { cursor: 'default', opacity: 0.5 },
 };
 
 const CSS_STYLES = css`
@@ -24,17 +25,11 @@ const CSS_STYLES = css`
   [part='base'] {
     all: unset;
     box-sizing: border-box;
-    cursor: pointer;
-  }
-  [part='base']:disabled,
-  [part='base'][aria-disabled='true'] {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 `;
 
 @customElement('we-button')
-export default class Button extends BaseElement {
+export default class Button extends DesignSystemElement {
   static styles = [sharedStyles, CSS_STYLES];
 
   @property({ type: String }) text?: string;
@@ -48,7 +43,7 @@ export default class Button extends BaseElement {
     return DEFAULT_PROPS;
   }
 
-  private _handleClick = (e: MouseEvent) => {
+  private _onClick = (e: MouseEvent) => {
     if (this.disabled || this.loading) {
       e.preventDefault();
       e.stopPropagation();
@@ -75,7 +70,7 @@ export default class Button extends BaseElement {
           part="base"
           href=${this.href}
           aria-disabled=${this.disabled || this.loading ? 'true' : 'false'}
-          @click=${this._handleClick}
+          @click=${this._onClick}
           style=${styleMap(inline)}
         >
           ${this._content()}
@@ -84,12 +79,7 @@ export default class Button extends BaseElement {
     }
 
     return html`
-      <button
-        part="base"
-        ?disabled=${this.disabled || this.loading}
-        @click=${this._handleClick}
-        style=${styleMap(inline)}
-      >
+      <button part="base" ?disabled=${this.disabled || this.loading} @click=${this._onClick} style=${styleMap(inline)}>
         ${this._content()}
       </button>
     `;

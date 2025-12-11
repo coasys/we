@@ -1,11 +1,11 @@
 {
-  "name": "we-monorepo",
+  "name": "@we/monorepo",
   "version": "0.1.0",
   "description": "",
-  "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "module",
   "scripts": {
+    "prepare": "pnpm --filter @we/cli... run build",
     "clean": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + && find . -name 'dist' -type d -prune -exec rm -rf '{}' + && rm -f pnpm-lock.yaml && pnpm store prune",
     "build": "pnpm -r --workspace-concurrency=1 run build"
   },

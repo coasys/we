@@ -6,7 +6,6 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "prepare": "pnpm run build:steps",
     "build:steps": "tsup",
     "build": "[ -f ./dist/we-build.js ] && node ./dist/we-build.js || pnpm run build:steps"
   },

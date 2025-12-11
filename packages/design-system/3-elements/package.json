@@ -69,10 +69,10 @@
     }
   },
   "dependencies": {
-    "@phosphor-icons/core": "^2.1.1",
-    "@popperjs/core": "^2.11.8",
     "@we/design-system-utils": "workspace:*",
     "@we/tokens": "workspace:*",
+    "@floating-ui/dom": "^1.7.4",
+    "@phosphor-icons/core": "^2.1.1",
     "jdenticon": "3.3.0",
     "lit": "3.2.1",
     "tslib": "2.8.1"
@@ -86,13 +86,13 @@
     }
   },
   "devDependencies": {
-    "@we/cli": "workspace:*",
-    "@we/design-system-types": "workspace:*",
     "@custom-elements-manifest/analyzer": "0.10.4",
     "@storybook/addon-essentials": "8.4.6",
     "@storybook/web-components": "8.4.6",
     "@storybook/web-components-vite": "8.4.6",
     "@types/node": "^24.10.0",
+    "@we/cli": "workspace:*",
+    "@we/design-system-types": "workspace:*",
     "eslint-plugin-lit": "^2.1.1",
     "storybook": "8.4.6",
     "tsup": "^8.5.1",

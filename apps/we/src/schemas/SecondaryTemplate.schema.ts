@@ -124,24 +124,24 @@ const spacePageHeader = {
       props: {
         variant: 'subtle',
         onClick: { $action: 'routeStore.navigate', args: ['.'] },
-        children: ['About'],
       },
+      children: ['About'],
     },
     {
       type: 'we-button',
       props: {
         variant: 'subtle',
         onClick: { $action: 'routeStore.navigate', args: ['./posts'] },
-        children: ['Posts'],
       },
+      children: ['Posts'],
     },
     {
       type: 'we-button',
       props: {
         variant: 'subtle',
         onClick: { $action: 'routeStore.navigate', args: ['./users'] },
-        children: ['Users'],
       },
+      children: ['Users'],
     },
   ],
 };
@@ -189,24 +189,24 @@ export const secondaryTemplateSchema: TemplateSchema = {
                   props: {
                     variant: 'subtle',
                     onClick: { $action: 'routeStore.navigate', args: ['./1'] },
-                    children: ['Post 1'],
                   },
+                  children: ['Post 1'],
                 },
                 {
                   type: 'we-button',
                   props: {
                     variant: 'subtle',
                     onClick: { $action: 'routeStore.navigate', args: ['./2'] },
-                    children: ['Post 2'],
                   },
+                  children: ['Post 2'],
                 },
                 {
                   type: 'we-button',
                   props: {
                     variant: 'subtle',
                     onClick: { $action: 'routeStore.navigate', args: ['../users'] },
-                    children: ['Return back up to users'],
                   },
+                  children: ['Return back up to users'],
                 },
               ],
             },

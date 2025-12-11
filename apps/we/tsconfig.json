@@ -8,6 +8,7 @@
     "noEmit": true,
     "isolatedModules": true,
     "experimentalDecorators": true,
+    "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   }
 }

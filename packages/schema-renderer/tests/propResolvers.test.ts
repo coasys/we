@@ -178,4 +178,123 @@ describe('propResolvers (combined)', () => {
     expect(out.b).toBe(1);
     expect(out.c).toBe(3);
   });
+
+  it('$map transforms single objects (not just arrays)', () => {
+    const stores = {};
+    const ctx = {};
+    const map = {
+      $map: {
+        items: { id: 'template-1', meta: { name: 'My Template', icon: 'star' } },
+        select: { id: '$item.id', name: '$item.meta.name', icon: '$item.meta.icon' },
+      },
+    };
+
+    const result = resolveProp(map, stores, ctx) as { id: string; name: string; icon: string };
+    expect(result).toEqual({ id: 'template-1', name: 'My Template', icon: 'star' });
+  });
+
+  it('$map transforms single object from store accessor', () => {
+    const stores = {
+      templateStore: {
+        currentTemplate: () => ({ id: 'default', meta: { name: 'Default', icon: 'home' } }),
+      },
+    };
+    const map = {
+      $map: {
+        items: { $store: 'templateStore.currentTemplate' },
+        select: { id: '$item.id', name: '$item.meta.name', icon: '$item.meta.icon' },
+      },
+    };
+
+    const result = resolveProp(map, stores, {}) as { id: string; name: string; icon: string };
+    expect(result).toEqual({ id: 'default', name: 'Default', icon: 'home' });
+  });
+
+  it('$map still works with arrays', () => {
+    const stores = {};
+    const map = {
+      $map: {
+        items: [
+          { id: '1', meta: { name: 'One', icon: 'a' } },
+          { id: '2', meta: { name: 'Two', icon: 'b' } },
+        ],
+        select: { id: '$item.id', name: '$item.meta.name' },
+      },
+    };
+
+    const result = resolveProp(map, stores, {}) as Array<{ id: string; name: string }>;
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ id: '1', name: 'One' });
+    expect(result[1]).toEqual({ id: '2', name: 'Two' });
+  });
+
+  it('$arg.property extracts nested property from callback argument', () => {
+    const doSomething = vi.fn();
+    const stores = { myStore: { doSomething } };
+    const action = { $action: 'myStore.doSomething', args: ['$arg.id'] };
+
+    const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
+    expect(typeof fn).toBe('function');
+
+    // Call with object that has nested id property
+    fn({ id: 'abc123', name: 'Test', meta: { icon: 'star' } });
+
+    // Should have called the method with just the extracted id
+    expect(doSomething).toHaveBeenCalledWith('abc123');
+  });
+
+  it('$arg.deep.path extracts deeply nested property', () => {
+    const callback = vi.fn();
+    const stores = { store: { callback } };
+    const action = { $action: 'store.callback', args: ['$arg.user.profile.email'] };
+
+    const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
+    fn({ user: { profile: { email: 'test@example.com', name: 'Test' } } });
+
+    expect(callback).toHaveBeenCalledWith('test@example.com');
+  });
+
+  it('$arg without property passes entire first argument', () => {
+    const callback = vi.fn();
+    const stores = { store: { callback } };
+    const action = { $action: 'store.callback', args: ['$arg'] };
+
+    const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
+    const testObj = { id: '123', name: 'Test' };
+    fn(testObj);
+
+    expect(callback).toHaveBeenCalledWith(testObj);
+  });
+
+  it('$arg works with DOM events (extracts from event.target.value first)', () => {
+    const callback = vi.fn();
+    const stores = { store: { callback } };
+    const action = { $action: 'store.callback', args: ['$arg.id'] };
+
+    const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
+
+    // Simulate an input event
+    const mockEvent = {
+      target: { value: 'extracted-value' },
+    } as unknown as Event;
+
+    // When event is passed, it should extract target.value first, then extract .id
+    fn(mockEvent);
+
+    // Since the event is processed to extract target.value, and then $arg.id tries to extract .id from 'extracted-value' (a string)
+    // which doesn't have an id property, it should be undefined
+    expect(callback).toHaveBeenCalledWith(undefined);
+  });
+
+  it('$arg with multiple args processes only $arg tokens', () => {
+    const callback = vi.fn();
+    const stores = { store: { callback } };
+    const action = { $action: 'store.callback', args: ['$arg.id', 'static-value', { $expr: '1+1' }] };
+
+    const fn = resolveProp(action, stores, { ignored: true }) as (arg: unknown) => void;
+    fn({ id: 'test-id', name: 'Test' });
+
+    expect(callback).toHaveBeenCalledWith('test-id', 'static-value', 2);
+  });
 });

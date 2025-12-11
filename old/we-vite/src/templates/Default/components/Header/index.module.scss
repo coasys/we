@@ -1,6 +1,0 @@
-@use '../../variables.scss' as vars;
-
-.header {
-  position: fixed;
-  width: calc(100% - vars.$outerSidebarWidth * 2);
-}

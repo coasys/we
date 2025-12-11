@@ -120,6 +120,7 @@ function generateComponentProps(component: Component, typesPath: string): string
 
     // Add standard properties
     `${indent(4)}key?: string | number;`,
+    `${indent(4)}ref?: HTMLElement;`,
     `${indent(4)}slot?: string | number;`,
     `${indent(4)}id?: string;`,
     `${indent(4)}class?: string;`,

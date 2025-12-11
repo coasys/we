@@ -111,19 +111,41 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   const component = createMemo(() => registry[node.type ?? '']);
   if (!component()) throw new Error(`Schema node has unknown type "${node.type}".`);
 
-  // Split resolved props into safe complex props that need to be set directly on the DOM element for web components
+  // Split resolved props into safe and complex props
   let hostRef: (HTMLElement & Record<string, unknown>) | undefined;
   const split = createMemo(() => splitProps(resolveProps(node.props, stores, context, createMemo)));
+
+  // Handle safe props with reactivity
+  const isWebComponent = node.type?.startsWith('we-');
+  const reactiveAttrs = createMemo(() => {
+    const attrs: Record<string, unknown> = {};
+    const { safeProps } = split();
+    for (const [k, v] of Object.entries(safeProps)) {
+      const isSignal = typeof v === 'function' && v.name.includes('readSignal');
+      // Unwrap signal accessors for web components
+      if (isWebComponent && isSignal) attrs[k] = v();
+      // Pass through for Solid components, event handlers, and all other values
+      else attrs[k] = v;
+    }
+    return attrs;
+  });
+
+  // Handle complex props with reactivity
   createEffect(() => {
     if (!hostRef) return;
     const { complexProps } = split();
-    for (const [k, v] of Object.entries(complexProps)) hostRef[k] = v;
+    for (const [k, v] of Object.entries(complexProps)) {
+      // Unwrap signal accessors for web components
+      const isSignal = typeof v === 'function' && v.name.includes('readSignal');
+      hostRef[k] = isWebComponent && isSignal ? v() : v;
+    }
   });
+
   const slotProp = node.slot ? { slot: node.slot } : {};
 
   // Return the component with merged props, slots, and children
   return (
-    <Dynamic ref={hostRef} component={component()} {...split().safeProps} {...slotProp} {...slotElements}>
+    <Dynamic ref={hostRef} component={component()} {...reactiveAttrs()} {...slotProp} {...slotElements}>
       {renderChildren(node.children)}
     </Dynamic>
   );

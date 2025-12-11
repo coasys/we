@@ -1,5 +1,5 @@
-*node_modules
-*dist
-*storybook.log
+node_modules/
+dist/
+storybook.log
 custom-elements.json
 .coverage

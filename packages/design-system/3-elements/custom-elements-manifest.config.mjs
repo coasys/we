@@ -13,8 +13,8 @@ export default {
 
         // Iterate over declarations and inject design system props where needed
         for (const decl of declarations) {
-          // Only process classes that extend BaseElement
-          if (decl.kind !== 'class' || decl.superclass.name !== 'BaseElement') continue;
+          // Only process classes that extend DesignSystemElement
+          if (decl.kind !== 'class' || decl.superclass.name !== 'DesignSystemElement') continue;
 
           // Add design system props to the class members
           decl.members ??= [];

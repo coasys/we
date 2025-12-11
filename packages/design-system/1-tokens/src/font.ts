@@ -3,6 +3,8 @@
  * This file defines typography tokens that serve as the source of truth for the design system.
  */
 
+// TODO: add font weight?
+
 // Literal union types for font tokens
 export type FontFamilyToken = 'base';
 export type FontSizeToken = 'base' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '1000';

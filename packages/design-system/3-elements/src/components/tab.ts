@@ -2,7 +2,7 @@ import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import sharedStyles from '../shared/styles';
-import { BaseElement } from '../shared/base-element';
+import { DesignSystemElement } from '../shared/design-system-element';
 import type { DesignSystemProps } from '@we/design-system-types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = { rt: 'md', py: '200', px: '300' };
@@ -24,7 +24,7 @@ const CSS_STYLES = css`
 `;
 
 @customElement('we-tab')
-export class Tab extends BaseElement {
+export class Tab extends DesignSystemElement {
   static styles = [sharedStyles, CSS_STYLES];
 
   @property({ type: String, reflect: true }) key = '';
