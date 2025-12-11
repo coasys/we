@@ -1,7 +1,7 @@
 import type { TemplateSchema } from '@we/schema-renderer/shared';
 
 export const aiSampleTemplateSchema: TemplateSchema = {
-  meta: { name: 'Base', description: '', icon: '' },
+  meta: { name: 'Base', description: '', icon: 'acorn' },
   type: 'Row',
   children: [
     {

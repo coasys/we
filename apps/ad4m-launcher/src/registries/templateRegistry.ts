@@ -1,10 +1,17 @@
-import { aiSampleTemplateSchema, defaultTemplateSchema, testTemplateSchema, twitterTemplateSchema } from '../schemas';
+import {
+  aiSampleTemplateSchema,
+  defaultTemplateSchema,
+  launcherTemplate,
+  testTemplateSchema,
+  twitterTemplateSchema,
+} from '../schemas';
 
 export const templateRegistry = {
   default: defaultTemplateSchema,
   twitter: twitterTemplateSchema,
   test: testTemplateSchema,
   aiSample: aiSampleTemplateSchema,
+  launcher: launcherTemplate,
 };
 
 export type TemplateId = keyof typeof templateRegistry;
