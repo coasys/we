@@ -3,3 +3,4 @@ dist/
 storybook.log
 custom-elements.json
 .coverage
+.env

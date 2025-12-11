@@ -12,7 +12,10 @@
     "serve": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev -- --release",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "flux:kill": "pkill -9 -f 'python3.*http.server 4173' 2>/dev/null; true",
+    "flux:serve": "pnpm flux:kill && cd ../../../flux/app/dist && python3 -m http.server 4173",
+    "tauri:flux": "pnpm flux:serve & pnpm tauri:dev"
   },
   "dependencies": {
     "@apollo/client": "^3.7.10",
