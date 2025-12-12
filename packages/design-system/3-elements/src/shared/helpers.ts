@@ -20,8 +20,6 @@ import {
  * for appearance, with support for state variants (hover, focus, active, disabled).
  */
 
-const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
-
 const HOST_PROP_KEYS = [
   'width',
   'height',
@@ -44,6 +42,8 @@ const BASE_PROP_KEYS = designSystemKeys.filter(
     !stateKeys.includes(key as (typeof stateKeys)[number]) &&
     key !== 'styles',
 ) as Array<keyof DesignSystemProps>;
+
+const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
 
 // Helper to set or remove a CSS property on an element
 function setProperty(el: HTMLElement, name: string, value?: string) {

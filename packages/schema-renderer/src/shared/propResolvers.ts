@@ -136,7 +136,6 @@ function resolveActionProp(value: unknown, context: Props, stores: Props, memo: 
 }
 
 // Resolves $map props: { $map: { items: { "$store": "templateStore.templates" }, select: { "name": "$item.meta.name", "icon": "$item.meta.icon" } } }
-// Supports both arrays and single objects
 function resolveMapProp(map: MapProp, stores: Props, context: Props, memo: Memo): unknown {
   return memo(() => {
     const items = resolveProp(map.items, stores, context, memo);

@@ -74,6 +74,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     );
   }
 
+  // Get the component from the registry
+  const component = createMemo(() => registry[node.type ?? '']);
+  if (!component()) throw new Error(`Schema node has unknown type "${node.type}".`);
+
   // Prepare the slot elements in a reactive store
   const [slotElements, setSlotElements] = createStore<Record<string, JSX.Element>>(
     Object.fromEntries(Object.entries(node.slots ?? {}).map(([key, slot]) => [key, renderNode(slot)])),
@@ -106,10 +110,6 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       previousSlotKeys = newSlotKeys;
     }
   });
-
-  // Get the component from the registry
-  const component = createMemo(() => registry[node.type ?? '']);
-  if (!component()) throw new Error(`Schema node has unknown type "${node.type}".`);
 
   // Split resolved props into safe and complex props
   let hostRef: (HTMLElement & Record<string, unknown>) | undefined;

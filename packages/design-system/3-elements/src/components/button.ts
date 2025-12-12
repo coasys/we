@@ -22,6 +22,7 @@ const CSS_STYLES = css`
   :host {
     white-space: nowrap;
   }
+
   [part='base'] {
     all: unset;
     box-sizing: border-box;
