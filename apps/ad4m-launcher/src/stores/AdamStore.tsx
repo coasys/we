@@ -19,6 +19,7 @@ export interface AdamStore {
   password: Accessor<string>;
   showPassword: Accessor<boolean>;
   passwordError?: Accessor<boolean>;
+  loginLoading?: Accessor<boolean>;
   adamClient: Accessor<Ad4mClient | undefined>;
   me: Accessor<Agent | undefined>;
   mySpaces: Accessor<Space[]>;
@@ -45,6 +46,7 @@ export function AdamStoreProvider(props: ParentProps) {
   const [password, setPassword] = createSignal('');
   const [showPassword, setShowPassword] = createSignal(false);
   const [passwordError, setPasswordError] = createSignal(false);
+  const [loginLoading, setLoginLoading] = createSignal(false);
   const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
   const [adamClient, setAdamClient] = createSignal<Ad4mClient | undefined>(undefined);
   const [me, setMe] = createSignal<Agent | undefined>(undefined);
@@ -164,6 +166,7 @@ export function AdamStoreProvider(props: ParentProps) {
     const client = adamClient();
     if (!client) return;
 
+    setLoginLoading(true);
     setPasswordError(false);
 
     try {
@@ -173,6 +176,8 @@ export function AdamStoreProvider(props: ParentProps) {
     } catch (err) {
       console.error('AdamStore: wrong password!', err);
       setPasswordError(true);
+    } finally {
+      setLoginLoading(false);
     }
   }
 
@@ -198,6 +203,7 @@ export function AdamStoreProvider(props: ParentProps) {
     password,
     showPassword,
     passwordError,
+    loginLoading,
     adamClient,
     me,
     mySpaces,

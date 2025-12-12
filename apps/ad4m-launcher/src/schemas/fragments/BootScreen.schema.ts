@@ -88,7 +88,14 @@ export const bootScreenSchema: SchemaNode = {
                     },
                   ],
                 },
-                { type: 'we-button', props: { text: 'Login', onClick: { $action: 'adamStore.unlockAgent' } } },
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Login',
+                    loading: { $store: 'adamStore.loginLoading' },
+                    onClick: { $action: 'adamStore.unlockAgent' },
+                  },
+                },
               ],
             },
           },
