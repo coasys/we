@@ -27,7 +27,7 @@ pub fn run() {
     // Initialize AD4M
     rust_executor::init::init(
         Some(app_data_path.to_str().unwrap().to_string()),
-        None, // No bootstrap path for now
+        None, // No bootstrap path needed - languages are in ~/.ad4m
     ).expect("Failed to initialize AD4M");
     
     let state = AppState {
@@ -48,6 +48,7 @@ pub fn run() {
                 app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
                 gql_port: Some(graphql_port),
                 run_dapp_server: Some(true),
+                connect_holochain: Some(true),
                 ..Default::default()
             };
             

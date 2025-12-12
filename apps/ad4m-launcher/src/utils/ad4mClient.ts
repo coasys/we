@@ -23,10 +23,15 @@ async function ensureExecutorReady(client: Ad4mClient): Promise<{ status: AgentS
   throw new Error(`Executor did not become ready after ${maxAttempts} attempts`);
 }
 
-export async function buildAd4mClient(subscribe = true): Promise<{ client: Ad4mClient; status: AgentStatus }> {
+export async function buildAd4mClient(subscribe = true): Promise<{
+  client: Ad4mClient;
+  status: AgentStatus;
+  port: number;
+  token: string;
+}> {
   // Get connection details from the backend
-  const port = await invoke('get_port');
-  const token = await invoke('request_credential');
+  const port = await invoke<number>('get_port');
+  const token = await invoke<string>('request_credential');
 
   // Set up Apollo Client with GraphQL WS link
   const server = `ws://localhost:${port}/graphql`;
@@ -40,9 +45,9 @@ export async function buildAd4mClient(subscribe = true): Promise<{ client: Ad4mC
   const apolloClient = new ApolloClient({ link, cache, defaultOptions });
 
   // Build the Ad4m client and ensure the executor is ready
-  const ad4mClient = new Ad4mClient(apolloClient, subscribe);
+  const ad4mClient = new Ad4mClient(apolloClient as any, subscribe);
   const { status } = await ensureExecutorReady(ad4mClient);
 
-  // Return the initialized client and status
-  return { client: ad4mClient, status };
+  // Return the initialized client, status, port, and token
+  return { client: ad4mClient, status, port, token };
 }

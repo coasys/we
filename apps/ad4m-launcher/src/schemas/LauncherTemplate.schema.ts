@@ -1,5 +1,11 @@
 import type { TemplateSchema } from '@we/schema-renderer/shared';
 
+// @ts-ignore - Vite injects this at build time
+const isDev = import.meta.env?.DEV ?? false;
+const FLUX_URL = isDev
+  ? 'http://localhost:3030' // Vite dev server (HMR, fast iteration)
+  : 'asset://localhost/flux/index.html'; // Bundled Flux resources in production build
+
 export const launcherTemplate: TemplateSchema = {
   meta: { name: 'Launcher', description: 'Default templated for the launcher', icon: 'rocket-launch' },
   type: 'Row',
@@ -29,7 +35,7 @@ export const launcherTemplate: TemplateSchema = {
       path: '/',
       type: 'we-iframe',
       props: {
-        src: 'http://localhost:4173',
+        src: FLUX_URL,
         title: 'Flux App',
         allow: 'camera; microphone; display-capture',
         width: '100%',

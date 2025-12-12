@@ -9,6 +9,7 @@ import { buildAd4mClient } from '@/utils/ad4mClient';
 // TODO:
 // + move ai to separate stores
 // + rename to AppStore
+// + Set up create agent screen
 
 type NavigateFunction = ReturnType<typeof useNavigate>;
 
@@ -21,6 +22,8 @@ export interface AdamStore {
   adamClient: Accessor<Ad4mClient | undefined>;
   me: Accessor<Agent | undefined>;
   mySpaces: Accessor<Space[]>;
+  ad4mPort: Accessor<number | undefined>;
+  ad4mToken: Accessor<string | undefined>;
 
   // Setters
   setPassword: (password: string) => void;
@@ -46,6 +49,8 @@ export function AdamStoreProvider(props: ParentProps) {
   const [adamClient, setAdamClient] = createSignal<Ad4mClient | undefined>(undefined);
   const [me, setMe] = createSignal<Agent | undefined>(undefined);
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
+  const [ad4mPort, setAd4mPort] = createSignal<number | undefined>(undefined);
+  const [ad4mToken, setAd4mToken] = createSignal<string | undefined>(undefined);
 
   // import Ad4mConnect from '@coasys/ad4m-connect';
   // async function getAdamClient() {
@@ -103,23 +108,56 @@ export function AdamStoreProvider(props: ParentProps) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // Build the Ad4m client
-      const { client, status } = await buildAd4mClient();
+      const { client, status, port, token } = await buildAd4mClient();
       setAdamClient(client);
+      setAd4mPort(port);
+      setAd4mToken(token);
 
-      // TODO: If not agent found, go to create agent screen
-      if (!status.did) setBootState('createAgent');
+      // If no agent exists, go to create agent screen
+      if (!status.did) {
+        setBootState('createAgent');
+        return;
+      }
 
-      // If agent is locked, go to login
-      if (!status.isUnlocked) setBootState('login');
+      // If agent is locked, go to login screen
+      if (!status.isUnlocked) {
+        setBootState('login');
+        return;
+      }
 
-      // TODO: Load initial data
-
-      // Set bootstate ready to hide the loading screen
+      // If the agent is ready, set the boot state to ready
       setBootState('ready');
+
+      // Send adam config to iframe
+      sendAdamConfigToIframe(port, token);
     } catch (error) {
       console.error('AdamStore: initialiseStore error', error);
       setBootState('error');
     }
+  }
+
+  function sendAdamConfigToIframe(port: number, token: string) {
+    // Retry mechanism to wait for iframe to be ready
+    let attempts = 0;
+    const maxAttempts = 50; // 5 seconds max
+
+    const trySend = () => {
+      // Find the we-iframe element
+      const weIframe = document.querySelector('we-iframe') as any;
+
+      // Pass the port and token to the iframe
+      if (weIframe) {
+        weIframe.postMessage({ type: 'AD4M_CONFIG', port, token }, '*');
+      } else {
+        // Wait for timeout and try again
+        attempts++;
+        if (attempts < maxAttempts) setTimeout(trySend, 100);
+        else console.error('AdamStore: Failed to find iframe after', maxAttempts, 'attempts');
+      }
+    };
+
+    // Start trying after a short delay to let iframe mount
+    setTimeout(trySend, 100);
   }
 
   async function unlockAgent() {
@@ -127,9 +165,11 @@ export function AdamStoreProvider(props: ParentProps) {
     if (!client) return;
 
     setPasswordError(false);
+
     try {
       await client.agent.unlock(password(), true);
       setBootState('ready');
+      sendAdamConfigToIframe(ad4mPort()!, ad4mToken()!);
     } catch (err) {
       console.error('AdamStore: wrong password!', err);
       setPasswordError(true);
@@ -161,6 +201,8 @@ export function AdamStoreProvider(props: ParentProps) {
     adamClient,
     me,
     mySpaces,
+    ad4mPort,
+    ad4mToken,
 
     // Setters
     setPassword,
