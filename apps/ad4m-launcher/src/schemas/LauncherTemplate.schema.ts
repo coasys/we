@@ -4,7 +4,7 @@ import type { TemplateSchema } from '@we/schema-renderer/shared';
 const isDev = import.meta.env?.DEV ?? false;
 const FLUX_URL = isDev
   ? 'http://localhost:3030' // Vite dev server (HMR, fast iteration)
-  : 'asset://localhost/flux/index.html'; // Bundled Flux resources in production build
+  : 'http://localhost:8080'; // Custom app server (serves bundled app without X-Frame-Options)
 
 export const launcherTemplate: TemplateSchema = {
   meta: { name: 'Launcher', description: 'Default templated for the launcher', icon: 'rocket-launch' },

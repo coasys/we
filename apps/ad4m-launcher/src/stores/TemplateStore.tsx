@@ -54,7 +54,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     ...Object.entries(templateRegistry).map(([id, template]) => ({ ...deepClone(template), id })),
     ...Object.entries(getSavedTemplates()).map(([id, template]) => ({ ...deepClone(template), id })),
   ];
-  const initialTemplateId = getSavedCurrentTemplateId() || 'default';
+  const initialTemplateId = getSavedCurrentTemplateId() || 'launcher';
   const initialTemplate = deepClone(mergedTemplates.find((t) => t.id === initialTemplateId) || emptyTemplate);
 
   // State
