@@ -1,0 +1,49 @@
+{
+  "name": "@we/app-framework",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build"
+  },
+  "exports": {
+    "./shared": {
+      "import": "./dist/shared/index.js",
+      "types": "./dist/shared/index.d.ts"
+    },
+    "./shared/index.scss": "./src/shared/index.scss",
+    "./shared/*": {
+      "import": "./dist/shared/*.js",
+      "types": "./dist/shared/*.d.ts"
+    },
+    "./solid": {
+      "import": "./src/frameworks/solid/index.ts",
+      "types": "./src/frameworks/solid/index.ts"
+    }
+  },
+  "dependencies": {
+    "@we/components": "workspace:*",
+    "@we/design-system-types": "workspace:*",
+    "@we/elements": "workspace:*",
+    "@we/models": "workspace:*",
+    "@we/pages": "workspace:*",
+    "@we/schema-renderer": "workspace:*",
+    "@we/templates": "workspace:*",
+    "@we/themes": "workspace:*",
+    "@we/tokens": "workspace:*",
+    "@we/widgets": "workspace:*",
+    "@coasys/ad4m": "0.11.0",
+    "@solidjs/router": "^0.15.3",
+    "gsap": "^3.13.0",
+    "solid-js": "^1.9.5",
+    "three": "^0.176.0",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "@types/three": "^0.176.0",
+    "tsup": "^8.5.1"
+  }
+}

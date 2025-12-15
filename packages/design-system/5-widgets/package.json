@@ -30,7 +30,7 @@
   "peerDependencies": {
     "@we/elements": "^1.0.0",
     "@we/components": "^0.1.0",
-    "@coasys/ad4m": "0.10.1",
+    "@coasys/ad4m": "0.11.0",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
