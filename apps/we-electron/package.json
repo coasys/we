@@ -1,0 +1,75 @@
+{
+  "name": "@we/electron",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:steps": "vite build",
+    "build": "we-build",
+    "serve": "vite preview",
+    "electron:dev": "concurrently \"VITE_DEV_SERVER_URL=http://localhost:3002 vite\" \"wait-on http://localhost:3002 && electron electron/main.js\"",
+    "electron:build": "vite build && electron-builder"
+  },
+  "main": "electron/main.js",
+  "dependencies": {
+    "@apollo/client": "^3.7.10",
+    "@coasys/ad4m": "0.11.0",
+    "@solidjs/router": "^0.15.3",
+    "@we/app-framework": "workspace:*",
+    "express": "^5.2.1",
+    "graphql": "15.7.2",
+    "graphql-ws": "5.12.0",
+    "solid-js": "^1.9.5",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@we/cli": "workspace:*",
+    "concurrently": "^9.1.2",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0",
+    "vite-plugin-solid": "^2.11.6",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "io.weco.electron",
+    "productName": "WE",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../../../flux/app/dist",
+        "to": "flux",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../../../ad4m/target/release/ad4m-executor",
+        "to": "ad4m-executor"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.social-networking"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  }
+}

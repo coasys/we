@@ -1,7 +1,10 @@
 packages:
-  - 'apps/*'
-  - 'apps/playgrounds/*'
-  - 'packages/*'
-  - 'packages/design-system/*'
-  - 'packages/block-composer/*'
-  - 'packages/utils/*'
+  - apps/*
+  - apps/playgrounds/*
+  - packages/*
+  - packages/design-system/*
+  - packages/block-composer/*
+  - packages/utils/*
+
+ignoredBuiltDependencies:
+  - electron

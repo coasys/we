@@ -111,6 +111,9 @@ export function AdamStoreProvider(props: ParentProps) {
       setBootState('ready');
       await Promise.all([getMe(client), getMySpaces(client)]);
 
+      // Navigate to root route when ready (still not working in electron?)
+      navigate('/');
+
       // Send config to iframe if on desktop
       if (platform.isDesktop && ad4mPort() && ad4mToken()) {
         sendAdamConfigToIframe(ad4mPort()!, ad4mToken()!);
@@ -158,6 +161,9 @@ export function AdamStoreProvider(props: ParentProps) {
 
       // Load user data after unlock
       await Promise.all([getMe(client), getMySpaces(client)]);
+
+      // Navigate to root route after successful login
+      navigate('/');
 
       // Send config to iframe if on desktop
       if (platform.isDesktop && ad4mPort() && ad4mToken()) {
