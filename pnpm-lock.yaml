@@ -45,7 +45,7 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
-  apps/ad4m-launcher:
+  apps/ad4m-launcher-tauri:
     dependencies:
       '@apollo/client':
         specifier: ^3.7.10
