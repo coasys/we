@@ -1,6 +1,8 @@
-# AD4M Launcher Development
+# WE Tauri Development
 
-## Repository Structure
+## Prerequisites
+
+### Required: AD4M Monorepo
 
 This project uses relative paths to access the AD4M monorepo. The structure that works with the current paths is:
 
@@ -10,9 +12,34 @@ This project uses relative paths to access the AD4M monorepo. The structure that
 └── ad4m/         (AD4M monorepo - required)
 ```
 
-### Optional: Flux Integration Example
+**If your repositories are in a different location**, update the paths in `src-tauri/Cargo.toml`:
 
-The Flux app integration serves as an example of how to embed external apps:
+- `../../../../ad4m/rust-client`
+- `../../../../ad4m/rust-executor`
+
+## Development Workflow
+
+### Running the Launcher
+
+```bash
+pnpm tauri:dev
+```
+
+This starts the Tauri app with AD4M integration.
+
+## Building for Production
+
+```bash
+pnpm tauri:build
+```
+
+This creates a production build. If embedded apps (like Flux) are configured, they will be bundled using Tauri's resource system.
+
+## Optional: Embedding External Apps
+
+The Tauri launcher can embed external apps via iframe. This section uses Flux as an example, but the pattern works for any app.
+
+### 1. Repository Structure
 
 ```
 /path/to/projects/
@@ -21,57 +48,43 @@ The Flux app integration serves as an example of how to embed external apps:
 └── flux/         (Flux monorepo - optional example)
 ```
 
-**If your repositories are in a different location**, update the paths in the files listed below.
+### 2. Configure Paths
 
-## Local Path Dependencies
+Update these files to point to your embedded app:
 
-The following files contain relative paths to external repositories:
+**package.json** → `../../../flux/app/dist` (for dev server)
+**src-tauri/tauri.conf.json** → `../../../../flux/app/dist` (for production bundle)
 
-### Required (AD4M)
-
-- **src-tauri/Cargo.toml** → `../../../../ad4m/rust-client` and `../../../../ad4m/rust-executor`
-
-### Optional (Flux integration example)
-
-- **package.json** → `../../../flux/app/dist` (for Flux dev server)
-- **src-tauri/tauri.conf.json** → `../../../../flux/app/dist` (for Flux production bundle)
-
-If you organize your repositories differently, you'll need to update these paths manually.
-
-## Development Workflow
-
-### Running with Flux Integration (Example)
+### 3. Build Your Embedded App
 
 ```bash
-pnpm tauri:flux
+cd ../../../flux/app
+pnpm install
+pnpm build
 ```
 
-This command:
+### 4. Development
 
-1. Starts a Python HTTP server to serve the Flux app (`../../../flux/app/dist` on port 4173)
-2. Starts the Tauri dev server in release mode
+Simply run `pnpm tauri:dev` as shown above. The launcher will look for embedded apps in the configured paths.
 
-### Running without Flux
+### 5. Integration Protocol
 
-```bash
-pnpm tauri:dev
-```
+Embedded apps receive AD4M credentials via postMessage. See [`../EMBEDDING.md`](../EMBEDDING.md) for the complete protocol and implementation details.
 
-This starts just the Tauri app with AD4M integration, without the Flux example.
+### 6. Tauri-Specific Notes
 
-## Building for Production
+**Screen Sharing:** Works natively in Tauri without polyfills (unlike Electron).
 
-```bash
-pnpm tauri:build
-```
+**Resource Bundling:** Embedded apps are bundled at build time via `tauri.conf.json` resources configuration.
 
-If the Flux integration is set up, this will bundle the Flux app (from `../../../flux/app/dist`) into the production build using Tauri's resource bundling.
+**Development:** The Tauri dev server will serve embedded apps from the configured paths. Make sure your embedded app is built before running `pnpm tauri:dev`.
 
 ## Embedding Your Own Apps
 
-The Flux integration demonstrates how to embed external apps in the launcher. To embed your own app:
+To embed your own app (not Flux):
 
 1. Build your app to a `dist` directory
-2. Update `package.json` scripts to serve your app on a local port
-3. Update `src-tauri/tauri.conf.json` resources to bundle your app for production
-4. Update the schema to point the iframe to your app's URL
+2. Update `package.json` scripts to serve your app on a local port (for dev)
+3. Update `src-tauri/tauri.conf.json` resources to bundle your app (for production)
+4. Implement the postMessage protocol in your app (see `../EMBEDDING.md`)
+5. Update the launcher's routing to display your app's iframe
