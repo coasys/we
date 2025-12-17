@@ -50,7 +50,13 @@ export const bootScreenSchema: SchemaNode = {
                       props: {
                         placeholder: 'Password...',
                         value: { $store: 'adamStore.password' },
-                        onInput: { $action: 'adamStore.setPassword' },
+                        onInput: { $action: 'adamStore.setPassword', args: ['$arg.target.value'] },
+                        onKeyDown: {
+                          $if: {
+                            condition: { $eq: ['$arg.key', 'Enter'] },
+                            then: { $action: 'adamStore.unlockAgent' },
+                          },
+                        },
                         error: { $store: 'adamStore.passwordError' },
                         errortext: 'Incorrect password',
                         type: {
