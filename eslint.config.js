@@ -17,6 +17,18 @@ export default [
   {
     name: 'javascript/recommended',
     files: ['**/*.js', '**/*.jsx'],
+    languageOptions: {
+      globals: {
+        // Node.js globals
+        console: 'readonly',
+        process: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        Buffer: 'readonly',
+        module: 'readonly',
+        require: 'readonly',
+      },
+    },
     plugins: { 'simple-import-sort': simpleImportSortPlugin },
     rules: {
       ...js.configs.recommended.rules,
