@@ -1,8 +1,8 @@
 import { toSvg } from 'jdenticon';
 import { css, html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
 import { styleMap } from 'lit/directives/style-map.js';
+import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
 
 import sharedStyles from '../shared/styles';
 import { SizeToken } from '../types';

@@ -1,15 +1,15 @@
 import type { DesignSystemProps, ElementState } from '@we/design-system-types';
 import {
-  tokenVar,
-  paddingKeys,
-  marginKeys,
-  radiusKeys,
+  designSystemKeys,
   getMarginValues,
   getPaddingValues,
   getRadiusValues,
   mapFlexAxes,
-  designSystemKeys,
+  marginKeys,
+  paddingKeys,
+  radiusKeys,
   stateKeys,
+  tokenVar,
 } from '@we/design-system-utils';
 
 /**

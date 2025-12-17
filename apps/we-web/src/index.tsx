@@ -1,10 +1,11 @@
 /* @refresh reload */
-import { render } from 'solid-js/web';
-import { App, PlatformProvider } from '@we/app-framework/solid';
-import { webAdapter } from './platform/webAdapter';
-
 // Import global styles from app-framework
 import '@we/app-framework/shared/index.scss';
+
+import { App, PlatformProvider } from '@we/app-framework/solid';
+import { render } from 'solid-js/web';
+
+import { webAdapter } from './platform/webAdapter';
 
 const root = document.getElementById('root');
 
@@ -18,5 +19,5 @@ render(
       <App />
     </PlatformProvider>
   ),
-  root!
+  root!,
 );

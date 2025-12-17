@@ -1,10 +1,9 @@
+import type { DesignSystemProps } from '@we/design-system-types';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
-import sharedStyles from '../shared/styles';
-
 import { OverlayElement } from '../shared/overlay-element';
-import type { DesignSystemProps } from '@we/design-system-types';
+import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'ui-0',

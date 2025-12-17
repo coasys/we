@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { app, BrowserWindow, ipcMain, desktopCapturer } from 'electron';
+import { app, BrowserWindow, desktopCapturer, ipcMain } from 'electron';
 import express from 'express';
 import { existsSync } from 'fs';
 import net from 'net';
@@ -51,15 +51,15 @@ function waitForPort(port, maxAttempts = 60, interval = 500) {
 
     function checkPort() {
       attempts++;
-      
+
       const client = net.createConnection({ port, host: '127.0.0.1' });
-      
+
       client.on('connect', () => {
         client.end();
         console.log(`Port ${port} is now listening`);
         resolve();
       });
-      
+
       client.on('error', () => {
         if (attempts >= maxAttempts) {
           reject(new Error(`Port ${port} not ready after ${maxAttempts} attempts`));
@@ -128,10 +128,10 @@ async function startExecutor() {
     });
 
     console.log('AD4M executor process started, waiting for GraphQL server...');
-    
+
     // Wait for the executor to be ready
     await waitForPort(ad4mPort);
-    
+
     console.log('AD4M executor ready');
   } catch (error) {
     console.error('Error starting executor:', error);
@@ -142,9 +142,7 @@ async function startExecutor() {
 // Start HTTP servers to serve bundled apps (production only)
 function startAppServer() {
   // Path to bundled launcher app (WE)
-  const launcherDir = app.isPackaged
-    ? join(process.resourcesPath, 'app', 'dist')
-    : join(__dirname, '..', 'dist');
+  const launcherDir = app.isPackaged ? join(process.resourcesPath, 'app', 'dist') : join(__dirname, '..', 'dist');
 
   // Path to bundled Flux app
   const fluxDir = app.isPackaged
@@ -157,13 +155,13 @@ function startAppServer() {
     console.log('Serving from:', fluxDir);
 
     const fluxApp = express();
-    
+
     // Inject polyfill script into Flux HTML
     fluxApp.get('/', async (req, res) => {
       const fs = await import('fs/promises');
       const htmlPath = join(fluxDir, 'index.html');
       let html = await fs.readFile(htmlPath, 'utf-8');
-      
+
       // Inject screen share polyfill before closing head tag
       const polyfillScript = `
         <script>
@@ -197,14 +195,14 @@ function startAppServer() {
           })();
         </script>
       `;
-      
+
       html = html.replace('</head>', polyfillScript + '</head>');
       res.setHeader('Content-Type', 'text/html');
       res.removeHeader('X-Frame-Options');
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.send(html);
     });
-    
+
     fluxApp.use(
       express.static(fluxDir, {
         setHeaders: (res) => {
@@ -231,7 +229,7 @@ function startAppServer() {
     console.log('Serving from:', launcherDir);
 
     const launcherApp = express();
-    
+
     launcherApp.use(
       express.static(launcherDir, {
         setHeaders: (res) => {
@@ -304,8 +302,8 @@ ipcMain.handle('get-is-development', () => {
 });
 
 ipcMain.handle('get-desktop-sources', async () => {
-  const sources = await desktopCapturer.getSources({ 
-    types: ['screen', 'window'] 
+  const sources = await desktopCapturer.getSources({
+    types: ['screen', 'window'],
   });
   return sources;
 });

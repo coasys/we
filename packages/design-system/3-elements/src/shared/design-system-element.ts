@@ -1,7 +1,8 @@
-import { LitElement } from 'lit';
-import { getDesignSystemCSS } from './helpers';
 import type { DesignSystemProps } from '@we/design-system-types';
+import { LitElement } from 'lit';
+
 import { DesignSystemMixin } from './design-system-mixin';
+import { getDesignSystemCSS } from './helpers';
 
 // Base class for all design system elements
 export abstract class DesignSystemElement extends DesignSystemMixin(LitElement) {

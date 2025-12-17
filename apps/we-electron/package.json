@@ -2,14 +2,13 @@
   "name": "@we/electron",
   "version": "0.1.0",
   "description": "WE - Decentralized social launcher (Electron)",
+  "homepage": "https://github.com/jhweir/we",
   "author": {
     "name": "James Weir",
     "email": "your.email@example.com"
   },
-  "homepage": "https://github.com/jhweir/we",
   "license": "MIT",
   "type": "module",
-  "main": "electron/main.js",
   "scripts": {
     "postinstall": "cd ../../node_modules/.pnpm/electron@*/node_modules/electron 2>/dev/null && node install.js || true",
     "dev": "vite",
@@ -19,6 +18,7 @@
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:3002 && VITE_DEV_SERVER_URL=http://localhost:3002 electron electron/main.js\"",
     "electron:build": "vite build && electron-builder"
   },
+  "main": "electron/main.js",
   "dependencies": {
     "@apollo/client": "^3.7.10",
     "@coasys/ad4m": "0.11.0",
@@ -55,12 +55,16 @@
       {
         "from": "dist",
         "to": "app/dist",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../../../flux/app/dist",
         "to": "flux",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../../../ad4m/target/release/ad4m-executor",

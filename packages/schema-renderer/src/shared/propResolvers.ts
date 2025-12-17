@@ -236,15 +236,15 @@ function resolveIfProp(value: unknown, stores: Props, context: Props, memo: Memo
       const resolvedCondition = resolveWithArg(condition);
       const conditionResult = resolveProp(resolvedCondition, stores, context, memo);
       const conditionMet = typeof conditionResult === 'function' ? conditionResult() : conditionResult;
-      
+
       // Resolve the appropriate branch
       const branchResult = resolveProp(conditionMet ? thenValue : elseValue, stores, context, memo);
-      
+
       // If branch result is a function (e.g., an action), call it with the arguments
       if (typeof branchResult === 'function') {
         return branchResult(...callArgs);
       }
-      
+
       return typeof branchResult === 'function' ? branchResult() : branchResult;
     };
   }
