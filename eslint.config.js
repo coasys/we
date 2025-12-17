@@ -9,10 +9,20 @@ import prettierConfig from './.prettierrc.json' with { type: 'json' };
 
 export default [
   {
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/build/**',
+      '**/old/**',
+      '**/target/**',
+      '**/dist-electron/**',
+      '**/.storybook/**',
+    ],
+  },
+  {
     name: 'common/recommended',
     plugins: { prettier: prettierPlugin },
     rules: { ...prettierPlugin.configs.recommended.rules, 'prettier/prettier': ['error', prettierConfig] },
-    ignores: ['**/dist/**', '**/node_modules/**', '**/build/**', '**/old/**'],
   },
   {
     name: 'javascript/recommended',
@@ -27,6 +37,10 @@ export default [
         Buffer: 'readonly',
         module: 'readonly',
         require: 'readonly',
+        setTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearTimeout: 'readonly',
+        clearInterval: 'readonly',
       },
     },
     plugins: { 'simple-import-sort': simpleImportSortPlugin },
@@ -34,18 +48,22 @@ export default [
       ...js.configs.recommended.rules,
       'simple-import-sort/imports': 'error',
     },
-    ignores: ['**/dist/**', '**/node_modules/**', '**/build/**', '**/old/**'],
   },
   {
     name: 'typescript/recommended',
     files: ['**/*.ts', '**/*.tsx'],
     plugins: { '@typescript-eslint': tsPlugin, 'simple-import-sort': simpleImportSortPlugin },
-    languageOptions: { parser: tsParser, parserOptions: { project: './tsconfig.json' } },
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     rules: {
       ...tsPlugin.configs.recommended.rules,
       'simple-import-sort/imports': 'error',
     },
-    ignores: ['**/dist/**', '**/node_modules/**', '**/build/**', '**/old/**'],
   },
   // Turn off any rules that conflict with prettier
   eslintConfigPrettier,
