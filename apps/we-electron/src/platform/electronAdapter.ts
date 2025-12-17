@@ -9,32 +9,30 @@ declare global {
     electron: {
       getPort: () => Promise<number>;
       getToken: () => Promise<string>;
+      getIsDevelopment: () => Promise<boolean>;
+      getDesktopSources: () => Promise<any[]>;
     };
   }
 }
 
+// Cache isDevelopment value
+// Use Vite's built-in DEV flag - true in dev server, false in production build
+const isDevelopmentCache: boolean = import.meta.env.DEV;
+
 export const electronAdapter: PlatformAdapter = {
   async buildAd4mClient(): Promise<Ad4mClient> {
-    console.log('Electron adapter: buildAd4mClient called');
-
     // Check if electron bridge is available
     if (!window.electron) {
       throw new Error('Electron IPC bridge not available. Make sure preload script is loaded.');
     }
 
-    console.log('Electron adapter: Getting port and token via IPC...');
-
     // Get connection details from Electron main process via IPC
     const port = await window.electron.getPort();
     const token = await window.electron.getToken();
 
-    console.log('Electron adapter: Got port:', port, 'token:', token?.substring(0, 8) + '...');
-
     // Build Apollo-based Ad4mClient
-    console.log('Electron adapter: Building Apollo client...');
     const { client } = await buildAd4mClientWithApollo(port, token);
 
-    console.log('Electron adapter: Apollo client built successfully');
     return client;
   },
 
@@ -47,5 +45,9 @@ export const electronAdapter: PlatformAdapter = {
   },
 
   isDesktop: true,
+  // Return the cached value determined at module load time
+  get isDevelopment(): boolean {
+    return isDevelopmentCache;
+  },
   platform: 'electron' as const,
 };

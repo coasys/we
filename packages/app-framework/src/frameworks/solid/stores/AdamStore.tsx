@@ -24,6 +24,7 @@ export interface AdamStore {
   mySpaces: Accessor<Space[]>;
   ad4mPort: Accessor<number | undefined>;
   ad4mToken: Accessor<string | undefined>;
+  isDevelopment: Accessor<boolean>;
 
   // Setters
   setPassword: (password: string) => void;
@@ -55,6 +56,9 @@ export function AdamStoreProvider(props: ParentProps) {
   const [ad4mPort, setAd4mPort] = createSignal<number | undefined>(undefined);
   const [ad4mToken, setAd4mToken] = createSignal<string | undefined>(undefined);
 
+  // Expose platform development mode to schemas
+  const isDevelopment = () => platform.isDevelopment;
+
   async function getMe(client: Ad4mClient): Promise<void> {
     try {
       setMe(await client.agent.me());
@@ -76,6 +80,17 @@ export function AdamStoreProvider(props: ParentProps) {
 
   async function initialiseStore(): Promise<void> {
     try {
+      // Desktop platforms: set up iframe message listener FIRST (before any delays)
+      // This ensures the listener is ready when embedded apps send REQUEST_AD4M_CONFIG
+      if (platform.getConnectionDetails) {
+        const { port, token } = await platform.getConnectionDetails();
+        setAd4mPort(port);
+        setAd4mToken(token);
+
+        // Set up listener immediately so it's ready for iframe requests
+        setupMessageListener(port, token);
+      }
+
       // Small delay to ensure executor has time to start (desktop only)
       if (platform.isDesktop) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -87,13 +102,6 @@ export function AdamStoreProvider(props: ParentProps) {
 
       // Get agent status
       const status = await client.agent.status();
-
-      // Desktop platforms: get connection details for iframe communication
-      if (platform.getConnectionDetails) {
-        const { port, token } = await platform.getConnectionDetails();
-        setAd4mPort(port);
-        setAd4mToken(token);
-      }
 
       // If no agent exists, go to create agent screen
       if (!status.did) {
@@ -111,13 +119,8 @@ export function AdamStoreProvider(props: ParentProps) {
       setBootState('ready');
       await Promise.all([getMe(client), getMySpaces(client)]);
 
-      // Navigate to root route when ready (still not working in electron?)
+      // Navigate to root route when ready
       navigate('/');
-
-      // Send config to iframe if on desktop
-      if (platform.isDesktop && ad4mPort() && ad4mToken()) {
-        sendAdamConfigToIframe(ad4mPort()!, ad4mToken()!);
-      }
     } catch (error) {
       console.error('AdamStore: initialiseStore error', error);
       setBootState('error');
@@ -125,32 +128,39 @@ export function AdamStoreProvider(props: ParentProps) {
   }
 
   function sendAdamConfigToIframe(port: number, token: string) {
-    // Retry mechanism to wait for iframe to be ready
-    let attempts = 0;
-    const maxAttempts = 50; // 5 seconds max
+    // Find the we-iframe element
+    const weIframe = document.querySelector('we-iframe') as HTMLElement & {
+      postMessage: (data: Record<string, unknown>, origin: string) => void;
+    };
 
-    const trySend = () => {
-      // Find the we-iframe element
-      const weIframe = document.querySelector('we-iframe') as any;
+    // Pass the port and token to the iframe
+    if (weIframe && typeof weIframe.postMessage === 'function') {
+      weIframe.postMessage({ type: 'AD4M_CONFIG', port, token }, '*');
+    } else {
+      console.warn('AdamStore: we-iframe element not found or postMessage not available');
+    }
+  }
 
-      // Pass the port and token to the iframe
-      if (weIframe) {
-        weIframe.postMessage({ type: 'AD4M_CONFIG', port, token }, '*');
-      } else {
-        // Wait for timeout and try again
-        attempts++;
-        if (attempts < maxAttempts) setTimeout(trySend, 100);
-        else console.error('AdamStore: Failed to find iframe after', maxAttempts, 'attempts');
+  function setupMessageListener(port: number, token: string) {
+    // Listen for requests from iframes asking for AD4M config
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'REQUEST_AD4M_CONFIG') {
+        sendAdamConfigToIframe(port, token);
       }
     };
 
-    // Start trying after a short delay to let iframe mount
-    setTimeout(trySend, 100);
+    window.addEventListener('message', handleMessage);
+
+    // Cleanup function
+    return () => window.removeEventListener('message', handleMessage);
   }
 
   async function unlockAgent() {
     const client = adamClient();
-    if (!client) return;
+    if (!client) {
+      console.error('No AD4M client available');
+      return;
+    }
 
     setLoginLoading(true);
     setPasswordError(false);
@@ -164,13 +174,8 @@ export function AdamStoreProvider(props: ParentProps) {
 
       // Navigate to root route after successful login
       navigate('/');
-
-      // Send config to iframe if on desktop
-      if (platform.isDesktop && ad4mPort() && ad4mToken()) {
-        sendAdamConfigToIframe(ad4mPort()!, ad4mToken()!);
-      }
     } catch (err) {
-      console.error('AdamStore: wrong password!', err);
+      console.error('AdamStore: Agent unlock failed', err);
       setPasswordError(true);
     } finally {
       setLoginLoading(false);
@@ -205,6 +210,7 @@ export function AdamStoreProvider(props: ParentProps) {
     mySpaces,
     ad4mPort,
     ad4mToken,
+    isDevelopment,
 
     // Setters
     setPassword,

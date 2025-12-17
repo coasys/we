@@ -12,6 +12,9 @@ export interface PlatformAdapter {
   // Check if running in desktop app (vs web)
   isDesktop: boolean;
 
+  // Check if running in development mode
+  isDevelopment: boolean;
+
   // Platform identifier
   platform: 'web' | 'electron' | 'tauri';
 }

@@ -11,7 +11,7 @@ export const webAdapter: PlatformAdapter = {
       appIconPath: 'https://avatars.githubusercontent.com/u/34165012',
       capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
     });
-    
+
     return await connect.getAd4mClient();
   },
 

@@ -1,10 +1,5 @@
 import type { TemplateSchema } from '@we/schema-renderer/shared';
 
-const isDev = (import.meta as { env?: { DEV?: boolean } }).env?.DEV ?? false;
-const FLUX_URL = isDev
-  ? 'http://localhost:3030' // Vite dev server (HMR, fast iteration)
-  : 'http://localhost:8080'; // Custom app server (serves bundled app without X-Frame-Options)
-
 export const launcherTemplate: TemplateSchema = {
   meta: { name: 'Launcher', description: 'Default templated for the launcher', icon: 'rocket-launch' },
   type: 'Row',
@@ -34,7 +29,13 @@ export const launcherTemplate: TemplateSchema = {
       path: '/',
       type: 'we-iframe',
       props: {
-        src: FLUX_URL,
+        src: {
+          $if: {
+            condition: { $store: 'adamStore.isDevelopment' },
+            then: 'http://localhost:3030',
+            else: 'http://localhost:8080',
+          },
+        },
         title: 'Flux App',
         allow: 'camera; microphone; display-capture',
         width: '100%',

@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, desktopCapturer } from 'electron';
 import express from 'express';
 import { existsSync } from 'fs';
 import net from 'net';
@@ -41,6 +41,35 @@ function findFreePort(startPort, endPort) {
     }
 
     tryPort(port);
+  });
+}
+
+// Wait for a port to be listening
+function waitForPort(port, maxAttempts = 60, interval = 500) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+
+    function checkPort() {
+      attempts++;
+      
+      const client = net.createConnection({ port, host: '127.0.0.1' });
+      
+      client.on('connect', () => {
+        client.end();
+        console.log(`Port ${port} is now listening`);
+        resolve();
+      });
+      
+      client.on('error', () => {
+        if (attempts >= maxAttempts) {
+          reject(new Error(`Port ${port} not ready after ${maxAttempts} attempts`));
+        } else {
+          setTimeout(checkPort, interval);
+        }
+      });
+    }
+
+    checkPort();
   });
 }
 
@@ -98,29 +127,86 @@ async function startExecutor() {
       console.log('Executor exited with code:', code);
     });
 
-    console.log('AD4M executor started');
+    console.log('AD4M executor process started, waiting for GraphQL server...');
+    
+    // Wait for the executor to be ready
+    await waitForPort(ad4mPort);
+    
+    console.log('AD4M executor ready');
   } catch (error) {
     console.error('Error starting executor:', error);
     throw error;
   }
 }
 
-// Start HTTP server to serve bundled app (production only)
+// Start HTTP servers to serve bundled apps (production only)
 function startAppServer() {
-  const appServer = express();
+  // Path to bundled launcher app (WE)
+  const launcherDir = app.isPackaged
+    ? join(process.resourcesPath, 'app', 'dist')
+    : join(__dirname, '..', 'dist');
 
-  // Path to bundled app (Flux)
-  const appDir = app.isPackaged
+  // Path to bundled Flux app
+  const fluxDir = app.isPackaged
     ? join(process.resourcesPath, 'flux')
     : join(__dirname, '..', '..', '..', '..', 'flux', 'app', 'dist');
 
-  if (existsSync(appDir)) {
-    console.log('Starting app HTTP server on http://localhost:8080');
-    console.log('Serving from:', appDir);
+  // Serve Flux on port 8080
+  if (existsSync(fluxDir)) {
+    console.log('Starting Flux HTTP server on http://localhost:8080');
+    console.log('Serving from:', fluxDir);
 
-    // Serve static files without X-Frame-Options restrictions
-    appServer.use(
-      express.static(appDir, {
+    const fluxApp = express();
+    
+    // Inject polyfill script into Flux HTML
+    fluxApp.get('/', async (req, res) => {
+      const fs = await import('fs/promises');
+      const htmlPath = join(fluxDir, 'index.html');
+      let html = await fs.readFile(htmlPath, 'utf-8');
+      
+      // Inject screen share polyfill before closing head tag
+      const polyfillScript = `
+        <script>
+          (function() {
+            // In iframe, access parent's window.electron (requires webSecurity: false)
+            const electronAPI = window.parent?.electron || window.electron;
+            
+            if (electronAPI && electronAPI.getDesktopSources) {
+              navigator.mediaDevices.getDisplayMedia = async function(constraints) {
+                try {
+                  const sources = await electronAPI.getDesktopSources();
+                  if (!sources || sources.length === 0) {
+                    throw new Error('No screen sources available');
+                  }
+                  const primaryScreen = sources.find(s => s.id.startsWith('screen')) || sources[0];
+                  return navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: {
+                      mandatory: {
+                        chromeMediaSource: 'desktop',
+                        chromeMediaSourceId: primaryScreen.id,
+                      }
+                    }
+                  });
+                } catch (error) {
+                  console.error('Screen share error:', error);
+                  throw error;
+                }
+              };
+            }
+          })();
+        </script>
+      `;
+      
+      html = html.replace('</head>', polyfillScript + '</head>');
+      res.setHeader('Content-Type', 'text/html');
+      res.removeHeader('X-Frame-Options');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.send(html);
+    });
+    
+    fluxApp.use(
+      express.static(fluxDir, {
         setHeaders: (res) => {
           res.removeHeader('X-Frame-Options');
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -128,16 +214,41 @@ function startAppServer() {
       }),
     );
 
-    // Fallback to index.html for SPA routing (use middleware instead of route)
-    appServer.use((req, res) => {
-      res.sendFile(join(appDir, 'index.html'));
+    fluxApp.use((req, res) => {
+      res.sendFile(join(fluxDir, 'index.html'));
     });
 
-    appServer.listen(8080, () => {
-      console.log('App server listening on port 8080');
+    fluxApp.listen(8080, () => {
+      console.log('Flux server listening on port 8080');
     });
   } else {
-    console.warn('App directory not found at:', appDir);
+    console.warn('Flux directory not found at:', fluxDir);
+  }
+
+  // Serve launcher on port 9080
+  if (existsSync(launcherDir)) {
+    console.log('Starting launcher HTTP server on http://localhost:9080');
+    console.log('Serving from:', launcherDir);
+
+    const launcherApp = express();
+    
+    launcherApp.use(
+      express.static(launcherDir, {
+        setHeaders: (res) => {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        },
+      }),
+    );
+
+    launcherApp.use((req, res) => {
+      res.sendFile(join(launcherDir, 'index.html'));
+    });
+
+    launcherApp.listen(9080, () => {
+      console.log('Launcher server listening on port 9080');
+    });
+  } else {
+    console.warn('Launcher directory not found at:', launcherDir);
   }
 }
 
@@ -149,7 +260,24 @@ function createWindow() {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webSecurity: false, // Allow cross-origin access for screen sharing in iframes
     },
+  });
+
+  // Allow camera, microphone, and screen capture permissions
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowedPermissions = ['media', 'camera', 'microphone', 'display-capture', 'mediaKeySystem'];
+    if (allowedPermissions.includes(permission)) {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
+  // Also handle permission checks (not just requests)
+  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
+    const allowedPermissions = ['media', 'camera', 'microphone', 'display-capture'];
+    return allowedPermissions.includes(permission);
   });
 
   // In development, load from Vite dev server
@@ -157,8 +285,8 @@ function createWindow() {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
     mainWindow.webContents.openDevTools();
   } else {
-    // In production, load the built files
-    mainWindow.loadFile(join(__dirname, '../dist/index.html'));
+    // In production, load from HTTP server (same protocol as iframe)
+    mainWindow.loadURL('http://localhost:9080');
   }
 }
 
@@ -169,6 +297,17 @@ ipcMain.handle('get-port', () => {
 
 ipcMain.handle('get-token', () => {
   return ad4mToken;
+});
+
+ipcMain.handle('get-is-development', () => {
+  return !!process.env.VITE_DEV_SERVER_URL;
+});
+
+ipcMain.handle('get-desktop-sources', async () => {
+  const sources = await desktopCapturer.getSources({ 
+    types: ['screen', 'window'] 
+  });
+  return sources;
 });
 
 app.whenReady().then(async () => {
