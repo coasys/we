@@ -83,10 +83,20 @@ export default function TemplateProvider() {
   const templateSchema = templateStore.currentTemplate;
   const routes = createMemo(() => flattenRoutes(stores, templateSchema.routes ?? []));
 
-  // Build the full app schema
+  // Build the full app schema - only include template when user is logged in
   const appSchema: TemplateSchema = {
     meta: { name: 'App Layout', description: 'Root application layout', icon: '' },
-    children: [bootScreenSchema, appSettingsSchema, templateSchema],
+    children: [
+      bootScreenSchema,
+      appSettingsSchema,
+      {
+        type: '$if',
+        props: {
+          condition: { $eq: [{ $store: 'adamStore.bootState' }, 'ready'] },
+          then: templateSchema,
+        },
+      },
+    ],
   };
 
   // Return the router with the root layout and routes
