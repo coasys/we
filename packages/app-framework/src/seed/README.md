@@ -273,18 +273,70 @@ packages/app-framework/src/shared/schemas/integrations/{app-id}/
 └── metadata.json   # Processing metadata
 ```
 
-## Platform Adapters
+## Integration Loader
 
-The seed system integrates with platform adapters to detect the environment:
+After generating integration files, use the integration loader to dynamically load them at runtime:
 
 ```typescript
-// Automatically detects platform and environment
-if (adapter.isDevelopment) {
-  // Load from dev server
-  loadApp(`http://localhost:${seed.paths.devServer.port}`);
-} else {
-  // Load from build output
-  loadApp(seed.paths.dist);
+import { loadIntegrations, getIntegration, getIntegrationUrl } from '@we/app-framework';
+
+// Load all integrations for current platform
+const integrations = await loadIntegrations('electron'); // or 'tauri' or 'web'
+
+// Get specific integration
+const flux = await getIntegration('flux', 'electron');
+if (flux) {
+  console.log(flux.manifest.name); // "Flux"
+  console.log(flux.schemas); // UI schemas
+  console.log(flux.routes); // Route configs
+}
+
+// Get integration URL for current environment
+const url = getIntegrationUrl(flux.manifest, isDevelopment, flux.metadata?.seed?.paths);
+// Development: http://localhost:5173
+// Production: app/dist
+```
+
+### Platform Adapters
+
+The integration loader works seamlessly with platform adapters:
+
+```typescript
+import { loadIntegrations, getIntegrationUrl } from '@we/app-framework';
+
+// In your platform adapter
+async function loadExternalApps(platform: 'electron' | 'tauri' | 'web') {
+  const integrations = await loadIntegrations(platform);
+
+  for (const integration of integrations) {
+    const url = getIntegrationUrl(integration.manifest, adapter.isDevelopment, integration.metadata?.seed?.paths);
+
+    // Load the app
+    if (adapter.isDevelopment) {
+      loadApp(url); // http://localhost:5173
+    } else {
+      loadApp(url); // app/dist
+    }
+  }
+}
+```
+
+### Capability Checking
+
+Check if an integration has specific capabilities:
+
+```typescript
+import { hasCapability } from '@we/app-framework';
+
+const flux = await getIntegration('flux', 'electron');
+if (flux) {
+  if (hasCapability(flux.manifest, 'perspectives')) {
+    // Integration can access perspectives
+  }
+
+  if (hasCapability(flux.manifest, 'agents')) {
+    // Integration can access agents
+  }
 }
 ```
 

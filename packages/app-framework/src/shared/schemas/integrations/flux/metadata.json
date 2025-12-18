@@ -1,0 +1,65 @@
+{
+  "seed": {
+    "project": {
+      "name": "Flux",
+      "version": "0.11.0",
+      "description": "A social web3 tool kit for communities",
+      "author": "Junto Foundation",
+      "repository": "https://github.com/juntofoundation/flux",
+      "license": "MIT"
+    },
+    "paths": {
+      "projectRoot": "./app",
+      "dist": "app/dist",
+      "devServer": {
+        "port": 5173,
+        "host": "localhost"
+      }
+    },
+    "commands": {
+      "install": "yarn install",
+      "build": "yarn build",
+      "dev": "yarn dev",
+      "clean": "yarn clean"
+    },
+    "ui": {
+      "theme": {
+        "colors": {
+          "primary": "#6366f1",
+          "secondary": "#8b5cf6"
+        }
+      }
+    },
+    "ad4m": {
+      "ai": {
+        "enabled": true
+      },
+      "perspectives": [
+        {
+          "name": "Flux Channels"
+        }
+      ]
+    },
+    "integration": {
+      "mount": "flux",
+      "capabilities": [
+        "perspectives",
+        "languages",
+        "agents"
+      ],
+      "platforms": [
+        "electron",
+        "tauri",
+        "web"
+      ],
+      "entry": "index.html"
+    }
+  },
+  "processedAt": "2025-12-18T16:13:11.758Z",
+  "integrationId": "flux",
+  "outputPaths": {
+    "schema": "packages/app-framework/src/shared/schemas/integrations/flux/schemas.ts",
+    "components": "packages/app-framework/src/shared/schemas/integrations/flux/components.ts",
+    "routes": "packages/app-framework/src/shared/schemas/integrations/flux/routes.ts"
+  }
+}
