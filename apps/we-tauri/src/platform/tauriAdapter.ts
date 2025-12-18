@@ -25,5 +25,8 @@ export const tauriAdapter: PlatformAdapter = {
   },
 
   isDesktop: true,
+  get isDevelopment(): boolean {
+    return import.meta.env.DEV;
+  },
   platform: 'tauri' as const,
 };

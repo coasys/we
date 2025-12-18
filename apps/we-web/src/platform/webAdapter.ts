@@ -19,5 +19,8 @@ export const webAdapter: PlatformAdapter = {
   // getConnectionDetails is optional, so we don't implement it
 
   isDesktop: false,
+  get isDevelopment(): boolean {
+    return import.meta.env.DEV;
+  },
   platform: 'web' as const,
 };
