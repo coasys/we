@@ -169,7 +169,7 @@ async function run() {
 
     console.log(`\n✓ Integration generated successfully!`);
     console.log(`  ID: ${result.metadata.integrationId}`);
-    console.log(`  Mount: /${seed.integration.mount}`);
+    console.log(`  Apps: ${seed.apps.map(a => a.name).join(', ')}`);
     console.log(`  Output: ${outputDir}`);
 
   } catch (error) {

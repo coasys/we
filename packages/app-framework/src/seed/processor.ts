@@ -50,13 +50,6 @@ export class SeedProcessor {
       ],
     };
 
-    // Add custom UI templates if provided
-    if (this.seed.ui?.templates) {
-      Object.entries(this.seed.ui.templates).forEach(([name, template]) => {
-        schemas[name] = template;
-      });
-    }
-
     return schemas;
   }
 
@@ -66,16 +59,13 @@ export class SeedProcessor {
   generateRoutes(): Array<{ path: string; component: string }> {
     const routes: Array<{ path: string; component: string }> = [];
 
-    // Main mount route
-    routes.push({
-      path: `/${this.seed.integration.mount}`,
-      component: 'main',
+    // Routes from apps
+    this.seed.apps.forEach(app => {
+      routes.push({
+        path: app.route,
+        component: 'main',
+      });
     });
-
-    // Custom routes from seed
-    if (this.seed.ui?.routes) {
-      routes.push(...this.seed.ui.routes);
-    }
 
     return routes;
   }
@@ -143,16 +133,24 @@ export const ${variableName}Routes = ${JSON.stringify(routes, null, 2)};
     const integrationId = this.generateIntegrationId();
     const variableName = this.generateVariableName();
 
+    // Collect capabilities from all apps
+    const allCapabilities = Array.from(
+      new Set(this.seed.apps.flatMap(app => app.capabilities))
+    );
+
     const manifest = {
       id: integrationId,
       name: this.seed.project.name,
       version: this.seed.project.version,
       description: this.seed.project.description,
       author: this.seed.project.author,
-      mount: this.seed.integration.mount,
-      capabilities: this.seed.integration.capabilities,
-      platforms: this.seed.integration.platforms,
-      entry: this.seed.integration.entry,
+      apps: this.seed.apps.map(app => ({
+        id: app.id,
+        name: app.name,
+        route: app.route,
+        capabilities: app.capabilities,
+      })),
+      capabilities: allCapabilities,
     };
 
     return `/**

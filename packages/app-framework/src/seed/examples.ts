@@ -1,7 +1,7 @@
 import type { WeSeedFile } from '../types/seed';
 
 /**
- * Example seed file for Flux app
+ * Example seed file for Flux app (single app)
  */
 export const fluxSeedExample: WeSeedFile = {
   project: {
@@ -13,39 +13,13 @@ export const fluxSeedExample: WeSeedFile = {
     license: 'MIT',
   },
 
-  paths: {
-    projectRoot: './',
-    dist: 'dist',
-    devServer: {
-      port: 5173,
-      host: 'localhost',
-    },
-  },
-
-  commands: {
-    install: 'yarn install',
-    build: 'yarn build',
-    dev: 'yarn dev',
-    clean: 'yarn clean',
-  },
-
-  ui: {
+  host: {
     theme: {
       colors: {
         primary: '#6366f1',
         secondary: '#8b5cf6',
       },
     },
-    routes: [
-      {
-        path: '/flux',
-        component: 'FluxMain',
-      },
-      {
-        path: '/flux/chat/:channelId',
-        component: 'FluxChat',
-      },
-    ],
   },
 
   ad4m: {
@@ -67,12 +41,29 @@ export const fluxSeedExample: WeSeedFile = {
     ],
   },
 
-  integration: {
-    mount: 'flux',
-    capabilities: ['perspectives', 'languages', 'agents'],
-    platforms: ['electron', 'tauri', 'web'],
-    entry: 'index.html',
-  },
+  apps: [
+    {
+      id: 'flux',
+      name: 'Flux',
+      route: '/',
+      entry: 'index.html',
+      capabilities: ['perspectives', 'languages', 'agents'],
+      paths: {
+        projectRoot: './',
+        dist: 'dist',
+        devServer: {
+          port: 5173,
+          host: 'localhost',
+        },
+      },
+      commands: {
+        install: 'yarn install',
+        build: 'yarn build',
+        dev: 'yarn dev',
+        clean: 'yarn clean',
+      },
+    },
+  ],
 };
 
 /**
@@ -87,25 +78,26 @@ export const communityAppExample: WeSeedFile = {
     license: 'Apache-2.0',
   },
 
-  paths: {
-    projectRoot: './',
-    dist: 'build',
-    devServer: {
-      port: 3000,
+  apps: [
+    {
+      id: 'community',
+      name: 'Community Hub',
+      route: '/',
+      capabilities: ['perspectives', 'agents'],
+      paths: {
+        projectRoot: './',
+        dist: 'build',
+        devServer: {
+          port: 3000,
+        },
+      },
+      commands: {
+        install: 'pnpm install',
+        build: 'pnpm build',
+        dev: 'pnpm dev',
+      },
     },
-  },
-
-  commands: {
-    install: 'pnpm install',
-    build: 'pnpm build',
-    dev: 'pnpm dev',
-  },
-
-  integration: {
-    mount: 'community',
-    capabilities: ['perspectives', 'agents'],
-    platforms: ['web'],
-  },
+  ],
 };
 
 /**
@@ -119,20 +111,21 @@ export const minimalExample: WeSeedFile = {
     author: 'Developer',
   },
 
-  paths: {
-    projectRoot: './',
-    dist: 'dist',
-  },
-
-  commands: {
-    install: 'pnpm install',
-    build: 'pnpm build',
-    dev: 'pnpm dev',
-  },
-
-  integration: {
-    mount: 'myapp',
-    capabilities: [],
-    platforms: ['web'],
-  },
+  apps: [
+    {
+      id: 'myapp',
+      name: 'My App',
+      route: '/',
+      capabilities: [],
+      paths: {
+        projectRoot: './',
+        dist: 'dist',
+      },
+      commands: {
+        install: 'pnpm install',
+        build: 'pnpm build',
+        dev: 'pnpm dev',
+      },
+    },
+  ],
 };

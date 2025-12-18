@@ -8,8 +8,9 @@ export * from './registries/themeRegistry';
 // Schemas
 export * from './schemas';
 
-// Integration loader
+// Integration system
 export * from './integrationLoader';
+export * from './integrationComposer';
 
 // Utils
 export * from './utils';

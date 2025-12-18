@@ -8,7 +8,7 @@
 export interface WeSeedFile {
   /** Project metadata */
   project: {
-    /** Application name */
+    /** Workspace/project name */
     name: string;
     /** Semantic version */
     version: string;
@@ -22,51 +22,19 @@ export interface WeSeedFile {
     license?: string;
   };
 
-  /** File paths and build configuration */
-  paths: {
-    /** Root directory of the project (relative to seed file) */
-    projectRoot: string;
-    /** AD4M data directory (for development) */
-    ad4mRoot?: string;
-    /** Distribution/build output directory */
-    dist: string;
-    /** Development server configuration */
-    devServer?: {
-      /** Port number */
-      port: number;
-      /** Host address */
-      host?: string;
-    };
-  };
-
-  /** Build and development commands */
-  commands: {
-    /** Install dependencies (e.g., "pnpm install") */
-    install: string;
-    /** Production build command */
-    build: string;
-    /** Development server command */
-    dev: string;
-    /** Cleanup command (optional) */
-    clean?: string;
-  };
-
-  /** UI customization and overrides */
-  ui?: {
-    /** Custom UI templates mapped by route/component name */
-    templates?: Record<string, any>;
-    /** Theme overrides */
+  /** Host app customization (WE shell) */
+  host?: {
+    /** Theme overrides for the host */
     theme?: {
       colors?: Record<string, string>;
       fonts?: Record<string, string>;
     };
-    /** Custom routes to register */
-    routes?: Array<{
-      path: string;
-      component: string;
-    }>;
-    /** Custom components to register */
-    components?: Record<string, string>;
+    /** Custom boot screen (future) */
+    bootScreen?: any;
+    /** Custom settings panel (future) */
+    settings?: any;
+    /** Custom layout (future) */
+    layout?: any;
   };
 
   /** AD4M-specific configuration */
@@ -95,17 +63,46 @@ export interface WeSeedFile {
     };
   };
 
-  /** Integration settings */
-  integration: {
-    /** Mount point in WE (e.g., "flux", "community-hub") */
-    mount: string;
-    /** Application capabilities/permissions */
-    capabilities: Array<'perspectives' | 'languages' | 'agents' | 'filesystem' | 'network'>;
-    /** Supported platforms */
-    platforms: Array<'electron' | 'tauri' | 'web'>;
+  /** Embedded applications */
+  apps: Array<{
+    /** Unique app identifier (e.g., "flux", "chat") */
+    id: string;
+    /** Display name */
+    name: string;
+    /** Route path (e.g., "/", "/flux", "/chat") */
+    route: string;
     /** Entry point file (relative to dist) */
     entry?: string;
-  };
+    /** AD4M capabilities/permissions this app requires */
+    capabilities: Array<'perspectives' | 'languages' | 'agents' | 'filesystem' | 'network'>;
+
+    /** File paths and build configuration */
+    paths: {
+      /** Root directory of the app (relative to seed file) */
+      projectRoot: string;
+      /** Distribution/build output directory */
+      dist: string;
+      /** Development server configuration */
+      devServer?: {
+        /** Port number */
+        port: number;
+        /** Host address */
+        host?: string;
+      };
+    };
+
+    /** Build and development commands */
+    commands: {
+      /** Install dependencies (e.g., "yarn install", "pnpm install") */
+      install: string;
+      /** Production build command */
+      build: string;
+      /** Development server command */
+      dev: string;
+      /** Cleanup command (optional) */
+      clean?: string;
+    };
+  }>;
 }
 
 /**

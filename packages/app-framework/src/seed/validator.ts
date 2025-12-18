@@ -34,49 +34,58 @@ export function validateSeed(seed: unknown): SeedValidationResult {
     }
   }
 
-  // Validate paths
-  if (!s.paths) {
-    errors.push({ path: 'paths', message: 'Paths configuration is required' });
+  // Validate apps
+  if (!s.apps || s.apps.length === 0) {
+    errors.push({ path: 'apps', message: 'At least one app is required' });
   } else {
-    if (!s.paths.projectRoot) {
-      errors.push({ path: 'paths.projectRoot', message: 'Project root path is required' });
-    }
-    if (!s.paths.dist) {
-      errors.push({ path: 'paths.dist', message: 'Distribution path is required' });
-    }
-  }
-
-  // Validate commands
-  if (!s.commands) {
-    errors.push({ path: 'commands', message: 'Commands configuration is required' });
-  } else {
-    if (!s.commands.install) {
-      errors.push({ path: 'commands.install', message: 'Install command is required' });
-    }
-    if (!s.commands.build) {
-      errors.push({ path: 'commands.build', message: 'Build command is required' });
-    }
-    if (!s.commands.dev) {
-      errors.push({ path: 'commands.dev', message: 'Development command is required' });
-    }
-  }
-
-  // Validate integration
-  if (!s.integration) {
-    errors.push({ path: 'integration', message: 'Integration configuration is required' });
-  } else {
-    if (!s.integration.mount) {
-      errors.push({ path: 'integration.mount', message: 'Integration mount point is required' });
-    }
-    if (!s.integration.capabilities || s.integration.capabilities.length === 0) {
-      warnings.push({ 
-        path: 'integration.capabilities', 
-        message: 'No capabilities specified - app may have limited functionality' 
-      });
-    }
-    if (!s.integration.platforms || s.integration.platforms.length === 0) {
-      errors.push({ path: 'integration.platforms', message: 'At least one platform must be specified' });
-    }
+    s.apps.forEach((app, index) => {
+      const prefix = `apps[${index}]`;
+      
+      if (!app.id) {
+        errors.push({ path: `${prefix}.id`, message: 'App ID is required' });
+      }
+      if (!app.name) {
+        errors.push({ path: `${prefix}.name`, message: 'App name is required' });
+      }
+      if (!app.route) {
+        errors.push({ path: `${prefix}.route`, message: 'App route is required' });
+      }
+      
+      // Validate paths
+      if (!app.paths) {
+        errors.push({ path: `${prefix}.paths`, message: 'App paths configuration is required' });
+      } else {
+        if (!app.paths.projectRoot) {
+          errors.push({ path: `${prefix}.paths.projectRoot`, message: 'Project root is required' });
+        }
+        if (!app.paths.dist) {
+          errors.push({ path: `${prefix}.paths.dist`, message: 'Distribution path is required' });
+        }
+      }
+      
+      // Validate commands
+      if (!app.commands) {
+        errors.push({ path: `${prefix}.commands`, message: 'App commands are required' });
+      } else {
+        if (!app.commands.install) {
+          errors.push({ path: `${prefix}.commands.install`, message: 'Install command is required' });
+        }
+        if (!app.commands.build) {
+          errors.push({ path: `${prefix}.commands.build`, message: 'Build command is required' });
+        }
+        if (!app.commands.dev) {
+          errors.push({ path: `${prefix}.commands.dev`, message: 'Development command is required' });
+        }
+      }
+      
+      // Warnings
+      if (!app.capabilities || app.capabilities.length === 0) {
+        warnings.push({ 
+          path: `${prefix}.capabilities`, 
+          message: 'No capabilities specified - app may have limited functionality' 
+        });
+      }
+    });
   }
 
   // Warnings for optional but recommended fields
@@ -139,13 +148,14 @@ export function normalizeSeedPaths(seed: WeSeedFile, basePath: string): WeSeedFi
   
   return {
     ...seed,
-    paths: {
-      ...seed.paths,
-      projectRoot: path.resolve(basePath, seed.paths.projectRoot),
-      dist: path.resolve(basePath, seed.paths.dist),
-      ad4mRoot: seed.paths.ad4mRoot 
-        ? path.resolve(basePath, seed.paths.ad4mRoot) 
-        : undefined,
-    },
+    apps: seed.apps.map(app => ({
+      ...app,
+      paths: {
+        ...app.paths,
+        projectRoot: path.resolve(basePath, app.paths.projectRoot),
+        dist: path.resolve(basePath, app.paths.dist),
+      },
+    })),
   };
 }
+
