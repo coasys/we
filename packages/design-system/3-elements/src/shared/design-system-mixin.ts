@@ -1,7 +1,7 @@
+import type { DesignSystemProps } from '@we/design-system-types';
+import { designSystemKeys, filterProps, mergeProps, stateKeys } from '@we/design-system-utils';
 import { LitElement } from 'lit';
 import { property } from 'lit/decorators.js';
-import type { DesignSystemProps } from '@we/design-system-types';
-import { mergeProps, filterProps, designSystemKeys, stateKeys } from '@we/design-system-utils';
 
 type Constructor<T = any> = new (...args: any[]) => T;
 

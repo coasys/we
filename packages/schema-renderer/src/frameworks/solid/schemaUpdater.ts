@@ -5,7 +5,7 @@ import { findMutations } from '../../shared/mutations';
 import type { SchemaNode, TemplateSchema } from '../../shared/types';
 import { validateSchema } from '../../shared/validators';
 
-// TODO: test
+// TODO: test & improve
 function cleanSchemaNode(node: any): any {
   if (Array.isArray(node?.children)) {
     node.children = node.children.filter((child: any) => child !== null && child !== undefined);
@@ -49,12 +49,14 @@ export function updateSchema<T extends TemplateSchema | SchemaNode>(
     setSchema(
       produce((draft: T) => {
         for (const { path, value } of mutations) {
+          // Navigate to the correct location in the draft
           let target = draft as Record<string, unknown>;
           for (let i = 0; i < path.length - 1; i++) {
             const key = path[i];
             if (!target[key]) target[key] = typeof path[i + 1] === 'number' ? [] : {};
             target = target[key] as Record<string, unknown>;
           }
+          // Set or delete the value at the final key
           const lastKey = path[path.length - 1];
           if (value === undefined) delete target[lastKey];
           else target[lastKey] = value;

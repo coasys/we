@@ -4,8 +4,8 @@ import {
   computePosition,
   flip,
   offset,
-  shift,
   Placement as FloatingPlacement,
+  shift,
 } from '@floating-ui/dom';
 import { css, html, LitElement } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';

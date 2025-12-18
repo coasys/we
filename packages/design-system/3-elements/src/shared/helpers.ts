@@ -1,15 +1,15 @@
 import type { DesignSystemProps, ElementState } from '@we/design-system-types';
 import {
-  tokenVar,
-  paddingKeys,
-  marginKeys,
-  radiusKeys,
+  designSystemKeys,
   getMarginValues,
   getPaddingValues,
   getRadiusValues,
   mapFlexAxes,
-  designSystemKeys,
+  marginKeys,
+  paddingKeys,
+  radiusKeys,
   stateKeys,
+  tokenVar,
 } from '@we/design-system-utils';
 
 /**
@@ -19,8 +19,6 @@ import {
  * Separates styles into host (:host) for layout/positioning and base ([part="base"])
  * for appearance, with support for state variants (hover, focus, active, disabled).
  */
-
-const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
 
 const HOST_PROP_KEYS = [
   'width',
@@ -44,6 +42,8 @@ const BASE_PROP_KEYS = designSystemKeys.filter(
     !stateKeys.includes(key as (typeof stateKeys)[number]) &&
     key !== 'styles',
 ) as Array<keyof DesignSystemProps>;
+
+const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
 
 // Helper to set or remove a CSS property on an element
 function setProperty(el: HTMLElement, name: string, value?: string) {

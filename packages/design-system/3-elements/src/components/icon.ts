@@ -1,10 +1,10 @@
+import { tokenVar } from '@we/design-system-utils';
 import { css, html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 
 import sharedStyles from '../shared/styles';
 import { IconSize, IconWeight } from '../types';
-import { tokenVar } from '@we/design-system-utils';
 
 const styles = css`
   :host {

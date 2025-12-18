@@ -1,5 +1,5 @@
-import { getDesignSystemCSS } from './helpers';
 import { DesignSystemElement } from './design-system-element';
+import { getDesignSystemCSS } from './helpers';
 
 /**
  * Base class for overlay components (modals, drawers, dropdowns) that have:

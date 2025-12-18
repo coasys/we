@@ -1,9 +1,10 @@
-import { html, css } from 'lit';
+import type { DesignSystemProps } from '@we/design-system-types';
+import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
-import sharedStyles from '../shared/styles';
+
 import { DesignSystemElement } from '../shared/design-system-element';
-import type { DesignSystemProps } from '@we/design-system-types';
+import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   cursor: 'pointer',
@@ -22,6 +23,7 @@ const CSS_STYLES = css`
   :host {
     white-space: nowrap;
   }
+
   [part='base'] {
     all: unset;
     box-sizing: border-box;

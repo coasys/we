@@ -267,24 +267,43 @@ describe('propResolvers (combined)', () => {
     expect(callback).toHaveBeenCalledWith(testObj);
   });
 
-  it('$arg works with DOM events (extracts from event.target.value first)', () => {
+  it('$arg works with DOM events (can access event properties)', () => {
     const callback = vi.fn();
     const stores = { store: { callback } };
-    const action = { $action: 'store.callback', args: ['$arg.id'] };
+    const action = { $action: 'store.callback', args: ['$arg.target.value'] };
 
     const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
 
     // Simulate an input event
     const mockEvent = {
       target: { value: 'extracted-value' },
+      key: 'Enter',
     } as unknown as Event;
 
-    // When event is passed, it should extract target.value first, then extract .id
+    // When event is passed, $arg can now access any event property
     fn(mockEvent);
 
-    // Since the event is processed to extract target.value, and then $arg.id tries to extract .id from 'extracted-value' (a string)
-    // which doesn't have an id property, it should be undefined
-    expect(callback).toHaveBeenCalledWith(undefined);
+    // Should extract the target.value from the event
+    expect(callback).toHaveBeenCalledWith('extracted-value');
+  });
+
+  it('$arg can access keyboard event properties', () => {
+    const callback = vi.fn();
+    const stores = { store: { callback } };
+    const action = { $action: 'store.callback', args: ['$arg.key'] };
+
+    const fn = resolveProp(action, stores, {}) as (arg: unknown) => void;
+
+    // Simulate a keyboard event
+    const mockEvent = {
+      key: 'Enter',
+      target: { value: 'test' },
+    } as unknown as KeyboardEvent;
+
+    fn(mockEvent);
+
+    // Should extract the key property from the event
+    expect(callback).toHaveBeenCalledWith('Enter');
   });
 
   it('$arg with multiple args processes only $arg tokens', () => {

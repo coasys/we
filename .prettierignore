@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/build
+**/target
+**/dist-electron
+**/.tauri
+*.asar
+.git
+pnpm-lock.yaml

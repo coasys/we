@@ -24,7 +24,6 @@ export type PointerEvents = 'none' | 'auto';
 // zIndex - Could use ZIndexToken (e.g., 'dropdown', 'modal', 'tooltip')
 
 export interface DesignSystemProps {
-  // Colors (branded type allows both tokens and raw values with token autocomplete)
   bg?: ColorValue;
   color?: ColorValue;
 

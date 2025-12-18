@@ -74,6 +74,27 @@ function resolveExpressionProp(value: unknown, context: Props): unknown {
   }
 }
 
+// Helper function to process $arg tokens with access to callback arguments
+function processArgTokens(resolvedArgs: unknown[], callArgs: unknown[]): unknown[] {
+  return resolvedArgs.map((arg) => {
+    if (typeof arg === 'string' && arg.startsWith('$arg')) {
+      // Handle $arg without property - return the entire first argument
+      if (arg === '$arg') {
+        return callArgs[0];
+      }
+      // Handle $arg.property.path syntax to extract nested properties
+      if (arg.startsWith('$arg.')) {
+        const path = arg.slice(5).split('.');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let result: any = callArgs[0]; // Get first callback argument
+        for (const prop of path) result = result?.[prop];
+        return result;
+      }
+    }
+    return arg;
+  });
+}
+
 // Resolves $action props: { $action: 'routeStore.navigate', args: ['/home'] }
 // Supports $arg token for extracting properties from callback arguments: args: ['$arg.id']
 function resolveActionProp(value: unknown, context: Props, stores: Props, memo: Memo): unknown {
@@ -91,15 +112,6 @@ function resolveActionProp(value: unknown, context: Props, stores: Props, memo: 
   // Return a callable function if the method exists
   if (typeof method === 'function') {
     return (...callArgs: unknown[]) => {
-      // Extract value from DOM events (input, textarea, select elements)
-      const processedArgs = callArgs.map((arg) => {
-        // Check if arg is an Event with target.value (common for input events)
-        if (arg instanceof Event && arg.target && 'value' in arg.target) {
-          return (arg.target as HTMLInputElement).value;
-        }
-        return arg;
-      });
-
       // Handle special case for relative paths used in router navigation
       if (storeName === 'routeStore' && methodName === 'navigate' && typeof resolvedArgs[0] === 'string') {
         const path = resolvedArgs[0].trim();
@@ -114,29 +126,16 @@ function resolveActionProp(value: unknown, context: Props, stores: Props, memo: 
       }
 
       // Process $arg tokens - extract properties from callback arguments
-      const finalArgs = resolvedArgs.map((arg) => {
-        if (typeof arg === 'string' && arg.startsWith('$arg')) {
-          // Handle $arg.property.path syntax to extract nested properties
-          if (arg.startsWith('$arg.')) {
-            const path = arg.slice(5).split('.');
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            let result: any = processedArgs[0]; // Get first callback argument
-            for (const prop of path) result = result?.[prop];
-            return result;
-          }
-        }
-        return arg;
-      });
+      const finalArgs = processArgTokens(resolvedArgs, callArgs);
 
-      // Use finalArgs if any were defined in schema, otherwise use processedArgs
-      const argsToUse = resolvedArgs.length > 0 ? finalArgs : processedArgs;
+      // Use finalArgs if any were defined in schema, otherwise use callArgs
+      const argsToUse = resolvedArgs.length > 0 ? finalArgs : callArgs;
       return method.apply(store, argsToUse);
     };
   }
 }
 
 // Resolves $map props: { $map: { items: { "$store": "templateStore.templates" }, select: { "name": "$item.meta.name", "icon": "$item.meta.icon" } } }
-// Supports both arrays and single objects
 function resolveMapProp(map: MapProp, stores: Props, context: Props, memo: Memo): unknown {
   return memo(() => {
     const items = resolveProp(map.items, stores, context, memo);
@@ -200,7 +199,57 @@ function resolvePickProp(pick: PickProp, stores: Props, context: Props, memo: Me
 function resolveIfProp(value: unknown, stores: Props, context: Props, memo: Memo): unknown {
   const { condition, then: thenValue, else: elseValue } = (value as { $if: IfProp }).$if;
 
-  // Wrap in memo to reactively re-evaluate when condition changes
+  // Check if condition contains $arg tokens - if so, we need to return a function
+  // that evaluates the condition on each call with access to callback arguments
+  const conditionStr = JSON.stringify(condition);
+  if (conditionStr.includes('$arg')) {
+    // Return a function that evaluates the conditional when called
+    return (...callArgs: unknown[]) => {
+      // Helper to resolve $arg tokens in the condition
+      const resolveWithArg = (val: unknown): unknown => {
+        if (typeof val === 'string' && val.startsWith('$arg')) {
+          if (val === '$arg') {
+            return callArgs[0];
+          }
+          if (val.startsWith('$arg.')) {
+            const path = val.slice(5).split('.');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            let result: any = callArgs[0];
+            for (const prop of path) result = result?.[prop];
+            return result;
+          }
+        }
+        if (Array.isArray(val)) {
+          return val.map(resolveWithArg);
+        }
+        if (val && typeof val === 'object') {
+          const resolved: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(val)) {
+            resolved[k] = resolveWithArg(v);
+          }
+          return resolved;
+        }
+        return val;
+      };
+
+      // Resolve condition with $arg tokens replaced
+      const resolvedCondition = resolveWithArg(condition);
+      const conditionResult = resolveProp(resolvedCondition, stores, context, memo);
+      const conditionMet = typeof conditionResult === 'function' ? conditionResult() : conditionResult;
+
+      // Resolve the appropriate branch
+      const branchResult = resolveProp(conditionMet ? thenValue : elseValue, stores, context, memo);
+
+      // If branch result is a function (e.g., an action), call it with the arguments
+      if (typeof branchResult === 'function') {
+        return branchResult(...callArgs);
+      }
+
+      return typeof branchResult === 'function' ? branchResult() : branchResult;
+    };
+  }
+
+  // Standard $if without $arg - wrap in memo to reactively re-evaluate when condition changes
   return memo(() => {
     const conditionResult = resolveProp(condition, stores, context, memo);
     // Unwrap signal accessor if condition resolved to one
