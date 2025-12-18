@@ -23,6 +23,14 @@ export class SeedProcessor {
   }
 
   /**
+   * Generate a camelCase variable name from the integration ID
+   */
+  private generateVariableName(): string {
+    const id = this.generateIntegrationId();
+    return id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+  }
+
+  /**
    * Generate schema definitions for the integration
    */
   generateSchemas(): Record<string, any> {
@@ -95,7 +103,7 @@ export class SeedProcessor {
    */
   generateSchemaCode(): string {
     const schemas = this.generateSchemas();
-    const integrationId = this.generateIntegrationId();
+    const variableName = this.generateVariableName();
 
     return `/**
  * Generated from WE seed file for ${this.seed.project.name}
@@ -105,7 +113,7 @@ export class SeedProcessor {
  * DO NOT EDIT MANUALLY - This file is auto-generated
  */
 
-export const ${integrationId}Schemas = ${JSON.stringify(schemas, null, 2)};
+export const ${variableName}Schemas = ${JSON.stringify(schemas, null, 2)};
 `;
   }
 
@@ -114,7 +122,7 @@ export const ${integrationId}Schemas = ${JSON.stringify(schemas, null, 2)};
    */
   generateRoutesCode(): string {
     const routes = this.generateRoutes();
-    const integrationId = this.generateIntegrationId();
+    const variableName = this.generateVariableName();
 
     return `/**
  * Generated from WE seed file for ${this.seed.project.name}
@@ -124,7 +132,7 @@ export const ${integrationId}Schemas = ${JSON.stringify(schemas, null, 2)};
  * DO NOT EDIT MANUALLY - This file is auto-generated
  */
 
-export const ${integrationId}Routes = ${JSON.stringify(routes, null, 2)};
+export const ${variableName}Routes = ${JSON.stringify(routes, null, 2)};
 `;
   }
 
@@ -133,6 +141,7 @@ export const ${integrationId}Routes = ${JSON.stringify(routes, null, 2)};
    */
   generateManifest(): string {
     const integrationId = this.generateIntegrationId();
+    const variableName = this.generateVariableName();
 
     const manifest = {
       id: integrationId,
@@ -153,7 +162,7 @@ export const ${integrationId}Routes = ${JSON.stringify(routes, null, 2)};
  * DO NOT EDIT MANUALLY - This file is auto-generated
  */
 
-export const ${integrationId}Manifest = ${JSON.stringify(manifest, null, 2)};
+export const ${variableName}Manifest = ${JSON.stringify(manifest, null, 2)};
 `;
   }
 

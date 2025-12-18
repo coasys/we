@@ -4,6 +4,9 @@ export default defineConfig({
   entry: {
     // Only build shared utilities (no JSX)
     'shared/index': 'src/shared/index.ts',
+    // Seed system
+    'seed/index': 'src/seed/index.ts',
+    'seed/cli': 'src/seed/cli.ts',
   },
   format: ['esm'],
   dts: true,
