@@ -4,7 +4,13 @@ import solidPlugin from 'vite-plugin-solid';
 
 export default defineConfig({
   plugins: [solidPlugin()],
-  server: { port: 3000 },
+  server: {
+    port: 3000,
+    fs: {
+      // Allow serving files from workspace root (for seed files from sibling projects)
+      allow: ['../..'],
+    },
+  },
   build: { target: 'esnext' },
   resolve: {
     alias: {

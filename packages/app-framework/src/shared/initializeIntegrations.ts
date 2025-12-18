@@ -6,15 +6,16 @@
 
 import { generateLauncherFromSeed, validateSeedForLauncher } from './integrationComposer';
 import { templateRegistry } from './registries/templateRegistry';
+import { loadWorkspaceSeed } from './seedLoader';
 import type { WeSeedFile } from '../types/seed';
 
 /**
- * Flux seed configuration
+ * Flux seed configuration (fallback)
  * 
- * Phase 1: Hardcoded here
- * Phase 2: Load from file or bundle
+ * Phase 1-2: Used as fallback if workspace seed not found
+ * Phase 3: Remove once workspace seed loading is stable
  */
-const fluxSeed: WeSeedFile = {
+const fallbackFluxSeed: WeSeedFile = {
   project: {
     name: 'Flux',
     version: '0.11.0',
@@ -69,26 +70,34 @@ const fluxSeed: WeSeedFile = {
 /**
  * Initialize integrations from seed files
  * 
- * Phase 1: Use hardcoded Flux seed
- * Phase 2: Auto-discover seed files from integrations directory
- * Phase 3: Load from URLs or external sources
+ * Phase 2: Load from workspace seed file
+ * Fallback: Use hardcoded Flux seed if workspace seed not found
  */
-export function initializeIntegrations(): void {
+export async function initializeIntegrations(): Promise<void> {
   try {
+    // Try to load workspace seed
+    let seed = await loadWorkspaceSeed();
+    
+    // Fallback to hardcoded seed if workspace seed not found
+    if (!seed) {
+      console.warn('⚠ No workspace seed found, using fallback Flux seed');
+      seed = fallbackFluxSeed;
+    }
+    
     // Validate seed can generate a launcher
-    const validation = validateSeedForLauncher(fluxSeed);
+    const validation = validateSeedForLauncher(seed);
     if (!validation.valid) {
-      console.error('Invalid Flux seed file:', validation.errors);
+      console.error('Invalid seed file:', validation.errors);
       return;
     }
     
     // Generate launcher template
-    const launcher = generateLauncherFromSeed(fluxSeed);
+    const launcher = generateLauncherFromSeed(seed);
     
     // Register in template registry (replaces default launcher)
     templateRegistry.launcher = launcher;
     
-    console.log('✓ Flux launcher initialized from seed file');
+    console.log(`✓ ${seed.project.name} launcher initialized from seed file`);
   } catch (error) {
     console.error('Failed to initialize integrations:', error);
     // Don't crash the app - fall back to default launcher
