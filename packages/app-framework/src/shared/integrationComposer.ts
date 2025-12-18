@@ -135,20 +135,25 @@ function generateMultiAppLauncher(seed: WeSeedFile): TemplateSchema {
 
 /**
  * Generate iframe allow attribute from app capabilities
+ * 
+ * For cross-origin iframes, features need explicit origin. Using 'src' means
+ * "allow for the iframe's src origin". Without it, features are blocked.
+ * See: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#allow
  */
 function generateIframePermissions(capabilities: string[]): string {
   const permissions: string[] = [];
 
-  // Base permissions always allowed
-  permissions.push('camera', 'microphone', 'display-capture');
+  // Base permissions - use 'src' to allow from iframe's origin
+  // Format: "feature 'src'" means allow feature from the iframe's src URL
+  permissions.push("camera 'src'", "microphone 'src'", "display-capture 'src'");
 
   // Add capability-based permissions
   if (capabilities.includes('filesystem')) {
-    permissions.push('storage-access');
+    permissions.push("storage-access 'src'");
   }
 
-  if (capabilities.includes('network')) {
-    permissions.push('cross-origin-isolated');
+  if (capabilities.includes('geolocation')) {
+    permissions.push("geolocation 'src'");
   }
 
   return permissions.join('; ');

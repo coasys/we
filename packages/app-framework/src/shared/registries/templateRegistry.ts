@@ -6,6 +6,7 @@ import {
   twitterTemplateSchema,
 } from '@shared/schemas';
 
+// Initialize with default templates
 export const templateRegistry = {
   default: defaultTemplateSchema,
   twitter: twitterTemplateSchema,
@@ -19,3 +20,8 @@ export type TemplateId = keyof typeof templateRegistry;
 export function isValidTemplateId(key: unknown): key is TemplateId {
   return typeof key === 'string' && key in templateRegistry;
 }
+
+// Initialize integrations (will replace launcher if Flux seed is available)
+// This runs at module load time, before TemplateStoreProvider reads the registry
+import { initializeIntegrations } from '../initializeIntegrations';
+initializeIntegrations();

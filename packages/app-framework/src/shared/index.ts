@@ -11,6 +11,7 @@ export * from './schemas';
 // Integration system
 export * from './integrationLoader';
 export * from './integrationComposer';
+export * from './initializeIntegrations';
 
 // Utils
 export * from './utils';
