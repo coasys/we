@@ -6,7 +6,6 @@
 
 import { generateLauncherFromSeed, validateSeedForLauncher } from './integrationComposer';
 import { templateRegistry } from './registries/templateRegistry';
-import { loadWorkspaceSeed } from './seedLoader';
 import type { WeSeedFile } from '../types/seed';
 
 /**
@@ -70,19 +69,14 @@ const fallbackFluxSeed: WeSeedFile = {
 /**
  * Initialize integrations from seed files
  * 
- * Phase 2: Load from workspace seed file
- * Fallback: Use hardcoded Flux seed if workspace seed not found
+ * Phase 2: For now, using fallback seed synchronously
+ * TODO Phase 3: Load from workspace seed file asynchronously
  */
-export async function initializeIntegrations(): Promise<void> {
+export function initializeIntegrations(): void {
   try {
-    // Try to load workspace seed
-    let seed = await loadWorkspaceSeed();
-    
-    // Fallback to hardcoded seed if workspace seed not found
-    if (!seed) {
-      console.warn('⚠ No workspace seed found, using fallback Flux seed');
-      seed = fallbackFluxSeed;
-    }
+    // For now, just use the fallback seed (synchronous)
+    // TODO: Implement async workspace seed loading properly
+    const seed = fallbackFluxSeed;
     
     // Validate seed can generate a launcher
     const validation = validateSeedForLauncher(seed);

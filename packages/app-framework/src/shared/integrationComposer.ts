@@ -22,9 +22,11 @@ export function generateLauncherFromSeed(seed: WeSeedFile): TemplateSchema {
   }
 
   if (seed.apps.length === 1) {
+    console.log('🎯 Generating single-app launcher (full-screen, no sidebar)');
     return generateSingleAppLauncher(seed);
   }
 
+  console.log(`🎯 Generating multi-app launcher (sidebar with ${seed.apps.length} apps)`);
   return generateMultiAppLauncher(seed);
 }
 
