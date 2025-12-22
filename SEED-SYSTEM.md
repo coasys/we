@@ -7,7 +7,7 @@ The seed system allows developers to build custom launchers by defining a `we-se
 A **seed file** is a JSON configuration that defines:
 
 - Project metadata (name, version, author)
-- Host customization (theme colors, UI overrides)
+- Host customization (launcher UI, settings)
 - Embedded applications (paths, capabilities, commands)
 
 The launcher automatically adapts based on the number of apps:
@@ -40,14 +40,7 @@ Create `we/we-seed.json`:
     "description": "A custom launcher with my favorite apps",
     "author": "Your Name"
   },
-  "host": {
-    "theme": {
-      "colors": {
-        "primary": "#667eea",
-        "secondary": "#764ba2"
-      }
-    }
-  },
+  "host": {},
   "ad4m": {},
   "apps": [
     {
@@ -105,17 +98,16 @@ Open http://localhost:3000 to see your launcher!
 ```json
 {
   "host": {
-    "theme": {
-      "colors": {
-        "primary": "#hex", // Primary brand color
-        "secondary": "#hex", // Secondary accent
-        "background": "#hex", // Background color
-        "text": "#hex" // Text color
-      }
+    "ui": {
+      "bootScreen": {}, // Optional: Custom boot screen schema
+      "appSettings": {}, // Optional: Custom app settings schema
+      "enableTemplateSwitching": true // Optional: Allow template switching
     }
   }
 }
 ```
+
+**Note:** The launcher shell UI (boot screen, app settings) can be fully customized via inline JSON schemas. See [LAUNCHER-UI-CUSTOMIZATION.md](./LAUNCHER-UI-CUSTOMIZATION.md) for detailed examples and best practices.
 
 ### Apps Section
 
@@ -191,13 +183,7 @@ When `apps` array has **2+ apps**:
     "version": "1.0.0",
     "author": "Your Name"
   },
-  "host": {
-    "theme": {
-      "colors": {
-        "primary": "#6366f1"
-      }
-    }
-  },
+  "host": {},
   "ad4m": {},
   "apps": [
     {
@@ -231,14 +217,7 @@ Result: Full-screen Flux at http://localhost:3000
     "version": "1.0.0",
     "author": "Your Name"
   },
-  "host": {
-    "theme": {
-      "colors": {
-        "primary": "#667eea",
-        "secondary": "#764ba2"
-      }
-    }
-  },
+  "host": {},
   "ad4m": {},
   "apps": [
     {
@@ -332,8 +311,7 @@ we/
 
 ## Future Enhancements
 
-- Theme application (host.theme → design system colors)
-- Template forking (customize launcher UI)
+- Template forking (customize launcher UI beyond seed config)
 - Dynamic seed loading (hot-reload without rebuild)
 - Seed validation CLI tool
 - Production build support

@@ -285,6 +285,16 @@ we/
 - Run `pnpm setup` after any seed file changes
 - All paths in seed file are relative to the `we/` directory
 
+## Advanced Configuration
+
+### Launcher UI Customization
+
+You can fully customize the launcher shell (boot screen, app settings) via the seed file. See [LAUNCHER-UI-CUSTOMIZATION.md](./LAUNCHER-UI-CUSTOMIZATION.md) for detailed documentation and examples.
+
+### Seed System
+
+For complete details about the seed system architecture, app modes, and configuration options, see [SEED-SYSTEM.md](./SEED-SYSTEM.md).
+
 ## Support
 
 For issues or questions, please open an issue on GitHub.
