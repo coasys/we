@@ -1,6 +1,7 @@
 mod app_state;
 mod commands;
 mod app_server;
+mod generated;
 
 use app_state::AppState;
 use rust_executor::utils::find_port;
@@ -44,26 +45,13 @@ pub fn run() {
             commands::state::request_credential
         ])
         .setup(move |app| {
-            // Start embedded app HTTP server on port 8080 (in production only)
-            // This serves whatever app is bundled (e.g., Flux) without X-Frame-Options restrictions
+            // Start embedded app HTTP servers (in production only)
+            // Uses configuration generated from we-seed.json
             #[cfg(not(debug_assertions))]
             {
                 let resource_path_result = app.path().resource_dir();
                 if let Ok(resource_path) = resource_path_result {
-                    let app_dir = resource_path.join("flux"); // TODO: Make this configurable via launcher config
-                    
-                    if app_dir.exists() {
-                        std::thread::spawn(move || {
-                            let runtime = tokio::runtime::Builder::new_multi_thread()
-                                .thread_name(String::from("app_server"))
-                                .enable_all()
-                                .build()
-                                .unwrap();
-                            runtime.block_on(app_server::serve_static_app(8080, app_dir));
-                        });
-                    } else {
-                        eprintln!("Warning: App directory not found at {:?}", app_dir);
-                    }
+                    generated::setup_seed_servers(resource_path);
                 } else {
                     eprintln!("Warning: Failed to get resource directory");
                 }

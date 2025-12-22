@@ -1,0 +1,131 @@
+import type { WeSeedFile } from '../types/seed';
+
+/**
+ * Example seed file for Flux app (single app)
+ */
+export const fluxSeedExample: WeSeedFile = {
+  project: {
+    name: 'Flux',
+    version: '1.0.0',
+    description: 'Social communication platform built on AD4M',
+    author: 'Flux Team',
+    repository: 'https://github.com/fluxapp/flux',
+    license: 'MIT',
+  },
+
+  host: {
+    theme: {
+      colors: {
+        primary: '#6366f1',
+        secondary: '#8b5cf6',
+      },
+    },
+  },
+
+  ad4m: {
+    ai: {
+      enabled: true,
+      config: {
+        model: 'gpt-4',
+      },
+    },
+    perspectives: [
+      {
+        name: 'Flux Channels',
+      },
+    ],
+    languages: [
+      {
+        name: 'flux-message-language',
+      },
+    ],
+  },
+
+  apps: [
+    {
+      id: 'flux',
+      name: 'Flux',
+      route: '/',
+      entry: 'index.html',
+      capabilities: ['perspectives', 'languages', 'agents'],
+      paths: {
+        projectRoot: './',
+        dist: 'dist',
+        devServer: {
+          port: 5173,
+          host: 'localhost',
+        },
+      },
+      commands: {
+        install: 'yarn install',
+        build: 'yarn build',
+        dev: 'yarn dev',
+        clean: 'yarn clean',
+      },
+    },
+  ],
+};
+
+/**
+ * Example seed file for a community app
+ */
+export const communityAppExample: WeSeedFile = {
+  project: {
+    name: 'Community Hub',
+    version: '0.1.0',
+    description: 'Decentralized community management platform',
+    author: 'Community Team',
+    license: 'Apache-2.0',
+  },
+
+  apps: [
+    {
+      id: 'community',
+      name: 'Community Hub',
+      route: '/',
+      capabilities: ['perspectives', 'agents'],
+      paths: {
+        projectRoot: './',
+        dist: 'build',
+        devServer: {
+          port: 3000,
+        },
+      },
+      commands: {
+        install: 'pnpm install',
+        build: 'pnpm build',
+        dev: 'pnpm dev',
+      },
+    },
+  ],
+};
+
+/**
+ * Minimal seed file example
+ */
+export const minimalExample: WeSeedFile = {
+  project: {
+    name: 'My App',
+    version: '1.0.0',
+    description: 'A simple integrated app',
+    author: 'Developer',
+  },
+
+  apps: [
+    {
+      id: 'myapp',
+      name: 'My App',
+      route: '/',
+      capabilities: [],
+      paths: {
+        projectRoot: './',
+        dist: 'dist',
+      },
+      commands: {
+        install: 'pnpm install',
+        build: 'pnpm build',
+        dev: 'pnpm dev',
+      },
+    },
+  ],
+};

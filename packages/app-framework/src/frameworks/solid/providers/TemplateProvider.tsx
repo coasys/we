@@ -1,5 +1,4 @@
-import { appSettingsSchema } from '@shared/schemas/fragments/AppSettings.schema';
-import { bootScreenSchema } from '@shared/schemas/fragments/BootScreen.schema';
+import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAdamStore,
@@ -87,8 +86,8 @@ export default function TemplateProvider() {
   const appSchema: TemplateSchema = {
     meta: { name: 'App Layout', description: 'Root application layout', icon: '' },
     children: [
-      bootScreenSchema,
-      appSettingsSchema,
+      launcherUIRegistry.bootScreen,
+      launcherUIRegistry.appSettings,
       {
         type: '$if',
         props: {

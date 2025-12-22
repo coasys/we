@@ -1,0 +1,21 @@
+.playground-app {
+  width: 100%;
+  height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.playground-app h1 {
+  font-size: 4rem;
+  margin: 0 0 1rem 0;
+}
+
+.playground-app p {
+  font-size: 1.5rem;
+  opacity: 0.9;
+}

@@ -4,9 +4,15 @@
   "description": "",
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "we-seed": "./dist/seed/cli.js"
+  },
   "scripts": {
     "build:steps": "tsup",
-    "build": "we-build"
+    "build": "we-build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
   },
   "exports": {
     "./shared": {
@@ -21,6 +27,10 @@
     "./solid": {
       "import": "./src/frameworks/solid/index.ts",
       "types": "./src/frameworks/solid/index.ts"
+    },
+    "./seed": {
+      "import": "./dist/seed/index.js",
+      "types": "./dist/seed/index.d.ts"
     }
   },
   "dependencies": {
@@ -42,8 +52,11 @@
     "zod": "^4.1.11"
   },
   "devDependencies": {
-    "@we/cli": "workspace:*",
+    "@types/node": "^22.10.2",
     "@types/three": "^0.176.0",
-    "tsup": "^8.5.1"
+    "@vitest/coverage-v8": "^4.0.15",
+    "@we/cli": "workspace:*",
+    "tsup": "^8.5.1",
+    "vitest": "^4.0.15"
   }
 }
