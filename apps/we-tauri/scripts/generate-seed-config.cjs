@@ -19,6 +19,8 @@ const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
 const SEED_FILE = path.join(WORKSPACE_ROOT, 'we-seed.json');
 const OUTPUT_DIR = path.join(__dirname, '../src-tauri/src/generated');
 const TAURI_CONF_FILE = path.join(__dirname, '../src-tauri/tauri.conf.json');
+const CARGO_TOML_TEMPLATE = path.join(__dirname, '../src-tauri/Cargo.toml.template');
+const CARGO_TOML_OUTPUT = path.join(__dirname, '../src-tauri/Cargo.toml');
 
 function main() {
   console.log('🔧 Generating Tauri seed configuration...\n');
@@ -141,6 +143,35 @@ pub use seed_servers::setup_seed_servers;
 `;
   fs.writeFileSync(MOD_RS_FILE, modRsContent, 'utf8');
   console.log(`✅ Module file written to: ${path.relative(process.cwd(), MOD_RS_FILE)}`);
+
+  // Generate Cargo.toml from template with AD4M paths
+  if (fs.existsSync(CARGO_TOML_TEMPLATE)) {
+    let cargoTemplate = fs.readFileSync(CARGO_TOML_TEMPLATE, 'utf8');
+    
+    if (seed.ad4m?.repoPath) {
+      const absoluteAd4mPath = path.isAbsolute(seed.ad4m.repoPath)
+        ? seed.ad4m.repoPath
+        : path.resolve(WORKSPACE_ROOT, seed.ad4m.repoPath);
+      
+      const SRC_TAURI_DIR = path.join(__dirname, '..', 'src-tauri');
+      const relativeAd4mPath = path.relative(SRC_TAURI_DIR, absoluteAd4mPath);
+      
+      // Replace template placeholders
+      const ad4mClientPath = path.join(relativeAd4mPath, 'rust-client');
+      const ad4mExecutorPath = path.join(relativeAd4mPath, 'rust-executor');
+      
+      cargoTemplate = cargoTemplate
+        .replace('{{AD4M_CLIENT_PATH}}', ad4mClientPath)
+        .replace('{{AD4M_EXECUTOR_PATH}}', ad4mExecutorPath);
+      
+      fs.writeFileSync(CARGO_TOML_OUTPUT, cargoTemplate, 'utf8');
+      console.log(`✅ Cargo.toml generated from template`);
+      console.log(`   AD4M client: ${ad4mClientPath}`);
+      console.log(`   AD4M executor: ${ad4mExecutorPath}`);
+    } else {
+      console.warn('⚠️  No ad4m.repoPath in seed file, Cargo.toml not updated');
+    }
+  }
 
   // Update tauri.conf.json
   updateTauriConfig(bundleResources);

@@ -17,7 +17,8 @@
   },
   "ad4m": {
     "dataPath": "~/.we-multi-app",
-    "executorPath": "../ad4m/target/release/ad4m-executor"
+    "executorPath": "../ad4m/target/release/ad4m-executor",
+    "repoPath": "../ad4m"
   },
   "electron": {
     "appDistPath": "dist",
