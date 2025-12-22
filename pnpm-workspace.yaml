@@ -1,6 +1,6 @@
 packages:
   - apps/*
-  - apps/playgrounds/*
+  - apps/playgrounds/*/*
   - packages/*
   - packages/design-system/*
   - packages/block-composer/*

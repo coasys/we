@@ -36,19 +36,27 @@ export async function loadSeedFromPath(seedPath: string): Promise<WeSeedFile | n
 /**
  * Load seed from default workspace location
  * 
- * Tries to load from sibling flux directory (workspace structure)
+ * Tries to load from:
+ * 1. WE's own seed (../../we-seed.json) - for multi-app testing
+ * 2. Sibling flux directory (../../flux/we-seed.json) - for single-app
  */
 export async function loadWorkspaceSeed(): Promise<WeSeedFile | null> {
-  // Primary location: sibling flux directory
-  // Path is relative to we-web: ../../flux/we-seed.json
-  const primaryPath = '../../flux/we-seed.json';
-  
-  const seed = await loadSeedFromPath(primaryPath);
+  // Try WE's multi-app seed first
+  const weSeedPath = '../../we-seed.json';
+  let seed = await loadSeedFromPath(weSeedPath);
   if (seed) {
-    console.log(`✓ Loaded workspace seed from: ${primaryPath}`);
+    console.log(`✓ Loaded WE multi-app seed from: ${weSeedPath}`);
     return seed;
   }
 
-  console.warn('No workspace seed file found at:', primaryPath);
+  // Fall back to Flux single-app seed
+  const fluxSeedPath = '../../flux/we-seed.json';
+  seed = await loadSeedFromPath(fluxSeedPath);
+  if (seed) {
+    console.log(`✓ Loaded Flux seed from: ${fluxSeedPath}`);
+    return seed;
+  }
+
+  console.warn('No workspace seed file found');
   return null;
 }

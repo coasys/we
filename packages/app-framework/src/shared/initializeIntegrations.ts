@@ -9,48 +9,38 @@ import { templateRegistry } from './registries/templateRegistry';
 import type { WeSeedFile } from '../types/seed';
 
 /**
- * Flux seed configuration (fallback)
+ * Multi-app seed configuration (fallback)
  * 
- * Phase 1-2: Used as fallback if workspace seed not found
- * Phase 3: Remove once workspace seed loading is stable
+ * Phase 2: Testing multi-app launcher with Flux + React playground
+ * TODO Phase 3: Load from workspace seed file dynamically
  */
-const fallbackFluxSeed: WeSeedFile = {
+const fallbackMultiAppSeed: WeSeedFile = {
   project: {
-    name: 'Flux',
-    version: '0.11.0',
-    description: 'A social web3 tool kit for communities',
-    author: 'Junto Foundation',
-    repository: 'https://github.com/juntofoundation/flux',
-    license: 'MIT',
+    name: 'WE Multi-App',
+    version: '0.1.0',
+    description: 'Testing multi-app integration with Flux and React playground',
+    author: 'James Weir',
   },
   host: {
     theme: {
       colors: {
-        primary: '#6366f1',
-        secondary: '#8b5cf6',
+        primary: '#667eea',
+        secondary: '#764ba2',
+        background: '#ffffff',
+        text: '#1a202c',
       },
     },
   },
-  ad4m: {
-    ai: {
-      enabled: true,
-    },
-    perspectives: [
-      {
-        name: 'Flux Channels',
-      },
-    ],
-  },
+  ad4m: {},
   apps: [
     {
       id: 'flux',
       name: 'Flux',
-      route: '/',
-      entry: 'index.html',
+      route: '/flux',
       capabilities: ['perspectives', 'languages', 'agents'],
       paths: {
-        projectRoot: './app',
-        dist: 'app/dist',
+        projectRoot: '../flux/app',
+        dist: '../flux/app/dist',
         devServer: {
           port: 3030,
           host: 'localhost',
@@ -60,7 +50,25 @@ const fallbackFluxSeed: WeSeedFile = {
         install: 'yarn install',
         build: 'yarn build',
         dev: 'yarn dev',
-        clean: 'yarn clean',
+      },
+    },
+    {
+      id: 'playground',
+      name: 'Playground',
+      route: '/playground',
+      capabilities: [],
+      paths: {
+        projectRoot: './apps/playgrounds/react/demo',
+        dist: './apps/playgrounds/react/demo/dist',
+        devServer: {
+          port: 3040,
+          host: 'localhost',
+        },
+      },
+      commands: {
+        install: 'pnpm install',
+        build: 'pnpm build',
+        dev: 'pnpm dev',
       },
     },
   ],
@@ -76,7 +84,7 @@ export function initializeIntegrations(): void {
   try {
     // For now, just use the fallback seed (synchronous)
     // TODO: Implement async workspace seed loading properly
-    const seed = fallbackFluxSeed;
+    const seed = fallbackMultiAppSeed;
     
     // Validate seed can generate a launcher
     const validation = validateSeedForLauncher(seed);
