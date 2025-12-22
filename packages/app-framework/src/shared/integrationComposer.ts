@@ -3,6 +3,16 @@
  * 
  * Generates launcher templates from WE seed files.
  * Composes host shell + embedded apps into a unified launcher experience.
+ * 
+ * Single-app mode:
+ * - Full-screen iframe at root route (/)
+ * - No sidebar or navigation
+ * - Ideal for standalone app launchers
+ * 
+ * Multi-app mode:
+ * - Sidebar with app navigation (100px wide)
+ * - Content area with routed iframes
+ * - Each app has its own route
  */
 
 import type { TemplateSchema } from '@we/schema-renderer/shared';
@@ -11,10 +21,12 @@ import type { WeSeedFile } from '../types/seed';
 /**
  * Generate a launcher template from a seed file
  * 
- * Phase 1: Simple implementation
- * - Single app: Full-screen iframe at root route
- * - Multi-app: Sidebar navigation + iframe routes
- * - Host theme: Applied if provided
+ * Automatically detects single vs multi-app mode based on apps array length.
+ * Returns a complete template schema ready to be registered and rendered.
+ * 
+ * @param seed - Validated WE seed file
+ * @returns Template schema for the launcher
+ * @throws Error if seed contains zero apps
  */
 export function generateLauncherFromSeed(seed: WeSeedFile): TemplateSchema {
   if (seed.apps.length === 0) {
@@ -22,16 +34,20 @@ export function generateLauncherFromSeed(seed: WeSeedFile): TemplateSchema {
   }
 
   if (seed.apps.length === 1) {
-    console.log('🎯 Generating single-app launcher (full-screen, no sidebar)');
     return generateSingleAppLauncher(seed);
   }
 
-  console.log(`🎯 Generating multi-app launcher (sidebar with ${seed.apps.length} apps)`);
   return generateMultiAppLauncher(seed);
 }
 
 /**
  * Generate launcher for a single embedded app
+ * 
+ * Creates a full-screen Column layout with a single iframe route at '/'.
+ * No navigation UI is generated - the app occupies 100% of the viewport.
+ * 
+ * @param seed - WE seed file containing exactly one app
+ * @returns Template schema with full-screen iframe
  */
 function generateSingleAppLauncher(seed: WeSeedFile): TemplateSchema {
   const app = seed.apps[0];
@@ -71,6 +87,16 @@ function generateSingleAppLauncher(seed: WeSeedFile): TemplateSchema {
 
 /**
  * Generate launcher for multiple embedded apps
+ * 
+ * Creates a Row layout with:
+ * - Left sidebar (100px): Navigation buttons for each app
+ * - Right content area: Routed iframes for each app
+ * 
+ * Each app gets its own route (e.g. /flux, /playground) and can be
+ * navigated to via sidebar buttons.
+ * 
+ * @param seed - WE seed file containing 2+ apps
+ * @returns Template schema with sidebar navigation
  */
 function generateMultiAppLauncher(seed: WeSeedFile): TemplateSchema {
   return {

@@ -1,18 +1,33 @@
 /**
- * Seed Loader
+ * Seed Loader (Currently Unused)
  * 
- * Loads WE seed files from various sources:
- * - Dev mode: Import from file system
- * - Production: Bundled or fetched from URL
+ * Infrastructure for runtime seed file loading via fetch/dynamic imports.
+ * 
+ * NOTE: This module is currently NOT USED. We use static imports instead
+ * (see initializeIntegrations.ts) because:
+ * - Static imports are synchronous (no timing issues)
+ * - Type-safe at build time
+ * - Simple and reliable
+ * 
+ * This code is preserved for potential future use cases:
+ * - Loading seeds from URLs
+ * - Hot-reloading seed changes without rebuild
+ * - Supporting dynamic seed discovery
+ * 
+ * Current approach (static import):
+ * ```typescript
+ * import weSeedFile from '../../../../we-seed.json';
+ * const seed = weSeedFile as WeSeedFile;
+ * ```
  */
 
 import type { WeSeedFile } from '../types/seed';
 
 /**
- * Load a seed file from a path
+ * Load a seed file from a path via fetch
  * 
- * In dev mode, this can use dynamic imports.
- * In production, seeds should be bundled or fetched.
+ * @param seedPath - Relative or absolute path to seed file
+ * @returns Parsed seed file or null if not found/invalid
  */
 export async function loadSeedFromPath(seedPath: string): Promise<WeSeedFile | null> {
   try {
@@ -34,11 +49,13 @@ export async function loadSeedFromPath(seedPath: string): Promise<WeSeedFile | n
 }
 
 /**
- * Load seed from default workspace location
+ * Load seed from default workspace locations
  * 
- * Tries to load from:
+ * Attempts to load from common workspace patterns:
  * 1. WE's own seed (../../we-seed.json) - for multi-app testing
  * 2. Sibling flux directory (../../flux/we-seed.json) - for single-app
+ * 
+ * @returns Parsed seed file or null if none found
  */
 export async function loadWorkspaceSeed(): Promise<WeSeedFile | null> {
   // Try WE's multi-app seed first

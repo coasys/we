@@ -1,7 +1,16 @@
 /**
  * Integration Initialization
  * 
- * Loads seed files and generates launcher templates at app startup.
+ * Loads seed file and generates launcher template at application startup.
+ * 
+ * The seed file (we-seed.json) defines:
+ * - Project metadata (name, version, description, author)
+ * - Host configuration (theme customization, UI overrides)
+ * - Embedded applications and their configuration
+ * 
+ * Based on the number of apps in the seed:
+ * - Single app: Generates full-screen launcher at root route (/)
+ * - Multiple apps: Generates sidebar navigation with app routing
  */
 
 import { generateLauncherFromSeed, validateSeedForLauncher } from './integrationComposer';
@@ -10,44 +19,38 @@ import type { WeSeedFile } from '../types/seed';
 import weSeedFile from '../../../../we-seed.json';
 
 /**
- * Initialize integrations from seed files
+ * Initialize integrations from seed file
  * 
- * Loads seed from workspace and generates launcher template.
- * Uses static import for synchronous access at module load time.
+ * This function:
+ * 1. Loads seed via static import (synchronous, type-safe)
+ * 2. Validates seed structure
+ * 3. Generates launcher template
+ * 4. Registers launcher in template registry
+ * 
+ * Called automatically at module load time from templateRegistry.ts
  */
 export function initializeIntegrations(): void {
   try {
-    // Load seed from workspace (static import - synchronous)
+    // Load seed from workspace (static import for synchronous access)
     const seed = weSeedFile as WeSeedFile;
     
     // Validate seed can generate a launcher
     const validation = validateSeedForLauncher(seed);
     if (!validation.valid) {
-      console.error('Invalid seed file:', validation.errors);
+      console.error('❌ Invalid seed file:', validation.errors);
       return;
     }
     
-    // Generate launcher template
+    // Generate launcher template based on seed configuration
     const launcher = generateLauncherFromSeed(seed);
     
-    // Register in template registry (replaces default launcher)
+    // Replace placeholder launcher in template registry
     templateRegistry.launcher = launcher;
     
     console.log(`✓ ${seed.project.name} launcher initialized from seed file`);
   } catch (error) {
-    console.error('Failed to initialize integrations:', error);
-    // Don't crash the app - fall back to default launcher
+    console.error('❌ Failed to initialize integrations:', error);
+    // Don't crash the app - placeholder launcher remains in registry
   }
 }
 
-/**
- * Discover and load all seed files from integrations directory
- * 
- * Phase 2 implementation - not used yet
- */
-export async function discoverIntegrations(): Promise<WeSeedFile[]> {
-  // TODO: Scan integrations directory for we-seed.json files
-  // TODO: Support loading from URLs
-  // TODO: Cache loaded seeds
-  return [];
-}
