@@ -21,6 +21,7 @@ import {
   defaultTemplateSchema,
   testTemplateSchema,
   twitterTemplateSchema,
+  weNativeAppTemplateSchema,
 } from '@shared/schemas';
 import type { TemplateSchema } from '@we/schema-renderer/shared';
 
@@ -53,6 +54,7 @@ export const templateRegistry = {
   twitter: twitterTemplateSchema,
   test: testTemplateSchema,
   aiSample: aiSampleTemplateSchema,
+  weNative: weNativeAppTemplateSchema,
   launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
 };
 

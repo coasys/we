@@ -19,7 +19,8 @@
 
   "host": {
     "ui": {
-      "enableTemplateSwitching": true
+      "enableTemplateSwitching": true,
+      "defaultTemplate": "weNative"
     }
   },
 

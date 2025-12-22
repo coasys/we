@@ -18,6 +18,7 @@
 import type { TemplateSchema } from '@we/schema-renderer/shared';
 import type { WeSeedFile } from '../types/seed';
 import type { PlatformAdapter } from './platform/types';
+import { templateRegistry } from './registries/templateRegistry';
 
 /**
  * Generate a launcher template from a seed file
@@ -51,14 +52,29 @@ export function generateLauncherFromSeed(
 /**
  * Generate launcher for native WE app (no embedded apps)
  * 
- * Creates a minimal Column layout with routes outlet.
- * No embedded app iframes - the WE design system templates are rendered directly.
+ * If a default template is specified in the seed file, returns that template directly.
+ * Otherwise returns an empty Column layout for template switching.
  * Template switching is enabled by default for native mode.
  * 
  * @param seed - WE seed file with zero apps
- * @returns Minimal template schema for native WE app
+ * @returns Template schema for native WE app
  */
 function generateNativeLauncher(seed: WeSeedFile): TemplateSchema {
+  // Check if seed specifies a default template
+  const defaultTemplate = seed.host?.ui?.defaultTemplate;
+
+  // If a template is specified, load it from the registry
+  if (defaultTemplate) {
+    const template = templateRegistry[defaultTemplate as keyof typeof templateRegistry];
+    
+    if (template) {
+      return template;
+    }
+    
+    console.warn(`Template "${defaultTemplate}" not found in registry, falling back to empty launcher`);
+  }
+
+  // Fallback: empty launcher for template switching
   return {
     meta: {
       name: `${seed.project.name} Launcher`,
@@ -68,7 +84,7 @@ function generateNativeLauncher(seed: WeSeedFile): TemplateSchema {
     type: 'Column',
     props: { width: '100%', height: '100%' },
     children: [{ type: '$routes' }],
-    routes: [],  // Templates will be rendered via template switching
+    routes: [], // Empty routes - use template switcher
   };
 }
 

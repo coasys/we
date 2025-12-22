@@ -39,6 +39,8 @@ export interface WeSeedFile {
       appSettings?: SchemaNode;
       /** Enable/disable template switching in settings */
       enableTemplateSwitching?: boolean;
+      /** Default template for native app mode */
+      defaultTemplate?: string;
     };
   };
 

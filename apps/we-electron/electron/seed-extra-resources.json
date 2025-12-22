@@ -1,3 +1,13 @@
-{
-  "extraResources": []
-}
+[
+  {
+    "from": "dist",
+    "to": "app/dist",
+    "filter": [
+      "**/*"
+    ]
+  },
+  {
+    "from": "../../../ad4m/target/release/ad4m-executor",
+    "to": "ad4m-executor"
+  }
+]
