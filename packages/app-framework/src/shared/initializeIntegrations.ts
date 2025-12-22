@@ -16,6 +16,7 @@
 import { generateLauncherFromSeed, validateSeedForLauncher } from './integrationComposer';
 import { templateRegistry } from './registries/templateRegistry';
 import type { WeSeedFile } from '../types/seed';
+import type { PlatformAdapter } from './platform/types';
 import weSeedFile from '../../../../we-seed.json';
 
 /**
@@ -24,12 +25,14 @@ import weSeedFile from '../../../../we-seed.json';
  * This function:
  * 1. Loads seed via static import (synchronous, type-safe)
  * 2. Validates seed structure
- * 3. Generates launcher template
+ * 3. Generates launcher template using platform-aware URL resolution
  * 4. Registers launcher in template registry
  * 
- * Called automatically at module load time from templateRegistry.ts
+ * Called from app initialization (e.g., App.tsx) after platform adapter is available
+ * 
+ * @param platformAdapter - Platform adapter for URL resolution
  */
-export function initializeIntegrations(): void {
+export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
   try {
     // Load seed from workspace (static import for synchronous access)
     const seed = weSeedFile as WeSeedFile;
@@ -41,8 +44,8 @@ export function initializeIntegrations(): void {
       return;
     }
     
-    // Generate launcher template based on seed configuration
-    const launcher = generateLauncherFromSeed(seed);
+    // Generate launcher template with platform-aware URL resolution
+    const launcher = generateLauncherFromSeed(seed, platformAdapter);
     
     // Replace placeholder launcher in template registry
     templateRegistry.launcher = launcher;
@@ -53,4 +56,3 @@ export function initializeIntegrations(): void {
     // Don't crash the app - placeholder launcher remains in registry
   }
 }
-

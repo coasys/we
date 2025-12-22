@@ -16,7 +16,12 @@
     }
   },
   "ad4m": {
-    "dataPath": "~/.we-multi-app"
+    "dataPath": "~/.we-multi-app",
+    "executorPath": "../ad4m/target/release/ad4m-executor"
+  },
+  "electron": {
+    "appDistPath": "dist",
+    "basePort": 8080
   },
   "apps": [
     {

@@ -9,9 +9,9 @@
  * 
  * Initialization Flow:
  * 1. Module loads → placeholder launcher created
- * 2. initializeIntegrations() called synchronously
+ * 2. PlatformProvider mounts → calls initializeIntegrations(adapter)
  * 3. Seed file loaded and validated
- * 4. Launcher template generated from seed
+ * 4. Launcher template generated from seed with platform-aware URL resolution
  * 5. Placeholder replaced with seed-generated launcher
  * 6. TemplateStoreProvider reads registry (gets final launcher)
  */
@@ -27,8 +27,8 @@ import type { TemplateSchema } from '@we/schema-renderer/shared';
 /**
  * Placeholder launcher shown during initialization
  * 
- * This is immediately replaced by the seed-generated launcher before
- * the template store reads the registry. Users should never see this.
+ * This is replaced by the seed-generated launcher when PlatformProvider
+ * calls initializeIntegrations(). Users may briefly see this on first load.
  */
 const placeholderLauncher: TemplateSchema = {
   meta: { name: 'Loading...', description: 'Initializing launcher', icon: 'rocket-launch' },
@@ -53,7 +53,7 @@ export const templateRegistry = {
   twitter: twitterTemplateSchema,
   test: testTemplateSchema,
   aiSample: aiSampleTemplateSchema,
-  launcher: placeholderLauncher, // Replaced by seed system during initialization
+  launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
 };
 
 export type TemplateId = keyof typeof templateRegistry;
@@ -62,7 +62,3 @@ export function isValidTemplateId(key: unknown): key is TemplateId {
   return typeof key === 'string' && key in templateRegistry;
 }
 
-// Initialize seed system (replaces placeholder launcher with seed-generated launcher)
-// Must run synchronously at module load time, before TemplateStoreProvider reads registry
-import { initializeIntegrations } from '../initializeIntegrations';
-initializeIntegrations();

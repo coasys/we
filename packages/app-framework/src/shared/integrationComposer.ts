@@ -17,6 +17,7 @@
 
 import type { TemplateSchema } from '@we/schema-renderer/shared';
 import type { WeSeedFile } from '../types/seed';
+import type { PlatformAdapter } from './platform/types';
 
 /**
  * Generate a launcher template from a seed file
@@ -25,19 +26,23 @@ import type { WeSeedFile } from '../types/seed';
  * Returns a complete template schema ready to be registered and rendered.
  * 
  * @param seed - Validated WE seed file
+ * @param platformAdapter - Platform adapter for URL resolution
  * @returns Template schema for the launcher
  * @throws Error if seed contains zero apps
  */
-export function generateLauncherFromSeed(seed: WeSeedFile): TemplateSchema {
+export function generateLauncherFromSeed(
+  seed: WeSeedFile,
+  platformAdapter: PlatformAdapter
+): TemplateSchema {
   if (seed.apps.length === 0) {
     throw new Error('Seed file must contain at least one app');
   }
 
   if (seed.apps.length === 1) {
-    return generateSingleAppLauncher(seed);
+    return generateSingleAppLauncher(seed, platformAdapter);
   }
 
-  return generateMultiAppLauncher(seed);
+  return generateMultiAppLauncher(seed, platformAdapter);
 }
 
 /**
@@ -47,12 +52,16 @@ export function generateLauncherFromSeed(seed: WeSeedFile): TemplateSchema {
  * No navigation UI is generated - the app occupies 100% of the viewport.
  * 
  * @param seed - WE seed file containing exactly one app
+ * @param platformAdapter - Platform adapter for URL resolution
  * @returns Template schema with full-screen iframe
  */
-function generateSingleAppLauncher(seed: WeSeedFile): TemplateSchema {
+function generateSingleAppLauncher(
+  seed: WeSeedFile,
+  platformAdapter: PlatformAdapter
+): TemplateSchema {
   const app = seed.apps[0];
-  const devUrl = `http://${app.paths.devServer?.host || 'localhost'}:${app.paths.devServer?.port || 3000}`;
-  const prodUrl = app.paths.dist;
+  const devUrl = platformAdapter.resolveAppUrl(app, true);
+  const prodUrl = platformAdapter.resolveAppUrl(app, false);
 
   return {
     meta: {
@@ -96,9 +105,13 @@ function generateSingleAppLauncher(seed: WeSeedFile): TemplateSchema {
  * navigated to via sidebar buttons.
  * 
  * @param seed - WE seed file containing 2+ apps
+ * @param platformAdapter - Platform adapter for URL resolution
  * @returns Template schema with sidebar navigation
  */
-function generateMultiAppLauncher(seed: WeSeedFile): TemplateSchema {
+function generateMultiAppLauncher(
+  seed: WeSeedFile,
+  platformAdapter: PlatformAdapter
+): TemplateSchema {
   return {
     meta: {
       name: `${seed.project.name} Launcher`,
@@ -137,8 +150,8 @@ function generateMultiAppLauncher(seed: WeSeedFile): TemplateSchema {
       },
     ],
     routes: seed.apps.map((app) => {
-      const devUrl = `http://${app.paths.devServer?.host || 'localhost'}:${app.paths.devServer?.port || 3000}`;
-      const prodUrl = app.paths.dist;
+      const devUrl = platformAdapter.resolveAppUrl(app, true);
+      const prodUrl = platformAdapter.resolveAppUrl(app, false);
 
       return {
         path: app.route,

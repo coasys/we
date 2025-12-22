@@ -7,6 +7,7 @@ import { homedir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
+import { setupSeedServers } from './seed-servers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -115,9 +116,18 @@ async function startExecutor() {
         'true', // Enable holochain connection
       ],
       {
-        stdio: 'inherit',
+        stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout/stderr instead of inherit
       },
     );
+
+    // Forward executor output to console (prevents EPIPE errors)
+    executorProcess.stdout?.on('data', (data) => {
+      process.stdout.write(data);
+    });
+
+    executorProcess.stderr?.on('data', (data) => {
+      process.stderr.write(data);
+    });
 
     executorProcess.on('error', (err) => {
       console.error('Failed to start executor:', err);
@@ -141,92 +151,17 @@ async function startExecutor() {
 
 // Start HTTP servers to serve bundled apps (production only)
 function startAppServer() {
-  // Path to bundled launcher app (WE)
+  console.log('🚀 Starting application servers...\n');
+
+  // Setup seed-based app servers (Flux, Playground, etc.)
+  setupSeedServers();
+
+  // Setup launcher (WE app itself) on port 9080
   const launcherDir = app.isPackaged ? join(process.resourcesPath, 'app', 'dist') : join(__dirname, '..', 'dist');
 
-  // Path to bundled Flux app
-  const fluxDir = app.isPackaged
-    ? join(process.resourcesPath, 'flux')
-    : join(__dirname, '..', '..', '..', '..', 'flux', 'app', 'dist');
-
-  // Serve Flux on port 8080
-  if (existsSync(fluxDir)) {
-    console.log('Starting Flux HTTP server on http://localhost:8080');
-    console.log('Serving from:', fluxDir);
-
-    const fluxApp = express();
-
-    // Inject polyfill script into Flux HTML
-    fluxApp.get('/', async (req, res) => {
-      const fs = await import('fs/promises');
-      const htmlPath = join(fluxDir, 'index.html');
-      let html = await fs.readFile(htmlPath, 'utf-8');
-
-      // Inject screen share polyfill before closing head tag
-      const polyfillScript = `
-        <script>
-          (function() {
-            // In iframe, access parent's window.electron (requires webSecurity: false)
-            const electronAPI = window.parent?.electron || window.electron;
-            
-            if (electronAPI && electronAPI.getDesktopSources) {
-              navigator.mediaDevices.getDisplayMedia = async function(constraints) {
-                try {
-                  const sources = await electronAPI.getDesktopSources();
-                  if (!sources || sources.length === 0) {
-                    throw new Error('No screen sources available');
-                  }
-                  const primaryScreen = sources.find(s => s.id.startsWith('screen')) || sources[0];
-                  return navigator.mediaDevices.getUserMedia({
-                    audio: false,
-                    video: {
-                      mandatory: {
-                        chromeMediaSource: 'desktop',
-                        chromeMediaSourceId: primaryScreen.id,
-                      }
-                    }
-                  });
-                } catch (error) {
-                  console.error('Screen share error:', error);
-                  throw error;
-                }
-              };
-            }
-          })();
-        </script>
-      `;
-
-      html = html.replace('</head>', polyfillScript + '</head>');
-      res.setHeader('Content-Type', 'text/html');
-      res.removeHeader('X-Frame-Options');
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.send(html);
-    });
-
-    fluxApp.use(
-      express.static(fluxDir, {
-        setHeaders: (res) => {
-          res.removeHeader('X-Frame-Options');
-          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        },
-      }),
-    );
-
-    fluxApp.use((req, res) => {
-      res.sendFile(join(fluxDir, 'index.html'));
-    });
-
-    fluxApp.listen(8080, () => {
-      console.log('Flux server listening on port 8080');
-    });
-  } else {
-    console.warn('Flux directory not found at:', fluxDir);
-  }
-
-  // Serve launcher on port 9080
   if (existsSync(launcherDir)) {
-    console.log('Starting launcher HTTP server on http://localhost:9080');
-    console.log('Serving from:', launcherDir);
+    console.log('📦 Starting WE launcher server on http://localhost:9080');
+    console.log('   Serving from:', launcherDir);
 
     const launcherApp = express();
 
@@ -243,10 +178,10 @@ function startAppServer() {
     });
 
     launcherApp.listen(9080, () => {
-      console.log('Launcher server listening on port 9080');
+      console.log('   ✓ WE launcher listening on port 9080\n');
     });
   } else {
-    console.warn('Launcher directory not found at:', launcherDir);
+    console.warn('⚠️  WE launcher directory not found at:', launcherDir);
   }
 }
 

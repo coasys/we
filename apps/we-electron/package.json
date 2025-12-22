@@ -12,11 +12,13 @@
   "scripts": {
     "postinstall": "cd ../../node_modules/.pnpm/electron@*/node_modules/electron 2>/dev/null && node install.js || true",
     "dev": "vite",
+    "prebuild:steps": "node scripts/generate-seed-config.cjs",
     "build:steps": "vite build",
     "build": "we-build",
     "serve": "vite preview",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:3002 && VITE_DEV_SERVER_URL=http://localhost:3002 electron electron/main.js\"",
-    "electron:build": "vite build && electron-builder"
+    "preelectron:build": "node scripts/generate-seed-config.cjs",
+    "electron:build": "vite build && electron-builder --config electron-builder.config.js"
   },
   "main": "electron/main.js",
   "dependencies": {
@@ -40,49 +42,5 @@
     "vite": "^6.0.0",
     "vite-plugin-solid": "^2.11.6",
     "wait-on": "^8.0.1"
-  },
-  "build": {
-    "appId": "io.weco.electron",
-    "productName": "WE",
-    "directories": {
-      "output": "dist-electron"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "dist",
-        "to": "app/dist",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "../../../flux/app/dist",
-        "to": "flux",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "../../../ad4m/target/release/ad4m-executor",
-        "to": "ad4m-executor"
-      }
-    ],
-    "mac": {
-      "category": "public.app-category.social-networking"
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ]
-    },
-    "win": {
-      "target": [
-        "nsis"
-      ]
-    }
   }
 }
