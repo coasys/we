@@ -49,7 +49,7 @@ function generateSingleAppLauncher(seed: WeSeedFile): TemplateSchema {
     children: [{ type: '$routes' }],
     routes: [
       {
-        path: app.route,
+        path: '/',  // Single app always loads at root
         type: 'we-iframe',
         props: {
           src: {
