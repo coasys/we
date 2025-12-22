@@ -1,5 +1,5 @@
 {
-  "name": "@we/electron",
+  "name": "@we/app-electron",
   "version": "0.1.0",
   "description": "WE - Decentralized social launcher (Electron)",
   "homepage": "https://github.com/jhweir/we",
