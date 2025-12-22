@@ -5,16 +5,7 @@
     "description": "Testing multi-app integration with Flux and React playground",
     "author": "James Weir"
   },
-  "host": {
-    "theme": {
-      "colors": {
-        "primary": "#667eea",
-        "secondary": "#764ba2",
-        "background": "#ffffff",
-        "text": "#1a202c"
-      }
-    }
-  },
+
   "ad4m": {
     "dataPath": "~/.we-multi-app",
     "executorPath": "../ad4m/target/release/ad4m-executor",

@@ -5,6 +5,8 @@
  * that can be used to embed their apps into WE launchers.
  */
 
+import type { SchemaNode } from '@we/schema-renderer/shared';
+
 export interface WeSeedFile {
   /** Project metadata */
   project: {
@@ -29,12 +31,15 @@ export interface WeSeedFile {
       colors?: Record<string, string>;
       fonts?: Record<string, string>;
     };
-    /** Custom boot screen (future) */
-    bootScreen?: any;
-    /** Custom settings panel (future) */
-    settings?: any;
-    /** Custom layout (future) */
-    layout?: any;
+    /** Launcher UI customization */
+    ui?: {
+      /** Custom boot screen schema (replaces default) */
+      bootScreen?: SchemaNode;
+      /** Custom app settings schema (replaces default) */
+      appSettings?: SchemaNode;
+      /** Enable/disable template switching in settings */
+      enableTemplateSwitching?: boolean;
+    };
   };
 
   /** AD4M-specific configuration */
