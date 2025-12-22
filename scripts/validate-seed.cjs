@@ -83,7 +83,8 @@ function main() {
   if (!seed.apps || !Array.isArray(seed.apps)) {
     error('Missing or invalid field: apps (must be array)');
   } else if (seed.apps.length === 0) {
-    error('No apps defined in seed file');
+    info('No apps defined - native WE app mode (template switching enabled)');
+    success('Apps array is valid (empty for native mode)');
   } else {
     success(`Found ${seed.apps.length} app(s)`);
   }

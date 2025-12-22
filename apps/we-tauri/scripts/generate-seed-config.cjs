@@ -18,9 +18,12 @@ const path = require('path');
 const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
 const SEED_FILE = path.join(WORKSPACE_ROOT, 'we-seed.json');
 const OUTPUT_DIR = path.join(__dirname, '../src-tauri/src/generated');
+const SRC_GENERATED_DIR = path.join(__dirname, '../src/generated');
 const TAURI_CONF_FILE = path.join(__dirname, '../src-tauri/tauri.conf.json');
 const CARGO_TOML_TEMPLATE = path.join(__dirname, '../src-tauri/Cargo.toml.template');
 const CARGO_TOML_OUTPUT = path.join(__dirname, '../src-tauri/Cargo.toml');
+const PORT_MAP_FILE = path.join(OUTPUT_DIR, 'seed-port-map.json');
+const PORT_MAP_FILE_WEB = path.join(SRC_GENERATED_DIR, 'seed-port-map.json');
 
 function main() {
   console.log('🔧 Generating Tauri seed configuration...\n');
@@ -34,8 +37,48 @@ function main() {
   const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
   
   if (!seed.apps || seed.apps.length === 0) {
-    console.error('❌ Seed file must contain at least one app');
-    process.exit(1);
+    console.log('ℹ️  No apps defined - native WE app mode (no embedded apps)');
+    console.log('✅ No Tauri configuration needed for native mode\n');
+    
+    // Generate minimal Cargo.toml for native mode
+    if (fs.existsSync(CARGO_TOML_TEMPLATE) && seed.ad4m?.repoPath) {
+      const template = fs.readFileSync(CARGO_TOML_TEMPLATE, 'utf8');
+      
+      const absoluteAd4mPath = path.isAbsolute(seed.ad4m.repoPath)
+        ? seed.ad4m.repoPath
+        : path.resolve(WORKSPACE_ROOT, seed.ad4m.repoPath);
+      
+      const SRC_TAURI_DIR = path.join(__dirname, '..', 'src-tauri');
+      const relativeAd4mPath = path.relative(SRC_TAURI_DIR, absoluteAd4mPath);
+      
+      // Replace template placeholders
+      const ad4mClientPath = path.join(relativeAd4mPath, 'rust-client');
+      const ad4mExecutorPath = path.join(relativeAd4mPath, 'rust-executor');
+      
+      const cargoToml = template
+        .replace(/\{\{AD4M_CLIENT_PATH\}\}/g, ad4mClientPath)
+        .replace(/\{\{AD4M_EXECUTOR_PATH\}\}/g, ad4mExecutorPath);
+      
+      fs.writeFileSync(CARGO_TOML_OUTPUT, cargoToml);
+      console.log(`✅ Cargo.toml generated from template`);
+      console.log(`   AD4M client: ${ad4mClientPath}`);
+      console.log(`   AD4M executor: ${ad4mExecutorPath}`);
+    }
+    
+    // Ensure output directories exist
+    if (!fs.existsSync(OUTPUT_DIR)) {
+      fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(SRC_GENERATED_DIR)) {
+      fs.mkdirSync(SRC_GENERATED_DIR, { recursive: true });
+    }
+    
+    // Create empty config files so build doesn't fail
+    fs.writeFileSync(PORT_MAP_FILE, JSON.stringify({}, null, 2));
+    fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify({}, null, 2));
+    
+    console.log('✅ Minimal configuration files generated');
+    return;
   }
 
   console.log(`📦 Found ${seed.apps.length} apps in seed file:`);
@@ -98,7 +141,6 @@ function main() {
   }
 
   // Write port map JSON (both in src-tauri/generated and src/generated for Vite access)
-  const PORT_MAP_FILE = path.join(OUTPUT_DIR, 'seed-port-map.json');
   fs.writeFileSync(
     PORT_MAP_FILE,
     JSON.stringify(portMap, null, 2),
@@ -107,17 +149,15 @@ function main() {
   console.log(`✅ Port map written to: ${path.relative(process.cwd(), PORT_MAP_FILE)}`);
   
   // Also write to src/generated for Vite/frontend access
-  const SRC_GENERATED_DIR = path.join(__dirname, '../src/generated');
   if (!fs.existsSync(SRC_GENERATED_DIR)) {
     fs.mkdirSync(SRC_GENERATED_DIR, { recursive: true });
   }
-  const SRC_PORT_MAP_FILE = path.join(SRC_GENERATED_DIR, 'seed-port-map.json');
   fs.writeFileSync(
-    SRC_PORT_MAP_FILE,
+    PORT_MAP_FILE_WEB,
     JSON.stringify(portMap, null, 2),
     'utf8'
   );
-  console.log(`✅ Port map (frontend) written to: ${path.relative(process.cwd(), SRC_PORT_MAP_FILE)}`);
+  console.log(`✅ Port map (frontend) written to: ${path.relative(process.cwd(), PORT_MAP_FILE_WEB)}`);
 
   // Write bundle resources JSON
   const BUNDLE_RESOURCES_FILE = path.join(OUTPUT_DIR, 'seed-bundle-resources.json');

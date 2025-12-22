@@ -22,20 +22,23 @@ import type { PlatformAdapter } from './platform/types';
 /**
  * Generate a launcher template from a seed file
  * 
- * Automatically detects single vs multi-app mode based on apps array length.
+ * Automatically detects mode based on apps array length:
+ * - Zero apps: Native WE app (no embedded apps, template switching enabled)
+ * - One app: Single embedded app in full-screen
+ * - Multiple apps: Multi-app launcher with sidebar navigation
+ * 
  * Returns a complete template schema ready to be registered and rendered.
  * 
  * @param seed - Validated WE seed file
  * @param platformAdapter - Platform adapter for URL resolution
  * @returns Template schema for the launcher
- * @throws Error if seed contains zero apps
  */
 export function generateLauncherFromSeed(
   seed: WeSeedFile,
   platformAdapter: PlatformAdapter
 ): TemplateSchema {
   if (seed.apps.length === 0) {
-    throw new Error('Seed file must contain at least one app');
+    return generateNativeLauncher(seed);
   }
 
   if (seed.apps.length === 1) {
@@ -43,6 +46,30 @@ export function generateLauncherFromSeed(
   }
 
   return generateMultiAppLauncher(seed, platformAdapter);
+}
+
+/**
+ * Generate launcher for native WE app (no embedded apps)
+ * 
+ * Creates a minimal Column layout with routes outlet.
+ * No embedded app iframes - the WE design system templates are rendered directly.
+ * Template switching is enabled by default for native mode.
+ * 
+ * @param seed - WE seed file with zero apps
+ * @returns Minimal template schema for native WE app
+ */
+function generateNativeLauncher(seed: WeSeedFile): TemplateSchema {
+  return {
+    meta: {
+      name: `${seed.project.name} Launcher`,
+      description: seed.project.description || `Native WE application: ${seed.project.name}`,
+      icon: 'rocket-launch',
+    },
+    type: 'Column',
+    props: { width: '100%', height: '100%' },
+    children: [{ type: '$routes' }],
+    routes: [],  // Templates will be rendered via template switching
+  };
 }
 
 /**
@@ -224,8 +251,14 @@ export function validateSeedForLauncher(seed: WeSeedFile): {
 } {
   const errors: string[] = [];
 
-  if (!seed.apps || seed.apps.length === 0) {
-    errors.push('Seed file must contain at least one app');
+  if (!seed.apps || !Array.isArray(seed.apps)) {
+    errors.push('Seed file must have an apps array');
+    return { valid: false, errors };
+  }
+
+  // Zero apps is valid for native WE app mode
+  if (seed.apps.length === 0) {
+    return { valid: true, errors: [] };
   }
 
   seed.apps.forEach((app, index) => {

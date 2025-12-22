@@ -33,8 +33,15 @@ function main() {
   const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
   
   if (!seed.apps || seed.apps.length === 0) {
-    console.error('❌ Seed file must contain at least one app');
-    process.exit(1);
+    console.log('ℹ️  No apps defined - native WE app mode (no embedded apps)');
+    console.log('✅ No Electron configuration needed for native mode\n');
+    
+    // Create empty config files so build doesn't fail
+    fs.writeFileSync(PORT_MAP_FILE, JSON.stringify({}, null, 2));
+    fs.writeFileSync(EXTRA_RESOURCES_FILE, JSON.stringify({ extraResources: [] }, null, 2));
+    
+    console.log('✅ Empty configuration files generated');
+    return;
   }
 
   console.log(`📦 Found ${seed.apps.length} apps in seed file:`);

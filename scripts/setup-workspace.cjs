@@ -98,8 +98,10 @@ async function main() {
 
   // Validate seed structure
   if (!seed.apps || seed.apps.length === 0) {
-    log('❌ Seed file must contain at least one app', 'red');
-    process.exit(1);
+    log('ℹ️  No apps defined - native WE app mode', 'blue');
+    log('   Template switching will be enabled', 'blue');
+  } else {
+    log(`✅ Found ${seed.apps.length} app(s) in seed file`, 'green');
   }
 
   if (!seed.ad4m || !seed.ad4m.executorPath) {
@@ -114,7 +116,7 @@ async function main() {
 
   log(`✅ Found ${seed.apps.length} apps in seed file`, 'green');
 
-  // Step 4: Check external dependencies
+  // Step 4: Check dependencies (external only)
   log('\n🔍 Checking external dependencies...', 'cyan');
 
   let allDepsReady = true;
@@ -161,10 +163,7 @@ async function main() {
 
   // Step 5: Build internal WE packages
   log('\n🏗️  Building internal WE packages...', 'cyan');
-  log('This will build packages in dependency order:', 'blue');
-  log('  1. @we/app-framework', 'blue');
-  log('  2. @we/cli', 'blue');
-  log('  3. Apps (we-web, we-electron, we-tauri)', 'blue');
+  log('Building all packages to ensure everything is up to date...', 'blue');
   
   try {
     exec('pnpm -r build');
