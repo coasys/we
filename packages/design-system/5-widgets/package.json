@@ -28,26 +28,30 @@
     "dist"
   ],
   "peerDependencies": {
-    "@we/elements": "^1.0.0",
-    "@we/components": "^0.1.0",
     "@coasys/ad4m": "0.11.0",
+    "@we/components": "^0.1.0",
+    "@we/elements": "^1.0.0",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
-    "@we/tokens": "workspace:*",
-    "@we/elements": "workspace:*",
     "@we/components": "workspace:*",
+    "@we/elements": "workspace:*",
     "@we/models": "workspace:*",
+    "@we/tokens": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
     "sass": "^1.92.1",
     "solid-js": "^1.9.5",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "vite-plugin-cesium": "^1.2.23"
   },
   "publishConfig": {
     "access": "public"
   },
   "sideEffects": [
     "*.css"
-  ]
+  ],
+  "dependencies": {
+    "cesium": "^1.136.0"
+  }
 }

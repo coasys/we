@@ -93,47 +93,48 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
       props: {
         width: '100%',
         height: '100%',
-        p: '2rem',
       },
       children: [
-        {
-          type: 'we-text',
-          props: {
-            text: 'Globe View',
-            size: '2xl',
-            weight: 'bold',
-            mb: '1rem',
-          },
-        },
-        {
-          type: 'we-text',
-          props: {
-            text: 'Cesium globe integration coming soon...',
-            size: 'lg',
-            color: 'ui-600',
-          },
-        },
-        // Placeholder for globe - we'll add Cesium integration next
+        // Header section
         {
           type: 'Column',
           props: {
             width: '100%',
-            height: '100%',
-            bg: 'ui-100',
-            borderRadius: 'md',
-            align: 'center',
-            justify: 'center',
-            mt: '2rem',
+            p: '2rem',
+            gap: '0.5rem',
+            bg: 'ui-0',
+            borderBottom: '1px solid',
+            borderColor: 'ui-200',
           },
           children: [
             {
               type: 'we-text',
               props: {
-                text: '🌍',
-                size: '4xl',
+                text: 'Globe View',
+                size: '2xl',
+                weight: 'bold',
+              },
+            },
+            {
+              type: 'we-text',
+              props: {
+                text: 'User locations around the world',
+                size: 'lg',
+                color: 'ui-600',
               },
             },
           ],
+        },
+        // Globe takes remaining space
+        {
+          type: 'CesiumGlobe',
+          props: {
+            width: '100%',
+            height: 'calc(100vh - 200px)', // Full height minus header and padding
+            locations: {
+              $store: 'spaceStore.space.userLocations',
+            },
+          },
         },
       ],
     },

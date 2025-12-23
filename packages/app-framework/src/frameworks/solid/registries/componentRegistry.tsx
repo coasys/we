@@ -2,7 +2,7 @@ import { CircleButton, Column, IconLabelButton, PopoverMenu, PostCard, RerenderL
 import { HomePage, PageNotFound, SpacePage } from '@we/pages/solid';
 import type { ComponentRegistry } from '@we/schema-renderer/solid';
 import { CenteredTemplate, DefaultTemplate } from '@we/templates/solid';
-import { CreateSpaceModalWidget, SpaceSidebarWidget } from '@we/widgets/solid';
+import { CesiumGlobe, CreateSpaceModalWidget, SpaceSidebarWidget } from '@we/widgets/solid';
 
 export const componentRegistry: ComponentRegistry = {
   // @we/elements
@@ -27,6 +27,7 @@ export const componentRegistry: ComponentRegistry = {
   // @we/widgets
   CreateSpaceModalWidget,
   SpaceSidebarWidget,
+  CesiumGlobe,
 
   // @we/pages
   PageNotFound,

@@ -3,3 +3,7 @@ export { CreateSpaceModalWidget, type CreateSpaceModalWidgetProps } from './widg
 
 // Sidebars
 export { SpaceSidebarWidget, type SpaceSidebarWidgetProps } from './widgets/sidebars/SpaceSidebarWidget';
+
+// Cesium
+export { CesiumGlobe } from './widgets/cesium/CesiumGlobe';
+export type { CesiumGlobeProps, UserLocation } from './widgets/cesium/types';
