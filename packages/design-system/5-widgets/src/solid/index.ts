@@ -5,5 +5,4 @@ export { CreateSpaceModalWidget, type CreateSpaceModalWidgetProps } from './widg
 export { SpaceSidebarWidget, type SpaceSidebarWidgetProps } from './widgets/sidebars/SpaceSidebarWidget';
 
 // Cesium
-export { CesiumGlobe } from './widgets/cesium/CesiumGlobe';
-export type { CesiumGlobeProps, UserLocation } from './widgets/cesium/types';
+export { CesiumGlobe, type CesiumGlobeProps } from './widgets/cesium/CesiumGlobe';

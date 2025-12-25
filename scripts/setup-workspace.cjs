@@ -2,12 +2,12 @@
 
 /**
  * WE Workspace Setup Script
- * 
+ *
  * This script prepares the entire WE workspace for development or production builds.
  * It validates configuration, checks dependencies, builds packages, and generates
  * platform-specific configurations.
- * 
- * Usage: pnpm setup
+ *
+ * Usage: pnpm setup-workspace
  */
 
 const { execSync } = require('child_process');
@@ -37,7 +37,7 @@ function exec(command, options = {}) {
     return execSync(command, {
       cwd: WORKSPACE_ROOT,
       stdio: 'inherit',
-      ...options
+      ...options,
     });
   } catch (error) {
     log(`❌ Command failed: ${command}`, 'red');
@@ -80,7 +80,7 @@ async function main() {
 
   // Step 3: Validate seed file
   log('\n📋 Validating seed configuration...', 'cyan');
-  
+
   if (!fs.existsSync(SEED_FILE)) {
     log(`❌ Seed file not found: ${SEED_FILE}`, 'red');
     log('   Please create we-seed.json in the workspace root', 'yellow');
@@ -138,9 +138,7 @@ async function main() {
 
   // Check each app's dist folder
   for (const app of seed.apps) {
-    const distPath = path.isAbsolute(app.paths.dist)
-      ? app.paths.dist
-      : path.resolve(WORKSPACE_ROOT, app.paths.dist);
+    const distPath = path.isAbsolute(app.paths.dist) ? app.paths.dist : path.resolve(WORKSPACE_ROOT, app.paths.dist);
 
     if (checkFileExists(distPath, `${app.name} dist folder`)) {
       // Count files in dist
@@ -157,14 +155,14 @@ async function main() {
     log('\n⚠️  Some external dependencies are missing', 'yellow');
     log('Build them first, then run pnpm setup again', 'yellow');
     log('Or continue anyway if you only need web development', 'yellow');
-    
+
     // Don't exit - let them continue for web-only dev
   }
 
   // Step 5: Build internal WE packages
   log('\n🏗️  Building internal WE packages...', 'cyan');
   log('Building all packages to ensure everything is up to date...', 'blue');
-  
+
   try {
     exec('pnpm -r build');
     log('✅ All internal packages built successfully', 'green');
