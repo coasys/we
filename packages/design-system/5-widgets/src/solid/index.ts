@@ -5,4 +5,13 @@ export { CreateSpaceModalWidget, type CreateSpaceModalWidgetProps } from './widg
 export { SpaceSidebarWidget, type SpaceSidebarWidgetProps } from './widgets/sidebars/SpaceSidebarWidget';
 
 // Cesium
-export { CesiumGlobe, type CesiumGlobeProps } from './widgets/cesium/CesiumGlobe';
+export { CesiumGlobe, type CesiumGlobeProps, layerFactoryRegistry } from './widgets/cesium/CesiumGlobe';
+export type {
+  CesiumLayer,
+  LayerFactory,
+  LayerConfig,
+  LayerContext,
+  LayerEventBus,
+  LayerStore,
+  CameraState,
+} from './widgets/cesium/types';

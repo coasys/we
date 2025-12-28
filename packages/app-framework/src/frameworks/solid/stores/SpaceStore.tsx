@@ -14,12 +14,17 @@ export interface SpaceStore {
   posts: Accessor<Post[]>;
   loading: Accessor<boolean>;
 
+  // Layer visibility
+  showCountryOutlines: Accessor<boolean>;
+  showH3Hexagons: Accessor<boolean>;
+
   // Setters
   setSpaceId: (id: string) => void;
 
   // Actions
   getSpace: () => Promise<void>;
   getPosts: (perspective: PerspectiveProxy) => Promise<void>;
+  toggleLayer: (layerName: string) => void;
 }
 
 // Hardcoded user locations for development
@@ -58,6 +63,22 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [space, setSpace] = createSignal<Partial<Space>>(defaultSpace);
   const [posts, setPosts] = createSignal<Post[]>([]);
   const [loading, setLoading] = createSignal(true);
+
+  // Layer visibility state
+  const [showCountryOutlines, setShowCountryOutlines] = createSignal(true);
+  const [showH3Hexagons, setShowH3Hexagons] = createSignal(false);
+
+  // Toggle layer visibility
+  function toggleLayer(layerName: string) {
+    switch (layerName) {
+      case 'countryOutlines':
+        setShowCountryOutlines(!showCountryOutlines());
+        break;
+      case 'h3Hexagons':
+        setShowH3Hexagons(!showH3Hexagons());
+        break;
+    }
+  }
 
   // Actions
   async function getSpace(): Promise<void> {
@@ -164,12 +185,17 @@ export function SpaceStoreProvider(props: ParentProps) {
     posts,
     loading,
 
+    // Layer visibility
+    showCountryOutlines,
+    showH3Hexagons,
+
     // Setters
     setSpaceId,
 
     // Actions
     getSpace,
     getPosts,
+    toggleLayer,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

@@ -1,6 +1,6 @@
 /**
  * WE Native App Template
- * 
+ *
  * A native WE application with sidebar navigation and multiple views.
  * Built entirely from WE design system components - no embedded apps.
  */
@@ -108,12 +108,53 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
           },
           children: [
             {
-              type: 'we-text',
+              type: 'Row',
               props: {
-                text: 'Globe View',
-                size: '2xl',
-                weight: 'bold',
+                width: '100%',
+                justify: 'space-between',
+                align: 'center',
               },
+              children: [
+                {
+                  type: 'we-text',
+                  props: {
+                    text: 'Globe View',
+                    size: '2xl',
+                    weight: 'bold',
+                  },
+                },
+                // Layer controls with PopoverToggleMenu
+                {
+                  type: 'PopoverToggleMenu',
+                  props: {
+                    triggerLabel: 'Layers',
+                    triggerIcon: 'layers',
+                    items: [
+                      {
+                        id: 'user-locations',
+                        label: 'User Locations',
+                        icon: 'mapPin',
+                        checked: true,
+                        disabled: true,
+                      },
+                      {
+                        id: 'countries',
+                        label: 'Country Outlines',
+                        icon: 'globe',
+                        checked: { $store: 'spaceStore.showCountryOutlines' },
+                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['countryOutlines'] },
+                      },
+                      {
+                        id: 'h3',
+                        label: 'H3 Hexagons',
+                        icon: 'grid',
+                        checked: { $store: 'spaceStore.showH3Hexagons' },
+                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['h3Hexagons'] },
+                      },
+                    ],
+                  },
+                },
+              ],
             },
             {
               type: 'we-text',
@@ -131,9 +172,48 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
           props: {
             width: '100%',
             height: 'calc(100vh - 200px)', // Full height minus header and padding
-            locations: {
-              $store: 'spaceStore.space.userLocations',
-            },
+            layers: [
+              {
+                factory: 'userLocationsLayer',
+                options: {
+                  locations: {
+                    $store: 'spaceStore.space.userLocations',
+                  },
+                  markerSize: 15,
+                  defaultColor: '#00ffff',
+                  onLocationClick: {
+                    $action: 'console.log',
+                    args: ['Location clicked:'],
+                  },
+                },
+              },
+              {
+                factory: 'countryOutlinesLayer',
+                enabled: {
+                  $store: 'spaceStore.showCountryOutlines',
+                },
+                options: {
+                  color: '#ffffff',
+                  opacity: 0.5,
+                  width: 2,
+                },
+              },
+              {
+                factory: 'h3HexagonsLayer',
+                enabled: {
+                  $store: 'spaceStore.showH3Hexagons',
+                },
+                options: {
+                  resolution: 0,
+                  color: '#00ff00',
+                  opacity: 0.3,
+                  onHexagonClick: {
+                    $action: 'console.log',
+                    args: ['Hexagon clicked:'],
+                  },
+                },
+              },
+            ],
           },
         },
       ],

@@ -1,0 +1,44 @@
+{
+  "name": "@we/cesium-layers",
+  "version": "0.1.0",
+  "description": "Modular layer system for Cesium globe - user locations, country outlines, H3 hexagons",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "cesium",
+    "globe",
+    "layers",
+    "h3",
+    "geospatial",
+    "3d",
+    "maps"
+  ],
+  "dependencies": {
+    "h3-js": "^4.1.0"
+  },
+  "peerDependencies": {
+    "cesium": "^1.136.0",
+    "@we/widgets": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/cesium": "^1.70.0",
+    "typescript": "^5.3.3"
+  }
+}

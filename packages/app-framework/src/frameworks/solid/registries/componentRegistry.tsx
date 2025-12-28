@@ -1,8 +1,23 @@
-import { CircleButton, Column, IconLabelButton, PopoverMenu, PostCard, RerenderLog, Row } from '@we/components/solid';
+import {
+  CircleButton,
+  Column,
+  IconLabelButton,
+  PopoverMenu,
+  PopoverToggleMenu,
+  PostCard,
+  RerenderLog,
+  Row,
+} from '@we/components/solid';
 import { HomePage, PageNotFound, SpacePage } from '@we/pages/solid';
 import type { ComponentRegistry } from '@we/schema-renderer/solid';
 import { CenteredTemplate, DefaultTemplate } from '@we/templates/solid';
-import { CesiumGlobe, CreateSpaceModalWidget, SpaceSidebarWidget } from '@we/widgets/solid';
+import { CesiumGlobe, CreateSpaceModalWidget, SpaceSidebarWidget, layerFactoryRegistry } from '@we/widgets/solid';
+import { userLocationsLayer, countryOutlinesLayer, h3HexagonsLayer } from '@we/cesium-layers';
+
+// Populate the layer factory registry
+layerFactoryRegistry['userLocationsLayer'] = userLocationsLayer;
+layerFactoryRegistry['countryOutlinesLayer'] = countryOutlinesLayer;
+layerFactoryRegistry['h3HexagonsLayer'] = h3HexagonsLayer;
 
 export const componentRegistry: ComponentRegistry = {
   // @we/elements
@@ -22,6 +37,7 @@ export const componentRegistry: ComponentRegistry = {
   CircleButton,
   IconLabelButton,
   PopoverMenu,
+  PopoverToggleMenu,
   PostCard,
 
   // @we/widgets

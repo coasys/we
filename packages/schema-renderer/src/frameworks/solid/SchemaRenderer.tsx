@@ -119,7 +119,13 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   const isWebComponent = node.type?.startsWith('we-');
   const reactiveAttrs = createMemo(() => {
     const attrs: Record<string, unknown> = {};
-    const { safeProps } = split();
+    const { safeProps, complexProps } = split();
+
+    // For Solid components, include complex props directly
+    if (!isWebComponent) {
+      Object.assign(attrs, complexProps);
+    }
+
     for (const [k, v] of Object.entries(safeProps)) {
       const isSignal = typeof v === 'function' && v.name.includes('readSignal');
       // Unwrap signal accessors for web components
@@ -130,9 +136,9 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     return attrs;
   });
 
-  // Handle complex props with reactivity
+  // Handle complex props with reactivity (web components only)
   createEffect(() => {
-    if (!hostRef) return;
+    if (!hostRef || !isWebComponent) return;
     const { complexProps } = split();
     for (const [k, v] of Object.entries(complexProps)) {
       // Unwrap signal accessors for web components

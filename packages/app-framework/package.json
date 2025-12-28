@@ -4,15 +4,15 @@
   "description": "",
   "license": "MIT",
   "type": "module",
-  "bin": {
-    "we-seed": "./dist/seed/cli.js"
-  },
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage"
+  },
+  "bin": {
+    "we-seed": "./dist/seed/cli.js"
   },
   "exports": {
     "./shared": {
@@ -34,6 +34,7 @@
     }
   },
   "dependencies": {
+    "@we/cesium-layers": "workspace:*",
     "@we/components": "workspace:*",
     "@we/design-system-types": "workspace:*",
     "@we/elements": "workspace:*",
