@@ -76,7 +76,16 @@ export default function TemplateProvider() {
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
   const routeStore = useRouteStore();
-  const stores = { adamStore, spaceStore, modalStore, themeStore, templateStore, routeStore };
+
+  // Console store for debugging actions in schema
+  const consoleStore = {
+    log: (...args: unknown[]) => console.log(...args),
+    warn: (...args: unknown[]) => console.warn(...args),
+    error: (...args: unknown[]) => console.error(...args),
+    info: (...args: unknown[]) => console.info(...args),
+  };
+
+  const stores = { adamStore, spaceStore, modalStore, themeStore, templateStore, routeStore, consoleStore };
 
   // Get the current template schema and build its routes
   const templateSchema = templateStore.currentTemplate;
