@@ -126,6 +126,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
   let events: SimpleEventBus | undefined;
   let store: SimpleStore | undefined;
   let cleanupFunctions: Map<string, Array<() => void>> | undefined;
+  let updateResolution: (() => void) | undefined;
 
   const [viewerReady, setViewerReady] = createSignal(false);
 
@@ -155,6 +156,17 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         navigationHelpButton: false,
       });
 
+      // Set high resolution for crisp rendering on high-DPI displays
+      viewer.resolutionScale = window.devicePixelRatio;
+
+      // Update resolution scale when window resizes or device pixel ratio changes
+      updateResolution = () => {
+        if (viewer) {
+          viewer.resolutionScale = window.devicePixelRatio;
+        }
+      };
+      window.addEventListener('resize', updateResolution);
+
       // Set initial camera (global view)
       viewer.camera.setView({
         destination: Cartesian3.fromDegrees(0, 20, 20000000),
@@ -169,6 +181,16 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
       // Signal that viewer is ready (triggers layer effect)
       setViewerReady(true);
     });
+  });
+
+  // Cleanup on unmount
+  onCleanup(() => {
+    if (updateResolution) {
+      window.removeEventListener('resize', updateResolution);
+    }
+    if (viewer) {
+      viewer.destroy();
+    }
   });
 
   // Reactive layer mounting/unmounting
