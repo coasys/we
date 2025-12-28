@@ -5,7 +5,7 @@
  * Uses CDN for all Cesium assets (no local bundling required).
  */
 
-import { Cartesian3, Color, Ion, Viewer } from 'cesium';
+import { Cartesian3, Ion, Viewer } from 'cesium';
 import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 
 import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from './types';
@@ -13,18 +13,7 @@ import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore 
 // Layer factory registry - populated by importing packages
 export const layerFactoryRegistry: Record<string, LayerFactory> = {};
 
-// Legacy types (for backward compatibility)
-interface UserLocation {
-  id: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-  color?: string;
-}
-
 export interface CesiumGlobeProps {
-  /** @deprecated Use layers prop instead */
-  locations?: UserLocation[] | string | (() => UserLocation[] | string);
   /**
    * Cesium Ion access token. Get one free at https://ion.cesium.com/
    * If not provided, uses Cesium's default demo token (limited quota)
@@ -145,20 +134,6 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     Ion.defaultAccessToken = props.ionAccessToken;
   }
 
-  // Legacy location parsing (for backward compatibility)
-  const getLocations = (): UserLocation[] => {
-    if (!props.locations) return [];
-    const locs = typeof props.locations === 'function' ? props.locations() : props.locations;
-    if (typeof locs === 'string') {
-      try {
-        return JSON.parse(locs);
-      } catch {
-        return [];
-      }
-    }
-    return Array.isArray(locs) ? locs : [];
-  };
-
   onMount(() => {
     if (!containerRef) return;
 
@@ -193,32 +168,6 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
 
       // Signal that viewer is ready (triggers layer effect)
       setViewerReady(true);
-
-      // Legacy location markers (for backward compatibility)
-      if (props.locations) {
-        const locations = getLocations();
-        locations.forEach((loc) => {
-          viewer?.entities.add({
-            position: Cartesian3.fromDegrees(loc.longitude, loc.latitude),
-            point: {
-              pixelSize: 15,
-              color: loc.color ? Color.fromCssColorString(loc.color) : Color.CYAN,
-              outlineColor: Color.WHITE,
-              outlineWidth: 2,
-            },
-            label: {
-              text: loc.name,
-              font: '14px sans-serif',
-              fillColor: Color.WHITE,
-              outlineColor: Color.BLACK,
-              outlineWidth: 2,
-              style: 0, // FILL_AND_OUTLINE
-              pixelOffset: new Cartesian3(0, 20, 0),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          });
-        });
-      }
     });
   });
 
