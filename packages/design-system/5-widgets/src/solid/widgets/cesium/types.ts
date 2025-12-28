@@ -23,21 +23,21 @@ export interface CameraState {
  */
 export interface LayerEventBus {
   /** Emit an event to all listeners */
-  emit(event: string, ...args: any[]): void;
+  emit(event: string, ...args: unknown[]): void;
   /** Listen to an event */
-  on(event: string, handler: (...args: any[]) => void): void;
+  on(event: string, handler: (...args: unknown[]) => void): void;
   /** Remove event listener */
-  off(event: string, handler: (...args: any[]) => void): void;
+  off(event: string, handler: (...args: unknown[]) => void): void;
   /** Listen to an event once */
-  once(event: string, handler: (...args: any[]) => void): void;
+  once(event: string, handler: (...args: unknown[]) => void): void;
 }
 
 /**
  * Shared key-value store for layer state
  */
 export interface LayerStore {
-  get<T = any>(key: string): T | undefined;
-  set<T = any>(key: string, value: T): void;
+  get<T = unknown>(key: string): T | undefined;
+  set<T = unknown>(key: string, value: T): void;
   has(key: string): boolean;
   delete(key: string): boolean;
   clear(): void;
@@ -46,7 +46,7 @@ export interface LayerStore {
 /**
  * Context provided to each layer during its lifecycle
  */
-export interface LayerContext<TOptions = any> {
+export interface LayerContext<TOptions = unknown> {
   /** The Cesium viewer instance */
   viewer: Viewer;
   /** Event bus for communication between layers and app */
@@ -58,13 +58,13 @@ export interface LayerContext<TOptions = any> {
   /** Register cleanup function to be called when layer unmounts */
   onCleanup: (cleanup: () => void) => void;
   /** Get another layer's API by name */
-  getLayer: <T = any>(name: string) => T | undefined;
+  getLayer: <T = unknown>(name: string) => T | undefined;
 }
 
 /**
  * Core layer protocol interface
  */
-export interface CesiumLayer<TOptions = any> {
+export interface CesiumLayer<TOptions = unknown> {
   /** Unique layer name */
   name: string;
 
@@ -84,18 +84,18 @@ export interface CesiumLayer<TOptions = any> {
   onCameraChange?: (context: LayerContext<TOptions>, camera: CameraState) => void;
 
   /** Optional API exposed to other layers */
-  api?: any;
+  api?: unknown;
 }
 
 /**
  * Factory function type for creating layer instances
  */
-export type LayerFactory<TOptions = any> = (options?: TOptions) => CesiumLayer<TOptions>;
+export type LayerFactory<TOptions = unknown> = (options?: TOptions) => CesiumLayer<TOptions>;
 
 /**
  * Layer configuration that can be passed to CesiumGlobe
  */
-export interface LayerConfig<TOptions = any> {
+export interface LayerConfig<TOptions = unknown> {
   /** Layer factory function or string name (resolved via registry) */
   factory: LayerFactory<TOptions> | string;
   /** Layer options */

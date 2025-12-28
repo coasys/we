@@ -5,16 +5,17 @@
  * Uses CDN for all Cesium assets (no local bundling required).
  */
 
-import { Viewer, Cartesian3, Ion, Cartographic, Math as CesiumMath, Color } from 'cesium';
-import { onMount, onCleanup, type Accessor } from 'solid-js';
+import { Cartesian3, Color, Ion, Math as CesiumMath, Viewer } from 'cesium';
+import { onCleanup, onMount } from 'solid-js';
+
 import type {
+  CameraState,
   CesiumLayer,
   LayerConfig,
   LayerContext,
   LayerEventBus,
-  LayerStore,
-  CameraState,
   LayerFactory,
+  LayerStore,
 } from './types';
 
 // Layer factory registry - populated by importing packages
@@ -42,7 +43,8 @@ export interface CesiumGlobeProps {
 }
 
 // Configure Cesium CDN
-(window as any).CESIUM_BASE_URL = 'https://cdn.jsdelivr.net/npm/cesium@1.136.0/Build/Cesium/';
+(window as Window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL =
+  'https://cdn.jsdelivr.net/npm/cesium@1.136.0/Build/Cesium/';
 
 // Load Cesium CSS
 if (typeof document !== 'undefined' && !document.querySelector('link[href*="cesium"]')) {
@@ -56,31 +58,31 @@ if (typeof document !== 'undefined' && !document.querySelector('link[href*="cesi
  * Simple event bus implementation
  */
 class SimpleEventBus implements LayerEventBus {
-  private emitter = new Map<string, Set<(...args: any[]) => void>>();
+  private emitter = new Map<string, Set<(...args: unknown[]) => void>>();
 
-  emit(event: string, ...args: any[]): void {
+  emit(event: string, ...args: unknown[]): void {
     const handlers = this.emitter.get(event);
     if (handlers) {
       handlers.forEach((handler) => handler(...args));
     }
   }
 
-  on(event: string, handler: (...args: any[]) => void): void {
+  on(event: string, handler: (...args: unknown[]) => void): void {
     if (!this.emitter.has(event)) {
       this.emitter.set(event, new Set());
     }
     this.emitter.get(event)!.add(handler);
   }
 
-  off(event: string, handler: (...args: any[]) => void): void {
+  off(event: string, handler: (...args: unknown[]) => void): void {
     const handlers = this.emitter.get(event);
     if (handlers) {
       handlers.delete(handler);
     }
   }
 
-  once(event: string, handler: (...args: any[]) => void): void {
-    const onceHandler = (...args: any[]) => {
+  once(event: string, handler: (...args: unknown[]) => void): void {
+    const onceHandler = (...args: unknown[]) => {
       handler(...args);
       this.off(event, onceHandler);
     };
@@ -92,13 +94,13 @@ class SimpleEventBus implements LayerEventBus {
  * Simple store implementation
  */
 class SimpleStore implements LayerStore {
-  private store = new Map<string, any>();
+  private store = new Map<string, unknown>();
 
-  get<T = any>(key: string): T | undefined {
-    return this.store.get(key);
+  get<T = unknown>(key: string): T | undefined {
+    return this.store.get(key) as T | undefined;
   }
 
-  set<T = any>(key: string, value: T): void {
+  set<T = unknown>(key: string, value: T): void {
     this.store.set(key, value);
   }
 
@@ -219,7 +221,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
       // Initialize layer system
       const events = new SimpleEventBus();
       const store = new SimpleStore();
-      const layerApis = new Map<string, any>();
+      const layerApis = new Map<string, unknown>();
       const cleanupFunctions = new Map<string, Array<() => void>>();
 
       // Mount layers
@@ -248,7 +250,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
               return factory({}).name === layer.name;
             })?.options,
             onCleanup: (fn) => cleanups.push(fn),
-            getLayer: (name) => layerApis.get(name),
+            getLayer: (name) => layerApis.get(name) as never,
           };
 
           // Execute onMount
@@ -294,7 +296,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
                   return factory({}).name === layer.name;
                 })?.options,
                 onCleanup: (fn) => cleanupFunctions.get(layer.name)?.push(fn) || [],
-                getLayer: (name) => layerApis.get(name),
+                getLayer: (name) => layerApis.get(name) as never,
               };
               layer.onCameraChange(context, cameraState);
             }
@@ -317,7 +319,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
                   return factory({}).name === layer.name;
                 })?.options,
                 onCleanup: () => {}, // No-op for unmount
-                getLayer: (name) => layerApis.get(name),
+                getLayer: (name) => layerApis.get(name) as never,
               };
               layer.onUnmount?.(context);
             } catch (err) {
@@ -371,5 +373,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
 
   onCleanup(() => viewer?.destroy());
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%', 'min-height': '400px' }} />;
+  return (
+    <div ref={containerRef} style={{ width: '100%', height: '100%', 'min-width': '200px', 'min-height': '200px' }} />
+  );
 }
