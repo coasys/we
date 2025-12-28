@@ -1,4 +1,5 @@
-import { Cartesian3, Color, ScreenSpaceEventHandler, ScreenSpaceEventType, defined } from 'cesium';
+import { Cartesian3, Color, defined, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
+
 import type { LayerFactory } from './types';
 
 export interface UserLocation {
@@ -10,7 +11,7 @@ export interface UserLocation {
 }
 
 export interface UserLocationsOptions {
-  locations: UserLocation[];
+  locations: UserLocation[] | string | (() => UserLocation[] | string);
   /** Marker size in pixels */
   markerSize?: number;
   /** Default marker color if not specified per location */
@@ -32,10 +33,26 @@ export const userLocationsLayer: LayerFactory<UserLocationsOptions> = (options?:
     const { viewer, events, onCleanup } = context;
     const { locations = [], markerSize = 15, defaultColor = '#00ffff', onLocationClick } = options || {};
 
+    // Resolve the locations value - could be a signal accessor, string, or array
+    let locationsValue = typeof locations === 'function' ? locations() : locations;
+
+    // Parse locations if it's a JSON string
+    let parsedLocations: UserLocation[] = [];
+    if (typeof locationsValue === 'string') {
+      try {
+        parsedLocations = JSON.parse(locationsValue);
+      } catch (error) {
+        console.error('[user-locations] Failed to parse locations JSON:', error);
+        return;
+      }
+    } else if (Array.isArray(locationsValue)) {
+      parsedLocations = locationsValue;
+    }
+
     const entityIds: string[] = [];
 
     // Add location markers
-    locations.forEach((loc: UserLocation) => {
+    parsedLocations.forEach((loc: UserLocation) => {
       const entity = viewer.entities.add({
         id: `user-location-${loc.id}`,
         position: Cartesian3.fromDegrees(loc.longitude, loc.latitude),
