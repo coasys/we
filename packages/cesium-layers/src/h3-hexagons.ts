@@ -16,7 +16,7 @@ import {
 } from 'cesium';
 import { cellToBoundary, getHexagonEdgeLengthAvg, gridDisk, latLngToCell } from 'h3-js';
 
-import type { LayerFactory } from './types';
+import type { LayerContext, LayerFactory } from './types';
 
 // H3 Helper Functions
 function hexToDegreesArray(h3Index: string): number[] {
@@ -76,7 +76,7 @@ export interface H3HexagonsOptions {
 export const h3HexagonsLayer: LayerFactory<H3HexagonsOptions> = (options?: H3HexagonsOptions) => ({
   name: 'h3-hexagons',
 
-  onMount: (context: any) => {
+  onMount: (context: LayerContext) => {
     const { viewer, events, onCleanup } = context;
     const {
       maxResolution = 8,
@@ -203,18 +203,10 @@ export const h3HexagonsLayer: LayerFactory<H3HexagonsOptions> = (options?: H3Hex
     let isDragging = false;
 
     function animate() {
-      let cLat = 0,
-        cLng = 0;
-      if (lastPointer) {
-        const pick = viewer.camera.pickEllipsoid(new Cartesian2(lastPointer.x, lastPointer.y));
-        if (pick) {
-          const carto = Cartographic.fromCartesian(pick);
-          cLat = (carto.latitude * 180) / Math.PI;
-          cLng = (carto.longitude * 180) / Math.PI;
-        }
-      }
-
       const cam = Cartographic.fromCartesian(viewer.camera.position);
+      const cLat = (cam.latitude * 180) / Math.PI;
+      const cLng = (cam.longitude * 180) / Math.PI;
+
       const fov2 = (viewer.camera.frustum as PerspectiveFrustum | undefined)?.fov ?? Math.PI / 3;
       const radius = viewRadiusMeters(cam.height, fov2, viewer.canvas.clientWidth / viewer.canvas.clientHeight);
       const plan = computeRenderPlan(metrics, radius, 6);
@@ -272,9 +264,19 @@ export const h3HexagonsLayer: LayerFactory<H3HexagonsOptions> = (options?: H3Hex
         const carto = Cartographic.fromCartesian(pick);
         const primary = plan.reduce((best, cur) => (cur.alpha > best.alpha ? cur : best), plan[0]).res;
         const h3idx = latLngToCell((carto.latitude * 180) / Math.PI, (carto.longitude * 180) / Math.PI, primary);
-        selectedCell = `${primary}-${h3idx}`;
-        hoverCellId = selectedCell;
-        hoverTargetAlpha = 0.65;
+        const cellId = `${primary}-${h3idx}`;
+
+        // Toggle selection - if clicking the same hexagon, deselect it
+        if (selectedCell === cellId) {
+          selectedCell = null;
+          hoverCellId = null;
+          hoverTargetAlpha = 0;
+        } else {
+          selectedCell = cellId;
+          hoverCellId = cellId;
+          hoverTargetAlpha = 0.65;
+        }
+
         events.emit('hexagon-clicked', h3idx);
         onHexagonClick?.(h3idx);
       }
