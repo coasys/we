@@ -15,6 +15,7 @@ export interface SpaceStore {
   loading: Accessor<boolean>;
 
   // Layer visibility
+  showUserLocations: Accessor<boolean>;
   showCountryOutlines: Accessor<boolean>;
   showH3Hexagons: Accessor<boolean>;
 
@@ -65,12 +66,16 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [loading, setLoading] = createSignal(true);
 
   // Layer visibility state
-  const [showCountryOutlines, setShowCountryOutlines] = createSignal(true);
+  const [showUserLocations, setShowUserLocations] = createSignal(false);
+  const [showCountryOutlines, setShowCountryOutlines] = createSignal(false);
   const [showH3Hexagons, setShowH3Hexagons] = createSignal(false);
 
   // Toggle layer visibility
   function toggleLayer(layerName: string) {
     switch (layerName) {
+      case 'userLocations':
+        setShowUserLocations(!showUserLocations());
+        break;
       case 'countryOutlines':
         setShowCountryOutlines(!showCountryOutlines());
         break;
@@ -186,6 +191,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     loading,
 
     // Layer visibility
+    showUserLocations,
     showCountryOutlines,
     showH3Hexagons,
 

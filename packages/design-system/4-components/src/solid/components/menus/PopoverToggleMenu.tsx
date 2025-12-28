@@ -38,12 +38,6 @@ export interface PopoverToggleMenuProps {
 export function PopoverToggleMenu(props: PopoverToggleMenuProps) {
   let popoverRef: HTMLElement | undefined;
 
-  // Debug logging
-  console.log('PopoverToggleMenu props:', props);
-  console.log('PopoverToggleMenu items:', props.items);
-  console.log('PopoverToggleMenu items length:', props.items?.length);
-  console.log('PopoverToggleMenu items type:', typeof props.items, Array.isArray(props.items));
-
   const handleToggle = (item: PopoverToggleMenuItem) => {
     if (item.disabled) return;
     item.onToggle?.();

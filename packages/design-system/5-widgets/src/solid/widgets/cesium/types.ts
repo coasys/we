@@ -57,8 +57,6 @@ export interface LayerContext<TOptions = unknown> {
   options?: TOptions;
   /** Register cleanup function to be called when layer unmounts */
   onCleanup: (cleanup: () => void) => void;
-  /** Get another layer's API by name */
-  getLayer: <T = unknown>(name: string) => T | undefined;
 }
 
 /**

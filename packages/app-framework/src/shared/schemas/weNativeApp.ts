@@ -51,7 +51,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             variant: 'ghost',
             justify: 'flex-start',
           },
-          children: ['Globe'],
+          children: [{ type: 'we-icon', props: { name: 'globe', size: 'sm', mr: '0.5rem' } }, 'Globe'],
         },
         {
           type: 'we-button',
@@ -61,7 +61,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             variant: 'ghost',
             justify: 'flex-start',
           },
-          children: ['Chat'],
+          children: [{ type: 'we-icon', props: { name: 'chat', size: 'sm', mr: '0.5rem' } }, 'Chat'],
         },
         {
           type: 'we-button',
@@ -71,7 +71,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             variant: 'ghost',
             justify: 'flex-start',
           },
-          children: ['Profile'],
+          children: [{ type: 'we-icon', props: { name: 'user', size: 'sm', mr: '0.5rem' } }, 'Profile'],
         },
       ],
     },
@@ -128,26 +128,26 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                   type: 'PopoverToggleMenu',
                   props: {
                     triggerLabel: 'Layers',
-                    triggerIcon: 'layers',
+                    triggerIcon: 'stack',
                     items: [
                       {
                         id: 'user-locations',
                         label: 'User Locations',
-                        icon: 'mapPin',
-                        checked: true,
-                        disabled: true,
+                        icon: 'map-pin',
+                        checked: { $store: 'spaceStore.showUserLocations' },
+                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['userLocations'] },
                       },
                       {
                         id: 'countries',
                         label: 'Country Outlines',
-                        icon: 'globe',
+                        icon: 'flag',
                         checked: { $store: 'spaceStore.showCountryOutlines' },
                         onToggle: { $action: 'spaceStore.toggleLayer', args: ['countryOutlines'] },
                       },
                       {
                         id: 'h3',
                         label: 'H3 Hexagons',
-                        icon: 'grid',
+                        icon: 'hexagon',
                         checked: { $store: 'spaceStore.showH3Hexagons' },
                         onToggle: { $action: 'spaceStore.toggleLayer', args: ['h3Hexagons'] },
                       },
@@ -175,6 +175,9 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             layers: [
               {
                 factory: 'userLocationsLayer',
+                enabled: {
+                  $store: 'spaceStore.showUserLocations',
+                },
                 options: {
                   locations: {
                     $store: 'spaceStore.space.userLocations',

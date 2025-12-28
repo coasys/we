@@ -1,3 +1,4 @@
+import { countryOutlinesLayer, h3HexagonsLayer, userLocationsLayer } from '@we/cesium-layers';
 import {
   CircleButton,
   Column,
@@ -11,8 +12,7 @@ import {
 import { HomePage, PageNotFound, SpacePage } from '@we/pages/solid';
 import type { ComponentRegistry } from '@we/schema-renderer/solid';
 import { CenteredTemplate, DefaultTemplate } from '@we/templates/solid';
-import { CesiumGlobe, CreateSpaceModalWidget, SpaceSidebarWidget, layerFactoryRegistry } from '@we/widgets/solid';
-import { userLocationsLayer, countryOutlinesLayer, h3HexagonsLayer } from '@we/cesium-layers';
+import { CesiumGlobe, CreateSpaceModalWidget, layerFactoryRegistry, SpaceSidebarWidget } from '@we/widgets/solid';
 
 // Populate the layer factory registry
 layerFactoryRegistry['userLocationsLayer'] = userLocationsLayer;

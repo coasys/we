@@ -5,18 +5,10 @@
  * Uses CDN for all Cesium assets (no local bundling required).
  */
 
-import { Cartesian3, Color, Ion, Math as CesiumMath, Viewer } from 'cesium';
-import { onCleanup, onMount } from 'solid-js';
+import { Cartesian3, Color, Ion, Viewer } from 'cesium';
+import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 
-import type {
-  CameraState,
-  CesiumLayer,
-  LayerConfig,
-  LayerContext,
-  LayerEventBus,
-  LayerFactory,
-  LayerStore,
-} from './types';
+import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from './types';
 
 // Layer factory registry - populated by importing packages
 export const layerFactoryRegistry: Record<string, LayerFactory> = {};
@@ -118,42 +110,6 @@ class SimpleStore implements LayerStore {
 }
 
 /**
- * Topologically sort layers by dependencies
- */
-function sortLayersByDependencies(layers: CesiumLayer[]): CesiumLayer[] {
-  const sorted: CesiumLayer[] = [];
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
-  const layerMap = new Map(layers.map((l) => [l.name, l]));
-
-  function visit(layer: CesiumLayer) {
-    if (visited.has(layer.name)) return;
-    if (visiting.has(layer.name)) {
-      throw new Error(`Circular dependency detected: ${layer.name}`);
-    }
-
-    visiting.add(layer.name);
-
-    if (layer.dependencies) {
-      for (const dep of layer.dependencies) {
-        const depLayer = layerMap.get(dep);
-        if (!depLayer) {
-          throw new Error(`Layer ${layer.name} depends on ${dep} which is not loaded`);
-        }
-        visit(depLayer);
-      }
-    }
-
-    visiting.delete(layer.name);
-    visited.add(layer.name);
-    sorted.push(layer);
-  }
-
-  layers.forEach(visit);
-  return sorted;
-}
-
-/**
  * Resolve layer factory - handles both function and string references
  */
 function resolveLayerFactory(factory: LayerFactory | string): LayerFactory {
@@ -169,9 +125,20 @@ function resolveLayerFactory(factory: LayerFactory | string): LayerFactory {
   return factory;
 }
 
+// Extend Viewer type to store our layer tracking
+interface ViewerWithLayers extends Viewer {
+  _weMountedLayers?: Map<string, { config: LayerConfig; instance: CesiumLayer }>;
+  _weLayerEffectRunning?: boolean;
+}
+
 export function CesiumGlobe(props: CesiumGlobeProps) {
   let containerRef: HTMLDivElement | undefined;
-  let viewer: Viewer | undefined;
+  let viewer: ViewerWithLayers | undefined;
+  let events: SimpleEventBus | undefined;
+  let store: SimpleStore | undefined;
+  let cleanupFunctions: Map<string, Array<() => void>> | undefined;
+
+  const [viewerReady, setViewerReady] = createSignal(false);
 
   // Set Ion token if provided
   if (props.ionAccessToken) {
@@ -219,129 +186,13 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
       });
 
       // Initialize layer system
-      const events = new SimpleEventBus();
-      const store = new SimpleStore();
-      const layerApis = new Map<string, unknown>();
-      const cleanupFunctions = new Map<string, Array<() => void>>();
+      events = new SimpleEventBus();
+      store = new SimpleStore();
+      cleanupFunctions = new Map<string, Array<() => void>>();
+      viewer._weMountedLayers = new Map<string, { config: LayerConfig; instance: CesiumLayer }>();
 
-      // Mount layers
-      if (props.layers && props.layers.length > 0) {
-        const layerInstances = props.layers
-          .filter((config) => config.enabled !== false)
-          .map((config) => {
-            const factory = resolveLayerFactory(config.factory);
-            return factory(config.options);
-          });
-
-        // Sort by dependencies
-        const sortedLayers = sortLayersByDependencies(layerInstances);
-
-        // Mount each layer
-        sortedLayers.forEach((layer) => {
-          const cleanups: Array<() => void> = [];
-          cleanupFunctions.set(layer.name, cleanups);
-
-          const context: LayerContext = {
-            viewer: viewer!,
-            events,
-            store,
-            options: props.layers?.find((c) => {
-              const factory = resolveLayerFactory(c.factory);
-              return factory({}).name === layer.name;
-            })?.options,
-            onCleanup: (fn) => cleanups.push(fn),
-            getLayer: (name) => layerApis.get(name) as never,
-          };
-
-          // Execute onMount
-          try {
-            const result = layer.onMount?.(context);
-            if (result instanceof Promise) {
-              result.catch((err) => console.error(`Error mounting layer ${layer.name}:`, err));
-            }
-
-            // Store API if provided
-            if (layer.api) {
-              layerApis.set(layer.name, layer.api);
-            }
-          } catch (err) {
-            console.error(`Error mounting layer ${layer.name}:`, err);
-          }
-        });
-
-        // Set up camera change listener
-        const cameraChangedHandler = () => {
-          if (!viewer) return;
-
-          const cameraPosition = viewer.camera.positionCartographic;
-          const cameraState: CameraState = {
-            position: {
-              longitude: CesiumMath.toDegrees(cameraPosition.longitude),
-              latitude: CesiumMath.toDegrees(cameraPosition.latitude),
-              height: cameraPosition.height,
-            },
-            heading: viewer.camera.heading,
-            pitch: viewer.camera.pitch,
-            roll: viewer.camera.roll,
-          };
-
-          sortedLayers.forEach((layer) => {
-            if (layer.onCameraChange) {
-              const context: LayerContext = {
-                viewer: viewer!,
-                events,
-                store,
-                options: props.layers?.find((c) => {
-                  const factory = resolveLayerFactory(c.factory);
-                  return factory({}).name === layer.name;
-                })?.options,
-                onCleanup: (fn) => cleanupFunctions.get(layer.name)?.push(fn) || [],
-                getLayer: (name) => layerApis.get(name) as never,
-              };
-              layer.onCameraChange(context, cameraState);
-            }
-          });
-        };
-
-        viewer.camera.changed.addEventListener(cameraChangedHandler);
-
-        // Cleanup function for layers
-        onCleanup(() => {
-          sortedLayers.reverse().forEach((layer) => {
-            // Call onUnmount
-            try {
-              const context: LayerContext = {
-                viewer: viewer!,
-                events,
-                store,
-                options: props.layers?.find((c) => {
-                  const factory = resolveLayerFactory(c.factory);
-                  return factory({}).name === layer.name;
-                })?.options,
-                onCleanup: () => {}, // No-op for unmount
-                getLayer: (name) => layerApis.get(name) as never,
-              };
-              layer.onUnmount?.(context);
-            } catch (err) {
-              console.error(`Error unmounting layer ${layer.name}:`, err);
-            }
-
-            // Call cleanup functions
-            const cleanups = cleanupFunctions.get(layer.name);
-            if (cleanups) {
-              cleanups.forEach((fn) => {
-                try {
-                  fn();
-                } catch (err) {
-                  console.error(`Error in cleanup for layer ${layer.name}:`, err);
-                }
-              });
-            }
-          });
-
-          viewer?.camera.changed.removeEventListener(cameraChangedHandler);
-        });
-      }
+      // Signal that viewer is ready (triggers layer effect)
+      setViewerReady(true);
 
       // Legacy location markers (for backward compatibility)
       if (props.locations) {
@@ -369,6 +220,83 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         });
       }
     });
+  });
+
+  // Reactive layer mounting/unmounting
+  createEffect(() => {
+    // Track viewer readiness signal
+    if (!viewerReady()) {
+      return;
+    }
+
+    if (!viewer || !events || !store || !cleanupFunctions || !viewer._weMountedLayers) {
+      return;
+    }
+
+    const currentLayers = props.layers || [];
+    const mountedLayers = viewer._weMountedLayers;
+
+    // Get enabled layers (tracking reactive dependencies)
+    const enabledLayers = currentLayers.filter((config) => {
+      const enabled = config.enabled;
+      return typeof enabled === 'function' ? (enabled as () => boolean)() !== false : enabled !== false;
+    });
+
+    const enabledFactoryNames = new Set(enabledLayers.map((c) => String(c.factory)));
+
+    // Unmount layers no longer enabled
+    for (const factoryName of Array.from(mountedLayers.keys())) {
+      if (!enabledFactoryNames.has(factoryName)) {
+        // Call cleanup functions
+        const cleanups = cleanupFunctions!.get(factoryName);
+        if (cleanups) {
+          cleanups.forEach((fn) => {
+            try {
+              fn();
+            } catch (err) {
+              console.error(`Error cleaning up layer:`, err);
+            }
+          });
+          cleanupFunctions.delete(factoryName);
+        }
+
+        mountedLayers.delete(factoryName);
+      }
+    }
+
+    // Mount new layers
+    for (const config of enabledLayers) {
+      const factoryName = String(config.factory);
+
+      if (mountedLayers.has(factoryName)) {
+        continue;
+      }
+
+      const factory = resolveLayerFactory(config.factory);
+      const instance = factory(config.options);
+      const cleanups: Array<() => void> = [];
+
+      mountedLayers.set(factoryName, { config, instance });
+      cleanupFunctions!.set(factoryName, cleanups);
+
+      try {
+        const result = instance.onMount?.({
+          viewer: viewer!,
+          events: events!,
+          store: store!,
+          options: config.options,
+          onCleanup: (fn) => cleanups.push(fn),
+        });
+
+        if (result instanceof Promise) {
+          result.catch((err) => console.error(`Error mounting layer:`, err));
+        }
+      } catch (err) {
+        console.error(`Error mounting layer:`, err);
+        mountedLayers.delete(factoryName);
+        cleanupFunctions.delete(factoryName);
+      }
+    }
   });
 
   onCleanup(() => viewer?.destroy());
