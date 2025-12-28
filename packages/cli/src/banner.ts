@@ -17,10 +17,8 @@ export async function printBuildBanner(pkg: { name: string; version: string }) {
   // Inject ANSI codes after padding calculation to preserve alignment
   const displayContent = paddedContent.replace(name, `${bold}${name}${reset}${green}`);
 
-  // Print the banner
-  console.log(
-    `${green}╔${'═'.repeat(boxWidth)}╗
-║${displayContent}║
-╚${'═'.repeat(boxWidth)}╝${reset}`,
-  );
+  // Print the banner with color reset at the end of each line
+  console.log(`${green}╔${'═'.repeat(boxWidth)}╗${reset}`);
+  console.log(`${green}║${displayContent}║${reset}`);
+  console.log(`${green}╚${'═'.repeat(boxWidth)}╝${reset}`);
 }
