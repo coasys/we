@@ -11,7 +11,8 @@ import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from './types';
 
 // Layer factory registry - populated by importing packages
-export const layerFactoryRegistry: Record<string, LayerFactory> = {};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {};
 
 export interface CesiumGlobeProps {
   /**

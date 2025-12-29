@@ -60,11 +60,26 @@ export interface LayerContext<TOptions = unknown> {
 }
 
 /**
+ * Metadata about layer requirements and capabilities
+ */
+export interface LayerMetadata {
+  /** Whether this layer requires a Cesium Ion account */
+  requiresIonAccount?: boolean;
+  /** Specific Ion asset IDs required by this layer */
+  requiresIonAssets?: number[];
+  /** Human-readable description of the layer */
+  description?: string;
+}
+
+/**
  * Core layer protocol interface
  */
 export interface CesiumLayer<TOptions = unknown> {
   /** Unique layer name */
   name: string;
+
+  /** Metadata about layer requirements and capabilities */
+  metadata?: LayerMetadata;
 
   /** Optional dependencies (layer names that must be loaded first) */
   dependencies?: string[];

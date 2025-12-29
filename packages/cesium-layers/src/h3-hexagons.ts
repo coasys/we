@@ -76,6 +76,11 @@ export interface H3HexagonsOptions {
 export const h3HexagonsLayer: LayerFactory<H3HexagonsOptions> = (options?: H3HexagonsOptions) => ({
   name: 'h3-hexagons',
 
+  metadata: {
+    requiresIonAccount: false,
+    description: 'H3 hexagonal grid with fractal zoom, hover effects, and click interactions.',
+  },
+
   onMount: (context: LayerContext) => {
     const { viewer, events, onCleanup } = context;
     const {

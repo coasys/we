@@ -10,5 +10,6 @@ export type {
   LayerContext,
   LayerEventBus,
   LayerStore,
+  LayerMetadata,
   CameraState,
 } from '@we/widgets/solid';

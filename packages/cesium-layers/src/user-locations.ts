@@ -29,6 +29,11 @@ export interface UserLocationsOptions {
 export const userLocationsLayer: LayerFactory<UserLocationsOptions> = (options?: UserLocationsOptions) => ({
   name: 'user-locations',
 
+  metadata: {
+    requiresIonAccount: false,
+    description: 'Display user location markers with labels and click interactions.',
+  },
+
   onMount: (context: LayerContext) => {
     const { viewer, events, onCleanup } = context;
     const { locations = [], markerSize = 15, defaultColor = '#00ffff', onLocationClick } = options || {};

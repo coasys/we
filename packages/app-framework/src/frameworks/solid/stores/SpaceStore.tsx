@@ -140,7 +140,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   // Temp fix for adam returning empty arrays instead of undefined
-  function cleanBlockData(block: any): any {
+  function cleanBlockData(block: Record<string, unknown>): Record<string, unknown> {
     const stringProps = [
       'display',
       'direction',

@@ -24,6 +24,11 @@ export interface CountryOutlinesOptions {
 export const countryOutlinesLayer: LayerFactory<CountryOutlinesOptions> = (options?: CountryOutlinesOptions) => ({
   name: 'country-outlines',
 
+  metadata: {
+    requiresIonAccount: false,
+    description: 'Country boundaries from Natural Earth 50m data. Good balance of detail and performance.',
+  },
+
   onMount: async (context: LayerContext) => {
     const { viewer, events, onCleanup } = context;
     const {
