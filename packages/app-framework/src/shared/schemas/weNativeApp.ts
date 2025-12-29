@@ -123,36 +123,69 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                     weight: 'bold',
                   },
                 },
-                // Layer controls with PopoverToggleMenu
+                // Controls row
                 {
-                  type: 'PopoverToggleMenu',
+                  type: 'Row',
                   props: {
-                    triggerLabel: 'Layers',
-                    triggerIcon: 'stack',
-                    items: [
-                      {
-                        id: 'user-locations',
-                        label: 'User Locations',
-                        icon: 'map-pin',
-                        checked: { $store: 'spaceStore.showUserLocations' },
-                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['userLocations'] },
-                      },
-                      {
-                        id: 'countries',
-                        label: 'Country Outlines',
-                        icon: 'flag',
-                        checked: { $store: 'spaceStore.showCountryOutlines' },
-                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['countryOutlines'] },
-                      },
-                      {
-                        id: 'h3',
-                        label: 'H3 Hexagons',
-                        icon: 'hexagon',
-                        checked: { $store: 'spaceStore.showH3Hexagons' },
-                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['h3Hexagons'] },
-                      },
-                    ],
+                    gap: '0.5rem',
                   },
+                  children: [
+                    // Background controls
+                    {
+                      type: 'PopoverToggleMenu',
+                      props: {
+                        triggerLabel: 'Background',
+                        triggerIcon: 'selection-background',
+                        items: [
+                          {
+                            id: 'skybox',
+                            label: 'Skybox',
+                            icon: 'image',
+                            checked: { $store: 'spaceStore.showSkybox' },
+                            onToggle: { $action: 'spaceStore.toggleBackground', args: ['skybox'] },
+                          },
+                          {
+                            id: 'stars',
+                            label: 'Procedural Stars',
+                            icon: 'star',
+                            checked: { $store: 'spaceStore.showStars' },
+                            onToggle: { $action: 'spaceStore.toggleBackground', args: ['stars'] },
+                          },
+                        ],
+                      },
+                    },
+                    // Layer controls
+                    {
+                      type: 'PopoverToggleMenu',
+                      props: {
+                        triggerLabel: 'Layers',
+                        triggerIcon: 'stack',
+                        items: [
+                          {
+                            id: 'user-locations',
+                            label: 'User Locations',
+                            icon: 'map-pin',
+                            checked: { $store: 'spaceStore.showUserLocations' },
+                            onToggle: { $action: 'spaceStore.toggleLayer', args: ['userLocations'] },
+                          },
+                          {
+                            id: 'countries',
+                            label: 'Country Outlines',
+                            icon: 'flag',
+                            checked: { $store: 'spaceStore.showCountryOutlines' },
+                            onToggle: { $action: 'spaceStore.toggleLayer', args: ['countryOutlines'] },
+                          },
+                          {
+                            id: 'h3',
+                            label: 'H3 Hexagons',
+                            icon: 'hexagon',
+                            checked: { $store: 'spaceStore.showH3Hexagons' },
+                            onToggle: { $action: 'spaceStore.toggleLayer', args: ['h3Hexagons'] },
+                          },
+                        ],
+                      },
+                    },
+                  ],
                 },
               ],
             },
@@ -172,16 +205,37 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
           props: {
             width: '100%',
             height: 'calc(100vh - 200px)', // Full height minus header and padding
+            backgroundLayers: [
+              {
+                factory: 'skyboxLayer',
+                enabled: { $store: 'spaceStore.showSkybox' },
+                options: {
+                  textureSet: 'tycho2',
+                  show: true,
+                },
+              },
+              {
+                factory: 'proceduralStarsLayer',
+                enabled: { $store: 'spaceStore.showStars' },
+                options: {
+                  count: 5000,
+                  minDistance: 10000,
+                  maxDistance: 100000000,
+                  minBrightness: 0.3,
+                  maxBrightness: 1.0,
+                  minSize: 1,
+                  maxSize: 3,
+                  color: '#ffffff',
+                  show: true,
+                },
+              },
+            ],
             layers: [
               {
                 factory: 'userLocationsLayer',
-                enabled: {
-                  $store: 'spaceStore.showUserLocations',
-                },
+                enabled: { $store: 'spaceStore.showUserLocations' },
                 options: {
-                  locations: {
-                    $store: 'spaceStore.space.userLocations',
-                  },
+                  locations: { $store: 'spaceStore.space.userLocations' },
                   markerSize: 15,
                   defaultColor: '#00ffff',
                   onLocationClick: {
@@ -192,9 +246,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
               },
               {
                 factory: 'countryOutlinesLayer',
-                enabled: {
-                  $store: 'spaceStore.showCountryOutlines',
-                },
+                enabled: { $store: 'spaceStore.showCountryOutlines' },
                 options: {
                   color: '#ffffff',
                   opacity: 0.5,
@@ -203,9 +255,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
               },
               {
                 factory: 'h3HexagonsLayer',
-                enabled: {
-                  $store: 'spaceStore.showH3Hexagons',
-                },
+                enabled: { $store: 'spaceStore.showH3Hexagons' },
                 options: {
                   maxResolution: 8,
                   color: '#3388ff',

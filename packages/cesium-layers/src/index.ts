@@ -16,14 +16,10 @@ export type {
   CameraState,
 } from './types';
 
-// Export user locations layer
-export { userLocationsLayer } from './user-locations';
-export type { UserLocation, UserLocationsOptions } from './user-locations';
+// Export planet layers (surface layers)
+export { userLocationsLayer, countryOutlinesLayer, h3HexagonsLayer } from './planet';
+export type { UserLocation, UserLocationsOptions, CountryOutlinesOptions, H3HexagonsOptions } from './planet';
 
-// Export country outlines layer
-export { countryOutlinesLayer } from './country-outlines';
-export type { CountryOutlinesOptions } from './country-outlines';
-
-// Export H3 hexagons layer
-export { h3HexagonsLayer } from './h3-hexagons';
-export type { H3HexagonsOptions } from './h3-hexagons';
+// Export background layers (space layers)
+export { skyboxLayer, proceduralStarsLayer } from './background';
+export type { SkyboxLayerOptions, ProceduralStarsLayerOptions } from './background';

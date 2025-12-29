@@ -1,4 +1,10 @@
-import { countryOutlinesLayer, h3HexagonsLayer, userLocationsLayer } from '@we/cesium-layers';
+import {
+  countryOutlinesLayer,
+  h3HexagonsLayer,
+  proceduralStarsLayer,
+  skyboxLayer,
+  userLocationsLayer,
+} from '@we/cesium-layers';
 import {
   CircleButton,
   Column,
@@ -15,9 +21,13 @@ import { CenteredTemplate, DefaultTemplate } from '@we/templates/solid';
 import { CesiumGlobe, CreateSpaceModalWidget, layerFactoryRegistry, SpaceSidebarWidget } from '@we/widgets/solid';
 
 // Populate the layer factory registry
+// Planet layers
 layerFactoryRegistry['userLocationsLayer'] = userLocationsLayer;
 layerFactoryRegistry['countryOutlinesLayer'] = countryOutlinesLayer;
 layerFactoryRegistry['h3HexagonsLayer'] = h3HexagonsLayer;
+// Background layers
+layerFactoryRegistry['skyboxLayer'] = skyboxLayer;
+layerFactoryRegistry['proceduralStarsLayer'] = proceduralStarsLayer;
 
 export const componentRegistry: ComponentRegistry = {
   // @we/elements

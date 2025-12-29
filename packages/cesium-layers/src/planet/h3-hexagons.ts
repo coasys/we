@@ -16,7 +16,7 @@ import {
 } from 'cesium';
 import { cellToBoundary, getHexagonEdgeLengthAvg, gridDisk, latLngToCell } from 'h3-js';
 
-import type { LayerContext, LayerFactory } from './types';
+import type { LayerContext, LayerFactory } from '../types';
 
 // H3 Helper Functions
 function hexToDegreesArray(h3Index: string): number[] {

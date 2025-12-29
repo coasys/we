@@ -19,6 +19,10 @@ export interface SpaceStore {
   showCountryOutlines: Accessor<boolean>;
   showH3Hexagons: Accessor<boolean>;
 
+  // Background visibility
+  showSkybox: Accessor<boolean>;
+  showStars: Accessor<boolean>;
+
   // Setters
   setSpaceId: (id: string) => void;
 
@@ -26,6 +30,7 @@ export interface SpaceStore {
   getSpace: () => Promise<void>;
   getPosts: (perspective: PerspectiveProxy) => Promise<void>;
   toggleLayer: (layerName: string) => void;
+  toggleBackground: (backgroundName: string) => void;
 }
 
 // Hardcoded user locations for development
@@ -70,6 +75,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [showCountryOutlines, setShowCountryOutlines] = createSignal(false);
   const [showH3Hexagons, setShowH3Hexagons] = createSignal(false);
 
+  // Background visibility state (both default to true)
+  const [showSkybox, setShowSkybox] = createSignal(false);
+  const [showStars, setShowStars] = createSignal(true);
+
   // Toggle layer visibility
   function toggleLayer(layerName: string) {
     switch (layerName) {
@@ -81,6 +90,21 @@ export function SpaceStoreProvider(props: ParentProps) {
         break;
       case 'h3Hexagons':
         setShowH3Hexagons(!showH3Hexagons());
+        break;
+    }
+  }
+
+  // Toggle background visibility
+  function toggleBackground(backgroundName: string) {
+    console.log('[SpaceStore] toggleBackground called:', backgroundName);
+    switch (backgroundName) {
+      case 'skybox':
+        setShowSkybox(!showSkybox());
+        console.log('[SpaceStore] showSkybox toggled to:', !showSkybox());
+        break;
+      case 'stars':
+        setShowStars(!showStars());
+        console.log('[SpaceStore] showStars toggled to:', !showStars());
         break;
     }
   }
@@ -195,6 +219,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     showCountryOutlines,
     showH3Hexagons,
 
+    // Background visibility
+    showSkybox,
+    showStars,
+
     // Setters
     setSpaceId,
 
@@ -202,6 +230,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     getSpace,
     getPosts,
     toggleLayer,
+    toggleBackground,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

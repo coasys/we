@@ -1,6 +1,6 @@
 import { Cartesian2, Cartesian3, Color, defined, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
 
-import type { LayerContext, LayerFactory } from './types';
+import type { LayerContext, LayerFactory } from '../types';
 
 export interface UserLocation {
   id: string;
