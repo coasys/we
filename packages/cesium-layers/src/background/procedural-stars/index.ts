@@ -1,6 +1,6 @@
 import { Cartesian3, Color, PointPrimitive, PointPrimitiveCollection } from 'cesium';
 
-import type { LayerContext, LayerFactory } from '../types';
+import type { LayerContext, LayerFactory } from '../../types';
 
 export interface ProceduralStarsLayerOptions {
   /**

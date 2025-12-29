@@ -230,7 +230,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                 },
               },
             ],
-            layers: [
+            planetLayers: [
               {
                 factory: 'userLocationsLayer',
                 enabled: { $store: 'spaceStore.showUserLocations' },

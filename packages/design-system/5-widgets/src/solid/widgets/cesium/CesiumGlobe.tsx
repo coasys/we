@@ -5,7 +5,7 @@
  * Uses CDN for all Cesium assets (no local bundling required).
  */
 
-import { Cartesian3, Color, Ion, PointPrimitive, PointPrimitiveCollection, SkyBox, Viewer } from 'cesium';
+import { Cartesian3, Color, Ion, PointPrimitiveCollection, SkyBox, Viewer } from 'cesium';
 import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 
 import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from './types';
@@ -20,9 +20,9 @@ export interface CesiumGlobeProps {
    * If not provided, uses Cesium's default demo token (limited quota)
    */
   ionAccessToken?: string;
-  /** Layer configurations to add to the globe */
-  layers?: LayerConfig[];
-  /** Background layer configurations (skybox, stars, etc.) */
+  /** Planet surface layer configurations (locations, outlines, hexagons, etc.) */
+  planetLayers?: LayerConfig[];
+  /** Background/space layer configurations (skybox, stars, etc.) */
   backgroundLayers?: LayerConfig[];
   /** @deprecated Use backgroundLayers instead. Show custom skybox (default: true) */
   showSkybox?: boolean;
@@ -404,7 +404,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
       return;
     }
 
-    const currentLayers = props.layers || [];
+    const currentLayers = props.planetLayers || [];
     const mountedLayers = viewer._weMountedLayers;
 
     // Get enabled layers (tracking reactive dependencies)

@@ -1,6 +1,6 @@
 import { SkyBox } from 'cesium';
 
-import type { LayerContext, LayerFactory } from '../types';
+import type { LayerContext, LayerFactory } from '../../types';
 
 export interface SkyboxLayerOptions {
   /**
@@ -23,6 +23,12 @@ export interface SkyboxLayerOptions {
     pz: string; // Positive Z
     nz: string; // Negative Z
   };
+
+  /**
+   * Base URL for CDN assets
+   * @default 'https://cdn.jsdelivr.net/gh/jhweir/we@we-native-app/packages/cesium-layers/src/background/skybox/assets'
+   */
+  cdnBaseUrl?: string;
 
   /**
    * Overall brightness multiplier
@@ -53,7 +59,12 @@ export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLa
 
   onMount: (context: LayerContext) => {
     const { viewer, onCleanup } = context;
-    const { textureSet = 'tycho2', customPaths, show = true } = options || {};
+    const {
+      textureSet = 'tycho2',
+      customPaths,
+      cdnBaseUrl = 'https://cdn.jsdelivr.net/gh/jhweir/we@we-native-app/packages/cesium-layers/src/background/skybox/assets',
+      show = true,
+    } = options || {};
     // TODO: brightness is not yet implemented, needs custom shader
     // const brightness = options?.brightness ?? 1.0;
 
@@ -69,34 +80,34 @@ export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLa
         negativeZ: customPaths.nz,
       };
     } else if (textureSet === 'tycho2') {
-      // Tycho-2 skybox textures
+      // Tycho-2 skybox textures from CDN
       sources = {
-        positiveX: '/skybox/px.jpg',
-        negativeX: '/skybox/nx.jpg',
-        positiveY: '/skybox/py.jpg',
-        negativeY: '/skybox/ny.jpg',
-        positiveZ: '/skybox/pz.jpg',
-        negativeZ: '/skybox/nz.jpg',
+        positiveX: `${cdnBaseUrl}/tycho2/px.jpg`,
+        negativeX: `${cdnBaseUrl}/tycho2/nx.jpg`,
+        positiveY: `${cdnBaseUrl}/tycho2/py.jpg`,
+        negativeY: `${cdnBaseUrl}/tycho2/ny.jpg`,
+        positiveZ: `${cdnBaseUrl}/tycho2/pz.jpg`,
+        negativeZ: `${cdnBaseUrl}/tycho2/nz.jpg`,
       };
     } else if (textureSet === 'eso') {
       // ESO Milky Way textures (if available)
       sources = {
-        positiveX: '/skybox/eso/px.jpg',
-        negativeX: '/skybox/eso/nx.jpg',
-        positiveY: '/skybox/eso/py.jpg',
-        negativeY: '/skybox/eso/ny.jpg',
-        positiveZ: '/skybox/eso/pz.jpg',
-        negativeZ: '/skybox/eso/nz.jpg',
+        positiveX: `${cdnBaseUrl}/eso/px.jpg`,
+        negativeX: `${cdnBaseUrl}/eso/nx.jpg`,
+        positiveY: `${cdnBaseUrl}/eso/py.jpg`,
+        negativeY: `${cdnBaseUrl}/eso/ny.jpg`,
+        positiveZ: `${cdnBaseUrl}/eso/pz.jpg`,
+        negativeZ: `${cdnBaseUrl}/eso/nz.jpg`,
       };
     } else {
       console.warn(`[skybox] Unknown textureSet: ${textureSet}, using tycho2 as fallback`);
       sources = {
-        positiveX: '/skybox/px.jpg',
-        negativeX: '/skybox/nx.jpg',
-        positiveY: '/skybox/py.jpg',
-        negativeY: '/skybox/ny.jpg',
-        positiveZ: '/skybox/pz.jpg',
-        negativeZ: '/skybox/nz.jpg',
+        positiveX: `${cdnBaseUrl}/tycho2/px.jpg`,
+        negativeX: `${cdnBaseUrl}/tycho2/nx.jpg`,
+        positiveY: `${cdnBaseUrl}/tycho2/py.jpg`,
+        negativeY: `${cdnBaseUrl}/tycho2/ny.jpg`,
+        positiveZ: `${cdnBaseUrl}/tycho2/pz.jpg`,
+        negativeZ: `${cdnBaseUrl}/tycho2/nz.jpg`,
       };
     }
 

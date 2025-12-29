@@ -1,6 +1,6 @@
 import { Cartesian3, Color } from 'cesium';
 
-import type { LayerContext, LayerFactory } from '../types';
+import type { LayerContext, LayerFactory } from '../../types';
 
 export interface CountryOutlinesOptions {
   /** Outline color (CSS color string) */
