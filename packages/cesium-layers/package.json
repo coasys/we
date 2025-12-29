@@ -5,9 +5,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "build:steps": "tsup",
+    "build": "we-build",
+    "dev": "tsup --watch"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -38,7 +38,9 @@
     "@we/widgets": "workspace:*"
   },
   "devDependencies": {
+    "@we/cli": "workspace:*",
     "@types/cesium": "^1.70.0",
+    "tsup": "^8.0.0",
     "typescript": "^5.3.3"
   }
 }

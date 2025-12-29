@@ -99,12 +99,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     console.log('[SpaceStore] toggleBackground called:', backgroundName);
     switch (backgroundName) {
       case 'skybox':
-        setShowSkybox(!showSkybox());
-        console.log('[SpaceStore] showSkybox toggled to:', !showSkybox());
+        const newSkyboxValue = !showSkybox();
+        setShowSkybox(newSkyboxValue);
+        console.log('[SpaceStore] showSkybox toggled to:', newSkyboxValue);
         break;
       case 'stars':
-        setShowStars(!showStars());
-        console.log('[SpaceStore] showStars toggled to:', !showStars());
+        const newStarsValue = !showStars();
+        setShowStars(newStarsValue);
+        console.log('[SpaceStore] showStars toggled to:', newStarsValue);
         break;
     }
   }

@@ -211,7 +211,6 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                 enabled: { $store: 'spaceStore.showSkybox' },
                 options: {
                   textureSet: 'tycho2',
-                  show: true,
                 },
               },
               {

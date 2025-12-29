@@ -35,12 +35,6 @@ export interface SkyboxLayerOptions {
    * @default 1.0
    */
   brightness?: number;
-
-  /**
-   * Whether to show the skybox
-   * @default true
-   */
-  show?: boolean;
 }
 
 /**
@@ -62,8 +56,8 @@ export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLa
     const {
       textureSet = 'tycho2',
       customPaths,
+      // Use jsdelivr CDN with branch name
       cdnBaseUrl = 'https://cdn.jsdelivr.net/gh/jhweir/we@we-native-app/packages/cesium-layers/src/background/skybox/assets',
-      show = true,
     } = options || {};
     // TODO: brightness is not yet implemented, needs custom shader
     // const brightness = options?.brightness ?? 1.0;
@@ -113,16 +107,13 @@ export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLa
 
     // Create the skybox
     const skybox = new SkyBox({ sources });
-    skybox.show = show;
-
-    // Apply brightness (would need a custom shader for this - placeholder for now)
-    // TODO: Implement brightness adjustment with custom shader
 
     // Set the skybox
     viewer.scene.skyBox = skybox;
 
     // Register cleanup
     onCleanup(() => {
+      // Hide the skybox when layer is unmounted
       if (viewer.scene.skyBox === skybox) {
         viewer.scene.skyBox.show = false;
       }
