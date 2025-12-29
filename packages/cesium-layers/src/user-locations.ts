@@ -1,6 +1,6 @@
-import { Cartesian3, Color, defined, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
+import { Cartesian2, Cartesian3, Color, defined, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
 
-import type { LayerFactory } from './types';
+import type { LayerContext, LayerFactory } from './types';
 
 export interface UserLocation {
   id: string;
@@ -29,7 +29,7 @@ export interface UserLocationsOptions {
 export const userLocationsLayer: LayerFactory<UserLocationsOptions> = (options?: UserLocationsOptions) => ({
   name: 'user-locations',
 
-  onMount: (context: any) => {
+  onMount: (context: LayerContext) => {
     const { viewer, events, onCleanup } = context;
     const { locations = [], markerSize = 15, defaultColor = '#00ffff', onLocationClick } = options || {};
 
@@ -82,7 +82,7 @@ export const userLocationsLayer: LayerFactory<UserLocationsOptions> = (options?:
 
     // Set up click handler
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
-    handler.setInputAction((click: any) => {
+    handler.setInputAction((click: { position: Cartesian2 }) => {
       const pickedObject = viewer.scene.pick(click.position);
 
       if (defined(pickedObject) && pickedObject.id) {
@@ -111,7 +111,7 @@ export const userLocationsLayer: LayerFactory<UserLocationsOptions> = (options?:
     });
   },
 
-  onUnmount: (context: any) => {
+  onUnmount: () => {
     // Cleanup is handled by onCleanup callbacks
   },
 });
