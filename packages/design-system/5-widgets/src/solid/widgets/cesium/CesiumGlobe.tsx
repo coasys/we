@@ -184,16 +184,6 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     });
   });
 
-  // Cleanup on unmount
-  onCleanup(() => {
-    if (updateResolution) {
-      window.removeEventListener('resize', updateResolution);
-    }
-    if (viewer) {
-      viewer.destroy();
-    }
-  });
-
   // Reactive layer mounting/unmounting
   createEffect(() => {
     // Track viewer readiness signal
@@ -271,7 +261,32 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     }
   });
 
-  onCleanup(() => viewer?.destroy());
+  // Cleanup on component unmount - MUST happen after layer cleanup
+  onCleanup(() => {
+    // First cleanup all layers
+    if (cleanupFunctions) {
+      for (const cleanups of cleanupFunctions.values()) {
+        cleanups.forEach((fn) => {
+          try {
+            fn();
+          } catch (err) {
+            console.error('Error cleaning up layer:', err);
+          }
+        });
+      }
+      cleanupFunctions.clear();
+    }
+
+    // Then remove resize listener
+    if (updateResolution) {
+      window.removeEventListener('resize', updateResolution);
+    }
+
+    // Finally destroy viewer
+    if (viewer) {
+      viewer.destroy();
+    }
+  });
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', 'min-width': '200px', 'min-height': '200px' }} />

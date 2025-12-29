@@ -104,8 +104,10 @@ export const h3HexagonsLayer: LayerFactory<H3HexagonsOptions> = (options?: H3Hex
     const polylineCollections = new Map<number, PolylineCollection>();
     const polylineMaps = new Map<number, Map<string, Polyline>>();
     let selectedCell: string | null = null;
+    let destroyed = false;
 
     function ensureCollection(res: number): PolylineCollection {
+      if (destroyed) throw new Error('Layer destroyed');
       let c = polylineCollections.get(res);
       if (!c) {
         c = new PolylineCollection();
@@ -117,6 +119,8 @@ export const h3HexagonsLayer: LayerFactory<H3HexagonsOptions> = (options?: H3Hex
     }
 
     function drawForPlan(centerLat: number, centerLng: number, plan: RenderPlan[]) {
+      if (destroyed) return;
+
       const desiredByRes = new Map<number, Set<string>>();
 
       for (const p of plan) {
@@ -131,7 +135,12 @@ export const h3HexagonsLayer: LayerFactory<H3HexagonsOptions> = (options?: H3Hex
 
         const h3center = latLngToCell(centerLat, centerLng, p.res);
         const hexes = gridDisk(h3center, p.ring);
-        const collection = ensureCollection(p.res);
+        let collection: PolylineCollection;
+        try {
+          collection = ensureCollection(p.res);
+        } catch {
+          return; // Layer was destroyed
+        }
         const mapForRes = polylineMaps.get(p.res)!;
         const desired = new Set<string>();
 
@@ -208,6 +217,8 @@ export const h3HexagonsLayer: LayerFactory<H3HexagonsOptions> = (options?: H3Hex
     let isDragging = false;
 
     function animate() {
+      if (destroyed) return;
+
       const cam = Cartographic.fromCartesian(viewer.camera.position);
       const cLat = (cam.latitude * 180) / Math.PI;
       const cLng = (cam.longitude * 180) / Math.PI;
@@ -303,6 +314,7 @@ export const h3HexagonsLayer: LayerFactory<H3HexagonsOptions> = (options?: H3Hex
     viewer.camera.moveStart.addEventListener(onCameraMove);
 
     onCleanup(() => {
+      destroyed = true;
       cancelAnimationFrame(raf);
       viewer.canvas.removeEventListener('pointermove', onPointerMove);
       viewer.canvas.removeEventListener('pointerdown', onPointerDown);
