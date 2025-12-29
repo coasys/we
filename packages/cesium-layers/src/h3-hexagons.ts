@@ -184,22 +184,46 @@ export const h3HexagonsLayer: LayerFactory<H3HexagonsOptions> = (options?: H3Hex
         const h = rest.join('-');
         const degreesArray = hexToDegreesArray(h);
         const positions = Cartesian3.fromDegreesArray(degreesArray);
-        const fillColor = Color.fromCssColorString(hoverColor).withAlpha(hoverOpacity * Math.min(0.999, hoverAlpha));
 
-        if (highlightPrimitive) viewer.scene.primitives.remove(highlightPrimitive);
+        if (highlightPrimitive) {
+          viewer.scene.primitives.remove(highlightPrimitive);
+          highlightPrimitive = null;
+        }
 
-        const geometry = new PolygonGeometry({ polygonHierarchy: new PolygonHierarchy(positions), height: 1 });
-        const instance = new GeometryInstance({
-          geometry,
-          attributes: { color: ColorGeometryInstanceAttribute.fromColor(fillColor) },
-        });
-        highlightPrimitive = new Primitive({
-          geometryInstances: instance,
-          appearance: new PerInstanceColorAppearance({ flat: true, translucent: true }),
-          asynchronous: false,
-        });
-        viewer.scene.primitives.add(highlightPrimitive);
-        viewer.scene.requestRender();
+        // Validate positions and check for degenerate geometry (prevents errors near poles)
+        const isValid =
+          positions.length >= 3 &&
+          positions.every((p) => !isNaN(p.x) && !isNaN(p.y) && !isNaN(p.z)) &&
+          positions.every((p) => Cartesian3.magnitude(p) > 0);
+
+        if (isValid) {
+          try {
+            // Try to create the geometry synchronously to catch validation errors
+            const geometry = PolygonGeometry.createGeometry(
+              new PolygonGeometry({ polygonHierarchy: new PolygonHierarchy(positions), height: 1 }),
+            );
+
+            if (geometry) {
+              const fillColor = Color.fromCssColorString(hoverColor).withAlpha(
+                hoverOpacity * Math.min(0.999, hoverAlpha),
+              );
+              const instance = new GeometryInstance({
+                geometry,
+                attributes: { color: ColorGeometryInstanceAttribute.fromColor(fillColor) },
+              });
+              highlightPrimitive = new Primitive({
+                geometryInstances: instance,
+                appearance: new PerInstanceColorAppearance({ flat: true, translucent: true }),
+                asynchronous: false,
+              });
+              viewer.scene.primitives.add(highlightPrimitive);
+              viewer.scene.requestRender();
+            }
+          } catch {
+            // Ignore geometry errors (can happen with extreme coordinates near poles)
+            // highlightPrimitive already set to null above
+          }
+        }
       } else if (highlightPrimitive && hoverAlpha < 0.01) {
         viewer.scene.primitives.remove(highlightPrimitive);
         highlightPrimitive = null;
