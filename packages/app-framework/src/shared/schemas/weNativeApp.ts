@@ -210,7 +210,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                 factory: 'skyboxLayer',
                 enabled: { $store: 'spaceStore.showSkybox' },
                 options: {
-                  textureSet: 'tycho2',
+                  textureSet: 'tycho2-1k',
                 },
               },
               {

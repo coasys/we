@@ -1,50 +1,76 @@
-# High-Resolution Skybox Setup
+# Skybox Textures
 
-To get stunning high-resolution stars, download and place skybox textures here.
+This directory contains cube map textures for the skybox background layer.
 
-## Quick Setup (Recommended)
+## Current Texture Sets
 
-### Option 1: ESO Milky Way (Highest Quality - Free for Non-Commercial)
+### Tycho-2 Star Catalog (Included)
+
+Authentic NASA star catalog with 2.4 million stars plotted with accurate positions, colors, and magnitudes.
+
+**Source:** [NASA SVS Tycho Catalog Skymap](https://svs.gsfc.nasa.gov/3572)
+
+- Downloaded equirectangular projection (4096x2048)
+- Converted to cube map using [Panorama to Cubemap](https://jaxry.github.io/panorama-to-cubemap/)
+- Cube rotation: 180°
+
+**Available resolutions:**
+
+- `tycho2-1k/` - 1024×1024 per face (~6MB total, default)
+- `tycho2-2k/` - 2048×2048 per face (~24MB total)
+- `tycho2-4k/` - 4096×4096 per face (~96MB total)
+
+## Adding New Texture Sets
+
+### Recommended Sources
+
+#### ESO Milky Way (High Quality - Free for Non-Commercial)
 
 1. Visit: https://www.eso.org/public/images/eso0932a/
-2. Download the highest resolution available (8K+)
-3. Convert equirectangular to cubemap using: https://jaxry.github.io/panorama-to-cubemap/
-4. Export 6 faces and save as:
-   - `px.jpg` (positive X / right)
-   - `nx.jpg` (negative X / left)
-   - `py.jpg` (positive Y / top)
-   - `ny.jpg` (negative Y / bottom)
-   - `pz.jpg` (positive Z / front)
-   - `nz.jpg` (negative Z / back)
+2. Download highest resolution (8K+)
+3. Convert using https://jaxry.github.io/panorama-to-cubemap/
+4. Set cube rotation to 180°
+5. Export 6 faces as JPEG
 
-### Option 2: Poly Haven (CC0 - Public Domain)
+#### Poly Haven (CC0 - Public Domain)
 
 1. Visit: https://polyhaven.com/hdris/skies
 2. Search for "night sky" or "space"
 3. Download 4K or 8K HDRI
-4. Convert using the tool above
-5. Save with the same naming convention
+4. Convert using tool above
 
-### Option 3: NASA Visible Earth
+### File Structure
 
-1. Visit: https://visibleearth.nasa.gov/collection/1484/blue-marble
-2. Download high-res Earth imagery or night sky composites
-3. Use NASA's Tycho-2 catalog data: https://svs.gsfc.nasa.gov/3895
-4. Convert and save
+Each texture set needs 6 cube map faces in its own directory:
 
-## File Requirements
+```
+assets/
+  tycho2-1k/
+    px.jpg  (positive X / right)
+    nx.jpg  (negative X / left)
+    py.jpg  (positive Y / top)
+    ny.jpg  (negative Y / bottom)
+    pz.jpg  (positive Z / front)
+    nz.jpg  (negative Z / back)
+  your-new-set/
+    px.jpg
+    nx.jpg
+    ...
+```
 
-- Format: JPG or PNG
-- Recommended size: 2048x2048 minimum per face (4K+ for best quality)
-- Total size: ~20-50MB for all 6 faces at high quality
-- Naming: Must match: px.jpg, nx.jpg, py.jpg, ny.jpg, pz.jpg, nz.jpg
+### Requirements
 
-## After Adding Textures
+- **Format:** JPEG (recommended) or PNG
+- **Resolution:** All 6 faces must be square and same size
+- **Power of 2:** 512, 1024, 2048, or 4096 pixels
+- **Naming:** Exactly: `px.jpg`, `nx.jpg`, `py.jpg`, `ny.jpg`, `pz.jpg`, `nz.jpg`
 
-1. Uncomment the skybox code in `CesiumGlobe.tsx`
-2. Rebuild the app: `pnpm build`
-3. Restart the app to see the new skybox
+### Using New Texture Sets
 
-## Testing
+After adding files, update the TypeScript interface in `index.ts`:
 
-Place low-res placeholder images here first to test that it works, then replace with high-res versions.
+```typescript
+textureSet?: 'tycho2-1k' | 'tycho2-2k' | 'tycho2-4k' | 'your-new-set' | 'custom';
+```
+
+And add handling in the onMount function.
