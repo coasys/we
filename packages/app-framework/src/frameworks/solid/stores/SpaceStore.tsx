@@ -22,6 +22,7 @@ export interface SpaceStore {
   // Background visibility
   showSkybox: Accessor<boolean>;
   showStars: Accessor<boolean>;
+  showSolarSystem: Accessor<boolean>;
 
   // Setters
   setSpaceId: (id: string) => void;
@@ -75,9 +76,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [showCountryOutlines, setShowCountryOutlines] = createSignal(false);
   const [showH3Hexagons, setShowH3Hexagons] = createSignal(false);
 
-  // Background visibility state (both default to true)
-  const [showSkybox, setShowSkybox] = createSignal(false);
-  const [showStars, setShowStars] = createSignal(true);
+  // Background visibility state
+  const [showSkybox, setShowSkybox] = createSignal(true);
+  const [showStars, setShowStars] = createSignal(false);
+  const [showSolarSystem, setShowSolarSystem] = createSignal(false);
 
   // Toggle layer visibility
   function toggleLayer(layerName: string) {
@@ -107,6 +109,11 @@ export function SpaceStoreProvider(props: ParentProps) {
         const newStarsValue = !showStars();
         setShowStars(newStarsValue);
         console.log('[SpaceStore] showStars toggled to:', newStarsValue);
+        break;
+      case 'solarSystem':
+        const newSolarSystemValue = !showSolarSystem();
+        setShowSolarSystem(newSolarSystemValue);
+        console.log('[SpaceStore] showSolarSystem toggled to:', newSolarSystemValue);
         break;
     }
   }
@@ -224,6 +231,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Background visibility
     showSkybox,
     showStars,
+    showSolarSystem,
 
     // Setters
     setSpaceId,

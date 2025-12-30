@@ -1,8 +1,10 @@
 import {
   countryOutlinesLayer,
   h3HexagonsLayer,
+  type LayerFactory,
   proceduralStarsLayer,
   skyboxLayer,
+  solarSystemLayer,
   userLocationsLayer,
 } from '@we/cesium-layers';
 import {
@@ -18,16 +20,19 @@ import {
 import { HomePage, PageNotFound, SpacePage } from '@we/pages/solid';
 import type { ComponentRegistry } from '@we/schema-renderer/solid';
 import { CenteredTemplate, DefaultTemplate } from '@we/templates/solid';
-import { CesiumGlobe, CreateSpaceModalWidget, layerFactoryRegistry, SpaceSidebarWidget } from '@we/widgets/solid';
+import { CesiumGlobe, CreateSpaceModalWidget, SpaceSidebarWidget } from '@we/widgets/solid';
 
-// Populate the layer factory registry
-// Planet layers
-layerFactoryRegistry['userLocationsLayer'] = userLocationsLayer;
-layerFactoryRegistry['countryOutlinesLayer'] = countryOutlinesLayer;
-layerFactoryRegistry['h3HexagonsLayer'] = h3HexagonsLayer;
-// Background layers
-layerFactoryRegistry['skyboxLayer'] = skyboxLayer;
-layerFactoryRegistry['proceduralStarsLayer'] = proceduralStarsLayer;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
+  // Planet layers
+  userLocationsLayer,
+  countryOutlinesLayer,
+  h3HexagonsLayer,
+  // Background layers
+  skyboxLayer,
+  proceduralStarsLayer,
+  solarSystemLayer,
+};
 
 export const componentRegistry: ComponentRegistry = {
   // @we/elements
@@ -53,7 +58,8 @@ export const componentRegistry: ComponentRegistry = {
   // @we/widgets
   CreateSpaceModalWidget,
   SpaceSidebarWidget,
-  CesiumGlobe,
+  // Inject layerFactoryRegistry dependency
+  CesiumGlobe: (props) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
 
   // @we/pages
   PageNotFound,

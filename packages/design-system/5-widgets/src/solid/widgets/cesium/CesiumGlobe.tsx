@@ -10,10 +10,6 @@ import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 
 import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from './types';
 
-// Layer factory registry - populated by importing packages
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {};
-
 export interface CesiumGlobeProps {
   /**
    * Cesium Ion access token. Get one free at https://ion.cesium.com/
@@ -24,6 +20,9 @@ export interface CesiumGlobeProps {
   planetLayers?: LayerConfig[];
   /** Background/space layer configurations (skybox, stars, etc.) */
   backgroundLayers?: LayerConfig[];
+  /** Layer factory registry - injected from app */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  layerFactoryRegistry: Record<string, LayerFactory<any>>;
 }
 
 // Configure Cesium CDN
@@ -104,12 +103,16 @@ class SimpleStore implements LayerStore {
 /**
  * Resolve layer factory - handles both function and string references
  */
-function resolveLayerFactory(factory: LayerFactory | string): LayerFactory {
+function resolveLayerFactory(
+  factory: LayerFactory | string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  registry: Record<string, LayerFactory<any>>,
+): LayerFactory {
   if (typeof factory === 'string') {
-    const resolved = layerFactoryRegistry[factory];
+    const resolved = registry[factory];
     if (!resolved) {
       throw new Error(
-        `Layer factory "${factory}" not found in registry. Available: ${Object.keys(layerFactoryRegistry).join(', ')}`,
+        `Layer factory "${factory}" not found in registry. Available: ${Object.keys(registry).join(', ')}`,
       );
     }
     return resolved;
@@ -158,10 +161,27 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         infoBox: false,
         selectionIndicator: false,
         navigationHelpButton: false,
+        requestRenderMode: false, // Continuous rendering
+        maximumRenderTimeChange: Infinity, // Don't skip frames
       });
 
       // Set high resolution for crisp rendering on high-DPI displays
       viewer.resolutionScale = window.devicePixelRatio;
+
+      // Disable depth testing against terrain to prevent clipping of space objects
+      viewer.scene.globe.depthTestAgainstTerrain = false;
+
+      // Set far plane and lock it from auto-adjustment
+      const FAR_PLANE_DISTANCE = 4e11; // 400 billion meters
+      viewer.scene.camera.frustum.far = FAR_PLANE_DISTANCE;
+
+      // Prevent Cesium from dynamically adjusting the far plane
+      const maintainFarPlane = () => {
+        if (viewer && viewer.scene.camera.frustum.far < FAR_PLANE_DISTANCE) {
+          viewer.scene.camera.frustum.far = FAR_PLANE_DISTANCE;
+        }
+      };
+      viewer.scene.postUpdate.addEventListener(maintainFarPlane);
 
       // Keep consistent lighting and hide moon
       viewer.scene.globe.enableLighting = false;
@@ -169,9 +189,12 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         viewer.scene.moon.show = false;
       }
 
-      // Hide Cesium's default skybox (we'll use our custom ones via backgroundLayers)
+      // Hide Cesium's default skybox and sun (we'll use our custom ones via backgroundLayers)
       if (viewer.scene.skyBox) {
         viewer.scene.skyBox.show = false;
+      }
+      if (viewer.scene.sun) {
+        viewer.scene.sun.show = false;
       }
 
       // Update resolution scale when window resizes or device pixel ratio changes
@@ -249,7 +272,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         continue;
       }
 
-      const factory = resolveLayerFactory(config.factory);
+      const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
       const instance = factory(config.options);
       const cleanups: Array<() => void> = [];
 
@@ -326,7 +349,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         continue;
       }
 
-      const factory = resolveLayerFactory(config.factory);
+      const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
       const instance = factory(config.options);
       const cleanups: Array<() => void> = [];
 

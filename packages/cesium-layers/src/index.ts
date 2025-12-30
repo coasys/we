@@ -21,5 +21,5 @@ export { userLocationsLayer, countryOutlinesLayer, h3HexagonsLayer } from './pla
 export type { UserLocation, UserLocationsOptions, CountryOutlinesOptions, H3HexagonsOptions } from './planet';
 
 // Export background layers (space layers)
-export { skyboxLayer, proceduralStarsLayer } from './background';
-export type { SkyboxLayerOptions, ProceduralStarsLayerOptions } from './background';
+export { skyboxLayer, proceduralStarsLayer, solarSystemLayer } from './background';
+export type { SkyboxLayerOptions, ProceduralStarsLayerOptions, SolarSystemLayerOptions } from './background';

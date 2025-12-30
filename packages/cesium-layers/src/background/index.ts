@@ -6,3 +6,4 @@
 
 export * from './skybox';
 export * from './procedural-stars';
+export * from './solar-system';
