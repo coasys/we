@@ -7,6 +7,7 @@ import { homedir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
+
 import { setupSeedServers } from './seed-servers.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -216,7 +217,7 @@ function createWindow() {
   // In development, load from Vite dev server
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools();
+    // mainWindow.webContents.openDevTools();
   } else {
     // In production, load from HTTP server (same protocol as iframe)
     mainWindow.loadURL('http://localhost:9080');

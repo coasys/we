@@ -39,6 +39,7 @@ export const componentRegistry: ComponentRegistry = {
   'we-text': (props) => <we-text {...props}>{props.children}</we-text>,
   'we-button': (props) => <we-button {...props}>{props.children}</we-button>,
   'we-icon': (props) => <we-icon {...props} />,
+  'we-image': (props) => <we-image {...props} />,
   'we-tabs': (props) => <we-tabs {...props}>{props.children}</we-tabs>,
   'we-tab': (props) => <we-tab {...props}>{props.children}</we-tab>,
   'we-spinner': (props) => <we-spinner {...props} />,

@@ -16,11 +16,21 @@ export const bootScreenSchema: SchemaNode = {
         position: 'absolute',
       },
       children: [
-        { type: 'we-text', props: { size: '800', weight: '600' }, children: ['WE'] },
+        {
+          type: 'we-image',
+          props: {
+            src: '/we-text.svg',
+            alt: 'WE Logo',
+            width: '120px',
+            height: '60px',
+            gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          },
+        },
         {
           type: '$if',
           props: {
             condition: { $eq: [{ $store: 'adamStore.bootState' }, 'initialising'] },
+            // condition: true,
             then: {
               type: 'Row',
               props: { gap: '300', ay: 'center' },
@@ -35,6 +45,7 @@ export const bootScreenSchema: SchemaNode = {
           type: '$if',
           props: {
             condition: { $eq: [{ $store: 'adamStore.bootState' }, 'login'] },
+            // condition: false,
             then: {
               type: 'Column',
               props: { gap: '400', ax: 'center' },

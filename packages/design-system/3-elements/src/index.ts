@@ -3,6 +3,7 @@ import './components/badge';
 import './components/button';
 import './components/icon';
 import './components/iframe';
+import './components/image';
 import './components/input';
 import './components/menu';
 import './components/menu-group';

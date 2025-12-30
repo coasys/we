@@ -44,3 +44,5 @@ export type Placement =
   | 'left-start'
   | 'left-end';
 export type TooltipStrategy = 'absolute' | 'fixed';
+export type ImageFit = '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
+export type ImageLoading = 'eager' | 'lazy';

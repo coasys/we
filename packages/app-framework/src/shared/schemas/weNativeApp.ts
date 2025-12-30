@@ -147,14 +147,14 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                           {
                             id: 'stars',
                             label: 'Procedural Stars',
-                            icon: 'star',
+                            icon: 'sparkle',
                             checked: { $store: 'spaceStore.showStars' },
                             onToggle: { $action: 'spaceStore.toggleBackground', args: ['stars'] },
                           },
                           {
                             id: 'solar-system',
                             label: 'Solar System',
-                            icon: 'sun',
+                            icon: 'atom',
                             checked: { $store: 'spaceStore.showSolarSystem' },
                             onToggle: { $action: 'spaceStore.toggleBackground', args: ['solarSystem'] },
                           },
