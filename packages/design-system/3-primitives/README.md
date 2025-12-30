@@ -1,10 +1,10 @@
-# @we/elements
+# @we/primitives
 
 A modern, framework-agnostic library of atomic web components for the WE design system.
 
 ## Overview
 
-`@we/elements` provides a set of reusable, accessible, and themeable UI primitives built as [Web Components](https://developer.mozilla.org/en-US/docs/Web/Web_Components) using [Lit](https://lit.dev/). These components are the foundation of the WE design system and are intended to be used directly or wrapped by higher-level framework packages (e.g., React, Solid, Svelte).
+`@we/primitives` provides a set of reusable, accessible, and themeable UI primitives built as [Web Components](https://developer.mozilla.org/en-US/docs/Web/Web_Components) using [Lit](https://lit.dev/). These components are the foundation of the WE design system and are intended to be used directly or wrapped by higher-level framework packages (e.g., React, Solid, Svelte).
 
 - **Framework-agnostic:** Works in any frontend framework or plain HTML.
 - **Type-safe:** Ships with type definitions and framework-specific typings for best DX.
@@ -14,11 +14,11 @@ A modern, framework-agnostic library of atomic web components for the WE design 
 ## Installation
 
 ```sh
-pnpm add @we/elements
+pnpm add @we/primitives
 # or
-yarn add @we/elements
+yarn add @we/primitives
 # or
-npm install @we/elements
+npm install @we/primitives
 ```
 
 ## Usage
@@ -35,7 +35,7 @@ npm install @we/elements
 
 1. **Register the elements (once, at app startup):**
    ```ts
-   import '@we/elements';
+   import '@we/primitives';
    ```
 2. **Import CSS variables and theme:**
    ```ts
@@ -72,7 +72,7 @@ See the [Storybook](./.storybook/) for live demos and documentation.
 ## TypeScript & Framework Typings
 
 - Ships with type definitions for all custom elements.
-- Framework-specific typings (e.g., `@we/elements/solid`) provide JSX/TSX support for Solid, React, etc.
+- Framework-specific typings (e.g., `@we/primitives/solid`) provide JSX/TSX support for Solid, React, etc.
 - Types are auto-generated from the [Custom Elements Manifest](./custom-elements.json).
 
 ## Contributing

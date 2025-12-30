@@ -10,7 +10,7 @@ The design system is organized as a set of composable, reusable packages, each w
 
 - **1-tokens/**: Centralized design tokens for spacing, color, typography, etc.
 - **2-themes/**: Theme definitions and utilities for light/dark/custom themes.
-- **3-elements/**: Atomic, reusable web components. Framework-agnostic, can be used in any JS app.
+- **3-primitives/**: Atomic, reusable web components. Framework-agnostic, can be used in any JS app.
 - **4-components/**: Higher-level UI components for SolidJS, composed from elements and tokens.
 - **5-widgets/**: Composite UI blocks that encapsulate specific functionality (e.g., search bars, carousels, chat panels). Widgets combine multiple components and elements to deliver higher-level features.
 - **6-pages/**: Page layouts for routes, composed from widgets, components, and elements. Pages provide ready-to-use screens for common app scenarios (e.g., dashboards, settings, onboarding).

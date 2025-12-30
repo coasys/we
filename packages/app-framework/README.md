@@ -215,7 +215,7 @@ This uses `tsup` to compile TypeScript and generate type definitions.
 ## Related Packages
 
 - `@we/components` - Reusable UI components
-- `@we/elements` - Base UI elements
+- `@we/primitives` - Base UI primitives
 - `@we/models` - Shared data models
 - `@we/design-system-types` - Design system type definitions
 

@@ -48,7 +48,7 @@ This document provides a high-level overview of WE's technical architecture and 
 
 A modular UI component library organized by complexity:
 
-- **`@we/elements`** - Atomic web components (we-button, we-text, we-icon, we-input)
+- **`@we/primitives`** - Atomic web components (we-button, we-text, we-icon, we-input)
 - **`@we/components`** - Composed Solid components (Column, Row, PopoverMenu, PostCard)
 - **`@we/widgets`** - Complex feature widgets (CesiumGlobe, SpaceSidebar, CreateSpaceModal)
 - **`@we/pages`** - Full page components (HomePage, SpacePage, ProfilePage)

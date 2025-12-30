@@ -41,7 +41,7 @@
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/components": "workspace:*",
-    "@we/elements": "workspace:*",
+    "@we/primitives": "workspace:*",
     "@we/models": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
     "sass": "^1.92.1",

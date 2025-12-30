@@ -1,1 +1,1 @@
-import '@we/elements/solid/types';
+import '@we/primitives/solid/types';

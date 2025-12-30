@@ -12,7 +12,7 @@
 - Fix types in BlockComposer components
 - Fix image block
 
-### @we/elements
+### @we/primitives
 
 - Prevent icons loading multiple times (particularly noticable in block menu)
 - Get design system props onto all elements
