@@ -78,7 +78,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   // Background visibility state
   const [showSkybox, setShowSkybox] = createSignal(true);
-  const [showStars, setShowStars] = createSignal(false);
+  const [showStars, setShowStars] = createSignal(true);
   const [showSolarSystem, setShowSolarSystem] = createSignal(false);
 
   // Toggle layer visibility

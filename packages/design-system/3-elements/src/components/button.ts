@@ -12,7 +12,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   color: 'primary-800',
   r: 'md',
   px: '400',
-  py: '200',
+  height: '36px',
   ax: 'center',
   ay: 'center',
   gap: '300',
@@ -56,7 +56,7 @@ export default class Button extends DesignSystemElement {
 
   private _content() {
     return html`
-      ${this.loading ? html`<we-spinner size="sm"></we-spinner>` : null}
+      ${this.loading ? html`<we-spinner size="sm" color="currentColor"></we-spinner>` : null}
       <slot name="start"></slot>
       ${this.text ?? html`<slot></slot>`}
       <slot name="end"></slot>

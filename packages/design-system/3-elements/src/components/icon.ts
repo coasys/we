@@ -74,6 +74,11 @@ export default class Icon extends LitElement {
     super.updated(props);
     if (props.has('name') || props.has('weight')) this.loadIcon();
     if (props.has('color')) this.style.setProperty('--icon-color', tokenVar('color', this.color, 'currentColor'));
+
+    // Handle custom size values (e.g., "20px", "2rem")
+    if (props.has('size') && this.size && !['xs', 'sm', 'lg', 'xl'].includes(this.size)) {
+      this.style.setProperty('--icon-size', this.size);
+    }
   }
 
   render() {

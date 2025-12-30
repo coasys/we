@@ -1,3 +1,4 @@
+import { tokenVar } from '@we/design-system-utils';
 import { css, html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -84,7 +85,27 @@ export default class Spinner extends LitElement {
   static styles = [sharedStyles, styles];
 
   @property({ type: String, reflect: true }) size: SpinnerSize = '';
+  @property({ type: String, reflect: true }) color = '';
   @property({ type: Object }) styles?: Record<string, any>;
+
+  updated(props: Map<string, unknown>) {
+    super.updated(props);
+
+    // Handle color prop
+    if (props.has('color') && this.color) {
+      // Allow currentColor to pass through directly
+      if (this.color === 'currentColor') {
+        this.style.setProperty('--we-spinner-color', 'currentColor');
+      } else {
+        this.style.setProperty('--we-spinner-color', tokenVar('color', this.color, this.color));
+      }
+    }
+
+    // Handle custom size values (e.g., "20px", "2rem")
+    if (props.has('size') && this.size && !['xxs', 'xs', 'sm', 'lg'].includes(this.size)) {
+      this.style.setProperty('--we-spinner-size', this.size);
+    }
+  }
 
   render() {
     const inlineStyles = this.styles || {};
