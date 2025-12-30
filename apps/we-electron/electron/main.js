@@ -188,6 +188,7 @@ function startAppServer() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    show: false, // Don't show until ready
     width: 1200,
     height: 800,
     webPreferences: {
@@ -196,6 +197,11 @@ function createWindow() {
       nodeIntegration: false,
       webSecurity: false, // Allow cross-origin access for screen sharing in iframes
     },
+  });
+
+  // Show window only when content is ready
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
   });
 
   // Allow camera, microphone, and screen capture permissions

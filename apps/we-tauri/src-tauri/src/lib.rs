@@ -71,13 +71,13 @@ pub fn run() {
                 rust_executor::run(config).await;
             });
             
-            // Open devtools in development
-            #[cfg(not(target_os = "android"))]
-            #[cfg(not(target_os = "ios"))]
-            {
-                let window = app.get_webview_window("main").unwrap();
-                window.open_devtools();
-            }
+            // Dev tools are hidden by default
+            // Uncomment to enable in development:
+            // #[cfg(debug_assertions)]
+            // {
+            //     let window = app.get_webview_window("main").unwrap();
+            //     window.open_devtools();
+            // }
             
             Ok(())
         })
