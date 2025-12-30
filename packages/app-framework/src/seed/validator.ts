@@ -1,4 +1,4 @@
-import type { WeSeedFile, SeedValidationResult } from '../types/seed';
+import type { SeedValidationResult, WeSeedFile } from '../types/seed';
 
 /**
  * Validates a WE seed file against the schema
@@ -40,7 +40,7 @@ export function validateSeed(seed: unknown): SeedValidationResult {
   } else {
     s.apps.forEach((app, index) => {
       const prefix = `apps[${index}]`;
-      
+
       if (!app.id) {
         errors.push({ path: `${prefix}.id`, message: 'App ID is required' });
       }
@@ -50,7 +50,7 @@ export function validateSeed(seed: unknown): SeedValidationResult {
       if (!app.route) {
         errors.push({ path: `${prefix}.route`, message: 'App route is required' });
       }
-      
+
       // Validate paths
       if (!app.paths) {
         errors.push({ path: `${prefix}.paths`, message: 'App paths configuration is required' });
@@ -62,7 +62,7 @@ export function validateSeed(seed: unknown): SeedValidationResult {
           errors.push({ path: `${prefix}.paths.dist`, message: 'Distribution path is required' });
         }
       }
-      
+
       // Validate commands
       if (!app.commands) {
         errors.push({ path: `${prefix}.commands`, message: 'App commands are required' });
@@ -77,12 +77,12 @@ export function validateSeed(seed: unknown): SeedValidationResult {
           errors.push({ path: `${prefix}.commands.dev`, message: 'Development command is required' });
         }
       }
-      
+
       // Warnings
       if (!app.capabilities || app.capabilities.length === 0) {
-        warnings.push({ 
-          path: `${prefix}.capabilities`, 
-          message: 'No capabilities specified - app may have limited functionality' 
+        warnings.push({
+          path: `${prefix}.capabilities`,
+          message: 'No capabilities specified - app may have limited functionality',
         });
       }
     });
@@ -90,16 +90,16 @@ export function validateSeed(seed: unknown): SeedValidationResult {
 
   // Warnings for optional but recommended fields
   if (!s.project?.repository) {
-    warnings.push({ 
-      path: 'project.repository', 
-      message: 'Repository URL is recommended for traceability' 
+    warnings.push({
+      path: 'project.repository',
+      message: 'Repository URL is recommended for traceability',
     });
   }
 
   if (!s.project?.license) {
-    warnings.push({ 
-      path: 'project.license', 
-      message: 'License identifier is recommended' 
+    warnings.push({
+      path: 'project.license',
+      message: 'License identifier is recommended',
     });
   }
 
@@ -130,10 +130,10 @@ export async function loadSeed(source: string): Promise<WeSeedFile> {
   }
 
   const seed = JSON.parse(data) as WeSeedFile;
-  
+
   const validation = validateSeed(seed);
   if (!validation.valid) {
-    const errorMessages = validation.errors?.map(e => `${e.path}: ${e.message}`).join('\n');
+    const errorMessages = validation.errors?.map((e) => `${e.path}: ${e.message}`).join('\n');
     throw new Error(`Invalid seed file:\n${errorMessages}`);
   }
 
@@ -145,10 +145,10 @@ export async function loadSeed(source: string): Promise<WeSeedFile> {
  */
 export function normalizeSeedPaths(seed: WeSeedFile, basePath: string): WeSeedFile {
   const path = require('path');
-  
+
   return {
     ...seed,
-    apps: seed.apps.map(app => ({
+    apps: seed.apps.map((app) => ({
       ...app,
       paths: {
         ...app.paths,
@@ -158,4 +158,3 @@ export function normalizeSeedPaths(seed: WeSeedFile, basePath: string): WeSeedFi
     })),
   };
 }
-

@@ -2,10 +2,10 @@
 
 /**
  * WE Seed File Validator
- * 
+ *
  * Validates the we-seed.json configuration file for correctness.
  * Checks JSON syntax, required fields, and path existence.
- * 
+ *
  * Usage: pnpm validate
  */
 
@@ -91,13 +91,13 @@ function main() {
 
   // Validate each app
   console.log('\n📦 Validating apps...');
-  
+
   const appIds = new Set();
   const appPorts = new Set();
-  
+
   seed.apps.forEach((app, index) => {
     console.log(`\n  App ${index + 1}: ${app.name || '<unnamed>'}`);
-    
+
     if (!app.id) {
       error(`  App ${index + 1}: Missing required field 'id'`);
     } else {
@@ -137,7 +137,7 @@ function main() {
     const executorPath = path.isAbsolute(seed.ad4m.executorPath)
       ? seed.ad4m.executorPath
       : path.resolve(WORKSPACE_ROOT, seed.ad4m.executorPath);
-    
+
     if (fs.existsSync(executorPath)) {
       success(`AD4M executor found at ${seed.ad4m.executorPath}`);
     } else {
@@ -150,7 +150,7 @@ function main() {
     const repoPath = path.isAbsolute(seed.ad4m.repoPath)
       ? seed.ad4m.repoPath
       : path.resolve(WORKSPACE_ROOT, seed.ad4m.repoPath);
-    
+
     if (fs.existsSync(repoPath)) {
       success(`AD4M repo found at ${seed.ad4m.repoPath}`);
     } else {
@@ -160,10 +160,8 @@ function main() {
 
   seed.apps.forEach((app) => {
     if (app.paths && app.paths.dist) {
-      const distPath = path.isAbsolute(app.paths.dist)
-        ? app.paths.dist
-        : path.resolve(WORKSPACE_ROOT, app.paths.dist);
-      
+      const distPath = path.isAbsolute(app.paths.dist) ? app.paths.dist : path.resolve(WORKSPACE_ROOT, app.paths.dist);
+
       if (fs.existsSync(distPath)) {
         success(`${app.name} dist found at ${app.paths.dist}`);
       } else {
@@ -177,7 +175,7 @@ function main() {
 
   // Summary
   console.log('\n' + '='.repeat(50));
-  
+
   if (errors.length > 0) {
     console.log(`\n❌ Validation failed with ${errors.length} error(s)`);
     if (warnings.length > 0) {

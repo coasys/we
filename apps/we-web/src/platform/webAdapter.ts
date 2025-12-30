@@ -1,6 +1,6 @@
 import type { Ad4mClient } from '@coasys/ad4m';
 import Ad4mConnect from '@coasys/ad4m-connect';
-import type { PlatformAdapter, AppConfig } from '@we/app-framework/shared';
+import type { AppConfig, PlatformAdapter } from '@we/app-framework/shared';
 
 export const webAdapter: PlatformAdapter = {
   async buildAd4mClient(): Promise<Ad4mClient> {
@@ -37,4 +37,3 @@ export const webAdapter: PlatformAdapter = {
   },
   platform: 'web' as const,
 };
-

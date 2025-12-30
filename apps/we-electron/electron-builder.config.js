@@ -1,13 +1,13 @@
 /**
  * Electron Builder Configuration
- * 
+ *
  * Dynamically loads extraResources from the generated seed configuration.
  * This allows electron-builder to read the build configuration that was
  * generated from we-seed.json by the prebuild script.
  */
 
 import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -21,17 +21,14 @@ export default {
   appId: 'io.weco.electron',
   productName: 'WE',
   directories: {
-    output: 'dist-electron'
+    output: 'dist-electron',
   },
-  files: [
-    'dist/**/*',
-    'electron/**/*'
-  ],
+  files: ['dist/**/*', 'electron/**/*'],
   extraResources,
   mac: {
-    category: 'public.app-category.social-networking'
+    category: 'public.app-category.social-networking',
   },
   linux: {
-    target: ['AppImage']
-  }
+    target: ['AppImage'],
+  },
 };

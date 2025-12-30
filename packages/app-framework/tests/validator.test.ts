@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { validateSeed, loadSeed, normalizeSeedPaths } from '../src/seed/validator';
-import { minimalExample, fluxSeedExample } from '../src/seed/examples';
+import { describe, expect, it } from 'vitest';
+
+import { fluxSeedExample, minimalExample } from '../src/seed/examples';
+import { loadSeed, normalizeSeedPaths, validateSeed } from '../src/seed/validator';
 import type { WeSeedFile } from '../src/types/seed';
 
 describe('validateSeed', () => {
@@ -140,7 +141,7 @@ describe('normalizeSeedPaths', () => {
     };
 
     const normalized = normalizeSeedPaths(seed, '/base/path');
-    
+
     expect(normalized.paths.projectRoot).toBe('/base/path/app');
     expect(normalized.paths.dist).toBe('/base/path/app/dist');
   });
@@ -156,7 +157,7 @@ describe('normalizeSeedPaths', () => {
     };
 
     const normalized = normalizeSeedPaths(seed, '/base');
-    
+
     expect(normalized.paths.ad4mRoot).toBe('/base/ad4m-data');
   });
 

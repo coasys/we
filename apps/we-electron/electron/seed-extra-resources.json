@@ -2,9 +2,7 @@
   {
     "from": "dist",
     "to": "app/dist",
-    "filter": [
-      "**/*"
-    ]
+    "filter": ["**/*"]
   },
   {
     "from": "../../../ad4m/target/release/ad4m-executor",

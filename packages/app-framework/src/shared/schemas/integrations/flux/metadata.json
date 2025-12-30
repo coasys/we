@@ -42,16 +42,8 @@
     },
     "integration": {
       "mount": "flux",
-      "capabilities": [
-        "perspectives",
-        "languages",
-        "agents"
-      ],
-      "platforms": [
-        "electron",
-        "tauri",
-        "web"
-      ],
+      "capabilities": ["perspectives", "languages", "agents"],
+      "platforms": ["electron", "tauri", "web"],
       "entry": "index.html"
     }
   },

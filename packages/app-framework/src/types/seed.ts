@@ -1,6 +1,6 @@
 /**
  * WE Seed File System
- * 
+ *
  * Allows external applications to define integration configurations
  * that can be used to embed their apps into WE launchers.
  */

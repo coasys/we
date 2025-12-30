@@ -2,7 +2,7 @@ import type { SchemaNode } from '@we/schema-renderer/shared';
 
 /**
  * Generate app settings schema
- * 
+ *
  * @param enableTemplateSwitching - Whether to show template switcher (disabled for embedded apps)
  * @returns App settings schema with conditional template switcher
  */

@@ -2,12 +2,12 @@
 
 /**
  * Tauri Seed Configuration Generator
- * 
+ *
  * Reads we-seed.json and generates:
  * 1. Resource mappings for tauri.conf.json
  * 2. Rust code for serving multiple apps
  * 3. Port map for the Tauri adapter
- * 
+ *
  * This ensures a single source of truth (the seed file) for all platform configurations.
  */
 
@@ -35,36 +35,36 @@ function main() {
   }
 
   const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
-  
+
   if (!seed.apps || seed.apps.length === 0) {
     console.log('ℹ️  No apps defined - native WE app mode (no embedded apps)');
     console.log('✅ No Tauri configuration needed for native mode\n');
-    
+
     // Generate minimal Cargo.toml for native mode
     if (fs.existsSync(CARGO_TOML_TEMPLATE) && seed.ad4m?.repoPath) {
       const template = fs.readFileSync(CARGO_TOML_TEMPLATE, 'utf8');
-      
+
       const absoluteAd4mPath = path.isAbsolute(seed.ad4m.repoPath)
         ? seed.ad4m.repoPath
         : path.resolve(WORKSPACE_ROOT, seed.ad4m.repoPath);
-      
+
       const SRC_TAURI_DIR = path.join(__dirname, '..', 'src-tauri');
       const relativeAd4mPath = path.relative(SRC_TAURI_DIR, absoluteAd4mPath);
-      
+
       // Replace template placeholders
       const ad4mClientPath = path.join(relativeAd4mPath, 'rust-client');
       const ad4mExecutorPath = path.join(relativeAd4mPath, 'rust-executor');
-      
+
       const cargoToml = template
         .replace(/\{\{AD4M_CLIENT_PATH\}\}/g, ad4mClientPath)
         .replace(/\{\{AD4M_EXECUTOR_PATH\}\}/g, ad4mExecutorPath);
-      
+
       fs.writeFileSync(CARGO_TOML_OUTPUT, cargoToml);
       console.log(`✅ Cargo.toml generated from template`);
       console.log(`   AD4M client: ${ad4mClientPath}`);
       console.log(`   AD4M executor: ${ad4mExecutorPath}`);
     }
-    
+
     // Ensure output directories exist
     if (!fs.existsSync(OUTPUT_DIR)) {
       fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -72,11 +72,11 @@ function main() {
     if (!fs.existsSync(SRC_GENERATED_DIR)) {
       fs.mkdirSync(SRC_GENERATED_DIR, { recursive: true });
     }
-    
+
     // Create empty config files so build doesn't fail
     fs.writeFileSync(PORT_MAP_FILE, JSON.stringify({}, null, 2));
     fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify({}, null, 2));
-    
+
     console.log('✅ Minimal configuration files generated');
     return;
   }
@@ -106,13 +106,11 @@ function main() {
   // Paths in tauri.conf.json must be relative to the src-tauri directory
   const SRC_TAURI_DIR = path.join(__dirname, '..', 'src-tauri');
   const bundleResources = {};
-  
+
   seed.apps.forEach((app) => {
     // Convert workspace-relative path to absolute, then to src-tauri-relative
-    const absolutePath = path.isAbsolute(app.paths.dist)
-      ? app.paths.dist
-      : path.join(WORKSPACE_ROOT, app.paths.dist);
-    
+    const absolutePath = path.isAbsolute(app.paths.dist) ? app.paths.dist : path.join(WORKSPACE_ROOT, app.paths.dist);
+
     const relativeFromSrcTauri = path.relative(SRC_TAURI_DIR, absolutePath);
     bundleResources[relativeFromSrcTauri] = app.id;
   });
@@ -141,31 +139,19 @@ function main() {
   }
 
   // Write port map JSON (both in src-tauri/generated and src/generated for Vite access)
-  fs.writeFileSync(
-    PORT_MAP_FILE,
-    JSON.stringify(portMap, null, 2),
-    'utf8'
-  );
+  fs.writeFileSync(PORT_MAP_FILE, JSON.stringify(portMap, null, 2), 'utf8');
   console.log(`✅ Port map written to: ${path.relative(process.cwd(), PORT_MAP_FILE)}`);
-  
+
   // Also write to src/generated for Vite/frontend access
   if (!fs.existsSync(SRC_GENERATED_DIR)) {
     fs.mkdirSync(SRC_GENERATED_DIR, { recursive: true });
   }
-  fs.writeFileSync(
-    PORT_MAP_FILE_WEB,
-    JSON.stringify(portMap, null, 2),
-    'utf8'
-  );
+  fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify(portMap, null, 2), 'utf8');
   console.log(`✅ Port map (frontend) written to: ${path.relative(process.cwd(), PORT_MAP_FILE_WEB)}`);
 
   // Write bundle resources JSON
   const BUNDLE_RESOURCES_FILE = path.join(OUTPUT_DIR, 'seed-bundle-resources.json');
-  fs.writeFileSync(
-    BUNDLE_RESOURCES_FILE,
-    JSON.stringify(bundleResources, null, 2),
-    'utf8'
-  );
+  fs.writeFileSync(BUNDLE_RESOURCES_FILE, JSON.stringify(bundleResources, null, 2), 'utf8');
   console.log(`✅ Bundle resources written to: ${path.relative(process.cwd(), BUNDLE_RESOURCES_FILE)}`);
 
   // Generate Rust app server code
@@ -187,23 +173,23 @@ pub use seed_servers::setup_seed_servers;
   // Generate Cargo.toml from template with AD4M paths
   if (fs.existsSync(CARGO_TOML_TEMPLATE)) {
     let cargoTemplate = fs.readFileSync(CARGO_TOML_TEMPLATE, 'utf8');
-    
+
     if (seed.ad4m?.repoPath) {
       const absoluteAd4mPath = path.isAbsolute(seed.ad4m.repoPath)
         ? seed.ad4m.repoPath
         : path.resolve(WORKSPACE_ROOT, seed.ad4m.repoPath);
-      
+
       const SRC_TAURI_DIR = path.join(__dirname, '..', 'src-tauri');
       const relativeAd4mPath = path.relative(SRC_TAURI_DIR, absoluteAd4mPath);
-      
+
       // Replace template placeholders
       const ad4mClientPath = path.join(relativeAd4mPath, 'rust-client');
       const ad4mExecutorPath = path.join(relativeAd4mPath, 'rust-executor');
-      
+
       cargoTemplate = cargoTemplate
         .replace('{{AD4M_CLIENT_PATH}}', ad4mClientPath)
         .replace('{{AD4M_EXECUTOR_PATH}}', ad4mExecutorPath);
-      
+
       fs.writeFileSync(CARGO_TOML_OUTPUT, cargoTemplate, 'utf8');
       console.log(`✅ Cargo.toml generated from template`);
       console.log(`   AD4M client: ${ad4mClientPath}`);
@@ -224,9 +210,10 @@ pub use seed_servers::setup_seed_servers;
 }
 
 function generateAppServerCode(apps, portMap) {
-  const serverSetup = apps.map((app) => {
-    const port = portMap[app.id];
-    return `    // ${app.name} (${app.id})
+  const serverSetup = apps
+    .map((app) => {
+      const port = portMap[app.id];
+      return `    // ${app.name} (${app.id})
     let app_${app.id}_dir = resource_path.join("${app.id}");
     if app_${app.id}_dir.exists() {
         println!("📦 Starting ${app.name} server on port ${port}");
@@ -241,7 +228,8 @@ function generateAppServerCode(apps, portMap) {
     } else {
         eprintln!("⚠️  ${app.name} directory not found at {:?}", app_${app.id}_dir);
     }`;
-  }).join('\n\n');
+    })
+    .join('\n\n');
 
   return `// Auto-generated Seed Server Setup for Tauri
 // 
@@ -263,11 +251,11 @@ ${serverSetup}
 function updateTauriConfig(bundleResources) {
   try {
     const config = JSON.parse(fs.readFileSync(TAURI_CONF_FILE, 'utf8'));
-    
+
     // Update bundle resources
     config.bundle = config.bundle || {};
     config.bundle.resources = bundleResources;
-    
+
     fs.writeFileSync(TAURI_CONF_FILE, JSON.stringify(config, null, 2), 'utf8');
     console.log(`✅ Updated tauri.conf.json with generated resources`);
   } catch (error) {

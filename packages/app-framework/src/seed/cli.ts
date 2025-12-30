@@ -2,13 +2,14 @@
 
 /**
  * WE Seed CLI
- * 
+ *
  * Command-line tool for processing WE seed files and generating integrations
  */
 
-import { loadSeed, processSeed, validateSeed } from './index';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+
+import { loadSeed, processSeed, validateSeed } from './index';
 
 interface CliOptions {
   seedPath: string;
@@ -19,14 +20,14 @@ interface CliOptions {
 
 async function parseArgs(): Promise<CliOptions> {
   const args = process.argv.slice(2);
-  
+
   const options: CliOptions = {
     seedPath: '',
   };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    
+
     switch (arg) {
       case '--output':
       case '-o':
@@ -98,24 +99,24 @@ async function run() {
 
     if (options.validate) {
       const validation = validateSeed(seed);
-      
+
       if (validation.valid) {
         console.log('✓ Seed file is valid');
-        
+
         if (validation.warnings && validation.warnings.length > 0) {
           console.log('\nWarnings:');
-          validation.warnings.forEach(w => {
+          validation.warnings.forEach((w) => {
             console.log(`  ⚠ ${w.path}: ${w.message}`);
           });
         }
       } else {
         console.error('✗ Seed file is invalid\n');
-        validation.errors?.forEach(e => {
+        validation.errors?.forEach((e) => {
           console.error(`  ✗ ${e.path}: ${e.message}`);
         });
         process.exit(1);
       }
-      
+
       return;
     }
 
@@ -131,11 +132,9 @@ async function run() {
     }
 
     // Write output files
-    const outputDir = options.output || path.join(
-      process.cwd(),
-      'packages/app-framework/src/shared/schemas/integrations',
-      result.metadata.integrationId
-    );
+    const outputDir =
+      options.output ||
+      path.join(process.cwd(), 'packages/app-framework/src/shared/schemas/integrations', result.metadata.integrationId);
 
     await fs.mkdir(outputDir, { recursive: true });
 
@@ -169,9 +168,8 @@ async function run() {
 
     console.log(`\n✓ Integration generated successfully!`);
     console.log(`  ID: ${result.metadata.integrationId}`);
-    console.log(`  Apps: ${seed.apps.map(a => a.name).join(', ')}`);
+    console.log(`  Apps: ${seed.apps.map((a) => a.name).join(', ')}`);
     console.log(`  Output: ${outputDir}`);
-
   } catch (error) {
     console.error('Error:', error instanceof Error ? error.message : String(error));
     process.exit(1);

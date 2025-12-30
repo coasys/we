@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
-import { SeedProcessor, processSeed } from '../src/seed/processor';
-import { minimalExample, fluxSeedExample } from '../src/seed/examples';
+import { describe, expect, it } from 'vitest';
+
+import { fluxSeedExample, minimalExample } from '../src/seed/examples';
+import { processSeed, SeedProcessor } from '../src/seed/processor';
 
 describe('SeedProcessor', () => {
   describe('constructor', () => {
@@ -46,7 +47,7 @@ describe('SeedProcessor', () => {
     it('should generate main schema', () => {
       const processor = new SeedProcessor(minimalExample);
       const schemas = processor.generateSchemas();
-      
+
       expect(schemas.main).toBeDefined();
       expect(schemas.main.type).toBe('container');
       expect(schemas.main.props.class).toContain('we-integration');
@@ -66,7 +67,7 @@ describe('SeedProcessor', () => {
       };
       const processor = new SeedProcessor(seed);
       const schemas = processor.generateSchemas();
-      
+
       expect(schemas.customComponent).toBeDefined();
       expect(schemas.customComponent.content).toBe('Custom');
     });
@@ -76,7 +77,7 @@ describe('SeedProcessor', () => {
     it('should generate main mount route', () => {
       const processor = new SeedProcessor(minimalExample);
       const routes = processor.generateRoutes();
-      
+
       expect(routes).toHaveLength(1);
       expect(routes[0].path).toBe('/myapp');
       expect(routes[0].component).toBe('main');
@@ -86,14 +87,12 @@ describe('SeedProcessor', () => {
       const seed = {
         ...minimalExample,
         ui: {
-          routes: [
-            { path: '/custom', component: 'CustomComponent' },
-          ],
+          routes: [{ path: '/custom', component: 'CustomComponent' }],
         },
       };
       const processor = new SeedProcessor(seed);
       const routes = processor.generateRoutes();
-      
+
       expect(routes).toHaveLength(2);
       expect(routes[1].path).toBe('/custom');
       expect(routes[1].component).toBe('CustomComponent');
@@ -104,7 +103,7 @@ describe('SeedProcessor', () => {
     it('should generate metadata with correct structure', () => {
       const processor = new SeedProcessor(minimalExample);
       const metadata = processor.generateMetadata();
-      
+
       expect(metadata.seed).toBe(minimalExample);
       expect(metadata.integrationId).toBe('my-app');
       expect(metadata.processedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -118,7 +117,7 @@ describe('SeedProcessor', () => {
     it('should generate valid TypeScript code', () => {
       const processor = new SeedProcessor(minimalExample);
       const code = processor.generateSchemaCode();
-      
+
       expect(code).toContain('export const');
       expect(code).toContain('myAppSchemas');
       expect(code).toContain('DO NOT EDIT MANUALLY');
@@ -133,7 +132,7 @@ describe('SeedProcessor', () => {
       };
       const processor = new SeedProcessor(seed);
       const code = processor.generateSchemaCode();
-      
+
       expect(code).toContain('testAppSchemas');
       expect(code).not.toContain('test-appSchemas');
     });
@@ -141,11 +140,11 @@ describe('SeedProcessor', () => {
     it('should include valid JSON', () => {
       const processor = new SeedProcessor(minimalExample);
       const code = processor.generateSchemaCode();
-      
+
       // Extract the JSON part
       const jsonMatch = code.match(/= ({[\s\S]*});/);
       expect(jsonMatch).toBeTruthy();
-      
+
       // Should be valid JSON
       expect(() => JSON.parse(jsonMatch![1])).not.toThrow();
     });
@@ -155,7 +154,7 @@ describe('SeedProcessor', () => {
     it('should generate valid TypeScript code', () => {
       const processor = new SeedProcessor(minimalExample);
       const code = processor.generateRoutesCode();
-      
+
       expect(code).toContain('export const');
       expect(code).toContain('myAppRoutes');
       expect(code).toContain('DO NOT EDIT MANUALLY');
@@ -164,7 +163,7 @@ describe('SeedProcessor', () => {
     it('should include route array', () => {
       const processor = new SeedProcessor(minimalExample);
       const code = processor.generateRoutesCode();
-      
+
       expect(code).toContain('[');
       expect(code).toContain('/myapp');
       expect(code).toContain('"component": "main"');
@@ -175,7 +174,7 @@ describe('SeedProcessor', () => {
     it('should generate valid TypeScript code', () => {
       const processor = new SeedProcessor(fluxSeedExample);
       const code = processor.generateManifest();
-      
+
       expect(code).toContain('export const');
       expect(code).toContain('fluxManifest');
       expect(code).toContain('"id": "flux"');
@@ -186,7 +185,7 @@ describe('SeedProcessor', () => {
     it('should include all manifest fields', () => {
       const processor = new SeedProcessor(fluxSeedExample);
       const code = processor.generateManifest();
-      
+
       expect(code).toContain('"version"');
       expect(code).toContain('"description"');
       expect(code).toContain('"author"');
@@ -199,7 +198,7 @@ describe('SeedProcessor', () => {
     it('should return metadata and all generated files', () => {
       const processor = new SeedProcessor(minimalExample);
       const result = processor.process();
-      
+
       expect(result.metadata).toBeDefined();
       expect(result.files.schemas).toBeDefined();
       expect(result.files.routes).toBeDefined();
@@ -210,10 +209,10 @@ describe('SeedProcessor', () => {
       const processor = new SeedProcessor(minimalExample);
       const result1 = processor.process();
       const result2 = processor.process();
-      
+
       // IDs should be the same
       expect(result1.metadata.integrationId).toBe(result2.metadata.integrationId);
-      
+
       // Code structure should be the same (timestamps will differ)
       expect(result1.files.schemas).toContain('myAppSchemas');
       expect(result2.files.schemas).toContain('myAppSchemas');
@@ -224,7 +223,7 @@ describe('SeedProcessor', () => {
 describe('processSeed', () => {
   it('should process seed and return result', async () => {
     const result = await processSeed(minimalExample);
-    
+
     expect(result.metadata).toBeDefined();
     expect(result.files.schemas).toBeDefined();
     expect(result.files.routes).toBeDefined();
