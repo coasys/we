@@ -72,8 +72,8 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [loading, setLoading] = createSignal(true);
 
   // Layer visibility state
-  const [showUserLocations, setShowUserLocations] = createSignal(false);
-  const [showCountryOutlines, setShowCountryOutlines] = createSignal(false);
+  const [showUserLocations, setShowUserLocations] = createSignal(true);
+  const [showCountryOutlines, setShowCountryOutlines] = createSignal(true);
   const [showH3Hexagons, setShowH3Hexagons] = createSignal(false);
 
   // Background visibility state

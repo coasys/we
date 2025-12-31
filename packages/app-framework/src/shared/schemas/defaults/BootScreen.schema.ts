@@ -4,6 +4,11 @@ export const bootScreenSchema: SchemaNode = {
   type: '$if',
   props: {
     condition: { $ne: [{ $store: 'adamStore.bootState' }, 'ready'] },
+    exitTransition: {
+      type: 'fade',
+      duration: 2500,
+      easing: 'ease-out',
+    },
     then: {
       type: 'Column',
       props: {
@@ -14,6 +19,7 @@ export const bootScreenSchema: SchemaNode = {
         gap: '400',
         bg: 'ui-0',
         position: 'absolute',
+        zIndex: '9999',
       },
       children: [
         // WE Logo

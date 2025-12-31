@@ -72,6 +72,7 @@ export function getAppSettingsSchema(enableTemplateSwitching: boolean): SchemaNo
       {
         type: 'we-button',
         props: {
+          zIndex: '9999999',
           position: 'absolute',
           bottom: '10px',
           right: '10px',
@@ -88,7 +89,11 @@ export function getAppSettingsSchema(enableTemplateSwitching: boolean): SchemaNo
           condition: { $store: 'modalStore.appSettingsModalOpen' },
           then: {
             type: 'we-modal',
-            props: { gap: '400', close: { $action: 'modalStore.closeModal', args: ['app-settings'] } },
+            props: {
+              zIndex: '9999999',
+              gap: '400',
+              close: { $action: 'modalStore.closeModal', args: ['app-settings'] },
+            },
             children: settingsChildren,
           },
         },
