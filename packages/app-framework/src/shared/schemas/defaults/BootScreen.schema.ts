@@ -6,7 +6,7 @@ export const bootScreenSchema: SchemaNode = {
     condition: { $ne: [{ $store: 'adamStore.bootState' }, 'ready'] },
     exitTransition: {
       type: 'fade',
-      duration: 2500,
+      duration: 500,
       easing: 'ease-out',
     },
     then: {

@@ -86,6 +86,16 @@ export function getAppSettingsSchema(enableTemplateSwitching: boolean): SchemaNo
       {
         type: '$if',
         props: {
+          enterTransition: {
+            type: 'fade',
+            duration: 500,
+            easing: 'ease-in',
+          },
+          exitTransition: {
+            type: 'fade',
+            duration: 500,
+            easing: 'ease-out',
+          },
           condition: { $store: 'modalStore.appSettingsModalOpen' },
           then: {
             type: 'we-modal',

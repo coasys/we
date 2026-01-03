@@ -124,11 +124,27 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         ? getTransitionCSS(enterTransition)
         : '';
 
+    // Helper to check if a web component extends OverlayElement
+    // Uses static property marker since class names get minified in production
+    const isOverlayComponent = (tagName: string): boolean => {
+      if (!tagName?.startsWith('we-')) return false;
+
+      const ComponentClass = customElements.get(tagName);
+      if (!ComponentClass) return false;
+
+      // Check for static isOverlay marker property (minification-safe)
+      return 'isOverlay' in ComponentClass && ComponentClass.isOverlay === true;
+    };
+
     // Get content node to check for positioning props
     const contentNode = node.props?.then as SchemaNode | undefined;
     const contentProps = contentNode?.props || {};
+    const contentType = String(contentNode?.type || '');
 
-    // Check if content has position or z-index (support both camelCase and kebab-case)
+    // Check if content is a self-positioning overlay component
+    const isOverlay = isOverlayComponent(contentType);
+
+    // Check if content has position or z-index props
     const hasPosition = contentProps.position;
     const hasZIndex = contentProps['z-index'] || contentProps.zIndex;
 
@@ -138,6 +154,18 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         opacity: opacity(),
         transition: transitionCSS,
       };
+
+      // If content is an overlay component, don't interfere with its positioning
+      // But copy z-index to wrapper for proper stacking during transitions
+      if (isOverlay) {
+        // Copy z-index from overlay if present (for proper stacking during fade)
+        if (hasZIndex) {
+          const zIndexValue = String(contentProps['z-index'] || contentProps.zIndex);
+          style['z-index'] = zIndexValue;
+        }
+        // Let overlay handle its own positioning, wrapper just manages opacity & z-index
+        return style;
+      }
 
       // If content has position or z-index, copy them to wrapper to maintain stacking behavior
       if (hasPosition || hasZIndex) {
@@ -154,8 +182,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         // Make wrapper fill available space to not disrupt layout
         style.width = '100%';
         style.height = '100%';
+        return style;
       }
 
+      // For everything else (non-overlay, non-positioned), use layout-neutral wrapper
+      style.display = 'contents';
       return style;
     });
 

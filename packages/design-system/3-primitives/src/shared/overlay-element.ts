@@ -11,6 +11,9 @@ import { getDesignSystemCSS } from './helpers';
  */
 
 export abstract class OverlayElement extends DesignSystemElement {
+  // Marker property for runtime detection (minification-safe)
+  static readonly isOverlay = true;
+
   private _updateOverlayDesignSystem() {
     if (!this._dsStyle) return;
 
