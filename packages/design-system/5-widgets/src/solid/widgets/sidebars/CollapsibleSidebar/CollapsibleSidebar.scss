@@ -64,11 +64,6 @@
     gap: var(--sidebar-gap);
   }
 
-  // Item icon (always visible, stays in place)
-  &__item-icon {
-    flex-shrink: 0;
-  }
-
   // Content container (holds label and badge, animates width)
   &__item-content {
     display: flex;
@@ -87,6 +82,12 @@
       max-width: 500px; // Large enough to fit content
       opacity: 1;
     }
+
+    // For right sidebar, reverse the content direction and flip margin
+    .we-collapsible-sidebar.right & {
+      flex-direction: row-reverse;
+      margin-right: var(--sidebar-item-gap);
+    }
   }
 
   // Label text (always full size within content container)
@@ -98,5 +99,10 @@
   &__item-badge {
     margin-left: auto;
     flex-shrink: 0;
+
+    .we-collapsible-sidebar.right & {
+      margin-left: 0;
+      margin-right: auto;
+    }
   }
 }

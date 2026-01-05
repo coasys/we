@@ -52,11 +52,11 @@ export interface CollapsibleSidebarProps {
   gap?: string; // gap between main items and footer items
   centerItems?: boolean; // vertically center main items
 
-  // Item styling (applies to both icon and text)
-  itemColor?: string; // default state
-  itemColorHover?: string; // optional, falls back to itemColor
-  itemColorActive?: string; // active state
-  itemBg?: string; // default (usually transparent)
+  // Item styling
+  itemColor?: string;
+  itemColorHover?: string;
+  itemColorActive?: string;
+  itemBg?: string;
   itemBgHover?: string;
   itemBgActive?: string;
   itemPadding?: string; // padding inside each button item
@@ -160,12 +160,13 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
 
     return (
       <we-button
-        class={`we-collapsible-sidebar__item ${isActive() ? 'we-collapsible-sidebar__item--active' : ''}`}
+        class="we-collapsible-sidebar__item"
         onClick={() => handleItemClick(item)}
         disabled={item.disabled}
         height="auto"
         p={props.itemPadding ?? '300'}
         ax="start"
+        direction={side() === 'left' ? 'row' : 'row-reverse'}
         gap="0" // Gap handled in CSS to avoid shifting on collapse
         bg={isActive() ? (props.itemBgActive ?? 'ui-100') : (props.itemBg ?? '')}
         color={isActive() ? (props.itemColorActive ?? 'primary-600') : (props.itemColor ?? 'ui-700')}
@@ -204,9 +205,7 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
     <CollapsibleSidebarContext.Provider value={contextValue}>
       <div class={classes()} style={cssVars()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
         {/* Header slot */}
-        <Show when={props.header}>
-          <div class="we-collapsible-sidebar__header">{props.header}</div>
-        </Show>
+        <Show when={props.header}>{props.header}</Show>
 
         {/* Main items */}
         <div class="we-collapsible-sidebar__items">

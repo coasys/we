@@ -19,31 +19,16 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     height: '100%',
   },
   children: [
-    // { type: 'we-button', props: { p: '600', hoverProps: { bg: 'success-500' } }, children: ['Test Button'] },
-    // Left sidebar - CollapsibleSidebar
+    // Left sidebar
     {
       type: 'CollapsibleSidebar',
       props: {
         side: 'left',
         position: 'fixed',
         zIndex: 2,
-        transitionDuration: 500,
-        // collapsedWidth: '150px',
-        // expandedWidth: '450px',
-        // border: '5px solid #ddd',
         border: 'none',
         itemPadding: '12px',
-        // itemGap: '300',
         centerItems: true,
-        // iconSize: '26px',
-        // padding: '20px',
-        // bg: 'ui-500',
-        // itemColorActive: 'success-600',
-        // itemColorHover: 'danger-500',
-        // badgeBg: 'primary-500',
-        // badgeColor: 'ui-0',
-        // badgeBg: 'ui-200',
-        // badgeColor: 'ui-800',
         // Navigation items
         items: [
           {
@@ -121,6 +106,46 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         bg: 'ui-50',
       },
       children: [{ type: '$routes' }],
+    },
+    // Right sidebar
+    {
+      type: 'CollapsibleSidebar',
+      props: {
+        side: 'right',
+        position: 'fixed',
+        zIndex: 2,
+        border: 'none',
+        itemPadding: '12px',
+        centerItems: true,
+        // Navigation items
+        items: [
+          {
+            id: 'notifications',
+            icon: 'bell',
+            label: 'Notifications',
+            onClick: { $action: 'routeStore.navigate', args: ['/notifications'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/notifications'] },
+          },
+          {
+            id: 'messages',
+            icon: 'envelope-simple',
+            label: 'Messages',
+            onClick: { $action: 'routeStore.navigate', args: ['/messages'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/messages'] },
+            badge: 15,
+          },
+        ],
+
+        // Footer items
+        footerItems: [
+          {
+            id: 'logout',
+            icon: 'list',
+            label: 'Logout',
+            onClick: { $action: 'authStore.logout' },
+          },
+        ],
+      },
     },
   ],
   routes: [
