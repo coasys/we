@@ -76,6 +76,7 @@ export const bootScreenSchema: SchemaNode = {
                       type: 'we-input',
                       props: {
                         // height: '60px',
+                        height: '36px',
                         width: '200px',
                         placeholder: 'Password...',
                         value: { $store: 'adamStore.password' },
@@ -102,6 +103,7 @@ export const bootScreenSchema: SchemaNode = {
                       type: 'we-button',
                       props: {
                         bg: 'primary-500',
+                        height: '36px',
                         onClick: {
                           $action: 'adamStore.setShowPassword',
                           args: [{ $not: { $store: 'adamStore.showPassword' } }],
@@ -130,6 +132,7 @@ export const bootScreenSchema: SchemaNode = {
                   type: 'we-button',
                   props: {
                     mt: '200',
+                    height: '36px',
                     text: 'Login',
                     color: 'ui-0',
                     bg: 'primary-500',

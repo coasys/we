@@ -106,7 +106,7 @@ function extractComponentsFromCustomElementsManifest(cemData: CustomElementsMani
     });
 }
 
-function generateComponentProps(component: Component, typesPath: string): string {
+function generateComponentProps(component: Component, typesPath: string, framework?: Framework): string {
   return [
     // Map properties from the component
     ...Object.entries(component.properties).map(([name, prop]) => {
@@ -127,6 +127,16 @@ function generateComponentProps(component: Component, typesPath: string): string
     `${indent(4)}style?: Record<string, any>;`,
     `${indent(4)}styles?: Record<string, any>;`,
     `${indent(4)}children?: any;`,
+
+    // Add prop: namespace for Solid.js to explicitly set object properties
+    ...(framework?.name === 'solid'
+      ? [
+          `${indent(4)}'prop:hoverProps'?: Record<string, any>;`,
+          `${indent(4)}'prop:activeProps'?: Record<string, any>;`,
+          `${indent(4)}'prop:focusProps'?: Record<string, any>;`,
+          `${indent(4)}'prop:disabledProps'?: Record<string, any>;`,
+        ]
+      : []),
   ].join('\n');
 }
 
@@ -176,7 +186,7 @@ function buildDeclarationContent(framework: Framework, content: string, tagName?
 }
 
 async function generateComponentDeclaration(component: Component, framework: Framework) {
-  const componentProps = generateComponentProps(component, `../../../types`);
+  const componentProps = generateComponentProps(component, `../../../types`, framework);
   const declaration = buildDeclarationContent(framework, componentProps, component.tagName);
 
   // Resolve output path relative to script location
@@ -193,7 +203,9 @@ async function generateComponentDeclaration(component: Component, framework: Fra
 async function generateFrameworkIndexFile(components: Component[], framework: Framework): Promise<void> {
   const componentsProps = components
     .map((component) =>
-      [`'${component.tagName}': {`, generateComponentProps(component, `../../types`), `${indent(3)}}`].join('\n'),
+      [`'${component.tagName}': {`, generateComponentProps(component, `../../types`, framework), `${indent(3)}}`].join(
+        '\n',
+      ),
     )
     .join(`;\n${indent(3)}`); // Add indentation and semicolon between components
 

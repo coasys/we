@@ -12,7 +12,7 @@ export default defineConfig({
   target: 'es2022',
   splitting: false,
   treeshake: true,
-  external: ['solid-js', '@we/primitives'],
+  external: ['solid-js', '@we/primitives', /\.scss$/, /\.css$/], // Exclude SCSS/CSS imports from bundle
   esbuildPlugins: [solidPlugin()],
   esbuildOptions(o) {
     o.jsx = 'automatic';

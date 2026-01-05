@@ -9,7 +9,7 @@ import { IconSize, IconWeight } from '../types';
 const styles = css`
   :host {
     --icon-color: currentColor;
-    --icon-size: 26px;
+    --icon-size: 26px; /* Default backwards compatible size */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -21,17 +21,26 @@ const styles = css`
     fill: var(--icon-color);
   }
 
+  :host([size='xxs']) {
+    --icon-size: var(--we-size-xxs);
+  }
   :host([size='xs']) {
-    --icon-size: 16px;
+    --icon-size: var(--we-size-xs);
   }
   :host([size='sm']) {
-    --icon-size: 18px;
+    --icon-size: var(--we-size-sm);
+  }
+  :host([size='md']) {
+    --icon-size: var(--we-size-md);
   }
   :host([size='lg']) {
-    --icon-size: 32px;
+    --icon-size: var(--we-size-lg);
   }
   :host([size='xl']) {
-    --icon-size: 48px;
+    --icon-size: var(--we-size-xl);
+  }
+  :host([size='xxl']) {
+    --icon-size: var(--we-size-xxl);
   }
 `;
 
@@ -76,7 +85,7 @@ export default class Icon extends LitElement {
     if (props.has('color')) this.style.setProperty('--icon-color', tokenVar('color', this.color, 'currentColor'));
 
     // Handle custom size values (e.g., "20px", "2rem")
-    if (props.has('size') && this.size && !['xs', 'sm', 'lg', 'xl'].includes(this.size)) {
+    if (props.has('size') && this.size && !['xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'].includes(this.size)) {
       this.style.setProperty('--icon-size', this.size);
     }
   }

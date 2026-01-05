@@ -1,3 +1,4 @@
+import { tokenVar } from '@we/design-system-utils';
 import { css, html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
@@ -53,7 +54,7 @@ export default class Text extends LitElement {
   @property({ type: String, reflect: true }) tag: TextTag = 'span';
   @property({ type: Boolean, reflect: true }) inline = false;
   @property({ type: Boolean, reflect: true }) uppercase = false;
-  @property({ type: String, reflect: true }) color = 'ui-900';
+  @property({ type: String, reflect: true }) color = '';
   @property({ type: String, reflect: true }) weight = '';
 
   updated(changedProperties: Map<string, unknown>) {
@@ -69,8 +70,8 @@ export default class Text extends LitElement {
       else this.style.removeProperty('--we-weight');
     }
     if (changedProperties.has('color')) {
-      if (this.color) this.style.setProperty('--we-color', `var(--we-color-${this.color})`);
-      else this.style.removeProperty('--we-color');
+      // Use tokenVar to handle tokens, raw CSS values, and inherit
+      this.style.setProperty('--we-color', tokenVar('color', this.color, 'inherit'));
     }
   }
 

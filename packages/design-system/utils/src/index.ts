@@ -1,5 +1,7 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-system-types';
 
+export * from './iconSize';
+
 const colorKeys = ['bg', 'color'] as const;
 const visualEffectKeys = ['opacity', 'border', 'shadow', 'transform', 'transition'] as const;
 const typographyKeys = [
@@ -75,6 +77,30 @@ export function tokenVar(prefix: string, token?: string, fallback = '0') {
 
   // Otherwise return CSS variable
   return `var(--we-${prefix}-${token})`;
+}
+
+/**
+ * Parse border shorthand value and convert color tokens to CSS variables
+ * Example: "1px solid ui-200" -> "1px solid var(--we-color-ui-200)"
+ */
+export function parseBorder(value: string | undefined, defaultValue = ''): string {
+  const val = value ?? defaultValue;
+  if (!val) return '';
+
+  // If it contains var(, #, or rgb, assume it's already processed
+  if (val.includes('var(') || val.includes('#') || val.includes('rgb')) {
+    return val;
+  }
+
+  // Try to parse border shorthand: "1px solid ui-200"
+  const parts = val.split(' ');
+  if (parts.length >= 3) {
+    const [width, style, ...colorParts] = parts;
+    const color = colorParts.join(' ');
+    return `${width} ${style} ${tokenVar('color', color, '')}`;
+  }
+
+  return val;
 }
 
 export function getMarginValues(props: DesignSystemProps) {

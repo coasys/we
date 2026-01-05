@@ -7,7 +7,7 @@ import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
-  height: '36px',
+  // height: '36px',
   px: '300',
   bg: 'ui-75',
   r: 'sm',

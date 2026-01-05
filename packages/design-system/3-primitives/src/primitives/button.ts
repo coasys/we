@@ -12,7 +12,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   color: 'primary-800',
   r: 'md',
   px: '400',
-  height: '36px',
+  // height: '36px',
   ax: 'center',
   ay: 'center',
   gap: '300',

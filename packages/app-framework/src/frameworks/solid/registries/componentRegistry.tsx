@@ -20,7 +20,7 @@ import {
 import { HomePage, PageNotFound, SpacePage } from '@we/pages/solid';
 import type { ComponentRegistry } from '@we/schema-renderer/solid';
 import { CenteredTemplate, DefaultTemplate } from '@we/templates/solid';
-import { CesiumGlobe, CreateSpaceModalWidget, SpaceSidebarWidget } from '@we/widgets/solid';
+import { CesiumGlobe, CollapsibleSidebar, CreateSpaceModalWidget, SpaceSidebarWidget } from '@we/widgets/solid';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
@@ -59,6 +59,7 @@ export const componentRegistry: ComponentRegistry = {
   // @we/widgets
   CreateSpaceModalWidget,
   SpaceSidebarWidget,
+  CollapsibleSidebar,
   // Inject layerFactoryRegistry dependency
   CesiumGlobe: (props) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
 

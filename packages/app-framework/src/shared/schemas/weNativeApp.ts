@@ -19,66 +19,103 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     height: '100%',
   },
   children: [
-    // Left sidebar
+    // { type: 'we-button', props: { p: '600', hoverProps: { bg: 'success-500' } }, children: ['Test Button'] },
+    // Left sidebar - CollapsibleSidebar
     {
-      type: 'Column',
+      type: 'CollapsibleSidebar',
       props: {
-        width: '200px',
-        height: '100%',
-        bg: 'ui-0',
-        p: '1rem',
-        gap: '0.5rem',
-        borderRight: '1px solid',
-        borderColor: 'ui-200',
-      },
-      children: [
-        // App title
-        {
-          type: 'we-text',
-          props: {
-            text: 'WE Native',
-            size: 'xl',
-            weight: 'bold',
-            mb: '1rem',
+        side: 'left',
+        position: 'fixed',
+        zIndex: 2,
+        transitionDuration: 500,
+        // collapsedWidth: '150px',
+        // expandedWidth: '450px',
+        // border: '5px solid #ddd',
+        border: 'none',
+        itemPadding: '12px',
+        // itemGap: '300',
+        centerItems: true,
+        // iconSize: '26px',
+        // padding: '20px',
+        // bg: 'ui-500',
+        // itemColorActive: 'success-600',
+        // itemColorHover: 'danger-500',
+        // badgeBg: 'primary-500',
+        // badgeColor: 'ui-0',
+        // badgeBg: 'ui-200',
+        // badgeColor: 'ui-800',
+        // Navigation items
+        items: [
+          {
+            id: 'dashboard',
+            icon: 'house',
+            label: 'Home',
+            onClick: { $action: 'routeStore.navigate', args: ['/home'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/home'] },
           },
-        },
-        // Navigation buttons
-        {
-          type: 'we-button',
-          props: {
-            width: '100%',
+          {
+            id: 'feed',
+            icon: 'rss',
+            label: 'Feed',
+            onClick: { $action: 'routeStore.navigate', args: ['/feed'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/feed'] },
+          },
+          {
+            id: 'globe',
+            icon: 'globe',
+            label: 'Globe',
             onClick: { $action: 'routeStore.navigate', args: ['/'] },
-            variant: 'ghost',
-            justify: 'flex-start',
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/'] },
+            badge: 10,
           },
-          children: [{ type: 'we-icon', props: { name: 'globe', size: 'sm', mr: '0.5rem' } }, 'Globe'],
-        },
-        {
-          type: 'we-button',
+          {
+            id: 'graph',
+            icon: 'graph',
+            label: 'Graph',
+            onClick: { $action: 'routeStore.navigate', args: ['/graph'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/graph'] },
+          },
+        ],
+
+        // Footer items
+        footerItems: [
+          {
+            id: 'logout',
+            icon: 'list',
+            label: 'Logout',
+            onClick: { $action: 'authStore.logout' },
+          },
+        ],
+      },
+      slots: {
+        header: {
+          type: 'Column',
           props: {
-            width: '100%',
-            onClick: { $action: 'routeStore.navigate', args: ['/chat'] },
-            variant: 'ghost',
-            justify: 'flex-start',
+            width: '66px',
+            height: '66px',
+            ax: 'center',
+            ay: 'center',
           },
-          children: [{ type: 'we-icon', props: { name: 'chat', size: 'sm', mr: '0.5rem' } }, 'Chat'],
+          children: [
+            {
+              type: 'we-image',
+              props: {
+                src: '/we-text.svg',
+                alt: 'WE Logo',
+                width: '38px',
+                height: '38px',
+                gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              },
+            },
+          ],
         },
-        {
-          type: 'we-button',
-          props: {
-            width: '100%',
-            onClick: { $action: 'routeStore.navigate', args: ['/profile'] },
-            variant: 'ghost',
-            justify: 'flex-start',
-          },
-          children: [{ type: 'we-icon', props: { name: 'user', size: 'sm', mr: '0.5rem' } }, 'Profile'],
-        },
-      ],
+      },
     },
-    // Right main panel
+    // Main panel
     {
       type: 'Column',
       props: {
+        zIndex: 1,
         width: '100%',
         height: '100%',
         bg: 'ui-50',
@@ -91,6 +128,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
       path: '/',
       type: 'Column',
       props: {
+        pl: '80px',
         width: '100%',
         height: '100%',
       },
@@ -115,14 +153,6 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                 align: 'center',
               },
               children: [
-                {
-                  type: 'we-text',
-                  props: {
-                    text: 'Globe View',
-                    size: '2xl',
-                    weight: 'bold',
-                  },
-                },
                 // Controls row
                 {
                   type: 'Row',
@@ -196,14 +226,14 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                 },
               ],
             },
-            {
-              type: 'we-text',
-              props: {
-                text: 'User locations around the world',
-                size: 'lg',
-                color: 'ui-600',
-              },
-            },
+            // {
+            //   type: 'we-text',
+            //   props: {
+            //     text: 'User locations around the world',
+            //     size: 'lg',
+            //     color: 'ui-600',
+            //   },
+            // },
           ],
         },
         // Globe takes remaining space

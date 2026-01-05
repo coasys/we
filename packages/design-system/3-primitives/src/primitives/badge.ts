@@ -1,3 +1,4 @@
+import { tokenVar } from '@we/design-system-utils';
 import { css, html, LitElement } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -11,6 +12,7 @@ const styles = css`
     --we-badge-bg: var(--we-color-ui-100);
     --we-badge-color: var(--we-color-ui-500);
     --we-badge-font-size: var(--we-font-size-400);
+    --we-badge-font-weight: 400;
     --we-badge-padding: var(--we-space-200) var(--we-space-300);
   }
   :host([size='sm']) {
@@ -39,6 +41,7 @@ const styles = css`
   }
   [part='base'] {
     font-size: var(--we-badge-font-size);
+    font-weight: var(--we-badge-font-weight);
     border-radius: var(--we-badge-border-radius);
     display: inline-flex;
     align-items: center;
@@ -55,7 +58,38 @@ export default class Badge extends LitElement {
 
   @property({ type: String, reflect: true }) variant: BadgeVariant = '';
   @property({ type: String, reflect: true }) size: BadgeSize = '';
+  @property({ type: String, reflect: true }) bg = '';
+  @property({ type: String, reflect: true }) color = '';
+  @property({ type: String, reflect: true }) weight = '';
   @property({ type: Object }) styles?: Record<string, any>;
+
+  updated(changedProperties: Map<string, unknown>) {
+    super.updated(changedProperties);
+
+    if (changedProperties.has('bg')) {
+      if (this.bg) {
+        this.style.setProperty('--we-badge-bg', tokenVar('color', this.bg, ''));
+      } else {
+        this.style.removeProperty('--we-badge-bg');
+      }
+    }
+
+    if (changedProperties.has('color')) {
+      if (this.color) {
+        this.style.setProperty('--we-badge-color', tokenVar('color', this.color, ''));
+      } else {
+        this.style.removeProperty('--we-badge-color');
+      }
+    }
+
+    if (changedProperties.has('weight')) {
+      if (this.weight) {
+        this.style.setProperty('--we-badge-font-weight', this.weight);
+      } else {
+        this.style.removeProperty('--we-badge-font-weight');
+      }
+    }
+  }
 
   render() {
     const inlineStyles = this.styles || {};
