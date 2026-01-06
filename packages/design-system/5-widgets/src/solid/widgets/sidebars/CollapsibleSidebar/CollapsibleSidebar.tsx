@@ -153,7 +153,7 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
   };
 
   const handleMouseLeave = () => {
-    if (expandOnHover()) setIsExpanded(true);
+    if (expandOnHover()) setIsExpanded(false);
   };
 
   const handleItemClick = (item: SidebarNavItem) => {

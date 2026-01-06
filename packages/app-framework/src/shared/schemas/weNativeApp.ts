@@ -36,8 +36,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             id: 'dashboard',
             icon: 'house',
             label: 'Home',
-            onClick: { $action: 'routeStore.navigate', args: ['/home'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/home'] },
+            onClick: { $action: 'routeStore.navigate', args: ['/'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, ''] },
           },
           {
             type: 'item',
@@ -52,8 +52,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             id: 'globe',
             icon: 'globe',
             label: 'Globe',
-            onClick: { $action: 'routeStore.navigate', args: ['/'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/'] },
+            onClick: { $action: 'routeStore.navigate', args: ['/globe'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/globe'] },
             badge: 10,
           },
           {
@@ -205,11 +205,266 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     },
   ],
   routes: [
+    // {
+    //   path: '/',
+    //   type: 'Column',
+    //   props: {
+    //     width: '100%',
+    //     height: '100%',
+    //     p: '2rem',
+    //   },
+    //   children: [
+    //     {},
+    //   ],
+    // },
     {
-      path: '/',
+      path: '/feed',
       type: 'Column',
       props: {
-        pl: '80px',
+        px: '60px',
+        width: '100%',
+        height: '100%',
+        bg: 'ui-50',
+      },
+      children: [
+        // Header section with filters and search
+        {
+          type: 'Column',
+          props: {
+            width: '100%',
+            p: '2rem',
+            gap: '1rem',
+            bg: 'ui-0',
+            borderBottom: '1px solid',
+            borderColor: 'ui-200',
+          },
+          children: [
+            // Title
+            {
+              type: 'we-text',
+              props: {
+                text: 'Feed',
+                size: '800',
+                weight: '600',
+                color: 'ui-900',
+              },
+            },
+            // Filters and Search Row
+            {
+              type: 'Row',
+              props: {
+                width: '100%',
+                gap: '1rem',
+                ay: 'center',
+              },
+              children: [
+                // Filter buttons
+                {
+                  type: 'Row',
+                  props: {
+                    gap: '0.5rem',
+                    ay: 'center',
+                  },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        text: 'All',
+                        variant: 'primary',
+                        size: 'sm',
+                      },
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        text: 'Following',
+                        variant: 'ghost',
+                        size: 'sm',
+                      },
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        text: 'Trending',
+                        variant: 'ghost',
+                        size: 'sm',
+                      },
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        text: 'Recent',
+                        variant: 'ghost',
+                        size: 'sm',
+                      },
+                    },
+                  ],
+                },
+                // Search bar
+                {
+                  type: 'Row',
+                  props: {
+                    flex: '1',
+                    maxWidth: '400px',
+                    ml: 'auto',
+                  },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        py: '200',
+                        placeholder: 'Search posts...',
+                        width: '100%',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        // Posts grid
+        {
+          type: 'Column',
+          props: {
+            width: '100%',
+            height: '100%',
+            p: '2rem',
+            gap: '1.5rem',
+            overflow: 'auto',
+          },
+          children: [
+            // Posts container - using CSS Grid for responsive layout
+            {
+              type: 'Column',
+              props: {
+                styles: {
+                  display: 'grid',
+                  'grid-template-columns': 'repeat(auto-fill, minmax(350px, 1fr))',
+                  gap: '1.5rem',
+                  width: '100%',
+                },
+              },
+              children: [
+                // Post 1
+                {
+                  type: 'PostCard',
+                  props: {
+                    creator: {
+                      name: 'Sarah Chen',
+                      avatar: 'https://i.pravatar.cc/150?img=5',
+                    },
+                    title: 'Building Scalable Design Systems',
+                    text: 'Just published a comprehensive guide on creating design systems that scale with your team. Key lessons learned from working with 50+ designers.',
+                  },
+                },
+                // Post 2
+                {
+                  type: 'PostCard',
+                  props: {
+                    creator: {
+                      name: 'Marcus Rodriguez',
+                      avatar: 'https://i.pravatar.cc/150?img=12',
+                    },
+                    title: 'The Future of Web3 UX',
+                    text: 'Exploring how decentralized applications can provide better user experiences. The gap between Web2 and Web3 UX is closing faster than we think.',
+                  },
+                },
+                // Post 3
+                {
+                  type: 'PostCard',
+                  props: {
+                    creator: {
+                      name: 'Elena Popov',
+                      avatar: 'https://i.pravatar.cc/150?img=9',
+                    },
+                    title: 'Animation Best Practices 2026',
+                    text: 'Performance-first animations that delight users without sacrificing speed. Learn the techniques that top product teams are using.',
+                  },
+                },
+                // Post 4
+                {
+                  type: 'PostCard',
+                  props: {
+                    creator: {
+                      name: 'James Wilson',
+                      avatar: 'https://i.pravatar.cc/150?img=3',
+                    },
+                    title: 'TypeScript 5.5 New Features',
+                    text: 'Breaking down the latest TypeScript release and what it means for modern application development. Some game-changing improvements here.',
+                  },
+                },
+                // Post 5
+                {
+                  type: 'PostCard',
+                  props: {
+                    creator: {
+                      name: 'Priya Sharma',
+                      avatar: 'https://i.pravatar.cc/150?img=16',
+                    },
+                    title: 'Accessibility in 2026',
+                    text: 'Why accessibility is not optional anymore. Real-world examples of inclusive design making products better for everyone.',
+                  },
+                },
+                // Post 6
+                {
+                  type: 'PostCard',
+                  props: {
+                    creator: {
+                      name: 'Alex Kim',
+                      avatar: 'https://i.pravatar.cc/150?img=7',
+                    },
+                    title: 'Reactive Programming Patterns',
+                    text: 'Deep dive into reactive programming with SolidJS. How fine-grained reactivity changes the way we think about state management.',
+                  },
+                },
+                // Post 7
+                {
+                  type: 'PostCard',
+                  props: {
+                    creator: {
+                      name: 'Sophie Martin',
+                      avatar: 'https://i.pravatar.cc/150?img=10',
+                    },
+                    title: 'Design Tokens Revolution',
+                    text: 'How design tokens are transforming the way teams collaborate between design and development. A standardized approach that works.',
+                  },
+                },
+                // Post 8
+                {
+                  type: 'PostCard',
+                  props: {
+                    creator: {
+                      name: 'David Liu',
+                      avatar: 'https://i.pravatar.cc/150?img=13',
+                    },
+                    title: 'Building with Cesium',
+                    text: 'Creating stunning 3D visualizations with Cesium. From basic globe rendering to complex spatial data visualization.',
+                  },
+                },
+                // Post 9
+                {
+                  type: 'PostCard',
+                  props: {
+                    creator: {
+                      name: 'Maya Patel',
+                      avatar: 'https://i.pravatar.cc/150?img=20',
+                    },
+                    title: 'Component Architecture Tips',
+                    text: 'Lessons learned from building 100+ reusable components. How to strike the balance between flexibility and simplicity.',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      path: '/globe',
+      type: 'Column',
+      props: {
+        px: '60px',
         width: '100%',
         height: '100%',
       },
@@ -307,14 +562,6 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                 },
               ],
             },
-            // {
-            //   type: 'we-text',
-            //   props: {
-            //     text: 'User locations around the world',
-            //     size: 'lg',
-            //     color: 'ui-600',
-            //   },
-            // },
           ],
         },
         // Globe takes remaining space
@@ -405,43 +652,24 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         },
       ],
     },
-    {
-      path: '/chat',
-      type: 'Column',
-      props: {
-        width: '100%',
-        height: '100%',
-        p: '2rem',
-      },
-      children: [
-        {
-          type: 'we-text',
-          props: {
-            text: 'Chat View',
-            size: '2xl',
-            weight: 'bold',
-          },
-        },
-      ],
-    },
-    {
-      path: '/profile',
-      type: 'Column',
-      props: {
-        width: '100%',
-        height: '100%',
-        p: '2rem',
-      },
-      children: [
-        {
-          type: 'we-text',
-          props: {
-            text: 'Profile View',
-            size: '2xl',
-            weight: 'bold',
-          },
-        },
-      ],
-    },
+    // {
+    //   path: '/profile',
+    //   type: 'Column',
+    //   props: {
+    //     width: '100%',
+    //     height: '100%',
+    //     p: '2rem',
+    //   },
+    //   children: [
+    //     {
+    //       type: 'we-text',
+    //       props: {
+    //         text: 'Profile View',
+    //         size: '2xl',
+    //         weight: 'bold',
+    //       },
+    //     },
+    //   ],
+    // },
   ],
 };
