@@ -37,7 +37,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             icon: 'house',
             label: 'Home',
             onClick: { $action: 'routeStore.navigate', args: ['/'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, ''] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/'] },
           },
           {
             type: 'item',
@@ -46,6 +46,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             label: 'Feed',
             onClick: { $action: 'routeStore.navigate', args: ['/feed'] },
             active: { $eq: [{ $store: 'routeStore.currentPath' }, '/feed'] },
+            badge: 34,
           },
           {
             type: 'item',
@@ -54,7 +55,6 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             label: 'Globe',
             onClick: { $action: 'routeStore.navigate', args: ['/globe'] },
             active: { $eq: [{ $store: 'routeStore.currentPath' }, '/globe'] },
-            badge: 10,
           },
           {
             type: 'item',
@@ -63,6 +63,39 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             label: 'Graph',
             onClick: { $action: 'routeStore.navigate', args: ['/graph'] },
             active: { $eq: [{ $store: 'routeStore.currentPath' }, '/graph'] },
+          },
+          {
+            type: 'item',
+            id: 'calendar',
+            icon: 'calendar',
+            label: 'Calendar',
+            onClick: { $action: 'routeStore.navigate', args: ['/calendar'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/calendar'] },
+            badge: 10,
+          },
+          {
+            type: 'item',
+            id: 'tasks',
+            icon: 'list-checks',
+            label: 'Tasks',
+            onClick: { $action: 'routeStore.navigate', args: ['/tasks'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/tasks'] },
+          },
+          {
+            type: 'item',
+            id: 'new-post',
+            icon: 'cube',
+            label: 'New post',
+            onClick: { $action: 'routeStore.navigate', args: ['/new-post'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/new-post'] },
+          },
+          {
+            type: 'item',
+            id: 'new-space',
+            icon: 'dna',
+            label: 'New space',
+            onClick: { $action: 'routeStore.navigate', args: ['/new-space'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/new-space'] },
           },
           // Spaces group
           {
@@ -174,6 +207,15 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         items: [
           {
             type: 'item',
+            id: 'wallet',
+            icon: 'wallet',
+            label: 'Wallet',
+            onClick: { $action: 'routeStore.navigate', args: ['/wallet'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/wallet'] },
+            badge: '$520',
+          },
+          {
+            type: 'item',
             id: 'notifications',
             icon: 'bell',
             label: 'Notifications',
@@ -188,6 +230,111 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             onClick: { $action: 'routeStore.navigate', args: ['/messages'] },
             active: { $eq: [{ $store: 'routeStore.currentPath' }, '/messages'] },
             badge: 15,
+          },
+          {
+            type: 'item',
+            id: 'call',
+            icon: 'phone',
+            label: 'Call',
+            onClick: { $action: 'routeStore.navigate', args: ['/call'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/call'] },
+          },
+          // Spaces group
+          {
+            type: 'group',
+            id: 'friends',
+            label: 'Friends',
+            collapsible: true,
+            collapsed: false,
+            items: [
+              {
+                type: 'item',
+                id: 'sarah',
+                avatar: {
+                  src: 'https://i.pravatar.cc/150?img=5',
+                  name: 'Sarah Chen',
+                  status: 'online',
+                },
+                label: 'Sarah Chen',
+                badge: 2,
+                onClick: { $action: 'routeStore.navigate', args: ['/friends/sarah'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/friends/sarah'] },
+              },
+              {
+                type: 'item',
+                id: 'marcus',
+                avatar: {
+                  src: 'https://i.pravatar.cc/150?img=12',
+                  name: 'Marcus Rodriguez',
+                  status: 'online',
+                },
+                label: 'Marcus Rodriguez',
+                onClick: { $action: 'routeStore.navigate', args: ['/friends/marcus'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/friends/marcus'] },
+              },
+              {
+                type: 'item',
+                id: 'elena',
+                avatar: {
+                  src: 'https://i.pravatar.cc/150?img=9',
+                  name: 'Elena Popov',
+                  status: 'away',
+                },
+                label: 'Elena Popov',
+                badge: 1,
+                onClick: { $action: 'routeStore.navigate', args: ['/friends/elena'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/friends/elena'] },
+              },
+              {
+                type: 'item',
+                id: 'james',
+                avatar: {
+                  src: 'https://i.pravatar.cc/150?img=3',
+                  name: 'James Wilson',
+                  status: 'offline',
+                },
+                label: 'James Wilson',
+                onClick: { $action: 'routeStore.navigate', args: ['/friends/james'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/friends/james'] },
+              },
+              {
+                type: 'item',
+                id: 'priya',
+                avatar: {
+                  src: 'https://i.pravatar.cc/150?img=16',
+                  name: 'Priya Sharma',
+                  status: 'online',
+                },
+                label: 'Priya Sharma',
+                onClick: { $action: 'routeStore.navigate', args: ['/friends/priya'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/friends/priya'] },
+              },
+              {
+                type: 'item',
+                id: 'alex',
+                avatar: {
+                  src: 'https://i.pravatar.cc/150?img=7',
+                  name: 'Alex Kim',
+                  status: 'online',
+                },
+                label: 'Alex Kim',
+                badge: 5,
+                onClick: { $action: 'routeStore.navigate', args: ['/friends/alex'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/friends/alex'] },
+              },
+              {
+                type: 'item',
+                id: 'sophie',
+                avatar: {
+                  src: 'https://i.pravatar.cc/150?img=10',
+                  name: 'Sophie Martin',
+                  status: 'away',
+                },
+                label: 'Sophie Martin',
+                onClick: { $action: 'routeStore.navigate', args: ['/friends/sophie'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/friends/sophie'] },
+              },
+            ],
           },
         ],
 
@@ -205,18 +352,641 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     },
   ],
   routes: [
-    // {
-    //   path: '/',
-    //   type: 'Column',
-    //   props: {
-    //     width: '100%',
-    //     height: '100%',
-    //     p: '2rem',
-    //   },
-    //   children: [
-    //     {},
-    //   ],
-    // },
+    {
+      path: '/',
+      type: 'Column',
+      props: {
+        px: '60px',
+        width: '100%',
+        height: '100%',
+        bg: 'ui-50',
+        overflow: 'auto',
+      },
+      children: [
+        // Welcome header
+        {
+          type: 'Column',
+          props: {
+            width: '100%',
+            p: '2rem',
+            gap: '0.5rem',
+            bg: 'ui-0',
+            borderBottom: '1px solid',
+            borderColor: 'ui-200',
+          },
+          children: [
+            {
+              type: 'we-text',
+              props: {
+                text: 'Welcome back, James',
+                size: '800',
+                weight: '600',
+                color: 'ui-900',
+              },
+            },
+            {
+              type: 'we-text',
+              props: {
+                text: "Here's what's happening today",
+                size: '400',
+                color: 'ui-600',
+              },
+            },
+          ],
+        },
+
+        // Main content
+        {
+          type: 'Column',
+          props: {
+            width: '100%',
+            p: '2rem',
+            gap: '2rem',
+          },
+          children: [
+            // Stats cards row
+            {
+              type: 'Row',
+              props: {
+                width: '100%',
+                gap: '1rem',
+                wrap: true,
+              },
+              children: [
+                // Active Spaces card
+                {
+                  type: 'Column',
+                  props: {
+                    flex: '1',
+                    minWidth: '200px',
+                    p: '1.5rem',
+                    gap: '0.5rem',
+                    bg: 'ui-0',
+                    r: 'md',
+                    borderLeft: '4px solid',
+                    borderColor: 'primary-500',
+                  },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: 'Active Spaces',
+                        size: '300',
+                        weight: '600',
+                        color: 'ui-600',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: '12',
+                        size: '900',
+                        weight: '700',
+                        color: 'ui-900',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: '+2 this week',
+                        size: '200',
+                        color: 'primary-600',
+                      },
+                    },
+                  ],
+                },
+                // Unread Messages card
+                {
+                  type: 'Column',
+                  props: {
+                    flex: '1',
+                    minWidth: '200px',
+                    p: '1.5rem',
+                    gap: '0.5rem',
+                    bg: 'ui-0',
+                    r: 'md',
+                    borderLeft: '4px solid',
+                    borderColor: 'blue-500',
+                  },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: 'Unread Messages',
+                        size: '300',
+                        weight: '600',
+                        color: 'ui-600',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: '24',
+                        size: '900',
+                        weight: '700',
+                        color: 'ui-900',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: 'Across 5 spaces',
+                        size: '200',
+                        color: 'ui-600',
+                      },
+                    },
+                  ],
+                },
+                // Active Quests card
+                {
+                  type: 'Column',
+                  props: {
+                    flex: '1',
+                    minWidth: '200px',
+                    p: '1.5rem',
+                    gap: '0.5rem',
+                    bg: 'ui-0',
+                    r: 'md',
+                    borderLeft: '4px solid',
+                    borderColor: 'green-500',
+                  },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: 'Active Quests',
+                        size: '300',
+                        weight: '600',
+                        color: 'ui-600',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: '7',
+                        size: '900',
+                        weight: '700',
+                        color: 'ui-900',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: '3 due this week',
+                        size: '200',
+                        color: 'green-600',
+                      },
+                    },
+                  ],
+                },
+                // Notifications card
+                {
+                  type: 'Column',
+                  props: {
+                    flex: '1',
+                    minWidth: '200px',
+                    p: '1.5rem',
+                    gap: '0.5rem',
+                    bg: 'ui-0',
+                    r: 'md',
+                    borderLeft: '4px solid',
+                    borderColor: 'orange-500',
+                  },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: 'Notifications',
+                        size: '300',
+                        weight: '600',
+                        color: 'ui-600',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: '18',
+                        size: '900',
+                        weight: '700',
+                        color: 'ui-900',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: 'New today',
+                        size: '200',
+                        color: 'ui-600',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+
+            // Two column layout
+            {
+              type: 'Row',
+              props: {
+                width: '100%',
+                gap: '1.5rem',
+                ax: 'start',
+              },
+              children: [
+                // Left column - Recent Activity
+                {
+                  type: 'Column',
+                  props: {
+                    flex: '2',
+                    gap: '1rem',
+                  },
+                  children: [
+                    // Section header
+                    {
+                      type: 'we-text',
+                      props: {
+                        text: 'Recent Activity',
+                        size: '600',
+                        weight: '600',
+                        color: 'ui-900',
+                      },
+                    },
+                    // Activity cards
+                    {
+                      type: 'Column',
+                      props: {
+                        gap: '0.75rem',
+                      },
+                      children: [
+                        // Activity 1
+                        {
+                          type: 'Row',
+                          props: {
+                            p: '1rem',
+                            gap: '1rem',
+                            bg: 'ui-0',
+                            r: 'md',
+                            ay: 'center',
+                          },
+                          children: [
+                            {
+                              type: 'we-avatar',
+                              props: {
+                                image: 'https://i.pravatar.cc/150?img=5',
+                                size: 'md',
+                              },
+                            },
+                            {
+                              type: 'Column',
+                              props: {
+                                flex: '1',
+                                gap: '0.25rem',
+                              },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: 'Sarah Chen commented on your post',
+                                    size: '400',
+                                    weight: '500',
+                                    color: 'ui-900',
+                                  },
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: '2 minutes ago',
+                                    size: '300',
+                                    color: 'ui-600',
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                        // Activity 2
+                        {
+                          type: 'Row',
+                          props: {
+                            p: '1rem',
+                            gap: '1rem',
+                            bg: 'ui-0',
+                            r: 'md',
+                            ay: 'center',
+                          },
+                          children: [
+                            {
+                              type: 'we-avatar',
+                              props: {
+                                image: 'https://i.pravatar.cc/150?img=12',
+                                size: 'md',
+                              },
+                            },
+                            {
+                              type: 'Column',
+                              props: {
+                                flex: '1',
+                                gap: '0.25rem',
+                              },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: 'Marcus Rodriguez invited you to Design Team',
+                                    size: '400',
+                                    weight: '500',
+                                    color: 'ui-900',
+                                  },
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: '1 hour ago',
+                                    size: '300',
+                                    color: 'ui-600',
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                        // Activity 3
+                        {
+                          type: 'Row',
+                          props: {
+                            p: '1rem',
+                            gap: '1rem',
+                            bg: 'ui-0',
+                            r: 'md',
+                            ay: 'center',
+                          },
+                          children: [
+                            {
+                              type: 'we-avatar',
+                              props: {
+                                image: 'https://i.pravatar.cc/150?img=9',
+                                size: 'md',
+                              },
+                            },
+                            {
+                              type: 'Column',
+                              props: {
+                                flex: '1',
+                                gap: '0.25rem',
+                              },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: 'Elena Popov shared a new file in Dev Team',
+                                    size: '400',
+                                    weight: '500',
+                                    color: 'ui-900',
+                                  },
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: '3 hours ago',
+                                    size: '300',
+                                    color: 'ui-600',
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                        // Activity 4
+                        {
+                          type: 'Row',
+                          props: {
+                            p: '1rem',
+                            gap: '1rem',
+                            bg: 'ui-0',
+                            r: 'md',
+                            ay: 'center',
+                          },
+                          children: [
+                            {
+                              type: 'we-avatar',
+                              props: {
+                                initials: 'WE',
+                                size: 'md',
+                              },
+                            },
+                            {
+                              type: 'Column',
+                              props: {
+                                flex: '1',
+                                gap: '0.25rem',
+                              },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: 'Quest "Launch MVP" was completed',
+                                    size: '400',
+                                    weight: '500',
+                                    color: 'ui-900',
+                                  },
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: 'Yesterday',
+                                    size: '300',
+                                    color: 'ui-600',
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+
+                // Right column - Quick Actions & Upcoming
+                {
+                  type: 'Column',
+                  props: {
+                    flex: '1',
+                    gap: '1.5rem',
+                  },
+                  children: [
+                    // Quick Actions
+                    {
+                      type: 'Column',
+                      props: {
+                        gap: '1rem',
+                      },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: {
+                            text: 'Quick Actions',
+                            size: '600',
+                            weight: '600',
+                            color: 'ui-900',
+                          },
+                        },
+                        {
+                          type: 'Column',
+                          props: {
+                            gap: '0.5rem',
+                          },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                text: 'Create New Post',
+                                variant: 'primary',
+                                width: '100%',
+                              },
+                            },
+                            {
+                              type: 'we-button',
+                              props: {
+                                text: 'Start New Quest',
+                                variant: 'ghost',
+                                width: '100%',
+                              },
+                            },
+                            {
+                              type: 'we-button',
+                              props: {
+                                text: 'Invite Members',
+                                variant: 'ghost',
+                                width: '100%',
+                              },
+                            },
+                          ],
+                        },
+                      ],
+                    },
+
+                    // Upcoming Events
+                    {
+                      type: 'Column',
+                      props: {
+                        gap: '1rem',
+                      },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: {
+                            text: 'Upcoming',
+                            size: '600',
+                            weight: '600',
+                            color: 'ui-900',
+                          },
+                        },
+                        {
+                          type: 'Column',
+                          props: {
+                            gap: '0.75rem',
+                          },
+                          children: [
+                            // Event 1
+                            {
+                              type: 'Column',
+                              props: {
+                                p: '1rem',
+                                gap: '0.5rem',
+                                bg: 'ui-0',
+                                r: 'md',
+                              },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: 'Team Standup',
+                                    size: '400',
+                                    weight: '600',
+                                    color: 'ui-900',
+                                  },
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: 'Today at 10:00 AM',
+                                    size: '300',
+                                    color: 'ui-600',
+                                  },
+                                },
+                              ],
+                            },
+                            // Event 2
+                            {
+                              type: 'Column',
+                              props: {
+                                p: '1rem',
+                                gap: '0.5rem',
+                                bg: 'ui-0',
+                                r: 'md',
+                              },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: 'Design Review',
+                                    size: '400',
+                                    weight: '600',
+                                    color: 'ui-900',
+                                  },
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: 'Tomorrow at 2:00 PM',
+                                    size: '300',
+                                    color: 'ui-600',
+                                  },
+                                },
+                              ],
+                            },
+                            // Event 3
+                            {
+                              type: 'Column',
+                              props: {
+                                p: '1rem',
+                                gap: '0.5rem',
+                                bg: 'ui-0',
+                                r: 'md',
+                              },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: 'Sprint Planning',
+                                    size: '400',
+                                    weight: '600',
+                                    color: 'ui-900',
+                                  },
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: {
+                                    text: 'Friday at 9:00 AM',
+                                    size: '300',
+                                    color: 'ui-600',
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
     {
       path: '/feed',
       type: 'Column',

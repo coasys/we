@@ -46,6 +46,7 @@ export const componentRegistry: ComponentRegistry = {
   'we-input': (props) => <we-input {...props} />,
   'we-modal': (props) => <we-modal {...props}>{props.children}</we-modal>,
   'we-iframe': (props) => <we-iframe {...props} />,
+  'we-avatar': (props) => <we-avatar {...props} />,
 
   // @we/components
   Column,
