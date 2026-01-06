@@ -5,7 +5,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
 
 import sharedStyles from '../shared/styles';
-import { SizeToken } from '../types';
+import type { AvatarSizeValue } from '../types';
 
 const styles = css`
   :host {
@@ -99,9 +99,18 @@ export default class Avatar extends LitElement {
   @property({ type: Boolean, reflect: true }) online = false;
   @property({ type: String, reflect: true }) initials = '';
   @property({ type: String }) icon = '';
-  @property({ type: String, reflect: true }) size?: SizeToken;
+  @property({ type: String, reflect: true }) size?: AvatarSizeValue;
   @property({ attribute: false }) onClick: undefined | (() => void) = undefined;
   @property({ type: Object }) styles?: Record<string, any>;
+
+  updated(props: Map<string, unknown>) {
+    super.updated(props);
+
+    // Handle custom size values (e.g., "20px", "2rem")
+    if (props.has('size') && this.size && !['xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'].includes(this.size)) {
+      this.style.setProperty('--we-avatar-size', this.size);
+    }
+  }
 
   private renderContent() {
     return this.image

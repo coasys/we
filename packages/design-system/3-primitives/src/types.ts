@@ -1,8 +1,8 @@
-export type { SizeToken, SpaceToken } from '@we/tokens';
+export type { SizeToken, SizeValue, AvatarSizeToken, AvatarSizeValue, SpaceToken } from '@we/tokens';
 
 export type { DesignSystemProps } from '@we/design-system-types';
 
-import type { SizeToken } from '@we/tokens';
+import type { SizeValue } from '@we/tokens';
 
 // TODO: review these types and move to @we/design-system-types
 
@@ -14,7 +14,7 @@ export type BadgeVariant = '' | 'primary' | 'success' | 'danger' | 'warning';
 export type BadgeSize = '' | 'sm' | 'lg';
 // export type ButtonVariant = 'default' | 'primary' | 'link' | 'subtle' | 'ghost' | 'danger' | 'contrast';
 // export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
-export type IconSize = '' | SizeToken; // Allow empty string for default size
+export type IconSize = '' | SizeValue; // Allow empty string for default size + both tokens and raw values
 export type IconWeight = 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
 export type ModalSize = '' | 'xs' | 'sm' | 'lg' | 'xl' | 'fullscreen';
 export type SpinnerSize = '' | 'sm' | 'lg';

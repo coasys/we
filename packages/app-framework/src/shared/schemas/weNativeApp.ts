@@ -32,6 +32,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         // Navigation items
         items: [
           {
+            type: 'item',
             id: 'dashboard',
             icon: 'house',
             label: 'Home',
@@ -39,6 +40,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             active: { $eq: [{ $store: 'routeStore.currentPath' }, '/home'] },
           },
           {
+            type: 'item',
             id: 'feed',
             icon: 'rss',
             label: 'Feed',
@@ -46,6 +48,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             active: { $eq: [{ $store: 'routeStore.currentPath' }, '/feed'] },
           },
           {
+            type: 'item',
             id: 'globe',
             icon: 'globe',
             label: 'Globe',
@@ -54,17 +57,67 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             badge: 10,
           },
           {
+            type: 'item',
             id: 'graph',
             icon: 'graph',
             label: 'Graph',
             onClick: { $action: 'routeStore.navigate', args: ['/graph'] },
             active: { $eq: [{ $store: 'routeStore.currentPath' }, '/graph'] },
           },
+          // Spaces group
+          {
+            type: 'group',
+            id: 'spaces',
+            label: 'Spaces',
+            collapsible: true,
+            collapsed: false,
+            items: [
+              {
+                type: 'item',
+                id: 'design-team',
+                avatar: {
+                  src: 'https://i.pravatar.cc/150?img=1',
+                  name: 'Design Team',
+                  status: 'online',
+                },
+                label: 'Design Team',
+                badge: 3,
+                onClick: { $action: 'routeStore.navigate', args: ['/spaces/design'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/spaces/design'] },
+              },
+              {
+                type: 'item',
+                id: 'dev-team',
+                avatar: { src: 'https://i.pravatar.cc/150?img=2', name: 'Dev Team' },
+                label: 'Dev Team',
+                onClick: { $action: 'routeStore.navigate', args: ['/spaces/dev'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/spaces/dev'] },
+              },
+            ],
+          },
+          // Quest group
+          {
+            type: 'group',
+            id: 'tools',
+            label: 'Quests',
+            collapsible: true,
+            items: [
+              {
+                type: 'item',
+                id: 'dev-team',
+                avatar: { src: 'https://i.pravatar.cc/150?img=2', name: 'Dev Team' },
+                label: 'Quest 1',
+                onClick: { $action: 'routeStore.navigate', args: ['/spaces/dev'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/spaces/dev'] },
+              },
+            ],
+          },
         ],
 
         // Footer items
         footerItems: [
           {
+            type: 'item',
             id: 'logout',
             icon: 'list',
             label: 'Logout',
@@ -120,6 +173,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         // Navigation items
         items: [
           {
+            type: 'item',
             id: 'notifications',
             icon: 'bell',
             label: 'Notifications',
@@ -127,6 +181,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             active: { $eq: [{ $store: 'routeStore.currentPath' }, '/notifications'] },
           },
           {
+            type: 'item',
             id: 'messages',
             icon: 'envelope-simple',
             label: 'Messages',
@@ -139,6 +194,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         // Footer items
         footerItems: [
           {
+            type: 'item',
             id: 'logout',
             icon: 'list',
             label: 'Logout',

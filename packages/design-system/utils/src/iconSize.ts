@@ -1,9 +1,10 @@
-import type { SizeToken } from '@we/tokens';
+import type { SizeToken, SizeValue } from '@we/tokens';
 
 /**
- * IconSize type definition (SizeToken + empty string for default)
+ * IconSize type definition (SizeValue + empty string for default)
+ * Allows both design system tokens and raw size values (px, rem, %, etc.)
  */
-export type IconSize = '' | SizeToken;
+export type IconSize = '' | SizeValue;
 
 /**
  * Converts IconSize tokens to CSS variable references for calculations

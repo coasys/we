@@ -86,6 +86,7 @@
     // For right sidebar, reverse the content direction and flip margin
     .we-collapsible-sidebar.right & {
       flex-direction: row-reverse;
+      margin-left: 0;
       margin-right: var(--sidebar-item-gap);
     }
   }
@@ -103,6 +104,93 @@
     .we-collapsible-sidebar.right & {
       margin-left: 0;
       margin-right: auto;
+    }
+  }
+
+  // Avatar in item (aligns like icon)
+  &__item-avatar {
+    // flex-shrink: 0;
+    &::part(base) {
+      flex-shrink: 0;
+      // width: 26px;
+      // height: 26px;
+    }
+  }
+
+  // Group container
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--we-space-200);
+  }
+
+  // Group header (clickable for collapsible, static otherwise)
+  &__group-header {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    padding: var(--we-space-200) var(--we-space-300);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+    transition: background-color 0.15s ease;
+
+    &:hover:not(:disabled) {
+      background-color: var(--we-color-ui-50);
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    &--static {
+      cursor: default;
+      pointer-events: none;
+
+      &:hover {
+        background-color: transparent;
+      }
+    }
+
+    // Only show label when expanded
+    .we-collapsible-sidebar:not(.we-collapsible-sidebar--expanded) & {
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+
+  // Group label
+  &__group-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  // Group badge
+  &__group-badge {
+    flex-shrink: 0;
+  }
+
+  // Group collapse icon (caret)
+  &__group-icon {
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+  }
+
+  // Group items container
+  &__group-items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sidebar-gap);
+    // padding-left: var(--we-space-400); // Indent nested items
+
+    .we-collapsible-sidebar.right & {
+      padding-left: 0;
+      padding-right: var(--we-space-400);
     }
   }
 }
