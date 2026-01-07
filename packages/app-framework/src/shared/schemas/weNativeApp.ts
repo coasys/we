@@ -355,13 +355,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     {
       path: '/',
       type: 'Column',
-      props: {
-        px: '60px',
-        width: '100%',
-        height: '100%',
-        bg: 'ui-50',
-        overflow: 'auto',
-      },
+      props: { px: '60px', width: '100%', height: '100%', bg: 'ui-50', overflow: 'auto' },
       children: [
         // Welcome header
         {
@@ -377,20 +371,11 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
           children: [
             {
               type: 'we-text',
-              props: {
-                text: 'Welcome back, James',
-                size: '800',
-                weight: '600',
-                color: 'ui-900',
-              },
+              props: { text: 'Welcome back, James', size: '800', weight: '600', color: 'ui-900' },
             },
             {
               type: 'we-text',
-              props: {
-                text: "Here's what's happening today",
-                size: '400',
-                color: 'ui-600',
-              },
+              props: { text: "Here's what's happening today", size: '400', color: 'ui-600' },
             },
           ],
         },
@@ -990,12 +975,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     {
       path: '/feed',
       type: 'Column',
-      props: {
-        px: '60px',
-        width: '100%',
-        height: '100%',
-        bg: 'ui-50',
-      },
+      props: { px: '60px', width: '100%', height: '100%', bg: 'ui-50' },
       children: [
         // Header section with filters and search
         {
@@ -1233,11 +1213,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     {
       path: '/globe',
       type: 'Column',
-      props: {
-        px: '60px',
-        width: '100%',
-        height: '100%',
-      },
+      props: { px: '60px', width: '100%', height: '100%' },
       children: [
         // Header section
         {
@@ -1420,6 +1396,20 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             ],
           },
         },
+      ],
+    },
+
+    {
+      path: '/new-post',
+      type: 'Column',
+      props: { px: '60px', ax: 'center', width: '100%', height: '100%', position: 'relative' },
+      children: [
+        {
+          type: 'Column',
+          props: { my: '400' },
+          children: [{ type: 'we-text', props: { text: 'New post', size: '700', weight: '600', color: 'ui-700' } }],
+        },
+        { type: 'BlockComposer', props: {} },
       ],
     },
     // {

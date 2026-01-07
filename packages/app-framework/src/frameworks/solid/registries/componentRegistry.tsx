@@ -1,3 +1,4 @@
+import { BlockComposer } from '@we/block-composer-solid';
 import {
   countryOutlinesLayer,
   h3HexagonsLayer,
@@ -72,6 +73,9 @@ export const componentRegistry: ComponentRegistry = {
   // @we/templates
   DefaultTemplate,
   CenteredTemplate,
+
+  // @we/block-composer
+  BlockComposer,
 
   // Testing
   RerenderLog,

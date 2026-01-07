@@ -237,6 +237,9 @@ importers:
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.10)
+      '@we/block-composer-solid':
+        specifier: workspace:*
+        version: link:../block-composer/solid
       '@we/cesium-layers':
         specifier: workspace:*
         version: link:../cesium-layers

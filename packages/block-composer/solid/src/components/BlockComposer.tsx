@@ -118,6 +118,10 @@ function SaveButton({ perspective }: { perspective: PerspectiveProxy }) {
       const { root } = editorState.toJSON();
       console.log('Root:', root);
       console.log('Perspective:', perspective);
+      if (!perspective) {
+        console.error('No perspective available for saving blocks.');
+        return;
+      }
       await createBlocks(root);
 
       console.log('Saved!');
@@ -133,8 +137,10 @@ function SaveButton({ perspective }: { perspective: PerspectiveProxy }) {
   );
 }
 
+// question abgout ds component vs block distinction (especially for external devs)
+
 function LoadPostIntoEditor({ post }: { post?: Post }) {
-  console.log('888 LoadPostIntoEditor post:', post);
+  // console.log('888 LoadPostIntoEditor post:', post);
   const [editor] = useLexicalComposerContext();
 
   createEffect(() => {
@@ -152,13 +158,14 @@ function LoadPostIntoEditor({ post }: { post?: Post }) {
 }
 
 export function BlockComposer({ post, perspective }: BlockComposerProps) {
-  console.log('*** BlockComposer post:', post);
+  console.log('*** BlockComposer rendered. post:', post);
   const initialConfig = {
     namespace: 'BlockComposer',
     theme: { root: 'we-block-composer-editor' },
     nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, ImageNode] as const,
     onError: (error: Error) => console.error('Editor Error:', error),
   };
+  console.log('*** BlockComposer initialConfig:', initialConfig);
 
   return (
     <Column class="we-block-composer-wrapper" bg="white" p="1000" r="xl">

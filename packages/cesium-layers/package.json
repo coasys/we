@@ -34,8 +34,7 @@
     "h3-js": "^4.1.0"
   },
   "peerDependencies": {
-    "cesium": "^1.136.0",
-    "@we/widgets": "workspace:*"
+    "cesium": "^1.136.0"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",

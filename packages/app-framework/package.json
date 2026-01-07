@@ -45,6 +45,7 @@
     "@we/themes": "workspace:*",
     "@we/tokens": "workspace:*",
     "@we/widgets": "workspace:*",
+    "@we/block-composer-solid": "workspace:*",
     "@coasys/ad4m": "0.11.0",
     "@solidjs/router": "^0.15.3",
     "gsap": "^3.13.0",
