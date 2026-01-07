@@ -4,15 +4,15 @@
   "description": "",
   "license": "MIT",
   "type": "module",
-  "bin": {
-    "we-seed": "./dist/seed/cli.js"
-  },
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage"
+  },
+  "bin": {
+    "we-seed": "./dist/seed/cli.js"
   },
   "exports": {
     "./shared": {
@@ -34,9 +34,10 @@
     }
   },
   "dependencies": {
+    "@we/cesium-layers": "workspace:*",
     "@we/components": "workspace:*",
     "@we/design-system-types": "workspace:*",
-    "@we/elements": "workspace:*",
+    "@we/primitives": "workspace:*",
     "@we/models": "workspace:*",
     "@we/pages": "workspace:*",
     "@we/schema-renderer": "workspace:*",
@@ -44,6 +45,7 @@
     "@we/themes": "workspace:*",
     "@we/tokens": "workspace:*",
     "@we/widgets": "workspace:*",
+    "@we/block-composer-solid": "workspace:*",
     "@coasys/ad4m": "0.11.0",
     "@solidjs/router": "^0.15.3",
     "gsap": "^3.13.0",

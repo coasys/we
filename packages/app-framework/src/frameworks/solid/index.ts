@@ -1,7 +1,7 @@
 // Design system styles (must be imported before components)
 import '@we/tokens/css';
 import '@we/themes';
-import '@we/elements/solid';
+import '@we/primitives/solid';
 import '@we/components/styles';
 import '@we/widgets/styles';
 import '@we/pages/styles';

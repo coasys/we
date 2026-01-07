@@ -1,7 +1,7 @@
 import { createContext, ParentComponent, useContext } from 'solid-js';
 
-import { PlatformAdapter } from './types';
 import { initializeIntegrations } from '../initializeIntegrations';
+import { PlatformAdapter } from './types';
 
 const PlatformContext = createContext<PlatformAdapter>();
 
@@ -20,4 +20,3 @@ export function usePlatform(): PlatformAdapter {
   }
   return context;
 }
-

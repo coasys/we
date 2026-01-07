@@ -1,9 +1,9 @@
 import type { Ad4mClient } from '@coasys/ad4m';
-import type { PlatformAdapter, AppConfig } from '@we/app-framework/shared';
+import type { AppConfig, PlatformAdapter } from '@we/app-framework/shared';
 
-import { buildAd4mClientWithApollo } from '../utils/apolloClient';
 // Import auto-generated port mapping
 import portMap from '../../electron/seed-port-map.json';
+import { buildAd4mClientWithApollo } from '../utils/apolloClient';
 
 // Electron IPC bridge - will be exposed by preload script
 declare global {
@@ -56,7 +56,7 @@ export const electronAdapter: PlatformAdapter = {
 
     // Production mode: Use Express server on localhost with auto-generated port mapping
     const port = portMap[app.id as keyof typeof portMap];
-    
+
     if (!port) {
       console.error(`No port mapping found for app: ${app.id}`);
       return 'about:blank';
@@ -72,5 +72,3 @@ export const electronAdapter: PlatformAdapter = {
   },
   platform: 'electron' as const,
 };
-
-

@@ -10,6 +10,9 @@
 // Literal union type for named sizes
 export type SizeToken = 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
 
+// Branded type to allow both tokens and raw size values (px, rem, %, etc.) while preserving autocomplete
+export type SizeValue = SizeToken | (string & {});
+
 /**
  * General component size scale (e.g., width, height, icon size).
  */
@@ -47,6 +50,9 @@ export const radius = {
  * Avatar size scale.
  */
 export type AvatarSizeToken = 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
+
+// Branded type to allow both tokens and raw avatar size values (px, rem, %, etc.) while preserving autocomplete
+export type AvatarSizeValue = AvatarSizeToken | (string & {});
 
 export const avatarSize = {
   xxs: '1rem', // 16px

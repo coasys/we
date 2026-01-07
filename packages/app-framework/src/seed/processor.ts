@@ -1,4 +1,4 @@
-import type { WeSeedFile, SeedMetadata } from '../types/seed';
+import type { SeedMetadata, WeSeedFile } from '../types/seed';
 import { validateSeed } from './validator';
 
 /**
@@ -8,7 +8,7 @@ export class SeedProcessor {
   constructor(private seed: WeSeedFile) {
     const validation = validateSeed(seed);
     if (!validation.valid) {
-      throw new Error(`Invalid seed file: ${validation.errors?.map(e => e.message).join(', ')}`);
+      throw new Error(`Invalid seed file: ${validation.errors?.map((e) => e.message).join(', ')}`);
     }
   }
 
@@ -60,7 +60,7 @@ export class SeedProcessor {
     const routes: Array<{ path: string; component: string }> = [];
 
     // Routes from apps
-    this.seed.apps.forEach(app => {
+    this.seed.apps.forEach((app) => {
       routes.push({
         path: app.route,
         component: 'main',
@@ -134,9 +134,7 @@ export const ${variableName}Routes = ${JSON.stringify(routes, null, 2)};
     const variableName = this.generateVariableName();
 
     // Collect capabilities from all apps
-    const allCapabilities = Array.from(
-      new Set(this.seed.apps.flatMap(app => app.capabilities))
-    );
+    const allCapabilities = Array.from(new Set(this.seed.apps.flatMap((app) => app.capabilities)));
 
     const manifest = {
       id: integrationId,
@@ -144,7 +142,7 @@ export const ${variableName}Routes = ${JSON.stringify(routes, null, 2)};
       version: this.seed.project.version,
       description: this.seed.project.description,
       author: this.seed.project.author,
-      apps: this.seed.apps.map(app => ({
+      apps: this.seed.apps.map((app) => ({
         id: app.id,
         name: app.name,
         route: app.route,

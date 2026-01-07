@@ -2,12 +2,12 @@
 
 /**
  * Electron Seed Configuration Generator
- * 
+ *
  * Reads we-seed.json and generates:
  * 1. Port mappings for production Express servers
  * 2. extraResources configuration for package.json
  * 3. Express server setup code for main.js
- * 
+ *
  * This ensures a single source of truth (the seed file) for all platform configurations.
  */
 
@@ -31,78 +31,76 @@ function main() {
   }
 
   const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
-  
-  if (!seed.apps || seed.apps.length === 0) {
-    console.error('❌ Seed file must contain at least one app');
-    process.exit(1);
-  }
 
-  console.log(`📦 Found ${seed.apps.length} apps in seed file:`);
-  seed.apps.forEach((app, i) => {
-    console.log(`   ${i + 1}. ${app.name} (${app.id})`);
-  });
-  console.log();
+  // Determine if we have apps
+  const hasApps = seed.apps && seed.apps.length > 0;
+
+  if (!hasApps) {
+    console.log('ℹ️  No apps defined - native WE app mode (no embedded apps)\n');
+  } else {
+    console.log(`📦 Found ${seed.apps.length} apps in seed file:`);
+    seed.apps.forEach((app, i) => {
+      console.log(`   ${i + 1}. ${app.name} (${app.id})`);
+    });
+    console.log();
+  }
 
   // Get base port from seed file or use default
   const BASE_PORT = seed.electron?.basePort || 8080;
 
-  // Generate port mappings
+  // Generate port mappings (only if there are apps)
   const portMap = {};
-  seed.apps.forEach((app, index) => {
-    portMap[app.id] = BASE_PORT + index;
-  });
+  if (hasApps) {
+    seed.apps.forEach((app, index) => {
+      portMap[app.id] = BASE_PORT + index;
+    });
 
-  console.log('🔌 Port assignments:');
-  Object.entries(portMap).forEach(([id, port]) => {
-    console.log(`   ${id}: ${port}`);
-  });
-  console.log();
+    console.log('🔌 Port assignments:');
+    Object.entries(portMap).forEach(([id, port]) => {
+      console.log(`   ${id}: ${port}`);
+    });
+    console.log();
+  }
 
-  // Generate extraResources configuration
-  const extraResources = seed.apps.map((app) => {
-    // Resolve the dist path relative to workspace root
-    const distPath = path.isAbsolute(app.paths.dist) 
-      ? app.paths.dist 
-      : path.join(WORKSPACE_ROOT, app.paths.dist);
-    
-    // Make it relative to we-electron directory for package.json
-    const relativeFromElectron = path.relative(
-      path.join(__dirname, '..'),
-      distPath
-    );
+  // Generate extraResources configuration for apps
+  const extraResources = hasApps
+    ? seed.apps.map((app) => {
+        // Resolve the dist path relative to workspace root
+        const distPath = path.isAbsolute(app.paths.dist) ? app.paths.dist : path.join(WORKSPACE_ROOT, app.paths.dist);
 
-    return {
-      from: relativeFromElectron,
-      to: app.id, // Use app ID as the resource folder name
-      filter: ['**/*']
-    };
-  });
+        // Make it relative to we-electron directory for package.json
+        const relativeFromElectron = path.relative(path.join(__dirname, '..'), distPath);
+
+        return {
+          from: relativeFromElectron,
+          to: app.id, // Use app ID as the resource folder name
+          filter: ['**/*'],
+        };
+      })
+    : [];
 
   // Add static resources from seed file configuration
   const staticResources = [];
-  
+
   // Add we-electron app dist if specified in seed
   if (seed.electron?.appDistPath) {
     staticResources.push({
       from: seed.electron.appDistPath,
       to: 'app/dist',
-      filter: ['**/*']
+      filter: ['**/*'],
     });
   }
-  
+
   // Add AD4M executor if specified in seed
   if (seed.ad4m?.executorPath) {
     // Convert path from workspace-relative to we-electron-relative
     const executorPath = path.isAbsolute(seed.ad4m.executorPath)
       ? seed.ad4m.executorPath
-      : path.relative(
-          path.join(__dirname, '..'),
-          path.join(WORKSPACE_ROOT, seed.ad4m.executorPath)
-        );
-    
+      : path.relative(path.join(__dirname, '..'), path.join(WORKSPACE_ROOT, seed.ad4m.executorPath));
+
     staticResources.push({
       from: executorPath,
-      to: 'ad4m-executor'
+      to: 'ad4m-executor',
     });
   }
 
@@ -110,7 +108,7 @@ function main() {
   const allExtraResources = [...staticResources, ...extraResources];
 
   console.log('📁 extraResources configuration:');
-  extraResources.forEach((resource) => {
+  allExtraResources.forEach((resource) => {
     console.log(`   ${resource.from} → ${resource.to}`);
   });
   console.log();
@@ -121,25 +119,17 @@ function main() {
   }
 
   // Write port map
-  fs.writeFileSync(
-    PORT_MAP_FILE,
-    JSON.stringify(portMap, null, 2),
-    'utf8'
-  );
+  fs.writeFileSync(PORT_MAP_FILE, JSON.stringify(portMap, null, 2), 'utf8');
   console.log(`✅ Port map written to: ${path.relative(process.cwd(), PORT_MAP_FILE)}`);
 
   // Write extraResources
-  fs.writeFileSync(
-    EXTRA_RESOURCES_FILE,
-    JSON.stringify(allExtraResources, null, 2),
-    'utf8'
-  );
+  fs.writeFileSync(EXTRA_RESOURCES_FILE, JSON.stringify(allExtraResources, null, 2), 'utf8');
   console.log(`✅ extraResources written to: ${path.relative(process.cwd(), EXTRA_RESOURCES_FILE)}`);
 
-  // Generate Express server setup code
-  const serverSetupCode = generateServerSetupCode(seed.apps, portMap);
+  // Generate Express server setup code (only if there are apps)
+  const serverSetupCode = hasApps ? generateServerSetupCode(seed.apps, portMap) : generateEmptyServerSetupCode();
   const SERVER_SETUP_FILE = path.join(OUTPUT_DIR, 'seed-servers.js');
-  
+
   fs.writeFileSync(SERVER_SETUP_FILE, serverSetupCode, 'utf8');
   console.log(`✅ Server setup code written to: ${path.relative(process.cwd(), SERVER_SETUP_FILE)}`);
 
@@ -181,9 +171,10 @@ const __dirname = dirname(__filename);
 export function setupSeedServers() {
   const servers = [];
 
-${apps.map((appConfig) => {
-  const port = portMap[appConfig.id];
-  return `  // ${appConfig.name} (${appConfig.id})
+${apps
+  .map((appConfig) => {
+    const port = portMap[appConfig.id];
+    return `  // ${appConfig.name} (${appConfig.id})
   const ${appConfig.id}Dir = app.isPackaged
     ? join(process.resourcesPath, '${appConfig.id}')
     : join(__dirname, '..', '..', '..', '${appConfig.paths.dist}');
@@ -214,8 +205,31 @@ ${apps.map((appConfig) => {
     console.warn('⚠️  ${appConfig.name} directory not found at:', ${appConfig.id}Dir);
   }
 `;
-}).join('\n')}
+  })
+  .join('\n')}
   return servers;
+}
+`;
+}
+
+function generateEmptyServerSetupCode() {
+  return `/**
+ * Auto-generated Seed Server Setup
+ * 
+ * This file is generated by scripts/generate-seed-config.js
+ * Do not edit manually - changes will be overwritten!
+ * 
+ * Empty setup - no embedded apps in native WE mode
+ */
+
+/**
+ * Setup Express servers for all apps from seed configuration
+ * 
+ * @returns {Array} Empty array (no embedded apps)
+ */
+export function setupSeedServers() {
+  // No embedded apps in native WE mode
+  return [];
 }
 `;
 }

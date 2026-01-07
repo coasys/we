@@ -7,6 +7,7 @@ import { homedir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
+
 import { setupSeedServers } from './seed-servers.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -187,6 +188,7 @@ function startAppServer() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    show: false, // Don't show until ready
     width: 1200,
     height: 800,
     webPreferences: {
@@ -195,6 +197,11 @@ function createWindow() {
       nodeIntegration: false,
       webSecurity: false, // Allow cross-origin access for screen sharing in iframes
     },
+  });
+
+  // Show window only when content is ready
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
   });
 
   // Allow camera, microphone, and screen capture permissions
@@ -216,7 +223,7 @@ function createWindow() {
   // In development, load from Vite dev server
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools();
+    // mainWindow.webContents.openDevTools();
   } else {
     // In production, load from HTTP server (same protocol as iframe)
     mainWindow.loadURL('http://localhost:9080');

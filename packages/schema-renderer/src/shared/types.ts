@@ -1,8 +1,24 @@
 // Pure framework-agnostic schema types
-export type SchemaProp = string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined;
+export type SchemaProp =
+  | string
+  | number
+  | boolean
+  | Record<string, unknown>
+  | SchemaProp[]
+  | TransitionConfig
+  | undefined;
 export type TemplateMeta = { name: string; description: string; icon: string };
 export type TemplateSchema = SchemaNode & { id?: string; meta: TemplateMeta };
 export type RouteSchema = SchemaNode & { path: string };
+
+// Transition configuration for $if operator (can be used in props via prop resolution)
+export type TransitionConfig = {
+  type: 'fade' | 'slide' | 'scale';
+  duration?: number; // Milliseconds (default: 300)
+  easing?: string; // CSS easing function (default: 'ease')
+  delay?: number; // Milliseconds (default: 0)
+};
+
 export type SchemaNode = {
   type?: string; // Used to look up the node's component in the registry (if not included, children rendered in a fragment)
   props?: Record<string, SchemaProp>; // Props to pass to the component

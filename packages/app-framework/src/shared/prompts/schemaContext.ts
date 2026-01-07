@@ -46,7 +46,7 @@ You can use any of these components as type values.
 Each component has specific props (see below).
 Always use the correct prop names and value types.
 
-@we/elements
+@we/primitives
 - we-text
 - we-button
 - we-icon

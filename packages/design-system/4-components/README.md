@@ -4,7 +4,7 @@ Framework-level components and layout primitives for the WE design system.
 
 ## Overview
 
-`@we/components` provides framework-specific components (currently for SolidJS) that sit one level above the atomic web components in [`@we/elements`](../3-elements). These components are designed to be more ergonomic, composable, and idiomatic for your framework, while still being low-level enough to serve as building blocks for more complex UI (such as widgets or templates).
+`@we/components` provides framework-specific components (currently for SolidJS) that sit one level above the atomic web components in [`@we/primitives`](../3-primitives). These components are designed to be more ergonomic, composable, and idiomatic for your framework, while still being low-level enough to serve as building blocks for more complex UI (such as widgets or templates).
 
 - **Framework-first:** Components are written for your framework (e.g., SolidJS), not just wrappers for web components.
 - **Composable:** Use as layout primitives, containers, and simple UI elements in your app or in higher-level widgets.
@@ -13,7 +13,7 @@ Framework-level components and layout primitives for the WE design system.
 
 ## Atomic Design Layer
 
-- **@we/elements:** Primitive, framework-agnostic web components (atoms)
+- **@we/primitives:** Primitive, framework-agnostic web components (atoms)
 - **@we/components:** Framework-level primitives and layout (molecules/organisms)
 - **@we/widgets:** Complex, feature-rich components (templates/widgets)
 
@@ -33,7 +33,7 @@ npm install @we/components
    ```ts
    import '@we/tokens/css';
    import '@we/themes/dark'; // or your chosen theme
-   import '@we/elements/solid';
+   import '@we/primitives/solid';
    ```
 2. **Use the Solid components in your app:**
 

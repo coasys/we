@@ -1,0 +1,27 @@
+{
+  "project": {
+    "name": "WE Native App",
+    "version": "0.1.0",
+    "description": "Pure WE application built with design system and schema renderer",
+    "author": "James Weir"
+  },
+
+  "ad4m": {
+    "dataPath": "~/.we-native-app",
+    "executorPath": "../ad4m/target/release/ad4m-executor",
+    "repoPath": "../ad4m"
+  },
+
+  "electron": {
+    "appDistPath": "dist",
+    "basePort": 8080
+  },
+
+  "host": {
+    "ui": {
+      "enableTemplateSwitching": true
+    }
+  },
+
+  "apps": []
+}

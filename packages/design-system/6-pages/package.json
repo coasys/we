@@ -30,7 +30,7 @@
   "peerDependencies": {
     "@coasys/ad4m": "0.11.0",
     "@we/components": "^0.1.0",
-    "@we/elements": "^1.0.0",
+    "@we/primitives": "^1.0.0",
     "@we/widgets": "^0.1.0",
     "solid-js": "^1.9.5",
     "@we/block-composer-solid": "^0.1.0"
@@ -38,7 +38,7 @@
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/components": "workspace:*",
-    "@we/elements": "workspace:*",
+    "@we/primitives": "workspace:*",
     "@we/models": "workspace:*",
     "@we/tokens": "workspace:*",
     "@we/widgets": "workspace:*",

@@ -1,14 +1,14 @@
 /**
  * Integration Composer
- * 
+ *
  * Generates launcher templates from WE seed files.
  * Composes host shell + embedded apps into a unified launcher experience.
- * 
+ *
  * Single-app mode:
  * - Full-screen iframe at root route (/)
  * - No sidebar or navigation
  * - Ideal for standalone app launchers
- * 
+ *
  * Multi-app mode:
  * - Sidebar with app navigation (100px wide)
  * - Content area with routed iframes
@@ -16,26 +16,28 @@
  */
 
 import type { TemplateSchema } from '@we/schema-renderer/shared';
+
 import type { WeSeedFile } from '../types/seed';
 import type { PlatformAdapter } from './platform/types';
+import { templateRegistry } from './registries/templateRegistry';
 
 /**
  * Generate a launcher template from a seed file
- * 
- * Automatically detects single vs multi-app mode based on apps array length.
+ *
+ * Automatically detects mode based on apps array length:
+ * - Zero apps: Native WE app (no embedded apps, template switching enabled)
+ * - One app: Single embedded app in full-screen
+ * - Multiple apps: Multi-app launcher with sidebar navigation
+ *
  * Returns a complete template schema ready to be registered and rendered.
- * 
+ *
  * @param seed - Validated WE seed file
  * @param platformAdapter - Platform adapter for URL resolution
  * @returns Template schema for the launcher
- * @throws Error if seed contains zero apps
  */
-export function generateLauncherFromSeed(
-  seed: WeSeedFile,
-  platformAdapter: PlatformAdapter
-): TemplateSchema {
+export function generateLauncherFromSeed(seed: WeSeedFile, platformAdapter: PlatformAdapter): TemplateSchema {
   if (seed.apps.length === 0) {
-    throw new Error('Seed file must contain at least one app');
+    return generateNativeLauncher(seed);
   }
 
   if (seed.apps.length === 1) {
@@ -46,19 +48,55 @@ export function generateLauncherFromSeed(
 }
 
 /**
+ * Generate launcher for native WE app (no embedded apps)
+ *
+ * If a default template is specified in the seed file, returns that template directly.
+ * Otherwise returns an empty Column layout for template switching.
+ * Template switching is enabled by default for native mode.
+ *
+ * @param seed - WE seed file with zero apps
+ * @returns Template schema for native WE app
+ */
+function generateNativeLauncher(seed: WeSeedFile): TemplateSchema {
+  // Check if seed specifies a default template
+  const defaultTemplate = seed.host?.ui?.defaultTemplate;
+
+  // If a template is specified, load it from the registry
+  if (defaultTemplate) {
+    const template = templateRegistry[defaultTemplate as keyof typeof templateRegistry];
+
+    if (template) {
+      return template;
+    }
+
+    console.warn(`Template "${defaultTemplate}" not found in registry, falling back to empty launcher`);
+  }
+
+  // Fallback: empty launcher for template switching
+  return {
+    meta: {
+      name: `${seed.project.name} Launcher`,
+      description: seed.project.description || `Native WE application: ${seed.project.name}`,
+      icon: 'rocket-launch',
+    },
+    type: 'Column',
+    props: { width: '100%', height: '100%' },
+    children: [{ type: '$routes' }],
+    routes: [], // Empty routes - use template switcher
+  };
+}
+
+/**
  * Generate launcher for a single embedded app
- * 
+ *
  * Creates a full-screen Column layout with a single iframe route at '/'.
  * No navigation UI is generated - the app occupies 100% of the viewport.
- * 
+ *
  * @param seed - WE seed file containing exactly one app
  * @param platformAdapter - Platform adapter for URL resolution
  * @returns Template schema with full-screen iframe
  */
-function generateSingleAppLauncher(
-  seed: WeSeedFile,
-  platformAdapter: PlatformAdapter
-): TemplateSchema {
+function generateSingleAppLauncher(seed: WeSeedFile, platformAdapter: PlatformAdapter): TemplateSchema {
   const app = seed.apps[0];
   const devUrl = platformAdapter.resolveAppUrl(app, true);
   const prodUrl = platformAdapter.resolveAppUrl(app, false);
@@ -74,7 +112,7 @@ function generateSingleAppLauncher(
     children: [{ type: '$routes' }],
     routes: [
       {
-        path: '/',  // Single app always loads at root
+        path: '/', // Single app always loads at root
         type: 'we-iframe',
         props: {
           src: {
@@ -96,22 +134,19 @@ function generateSingleAppLauncher(
 
 /**
  * Generate launcher for multiple embedded apps
- * 
+ *
  * Creates a Row layout with:
  * - Left sidebar (100px): Navigation buttons for each app
  * - Right content area: Routed iframes for each app
- * 
+ *
  * Each app gets its own route (e.g. /flux, /playground) and can be
  * navigated to via sidebar buttons.
- * 
+ *
  * @param seed - WE seed file containing 2+ apps
  * @param platformAdapter - Platform adapter for URL resolution
  * @returns Template schema with sidebar navigation
  */
-function generateMultiAppLauncher(
-  seed: WeSeedFile,
-  platformAdapter: PlatformAdapter
-): TemplateSchema {
+function generateMultiAppLauncher(seed: WeSeedFile, platformAdapter: PlatformAdapter): TemplateSchema {
   return {
     meta: {
       name: `${seed.project.name} Launcher`,
@@ -176,7 +211,7 @@ function generateMultiAppLauncher(
 
 /**
  * Generate iframe allow attribute from app capabilities
- * 
+ *
  * For cross-origin iframes, features need explicit origin. Using 'src' means
  * "allow for the iframe's src origin". Without it, features are blocked.
  * See: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#allow
@@ -202,14 +237,11 @@ function generateIframePermissions(capabilities: string[]): string {
 
 /**
  * Apply theme customizations from seed to a template
- * 
+ *
  * Phase 1: Just return the seed theme for now
  * Phase 2: Actually merge theme into template props
  */
-export function applyThemeToLauncher(
-  template: TemplateSchema,
-  seed: WeSeedFile
-): TemplateSchema {
+export function applyThemeToLauncher(template: TemplateSchema, seed: WeSeedFile): TemplateSchema {
   // For now, theme will be applied globally by the theme system
   // In the future, we could inject theme props into the template
   return template;
@@ -224,8 +256,14 @@ export function validateSeedForLauncher(seed: WeSeedFile): {
 } {
   const errors: string[] = [];
 
-  if (!seed.apps || seed.apps.length === 0) {
-    errors.push('Seed file must contain at least one app');
+  if (!seed.apps || !Array.isArray(seed.apps)) {
+    errors.push('Seed file must have an apps array');
+    return { valid: false, errors };
+  }
+
+  // Zero apps is valid for native WE app mode
+  if (seed.apps.length === 0) {
+    return { valid: true, errors: [] };
   }
 
   seed.apps.forEach((app, index) => {

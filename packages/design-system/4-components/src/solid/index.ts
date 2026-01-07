@@ -11,6 +11,11 @@ export { IconLabelButton, type IconLabelButtonProps } from './components/buttons
 
 // Menus
 export { PopoverMenu, type PopoverMenuProps } from './components/menus/PopoverMenu';
+export {
+  PopoverToggleMenu,
+  type PopoverToggleMenuProps,
+  type PopoverToggleMenuItem,
+} from './components/menus/PopoverToggleMenu';
 
 // Testing
 export { RerenderLog, type RerenderLogProps } from './components/testing/RerenderLog';

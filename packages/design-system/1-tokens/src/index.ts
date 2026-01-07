@@ -32,7 +32,7 @@ export type {
 export type { ScrollbarToken } from './component.js';
 export type { DepthToken } from './effect.js';
 export type { FontFamilyToken, FontSizeToken } from './font.js';
-export type { SizeToken, RadiusToken, AvatarSizeToken, RadiusValue } from './size.js';
+export type { SizeToken, SizeValue, RadiusToken, RadiusValue, AvatarSizeToken, AvatarSizeValue } from './size.js';
 export type { SpaceToken, SpaceValue } from './space.js';
 
 /**

@@ -31,7 +31,7 @@
     "zod": "^4.1.11"
   },
   "peerDependencies": {
-    "@we/elements": "^1.0.0",
+    "@we/primitives": "^1.0.0",
     "@we/components": "^0.1.0",
     "@we/widgets": "^0.1.0",
     "@we/pages": "^0.1.0",
@@ -40,7 +40,7 @@
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/tokens": "workspace:*",
-    "@we/elements": "workspace:*",
+    "@we/primitives": "workspace:*",
     "@we/components": "workspace:*",
     "@we/widgets": "workspace:*",
     "@we/pages": "workspace:*",

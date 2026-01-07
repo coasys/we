@@ -1,20 +1,53 @@
-import { CircleButton, Column, IconLabelButton, PopoverMenu, PostCard, RerenderLog, Row } from '@we/components/solid';
+import { BlockComposer } from '@we/block-composer-solid';
+import {
+  countryOutlinesLayer,
+  h3HexagonsLayer,
+  type LayerFactory,
+  proceduralStarsLayer,
+  skyboxLayer,
+  solarSystemLayer,
+  userLocationsLayer,
+} from '@we/cesium-layers';
+import {
+  CircleButton,
+  Column,
+  IconLabelButton,
+  PopoverMenu,
+  PopoverToggleMenu,
+  PostCard,
+  RerenderLog,
+  Row,
+} from '@we/components/solid';
 import { HomePage, PageNotFound, SpacePage } from '@we/pages/solid';
 import type { ComponentRegistry } from '@we/schema-renderer/solid';
 import { CenteredTemplate, DefaultTemplate } from '@we/templates/solid';
-import { CreateSpaceModalWidget, SpaceSidebarWidget } from '@we/widgets/solid';
+import { CesiumGlobe, CollapsibleSidebar, CreateSpaceModalWidget, SpaceSidebarWidget } from '@we/widgets/solid';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
+  // Planet layers
+  userLocationsLayer,
+  countryOutlinesLayer,
+  h3HexagonsLayer,
+  // Background layers
+  skyboxLayer,
+  proceduralStarsLayer,
+  solarSystemLayer,
+};
 
 export const componentRegistry: ComponentRegistry = {
-  // @we/elements
+  // @we/primitives
   'we-text': (props) => <we-text {...props}>{props.children}</we-text>,
   'we-button': (props) => <we-button {...props}>{props.children}</we-button>,
   'we-icon': (props) => <we-icon {...props} />,
+  'we-image': (props) => <we-image {...props} />,
   'we-tabs': (props) => <we-tabs {...props}>{props.children}</we-tabs>,
   'we-tab': (props) => <we-tab {...props}>{props.children}</we-tab>,
   'we-spinner': (props) => <we-spinner {...props} />,
   'we-input': (props) => <we-input {...props} />,
   'we-modal': (props) => <we-modal {...props}>{props.children}</we-modal>,
   'we-iframe': (props) => <we-iframe {...props} />,
+  'we-avatar': (props) => <we-avatar {...props} />,
 
   // @we/components
   Column,
@@ -22,11 +55,15 @@ export const componentRegistry: ComponentRegistry = {
   CircleButton,
   IconLabelButton,
   PopoverMenu,
+  PopoverToggleMenu,
   PostCard,
 
   // @we/widgets
   CreateSpaceModalWidget,
   SpaceSidebarWidget,
+  CollapsibleSidebar,
+  // Inject layerFactoryRegistry dependency
+  CesiumGlobe: (props) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
 
   // @we/pages
   PageNotFound,
@@ -36,6 +73,9 @@ export const componentRegistry: ComponentRegistry = {
   // @we/templates
   DefaultTemplate,
   CenteredTemplate,
+
+  // @we/block-composer
+  BlockComposer,
 
   // Testing
   RerenderLog,

@@ -1,9 +1,9 @@
 import type { Ad4mClient } from '@coasys/ad4m';
 import { invoke } from '@tauri-apps/api/core';
-import type { PlatformAdapter, AppConfig } from '@we/app-framework/shared';
+import type { AppConfig, PlatformAdapter } from '@we/app-framework/shared';
 
-import { buildAd4mClientWithApollo } from '../utils/apolloClient';
 import portMap from '../generated/seed-port-map.json';
+import { buildAd4mClientWithApollo } from '../utils/apolloClient';
 
 export const tauriAdapter: PlatformAdapter = {
   async buildAd4mClient(): Promise<Ad4mClient> {
@@ -40,7 +40,7 @@ export const tauriAdapter: PlatformAdapter = {
       console.error(`No port mapping found for app: ${app.id}`);
       return 'about:blank';
     }
-    
+
     return `http://localhost:${port}`;
   },
 
@@ -50,4 +50,3 @@ export const tauriAdapter: PlatformAdapter = {
   },
   platform: 'tauri' as const,
 };
-

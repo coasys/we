@@ -1,68 +1,28 @@
 {
   "project": {
-    "name": "WE Multi-App",
+    "name": "WE Native App",
     "version": "0.1.0",
-    "description": "Testing multi-app integration with Flux and React playground",
+    "description": "Pure WE application built with design system and schema renderer",
     "author": "James Weir"
   },
 
   "ad4m": {
-    "dataPath": "~/.we-multi-app",
+    "dataPath": "~/.we-native-app",
     "executorPath": "../ad4m/target/release/ad4m-executor",
     "repoPath": "../ad4m"
   },
+
   "electron": {
     "appDistPath": "dist",
     "basePort": 8080
   },
-  "apps": [
-    {
-      "id": "flux",
-      "name": "Flux",
-      "route": "/flux",
-      "icon": "camera",
-      "description": "AI video generation app",
-      "capabilities": ["perspectives", "languages", "agents"],
-      "permissions": {
-        "camera": true,
-        "microphone": true,
-        "displayCapture": true
-      },
-      "paths": {
-        "projectRoot": "../flux/app",
-        "dist": "../flux/app/dist",
-        "devServer": {
-          "port": 3030,
-          "host": "localhost"
-        }
-      },
-      "commands": {
-        "install": "yarn install",
-        "build": "yarn build",
-        "dev": "yarn dev"
-      }
-    },
-    {
-      "id": "playground",
-      "name": "Playground",
-      "route": "/playground",
-      "icon": "beaker",
-      "description": "React test playground",
-      "capabilities": [],
-      "permissions": {},
-      "paths": {
-        "projectRoot": "./apps/playgrounds/react/demo",
-        "dist": "./apps/playgrounds/react/demo/dist",
-        "devServer": {
-          "port": 3040,
-          "host": "localhost"
-        }
-      },
-      "commands": {
-        "install": "pnpm install",
-        "build": "pnpm build",
-        "dev": "pnpm dev"
-      }
+
+  "host": {
+    "ui": {
+      "enableTemplateSwitching": true,
+      "defaultTemplate": "weNative"
     }
-  ]
+  },
+
+  "apps": []
 }

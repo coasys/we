@@ -21,6 +21,7 @@
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/design-system-types": "workspace:*",
+    "@we/tokens": "workspace:*",
     "tsup": "^8.5.1"
   },
   "publishConfig": {

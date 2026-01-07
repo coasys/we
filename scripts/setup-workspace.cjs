@@ -2,12 +2,12 @@
 
 /**
  * WE Workspace Setup Script
- * 
+ *
  * This script prepares the entire WE workspace for development or production builds.
  * It validates configuration, checks dependencies, builds packages, and generates
  * platform-specific configurations.
- * 
- * Usage: pnpm setup
+ *
+ * Usage: pnpm setup-workspace
  */
 
 const { execSync } = require('child_process');
@@ -37,7 +37,7 @@ function exec(command, options = {}) {
     return execSync(command, {
       cwd: WORKSPACE_ROOT,
       stdio: 'inherit',
-      ...options
+      ...options,
     });
   } catch (error) {
     log(`❌ Command failed: ${command}`, 'red');
@@ -80,7 +80,7 @@ async function main() {
 
   // Step 3: Validate seed file
   log('\n📋 Validating seed configuration...', 'cyan');
-  
+
   if (!fs.existsSync(SEED_FILE)) {
     log(`❌ Seed file not found: ${SEED_FILE}`, 'red');
     log('   Please create we-seed.json in the workspace root', 'yellow');
@@ -98,8 +98,10 @@ async function main() {
 
   // Validate seed structure
   if (!seed.apps || seed.apps.length === 0) {
-    log('❌ Seed file must contain at least one app', 'red');
-    process.exit(1);
+    log('ℹ️  No apps defined - native WE app mode', 'blue');
+    log('   Template switching will be enabled', 'blue');
+  } else {
+    log(`✅ Found ${seed.apps.length} app(s) in seed file`, 'green');
   }
 
   if (!seed.ad4m || !seed.ad4m.executorPath) {
@@ -114,7 +116,7 @@ async function main() {
 
   log(`✅ Found ${seed.apps.length} apps in seed file`, 'green');
 
-  // Step 4: Check external dependencies
+  // Step 4: Check dependencies (external only)
   log('\n🔍 Checking external dependencies...', 'cyan');
 
   let allDepsReady = true;
@@ -136,9 +138,7 @@ async function main() {
 
   // Check each app's dist folder
   for (const app of seed.apps) {
-    const distPath = path.isAbsolute(app.paths.dist)
-      ? app.paths.dist
-      : path.resolve(WORKSPACE_ROOT, app.paths.dist);
+    const distPath = path.isAbsolute(app.paths.dist) ? app.paths.dist : path.resolve(WORKSPACE_ROOT, app.paths.dist);
 
     if (checkFileExists(distPath, `${app.name} dist folder`)) {
       // Count files in dist
@@ -155,17 +155,14 @@ async function main() {
     log('\n⚠️  Some external dependencies are missing', 'yellow');
     log('Build them first, then run pnpm setup again', 'yellow');
     log('Or continue anyway if you only need web development', 'yellow');
-    
+
     // Don't exit - let them continue for web-only dev
   }
 
   // Step 5: Build internal WE packages
   log('\n🏗️  Building internal WE packages...', 'cyan');
-  log('This will build packages in dependency order:', 'blue');
-  log('  1. @we/app-framework', 'blue');
-  log('  2. @we/cli', 'blue');
-  log('  3. Apps (we-web, we-electron, we-tauri)', 'blue');
-  
+  log('Building all packages to ensure everything is up to date...', 'blue');
+
   try {
     exec('pnpm -r build');
     log('✅ All internal packages built successfully', 'green');

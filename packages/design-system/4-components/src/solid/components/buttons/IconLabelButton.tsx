@@ -1,4 +1,4 @@
-import type { IconWeight } from '@we/elements/types';
+import type { IconWeight } from '@we/primitives/types';
 import { MaybeAccessor, toValue } from '@we/solid-utils';
 import { JSX } from 'solid-js';
 

@@ -1,6 +1,6 @@
 /**
  * Integration Loader
- * 
+ *
  * Dynamically loads integrations generated from WE seed files.
  * Registers schemas, routes, and manifests with the platform adapters.
  */
@@ -34,9 +34,7 @@ export interface LoadedIntegration {
 /**
  * Load all integrations from the integrations directory
  */
-export async function loadIntegrations(
-  platform: 'electron' | 'tauri' | 'web'
-): Promise<LoadedIntegration[]> {
+export async function loadIntegrations(platform: 'electron' | 'tauri' | 'web'): Promise<LoadedIntegration[]> {
   const integrations: LoadedIntegration[] = [];
 
   try {
@@ -55,9 +53,7 @@ export async function loadIntegrations(
 /**
  * Load Flux integration if available for the platform
  */
-async function loadFluxIntegration(
-  platform: 'electron' | 'tauri' | 'web'
-): Promise<LoadedIntegration | null> {
+async function loadFluxIntegration(platform: 'electron' | 'tauri' | 'web'): Promise<LoadedIntegration | null> {
   try {
     // Dynamic imports to avoid bundling if not needed
     const [schemasModule, routesModule, manifestModule] = await Promise.all([
@@ -101,29 +97,24 @@ async function loadFluxIntegration(
  */
 export async function getIntegration(
   id: string,
-  platform: 'electron' | 'tauri' | 'web'
+  platform: 'electron' | 'tauri' | 'web',
 ): Promise<LoadedIntegration | null> {
   const integrations = await loadIntegrations(platform);
-  return integrations.find(i => i.id === id) || null;
+  return integrations.find((i) => i.id === id) || null;
 }
 
 /**
  * Get all integration manifests (lightweight)
  */
-export async function getIntegrationManifests(
-  platform: 'electron' | 'tauri' | 'web'
-): Promise<IntegrationManifest[]> {
+export async function getIntegrationManifests(platform: 'electron' | 'tauri' | 'web'): Promise<IntegrationManifest[]> {
   const integrations = await loadIntegrations(platform);
-  return integrations.map(i => i.manifest);
+  return integrations.map((i) => i.manifest);
 }
 
 /**
  * Check if an integration has a specific capability
  */
-export function hasCapability(
-  manifest: IntegrationManifest,
-  capability: string
-): boolean {
+export function hasCapability(manifest: IntegrationManifest, capability: string): boolean {
   return manifest.capabilities.includes(capability);
 }
 
@@ -137,7 +128,7 @@ export function getIntegrationUrl(
     devServer?: { port: number; host?: string };
     dist?: string;
     projectRoot?: string;
-  }
+  },
 ): string {
   if (isDevelopment && seedMetadata?.devServer) {
     const { port, host = 'localhost' } = seedMetadata.devServer;

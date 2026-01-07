@@ -1,6 +1,6 @@
 /**
  * WE Seed File System
- * 
+ *
  * Allows external applications to define integration configurations
  * that can be used to embed their apps into WE launchers.
  */
@@ -39,6 +39,8 @@ export interface WeSeedFile {
       appSettings?: SchemaNode;
       /** Enable/disable template switching in settings */
       enableTemplateSwitching?: boolean;
+      /** Default template for native app mode */
+      defaultTemplate?: string;
     };
   };
 

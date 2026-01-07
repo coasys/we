@@ -1,11 +1,12 @@
 .we-block-handle {
   position: absolute;
+  z-index: 1;
   opacity: 0;
   display: flex;
   height: 40px;
   width: 50px;
   padding: 8px 5px 0 0;
-  // transition: opacity var(--we-transition-200);
+  transition: opacity var(--we-transition-200);
 
   .we-block-handle-settings-button {
     all: unset;

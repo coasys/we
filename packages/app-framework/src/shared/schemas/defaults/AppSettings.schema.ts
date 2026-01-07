@@ -2,7 +2,7 @@ import type { SchemaNode } from '@we/schema-renderer/shared';
 
 /**
  * Generate app settings schema
- * 
+ *
  * @param enableTemplateSwitching - Whether to show template switcher (disabled for embedded apps)
  * @returns App settings schema with conditional template switcher
  */
@@ -72,6 +72,7 @@ export function getAppSettingsSchema(enableTemplateSwitching: boolean): SchemaNo
       {
         type: 'we-button',
         props: {
+          zIndex: '9999999',
           position: 'absolute',
           bottom: '10px',
           right: '10px',
@@ -85,10 +86,24 @@ export function getAppSettingsSchema(enableTemplateSwitching: boolean): SchemaNo
       {
         type: '$if',
         props: {
+          enterTransition: {
+            type: 'fade',
+            duration: 500,
+            easing: 'ease-in',
+          },
+          exitTransition: {
+            type: 'fade',
+            duration: 500,
+            easing: 'ease-out',
+          },
           condition: { $store: 'modalStore.appSettingsModalOpen' },
           then: {
             type: 'we-modal',
-            props: { gap: '400', close: { $action: 'modalStore.closeModal', args: ['app-settings'] } },
+            props: {
+              zIndex: '9999999',
+              gap: '400',
+              close: { $action: 'modalStore.closeModal', args: ['app-settings'] },
+            },
             children: settingsChildren,
           },
         },

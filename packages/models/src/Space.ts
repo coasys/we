@@ -16,6 +16,18 @@ export class Space extends Ad4mModel {
 
   @Collection({ through: 'we://has_location' })
   locations: string[] = [];
+
+  @Optional({ through: 'we://has_user_locations', resolveLanguage: 'literal', writable: true })
+  userLocations: string = '[]'; // JSON string of UserLocation[]
+}
+
+export interface UserLocation {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  avatar?: string;
+  color?: string;
 }
 
 export interface SpaceType {
@@ -24,4 +36,5 @@ export interface SpaceType {
   description: string;
   visibility: string;
   locations: string[];
+  userLocations?: string; // JSON string
 }

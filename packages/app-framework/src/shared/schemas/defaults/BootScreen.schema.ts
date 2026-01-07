@@ -4,6 +4,11 @@ export const bootScreenSchema: SchemaNode = {
   type: '$if',
   props: {
     condition: { $ne: [{ $store: 'adamStore.bootState' }, 'ready'] },
+    exitTransition: {
+      type: 'fade',
+      duration: 500,
+      easing: 'ease-out',
+    },
     then: {
       type: 'Column',
       props: {
@@ -14,16 +19,29 @@ export const bootScreenSchema: SchemaNode = {
         gap: '400',
         bg: 'ui-0',
         position: 'absolute',
+        zIndex: '9999',
       },
       children: [
-        { type: 'we-text', props: { size: '800', weight: '600' }, children: ['WE'] },
+        // WE Logo
+        {
+          type: 'we-image',
+          props: {
+            src: '/we-text.svg',
+            alt: 'WE Logo',
+            width: '150px',
+            height: '75px',
+            gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          },
+        },
+        // Initialising state
         {
           type: '$if',
           props: {
             condition: { $eq: [{ $store: 'adamStore.bootState' }, 'initialising'] },
+            // condition: true,
             then: {
               type: 'Row',
-              props: { gap: '300', ay: 'center' },
+              props: { mt: '200', gap: '300', ay: 'center' },
               children: [
                 { type: 'we-spinner', props: { size: 'sm' } },
                 { type: 'we-text', children: ['Initialising AD4M client...'] },
@@ -31,23 +49,35 @@ export const bootScreenSchema: SchemaNode = {
             },
           },
         },
+        // Login state
         {
           type: '$if',
           props: {
             condition: { $eq: [{ $store: 'adamStore.bootState' }, 'login'] },
+            // condition: false,
             then: {
               type: 'Column',
-              props: { gap: '400', ax: 'center' },
+              props: { mt: '200', gap: '400', ax: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'key', color: 'ui-600', size: 'lg' } },
-                { type: 'we-text', props: { size: '600', weight: '600' }, children: ['Unlock your agent'] },
                 {
                   type: 'Row',
-                  props: { gap: '200' },
+                  props: { gap: '300', ay: 'center' },
                   children: [
+                    { type: 'we-icon', props: { name: 'key', color: 'primary-600', size: '30px' } },
+                    { type: 'we-text', props: { size: '600' }, children: ['Unlock your agent'] },
+                  ],
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '300' },
+                  children: [
+                    // Password input
                     {
                       type: 'we-input',
                       props: {
+                        // height: '60px',
+                        height: '36px',
+                        width: '200px',
                         placeholder: 'Password...',
                         value: { $store: 'adamStore.password' },
                         onInput: { $action: 'adamStore.setPassword', args: ['$arg.target.value'] },
@@ -68,9 +98,12 @@ export const bootScreenSchema: SchemaNode = {
                         },
                       },
                     },
+                    // Show/hide password button
                     {
                       type: 'we-button',
                       props: {
+                        bg: 'primary-500',
+                        height: '36px',
                         onClick: {
                           $action: 'adamStore.setShowPassword',
                           args: [{ $not: { $store: 'adamStore.showPassword' } }],
@@ -87,17 +120,22 @@ export const bootScreenSchema: SchemaNode = {
                                 else: 'eye-slash',
                               },
                             },
-                            color: 'ui-1000',
+                            color: 'ui-0',
                           },
                         },
                       ],
                     },
                   ],
                 },
+                // Login button
                 {
                   type: 'we-button',
                   props: {
+                    mt: '200',
+                    height: '36px',
                     text: 'Login',
+                    color: 'ui-0',
+                    bg: 'primary-500',
                     loading: { $store: 'adamStore.loginLoading' },
                     onClick: { $action: 'adamStore.unlockAgent' },
                   },

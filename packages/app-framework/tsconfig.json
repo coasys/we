@@ -9,6 +9,6 @@
     "experimentalDecorators": true,
     "baseUrl": ".",
     "paths": { "@shared/*": ["./src/shared/*"], "@solid/*": ["./src/frameworks/solid/*"] },
-    "types": ["@we/elements/solid", "node"]
+    "types": ["@we/primitives/solid", "node"]
   }
 }

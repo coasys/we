@@ -2,26 +2,10 @@
   {
     "from": "dist",
     "to": "app/dist",
-    "filter": [
-      "**/*"
-    ]
+    "filter": ["**/*"]
   },
   {
     "from": "../../../ad4m/target/release/ad4m-executor",
     "to": "ad4m-executor"
-  },
-  {
-    "from": "../../../flux/app/dist",
-    "to": "flux",
-    "filter": [
-      "**/*"
-    ]
-  },
-  {
-    "from": "../playgrounds/react/demo/dist",
-    "to": "playground",
-    "filter": [
-      "**/*"
-    ]
   }
 ]

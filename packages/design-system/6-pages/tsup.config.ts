@@ -12,7 +12,7 @@ export default defineConfig({
   target: 'es2022',
   splitting: false,
   treeshake: true,
-  external: ['solid-js', '@we/elements'],
+  external: ['solid-js', '@we/primitives'],
   esbuildPlugins: [solidPlugin()],
   esbuildOptions(o) {
     o.jsx = 'automatic';

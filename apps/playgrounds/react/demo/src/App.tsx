@@ -1,4 +1,4 @@
-import './App.css'
+import './App.css';
 
 function App() {
   return (
@@ -6,7 +6,7 @@ function App() {
       <h1>React Playground</h1>
       <p>Multi-app test - this is the second app</p>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

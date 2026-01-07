@@ -1,0 +1,201 @@
+.we-collapsible-sidebar {
+  // Layout
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  box-sizing: content-box;
+
+  // Dynamic properties (set via CSS variables from component)
+  // Start with collapsed width, transition to expanded
+  width: var(--sidebar-collapsed-width);
+  background-color: var(--sidebar-bg);
+  position: var(--sidebar-position, static);
+  z-index: var(--sidebar-z-index, auto);
+
+  // Transitions
+  transition: width var(--sidebar-transition-duration) ease-in-out;
+
+  &--expanded {
+    width: var(--sidebar-expanded-width);
+  }
+
+  // Center items vertically
+  &--center-items &__items {
+    justify-content: center;
+  }
+
+  // Positioning for fixed/absolute
+  &.left {
+    border-right: var(--sidebar-border);
+
+    &.fixed,
+    &.absolute {
+      left: 0;
+      top: 0;
+    }
+  }
+
+  &.right {
+    border-left: var(--sidebar-border);
+
+    &.fixed,
+    &.absolute {
+      right: 0;
+      top: 0;
+    }
+  }
+
+  // Main items section
+  &__items {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: var(--sidebar-padding);
+    gap: var(--sidebar-gap);
+    overflow-y: auto;
+  }
+
+  // Footer section - only needs gap and display for footerItems layout
+  &__footer {
+    display: flex;
+    flex-direction: column;
+    padding: var(--sidebar-padding);
+    gap: var(--sidebar-gap);
+  }
+
+  // Content container (holds label and badge, animates width)
+  &__item-content {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-400);
+    margin-left: var(--sidebar-item-gap);
+    flex: 1; // Take up remaining space in button
+    overflow: hidden;
+    max-width: 0;
+    opacity: 0;
+    transition:
+      max-width var(--sidebar-transition-duration) ease,
+      opacity var(--sidebar-transition-duration) ease;
+
+    .we-collapsible-sidebar--expanded & {
+      max-width: 500px; // Large enough to fit content
+      opacity: 1;
+    }
+
+    // For right sidebar, reverse the content direction and flip margin
+    .we-collapsible-sidebar.right & {
+      flex-direction: row-reverse;
+      margin-left: 0;
+      margin-right: var(--sidebar-item-gap);
+    }
+  }
+
+  // Label text (always full size within content container)
+  &__item-label {
+    white-space: nowrap;
+  }
+
+  // Badge (positioned at the end of the item)
+  &__item-badge {
+    margin-left: auto;
+    flex-shrink: 0;
+
+    &::part(base) {
+      min-width: 24px;
+    }
+
+    .we-collapsible-sidebar.right & {
+      margin-left: 0;
+      margin-right: auto;
+    }
+  }
+
+  // Avatar in item (aligns like icon)
+  &__item-avatar {
+    &::part(base) {
+      flex-shrink: 0;
+    }
+  }
+
+  // Group container
+  &__group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--we-space-200);
+  }
+
+  // Group header (clickable for collapsible, static otherwise)
+  &__group-header {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    padding: var(--we-space-200) var(--we-space-300);
+    border-radius: 8px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+    transition: background-color 0.15s ease;
+
+    &:hover:not(:disabled) {
+      background-color: var(--we-color-ui-50);
+    }
+
+    &:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    &--static {
+      cursor: default;
+      pointer-events: none;
+
+      &:hover {
+        background-color: transparent;
+      }
+    }
+
+    // Only show label when expanded
+    .we-collapsible-sidebar:not(.we-collapsible-sidebar--expanded) & {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .we-collapsible-sidebar.right & {
+      flex-direction: row-reverse;
+    }
+  }
+
+  // Group label
+  &__group-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  // Group badge
+  &__group-badge {
+    flex-shrink: 0;
+  }
+
+  // Group collapse icon (caret)
+  &__group-icon {
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+  }
+
+  // Group items container
+  &__group-items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sidebar-gap);
+    // padding-left: var(--we-space-400); // Indent nested items
+
+    // .we-collapsible-sidebar.right & {
+    //   padding-left: 0;
+    //   padding-right: var(--we-space-400);
+    // }
+  }
+}
