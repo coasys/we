@@ -26,6 +26,7 @@
     "@coasys/ad4m": "0.11.0",
     "@solidjs/router": "^0.15.3",
     "@we/app-framework": "workspace:*",
+    "electron-context-menu": "^4.1.1",
     "express": "^5.2.1",
     "graphql": "15.7.2",
     "graphql-ws": "5.12.0",

@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import { app, BrowserWindow, desktopCapturer, ipcMain } from 'electron';
+import contextMenu from 'electron-context-menu';
 import express from 'express';
 import { existsSync } from 'fs';
 import net from 'net';
@@ -9,6 +10,15 @@ import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 
 import { setupSeedServers } from './seed-servers.js';
+
+// Enable right-click context menu with inspect element in dev mode
+contextMenu({
+  showInspectElement: true,
+  showSearchWithGoogle: false,
+  showSaveImageAs: true,
+  showCopyImage: true,
+  showCopyImageAddress: true,
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
