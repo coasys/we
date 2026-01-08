@@ -28,7 +28,7 @@ export interface SkyboxLayerOptions {
 
   /**
    * Base URL for CDN assets
-   * @default 'https://cdn.jsdelivr.net/gh/jhweir/we@we-native-app/packages/cesium-layers/src/background/skybox/assets'
+   * @default 'https://cdn.jsdelivr.net/gh/jhweir/we@dev/packages/cesium-layers/src/background/skybox/assets'
    */
   cdnBaseUrl?: string;
 
@@ -59,7 +59,7 @@ export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLa
       textureSet = 'tycho2-1k',
       customPaths,
       // Use jsdelivr CDN with branch name
-      cdnBaseUrl = 'https://cdn.jsdelivr.net/gh/jhweir/we@we-native-app/packages/cesium-layers/src/background/skybox/assets',
+      cdnBaseUrl = 'https://cdn.jsdelivr.net/gh/jhweir/we@dev/packages/cesium-layers/src/background/skybox/assets',
     } = options || {};
     // TODO: brightness is not yet implemented, needs custom shader
     // const brightness = options?.brightness ?? 1.0;
