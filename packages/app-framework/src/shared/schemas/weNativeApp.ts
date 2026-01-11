@@ -39,63 +39,92 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             onClick: { $action: 'routeStore.navigate', args: ['/'] },
             active: { $eq: [{ $store: 'routeStore.currentPath' }, '/'] },
           },
+          // {
+          //   type: 'item',
+          //   id: 'feed',
+          //   icon: 'rss',
+          //   label: 'Feed',
+          //   onClick: { $action: 'routeStore.navigate', args: ['/feed'] },
+          //   active: { $eq: [{ $store: 'routeStore.currentPath' }, '/feed'] },
+          //   badge: 34,
+          // },
+          // Views group
           {
-            type: 'item',
-            id: 'feed',
-            icon: 'rss',
-            label: 'Feed',
-            onClick: { $action: 'routeStore.navigate', args: ['/feed'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/feed'] },
-            badge: 34,
+            type: 'group',
+            id: 'views',
+            label: 'Global Views',
+            collapsible: true,
+            collapsed: false,
+            items: [
+              {
+                type: 'item',
+                id: 'globe',
+                icon: 'globe',
+                label: 'Globe',
+                onClick: { $action: 'routeStore.navigate', args: ['/globe'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/globe'] },
+              },
+              {
+                type: 'item',
+                id: 'graph',
+                icon: 'graph',
+                label: 'Graph',
+                onClick: { $action: 'routeStore.navigate', args: ['/graph'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/graph'] },
+              },
+              {
+                type: 'item',
+                id: 'list',
+                icon: 'list-bullets',
+                label: 'List',
+                onClick: { $action: 'routeStore.navigate', args: ['/list'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/list'] },
+                badge: 34,
+              },
+              {
+                type: 'item',
+                id: 'calendar',
+                icon: 'calendar',
+                label: 'Calendar',
+                onClick: { $action: 'routeStore.navigate', args: ['/calendar'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/calendar'] },
+                badge: 10,
+              },
+            ],
           },
+          // {
+          //   type: 'item',
+          //   id: 'tasks',
+          //   icon: 'list-checks',
+          //   label: 'Tasks',
+          //   onClick: { $action: 'routeStore.navigate', args: ['/tasks'] },
+          //   active: { $eq: [{ $store: 'routeStore.currentPath' }, '/tasks'] },
+          // },
+          // Actions group
           {
-            type: 'item',
-            id: 'globe',
-            icon: 'globe',
-            label: 'Globe',
-            onClick: { $action: 'routeStore.navigate', args: ['/globe'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/globe'] },
-          },
-          {
-            type: 'item',
-            id: 'graph',
-            icon: 'graph',
-            label: 'Graph',
-            onClick: { $action: 'routeStore.navigate', args: ['/graph'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/graph'] },
-          },
-          {
-            type: 'item',
-            id: 'calendar',
-            icon: 'calendar',
-            label: 'Calendar',
-            onClick: { $action: 'routeStore.navigate', args: ['/calendar'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/calendar'] },
-            badge: 10,
-          },
-          {
-            type: 'item',
-            id: 'tasks',
-            icon: 'list-checks',
-            label: 'Tasks',
-            onClick: { $action: 'routeStore.navigate', args: ['/tasks'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/tasks'] },
-          },
-          {
-            type: 'item',
-            id: 'new-post',
-            icon: 'cube',
-            label: 'New post',
-            onClick: { $action: 'routeStore.navigate', args: ['/new-post'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/new-post'] },
-          },
-          {
-            type: 'item',
-            id: 'new-space',
-            icon: 'dna',
-            label: 'New space',
-            onClick: { $action: 'routeStore.navigate', args: ['/new-space'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/new-space'] },
+            type: 'group',
+            id: 'actions',
+            label: 'Actions',
+            collapsible: true,
+            collapsed: false,
+            items: [
+              {
+                type: 'item',
+                id: 'new-post',
+                icon: 'cube',
+                label: 'New post',
+                onClick: { $action: 'routeStore.navigate', args: ['/new-post'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/new-post'] },
+              },
+              {
+                type: 'item',
+                id: 'new-space',
+                icon: 'dna',
+                label: 'New space',
+                onClick: { $action: 'routeStore.navigate', args: ['/new-space'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/new-space'] },
+              },
+            ],
           },
           // Spaces group
           {
@@ -128,23 +157,23 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
               },
             ],
           },
-          // Quest group
-          {
-            type: 'group',
-            id: 'tools',
-            label: 'Quests',
-            collapsible: true,
-            items: [
-              {
-                type: 'item',
-                id: 'dev-team',
-                avatar: { src: 'https://i.pravatar.cc/150?img=2', name: 'Dev Team' },
-                label: 'Quest 1',
-                onClick: { $action: 'routeStore.navigate', args: ['/spaces/dev'] },
-                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/spaces/dev'] },
-              },
-            ],
-          },
+          // // Quest group
+          // {
+          //   type: 'group',
+          //   id: 'tools',
+          //   label: 'Quests',
+          //   collapsible: true,
+          //   items: [
+          //     {
+          //       type: 'item',
+          //       id: 'dev-team',
+          //       avatar: { src: 'https://i.pravatar.cc/150?img=2', name: 'Dev Team' },
+          //       label: 'Quest 1',
+          //       onClick: { $action: 'routeStore.navigate', args: ['/spaces/dev'] },
+          //       active: { $eq: [{ $store: 'routeStore.currentPath' }, '/spaces/dev'] },
+          //     },
+          //   ],
+          // },
         ],
 
         // Footer items
@@ -190,6 +219,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         width: '100%',
         height: '100%',
         bg: 'ui-50',
+        px: '66px',
       },
       children: [{ type: '$routes' }],
     },
@@ -355,7 +385,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     {
       path: '/',
       type: 'Column',
-      props: { px: '60px', width: '100%', height: '100%', bg: 'ui-50', overflow: 'auto' },
+      props: { width: '100%', height: '100%', bg: 'ui-50', overflow: 'auto' },
       children: [
         // Welcome header
         {
@@ -975,7 +1005,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     {
       path: '/feed',
       type: 'Column',
-      props: { px: '60px', width: '100%', height: '100%', bg: 'ui-50' },
+      props: { width: '100%', height: '100%', bg: 'ui-50' },
       children: [
         // Header section with filters and search
         {
@@ -1213,100 +1243,81 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     {
       path: '/globe',
       type: 'Column',
-      props: { px: '60px', width: '100%', height: '100%' },
+      props: { width: '100%', height: '100%', position: 'relative' },
       children: [
-        // Header section
+        // Header section controls
         {
-          type: 'Column',
-          props: {
-            width: '100%',
-            p: '2rem',
-            gap: '0.5rem',
-            bg: 'ui-0',
-            borderBottom: '1px solid',
-            borderColor: 'ui-200',
-          },
+          type: 'Row',
+          props: { width: '100%', p: '400', gap: '400', position: 'absolute', zIndex: 10 },
           children: [
+            // Combined layer controls
             {
-              type: 'Row',
+              type: 'PopoverToggleMenu',
               props: {
-                width: '100%',
-                justify: 'space-between',
-                align: 'center',
-              },
-              children: [
-                // Controls row
-                {
-                  type: 'Row',
-                  props: {
-                    gap: '0.5rem',
+                placement: 'bottom-start',
+                triggerLabel: 'Layers',
+                triggerIcon: 'stack',
+                items: [
+                  {
+                    type: 'group',
+                    id: 'background',
+                    label: 'Background',
+                    collapsible: true,
+                    items: [
+                      {
+                        id: 'skybox',
+                        label: 'Skybox',
+                        icon: 'image',
+                        checked: { $store: 'spaceStore.showSkybox' },
+                        onToggle: { $action: 'spaceStore.toggleBackground', args: ['skybox'] },
+                      },
+                      {
+                        id: 'stars',
+                        label: 'Procedural Stars',
+                        icon: 'sparkle',
+                        checked: { $store: 'spaceStore.showStars' },
+                        onToggle: { $action: 'spaceStore.toggleBackground', args: ['stars'] },
+                      },
+                      {
+                        id: 'solar-system',
+                        label: 'Solar System',
+                        icon: 'atom',
+                        checked: { $store: 'spaceStore.showSolarSystem' },
+                        onToggle: { $action: 'spaceStore.toggleBackground', args: ['solarSystem'] },
+                      },
+                    ],
                   },
-                  children: [
-                    // Background controls
-                    {
-                      type: 'PopoverToggleMenu',
-                      props: {
-                        triggerLabel: 'Background',
-                        triggerIcon: 'selection-background',
-                        items: [
-                          {
-                            id: 'skybox',
-                            label: 'Skybox',
-                            icon: 'image',
-                            checked: { $store: 'spaceStore.showSkybox' },
-                            onToggle: { $action: 'spaceStore.toggleBackground', args: ['skybox'] },
-                          },
-                          {
-                            id: 'stars',
-                            label: 'Procedural Stars',
-                            icon: 'sparkle',
-                            checked: { $store: 'spaceStore.showStars' },
-                            onToggle: { $action: 'spaceStore.toggleBackground', args: ['stars'] },
-                          },
-                          {
-                            id: 'solar-system',
-                            label: 'Solar System',
-                            icon: 'atom',
-                            checked: { $store: 'spaceStore.showSolarSystem' },
-                            onToggle: { $action: 'spaceStore.toggleBackground', args: ['solarSystem'] },
-                          },
-                        ],
+                  {
+                    type: 'group',
+                    id: 'planet-surface',
+                    label: 'Planet Surface',
+                    collapsible: true,
+                    items: [
+                      {
+                        id: 'user-locations',
+                        label: 'User Locations',
+                        icon: 'map-pin',
+                        checked: { $store: 'spaceStore.showUserLocations' },
+                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['userLocations'] },
                       },
-                    },
-                    // Layer controls
-                    {
-                      type: 'PopoverToggleMenu',
-                      props: {
-                        triggerLabel: 'Layers',
-                        triggerIcon: 'stack',
-                        items: [
-                          {
-                            id: 'user-locations',
-                            label: 'User Locations',
-                            icon: 'map-pin',
-                            checked: { $store: 'spaceStore.showUserLocations' },
-                            onToggle: { $action: 'spaceStore.toggleLayer', args: ['userLocations'] },
-                          },
-                          {
-                            id: 'countries',
-                            label: 'Country Outlines',
-                            icon: 'flag',
-                            checked: { $store: 'spaceStore.showCountryOutlines' },
-                            onToggle: { $action: 'spaceStore.toggleLayer', args: ['countryOutlines'] },
-                          },
-                          {
-                            id: 'h3',
-                            label: 'H3 Hexagons',
-                            icon: 'hexagon',
-                            checked: { $store: 'spaceStore.showH3Hexagons' },
-                            onToggle: { $action: 'spaceStore.toggleLayer', args: ['h3Hexagons'] },
-                          },
-                        ],
+                      {
+                        id: 'countries',
+                        label: 'Country Outlines',
+                        icon: 'flag',
+                        checked: { $store: 'spaceStore.showCountryOutlines' },
+                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['countryOutlines'] },
                       },
-                    },
-                  ],
-                },
-              ],
+                      {
+                        id: 'h3',
+                        label: 'H3 Hexagons',
+                        icon: 'hexagon',
+                        checked: { $store: 'spaceStore.showH3Hexagons' },
+                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['h3Hexagons'] },
+                      },
+                    ],
+                  },
+                ],
+              },
             },
           ],
         },
@@ -1402,7 +1413,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     {
       path: '/new-post',
       type: 'Column',
-      props: { px: '60px', ax: 'center', width: '100%', height: '100%', position: 'relative' },
+      props: { ax: 'center', width: '100%', height: '100%', position: 'relative' },
       children: [
         {
           type: 'Column',

@@ -29,22 +29,6 @@ export type TextVariant =
   | 'body'
   | 'label'
   | 'footnote';
-export type Placement =
-  | 'auto'
-  | 'auto-start'
-  | 'auto-end'
-  | 'top'
-  | 'top-start'
-  | 'top-end'
-  | 'bottom'
-  | 'bottom-start'
-  | 'bottom-end'
-  | 'right'
-  | 'right-start'
-  | 'right-end'
-  | 'left'
-  | 'left-start'
-  | 'left-end';
 export type TooltipStrategy = 'absolute' | 'fixed';
 export type ImageFit = '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
 export type ImageLoading = 'eager' | 'lazy';

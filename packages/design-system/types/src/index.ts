@@ -13,6 +13,19 @@ export type Cursor = 'pointer' | 'default' | 'text' | 'not-allowed';
 export type TextDecoration = 'underline' | 'line-through' | 'overline' | 'none';
 export type TextTransform = 'uppercase' | 'lowercase' | 'capitalize' | 'none';
 export type PointerEvents = 'none' | 'auto';
+export type Placement =
+  | 'top'
+  | 'bottom'
+  | 'left'
+  | 'right'
+  | 'top-start'
+  | 'top-end'
+  | 'bottom-start'
+  | 'bottom-end'
+  | 'left-start'
+  | 'left-end'
+  | 'right-start'
+  | 'right-end';
 
 // TODO:
 // opacity - Could use OpacityToken (e.g., 0, 10, 20, ..., 100)
