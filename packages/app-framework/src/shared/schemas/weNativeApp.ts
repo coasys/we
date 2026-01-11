@@ -14,10 +14,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     icon: 'cube',
   },
   type: 'Row',
-  props: {
-    width: '100%',
-    height: '100%',
-  },
+  props: { width: '100%', height: '100%' },
   children: [
     // Left sidebar
     {
@@ -52,7 +49,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
           {
             type: 'group',
             id: 'views',
-            label: 'Global Views',
+            label: 'Views',
             collapsible: true,
             collapsed: false,
             items: [
@@ -214,13 +211,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     // Main panel
     {
       type: 'Column',
-      props: {
-        zIndex: 1,
-        width: '100%',
-        height: '100%',
-        bg: 'ui-50',
-        px: '66px',
-      },
+      props: { zIndex: 1, width: '100%', height: '100%', bg: 'ui-50', px: '66px' },
       children: [{ type: '$routes' }],
     },
     // Right sidebar
@@ -1003,7 +994,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
       ],
     },
     {
-      path: '/feed',
+      path: '/list',
       type: 'Column',
       props: { width: '100%', height: '100%', bg: 'ui-50' },
       children: [

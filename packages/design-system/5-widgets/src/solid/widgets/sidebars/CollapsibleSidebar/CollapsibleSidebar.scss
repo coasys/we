@@ -140,7 +140,7 @@
     transition: background-color 0.15s ease;
 
     &:hover:not(:disabled) {
-      background-color: var(--we-color-ui-50);
+      // background-color: var(--we-color-ui-50);
     }
 
     &:disabled {

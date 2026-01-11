@@ -1,6 +1,7 @@
 import { iconSizeToVar, parseBorder, tokenVar } from '@we/design-system-utils';
 import { IconSize } from 'packages/design-system/3-primitives/dist/types';
 import { createContext, createEffect, createMemo, createSignal, Index, type JSX, Show } from 'solid-js';
+import { Dynamic } from 'solid-js/web';
 
 /**
  * Context provided by CollapsibleSidebar to its children
@@ -248,7 +249,6 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
             image={item.avatar!.src}
             initials={item.avatar!.name?.slice(0, 2)}
             size="26px"
-            // size={avatarSize()}
             // status={item.avatar!.status}
           />
         </Show>
@@ -281,49 +281,48 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
     return (
       <div class="we-collapsible-sidebar__group">
         {/* Group header */}
-        <Show when={group.collapsible !== false}>
-          <button
-            class="we-collapsible-sidebar__group-header"
-            onClick={() => toggleGroup(group.id)}
-            disabled={group.disabled}
+        <Dynamic
+          component={group.collapsible !== false ? 'button' : 'div'}
+          class={`we-collapsible-sidebar__group-header${group.collapsible === false ? ' we-collapsible-sidebar__group-header--static' : ''}`}
+          onClick={group.collapsible !== false ? () => toggleGroup(group.id) : undefined}
+          disabled={group.collapsible !== false ? group.disabled : undefined}
+          style={{ opacity: isExpanded() ? 1 : 0, transition: `opacity ${transitionDuration()}ms ease-in-out` }}
+        >
+          <we-text
+            class="we-collapsible-sidebar__group-label"
+            size="300"
+            weight="600"
+            color={group.collapsible !== false ? 'ui-400' : 'ui-500'}
           >
-            <we-text class="we-collapsible-sidebar__group-label" size="300" weight="600" color="ui-500">
-              {group.label}
-            </we-text>
-            <Show when={group.badge}>
-              <we-badge class="we-collapsible-sidebar__group-badge" size="sm" bg="ui-200" color="ui-600">
-                {group.badge}
-              </we-badge>
-            </Show>
+            {group.label}
+          </we-text>
+          <Show when={group.badge}>
+            <we-badge class="we-collapsible-sidebar__group-badge" size="sm" bg="ui-200" color="ui-600">
+              {group.badge}
+            </we-badge>
+          </Show>
+          <Show when={group.collapsible !== false}>
             <we-icon
               class="we-collapsible-sidebar__group-icon"
               name={collapsed() ? 'caret-right' : 'caret-down'}
               size="xs"
               color="ui-400"
             />
-          </button>
-        </Show>
-
-        {/* Non-collapsible header */}
-        <Show when={group.collapsible === false}>
-          <div class="we-collapsible-sidebar__group-header we-collapsible-sidebar__group-header--static">
-            <we-text class="we-collapsible-sidebar__group-label" size="300" weight="600" color="ui-500">
-              {group.label}
-            </we-text>
-            <Show when={group.badge}>
-              <we-badge class="we-collapsible-sidebar__group-badge" size="sm" bg="ui-200" color="ui-600">
-                {group.badge}
-              </we-badge>
-            </Show>
-          </div>
-        </Show>
+          </Show>
+        </Dynamic>
 
         {/* Group items */}
-        <Show when={!collapsed()}>
-          <div class="we-collapsible-sidebar__group-items">
-            <Index each={groupItems()}>{(getItem) => renderEntry(getItem)}</Index>
-          </div>
-        </Show>
+        <div
+          class="we-collapsible-sidebar__group-items"
+          style={{
+            'max-height': collapsed() ? '0' : '1000px',
+            opacity: collapsed() ? 0 : 1,
+            overflow: 'hidden',
+            transition: `max-height ${transitionDuration()}ms ease-in-out, opacity ${transitionDuration()}ms ease-in-out`,
+          }}
+        >
+          <Index each={groupItems()}>{(getItem) => renderEntry(getItem)}</Index>
+        </div>
       </div>
     );
   };

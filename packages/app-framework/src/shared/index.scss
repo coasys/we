@@ -15,3 +15,7 @@ body,
   // Set default text color
   color: var(--we-color-ui-1000);
 }
+
+.cesium-viewer-bottom {
+  opacity: 0.3;
+}
