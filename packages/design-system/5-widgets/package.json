@@ -28,7 +28,8 @@
     "dist"
   ],
   "dependencies": {
-    "cesium": "^1.136.0"
+    "cesium": "^1.136.0",
+    "d3-force": "^3.0.0"
   },
   "peerDependencies": {
     "@coasys/ad4m": "0.11.0",
@@ -37,6 +38,7 @@
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
+    "@types/d3-force": "^3.0.10",
     "@we/cli": "workspace:*",
     "@we/components": "workspace:*",
     "@we/design-system-utils": "workspace:*",

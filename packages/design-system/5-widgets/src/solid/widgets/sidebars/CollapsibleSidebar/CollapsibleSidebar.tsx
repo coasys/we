@@ -315,13 +315,15 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
         <div
           class="we-collapsible-sidebar__group-items"
           style={{
-            'max-height': collapsed() ? '0' : '1000px',
+            display: 'grid',
+            'grid-template-rows': collapsed() ? '0fr' : '1fr',
             opacity: collapsed() ? 0 : 1,
-            overflow: 'hidden',
-            transition: `max-height ${transitionDuration()}ms ease-in-out, opacity ${transitionDuration()}ms ease-in-out`,
+            transition: `grid-template-rows ${transitionDuration()}ms ease-in-out, opacity ${transitionDuration() * 0.6}ms ease-in-out`,
           }}
         >
-          <Index each={groupItems()}>{(getItem) => renderEntry(getItem)}</Index>
+          <div style={{ overflow: 'hidden' }}>
+            <Index each={groupItems()}>{(getItem) => renderEntry(getItem)}</Index>
+          </div>
         </div>
       </div>
     );

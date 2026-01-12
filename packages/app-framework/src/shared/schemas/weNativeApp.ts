@@ -49,14 +49,16 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
           {
             type: 'group',
             id: 'views',
-            label: 'Views',
+            label: 'Explore',
             collapsible: true,
-            collapsed: false,
             items: [
               {
                 type: 'item',
                 id: 'globe',
-                icon: 'globe',
+                // icon: 'globe',
+                // icon: 'globe-hemisphere-east',
+                icon: 'globe-hemisphere-west',
+                // icon: 'globe-stand',
                 label: 'Globe',
                 onClick: { $action: 'routeStore.navigate', args: ['/globe'] },
                 active: { $eq: [{ $store: 'routeStore.currentPath' }, '/globe'] },
@@ -72,21 +74,25 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
               {
                 type: 'item',
                 id: 'list',
-                icon: 'list-bullets',
-                label: 'List',
+                // icon: 'list-bullets',
+                // icon: 'squares-four',
+                // icon: 'grid-nine',
+                // icon: 'cards',
+                icon: 'cards-three',
+                label: 'Cards',
                 onClick: { $action: 'routeStore.navigate', args: ['/list'] },
                 active: { $eq: [{ $store: 'routeStore.currentPath' }, '/list'] },
-                badge: 34,
+                // badge: 34,
               },
-              {
-                type: 'item',
-                id: 'calendar',
-                icon: 'calendar',
-                label: 'Calendar',
-                onClick: { $action: 'routeStore.navigate', args: ['/calendar'] },
-                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/calendar'] },
-                badge: 10,
-              },
+              // {
+              //   type: 'item',
+              //   id: 'calendar',
+              //   icon: 'calendar',
+              //   label: 'Calendar',
+              //   onClick: { $action: 'routeStore.navigate', args: ['/calendar'] },
+              //   active: { $eq: [{ $store: 'routeStore.currentPath' }, '/calendar'] },
+              //   // badge: 10,
+              // },
             ],
           },
           // {
@@ -101,14 +107,15 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
           {
             type: 'group',
             id: 'actions',
-            label: 'Actions',
+            label: 'Create',
             collapsible: true,
-            collapsed: false,
             items: [
               {
                 type: 'item',
                 id: 'new-post',
                 icon: 'cube',
+                // icon: 'square',
+                // icon: 'atom',
                 label: 'New post',
                 onClick: { $action: 'routeStore.navigate', args: ['/new-post'] },
                 active: { $eq: [{ $store: 'routeStore.currentPath' }, '/new-post'] },
@@ -116,7 +123,14 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
               {
                 type: 'item',
                 id: 'new-space',
-                icon: 'dna',
+                // icon: 'dna',
+                // icon: 'circles-three',
+                // icon: 'plus-circle',
+                // icon: 'circles-three-plus',
+                // icon: 'circle-dashed',
+                // icon: 'circle',
+                // icon: 'seal',
+                icon: 'map-pin-area',
                 label: 'New space',
                 onClick: { $action: 'routeStore.navigate', args: ['/new-space'] },
                 active: { $eq: [{ $store: 'routeStore.currentPath' }, '/new-space'] },
@@ -228,12 +242,11 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         items: [
           {
             type: 'item',
-            id: 'wallet',
-            icon: 'wallet',
-            label: 'Wallet',
-            onClick: { $action: 'routeStore.navigate', args: ['/wallet'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/wallet'] },
-            badge: '$520',
+            id: 'profile',
+            icon: 'user',
+            label: 'Profile',
+            onClick: { $action: 'routeStore.navigate', args: ['/profile'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/profile'] },
           },
           {
             type: 'item',
@@ -242,6 +255,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             label: 'Notifications',
             onClick: { $action: 'routeStore.navigate', args: ['/notifications'] },
             active: { $eq: [{ $store: 'routeStore.currentPath' }, '/notifications'] },
+            badge: 5,
           },
           {
             type: 'item',
@@ -250,16 +264,25 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             label: 'Messages',
             onClick: { $action: 'routeStore.navigate', args: ['/messages'] },
             active: { $eq: [{ $store: 'routeStore.currentPath' }, '/messages'] },
-            badge: 15,
+            // badge: 15,
           },
           {
             type: 'item',
-            id: 'call',
-            icon: 'phone',
-            label: 'Call',
-            onClick: { $action: 'routeStore.navigate', args: ['/call'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/call'] },
+            id: 'wallet',
+            icon: 'wallet',
+            label: 'Wallet',
+            onClick: { $action: 'routeStore.navigate', args: ['/wallet'] },
+            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/wallet'] },
+            badge: '$520',
           },
+          // {
+          //   type: 'item',
+          //   id: 'call',
+          //   icon: 'phone',
+          //   label: 'Call',
+          //   onClick: { $action: 'routeStore.navigate', args: ['/call'] },
+          //   active: { $eq: [{ $store: 'routeStore.currentPath' }, '/call'] },
+          // },
           // Spaces group
           {
             type: 'group',
@@ -277,7 +300,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                   status: 'online',
                 },
                 label: 'Sarah Chen',
-                badge: 2,
+                // badge: 2,
                 onClick: { $action: 'routeStore.navigate', args: ['/friends/sarah'] },
                 active: { $eq: [{ $store: 'routeStore.currentPath' }, '/friends/sarah'] },
               },
@@ -1400,7 +1423,41 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         },
       ],
     },
-
+    {
+      path: '/graph',
+      type: 'Column',
+      props: { width: '100%', height: '100%', position: 'relative' },
+      children: [
+        // Header section controls
+        {
+          type: 'Row',
+          props: { width: '100%', p: '400', gap: '400', position: 'absolute', zIndex: 10 },
+          children: [
+            {
+              type: 'we-text',
+              props: { text: 'Network Graph', size: '600', weight: '600', color: 'ui-900' },
+            },
+          ],
+        },
+        // Graph takes remaining space
+        {
+          type: 'GraphWidget',
+          props: {
+            width: '100%',
+            height: '100%',
+            nodeStyle: { showLabel: true, labelColor: '#fff', labelBackgroundColor: '#372744', labelFontSize: 12 },
+            interactions: {
+              enableZoom: true,
+              enablePan: false,
+              onNodeClick: {
+                $action: 'consoleStore.log',
+                args: ['Node clicked:', '$arg'],
+              },
+            },
+          },
+        },
+      ],
+    },
     {
       path: '/new-post',
       type: 'Column',
