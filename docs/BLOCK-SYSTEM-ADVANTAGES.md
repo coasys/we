@@ -63,7 +63,7 @@ class Dish {
 **The Problem:**
 
 1. ❌ Different property names (name vs title vs dishName)
-2. ❌ Different predicate (recipe:// vs cook:// vs dish://)
+2. ❌ Different predicates (recipe:// vs cook:// vs dish://)
 3. ❌ Different data structures (string vs array vs objects)
 4. ❌ **Community A cannot read Community B's recipes**
 5. ❌ **Limited interoperability despite being the same concept**
@@ -127,7 +127,7 @@ RecipeC = CollectionBlock {
 
 **The Solution:**
 
-1. ✅ All three use **same primitive building blocks** (TextBlock, ImageBlock, etc.)
+1. ✅ All three use the **same primitive building blocks** (TextBlock, ImageBlock, etc.)
 2. ✅ Different compositions for different needs
 3. ✅ **Cross-community readable**: Each community renders what it has, shows placeholders for missing blocks
 4. ✅ **Graceful degradation**: If Community A views Community B's recipe, ChecklistBlock might render as plain text
@@ -141,7 +141,7 @@ RecipeC = CollectionBlock {
 
 ```typescript
 // Each community uses AI to decide their composition:
-// But all use the SAME building blocks
+// But all use the SAME core building blocks
 
 Community A: [Title, IngredientsText, InstructionsText]
 Community B: [Title, IngredientChecklist, StepsCollection]
