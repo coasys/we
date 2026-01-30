@@ -402,7 +402,7 @@ When everyone can generate custom models, you get:
 
 - 🔴 Explosion of incompatible schemas
 - 🔴 Fragmented ecosystem
-- 🔴 No interoperability
+- 🔴 Limited interoperability
 - 🔴 Wasted development effort (1000 implementations of "image in content")
 
 **Blocks solve this by standardizing components, not compositions:**
