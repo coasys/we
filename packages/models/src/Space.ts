@@ -1,23 +1,23 @@
-import { Ad4mModel, Collection, ModelOptions, Optional, Property } from '@coasys/ad4m';
+import { Ad4mModel, HasMany, Model, Field } from '@coasys/ad4m';
 
-@ModelOptions({ name: 'Space' })
+@Model({ name: 'Space' })
 export class Space extends Ad4mModel {
-  @Property({ through: 'we://has_uuid', resolveLanguage: 'literal', writable: true })
+  @Field({ through: 'we://has_uuid', resolveLanguage: 'literal', writable: true, required: true, initial: 'literal://string:uninitialized' })
   uuid: string = '';
 
-  @Property({ through: 'we://has_name', resolveLanguage: 'literal', writable: true })
+  @Field({ through: 'we://has_name', resolveLanguage: 'literal', writable: true, required: true, initial: 'literal://string:uninitialized' })
   name: string = '';
 
-  @Property({ through: 'we://has_description', resolveLanguage: 'literal', writable: true })
+  @Field({ through: 'we://has_description', resolveLanguage: 'literal', writable: true, required: true, initial: 'literal://string:uninitialized' })
   description: string = '';
 
-  @Optional({ through: 'we://has_visibility', resolveLanguage: 'literal', writable: true })
+  @Field({ through: 'we://has_visibility', resolveLanguage: 'literal', writable: true })
   visibility: string = '';
 
-  @Collection({ through: 'we://has_location' })
+  @HasMany({ through: 'we://has_location' })
   locations: string[] = [];
 
-  @Optional({ through: 'we://has_user_locations', resolveLanguage: 'literal', writable: true })
+  @Field({ through: 'we://has_user_locations', resolveLanguage: 'literal', writable: true })
   userLocations: string = '[]'; // JSON string of UserLocation[]
 }
 

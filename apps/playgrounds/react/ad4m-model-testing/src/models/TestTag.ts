@@ -1,14 +1,15 @@
-// TODO Phase 2: update imports to use @Model, @Field, @Flag
-// TODO Phase 2: add @BelongsToMany(() => TestPost, { through: 'test://has_tag' })
-import { Ad4mModel, Flag, ModelOptions, Property } from '@coasys/ad4m';
+import { Ad4mModel, BelongsToMany, Flag, Model, Field } from '@coasys/ad4m';
+import { TestPost } from './TestPost';
 
-@ModelOptions({ name: 'TestTag' })
+@Model({ name: 'TestTag' })
 export class TestTag extends Ad4mModel {
   @Flag({ through: 'test://tag_type', value: 'test://tag' })
   tagType = 'test://tag';
 
-  @Property({ through: 'test://label', required: true, writable: true })
+  @Field({ through: 'test://label', required: true, writable: true, initial: 'literal://string:uninitialized' })
   label: string = '';
 
-  // Phase 2: becomes @BelongsToMany(() => TestPost, { through: 'test://has_tag' })
+  // Reverse traversal: find all TestPosts that have a test://has_tag link pointing to this instance
+  @BelongsToMany(() => TestPost, { through: 'test://has_tag' })
+  posts: string[] = [];
 }

@@ -1,20 +1,19 @@
-// TODO Phase 2: update imports to use @Model, @Field, @Flag, @HasMany
-import { Ad4mModel, Collection, Flag, ModelOptions, Property } from '@coasys/ad4m';
+import { Ad4mModel, HasMany, Flag, Model, Field } from '@coasys/ad4m';
 
-@ModelOptions({ name: 'TestPost' })
+@Model({ name: 'TestPost' })
 export class TestPost extends Ad4mModel {
   @Flag({ through: 'test://post_type', value: 'test://post' })
   postType = 'test://post';
 
-  @Property({ through: 'test://title', required: true, writable: true })
+  @Field({ through: 'test://title', required: true, writable: true, initial: 'literal://string:uninitialized' })
   title: string = '';
 
-  @Property({ through: 'test://body', required: false, writable: true })
+  @Field({ through: 'test://body', writable: true })
   body: string = '';
 
-  @Collection({ through: 'test://has_tag' })
+  @HasMany({ through: 'test://has_tag' })
   tags: string[] = [];
 
-  @Collection({ through: 'test://has_comment' })
+  @HasMany({ through: 'test://has_comment' })
   comments: string[] = [];
 }

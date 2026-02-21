@@ -48,8 +48,8 @@ importers:
   apps/playgrounds/react/ad4m-model-testing:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.11.0
-        version: 0.11.0(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        specifier: file:../../../../../ad4m/core
+        version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@coasys/ad4m-connect':
         specifier: 0.11.2-dev.5
         version: 0.11.2-dev.5(esbuild@0.27.3)
@@ -63,6 +63,9 @@ importers:
         specifier: ^0.2.2
         version: 0.2.2
     devDependencies:
+      '@babel/plugin-proposal-class-properties':
+        specifier: ^7.18.6
+        version: 7.18.6(@babel/core@7.29.0)
       '@babel/plugin-proposal-decorators':
         specifier: ^7.25.9
         version: 7.29.0(@babel/core@7.29.0)
@@ -941,6 +944,13 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
+  '@babel/plugin-proposal-class-properties@7.18.6':
+    resolution: {integrity: sha512-cumfXOF0+nzZrrN8Rf0t7M+tF6sZc7vhQwYQck9q1/5w2OExlD+b4v4RpMJFaV1Z7WcDRgO6FqvxqxGlwo+RHQ==}
+    engines: {node: '>=6.9.0'}
+    deprecated: This proposal has been merged to the ECMAScript standard and thus this plugin is no longer maintained. Please use @babel/plugin-transform-class-properties instead.
+    peerDependencies:
+      '@babel/core': ^7.0.0-0
+
   '@babel/plugin-proposal-decorators@7.29.0':
     resolution: {integrity: sha512-CVBVv3VY/XRMxRYq5dwr2DS7/MvqPm23cOCjbwNnVrfOqcWlnefua1uUs0sjdKOGjvPUG633o07uWzJq4oI6dA==}
     engines: {node: '>=6.9.0'}
@@ -1040,6 +1050,9 @@ packages:
 
   '@coasys/ad4m@0.11.0':
     resolution: {integrity: sha512-DBgb0ibxEGSv4L4iiH1GQOGxeE6GH2JoNzizIYFWFenH0zJUG2CoHsvNW20V35CqLq5oZ25k5NUmAaY3v1XYBQ==}
+
+  '@coasys/ad4m@file:../ad4m/core':
+    resolution: {directory: ../ad4m/core, type: directory}
 
   '@csstools/color-helpers@6.0.1':
     resolution: {integrity: sha512-NmXRccUJMk2AWA5A7e5a//3bCIMyOu2hAtdRYrhPPHjDxINuCwX1w6rnIZ4xjLcp0ayv6h8Pc3X0eJUGiAAXHQ==}
@@ -6283,6 +6296,14 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.0
 
+  '@babel/plugin-proposal-class-properties@7.18.6(@babel/core@7.29.0)':
+    dependencies:
+      '@babel/core': 7.29.0
+      '@babel/helper-create-class-features-plugin': 7.28.6(@babel/core@7.29.0)
+      '@babel/helper-plugin-utils': 7.28.6
+    transitivePeerDependencies:
+      - supports-color
+
   '@babel/plugin-proposal-decorators@7.29.0(@babel/core@7.29.0)':
     dependencies:
       '@babel/core': 7.29.0
@@ -6459,7 +6480,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@coasys/ad4m@0.11.0(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@coasys/ad4m@file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
       '@apollo/client': 3.7.10(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@holochain/client': 0.16.0

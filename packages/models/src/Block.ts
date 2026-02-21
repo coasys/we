@@ -1,19 +1,19 @@
-import { Ad4mModel, Collection, ModelOptions, Property } from '@coasys/ad4m';
+import { Ad4mModel, HasMany, Model, Field } from '@coasys/ad4m';
 
 // TODO: see if we can set up Block types (ImageBlock, TextBlock, etc) to extend this base Block model
 // Or should we change the name of this to something else if it can wrap non-block models like Agent, Space, Link etc?
 // Agent and Space dont seem so relevant but Link needs these collections...
 // Or maybe we dont need the wrapper at all, we just add the collections when needed to other models...
 
-@ModelOptions({ name: 'Block' })
+@Model({ name: 'Block' })
 export class Block extends Ad4mModel {
-  @Property({ through: 'we://block_type', resolveLanguage: 'literal', writable: true })
+  @Field({ through: 'we://block_type', resolveLanguage: 'literal', writable: true, required: true, initial: 'literal://string:uninitialized' })
   type: string = '';
 
-  @Collection({ through: 'we://has_comments' })
+  @HasMany({ through: 'we://has_comments' })
   comments: string[] = [];
 
-  @Collection({ through: 'we://has_reactions' })
+  @HasMany({ through: 'we://has_reactions' })
   reactions: string[] = [];
 }
 
