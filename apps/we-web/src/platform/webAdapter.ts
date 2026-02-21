@@ -4,6 +4,7 @@ import type { AppConfig, PlatformAdapter } from '@we/app-framework/shared';
 
 export const webAdapter: PlatformAdapter = {
   async buildAd4mClient(): Promise<Ad4mClient> {
+    // TODO: update with new ad4m connect logic
     const connect = Ad4mConnect({
       appName: 'WE',
       appDesc: 'Social media for the new internet',

@@ -74,6 +74,8 @@ class Dish {
 
 ### Block Solution: Unity Within Diversity
 
+**Key Architecture:** All blocks use a single universal containment predicate (`we://contains`) to form hierarchical structures, with optional `semanticRole` metadata for perspective-specific interpretation.
+
 ```typescript
 // WE provides ~20-30 standardized block types and an onramp for developing & sharing others:
 TextBlock, ImageBlock, VideoBlock, AudioBlock, CodeBlock,
@@ -179,7 +181,49 @@ ImageBlock { src, alt, width, height, caption, ... }
 
 **Network effects happen at the component level, not the schema level.**
 
-### 3. Ordering Preservation
+### 4. Multiple Semantic Roles Without Graph Duplication
+
+**The Power:** A single block can carry multiple `semanticRole` values, allowing different perspectives to interpret it subjectively without data duplication.
+
+```typescript
+// Single TextBlock with multiple semantic interpretations:
+TextBlock {
+  text: "Chocolate Cake",
+  semanticRole: [
+    "recipe://hasTitle",
+    "post://headline",
+    "schema.org/headline",
+    "article://title"
+  ]
+}
+
+// Recipe perspective sees: recipe://hasTitle → "Chocolate Cake"
+// Blog perspective sees: post://headline → "Chocolate Cake"
+// SEO tool sees: schema.org/headline → "Chocolate Cake"
+// All reading the SAME block, no duplication needed
+```
+
+**Without semanticRole (traditional approach):**
+
+```typescript
+// Would need multiple predicates pointing to same target (clunky):
+recipe://hasTitle → literal://abc123
+post://headline → literal://abc123
+schema.org/headline → literal://abc123
+
+// OR duplicate the data (wastes space, sync issues):
+recipe://hasTitle → literal://abc123
+post://headline → literal://def456  // Same text, different expression
+```
+
+**Advantages:**
+
+- ✅ Lightweight: Single block, multiple semantic interpretations
+- ✅ No graph rewrites: Add new roles without touching existing structure
+- ✅ Subjective meaning: Each perspective interprets the same block its own way
+- ✅ Graceful evolution: Add new community-specific roles without breaking existing ones
+
+### 4. Ordering Preservation
 
 ```typescript
 // AI-generated models struggle with ordering:
@@ -213,7 +257,7 @@ children: [
 // Natural ordering, rich content, no metadata needed
 ```
 
-### 4. Rich Nesting Without Schema Explosion
+### 5. Rich Nesting Without Schema Explosion
 
 ```typescript
 // AI generates model: "Recipe step with text and image"
@@ -252,7 +296,7 @@ Step = CollectionBlock {
 }
 ```
 
-### 5. Composition Evolution Without Migration
+### 6. Composition Evolution Without Migration
 
 ```typescript
 // User wants to add nutrition info to recipes later
@@ -288,7 +332,7 @@ class RecipeV2 {
 // Readers handle both gracefully
 ```
 
-### 6. Graceful Interoperability & Progressive Enhancement
+### 7. Graceful Interoperability & Progressive Enhancement
 
 ```typescript
 // Music community creates track with custom AudioSpectrogramBlock
@@ -320,6 +364,74 @@ Track {
 - **Completely incompatible** - can't read each other's content
 - No graceful fallback
 
+### 8. Querying Remains Tractable
+
+**With Blocks:**
+
+```typescript
+// Single universal traversal pattern:
+// 1. Find root blocks via semanticRole or type
+const recipes = await perspective.querySurrealDB(`
+  SELECT * FROM block 
+  WHERE 'recipe://hasTitle' IN semanticRole
+`);
+
+// 2. Traverse structure via we://contains
+const children = await perspective.get({
+  source: recipeRoot,
+  predicate: 'we://contains',
+});
+
+// 3. Filter by semanticRole for specific meaning
+const ingredients = children.filter((block) => block.semanticRole?.includes('recipe://ingredients'));
+
+// Works across ALL communities using same pattern
+// Can add Prolog rules for virtual semantic predicates:
+// recipe://hasTitle(Block, Title) :-
+//   triple(Block, "semanticRole", "recipe://hasTitle"),
+//   triple(Block, "text", Title).
+```
+
+**With Fragmented Models:**
+
+```typescript
+// Every community needs custom query logic:
+
+// Community A:
+const recipesA = await RecipeA.findAll(perspective, {
+  properties: ['name', 'ingredients', 'steps'],
+});
+
+// Community B (different predicates, structure):
+const recipesB = await CookingPost.findAll(perspective, {
+  properties: ['title', 'ingredientList', 'steps'],
+});
+
+// Community C (completely different):
+const recipesC = await Dish.findAll(perspective, {
+  properties: ['dishName', 'components', 'procedure'],
+});
+
+// No shared query pattern
+// Each community requires custom integration code
+// Brittle: breaks when community changes their schema
+```
+
+**Advantages:**
+
+- ✅ Single traversal predicate (`we://contains`) for all content
+- ✅ Filter on `semanticRole` URIs for semantic queries
+- ✅ Perspective-specific Prolog rules can add virtual predicates
+- ✅ Query pattern works across all communities
+- ✅ Minimal overhead: one containment query + property access
+
+**With Fragmented Models:**
+
+- ❌ Community-specific query logic
+- ❌ No shared patterns
+- ❌ Brittle to schema changes
+- ❌ N+1 query problems when communities diverge
+
 ## The Revised Value Proposition
 
 ### The AI Era Creates a Paradox
@@ -332,15 +444,26 @@ More fragmentation (every community has unique schemas)
 Less interoperability (can't share across communities)
 ```
 
-### Blocks Resolve the Paradox
+### The Hybrid Block System Resolves the Paradox
 
 ```
 Standard components (shared block library)
+  + Universal containment (we://contains)
+  + Multiple semantic roles (subjective interpretation)
     ⬇
 Flexible compositions (communities arrange differently)
+  + Perspective-specific meaning (same blocks, different semantics)
     ⬇
 Maximum interoperability (shared vocabulary, different sentences)
+  + Radical cross-community readability
 ```
+
+**This preserves AD4M's core philosophy while solving the AI-induced coordination crisis:**
+
+- ✅ Agent-subjectivity maintained (semanticRole allows subjective meaning)
+- ✅ Perspective diversity preserved (different compositions, different interpretations)
+- ✅ Easy AI model generation retained (AI can still generate custom compositions)
+- ✅ BUT channels it so fragmentation doesn't destroy usability at scale
 
 ## The Analogy
 
@@ -405,14 +528,15 @@ When everyone can generate custom models, you get:
 - 🔴 Limited interoperability
 - 🔴 Wasted development effort (1000 implementations of "image in content")
 
-**Blocks solve this by standardizing components, not compositions:**
+**The hybrid block system solves this by standardizing components and containment, not compositions:**
 
-- 🟢 Shared vocabulary (30 blocks)
-- 🟢 Infinite diversity (compositions)
-- 🟢 Full interoperability
+- 🟢 Shared vocabulary (30 blocks + `we://contains`)
+- 🟢 Infinite diversity (compositions + semanticRole interpretations)
+- 🟢 Full interoperability (universal traversal pattern)
 - 🟢 Network effects (improve blocks once, everyone benefits)
+- 🟢 Subjective meaning (same block, multiple perspectives)
 
-**AI generates diversity. Blocks create unity within that diversity.**
+**AI generates diversity. The hybrid block system creates unity within that diversity.**
 
 ---
 

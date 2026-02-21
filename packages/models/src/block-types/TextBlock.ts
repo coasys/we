@@ -3,7 +3,7 @@ import { Ad4mModel, ModelOptions, Property } from '@coasys/ad4m';
 @ModelOptions({ name: 'TextBlock' })
 export class TextBlock extends Ad4mModel {
   @Property({ through: 'we://text_block_node_type', resolveLanguage: 'literal', writable: true })
-  type: string = ''; // Renamed to nodeType to avoid confusion with blockType
+  type: string = '';
 
   @Property({ through: 'we://text_block_direction', resolveLanguage: 'literal', writable: true })
   direction: string = '';
