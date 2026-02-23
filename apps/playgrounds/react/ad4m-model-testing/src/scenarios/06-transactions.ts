@@ -10,7 +10,7 @@ export const scenario: ScenarioModule = {
   name: '06 — Transactions',
   run: async (perspective: PerspectiveProxy) => {
     await wipePerspective(perspective);
-    await perspective.ensureSDNASubjectClass(TestPost);
+    await TestPost.register(perspective);
 
     return [
       await test('Ad4mModel.transaction() commits multiple saves atomically', async () => {

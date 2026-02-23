@@ -11,8 +11,8 @@ export const scenario: ScenarioModule = {
   name: '03 — Collections (@HasMany / @HasOne)',
   run: async (perspective: PerspectiveProxy) => {
     await wipePerspective(perspective);
-    await perspective.ensureSDNASubjectClass(TestPost);
-    await perspective.ensureSDNASubjectClass(TestComment);
+    await TestPost.register(perspective);
+    await TestComment.register(perspective);
 
     return [
       await test('@HasMany — fresh instance has empty array', () => {

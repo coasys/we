@@ -37,7 +37,7 @@ export const scenario: ScenarioModule = {
   name: '05 — Subscriptions',
   run: async (perspective: PerspectiveProxy) => {
     await wipePerspective(perspective);
-    await perspective.ensureSDNASubjectClass(TestPost);
+    await TestPost.register(perspective);
 
     return [
       // ── 1. Immediate callback ─────────────────────────────────────────────

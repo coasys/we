@@ -11,8 +11,8 @@ export const scenario: ScenarioModule = {
   name: '09 — Model Inheritance',
   run: async (perspective: PerspectiveProxy) => {
     await wipePerspective(perspective);
-    await perspective.ensureSDNASubjectClass(TestDerivedModel);
-    await perspective.ensureSDNASubjectClass(TestPost);
+    await TestDerivedModel.register(perspective);
+    await TestPost.register(perspective);
 
     return [
       // ── Pure / no-perspective ───────────────────────────────────────────

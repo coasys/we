@@ -9,7 +9,7 @@ export const scenario: ScenarioModule = {
   name: '02 — Querying',
   run: async (perspective: PerspectiveProxy) => {
     await wipePerspective(perspective);
-    await perspective.ensureSDNASubjectClass(TestPost);
+    await TestPost.register(perspective);
 
     // Seed three posts with distinct titles for ordering / filtering tests
     const p1 = new TestPost(perspective);

@@ -11,9 +11,9 @@ export const scenario: ScenarioModule = {
   name: '04 — Relationships & Include',
   run: async (perspective: PerspectiveProxy) => {
     await wipePerspective(perspective);
-    await perspective.ensureSDNASubjectClass(TestPost);
-    await perspective.ensureSDNASubjectClass(TestComment);
-    await perspective.ensureSDNASubjectClass(TestTag);
+    await TestPost.register(perspective);
+    await TestComment.register(perspective);
+    await TestTag.register(perspective);
 
     return [
       await test('@BelongsToOne — without include, relation is a raw ID string', async () => {

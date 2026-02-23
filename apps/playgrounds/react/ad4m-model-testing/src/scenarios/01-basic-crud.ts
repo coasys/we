@@ -9,7 +9,7 @@ export const scenario: ScenarioModule = {
   name: '01 — Basic CRUD',
   run: async (perspective: PerspectiveProxy) => {
     await wipePerspective(perspective);
-    await perspective.ensureSDNASubjectClass(TestPost);
+    await TestPost.register(perspective);
 
     return [
       await test('save() populates a non-empty baseExpression', async () => {

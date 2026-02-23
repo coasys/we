@@ -14,9 +14,9 @@ export const scenario: ScenarioModule = {
     // Wipe all links so each run starts clean
     await wipePerspective(perspective);
 
-    await perspective.ensureSDNASubjectClass(TestPost);
-    await perspective.ensureSDNASubjectClass(TestComment);
-    await perspective.ensureSDNASubjectClass(TestTag);
+    await TestPost.register(perspective);
+    await TestComment.register(perspective);
+    await TestTag.register(perspective);
 
     return [
       // ── @Model + save ─────────────────────────────────────────────────────
