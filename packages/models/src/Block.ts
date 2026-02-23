@@ -1,4 +1,4 @@
-import { Ad4mModel, HasMany, Model, Field } from '@coasys/ad4m';
+import { Ad4mModel, Field, HasMany, Model } from '@coasys/ad4m';
 
 // TODO: see if we can set up Block types (ImageBlock, TextBlock, etc) to extend this base Block model
 // Or should we change the name of this to something else if it can wrap non-block models like Agent, Space, Link etc?
@@ -7,14 +7,26 @@ import { Ad4mModel, HasMany, Model, Field } from '@coasys/ad4m';
 
 @Model({ name: 'Block' })
 export class Block extends Ad4mModel {
-  @Field({ through: 'we://block_type', resolveLanguage: 'literal', writable: true, required: true, initial: 'literal://string:uninitialized' })
+  @Field({
+    through: 'we://block_type',
+    resolveLanguage: 'literal',
+    writable: true,
+    required: true,
+    initial: 'literal://string:uninitialized',
+  })
   type: string = '';
 
   @HasMany({ through: 'we://has_comments' })
   comments: string[] = [];
+  declare addComments: (value: string) => Promise<void>;
+  declare removeComments: (value: string) => Promise<void>;
+  declare setComments: (values: string[]) => Promise<void>;
 
   @HasMany({ through: 'we://has_reactions' })
   reactions: string[] = [];
+  declare addReactions: (value: string) => Promise<void>;
+  declare removeReactions: (value: string) => Promise<void>;
+  declare setReactions: (values: string[]) => Promise<void>;
 }
 
 // we://has_child
