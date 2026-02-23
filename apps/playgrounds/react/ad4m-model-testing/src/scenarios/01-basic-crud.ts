@@ -12,28 +12,23 @@ export const scenario: ScenarioModule = {
     await TestPost.register(perspective);
 
     return [
-      await test('save() populates a non-empty baseExpression', async () => {
+      await test('save() populates a non-empty id', async () => {
         const post = new TestPost(perspective);
         post.title = 'CRUD Test';
         post.body = 'body';
         await post.save();
-        assert(post.baseExpression !== '', 'baseExpression should be non-empty after save');
+        assert(post.id !== '', 'id should be non-empty after save');
       }),
 
       await test('create() constructs, assigns and saves in one call', async () => {
         const post = await TestPost.create(perspective, { title: 'Created', body: 'via create' });
-        assert(post.baseExpression !== '', 'baseExpression should be set');
+        assert(post.id !== '', 'id should be set');
         assert(post.title === 'Created', `title mismatch: ${post.title}`);
         assert(post.body === 'via create', `body mismatch: ${post.body}`);
         // Should be findable immediately
         const found = await TestPost.findOne(perspective, { where: { id: post.id } });
         assert(found !== null, 'create() result should be findable');
         assert(found.title === 'Created', `round-trip title mismatch: ${found.title}`);
-      }),
-
-      await test('id getter is an alias for baseExpression', async () => {
-        const post = await TestPost.create(perspective, { title: 'ID Alias', body: '' });
-        assert(post.id === post.baseExpression, `id (${post.id}) !== baseExpression (${post.baseExpression})`);
       }),
 
       await test('get() re-reads persisted values from perspective', async () => {

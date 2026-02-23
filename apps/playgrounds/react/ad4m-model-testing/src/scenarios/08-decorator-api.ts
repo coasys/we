@@ -20,12 +20,12 @@ export const scenario: ScenarioModule = {
 
     return [
       // ── @Model + save ─────────────────────────────────────────────────────
-      await test('@Model — save() sets baseExpression', async () => {
+      await test('@Model — save() sets id', async () => {
         const post = new TestPost(perspective);
         post.title = 'Hello World';
         post.body = 'First post body';
         await post.save();
-        assert(post.baseExpression !== '', 'baseExpression should be set after save');
+        assert(post.id !== '', 'id should be set after save');
       }),
 
       // ── @Flag ─────────────────────────────────────────────────────────────
