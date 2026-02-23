@@ -32,10 +32,7 @@ export const scenario: ScenarioModule = {
       await test('@Flag — findAll() returns only TestPost instances', async () => {
         // Create a post inside this test so the assertion is not dependent on
         // a previous test's write being visible yet.
-        const flagPost = new TestPost(perspective);
-        flagPost.title = 'Flag Check';
-        flagPost.body = '';
-        await flagPost.save();
+        await TestPost.create(perspective, { title: 'Flag Check', body: '' });
         // Poll until SurrealDB indexes the flag link — write visibility is not
         // always immediate after perspective.add() resolves.
         let posts: TestPost[] = [];
@@ -72,10 +69,7 @@ export const scenario: ScenarioModule = {
 
       // ── @Property ─────────────────────────────────────────────────────────
       await test('@Property — fields round-trip correctly', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Round Trip';
-        post.body = 'body text';
-        await post.save();
+        const post = await TestPost.create(perspective, { title: 'Round Trip', body: 'body text' });
         const found = await TestPost.findOne(perspective, { where: { id: post.id } });
         assert(found !== null, 'Post not found by base expression');
         assert(found.title === 'Round Trip', `title mismatch: ${found.title}`);
@@ -84,13 +78,8 @@ export const scenario: ScenarioModule = {
 
       // ── @HasMany ──────────────────────────────────────────────────────────
       await test('@HasMany — addComments links comment to post', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Post With Comment';
-        post.body = '';
-        await post.save();
-        const comment = new TestComment(perspective);
-        comment.body = 'Nice post!';
-        await comment.save();
+        const post = await TestPost.create(perspective, { title: 'Post With Comment', body: '' });
+        const comment = await TestComment.create(perspective, { body: 'Nice post!' });
         await post.addComments(comment); // pass model instance directly
         const updated = await TestPost.findOne(perspective, { where: { id: post.id }, include: { comments: true } });
         assert(updated?.comments?.some((c) => c.id === comment.id) ?? false, 'comment not in post.comments');
@@ -98,13 +87,8 @@ export const scenario: ScenarioModule = {
 
       // ── @HasOne ───────────────────────────────────────────────────────────
       await test('@HasOne — pinnedComment hydrates to a TestComment instance', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Post With Pin';
-        post.body = '';
-        await post.save();
-        const comment = new TestComment(perspective);
-        comment.body = 'Pinned!';
-        await comment.save();
+        const post = await TestPost.create(perspective, { title: 'Post With Pin', body: '' });
+        const comment = await TestComment.create(perspective, { body: 'Pinned!' });
         await post.addPinnedComment(comment); // pass model instance
         const updated = await TestPost.findOne(perspective, {
           where: { id: post.id },
@@ -120,13 +104,8 @@ export const scenario: ScenarioModule = {
 
       // ── @BelongsToOne ─────────────────────────────────────────────────────
       await test('@BelongsToOne — comment.post resolves to a TestPost instance', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Parent Post';
-        post.body = '';
-        await post.save();
-        const comment = new TestComment(perspective);
-        comment.body = 'Reverse traversal test';
-        await comment.save();
+        const post = await TestPost.create(perspective, { title: 'Parent Post', body: '' });
+        const comment = await TestComment.create(perspective, { body: 'Reverse traversal test' });
         await post.addComments(comment);
         const found = await TestComment.findOne(perspective, { where: { id: comment.id }, include: { post: true } });
         assert(found !== null, 'Comment not found');
@@ -136,13 +115,8 @@ export const scenario: ScenarioModule = {
 
       // ── @BelongsToOne (pinnedBy) ──────────────────────────────────────────
       await test('@BelongsToOne — comment.pinnedBy resolves to the post that pinned it', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Pinning Post';
-        post.body = '';
-        await post.save();
-        const comment = new TestComment(perspective);
-        comment.body = 'I am the pinned comment';
-        await comment.save();
+        const post = await TestPost.create(perspective, { title: 'Pinning Post', body: '' });
+        const comment = await TestComment.create(perspective, { body: 'I am the pinned comment' });
         await post.addPinnedComment(comment);
         const found = await TestComment.findOne(perspective, {
           where: { id: comment.id },
@@ -152,9 +126,7 @@ export const scenario: ScenarioModule = {
         assert(found.pinnedBy instanceof TestPost, `pinnedBy should be TestPost, got ${typeof found.pinnedBy}`);
         assert(found.pinnedBy?.id === post.id, `pinnedBy id mismatch: ${found.pinnedBy?.id}`);
         // Also verify a comment that isn't pinned has pinnedBy === null
-        const unpinned = new TestComment(perspective);
-        unpinned.body = 'Not pinned';
-        await unpinned.save();
+        const unpinned = await TestComment.create(perspective, { body: 'Not pinned' });
         const foundUnpinned = await TestComment.findOne(perspective, {
           where: { id: unpinned.id },
           include: { pinnedBy: true },
@@ -164,10 +136,7 @@ export const scenario: ScenarioModule = {
 
       // ── findOne ───────────────────────────────────────────────────────────
       await test('findOne() — returns a single matching instance or null', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'FindOne Target';
-        post.body = '';
-        await post.save();
+        const post = await TestPost.create(perspective, { title: 'FindOne Target', body: '' });
         const found = await TestPost.findOne(perspective, { where: { id: post.id } });
         assert(found !== null, 'findOne returned null for existing post');
         assert(found instanceof TestPost, `findOne should return TestPost, got ${typeof found}`);
@@ -192,16 +161,9 @@ export const scenario: ScenarioModule = {
 
       // ── removeComments ────────────────────────────────────────────────────
       await test('removeComments() — unlinks a comment from a post', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Post For Remove';
-        post.body = '';
-        await post.save();
-        const c1 = new TestComment(perspective);
-        c1.body = 'To keep';
-        await c1.save();
-        const c2 = new TestComment(perspective);
-        c2.body = 'To remove';
-        await c2.save();
+        const post = await TestPost.create(perspective, { title: 'Post For Remove', body: '' });
+        const c1 = await TestComment.create(perspective, { body: 'To keep' });
+        const c2 = await TestComment.create(perspective, { body: 'To remove' });
         await post.addComments(c1);
         await post.addComments(c2);
         await post.removeComments(c2);
@@ -216,21 +178,12 @@ export const scenario: ScenarioModule = {
 
       // ── setComments (relationSetter / bulk replace) ───────────────────────
       await test('setComments() — replaces entire relation set atomically', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Post For Set';
-        post.body = '';
-        await post.save();
-        const c1 = new TestComment(perspective);
-        c1.body = 'Initial A';
-        await c1.save();
-        const c2 = new TestComment(perspective);
-        c2.body = 'Initial B';
-        await c2.save();
+        const post = await TestPost.create(perspective, { title: 'Post For Set', body: '' });
+        const c1 = await TestComment.create(perspective, { body: 'Initial A' });
+        const c2 = await TestComment.create(perspective, { body: 'Initial B' });
         await post.addComments(c1);
         await post.addComments(c2);
-        const c3 = new TestComment(perspective);
-        c3.body = 'Replacement';
-        await c3.save();
+        const c3 = await TestComment.create(perspective, { body: 'Replacement' });
         await post.setComments([c3]);
         const found = await TestPost.findOne(perspective, { where: { id: post.id }, include: { comments: true } });
         assert(found !== null, 'Post not found');
@@ -245,10 +198,7 @@ export const scenario: ScenarioModule = {
 
       // ── delete ────────────────────────────────────────────────────────────
       await test('delete() — removes the instance from the perspective', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'To Be Deleted';
-        post.body = '';
-        await post.save();
+        const post = await TestPost.create(perspective, { title: 'To Be Deleted', body: '' });
         const id = post.id;
         await post.delete();
         const found = await TestPost.findOne(perspective, { where: { id } });
@@ -257,17 +207,9 @@ export const scenario: ScenarioModule = {
 
       // ── @BelongsToMany ────────────────────────────────────────────────────
       await test('@BelongsToMany — tag.posts contains hydrated TestPost instances', async () => {
-        const tag = new TestTag(perspective);
-        tag.label = 'shared-tag';
-        await tag.save();
-        const post1 = new TestPost(perspective);
-        post1.title = 'Tagged Post 1';
-        post1.body = '';
-        await post1.save();
-        const post2 = new TestPost(perspective);
-        post2.title = 'Tagged Post 2';
-        post2.body = '';
-        await post2.save();
+        const tag = await TestTag.create(perspective, { label: 'shared-tag' });
+        const post1 = await TestPost.create(perspective, { title: 'Tagged Post 1', body: '' });
+        const post2 = await TestPost.create(perspective, { title: 'Tagged Post 2', body: '' });
         await post1.addTags(tag); // pass model instance
         await post2.addTags(tag);
         const found = await TestTag.findOne(perspective, { where: { id: tag.id }, include: { posts: true } });

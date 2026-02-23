@@ -14,6 +14,7 @@ export const scenario: ScenarioModule = {
 
     return [
       await test('Ad4mModel.transaction() commits multiple saves atomically', async () => {
+        // Use new() + save(batchId) — create() doesn't accept a batchId
         const p1 = new TestPost(perspective);
         p1.title = 'Tx1';
         p1.body = '';
@@ -57,13 +58,10 @@ export const scenario: ScenarioModule = {
 
       await test('Ad4mModel.transaction() commits save + delete atomically', async () => {
         // Pre-existing post to delete
-        const toDelete = new TestPost(perspective);
-        toDelete.title = 'Will Be Deleted';
-        toDelete.body = '';
-        await toDelete.save();
+        const toDelete = await TestPost.create(perspective, { title: 'Will Be Deleted', body: '' });
         const deletedId = toDelete.id;
 
-        // New post to create in the same transaction
+        // New post to create inside the transaction (needs batchId, so use new + save)
         const toCreate = new TestPost(perspective);
         toCreate.title = 'Created In Tx';
         toCreate.body = '';

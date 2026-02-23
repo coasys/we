@@ -59,10 +59,9 @@ export const scenario: ScenarioModule = {
         post.title = 'New For Sub';
         post.body = '';
         await post.save();
-        // Poll until the subscription re-fires with the complete post.
-        // (Without this, waitForCallbacks(2) resolves on the very first
-        // link-added event — which fires mid-save before all links are committed.)
-        await waitUntil(() => all.some((batch) => batch.some((p) => p.id === post.id)));
+        // The subscription callback fires asynchronously (after the coalesce
+        // debounce), so poll until it delivers a batch containing the new post.
+        await waitUntil(() => all.some((batch) => batch.some((p) => p.id === post.id)), 8000);
         sub.unsubscribe();
         assert(all.length >= 2, `Expected ≥2 callbacks, got ${all.length}`);
         assert(
@@ -73,23 +72,20 @@ export const scenario: ScenarioModule = {
 
       // ── 3. Re-fires on link-removed ───────────────────────────────────────
       await test('subscribe() calls callback again when a relevant link is removed', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Will Be Deleted';
-        post.body = '';
-        await post.save();
+        const post = await TestPost.create(perspective, { title: 'Will Be Deleted', body: '' });
         const postId = post.id;
 
         const all: TestPost[][] = [];
         const sub = TestPost.subscribe(perspective, {}, (r) => all.push(r));
-        // Wait for initial callback (which should include the post)
-        await waitUntil(() => all.length >= 1);
-        // Delete the post — link-removed should trigger a re-query
+        // Wait for the initial async callback to include the post.
+        await waitUntil(() => all.some((batch) => batch.some((p) => p.id === postId)), 8000);
+        // Delete the post — link-removed fires the debounce and triggers a re-query.
         await post.delete();
-        // Poll until the subscription re-fires without the deleted post
+        // Wait for the re-fired callback to deliver results without the deleted post.
         await waitUntil(() => {
           const latest = all.at(-1);
           return latest !== undefined && !latest.some((p) => p.id === postId);
-        });
+        }, 8000);
         sub.unsubscribe();
         assert(all.length >= 2, `Expected ≥2 callbacks, got ${all.length}`);
         assert(!all.at(-1)!.some((p) => p.id === postId), 'Deleted post should not appear in final results');
@@ -213,9 +209,7 @@ export const scenario: ScenarioModule = {
         post.title = 'Live Fluent';
         post.body = '';
         await post.save();
-        // Poll until the post appears in the subscription results.
-        // Use a generous timeout — with accumulated links in the perspective
-        // the subscription's findAll may take a little longer to complete.
+        // Wait for the async subscription callback to deliver the new post.
         await waitUntil(() => all.some((batch) => batch.some((p) => p.id === post.id)), 8000);
         sub.unsubscribe();
         assert(all.length >= 2, `Expected ≥2 callbacks from .live(), got ${all.length}`);

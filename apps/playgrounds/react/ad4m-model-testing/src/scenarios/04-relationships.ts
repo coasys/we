@@ -17,13 +17,8 @@ export const scenario: ScenarioModule = {
 
     return [
       await test('@BelongsToOne — without include, relation is a raw ID string', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Parent';
-        post.body = '';
-        await post.save();
-        const comment = new TestComment(perspective);
-        comment.body = 'child';
-        await comment.save();
+        const post = await TestPost.create(perspective, { title: 'Parent', body: '' });
+        const comment = await TestComment.create(perspective, { body: 'child' });
         await post.addComments(comment.id);
         const found = await TestComment.findOne(perspective, { where: { id: comment.id } });
         assert(found !== null, 'Comment not found');
@@ -33,17 +28,9 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('@BelongsToMany — without include, relation is string[]', async () => {
-        const tag = new TestTag(perspective);
-        tag.label = 'belongs-many';
-        await tag.save();
-        const post1 = new TestPost(perspective);
-        post1.title = 'T1';
-        post1.body = '';
-        await post1.save();
-        const post2 = new TestPost(perspective);
-        post2.title = 'T2';
-        post2.body = '';
-        await post2.save();
+        const tag = await TestTag.create(perspective, { label: 'belongs-many' });
+        const post1 = await TestPost.create(perspective, { title: 'T1', body: '' });
+        const post2 = await TestPost.create(perspective, { title: 'T2', body: '' });
         await post1.addTags(tag.id);
         await post2.addTags(tag.id);
         const found = await TestTag.findOne(perspective, { where: { id: tag.id } });
@@ -54,13 +41,8 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('include: { comments: true } hydrates @HasMany to TestComment instances', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Include Test';
-        post.body = '';
-        await post.save();
-        const comment = new TestComment(perspective);
-        comment.body = 'hydrated';
-        await comment.save();
+        const post = await TestPost.create(perspective, { title: 'Include Test', body: '' });
+        const comment = await TestComment.create(perspective, { body: 'hydrated' });
         await post.addComments(comment.id);
         const found = await TestPost.findOne(perspective, {
           where: { id: post.id },
@@ -73,13 +55,8 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('include: { post: true } hydrates @BelongsToOne to a TestPost instance', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Include Reverse';
-        post.body = '';
-        await post.save();
-        const comment = new TestComment(perspective);
-        comment.body = 'reverse';
-        await comment.save();
+        const post = await TestPost.create(perspective, { title: 'Include Reverse', body: '' });
+        const comment = await TestComment.create(perspective, { body: 'reverse' });
         await post.addComments(comment.id);
         const found = await TestComment.findOne(perspective, {
           where: { id: comment.id },
@@ -91,13 +68,8 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('without include, @HasMany relations remain as string[]', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'No Include';
-        post.body = '';
-        await post.save();
-        const comment = new TestComment(perspective);
-        comment.body = 'stays string';
-        await comment.save();
+        const post = await TestPost.create(perspective, { title: 'No Include', body: '' });
+        const comment = await TestComment.create(perspective, { body: 'stays string' });
         await post.addComments(comment.id);
         const found = await TestPost.findOne(perspective, { where: { id: post.id } });
         assert(found !== null, 'Post not found');
@@ -108,14 +80,9 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('include sub-query: { comments: { limit: 2 } } caps related results', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Limit Include';
-        post.body = '';
-        await post.save();
+        const post = await TestPost.create(perspective, { title: 'Limit Include', body: '' });
         for (let i = 0; i < 3; i++) {
-          const c = new TestComment(perspective);
-          c.body = `c${i}`;
-          await c.save();
+          const c = await TestComment.create(perspective, { body: `c${i}` });
           await post.addComments(c.id);
         }
         const found = await TestPost.findOne(perspective, {

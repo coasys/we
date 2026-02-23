@@ -22,13 +22,8 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('add*() appends a target ID string to the relation', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Adder';
-        post.body = '';
-        await post.save();
-        const c = new TestComment(perspective);
-        c.body = 'added';
-        await c.save();
+        const post = await TestPost.create(perspective, { title: 'Adder', body: '' });
+        const c = await TestComment.create(perspective, { body: 'added' });
         await post.addComments(c.id); // raw ID accepted as well as model instance
         // Poll until SurrealDB indexes the new relation link.
         let found: TestPost | null = null;
@@ -40,16 +35,9 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('set*() replaces all targets atomically', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Setter';
-        post.body = '';
-        await post.save();
-        const c1 = new TestComment(perspective);
-        c1.body = 'old';
-        await c1.save();
-        const c2 = new TestComment(perspective);
-        c2.body = 'new';
-        await c2.save();
+        const post = await TestPost.create(perspective, { title: 'Setter', body: '' });
+        const c1 = await TestComment.create(perspective, { body: 'old' });
+        const c2 = await TestComment.create(perspective, { body: 'new' });
         await post.addComments(c1.id);
         await post.setComments([c2.id]);
         const found = await TestPost.findOne(perspective, { where: { id: post.id } });
@@ -59,16 +47,9 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('remove*() removes a specific target without touching others', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Remover';
-        post.body = '';
-        await post.save();
-        const c1 = new TestComment(perspective);
-        c1.body = 'keep';
-        await c1.save();
-        const c2 = new TestComment(perspective);
-        c2.body = 'remove';
-        await c2.save();
+        const post = await TestPost.create(perspective, { title: 'Remover', body: '' });
+        const c1 = await TestComment.create(perspective, { body: 'keep' });
+        const c2 = await TestComment.create(perspective, { body: 'remove' });
         await post.addComments(c1.id);
         await post.addComments(c2.id);
         await post.removeComments(c2.id);
@@ -78,13 +59,8 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('relation links are visible in perspective after add*()', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Link Visibility';
-        post.body = '';
-        await post.save();
-        const c = new TestComment(perspective);
-        c.body = 'visible';
-        await c.save();
+        const post = await TestPost.create(perspective, { title: 'Link Visibility', body: '' });
+        const c = await TestComment.create(perspective, { body: 'visible' });
         await post.addComments(c.id);
         const links = await perspective.get(new LinkQuery({ predicate: 'test://has_comment', source: post.id }));
         assert(links.length >= 1, `Expected ≥1 link, got ${links.length}`);
@@ -95,13 +71,8 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('@HasOne — returns a single value (string ID), not an array', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'HasOne';
-        post.body = '';
-        await post.save();
-        const c = new TestComment(perspective);
-        c.body = 'pinned';
-        await c.save();
+        const post = await TestPost.create(perspective, { title: 'HasOne', body: '' });
+        const c = await TestComment.create(perspective, { body: 'pinned' });
         await post.addPinnedComment(c.id);
         const found = await TestPost.findOne(perspective, { where: { id: post.id } });
         // pinnedComment is @HasOne — hydrated as a scalar, not an array

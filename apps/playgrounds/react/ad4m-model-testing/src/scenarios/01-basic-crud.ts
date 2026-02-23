@@ -20,19 +20,24 @@ export const scenario: ScenarioModule = {
         assert(post.baseExpression !== '', 'baseExpression should be non-empty after save');
       }),
 
+      await test('create() constructs, assigns and saves in one call', async () => {
+        const post = await TestPost.create(perspective, { title: 'Created', body: 'via create' });
+        assert(post.baseExpression !== '', 'baseExpression should be set');
+        assert(post.title === 'Created', `title mismatch: ${post.title}`);
+        assert(post.body === 'via create', `body mismatch: ${post.body}`);
+        // Should be findable immediately
+        const found = await TestPost.findOne(perspective, { where: { id: post.id } });
+        assert(found !== null, 'create() result should be findable');
+        assert(found.title === 'Created', `round-trip title mismatch: ${found.title}`);
+      }),
+
       await test('id getter is an alias for baseExpression', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'ID Alias';
-        post.body = '';
-        await post.save();
+        const post = await TestPost.create(perspective, { title: 'ID Alias', body: '' });
         assert(post.id === post.baseExpression, `id (${post.id}) !== baseExpression (${post.baseExpression})`);
       }),
 
       await test('get() re-reads persisted values from perspective', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'getData Target';
-        post.body = 'snapshot body';
-        await post.save();
+        const post = await TestPost.create(perspective, { title: 'getData Target', body: 'snapshot body' });
         const data = await post.get();
         assert(typeof data === 'object' && data !== null, 'get() should return an object');
         assert(data.title === 'getData Target', `title mismatch: ${data.title}`);
@@ -40,12 +45,7 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('findAll() returns all saved instances', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Count Test';
-        post.body = '';
-        await post.save();
-        // Query by the specific id so the result is isolated from every other
-        // test's posts — avoids flakiness from SurrealDB write-visibility lag.
+        const post = await TestPost.create(perspective, { title: 'Count Test', body: '' });
         const results = await TestPost.findAll(perspective, { where: { id: post.id } });
         assert(results.length === 1, `Expected exactly 1 post for this id, got ${results.length}`);
         assert(results[0].title === 'Count Test', `title mismatch: ${results[0].title}`);
@@ -65,10 +65,7 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('delete() removes the instance from perspective', async () => {
-        const post = new TestPost(perspective);
-        post.title = 'Delete Target';
-        post.body = '';
-        await post.save();
+        const post = await TestPost.create(perspective, { title: 'Delete Target', body: '' });
         const id = post.id;
         await post.delete();
         const found = await TestPost.findAll(perspective, { where: { id } });

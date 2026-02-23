@@ -12,18 +12,9 @@ export const scenario: ScenarioModule = {
     await TestPost.register(perspective);
 
     // Seed three posts with distinct titles for ordering / filtering tests
-    const p1 = new TestPost(perspective);
-    p1.title = 'Alpha';
-    p1.body = 'first';
-    await p1.save();
-    const p2 = new TestPost(perspective);
-    p2.title = 'Beta';
-    p2.body = 'second';
-    await p2.save();
-    const p3 = new TestPost(perspective);
-    p3.title = 'Gamma';
-    p3.body = 'third';
-    await p3.save();
+    const p1 = await TestPost.create(perspective, { title: 'Alpha', body: 'first' });
+    const p2 = await TestPost.create(perspective, { title: 'Beta', body: 'second' });
+    const p3 = await TestPost.create(perspective, { title: 'Gamma', body: 'third' });
 
     return [
       await test('findAll() with where.id returns only the matching instance', async () => {

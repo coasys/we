@@ -66,15 +66,12 @@ export const scenario: ScenarioModule = {
       await test('TestDerivedModel.findAll() returns only derived instances (via @Flag)', async () => {
         // Save a TestPost (different @Flag) and a TestDerivedModel to prove discrimination.
         // TestBaseModel cannot be saved directly — it has no @Flag so no SHACL constructor.
-        const noise = new TestPost(perspective);
-        noise.title = 'noise post';
-        noise.body = '';
-        await noise.save();
+        await TestPost.create(perspective, { title: 'noise post', body: '' }); // intentional noise — different @Flag
 
-        const derived = new TestDerivedModel(perspective);
-        derived.content = 'derived content';
-        derived.question = 'Favorite color?';
-        await derived.save();
+        const derived = await TestDerivedModel.create(perspective, {
+          content: 'derived content',
+          question: 'Favorite color?',
+        });
 
         const results = await TestDerivedModel.findAll(perspective);
         assert(results.length === 1, `Expected 1 derived, got ${results.length}`);
@@ -87,10 +84,10 @@ export const scenario: ScenarioModule = {
       }),
 
       await test('TestDerivedModel.findOne() returns instance with both content and question', async () => {
-        const derived = new TestDerivedModel(perspective);
-        derived.content = 'shared content';
-        derived.question = 'Which option?';
-        await derived.save();
+        const derived = await TestDerivedModel.create(perspective, {
+          content: 'shared content',
+          question: 'Which option?',
+        });
 
         const found = await TestDerivedModel.findOne(perspective, { where: { id: derived.id } });
         assert(found !== null, 'Should find the saved derived instance');
@@ -101,10 +98,10 @@ export const scenario: ScenarioModule = {
       // TestBaseModel has no @Flag, so its findAll() matches any node that has a
       // test://base_content link — which includes TestDerivedModel instances.
       await test('TestBaseModel.findAll() returns instances of both base and derived types (polymorphic)', async () => {
-        const derived = new TestDerivedModel(perspective);
-        derived.content = 'polymorphic test';
-        derived.question = 'Any answer?';
-        await derived.save();
+        const derived = await TestDerivedModel.create(perspective, {
+          content: 'polymorphic test',
+          question: 'Any answer?',
+        });
 
         // TestBaseModel.findAll() uses SurrealDB — no SHACL registration needed.
         // It queries by the test://base_content predicate, which derived instances
