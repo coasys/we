@@ -40,6 +40,27 @@ export const scenario: ScenarioModule = {
         );
       }),
 
+      // ── @Flag immutability ────────────────────────────────────────────────
+      await test('@Flag — flag value survives re-save (immutable after creation)', async () => {
+        const post = new TestPost(perspective);
+        post.title = 'Flag Immutability Test';
+        post.body = '';
+        await post.save();
+        const id = post.id;
+
+        // Mutate title and re-save — flag must not be corrupted
+        post.title = 'Updated Title';
+        await post.save();
+
+        // The post must still be findable by TestPost.findAll()
+        // (which filters by the flag predicate + value test://post)
+        const found = await TestPost.findAll(perspective, { where: { id } });
+        assert(found.length === 1, `Expected 1 post after re-save, got ${found.length}`);
+        assert(found[0].title === 'Updated Title', `title not updated: ${found[0].title}`);
+        // type field reflects the @Flag value
+        assert(found[0].type === 'test://post', `flag value corrupted: ${found[0].type}`);
+      }),
+
       // ── @Property ─────────────────────────────────────────────────────────
       await test('@Property — fields round-trip correctly', async () => {
         const post = new TestPost(perspective);
@@ -119,14 +140,8 @@ export const scenario: ScenarioModule = {
         await post.addPinnedComment(comment);
         const found = await TestComment.findAll(perspective, { where: { id: comment.id } });
         assert(found.length > 0, 'Comment not found');
-        assert(
-          found[0].pinnedBy instanceof TestPost,
-          `pinnedBy should be TestPost, got ${typeof found[0].pinnedBy}`,
-        );
-        assert(
-          found[0].pinnedBy?.id === post.id,
-          `pinnedBy id mismatch: ${found[0].pinnedBy?.id}`,
-        );
+        assert(found[0].pinnedBy instanceof TestPost, `pinnedBy should be TestPost, got ${typeof found[0].pinnedBy}`);
+        assert(found[0].pinnedBy?.id === post.id, `pinnedBy id mismatch: ${found[0].pinnedBy?.id}`);
         // Also verify a comment that isn't pinned has pinnedBy === null
         const unpinned = new TestComment(perspective);
         unpinned.body = 'Not pinned';

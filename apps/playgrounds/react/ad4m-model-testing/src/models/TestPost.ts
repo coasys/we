@@ -1,4 +1,5 @@
 import { Ad4mModel, Flag, HasMany, HasManyMethods, HasOne, Model, Property } from '@coasys/ad4m';
+
 import { TestComment } from './TestComment';
 import { TestTag } from './TestTag';
 
