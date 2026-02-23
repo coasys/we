@@ -1,4 +1,4 @@
-import { Ad4mModel, Field, HasMany, Model } from '@coasys/ad4m';
+import { Ad4mModel, HasManyMethods, Property, HasMany, Model } from '@coasys/ad4m';
 
 // TODO: see if we can set up Block types (ImageBlock, TextBlock, etc) to extend this base Block model
 // Or should we change the name of this to something else if it can wrap non-block models like Agent, Space, Link etc?
@@ -7,7 +7,7 @@ import { Ad4mModel, Field, HasMany, Model } from '@coasys/ad4m';
 
 @Model({ name: 'Block' })
 export class Block extends Ad4mModel {
-  @Field({
+  @Property({
     through: 'we://block_type',
     resolveLanguage: 'literal',
     writable: true,
@@ -18,16 +18,11 @@ export class Block extends Ad4mModel {
 
   @HasMany({ through: 'we://has_comments' })
   comments: string[] = [];
-  declare addComments: (value: string) => Promise<void>;
-  declare removeComments: (value: string) => Promise<void>;
-  declare setComments: (values: string[]) => Promise<void>;
 
   @HasMany({ through: 'we://has_reactions' })
   reactions: string[] = [];
-  declare addReactions: (value: string) => Promise<void>;
-  declare removeReactions: (value: string) => Promise<void>;
-  declare setReactions: (values: string[]) => Promise<void>;
 }
+export interface Block extends HasManyMethods<'comments' | 'reactions'> {}
 
 // we://has_child
 // we://has_descendant (for node tree only needs to connect root to all descendants, for holonic map needs to be used at every level?)

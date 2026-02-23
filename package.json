@@ -35,5 +35,11 @@
     "stylelint": "^16.24.0",
     "stylelint-config-standard": "^39.0.0",
     "typescript": "^5.7.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@coasys/ad4m": "file:../ad4m/core",
+      "@coasys/ad4m-connect": "file:../ad4m/connect"
+    }
   }
 }

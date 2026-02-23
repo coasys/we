@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+
 import { usePerspective } from '../context/PerspectiveContext';
 import type { ScenarioModule, TestResult } from './types';
 
@@ -53,7 +54,6 @@ export function ScenarioRunner({ scenario, onRunReady }: Props) {
   // Expose run() to parent for "run all" orchestration
   useEffect(() => {
     onRunReady?.(run);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const passed = results.filter((r) => r.passed).length;
@@ -102,9 +102,7 @@ export function ScenarioRunner({ scenario, onRunReady }: Props) {
               {r.error && r.error !== 'Not yet implemented' && (
                 <span style={{ color: '#666', marginLeft: 8 }}>{r.error}</span>
               )}
-              {r.passed && r.durationMs > 0 && (
-                <span style={{ color: '#444', marginLeft: 8 }}>{r.durationMs}ms</span>
-              )}
+              {r.passed && r.durationMs > 0 && <span style={{ color: '#444', marginLeft: 8 }}>{r.durationMs}ms</span>}
             </li>
           ))}
         </ul>

@@ -1,19 +1,22 @@
-import { Ad4mModel, HasMany, Flag, Model, Field } from '@coasys/ad4m';
+import { Ad4mModel, Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
+import { TestComment } from './TestComment';
+import { TestTag } from './TestTag';
 
 @Model({ name: 'TestPost' })
 export class TestPost extends Ad4mModel {
   @Flag({ through: 'test://post_type', value: 'test://post' })
-  postType = 'test://post';
+  type = 'test://post';
 
-  @Field({ through: 'test://title', required: true, writable: true, initial: 'literal://string:uninitialized' })
+  @Property({ through: 'test://title', required: true, writable: true, initial: 'literal://string:uninitialized' })
   title: string = '';
 
-  @Field({ through: 'test://body', writable: true })
+  @Property({ through: 'test://body', writable: true })
   body: string = '';
 
-  @HasMany({ through: 'test://has_tag' })
+  @HasMany(() => TestTag, { through: 'test://has_tag' })
   tags: string[] = [];
 
-  @HasMany({ through: 'test://has_comment' })
+  @HasMany(() => TestComment, { through: 'test://has_comment' })
   comments: string[] = [];
 }
+export interface TestPost extends HasManyMethods<'tags' | 'comments'> {}

@@ -37,7 +37,7 @@ export function CreateSpaceModalWidget(props: CreateSpaceModalWidgetProps) {
 
     // Create an instance of the space model and save it in the perspective
     const space = new Space(spacePerspective);
-    space.uuid = spacePerspective.uuid;
+    // space.uuid = spacePerspective.uuid;
     space.name = name();
     space.description = description();
     // space.visibility = visibility();

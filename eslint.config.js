@@ -63,8 +63,21 @@ export default [
     rules: {
       ...tsPlugin.configs.recommended.rules,
       'simple-import-sort/imports': 'error',
+      '@typescript-eslint/no-explicit-any': 'warn',
     },
   },
   // Turn off any rules that conflict with prettier
   eslintConfigPrettier,
+  {
+    // Declaration merging (interface + class) is the approved pattern for
+    // adding HasManyMethods types to Ad4mModel subclasses without triggering
+    // Babel's declare-field ordering issues. The interface body is intentionally
+    // empty — it inherits all members from HasManyMethods<Keys>.
+    name: 'ad4m-models/declaration-merging',
+    files: ['**/models/**/*.ts', '**/src/block-types/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-declaration-merging': 'off',
+      '@typescript-eslint/no-empty-object-type': 'off',
+    },
+  },
 ];

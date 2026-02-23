@@ -1,4 +1,4 @@
-export { Space, type SpaceType } from './Space';
+export { Space } from './Space';
 export { Block } from './Block';
 
 // Block Types

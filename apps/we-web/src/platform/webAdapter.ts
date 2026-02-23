@@ -1,19 +1,21 @@
 import type { Ad4mClient } from '@coasys/ad4m';
-import Ad4mConnect from '@coasys/ad4m-connect';
+import { getAd4mClient } from '@coasys/ad4m-connect';
 import type { AppConfig, PlatformAdapter } from '@we/app-framework/shared';
 
 export const webAdapter: PlatformAdapter = {
   async buildAd4mClient(): Promise<Ad4mClient> {
     // TODO: update with new ad4m connect logic
-    const connect = Ad4mConnect({
-      appName: 'WE',
-      appDesc: 'Social media for the new internet',
-      appDomain: 'ad4m.weco.io',
-      appIconPath: 'https://avatars.githubusercontent.com/u/34165012',
+    const client = await getAd4mClient({
+      appInfo: {
+        name: 'WE',
+        description: 'Social media for the new internet',
+        url: 'ad4m.weco.io',
+        iconPath: 'https://avatars.githubusercontent.com/u/34165012',
+      },
       capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
     });
 
-    return await connect.getAd4mClient();
+    return client;
   },
 
   // Web doesn't expose connection details (handled internally by ad4m-connect)

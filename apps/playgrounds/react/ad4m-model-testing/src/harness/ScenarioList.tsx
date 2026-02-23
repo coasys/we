@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+
 import { usePerspective } from '../context/PerspectiveContext';
 import { scenarios } from '../scenarios';
 import { ScenarioRunner } from './ScenarioRunner';
@@ -32,8 +33,7 @@ export function ScenarioList() {
         <div>
           <h1>AD4M Model Test Harness</h1>
           <div style={{ color: '#555', fontSize: 12, marginTop: 4 }}>
-            Perspective:{' '}
-            <span style={{ color: '#888' }}>{perspective.name}</span>
+            Perspective: <span style={{ color: '#888' }}>{perspective.name}</span>
             {' · '}
             <span style={{ color: '#888' }}>{perspective.uuid}</span>
           </div>

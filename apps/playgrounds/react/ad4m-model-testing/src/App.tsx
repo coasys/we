@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { getAd4mClient } from '@coasys/ad4m-connect';
 import type { PerspectiveProxy } from '@coasys/ad4m';
+import { getAd4mClient } from '@coasys/ad4m-connect';
+import { useEffect, useState } from 'react';
+
 import { PerspectiveContext } from './context/PerspectiveContext';
 import { ScenarioList } from './harness/ScenarioList';
 
@@ -57,9 +58,7 @@ export function App() {
     <div style={{ padding: '2rem', maxWidth: 600 }}>
       <h1>AD4M Model Test Harness</h1>
       {state === 'connecting' && <p style={{ color: '#888' }}>Connecting…</p>}
-      {state === 'error' && (
-        <p style={{ color: '#f87171' }}>Connection failed: {error}</p>
-      )}
+      {state === 'error' && <p style={{ color: '#f87171' }}>Connection failed: {error}</p>}
     </div>
   );
 }

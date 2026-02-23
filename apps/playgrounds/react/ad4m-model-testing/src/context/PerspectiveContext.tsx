@@ -1,5 +1,5 @@
-import { createContext, useContext } from 'react';
 import type { PerspectiveProxy } from '@coasys/ad4m';
+import { createContext, useContext } from 'react';
 
 export const PerspectiveContext = createContext<PerspectiveProxy | null>(null);
 

@@ -1,8 +1,8 @@
-import { Ad4mModel, Field, HasMany, Model } from '@coasys/ad4m';
+import { Ad4mModel, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
 @Model({ name: 'Space' })
 export class Space extends Ad4mModel {
-  @Field({
+  @Property({
     through: 'we://has_name',
     resolveLanguage: 'literal',
     writable: true,
@@ -11,7 +11,7 @@ export class Space extends Ad4mModel {
   })
   name: string = '';
 
-  @Field({
+  @Property({
     through: 'we://has_description',
     resolveLanguage: 'literal',
     writable: true,
@@ -20,12 +20,11 @@ export class Space extends Ad4mModel {
   })
   description: string = '';
 
-  @Field({ through: 'we://has_visibility', resolveLanguage: 'literal', writable: true })
+  @Property({ through: 'we://has_visibility', resolveLanguage: 'literal', writable: true })
   visibility: string = '';
 
   @HasMany({ through: 'we://has_location' })
   locations: string[] = [];
-  declare addLocations: (value: string) => Promise<void>;
-  declare removeLocations: (value: string) => Promise<void>;
-  declare setLocations: (values: string[]) => Promise<void>;
 }
+
+export interface Space extends HasManyMethods<'locations'> {}

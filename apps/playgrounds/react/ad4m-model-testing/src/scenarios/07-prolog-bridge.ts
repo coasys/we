@@ -2,8 +2,9 @@
 // Live infer() integration is stubbed (see note below) — it tests infrastructure
 // that Phase 1b removes.
 import { generatePrologFacts } from '@coasys/ad4m';
+
 import type { ScenarioModule } from '../harness/types';
-import { test, assert, stub } from '../harness/types';
+import { assert, stub, test } from '../harness/types';
 import { TestPost } from '../models/TestPost';
 
 export const scenario: ScenarioModule = {
@@ -18,10 +19,7 @@ export const scenario: ScenarioModule = {
 
       test('generated facts include the @Flag predicate clause', () => {
         // TestPost has @Flag({ through: 'test://post_type', value: 'test://post' })
-        assert(
-          facts.includes("triple(X, 'test://post_type', 'test://post')"),
-          `Flag clause not found in:\n${facts}`,
-        );
+        assert(facts.includes("triple(X, 'test://post_type', 'test://post')"), `Flag clause not found in:\n${facts}`);
       }),
 
       test('generated facts include clauses for @Property predicates', () => {

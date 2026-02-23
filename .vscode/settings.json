@@ -12,5 +12,6 @@
   },
   "stylelint.validate": ["css"],
   "eslint.validate": ["javascript", "typescript", "typescriptreact"],
+  "eslint.useFlatConfig": true,
   "files.eol": "\n"
 }

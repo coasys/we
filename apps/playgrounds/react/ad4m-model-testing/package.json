@@ -10,7 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@coasys/ad4m": "file:../../../../../ad4m/core",
+    "@coasys/ad4m": "0.11.0",
+    "@we/models": "workspace:*",
     "@coasys/ad4m-connect": "0.11.2-dev.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
