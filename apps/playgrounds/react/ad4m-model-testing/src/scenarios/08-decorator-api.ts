@@ -107,6 +107,34 @@ export const scenario: ScenarioModule = {
         assert(found[0].post?.id === post.id, `post id mismatch: ${found[0].post?.id}`);
       }),
 
+      // ── @BelongsToOne (pinnedBy) ──────────────────────────────────────────
+      await test('@BelongsToOne — comment.pinnedBy resolves to the post that pinned it', async () => {
+        const post = new TestPost(perspective);
+        post.title = 'Pinning Post';
+        post.body = '';
+        await post.save();
+        const comment = new TestComment(perspective);
+        comment.body = 'I am the pinned comment';
+        await comment.save();
+        await post.addPinnedComment(comment);
+        const found = await TestComment.findAll(perspective, { where: { id: comment.id } });
+        assert(found.length > 0, 'Comment not found');
+        assert(
+          found[0].pinnedBy instanceof TestPost,
+          `pinnedBy should be TestPost, got ${typeof found[0].pinnedBy}`,
+        );
+        assert(
+          found[0].pinnedBy?.id === post.id,
+          `pinnedBy id mismatch: ${found[0].pinnedBy?.id}`,
+        );
+        // Also verify a comment that isn't pinned has pinnedBy === null
+        const unpinned = new TestComment(perspective);
+        unpinned.body = 'Not pinned';
+        await unpinned.save();
+        const foundUnpinned = await TestComment.findAll(perspective, { where: { id: unpinned.id } });
+        assert(foundUnpinned[0].pinnedBy === null, 'unpinned comment should have pinnedBy === null');
+      }),
+
       // ── findOne ───────────────────────────────────────────────────────────
       await test('findOne() — returns a single matching instance or null', async () => {
         const post = new TestPost(perspective);

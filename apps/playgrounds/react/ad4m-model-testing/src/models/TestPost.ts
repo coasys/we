@@ -22,4 +22,5 @@ export class TestPost extends Ad4mModel {
   @HasOne(() => TestComment, { through: 'test://pinned_comment' })
   pinnedComment: TestComment | null = null;
 }
+
 export interface TestPost extends HasManyMethods<'tags' | 'comments' | 'pinnedComment'> {}
