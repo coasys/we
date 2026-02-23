@@ -9,9 +9,12 @@ export function ScenarioList() {
   const [runningAll, setRunningAll] = useState(false);
   // Expose a run trigger per scenario so "Run all" can fire them in sequence
   const runRefs = useRef<Array<() => Promise<void>>>([]);
+  const clearRefs = useRef<Array<() => void>>([]);
 
   async function runAll() {
     setRunningAll(true);
+    // Clear all results at once before any scenario starts
+    for (const clear of clearRefs.current) clear();
     for (const run of runRefs.current) {
       await run();
     }
@@ -50,6 +53,9 @@ export function ScenarioList() {
           scenario={scenario}
           onRunReady={(fn) => {
             runRefs.current[i] = fn;
+          }}
+          onClearReady={(fn) => {
+            clearRefs.current[i] = fn;
           }}
         />
       ))}

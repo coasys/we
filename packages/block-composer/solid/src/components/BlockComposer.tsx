@@ -4,7 +4,6 @@ import { CHECK_LIST, HEADING, ORDERED_LIST, QUOTE, UNORDERED_LIST } from '@lexic
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { Column, Row } from '@we/components/solid';
 import { Block, CollectionBlock, ImageBlock, TextBlock } from '@we/models';
-import { SerializedLexicalNode, SerializedRootNode } from 'lexical';
 import {
   ContentEditable,
   HistoryPlugin,
@@ -24,7 +23,7 @@ import IndentationPlugin from '../plugins/IndentationPlugin';
 import PlaceholdersPlugin from '../plugins/PlaceholdersPlugin';
 import SlashCommandPlugin from '../plugins/SlashCommandPlugin';
 
-type BlockType = ImageBlock | TextBlock | CollectionBlock;
+// type BlockType = ImageBlock | TextBlock | CollectionBlock;
 type Post = any; // Partial<BlockType & { children?: Post[] }> & SerializedRootNode<SerializedLexicalNode>;
 
 type BlockComposerProps = {
@@ -48,7 +47,7 @@ function SaveButton({ perspective }: { perspective: PerspectiveProxy }) {
     console.log('Creating blocks in batch:', batchId);
 
     // Create block
-    const blockWrapper = new Block(perspective, undefined, parent?.baseExpression || undefined);
+    const blockWrapper = new Block(perspective, undefined);
     blockWrapper.type = blockType;
     await blockWrapper.save(batchId);
     console.log('blockWrapper', blockWrapper);
@@ -56,7 +55,7 @@ function SaveButton({ perspective }: { perspective: PerspectiveProxy }) {
     // Create collection block
     if (blockType === 'collection') {
       const elementNode = node as Post;
-      const collectionBlock = new CollectionBlock(perspective, undefined, blockWrapper.baseExpression);
+      const collectionBlock = new CollectionBlock(perspective, undefined);
       collectionBlock.type = elementNode.type || '';
       collectionBlock.display = elementNode.display || '';
       collectionBlock.direction = elementNode.direction || '';
@@ -70,7 +69,7 @@ function SaveButton({ perspective }: { perspective: PerspectiveProxy }) {
     // Create text block
     if (blockType === 'text') {
       const elementNode = node as any;
-      const textBlock = new TextBlock(perspective, undefined, blockWrapper.baseExpression);
+      const textBlock = new TextBlock(perspective, undefined);
       textBlock.type = elementNode.type || '';
       textBlock.direction = elementNode.direction || '';
       textBlock.format = elementNode.format || '';
@@ -88,7 +87,7 @@ function SaveButton({ perspective }: { perspective: PerspectiveProxy }) {
 
     if (node.type === 'image') {
       const elementNode = node as any;
-      const imageBlock = new ImageBlock(perspective, undefined, blockWrapper.baseExpression);
+      const imageBlock = new ImageBlock(perspective, undefined);
       imageBlock.type = elementNode.type || '';
       imageBlock.src = elementNode.src || '';
       imageBlock.altText = elementNode.altText || '';

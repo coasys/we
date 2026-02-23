@@ -3,9 +3,10 @@
 // that Phase 1b removes.
 import { generatePrologFacts } from '@coasys/ad4m';
 
+import { assert, test } from '../harness/helpers';
 import type { ScenarioModule } from '../harness/types';
-import { assert, stub, test } from '../harness/types';
 import { TestPost } from '../models/TestPost';
+import { TestTag } from '../models/TestTag';
 
 export const scenario: ScenarioModule = {
   name: '07 — Prolog Bridge',
@@ -34,19 +35,27 @@ export const scenario: ScenarioModule = {
         assert(facts.includes("'test://has_comment'"), `has_comment predicate not found in:\n${facts}`);
       }),
 
-      // Phase 2 — requires @BelongsToMany decorator (not yet implemented)
-      stub('generated facts for @BelongsToMany use reverse clause form'),
+      // @BelongsToMany reverse clause form (pure function — no perspective needed)
+      test('generated facts for @BelongsToMany use reverse clause form', () => {
+        // TestTag.posts is @BelongsToMany(() => TestPost, { through: 'test://has_tag' }).
+        // The link direction is Post → test://has_tag → Tag, so to find all Posts for a Tag
+        // the clause must swap subject/object: triple(V, 'test://has_tag', X).
+        const tagFacts = generatePrologFacts(TestTag);
+        assert(
+          tagFacts.includes("triple(V, 'test://has_tag', X)"),
+          `Expected reverse clause triple(V, 'test://has_tag', X) in:\n${tagFacts}`,
+        );
+        // Forward relations should still use the normal form
+        assert(
+          !tagFacts.includes("triple(X, 'test://has_tag', V)"),
+          `Forward form should NOT appear for a reverse relation in:\n${tagFacts}`,
+        );
+      }),
 
       test('perspective.infer() succeeds using generated facts', async () => {
         const result = await perspective.infer(`${facts}\ntest_post(X).`);
         assert(result !== null, 'infer() returned null');
       }),
-
-      // Phase 1b note: perspective.infer() with Prolog is being removed. Testing
-      // live infer() here requires fighting executor SHACL state management and
-      // validates infrastructure that's about to be deleted. The first 5 tests
-      // already fully validate generatePrologFacts() as a pure function.
-      stub('infer() with generated facts finds saved model instances'),
     ]);
   },
 };

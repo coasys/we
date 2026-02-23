@@ -1,10 +1,9 @@
 // Decorator API smoke tests — exercises all six decorator types against local
 // test models: @Model, @Flag, @Property, @HasMany, @HasOne, @BelongsToOne, @BelongsToMany.
 import type { PerspectiveProxy } from '@coasys/ad4m';
-import { LinkQuery } from '@coasys/ad4m';
 
+import { assert, test, waitUntil, wipePerspective } from '../harness/helpers';
 import type { ScenarioModule } from '../harness/types';
-import { assert, test } from '../harness/types';
 import { TestComment } from '../models/TestComment';
 import { TestPost } from '../models/TestPost';
 import { TestTag } from '../models/TestTag';
@@ -13,8 +12,7 @@ export const scenario: ScenarioModule = {
   name: '08 — decorator API (@Property, @Flag, @HasMany, @HasOne, @BelongsToOne, @BelongsToMany)',
   run: async (perspective: PerspectiveProxy) => {
     // Wipe all links so each run starts clean
-    const existing = await perspective.get(new LinkQuery({}));
-    await Promise.all(existing.map((l) => perspective.remove(l)));
+    await wipePerspective(perspective);
 
     await perspective.ensureSDNASubjectClass(TestPost);
     await perspective.ensureSDNASubjectClass(TestComment);
@@ -32,8 +30,19 @@ export const scenario: ScenarioModule = {
 
       // ── @Flag ─────────────────────────────────────────────────────────────
       await test('@Flag — findAll() returns only TestPost instances', async () => {
-        const posts = await TestPost.findAll(perspective);
-        assert(posts.length > 0, 'No posts found');
+        // Create a post inside this test so the assertion is not dependent on
+        // a previous test's write being visible yet.
+        const flagPost = new TestPost(perspective);
+        flagPost.title = 'Flag Check';
+        flagPost.body = '';
+        await flagPost.save();
+        // Poll until SurrealDB indexes the flag link — write visibility is not
+        // always immediate after perspective.add() resolves.
+        let posts: TestPost[] = [];
+        await waitUntil(async () => {
+          posts = await TestPost.findAll(perspective);
+          return posts.length > 0;
+        });
         assert(
           posts.every((p) => p instanceof TestPost),
           'Non-post found in results',
@@ -67,10 +76,10 @@ export const scenario: ScenarioModule = {
         post.title = 'Round Trip';
         post.body = 'body text';
         await post.save();
-        const found = await TestPost.findAll(perspective, { where: { id: post.id } });
-        assert(found.length > 0, 'Post not found by base expression');
-        assert(found[0].title === 'Round Trip', `title mismatch: ${found[0].title}`);
-        assert(found[0].body === 'body text', `body mismatch: ${found[0].body}`);
+        const found = await TestPost.findOne(perspective, { where: { id: post.id } });
+        assert(found !== null, 'Post not found by base expression');
+        assert(found.title === 'Round Trip', `title mismatch: ${found.title}`);
+        assert(found.body === 'body text', `body mismatch: ${found.body}`);
       }),
 
       // ── @HasMany ──────────────────────────────────────────────────────────
@@ -83,11 +92,8 @@ export const scenario: ScenarioModule = {
         comment.body = 'Nice post!';
         await comment.save();
         await post.addComments(comment); // pass model instance directly
-        const updated = await TestPost.findAll(perspective, { where: { id: post.id } });
-        assert(
-          updated[0]?.comments?.some((c) => c.id === comment.id),
-          'comment not in post.comments',
-        );
+        const updated = await TestPost.findOne(perspective, { where: { id: post.id }, include: { comments: true } });
+        assert(updated?.comments?.some((c) => c.id === comment.id) ?? false, 'comment not in post.comments');
       }),
 
       // ── @HasOne ───────────────────────────────────────────────────────────
@@ -100,16 +106,16 @@ export const scenario: ScenarioModule = {
         comment.body = 'Pinned!';
         await comment.save();
         await post.addPinnedComment(comment); // pass model instance
-        const updated = await TestPost.findAll(perspective, { where: { id: post.id } });
-        assert(updated.length > 0, 'Post not found');
+        const updated = await TestPost.findOne(perspective, {
+          where: { id: post.id },
+          include: { pinnedComment: true },
+        });
+        assert(updated !== null, 'Post not found');
         assert(
-          updated[0].pinnedComment instanceof TestComment,
-          `pinnedComment should be TestComment, got ${typeof updated[0].pinnedComment}`,
+          updated.pinnedComment instanceof TestComment,
+          `pinnedComment should be TestComment, got ${typeof updated.pinnedComment}`,
         );
-        assert(
-          updated[0].pinnedComment?.id === comment.id,
-          `pinnedComment id mismatch: ${updated[0].pinnedComment?.id}`,
-        );
+        assert(updated.pinnedComment?.id === comment.id, `pinnedComment id mismatch: ${updated.pinnedComment?.id}`);
       }),
 
       // ── @BelongsToOne ─────────────────────────────────────────────────────
@@ -122,10 +128,10 @@ export const scenario: ScenarioModule = {
         comment.body = 'Reverse traversal test';
         await comment.save();
         await post.addComments(comment);
-        const found = await TestComment.findAll(perspective, { where: { id: comment.id } });
-        assert(found.length > 0, 'Comment not found');
-        assert(found[0].post instanceof TestPost, `post should be TestPost, got ${typeof found[0].post}`);
-        assert(found[0].post?.id === post.id, `post id mismatch: ${found[0].post?.id}`);
+        const found = await TestComment.findOne(perspective, { where: { id: comment.id }, include: { post: true } });
+        assert(found !== null, 'Comment not found');
+        assert(found.post instanceof TestPost, `post should be TestPost, got ${typeof found.post}`);
+        assert(found.post?.id === post.id, `post id mismatch: ${found.post?.id}`);
       }),
 
       // ── @BelongsToOne (pinnedBy) ──────────────────────────────────────────
@@ -138,16 +144,22 @@ export const scenario: ScenarioModule = {
         comment.body = 'I am the pinned comment';
         await comment.save();
         await post.addPinnedComment(comment);
-        const found = await TestComment.findAll(perspective, { where: { id: comment.id } });
-        assert(found.length > 0, 'Comment not found');
-        assert(found[0].pinnedBy instanceof TestPost, `pinnedBy should be TestPost, got ${typeof found[0].pinnedBy}`);
-        assert(found[0].pinnedBy?.id === post.id, `pinnedBy id mismatch: ${found[0].pinnedBy?.id}`);
+        const found = await TestComment.findOne(perspective, {
+          where: { id: comment.id },
+          include: { pinnedBy: true },
+        });
+        assert(found !== null, 'Comment not found');
+        assert(found.pinnedBy instanceof TestPost, `pinnedBy should be TestPost, got ${typeof found.pinnedBy}`);
+        assert(found.pinnedBy?.id === post.id, `pinnedBy id mismatch: ${found.pinnedBy?.id}`);
         // Also verify a comment that isn't pinned has pinnedBy === null
         const unpinned = new TestComment(perspective);
         unpinned.body = 'Not pinned';
         await unpinned.save();
-        const foundUnpinned = await TestComment.findAll(perspective, { where: { id: unpinned.id } });
-        assert(foundUnpinned[0].pinnedBy === null, 'unpinned comment should have pinnedBy === null');
+        const foundUnpinned = await TestComment.findOne(perspective, {
+          where: { id: unpinned.id },
+          include: { pinnedBy: true },
+        });
+        assert(foundUnpinned?.pinnedBy === null, 'unpinned comment should have pinnedBy === null');
       }),
 
       // ── findOne ───────────────────────────────────────────────────────────
@@ -193,7 +205,7 @@ export const scenario: ScenarioModule = {
         await post.addComments(c1);
         await post.addComments(c2);
         await post.removeComments(c2);
-        const found = await TestPost.findOne(perspective, { where: { id: post.id } });
+        const found = await TestPost.findOne(perspective, { where: { id: post.id }, include: { comments: true } });
         assert(found !== null, 'Post not found');
         assert(
           found.comments.some((c) => c.id === c1.id),
@@ -220,7 +232,7 @@ export const scenario: ScenarioModule = {
         c3.body = 'Replacement';
         await c3.save();
         await post.setComments([c3]);
-        const found = await TestPost.findOne(perspective, { where: { id: post.id } });
+        const found = await TestPost.findOne(perspective, { where: { id: post.id }, include: { comments: true } });
         assert(found !== null, 'Post not found');
         assert(!found.comments.some((c) => c.id === c1.id), 'c1 should have been replaced');
         assert(!found.comments.some((c) => c.id === c2.id), 'c2 should have been replaced');
@@ -258,18 +270,18 @@ export const scenario: ScenarioModule = {
         await post2.save();
         await post1.addTags(tag); // pass model instance
         await post2.addTags(tag);
-        const found = await TestTag.findAll(perspective, { where: { id: tag.id } });
-        assert(found.length > 0, 'Tag not found');
+        const found = await TestTag.findOne(perspective, { where: { id: tag.id }, include: { posts: true } });
+        assert(found !== null, 'Tag not found');
         assert(
-          found[0].posts.every((p) => p instanceof TestPost),
+          found.posts.every((p) => p instanceof TestPost),
           'tag.posts should contain TestPost instances',
         );
         assert(
-          found[0].posts.some((p) => p.id === post1.id),
+          found.posts.some((p) => p.id === post1.id),
           'post1 not in tag.posts',
         );
         assert(
-          found[0].posts.some((p) => p.id === post2.id),
+          found.posts.some((p) => p.id === post2.id),
           'post2 not in tag.posts',
         );
       }),

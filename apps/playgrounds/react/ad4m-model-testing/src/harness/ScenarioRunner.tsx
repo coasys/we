@@ -8,6 +8,7 @@ type RunState = 'idle' | 'running' | 'done';
 type Props = {
   scenario: ScenarioModule;
   onRunReady?: (fn: () => Promise<void>) => void;
+  onClearReady?: (fn: () => void) => void;
 };
 
 const STUB_COLOR = '#555';
@@ -26,10 +27,15 @@ function resultIcon(r: TestResult): string {
   return '✗';
 }
 
-export function ScenarioRunner({ scenario, onRunReady }: Props) {
+export function ScenarioRunner({ scenario, onRunReady, onClearReady }: Props) {
   const perspective = usePerspective();
   const [runState, setRunState] = useState<RunState>('idle');
   const [results, setResults] = useState<TestResult[]>([]);
+
+  function clear() {
+    setRunState('idle');
+    setResults([]);
+  }
 
   async function run() {
     setRunState('running');
@@ -51,9 +57,10 @@ export function ScenarioRunner({ scenario, onRunReady }: Props) {
     setRunState('done');
   }
 
-  // Expose run() to parent for "run all" orchestration
+  // Expose run() and clear() to parent for "run all" orchestration
   useEffect(() => {
     onRunReady?.(run);
+    onClearReady?.(clear);
   }, []);
 
   const passed = results.filter((r) => r.passed).length;
@@ -94,7 +101,9 @@ export function ScenarioRunner({ scenario, onRunReady }: Props) {
         </button>
       </div>
 
-      {results.length > 0 && (
+      {runState === 'running' && <div style={{ padding: '6px 14px 8px', color: '#555', fontSize: 12 }}>Running…</div>}
+
+      {runState !== 'running' && results.length > 0 && (
         <ul style={{ margin: 0, padding: '8px 14px 10px 14px', listStyle: 'none' }}>
           {results.map((r, i) => (
             <li key={i} style={{ color: resultColor(r), padding: '2px 0', fontSize: 13 }}>
