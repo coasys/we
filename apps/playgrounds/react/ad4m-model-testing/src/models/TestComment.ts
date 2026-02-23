@@ -12,5 +12,5 @@ export class TestComment extends Ad4mModel {
 
   // Reverse traversal: find the TestPost that has a test://has_comment link pointing to this instance
   @BelongsToOne(() => TestPost, { through: 'test://has_comment' })
-  post: string = '';
+  post: TestPost | null = null;
 }

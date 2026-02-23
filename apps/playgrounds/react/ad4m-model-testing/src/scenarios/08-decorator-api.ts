@@ -46,7 +46,7 @@ export const scenario: ScenarioModule = {
         post.title = 'Round Trip';
         post.body = 'body text';
         await post.save();
-        const found = await TestPost.findAll(perspective, { where: { base: post.baseExpression } });
+        const found = await TestPost.findAll(perspective, { where: { id: post.id } });
         assert(found.length > 0, 'Post not found by base expression');
         assert(found[0].title === 'Round Trip', `title mismatch: ${found[0].title}`);
         assert(found[0].body === 'body text', `body mismatch: ${found[0].body}`);
@@ -61,13 +61,16 @@ export const scenario: ScenarioModule = {
         const comment = new TestComment(perspective);
         comment.body = 'Nice post!';
         await comment.save();
-        await post.addComments(comment.baseExpression);
-        const updated = await TestPost.findAll(perspective, { where: { base: post.baseExpression } });
-        assert(updated[0]?.comments?.includes(comment.baseExpression), 'comment not in post.comments');
+        await post.addComments(comment); // pass model instance directly
+        const updated = await TestPost.findAll(perspective, { where: { id: post.id } });
+        assert(
+          updated[0]?.comments?.some((c) => c.id === comment.id),
+          'comment not in post.comments',
+        );
       }),
 
       // ── @HasOne ───────────────────────────────────────────────────────────
-      await test('@HasOne — pinnedComment is a single string after add', async () => {
+      await test('@HasOne — pinnedComment hydrates to a TestComment instance', async () => {
         const post = new TestPost(perspective);
         post.title = 'Post With Pin';
         post.body = '';
@@ -75,21 +78,21 @@ export const scenario: ScenarioModule = {
         const comment = new TestComment(perspective);
         comment.body = 'Pinned!';
         await comment.save();
-        await post.addPinnedComment(comment.baseExpression);
-        const updated = await TestPost.findAll(perspective, { where: { base: post.baseExpression } });
+        await post.addPinnedComment(comment); // pass model instance
+        const updated = await TestPost.findAll(perspective, { where: { id: post.id } });
         assert(updated.length > 0, 'Post not found');
         assert(
-          typeof updated[0].pinnedComment === 'string',
-          `pinnedComment should be string, got ${typeof updated[0].pinnedComment}`,
+          updated[0].pinnedComment instanceof TestComment,
+          `pinnedComment should be TestComment, got ${typeof updated[0].pinnedComment}`,
         );
         assert(
-          updated[0].pinnedComment === comment.baseExpression,
-          `pinnedComment mismatch: ${updated[0].pinnedComment}`,
+          updated[0].pinnedComment?.id === comment.id,
+          `pinnedComment id mismatch: ${updated[0].pinnedComment?.id}`,
         );
       }),
 
       // ── @BelongsToOne ─────────────────────────────────────────────────────
-      await test('@BelongsToOne — comment.post resolves to parent post', async () => {
+      await test('@BelongsToOne — comment.post resolves to a TestPost instance', async () => {
         const post = new TestPost(perspective);
         post.title = 'Parent Post';
         post.body = '';
@@ -97,14 +100,15 @@ export const scenario: ScenarioModule = {
         const comment = new TestComment(perspective);
         comment.body = 'Reverse traversal test';
         await comment.save();
-        await post.addComments(comment.baseExpression);
-        const found = await TestComment.findAll(perspective, { where: { base: comment.baseExpression } });
+        await post.addComments(comment);
+        const found = await TestComment.findAll(perspective, { where: { id: comment.id } });
         assert(found.length > 0, 'Comment not found');
-        assert(found[0].post === post.baseExpression, `post backlink mismatch: ${found[0].post}`);
+        assert(found[0].post instanceof TestPost, `post should be TestPost, got ${typeof found[0].post}`);
+        assert(found[0].post?.id === post.id, `post id mismatch: ${found[0].post?.id}`);
       }),
 
       // ── @BelongsToMany ────────────────────────────────────────────────────
-      await test('@BelongsToMany — tag.posts contains all posts that added the tag', async () => {
+      await test('@BelongsToMany — tag.posts contains hydrated TestPost instances', async () => {
         const tag = new TestTag(perspective);
         tag.label = 'shared-tag';
         await tag.save();
@@ -116,12 +120,22 @@ export const scenario: ScenarioModule = {
         post2.title = 'Tagged Post 2';
         post2.body = '';
         await post2.save();
-        await post1.addTags(tag.baseExpression);
-        await post2.addTags(tag.baseExpression);
-        const found = await TestTag.findAll(perspective, { where: { base: tag.baseExpression } });
+        await post1.addTags(tag); // pass model instance
+        await post2.addTags(tag);
+        const found = await TestTag.findAll(perspective, { where: { id: tag.id } });
         assert(found.length > 0, 'Tag not found');
-        assert(found[0].posts.includes(post1.baseExpression), 'post1 not in tag.posts');
-        assert(found[0].posts.includes(post2.baseExpression), 'post2 not in tag.posts');
+        assert(
+          found[0].posts.every((p) => p instanceof TestPost),
+          'tag.posts should contain TestPost instances',
+        );
+        assert(
+          found[0].posts.some((p) => p.id === post1.id),
+          'post1 not in tag.posts',
+        );
+        assert(
+          found[0].posts.some((p) => p.id === post2.id),
+          'post2 not in tag.posts',
+        );
       }),
     ];
   },

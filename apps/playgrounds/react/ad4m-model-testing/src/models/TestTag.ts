@@ -12,5 +12,5 @@ export class TestTag extends Ad4mModel {
 
   // Reverse traversal: find all TestPosts that have a test://has_tag link pointing to this instance
   @BelongsToMany(() => TestPost, { through: 'test://has_tag' })
-  posts: string[] = [];
+  posts: TestPost[] = [];
 }

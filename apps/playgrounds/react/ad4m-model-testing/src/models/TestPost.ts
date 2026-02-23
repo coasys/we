@@ -14,12 +14,12 @@ export class TestPost extends Ad4mModel {
   body: string = '';
 
   @HasMany(() => TestTag, { through: 'test://has_tag' })
-  tags: string[] = [];
+  tags: TestTag[] = [];
 
   @HasMany(() => TestComment, { through: 'test://has_comment' })
-  comments: string[] = [];
+  comments: TestComment[] = [];
 
   @HasOne(() => TestComment, { through: 'test://pinned_comment' })
-  pinnedComment: string = '';
+  pinnedComment: TestComment | null = null;
 }
 export interface TestPost extends HasManyMethods<'tags' | 'comments' | 'pinnedComment'> {}
