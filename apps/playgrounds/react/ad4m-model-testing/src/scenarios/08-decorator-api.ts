@@ -107,6 +107,99 @@ export const scenario: ScenarioModule = {
         assert(found[0].post?.id === post.id, `post id mismatch: ${found[0].post?.id}`);
       }),
 
+      // ── findOne ───────────────────────────────────────────────────────────
+      await test('findOne() — returns a single matching instance or null', async () => {
+        const post = new TestPost(perspective);
+        post.title = 'FindOne Target';
+        post.body = '';
+        await post.save();
+        const found = await TestPost.findOne(perspective, { where: { id: post.id } });
+        assert(found !== null, 'findOne returned null for existing post');
+        assert(found instanceof TestPost, `findOne should return TestPost, got ${typeof found}`);
+        assert(found.id === post.id, `id mismatch: ${found.id}`);
+        assert(found.title === 'FindOne Target', `title mismatch: ${found.title}`);
+        const missing = await TestPost.findOne(perspective, { where: { id: 'literal://string:nonexistent' } });
+        assert(missing === null, 'findOne should return null for missing id');
+      }),
+
+      // ── save() update ─────────────────────────────────────────────────────
+      await test('save() — updating a property persists the new value', async () => {
+        const post = new TestPost(perspective);
+        post.title = 'Original Title';
+        post.body = '';
+        await post.save();
+        post.title = 'Updated Title';
+        await post.save();
+        const found = await TestPost.findOne(perspective, { where: { id: post.id } });
+        assert(found !== null, 'Post not found after update');
+        assert(found.title === 'Updated Title', `Expected 'Updated Title', got '${found.title}'`);
+      }),
+
+      // ── removeComments ────────────────────────────────────────────────────
+      await test('removeComments() — unlinks a comment from a post', async () => {
+        const post = new TestPost(perspective);
+        post.title = 'Post For Remove';
+        post.body = '';
+        await post.save();
+        const c1 = new TestComment(perspective);
+        c1.body = 'To keep';
+        await c1.save();
+        const c2 = new TestComment(perspective);
+        c2.body = 'To remove';
+        await c2.save();
+        await post.addComments(c1);
+        await post.addComments(c2);
+        await post.removeComments(c2);
+        const found = await TestPost.findOne(perspective, { where: { id: post.id } });
+        assert(found !== null, 'Post not found');
+        assert(
+          found.comments.some((c) => c.id === c1.id),
+          'c1 should still be present',
+        );
+        assert(!found.comments.some((c) => c.id === c2.id), 'c2 should have been removed');
+      }),
+
+      // ── setComments (relationSetter / bulk replace) ───────────────────────
+      await test('setComments() — replaces entire relation set atomically', async () => {
+        const post = new TestPost(perspective);
+        post.title = 'Post For Set';
+        post.body = '';
+        await post.save();
+        const c1 = new TestComment(perspective);
+        c1.body = 'Initial A';
+        await c1.save();
+        const c2 = new TestComment(perspective);
+        c2.body = 'Initial B';
+        await c2.save();
+        await post.addComments(c1);
+        await post.addComments(c2);
+        const c3 = new TestComment(perspective);
+        c3.body = 'Replacement';
+        await c3.save();
+        await post.setComments([c3]);
+        const found = await TestPost.findOne(perspective, { where: { id: post.id } });
+        assert(found !== null, 'Post not found');
+        assert(!found.comments.some((c) => c.id === c1.id), 'c1 should have been replaced');
+        assert(!found.comments.some((c) => c.id === c2.id), 'c2 should have been replaced');
+        assert(
+          found.comments.some((c) => c.id === c3.id),
+          'c3 should be the only comment',
+        );
+        assert(found.comments.length === 1, `Expected 1 comment, got ${found.comments.length}`);
+      }),
+
+      // ── delete ────────────────────────────────────────────────────────────
+      await test('delete() — removes the instance from the perspective', async () => {
+        const post = new TestPost(perspective);
+        post.title = 'To Be Deleted';
+        post.body = '';
+        await post.save();
+        const id = post.id;
+        await post.delete();
+        const found = await TestPost.findOne(perspective, { where: { id } });
+        assert(found === null, 'Post should not be found after delete()');
+      }),
+
       // ── @BelongsToMany ────────────────────────────────────────────────────
       await test('@BelongsToMany — tag.posts contains hydrated TestPost instances', async () => {
         const tag = new TestTag(perspective);
