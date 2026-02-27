@@ -12,16 +12,34 @@ Meanwhile, the platforms that do achieve integration (social networks, app store
 
 **WE is a composable module ecosystem for building decentralized applications.**
 
-Instead of building apps, contributors build **modules** — reusable pieces at every level of abstraction:
+Instead of building apps, contributors build **modules** — reusable pieces at every level of abstraction. These span the entire stack:
+
+### Design System Modules
+The visual building blocks, each layer composing from those below:
 
 - **Design tokens** — colors, spacing, typography that define a visual identity
 - **Elements** — basic UI building blocks (buttons, inputs, cards)
 - **Components** — functional units (message bubbles, user avatars, rich text editors)
 - **Widgets** — self-contained features (comment threads, reaction pickers, media galleries)
 - **Pages** — complete views composed from widgets (a feed page, a settings page)
+
+### Content & Composition Modules
+- **Blocks** — composable content units for the block composer (text blocks, image blocks, embed blocks, code blocks) that users arrange freely within pages
+- **Themes** — complete visual identities (token sets + styling) shareable across deployments
 - **Templates** — full application shells ready to customize (a social app, a project manager, a marketplace)
 
-Each layer composes from the layers below. A "social app" template is just a specific arrangement of page modules, which are arrangements of widget modules, all the way down to design tokens.
+### Feature Modules
+Self-contained systems that can be installed into any community:
+
+- **Layer systems** — rich interactive modules with their own sub-module ecosystems (e.g., the Cesium globe layer with geographic visualization, spatial exploration, and location-based community mapping)
+- **Governance modules** — decision-making frameworks, voting systems, moderation tools, and consensus mechanisms that communities can mix and match
+- **Economics modules** — payment flows, mutual credit, token systems, and resource allocation — pluggable economic infrastructure for communities
+- **Integration modules** — bridges to external systems, data imports, API connectors
+
+### Shareable via Module Marketplace
+All of these — from a single design token to a complete governance system — are shareable through the same module marketplace. Install a theme, a block type, or an entire economics layer with the same mechanism.
+
+A "social app" is just a specific seed that composes community templates, messaging widgets, a governance module for moderation, and a theme — all the way down to design tokens.
 
 ## How It Works
 
