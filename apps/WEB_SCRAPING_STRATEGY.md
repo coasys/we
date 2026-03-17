@@ -415,7 +415,7 @@ export async function scrapeLink(url: string): Promise<LinkMetadata> {
 ### 4. Shared Frontend Usage
 
 ```typescript
-// packages/block-composer/solid/src/plugins/LinkCardPlugin.ts
+// packages/block-system/solid/src/plugins/LinkCardPlugin.ts
 import { useLexicalComposerContext } from 'lexical-solid';
 import { $createLinkCardNode } from '../nodes/LinkCardNode';
 import type { LinkMetadata } from '@we/link-scraper/core';

@@ -1,6 +1,11 @@
-# @we/schema-renderer
+# Schema System
 
-`@we/schema-renderer` is a framework-agnostic, schema-driven UI renderer designed for modular web apps. It turns declarative JSON-like schemas into live, reactive UIs, supporting layouts, routing, slots, and dynamic data/actions. The package is structured for easy extension to multiple frameworks (SolidJS, React, etc.) and is ideal for both human and AI-generated interfaces.
+The schema system provides a framework-agnostic, schema-driven UI renderer designed for modular web apps. It turns declarative JSON-like schemas into live, reactive UIs, supporting layouts, routing, slots, and dynamic data/actions.
+
+## Packages
+
+- **`@we/schema-shared`** (`shared/`) — Framework-agnostic types, validators, prop resolvers, and mutations
+- **`@we/schema-solid`** (`solid/`) — SolidJS renderer implementation
 
 ## Features
 
@@ -17,7 +22,7 @@
 1. **Install:**
 
    ```sh
-   pnpm add @we/schema-renderer solid-js
+   pnpm add @we/schema-shared @we/schema-solid solid-js
    ```
 
 2. **Create a component registry in your app:**
@@ -34,7 +39,7 @@
 3. **Render a schema:**
 
    ```tsx
-   import { RenderSchema } from '@we/schema-renderer/solid';
+   import { RenderSchema } from '@we/schema-solid';
    import { registry } from './registry';
 
    <RenderSchema node={mySchema} stores={myStores} registry={registry} />;
@@ -42,8 +47,8 @@
 
 ## Extending to Other Frameworks
 
-- Shared types and prop resolvers are in `src/shared`.
-- Framework-specific renderers are in `src/frameworks/{framework}`.
+- Shared types and prop resolvers are in `shared/`.
+- Framework-specific renderers are in `solid/` (add `react/`, etc. for other frameworks).
 - To add support for another framework, implement a renderer that uses the shared logic and passes the correct JSX type.
 
 ## API

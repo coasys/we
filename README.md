@@ -25,10 +25,10 @@ pnpm dev:tauri     # Tauri app
 ### Packages
 
 - **[@we/app-framework](./packages/app-framework)** - Core framework for building WE launcher applications with platform adapters, stores, and SolidJS integration
-- **[@we/schema-renderer](./packages/schema-renderer)** - Framework-agnostic schema-driven UI renderer with support for layouts, routing, and dynamic data
+- **[@we/schema-shared](./packages/schema-system/shared)** + **[@we/schema-solid](./packages/schema-system/solid)** - Schema-driven UI renderer with shared types/validators and SolidJS rendering
 - **[@we/design-system](./packages/design-system)** - Complete design system with tokens, themes, elements, components, widgets, pages, and templates
-- **[@we/block-composer](./packages/block-composer)** - Block-based content composition system
-- **[@we/models](./packages/models)** - Shared TypeScript types and interfaces
+- **[@we/block-solid](./packages/block-system/solid)** + **[@we/block-shared](./packages/block-system/shared)** - Block-based content composition system
+- **[@we/models](./packages/block-system/models)** - Shared TypeScript types and interfaces
 - **[@we/cli](./packages/cli)** - Command-line tools and build utilities
 - **[@we/utils](./packages/utils)** - Shared utility functions
 
@@ -51,7 +51,7 @@ pnpm dev:tauri     # Tauri app
 
 ### Framework & Design System
 
-- **Schema-Driven UI**: Build interfaces from JSON schemas with `@we/schema-renderer`
+- **Schema-Driven UI**: Build interfaces from JSON schemas with `@we/schema-solid`
 - **Component Library**: Comprehensive design system with tokens, themes, and components
 - **Platform Adapters**: Abstract platform differences for web, Electron, and Tauri
 - **AD4M Integration**: Built-in stores and utilities for decentralized apps
