@@ -107,7 +107,7 @@ Open http://localhost:3000 to see your launcher!
 }
 ```
 
-**Note:** The launcher shell UI (boot screen, app settings) can be fully customized via inline JSON schemas. See [LAUNCHER-UI-CUSTOMIZATION.md](./LAUNCHER-UI-CUSTOMIZATION.md) for detailed examples and best practices.
+**Note:** The launcher shell UI (boot screen, app settings) can be fully customized via inline JSON schemas. See [Launcher UI Customization](../guides/launcher-ui-customization.md) for detailed examples and best practices.
 
 ### Apps Section
 

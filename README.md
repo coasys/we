@@ -16,9 +16,10 @@ pnpm dev:tauri     # Tauri app
 
 ## Documentation
 
-- **[DEVELOPER_SETUP.md](./DEVELOPER_SETUP.md)** - Complete setup guide, commands, and workflows
-- **[SEED-SYSTEM.md](./SEED-SYSTEM.md)** - Seed file architecture, configuration, and examples
-- **[LAUNCHER-UI-CUSTOMIZATION.md](./LAUNCHER-UI-CUSTOMIZATION.md)** - Customizing boot screen, settings, and launcher UI
+- **[Developer Setup](./docs/getting-started/developer-setup.md)** - Complete setup guide, commands, and workflows
+- **[Seed System](./docs/getting-started/seed-system.md)** - Seed file architecture, configuration, and examples
+- **[Launcher UI Customization](./docs/guides/launcher-ui-customization.md)** - Customizing boot screen, settings, and launcher UI
+- **[All docs →](./docs/README.md)**
 
 ## Workspace Structure
 

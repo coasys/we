@@ -289,11 +289,11 @@ we/
 
 ### Launcher UI Customization
 
-You can fully customize the launcher shell (boot screen, app settings) via the seed file. See [LAUNCHER-UI-CUSTOMIZATION.md](./LAUNCHER-UI-CUSTOMIZATION.md) for detailed documentation and examples.
+You can fully customize the launcher shell (boot screen, app settings) via the seed file. See [Launcher UI Customization](../guides/launcher-ui-customization.md) for detailed documentation and examples.
 
 ### Seed System
 
-For complete details about the seed system architecture, app modes, and configuration options, see [SEED-SYSTEM.md](./SEED-SYSTEM.md).
+For complete details about the seed system architecture, app modes, and configuration options, see [Seed System](./seed-system.md).
 
 ## Support
 

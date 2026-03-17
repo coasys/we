@@ -490,3 +490,82 @@ When a schema references components not in the user's registry:
 3. **Same Ad4mModel query, same music library, different UI**
 4. User can mix components: one app's TrackList, another's MusicPlayer
 5. AI splices them together in the root schema — they both use `$query` against the same block types
+
+---
+
+## Architecture Layers
+
+```
+┌─────────────────────────────────────────────────┐
+│           Communities & Templates               │
+│  (JSON schemas defining UI, modules, behavior)  │
+└─────────────────────────────────────────────────┘
+                       ↓
+┌─────────────────────────────────────────────────┐
+│              Module Ecosystem                   │
+│  Governance │ Economics │ Social │ Content      │
+└─────────────────────────────────────────────────┘
+                       ↓
+┌─────────────────────────────────────────────────┐
+│            Application Framework                │
+│  Schema Renderer │ Template System │ Stores     │
+└─────────────────────────────────────────────────┘
+                       ↓
+┌─────────────────────────────────────────────────┐
+│               Design System                     │
+│  Elements │ Components │ Widgets │ Pages        │
+└─────────────────────────────────────────────────┘
+                       ↓
+┌─────────────────────────────────────────────────┐
+│                   AD4M                          │
+│  Identity │ Perspectives │ Neighborhoods        │
+└─────────────────────────────────────────────────┘
+```
+
+## Data Flow
+
+```
+User Action
+    ↓
+Component (Schema-rendered)
+    ↓
+Store Action (via $action token)
+    ↓
+AD4M Language (data persistence)
+    ↓
+Neighborhood (shared state)
+    ↓
+Store Update (reactive)
+    ↓
+UI Re-render (via $store token)
+```
+
+## Key Technical Decisions
+
+### Why JSON Schemas?
+
+- **Shareable** — Templates can be distributed as simple files
+- **AI-friendly** — LLMs can generate and modify schemas
+- **Framework-agnostic** — Same schema works across implementations
+- **Version-controllable** — Track changes to coordination structures
+- **Composable** — Schemas can reference and include other schemas
+
+### Why SolidJS?
+
+- **Fine-grained reactivity** — Efficient updates without virtual DOM
+- **Simple mental model** — Close to vanilla JavaScript
+- **Web component friendly** — Works well with design system
+- **Performance** — Fast enough for real-time coordination
+
+### Why Web Components?
+
+- **Framework-agnostic** — Can be used anywhere (React, Vue, vanilla)
+- **Encapsulation** — Styles and behavior contained
+- **Future-proof** — Built on web standards
+
+### Why Monorepo?
+
+- **Coordinated changes** — Update schema renderer and components together
+- **Shared tooling** — Build scripts, testing, deployment
+- **Discoverability** — All modules in one place
+- **Version coherence** — Ensure compatible module versions

@@ -130,7 +130,7 @@ WE is built on:
 - **Module System** - Composable coordination primitives
 - **Template System** - Shareable configurations and themes
 
-See [technical architecture](./architecture.md) for details.
+See [architecture overview](./overview.md) for details.
 
 ## Current Status
 

@@ -100,7 +100,7 @@ Start small, compose upward. The ecosystem gets richer with every module.
 1. Explore the [design system](./packages/design-system) to understand the token → element → component → widget → page → template hierarchy
 2. Check the [schema-system](./packages/schema-system) for how schemas drive UI generation
 3. Look at [Flux](https://github.com/juntofoundation/flux) as the reference application built on WE
-4. Read [SEED-SYSTEM.md](./SEED-SYSTEM.md) to understand how modules compose into deployable apps
+4. Read the [Seed System](./docs/getting-started/seed-system.md) to understand how modules compose into deployable apps
 
 ### For AI Agents
 
