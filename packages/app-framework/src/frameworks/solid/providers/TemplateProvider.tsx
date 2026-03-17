@@ -10,7 +10,6 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router, useLocation, useNavigate } from '@solidjs/router';
-import { PageNotFound } from '@we/pages/solid';
 import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
@@ -113,8 +112,23 @@ export default function TemplateProvider() {
       {routes().map((route) => (
         <Route path={route.path} component={route.component} />
       ))}
-      {/* Fallback incase the schema doesn't define a wildcard route */}
-      {!routes().find((route) => route.path === '*') && <Route path="*" component={() => <PageNotFound />} />}
+      {/* Fallback in case the schema doesn't define a wildcard route */}
+      {!routes().find((route) => route.path === '*') && (
+        <Route
+          path="*"
+          component={() =>
+            RenderSchema({
+              node: {
+                type: 'Column',
+                props: { ax: 'center', bg: 'ui-0', p: '500' },
+                children: [{ type: 'we-text', props: { size: '600' }, children: ['Page not found :_('] }],
+              },
+              stores,
+              registry,
+            })
+          }
+        />
+      )}
     </Router>
   );
 }

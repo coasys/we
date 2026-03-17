@@ -135,17 +135,57 @@ export const defaultTemplateSchema: TemplateSchema = {
     description: 'A simple template with a sidebar, header, and page area.',
     icon: 'layout',
   },
-  type: 'DefaultTemplate',
-  slots: { sidebar: templateSidebar, modals: templateModals }, // header: templateHeader,
-  children: [{ type: '$routes' }],
+  type: 'Row',
+  props: { class: 'we-default-template', width: '100%', height: '100%' },
+  children: [
+    {
+      type: 'aside',
+      props: { class: 'we-default-template-sidebar' },
+      children: [templateSidebar],
+    },
+    {
+      type: 'Column',
+      props: { class: 'we-default-template-content', ax: 'center', bg: 'ui-50' },
+      children: [{ type: 'main', props: { class: 'we-default-template-pages' }, children: [{ type: '$routes' }] }],
+    },
+    templateModals,
+  ],
   routes: [
-    { path: '*', type: 'PageNotFound' },
-    { path: '/', type: 'HomePage' },
+    {
+      path: '*',
+      type: 'Column',
+      props: { ax: 'center', bg: 'ui-0', p: '500' },
+      children: [{ type: 'we-text', props: { size: '600' }, children: ['Page not found :_('] }],
+    },
+    {
+      path: '/',
+      type: 'Column',
+      props: { ax: 'center', bg: 'ui-0', p: '500' },
+      children: [{ type: 'we-text', props: { size: '600' }, children: ['Home page!!!'] }],
+    },
     {
       path: '/space/:spaceId',
-      type: 'SpacePage',
-      slots: { sidebar: spacePageSidebar, header: spacePageHeader },
-      children: [{ type: '$routes' }],
+      type: 'Row',
+      props: { class: 'we-space-page', height: '100%' },
+      children: [
+        {
+          type: 'aside',
+          props: { class: 'we-space-page-sidebar' },
+          children: [spacePageSidebar],
+        },
+        {
+          type: 'Column',
+          props: { class: 'we-space-page-content', bg: 'ui-50' },
+          children: [
+            {
+              type: 'header',
+              props: { class: 'we-space-page-header' },
+              children: [spacePageHeader],
+            },
+            { type: 'main', props: { class: 'we-space-page-sub-pages' }, children: [{ type: '$routes' }] },
+          ],
+        },
+      ],
       routes: [
         {
           path: '/*',

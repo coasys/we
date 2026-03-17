@@ -217,8 +217,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     );
   }
 
-  // Get the component from the registry
-  const component = createMemo(() => registry[node.type ?? '']);
+  // Resolve component: registry entry > native HTML element (lowercase) > error
+  // Convention: PascalCase = registry component, we-* = web component, lowercase = HTML element
+  const isHtmlElement = /^[a-z][a-z0-9]*$/.test(node.type ?? '');
+  const component = createMemo(() => registry[node.type ?? ''] ?? (isHtmlElement ? node.type : undefined));
   if (!component()) throw new Error(`Schema node has unknown type "${node.type}".`);
 
   // Prepare the slot elements in a reactive store
@@ -270,11 +272,12 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   // Handle safe props with reactivity
   const isWebComponent = node.type?.startsWith('we-');
+  const needsPropertyHandling = isWebComponent; // Only web components need ref-based property setting
   const reactiveAttrs = createMemo(() => {
     const attrs: Record<string, unknown> = {};
     const { safeProps, complexProps } = split();
 
-    // For Solid components, include complex props directly
+    // For Solid components and HTML elements, include complex props directly
     if (!isWebComponent) {
       Object.assign(attrs, complexProps);
     }
@@ -297,7 +300,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   // Handle complex props AND design system camelCase props with reactivity (web components only)
   createEffect(() => {
-    if (!hostRef || !isWebComponent) return;
+    if (!hostRef || !needsPropertyHandling) return;
     const { safeProps, complexProps } = split();
 
     // Set complex props as properties

@@ -65,14 +65,13 @@ Always use the correct prop names and value types.
 - CreateSpaceModalWidget
 - SpaceSidebarWidget
 
-@we/pages
-- HomePage
-- PageNotFound
-- SpacePage
-
-@we/templates
-- DefaultTemplate
-- CenteredTemplate
+Native HTML elements (lowercase tags render directly without registry entries):
+- Layout: div, section, article, aside, main, nav, header, footer
+- Text: p, span, h1, h2, h3, h4, h5, h6, pre, code, blockquote
+- Lists: ul, ol, li
+- Forms: form, input, button, label, select, textarea
+- Media: img, video, audio, canvas, figure, figcaption
+- Other: a, table, tr, td, th, details, summary, dialog
 
 ---
 
@@ -296,11 +295,11 @@ Special Node:
 Example:
 {
   "routes": [
-    { "path": "*", "type": "PageNotFound" },
-    { "path": "/", "type": "HomePage" },
+    { "path": "*", "type": "Column", "props": { "ax": "center", "bg": "ui-0", "p": "500" }, "children": [{ "type": "we-text", "props": { "size": "600" }, "children": ["Page not found"] }] },
+    { "path": "/", "type": "Column", "props": { "ax": "center", "bg": "ui-0", "p": "500" }, "children": [{ "type": "we-text", "props": { "size": "600" }, "children": ["Home page"] }] },
     {
       "path": "/space/:spaceId",
-      "type": "SpacePage",
+      "type": "Row",
       "children": [{ "type": "$routes" }],
       "routes": [
         { "path": "/*", "type": "we-text", "children": ["Space page not found"] },
@@ -349,8 +348,8 @@ Example:
   "props": { "bg": "ui-0" },
   "children": [{ "type": "we-text", "props": { "children": ["Welcome"] } }],
   "routes": [
-    { "path": "/", "type": "HomePage" },
-    { "path": "*", "type": "PageNotFound" }
+    { "path": "/", "type": "Column", "props": { "ax": "center", "bg": "ui-0", "p": "500" }, "children": [{ "type": "we-text", "children": ["Welcome"] }] },
+    { "path": "*", "type": "Column", "props": { "ax": "center", "bg": "ui-0", "p": "500" }, "children": [{ "type": "we-text", "props": { "size": "600" }, "children": ["Page not found"] }] }
   ]
 }
 

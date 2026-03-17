@@ -266,17 +266,63 @@ export const testTemplateSchema: TemplateSchema = {
     description: 'A simple template used for testing',
     icon: 'layout',
   },
-  type: 'DefaultTemplate',
-  slots: { sidebar: templateSidebar, modals: templateModals }, // header: templateHeader,
-  children: [testButtons, { type: '$routes' }],
+  type: 'Row',
+  props: { class: 'we-default-template', width: '100%', height: '100%' },
+  children: [
+    {
+      type: 'aside',
+      props: { class: 'we-default-template-sidebar' },
+      children: [templateSidebar],
+    },
+    {
+      type: 'Column',
+      props: { class: 'we-default-template-content', ax: 'center', bg: 'ui-50' },
+      children: [
+        {
+          type: 'main',
+          props: { class: 'we-default-template-pages' },
+          children: [testButtons, { type: '$routes' }],
+        },
+      ],
+    },
+    templateModals,
+  ],
   routes: [
-    { path: '*', type: 'PageNotFound' },
-    { path: '/', type: 'HomePage' },
+    {
+      path: '*',
+      type: 'Column',
+      props: { ax: 'center', bg: 'ui-0', p: '500' },
+      children: [{ type: 'we-text', props: { size: '600' }, children: ['Page not found :_('] }],
+    },
+    {
+      path: '/',
+      type: 'Column',
+      props: { ax: 'center', bg: 'ui-0', p: '500' },
+      children: [{ type: 'we-text', props: { size: '600' }, children: ['Home page!!!'] }],
+    },
     {
       path: '/space/:spaceId',
-      type: 'SpacePage',
-      slots: { sidebar: spacePageSidebar, header: spacePageHeader },
-      children: [{ type: '$routes' }],
+      type: 'Row',
+      props: { class: 'we-space-page', height: '100%' },
+      children: [
+        {
+          type: 'aside',
+          props: { class: 'we-space-page-sidebar' },
+          children: [spacePageSidebar],
+        },
+        {
+          type: 'Column',
+          props: { class: 'we-space-page-content', bg: 'ui-50' },
+          children: [
+            {
+              type: 'header',
+              props: { class: 'we-space-page-header' },
+              children: [spacePageHeader],
+            },
+            { type: 'main', props: { class: 'we-space-page-sub-pages' }, children: [{ type: '$routes' }] },
+          ],
+        },
+      ],
       routes: [
         {
           path: '/*',
@@ -347,91 +393,117 @@ export const testTemplateSchema: TemplateSchema = {
 };
 
 // Update functions for testing different types of schema mutations
+// Path reference for new inline structure:
+//   children[0] = aside > children[0] = sidebar Column
+//   children[1] = Column (content) > children[0] = main > children[0] = testButtons, children[1] = $routes
+//   children[2] = modals fragment
+//   routes[2] = space page Row > children[0] = aside > children[0] = sidebar
+//   routes[2] > children[1] = Column > children[0] = header > children[0] = header Row
+//   routes[2].routes[2] = /posts
 export function testMutations(currentSchema: TemplateSchema, setCurrentSchema: SetStoreFunction<TemplateSchema>) {
+  // Sidebar is now at children[0] (aside) > children[0] (Column)
+  const sidebarPath = () => (deepClone(currentSchema) as any).children[0].children[0];
+
   function removeTemplateHeaderSlot() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // Header no longer exists as a slot — this mutation adds/removes a header element
+    // inside the content Column (children[1])
     const newSchema = deepClone(currentSchema) as any;
-    delete newSchema.slots.header;
+    const contentColumn = newSchema.children[1];
+    // Remove header if it exists (first child before main)
+    if (contentColumn.children.length > 1 && contentColumn.children[0].type === 'header') {
+      contentColumn.children.shift();
+    }
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 
   function addTemplateHeaderSlot() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
-    newSchema.slots.header = {
-      type: 'Row',
-      props: { p: '400', gap: '400', ax: 'end', ay: 'center' },
+    const headerNode = {
+      type: 'header',
+      props: { class: 'we-default-template-header' },
       children: [
-        { type: 'we-text', props: { size: '600' }, children: ['Header!'] },
         {
-          type: 'PopoverMenu',
-          props: {
-            options: { $store: 'themeStore.themes' },
-            selectedOption: { $store: 'themeStore.currentTheme' },
-            onSelect: { $store: 'themeStore.setCurrentTheme' },
-          },
-        },
-        {
-          type: 'PopoverMenu',
-          props: {
-            options: {
-              $map: {
-                items: { $store: 'templateStore.templates' },
-                select: { id: '$item.id', name: '$item.name', icon: '$item.icon' },
+          type: 'Row',
+          props: { p: '400', gap: '400', ax: 'end', ay: 'center' },
+          children: [
+            { type: 'we-text', props: { size: '600' }, children: ['Header!'] },
+            {
+              type: 'PopoverMenu',
+              props: {
+                options: { $store: 'themeStore.themes' },
+                selectedOption: { $store: 'themeStore.currentTheme' },
+                onSelect: { $store: 'themeStore.setCurrentTheme' },
               },
             },
-            selectedOption: {
-              $pick: {
-                from: { $store: 'templateStore.currentTemplate' },
-                props: ['name', 'icon'],
+            {
+              type: 'PopoverMenu',
+              props: {
+                options: {
+                  $map: {
+                    items: { $store: 'templateStore.templates' },
+                    select: { id: '$item.id', name: '$item.name', icon: '$item.icon' },
+                  },
+                },
+                selectedOption: {
+                  $pick: {
+                    from: { $store: 'templateStore.currentTemplate' },
+                    props: ['name', 'icon'],
+                  },
+                },
+                onSelect: { $store: 'templateStore.setCurrentTemplate' },
               },
             },
-            onSelect: { $store: 'templateStore.setCurrentTemplate' },
-          },
+            { type: 'RerenderLog', props: { location: 'Template Header' } },
+          ],
         },
-        { type: 'RerenderLog', props: { location: 'Template Header' } },
       ],
     };
+    // Insert header before main in the content Column
+    const contentColumn = newSchema.children[1];
+    contentColumn.children.unshift(headerNode);
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 
   function changeTemplateHeaderProp() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
-    newSchema.slots.header.props.bg = 'ui-900';
+    // Header is first child of content Column > first child (Row)
+    const contentColumn = newSchema.children[1];
+    if (contentColumn.children[0]?.type === 'header') {
+      contentColumn.children[0].children[0].props.bg = 'ui-900';
+    }
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 
   function changeTemplateHeaderChildProp() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
-    newSchema.slots.header.children[0].props.color = 'ui-900';
+    const contentColumn = newSchema.children[1];
+    if (contentColumn.children[0]?.type === 'header') {
+      contentColumn.children[0].children[0].children[0].props.color = 'ui-900';
+    }
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 
   function changeSidebarProp() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
-    newSchema.slots.sidebar.props.bg = 'ui-900';
+    // Sidebar Column is at children[0] (aside) > children[0]
+    newSchema.children[0].children[0].props.bg = 'ui-900';
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 
   function editSpacePageHeaderButton() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
-    newSchema.routes[2].slots.header.children[1].props.variant = 'primary';
+    // Space page header Row: routes[2].children[1].children[0].children[0] (header > Row)
+    newSchema.routes[2].children[1].children[0].children[0].children[1].props.variant = 'primary';
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 
   function editPostsPageHeaderButton() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
     newSchema.routes[2].routes[2].children[0].children[2].props.variant = 'primary';
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 
   function addPostsPageHeaderButton() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
     const newButton = { type: 'we-button', props: { variant: 'subtle', children: ['New button'] } };
     newSchema.routes[2].routes[2].children[0].children.push(newButton);
@@ -439,44 +511,37 @@ export function testMutations(currentSchema: TemplateSchema, setCurrentSchema: S
   }
 
   function addSidebarButton() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
     const newButton = { type: 'we-button', props: { variant: 'subtle', children: ['New button'] } };
-    newSchema.slots.sidebar.children[1].children.push(newButton);
+    // Sidebar Column > children[1] (bottom group)
+    newSchema.children[0].children[0].children[1].children.push(newButton);
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 
   function createInvalidSchema() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
-    // newSchema.extraProp = 'This should not be here';
-    // newSchema.meta.extraProp = 'This should not be here';
-    // newSchema.meta.name = 3;
-    // newSchema.children.push({ extraProp: 'Invalid node' });
     newSchema.children.push({ type: 5 });
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 
   function changeNodeType() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
-    newSchema.slots.sidebar.type = 'Row';
-    newSchema.slots.sidebar.children[0].type = 'Row';
-    newSchema.slots.sidebar.children[0].props = { gap: '800' };
+    // Change sidebar Column to Row
+    newSchema.children[0].children[0].type = 'Row';
+    newSchema.children[0].children[0].children[0].type = 'Row';
+    newSchema.children[0].children[0].children[0].props = { gap: '800' };
     console.log('newSchema', newSchema);
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 
   function addSidebarButton2() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
     const newButton = {
       type: 'we-button',
       props: { bg: 'primary-500' },
       children: [{ type: 'we-icon', props: { name: 'magnifying-glass' } }, '5'],
     };
-    // newSchema.slots.sidebar.children[0].children.splice(2, 0, newButton);
-    newSchema.slots.sidebar.children[0].children.unshift(newButton);
+    newSchema.children[0].children[0].children[0].children.unshift(newButton);
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 

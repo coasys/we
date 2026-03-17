@@ -4,8 +4,7 @@ import '@we/themes';
 import '@we/primitives/solid';
 import '@we/components/styles';
 import '@we/widgets/styles';
-import '@we/pages/styles';
-import '@we/templates/styles';
+import '../../shared/styles/layouts.scss';
 
 // App
 export { default as App } from './App';
