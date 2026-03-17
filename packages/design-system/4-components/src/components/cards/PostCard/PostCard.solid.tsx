@@ -1,6 +1,7 @@
 import { JSX } from 'solid-js';
 
-import { Column, Row } from '../../index';
+import { Column } from '../../layout/Column/Column.solid';
+import { Row } from '../../layout/Row/Row.solid';
 
 export interface PostCardProps {
   creator?: { name: string; avatar: string };
