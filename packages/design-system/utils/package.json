@@ -13,15 +13,29 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./solid": {
+      "types": "./dist/solid.d.ts",
+      "import": "./dist/solid.js"
     }
   },
   "files": [
     "dist"
   ],
+  "peerDependencies": {
+    "solid-js": "^1.9.5"
+  },
+  "peerDependenciesMeta": {
+    "solid-js": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "@we/tokens": "workspace:*",
+    "esbuild-plugin-solid": "^0.6.0",
+    "solid-js": "^1.9.5",
     "tsup": "^8.5.1"
   },
   "publishConfig": {

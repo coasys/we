@@ -1,7 +1,8 @@
 import { DesignSystemProps } from '@we/design-types';
-import { getMarginValues, getPaddingValues, getRadiusValues, mapFlexAxes, tokenVar } from '@we/design-utils';
 import type { Accessor } from 'solid-js';
 import { JSX } from 'solid-js';
+
+import { getMarginValues, getPaddingValues, getRadiusValues, mapFlexAxes, tokenVar } from '../index';
 
 export type MaybeAccessor<T> = T | Accessor<T>;
 

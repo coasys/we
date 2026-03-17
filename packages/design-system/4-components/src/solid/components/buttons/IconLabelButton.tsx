@@ -1,5 +1,5 @@
 import type { IconWeight } from '@we/primitives/types';
-import { MaybeAccessor, toValue } from '@we/solid-utils';
+import { MaybeAccessor, toValue } from '@we/design-utils/solid';
 import { JSX } from 'solid-js';
 
 export interface IconLabelButtonProps {
