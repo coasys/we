@@ -1,4 +1,4 @@
-import type { SchemaNode } from '@we/schema-renderer/shared';
+import type { SchemaNode } from '@we/schema-shared';
 
 export const bootScreenSchema: SchemaNode = {
   type: '$if',

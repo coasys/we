@@ -15,7 +15,7 @@
 
 import { getAppSettingsSchema } from '@shared/schemas/defaults/AppSettings.schema';
 import { bootScreenSchema } from '@shared/schemas/defaults/BootScreen.schema';
-import type { SchemaNode } from '@we/schema-renderer/shared';
+import type { SchemaNode } from '@we/schema-shared';
 
 /**
  * Launcher UI Registry

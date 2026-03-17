@@ -1,6 +1,6 @@
 import { useTemplateStore, useThemeStore } from '@solid/stores';
 import { CircleButton, Column, PopoverMenu, Row } from '@we/components/solid';
-import { TemplateSchema } from '@we/schema-renderer/shared';
+import { TemplateSchema } from '@we/schema-shared';
 import { createMemo, createSignal } from 'solid-js';
 
 export default function AppSettings() {

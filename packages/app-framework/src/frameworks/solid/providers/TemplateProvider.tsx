@@ -11,8 +11,8 @@ import {
 import type { Stores } from '@solid/types';
 import { Route, Router, useLocation, useNavigate } from '@solidjs/router';
 import { PageNotFound } from '@we/pages/solid';
-import type { RouteSchema, TemplateSchema } from '@we/schema-renderer/shared';
-import { RenderSchema } from '@we/schema-renderer/solid';
+import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
+import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
 import { createEffect, createMemo } from 'solid-js';
 

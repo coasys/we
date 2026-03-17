@@ -23,7 +23,7 @@ import {
   twitterTemplateSchema,
   weNativeAppTemplateSchema,
 } from '@shared/schemas';
-import type { TemplateSchema } from '@we/schema-renderer/shared';
+import type { TemplateSchema } from '@we/schema-shared';
 
 /**
  * Placeholder launcher shown during initialization

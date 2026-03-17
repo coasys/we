@@ -5,7 +5,7 @@
  * Built entirely from WE design system components - no embedded apps.
  */
 
-import type { TemplateSchema } from '@we/schema-renderer/shared';
+import type { TemplateSchema } from '@we/schema-shared';
 
 export const weNativeAppTemplateSchema: TemplateSchema = {
   meta: {

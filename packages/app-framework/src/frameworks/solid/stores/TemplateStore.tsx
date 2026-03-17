@@ -1,9 +1,9 @@
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { testMutations } from '@shared/schemas/TestTemplate.schema';
 import { deepClone } from '@shared/utils';
-import type { TemplateMeta, TemplateSchema } from '@we/schema-renderer/shared';
-import { validateSchema } from '@we/schema-renderer/shared';
-import { updateSchema } from '@we/schema-renderer/solid';
+import type { TemplateMeta, TemplateSchema } from '@we/schema-shared';
+import { validateSchema } from '@we/schema-shared';
+import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore } from 'solid-js/store';
 

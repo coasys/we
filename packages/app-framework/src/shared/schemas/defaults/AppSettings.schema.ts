@@ -1,4 +1,4 @@
-import type { SchemaNode } from '@we/schema-renderer/shared';
+import type { SchemaNode } from '@we/schema-shared';
 
 /**
  * Generate app settings schema
