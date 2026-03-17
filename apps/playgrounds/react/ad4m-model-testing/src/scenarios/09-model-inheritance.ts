@@ -54,7 +54,7 @@ export const scenario: ScenarioModule = {
         const { shape } = TestDerivedModel.generateSHACL();
         // The derived shape should only carry its own properties (pollType, question),
         // not the base's `content` — that's covered by sh:node
-        const propPaths = (shape.properties ?? []).map((p) => p.path);
+        const propPaths = (shape.properties ?? []).map((p: any) => p.path);
         assert(
           !propPaths.includes('test://base_content'),
           `Derived shape should NOT duplicate base's test://base_content, found: ${propPaths.join(', ')}`,

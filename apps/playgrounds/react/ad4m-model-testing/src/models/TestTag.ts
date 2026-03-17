@@ -7,7 +7,7 @@ export class TestTag extends Ad4mModel {
   @Flag({ through: 'test://tag_type', value: 'test://tag' })
   type = 'test://tag';
 
-  @Property({ through: 'test://label', required: true, writable: true, initial: 'literal://string:uninitialized' })
+  @Property({ through: 'test://label', required: true })
   label: string = '';
 
   // Reverse traversal: find all TestPosts that have a test://has_tag link pointing to this instance

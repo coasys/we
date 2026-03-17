@@ -8,10 +8,10 @@ export class TestPost extends Ad4mModel {
   @Flag({ through: 'test://post_type', value: 'test://post' })
   type = 'test://post';
 
-  @Property({ through: 'test://title', required: true, writable: true, initial: 'literal://string:uninitialized' })
+  @Property({ through: 'test://title', required: true })
   title: string = '';
 
-  @Property({ through: 'test://body', writable: true })
+  @Property({ through: 'test://body' })
   body: string = '';
 
   @HasMany(() => TestTag, { through: 'test://has_tag' })

@@ -11,6 +11,6 @@ import { Ad4mModel, Model, Property } from '@coasys/ad4m';
  */
 @Model({ name: 'TestBaseModel' })
 export class TestBaseModel extends Ad4mModel {
-  @Property({ through: 'test://base_content', writable: true })
+  @Property({ through: 'test://base_content' })
   content: string = '';
 }

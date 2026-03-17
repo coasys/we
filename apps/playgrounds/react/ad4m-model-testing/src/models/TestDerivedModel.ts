@@ -17,8 +17,6 @@ export class TestDerivedModel extends TestBaseModel {
   @Property({
     through: 'test://poll_question',
     required: true,
-    writable: true,
-    initial: 'literal://string:untitled',
   })
   question: string = '';
 }

@@ -4,23 +4,17 @@ import { Ad4mModel, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4
 export class Space extends Ad4mModel {
   @Property({
     through: 'we://has_name',
-    resolveLanguage: 'literal',
-    writable: true,
     required: true,
-    initial: 'literal://string:uninitialized',
   })
   name: string = '';
 
   @Property({
     through: 'we://has_description',
-    resolveLanguage: 'literal',
-    writable: true,
     required: true,
-    initial: 'literal://string:uninitialized',
   })
   description: string = '';
 
-  @Property({ through: 'we://has_visibility', resolveLanguage: 'literal', writable: true })
+  @Property({ through: 'we://has_visibility' })
   visibility: string = '';
 
   @HasMany({ through: 'we://has_location' })
