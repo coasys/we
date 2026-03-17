@@ -6,9 +6,10 @@ The design system's atomic layering should stop at widgets (L5). Everything abov
 
 Current state:
 - **6-pages** contains 5 components, 2 of which aren't even registered (PostPage, BlockComposerPage). The registered ones (HomePage, PageNotFound, SpacePage) are either trivial placeholders or simple slot containers.
-- **7-templates** contains 2 components (DefaultTemplate, CenteredTemplate) that are pure layout shells — Row/Column arrangements with named slots. This is what schemas already express.
+- **7-templates** contains 2 components (DefaultTemplate, CenteredTemplate) that are pure layout shells — Row/Column arrangements with named slots. CenteredTemplate is dead code (registered but never used in any schema).
+- **3 of 6 template schemas already prove the pattern** — TwitterTemplate, BaseTemplate, and weNativeApp all compose layouts purely from Row/Column/components with no compiled page or template components. DefaultTemplate and TestTemplate are the only schemas that reference compiled components.
 
-Both packages exist as compiled `.tsx` implementations of what the schema system can represent as declarative JSON. The only thing schemas can't currently do is associate CSS with a named schema definition — but that's a solvable schema-system feature, not a reason to maintain two extra packages.
+Both packages exist as compiled `.tsx` implementations of what the schema system already represents elsewhere as declarative JSON. No new schema features are needed.
 
 ## Design System Layering (Post-Migration)
 
@@ -26,88 +27,102 @@ L5  widgets         — Complex stateful compositions (CesiumGlobe, GraphWidget,
 
 All consumption flows through **app-framework** — it's the only direct consumer:
 
-| File | Imports |
+| File | What it imports |
 |------|---------|
-| `app-framework/.../componentRegistry.tsx` | `HomePage`, `PageNotFound`, `SpacePage` from `@we/pages/solid`; `DefaultTemplate`, `CenteredTemplate` from `@we/templates/solid` |
-| `app-framework/.../TemplateProvider.tsx` | `PageNotFound` from `@we/pages/solid` (fallback route) |
+| `componentRegistry.tsx` | `HomePage`, `PageNotFound`, `SpacePage` from `@we/pages/solid`; `DefaultTemplate`, `CenteredTemplate` from `@we/templates/solid` |
+| `TemplateProvider.tsx` | `PageNotFound` from `@we/pages/solid` (hardcoded fallback route) |
 
 Schema files reference these by string name:
-- `DefaultTemplate.schema.ts` → `PageNotFound`, `HomePage`, `SpacePage`, `DefaultTemplate`
-- `TestTemplate.schema.ts` → `PageNotFound`, `HomePage`, `SpacePage`
-- `TwitterTemplate.schema.ts` → route-based navigation
+- `DefaultTemplate.schema.ts` → `DefaultTemplate` (root type), `SpacePage` (route), `HomePage`/`PageNotFound` (routes)
+- `TestTemplate.schema.ts` → same as DefaultTemplate
+- `TwitterTemplate.schema.ts`, `BaseTemplate.schema.ts`, `weNativeApp.ts` → **no compiled page/template components** (already pure schema)
+
+## Key Insight
+
+The Twitter and weNative templates achieve the exact same layout patterns (sidebar + content + modals) that DefaultTemplate/SpacePage provide, but they do it purely with Row/Column and design system props — no compiled template component, no CSS classes. This is the pattern to follow.
+
+The only thing the compiled components add over inline schema is **semantic HTML elements** (`<aside>`, `<header>`, `<main>`). The SchemaRenderer currently can't render native HTML elements — it only resolves types from the component registry. Adding native element support (~5 lines) solves this cleanly.
 
 ## Migration Strategy
 
-### Phase 1: Express pages and templates as schema definitions
+### Step 1: Add native HTML element support to SchemaRenderer
 
-All page and template components are simple compositions that the schema system can express directly. Rather than moving them to another package, convert them to schema syntax and delete.
+The renderer currently throws on unknown types. Add a fallback: if `type` is a known HTML element (lowercase tag), render it as a native element instead of looking up the registry. This:
+- Enables `{ type: 'aside', ... }` and `{ type: 'main', ... }` in schemas
+- Future-proofs schemas for any HTML element (`nav`, `section`, `article`, `footer`)
+- Lets AI-generated schemas use semantic HTML without registry bloat
 
-**Pages → schema routes:**
+### Step 2: Inline all page/template layouts in schema files
 
-1. `HomePage` → inline schema node in route definitions:
-   ```ts
-   { path: '/', type: 'Column', props: { ax: 'center', bg: 'ui-0', p: '500' },
-     children: [{ type: 'we-text', props: { size: '600' }, children: ['Home page!!!'] }]
-   }
-   ```
-2. `PageNotFound` → same pattern, plus update `TemplateProvider.tsx` to render a schema node for fallback instead of importing a component
-3. `SpacePage` → schema fragment with `$slot` directives for sidebar/header/children
-4. `PostPage` → delete (unregistered, unused)
-5. `BlockComposerPage` → delete (unregistered, unused)
+Replace compiled component references with their equivalent Row/Column + HTML element structures. Following the pattern already used by TwitterTemplate and weNativeApp:
 
-**Templates → named schema fragments:**
+**Trivial pages (no layout logic):**
+- `HomePage` → inline `Column + we-text` node in route definitions
+- `PageNotFound` → inline `Column + we-text` node in route definitions
 
-6. Create schema definitions for DefaultTemplate and CenteredTemplate layouts:
-   ```ts
-   export const defaultTemplateLayout = {
-     type: 'Row',
-     props: { 'data-we-template': true },
-     children: [
-       { type: '$slot', name: 'sidebar', wrapper: { tag: 'aside', class: 'we-default-template-sidebar' } },
-       { type: 'Column', props: { ax: 'center', bg: 'ui-50', class: 'we-default-template-content' },
-         children: [
-           { type: '$slot', name: 'header', wrapper: { tag: 'header', class: 'we-default-template-header' } },
-           { type: '$slot', name: 'children', wrapper: { tag: 'main', class: 'we-default-template-pages' } },
-         ]
-       },
-       { type: '$slot', name: 'modals' },
-     ]
-   };
-   ```
-7. Move template/page SCSS into `app-framework/` (associated with schema definitions)
-8. Update existing template schemas to use inline layout instead of referencing component types
-9. Remove page/template entries from `componentRegistry.tsx`
-10. Remove `@we/pages` and `@we/templates` from all dependencies
+**Layout pages:**
+- `SpacePage` → inline Row layout with `aside` (sidebar) + Column (header + main) — uses design system props (`width`, `height`, `bg`) instead of CSS classes
+- `DefaultTemplate` → inline Row layout with `aside` (sidebar) + Column (content area with header + main) + modals area
 
-### Phase 2: Remove packages
+**Dead code:**
+- `PostPage` → delete (unregistered, unused)
+- `BlockComposerPage` → delete (unregistered, unused)
+- `CenteredTemplate` → delete (registered but never used in any schema)
+
+### Step 3: Update TemplateProvider fallback
+
+Replace the hardcoded `import { PageNotFound } from '@we/pages/solid'` with an inline schema-rendered fallback using `RenderSchema`.
+
+### Step 4: Move layout SCSS into app-framework
+
+The SpacePage and DefaultTemplate SCSS defines sizing constraints (sidebar width, header height) via CSS variables and classes. Move these into `app-framework/` alongside the schema definitions that use them. Replace prop-expressible styles with design system props where possible to maintain consistency with how Twitter/weNative templates work.
+
+### Step 5: Clean up componentRegistry and schemaContext
+
+- Remove all page/template component imports and entries from `componentRegistry.tsx`
+- Update `schemaContext.ts` (AI prompt context) to remove page/template component docs and add HTML element docs
+
+### Step 6: Remove packages
 
 1. Delete `packages/design-system/6-pages/`
 2. Delete `packages/design-system/7-templates/`
-3. Update docs/README.md and package-conventions.md to reflect L1–L5 boundary
-4. Update architecture docs to document the schema-system-as-composition-layer pattern
+3. Remove `@we/pages` and `@we/templates` from all `package.json` dependencies
+4. Remove page/template style imports from `app-framework/src/frameworks/solid/index.ts`
+5. Update `pnpm-workspace.yaml` if needed
+
+### Step 7: Update docs
+
+- Update docs/README.md and package-conventions.md to reflect L1–L5 boundary
+- Update architecture docs to document the schema-system-as-composition-layer pattern
 
 ## Schema System Prerequisites
 
-Phase 1 requires the schema system to support:
+Only one small enhancement needed:
 
-- [ ] **`$slot` directive** — named slot insertion points in schema fragments (needed for SpacePage, DefaultTemplate, CenteredTemplate)
-- [ ] **Reusable schema fragments** — define a layout once, reference by name (template registry)
-- [ ] **Associated stylesheets** — a way to declare CSS that must be loaded when a schema fragment is used
-- [ ] **Schema-driven fallback route** — TemplateProvider.tsx currently imports PageNotFound as a hardcoded component; needs to render a schema node instead
+- [ ] **Native HTML element rendering** — SchemaRenderer fallback for lowercase tag names (renders as HTML elements instead of requiring registry entries)
 
-Trivial pages (HomePage, PageNotFound) can be converted immediately since they're just `Column + text` — no slot support needed. SpacePage and templates require `$slot`.
+No `$slot` directive needed — the slot *content* is already defined inline in schemas as TypeScript variables. When we inline the layout structure, contents go directly into the tree as `children`.
+
+## Future Schema System Enhancements (not blocking this PR)
+
+- **`$ref`/`$fragment` directive** — runtime reusable schema fragments for JSON-only schemas (seed files, AI-generated, localStorage). Currently, `.ts` schema files handle reuse via TypeScript variables at definition time. A runtime mechanism would enable fragment reuse in dynamic/non-TypeScript contexts.
+- **Associated stylesheets** — declare CSS that must load when a schema node renders. Currently handled by global style imports.
 
 ## What Stays
 
 - **L1–L5 packages** — tokens, themes, primitives, components, widgets (the design system)
-- **Template SCSS** — the CSS for layout structures still exists, moves into app-framework alongside schema definitions
-- **Schema template definitions** — `DefaultTemplate.schema.ts` etc. stay in app-framework, updated to use inline layout instead of referencing compiled components
+- **Layout SCSS** — the CSS for layout structures still exists, moves into app-framework alongside schema definitions
+- **Schema template definitions** — `DefaultTemplate.schema.ts` etc. stay in app-framework, updated to inline layouts
 
 ## Order of Operations
 
-1. **Build `$slot` support** in the schema system
-2. **Convert trivial pages** (HomePage, PageNotFound) to inline schema nodes — no `$slot` needed
-3. **Convert SpacePage and templates** to schema fragments using `$slot`
-4. **Update TemplateProvider** to use schema-driven fallback instead of imported component
-5. **Delete 6-pages and 7-templates packages**
-6. **Update docs** to reflect L1–L5 boundary
+1. **Add HTML element support** to SchemaRenderer
+2. **Inline DefaultTemplate layout** in DefaultTemplate.schema.ts and TestTemplate.schema.ts
+3. **Inline SpacePage layout** where used as a route node
+4. **Replace HomePage/PageNotFound** with inline schema nodes in routes
+5. **Update TemplateProvider** — schema-driven fallback instead of imported component
+6. **Move SCSS** into app-framework
+7. **Clean up componentRegistry** — remove page/template entries
+8. **Update schemaContext.ts** — remove page/template docs, add HTML element docs
+9. **Delete 6-pages and 7-templates packages**
+10. **Update docs** to reflect L1–L5 boundary
