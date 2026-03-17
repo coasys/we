@@ -4,9 +4,9 @@ import type {
   ComponentRegistry as SharedComponentRegistry,
   RendererOutput as SharedRendererOutput,
   RenderProps as SharedRenderProps,
-} from '../../shared/types';
+} from '@we/schema-shared';
 
-export type { SchemaNode } from '../../shared/types';
+export type { SchemaNode } from '@we/schema-shared';
 
 export type ComponentRegistry = SharedComponentRegistry<JSX.Element>;
 export type RenderProps = SharedRenderProps<JSX.Element>;

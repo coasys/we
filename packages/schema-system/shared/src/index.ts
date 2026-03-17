@@ -1,4 +1,5 @@
 export type {
+  ComponentRegistry,
   RenderProps,
   RendererOutput,
   SchemaNode,
