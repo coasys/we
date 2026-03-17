@@ -1,4 +1,4 @@
-import type { DesignSystemProps } from '@we/design-system-types';
+import type { DesignSystemProps } from '@we/design-types';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';

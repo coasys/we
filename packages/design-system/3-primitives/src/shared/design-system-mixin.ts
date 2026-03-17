@@ -1,5 +1,5 @@
-import type { DesignSystemProps } from '@we/design-system-types';
-import { designSystemKeys, filterProps, mergeProps, stateKeys } from '@we/design-system-utils';
+import type { DesignSystemProps } from '@we/design-types';
+import { designSystemKeys, filterProps, mergeProps, stateKeys } from '@we/design-utils';
 import { LitElement } from 'lit';
 import { property } from 'lit/decorators.js';
 

@@ -1,4 +1,4 @@
-import { designSystemKeys } from '@we/design-system-utils';
+import { designSystemKeys } from '@we/design-utils';
 
 const DESIGN_SYSTEM_PROPS = Object.fromEntries(designSystemKeys.map((key) => [key, `DesignSystemProps['${key}']`]));
 

@@ -1,5 +1,5 @@
-import { DesignSystemProps } from '@we/design-system-types';
-import { getMarginValues, getPaddingValues, getRadiusValues, mapFlexAxes, tokenVar } from '@we/design-system-utils';
+import { DesignSystemProps } from '@we/design-types';
+import { getMarginValues, getPaddingValues, getRadiusValues, mapFlexAxes, tokenVar } from '@we/design-utils';
 import type { Accessor } from 'solid-js';
 import { JSX } from 'solid-js';
 

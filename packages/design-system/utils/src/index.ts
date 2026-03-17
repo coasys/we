@@ -1,4 +1,4 @@
-import type { DesignSystemProps, FlexDirection } from '@we/design-system-types';
+import type { DesignSystemProps, FlexDirection } from '@we/design-types';
 
 export * from './iconSize';
 

@@ -1,5 +1,5 @@
-import type { FlexCrossAxis, FlexMainAxis } from '@we/design-system-types';
-import { designSystemKeys, filterProps, mergeProps } from '@we/design-system-utils';
+import type { FlexCrossAxis, FlexMainAxis } from '@we/design-types';
+import { designSystemKeys, filterProps, mergeProps } from '@we/design-utils';
 import { buildLayoutStyles, type LayoutProps } from '@we/solid-utils';
 import { createMemo, splitProps } from 'solid-js';
 

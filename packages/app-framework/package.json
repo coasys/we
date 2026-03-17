@@ -36,7 +36,7 @@
   "dependencies": {
     "@we/cesium-layers": "workspace:*",
     "@we/components": "workspace:*",
-    "@we/design-system-types": "workspace:*",
+    "@we/design-types": "workspace:*",
     "@we/primitives": "workspace:*",
     "@we/models": "workspace:*",
     "@we/pages": "workspace:*",

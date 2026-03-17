@@ -22,8 +22,8 @@ packages/
 ```
 packages/
 ├── design-system/
-│   ├── types/              → @we/design-system-types
-│   ├── utils/              → @we/design-system-utils
+│   ├── types/              → @we/design-types
+│   ├── utils/              → @we/design-utils
 │   ├── 1-tokens/           → @we/tokens
 │   ├── 2-themes/           → @we/themes
 │   ├── 3-primitives/       → @we/primitives
@@ -74,7 +74,7 @@ packages/
 
 Packages with strong standalone identity skip the prefix entirely: `@we/tokens`, `@we/primitives`, `@we/components`, `@we/models`.
 
-This means `@we/design-system-types` and `@we/design-system-utils` get renamed to `@we/design-types` and `@we/design-utils` as part of this restructure.
+This means `@we/design-types` and `@we/design-utils` get renamed to `@we/design-types` and `@we/design-utils` as part of this restructure.
 
 ---
 
@@ -154,8 +154,8 @@ packages:
 
 | Old | New | Notes |
 |-----|-----|-------|
-| `@we/design-system-types` | `@we/design-types` | Shorter prefix, consistent convention |
-| `@we/design-system-utils` | `@we/design-utils` | Shorter prefix, consistent convention |
+| `@we/design-types` | `@we/design-types` | Shorter prefix, consistent convention |
+| `@we/design-utils` | `@we/design-utils` | Shorter prefix, consistent convention |
 | `@we/schema-renderer` | removed | Split into two packages below |
 | — | `@we/schema-shared` | Framework-agnostic schema types, validators, resolvers |
 | — | `@we/schema-solid` | SolidJS schema renderer |
@@ -181,9 +181,9 @@ packages:
 
 ### Phase 2: Rename design-system internal packages
 
-10. Rename `@we/design-system-types` → `@we/design-types` in `packages/design-system/types/package.json`
-11. Rename `@we/design-system-utils` → `@we/design-utils` in `packages/design-system/utils/package.json`
-12. Update all consumers of `@we/design-system-types` and `@we/design-system-utils`:
+10. Rename `@we/design-types` → `@we/design-types` in `packages/design-system/types/package.json`
+11. Rename `@we/design-utils` → `@we/design-utils` in `packages/design-system/utils/package.json`
+12. Update all consumers of `@we/design-types` and `@we/design-utils`:
     - `packages/design-system/utils/package.json` (depends on types)
     - `packages/design-system/3-primitives/package.json` (depends on both)
     - `packages/design-system/4-components/package.json` (depends on utils)

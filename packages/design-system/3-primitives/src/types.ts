@@ -1,10 +1,10 @@
 export type { SizeToken, SizeValue, AvatarSizeToken, AvatarSizeValue, SpaceToken } from '@we/tokens';
 
-export type { DesignSystemProps } from '@we/design-system-types';
+export type { DesignSystemProps } from '@we/design-types';
 
 import type { SizeValue } from '@we/tokens';
 
-// TODO: review these types and move to @we/design-system-types
+// TODO: review these types and move to @we/design-types
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const allowedTextTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'small', 'b', 'i', 'span', 'label', 'div'] as const;

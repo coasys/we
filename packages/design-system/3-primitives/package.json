@@ -69,7 +69,7 @@
     }
   },
   "dependencies": {
-    "@we/design-system-utils": "workspace:*",
+    "@we/design-utils": "workspace:*",
     "@we/tokens": "workspace:*",
     "@floating-ui/dom": "^1.7.4",
     "@phosphor-icons/core": "^2.1.1",
@@ -92,7 +92,7 @@
     "@storybook/web-components-vite": "8.4.6",
     "@types/node": "^24.10.0",
     "@we/cli": "workspace:*",
-    "@we/design-system-types": "workspace:*",
+    "@we/design-types": "workspace:*",
     "eslint-plugin-lit": "^2.1.1",
     "storybook": "8.4.6",
     "tsup": "^8.5.1",
