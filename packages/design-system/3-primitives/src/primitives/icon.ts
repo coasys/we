@@ -1,4 +1,4 @@
-import { tokenVar } from '@we/design-system-utils';
+import { tokenVar } from '@we/design-utils';
 import { css, html, LitElement } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';

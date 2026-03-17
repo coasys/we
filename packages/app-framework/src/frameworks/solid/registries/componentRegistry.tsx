@@ -1,4 +1,4 @@
-import { BlockComposer } from '@we/block-composer-solid';
+import { BlockComposer } from '@we/block-solid';
 import {
   countryOutlinesLayer,
   h3HexagonsLayer,
@@ -19,7 +19,7 @@ import {
   Row,
 } from '@we/components/solid';
 import { HomePage, PageNotFound, SpacePage } from '@we/pages/solid';
-import type { ComponentRegistry } from '@we/schema-renderer/solid';
+import type { ComponentRegistry } from '@we/schema-solid';
 import { CenteredTemplate, DefaultTemplate } from '@we/templates/solid';
 import {
   CesiumGlobe,
@@ -83,7 +83,7 @@ export const componentRegistry: ComponentRegistry = {
   DefaultTemplate,
   CenteredTemplate,
 
-  // @we/block-composer
+  // @we/block-solid
   BlockComposer,
 
   // Testing

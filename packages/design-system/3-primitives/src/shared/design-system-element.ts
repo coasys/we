@@ -1,4 +1,4 @@
-import type { DesignSystemProps } from '@we/design-system-types';
+import type { DesignSystemProps } from '@we/design-types';
 import { LitElement } from 'lit';
 
 import { DesignSystemMixin } from './design-system-mixin';

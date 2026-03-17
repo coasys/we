@@ -1,5 +1,5 @@
 import { AIPromptExamples } from '@coasys/ad4m';
-import { TemplateSchema } from '@we/schema-renderer/shared';
+import { TemplateSchema } from '@we/schema-shared';
 
 interface SchemaPromptExample {
   request: string;

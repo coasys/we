@@ -1,4 +1,4 @@
-import '@we/block-composer-solid/styles';
+import '@we/block-solid/styles';
 
 import { Column, Row } from '@we/components/solid';
 import { JSX } from 'solid-js';

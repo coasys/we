@@ -1,4 +1,4 @@
-import type { DesignSystemProps, ElementState } from '@we/design-system-types';
+import type { DesignSystemProps, ElementState } from '@we/design-types';
 import {
   designSystemKeys,
   getMarginValues,
@@ -10,7 +10,7 @@ import {
   radiusKeys,
   stateKeys,
   tokenVar,
-} from '@we/design-system-utils';
+} from '@we/design-utils';
 
 /**
  * Design System CSS Generator

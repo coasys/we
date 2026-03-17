@@ -5,7 +5,7 @@
  * that can be used to embed their apps into WE launchers.
  */
 
-import type { SchemaNode } from '@we/schema-renderer/shared';
+import type { SchemaNode } from '@we/schema-shared';
 
 export interface WeSeedFile {
   /** Project metadata */

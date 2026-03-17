@@ -3,7 +3,8 @@ packages:
   - apps/playgrounds/*/*
   - packages/*
   - packages/design-system/*
-  - packages/block-composer/*
+  - packages/schema-system/*
+  - packages/block-system/*
   - packages/utils/*
 
 ignoredBuiltDependencies:

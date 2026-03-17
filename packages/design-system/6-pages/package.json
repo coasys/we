@@ -33,7 +33,7 @@
     "@we/primitives": "^1.0.0",
     "@we/widgets": "^0.1.0",
     "solid-js": "^1.9.5",
-    "@we/block-composer-solid": "^0.1.0"
+    "@we/block-solid": "^0.1.0"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
@@ -42,7 +42,7 @@
     "@we/models": "workspace:*",
     "@we/tokens": "workspace:*",
     "@we/widgets": "workspace:*",
-    "@we/block-composer-solid": "workspace:*",
+    "@we/block-solid": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
     "sass": "^1.92.1",
     "solid-js": "^1.9.5",

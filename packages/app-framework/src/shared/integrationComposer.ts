@@ -15,7 +15,7 @@
  * - Each app has its own route
  */
 
-import type { TemplateSchema } from '@we/schema-renderer/shared';
+import type { TemplateSchema } from '@we/schema-shared';
 
 import type { WeSeedFile } from '../types/seed';
 import type { PlatformAdapter } from './platform/types';

@@ -19,14 +19,14 @@
     "dist"
   ],
   "dependencies": {
-    "@we/design-system-utils": "workspace:*"
+    "@we/design-utils": "workspace:*"
   },
   "peerDependencies": {
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
-    "@we/design-system-types": "workspace:*",
+    "@we/design-types": "workspace:*",
     "tsup": "^8.5.1",
     "solid-js": "^1.9.5",
     "esbuild-plugin-solid": "^0.6.0"

@@ -27,7 +27,7 @@
     "dist"
   ],
   "dependencies": {
-    "@we/design-system-utils": "workspace:*"
+    "@we/design-utils": "workspace:*"
   },
   "peerDependencies": {
     "@we/primitives": "^1.0.0",
@@ -38,7 +38,7 @@
     "@we/solid-utils": "workspace:*",
     "@we/primitives": "workspace:*",
     "@we/tokens": "workspace:*",
-    "@we/design-system-types": "workspace:*",
+    "@we/design-types": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
     "sass": "^1.92.1",
     "solid-js": "^1.9.5",

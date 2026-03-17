@@ -1,4 +1,4 @@
-import { iconSizeToVar, parseBorder, tokenVar } from '@we/design-system-utils';
+import { iconSizeToVar, parseBorder, tokenVar } from '@we/design-utils';
 import { IconSize } from 'packages/design-system/3-primitives/dist/types';
 import { createContext, createEffect, createMemo, createSignal, Index, type JSX, Show } from 'solid-js';
 import { Dynamic } from 'solid-js/web';

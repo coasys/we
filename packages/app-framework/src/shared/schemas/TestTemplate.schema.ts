@@ -1,5 +1,5 @@
-import type { TemplateSchema } from '@we/schema-renderer/shared';
-import { updateSchema } from '@we/schema-renderer/solid';
+import type { TemplateSchema } from '@we/schema-shared';
+import { updateSchema } from '@we/schema-solid';
 import { SetStoreFunction } from 'solid-js/store';
 
 import { deepClone } from '../utils';

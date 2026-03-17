@@ -1,4 +1,4 @@
-import type { TemplateSchema } from '@we/schema-renderer/shared';
+import type { TemplateSchema } from '@we/schema-shared';
 
 export const aiSampleTemplateSchema: TemplateSchema = {
   meta: { name: 'Base', description: '', icon: 'acorn' },

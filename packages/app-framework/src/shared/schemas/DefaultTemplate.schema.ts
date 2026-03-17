@@ -1,4 +1,4 @@
-import type { TemplateSchema } from '@we/schema-renderer/shared';
+import type { TemplateSchema } from '@we/schema-shared';
 
 const templateSidebar = {
   type: 'Column',

@@ -41,7 +41,7 @@
     "@types/d3-force": "^3.0.10",
     "@we/cli": "workspace:*",
     "@we/components": "workspace:*",
-    "@we/design-system-utils": "workspace:*",
+    "@we/design-utils": "workspace:*",
     "@we/primitives": "workspace:*",
     "@we/models": "workspace:*",
     "@we/tokens": "workspace:*",

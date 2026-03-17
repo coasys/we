@@ -1,7 +1,7 @@
-import '@we/block-composer-solid/styles';
+import '@we/block-solid/styles';
 
 import { PerspectiveProxy } from '@coasys/ad4m';
-import { BlockComposer } from '@we/block-composer-solid';
+import { BlockComposer } from '@we/block-solid';
 import { Column } from '@we/components/solid';
 import { JSX } from 'solid-js';
 

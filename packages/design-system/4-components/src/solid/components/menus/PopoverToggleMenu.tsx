@@ -1,4 +1,4 @@
-import type { Placement } from '@we/design-system-types';
+import type { Placement } from '@we/design-types';
 import { Accessor, createMemo, createSignal, Index, JSX, Show } from 'solid-js';
 
 /**

@@ -1,0 +1,56 @@
+{
+  "name": "@we/block-solid",
+  "version": "0.1.0",
+  "description": "Composable block-based editor and renderer for posts, comments, pages, and more.",
+  "author": "James Weir",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "we-build",
+    "build:css": "sass src/styles/index.scss dist/styles/index.css --no-source-map --style=compressed",
+    "build:steps": "tsup && pnpm build:css"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles": {
+      "import": "./dist/styles/index.css",
+      "default": "./dist/styles/index.css"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@we/block-shared": "workspace:*",
+    "@lexical/list": "^0.30.0",
+    "@lexical/markdown": "^0.30.0",
+    "@lexical/rich-text": "^0.30.0",
+    "@lexical/utils": "^0.30.0",
+    "lexical": "^0.30.0",
+    "lexical-solid": "^0.21.0"
+  },
+  "peerDependencies": {
+    "@coasys/ad4m": "0.11.0",
+    "@we/components": "^0.1.0",
+    "@we/models": "^0.1.0",
+    "solid-js": "^1.9.5"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "@we/components": "workspace:*",
+    "@we/primitives": "workspace:*",
+    "@we/models": "workspace:*",
+    "esbuild-plugin-solid": "^0.6.0",
+    "sass": "^1.92.1",
+    "solid-js": "^1.9.5",
+    "tsup": "^8.5.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false
+}

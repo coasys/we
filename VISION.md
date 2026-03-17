@@ -45,7 +45,7 @@ A "social app" is just a specific seed that composes community templates, messag
 
 ### Schema-Driven UI
 
-WE's `@we/schema-renderer` turns JSON schemas into live interfaces. Define your data model, and the renderer handles forms, lists, detail views, and validation — no custom UI code needed for standard patterns. When you need custom behavior, drop in a component module.
+WE's `@we/schema-solid` turns JSON schemas into live interfaces. Define your data model, and the renderer handles forms, lists, detail views, and validation — no custom UI code needed for standard patterns. When you need custom behavior, drop in a component module.
 
 ### The Seed System
 
@@ -98,7 +98,7 @@ Start small, compose upward. The ecosystem gets richer with every module.
 ### Getting Started
 
 1. Explore the [design system](./packages/design-system) to understand the token → element → component → widget → page → template hierarchy
-2. Check the [schema-renderer](./packages/schema-renderer) for how schemas drive UI generation
+2. Check the [schema-system](./packages/schema-system) for how schemas drive UI generation
 3. Look at [Flux](https://github.com/juntofoundation/flux) as the reference application built on WE
 4. Read [SEED-SYSTEM.md](./SEED-SYSTEM.md) to understand how modules compose into deployable apps
 

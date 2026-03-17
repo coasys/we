@@ -1,5 +1,5 @@
 {
-  "name": "@we/design-system-utils",
+  "name": "@we/design-utils",
   "version": "0.1.0",
   "author": "James Weir",
   "license": "MIT",
@@ -20,7 +20,7 @@
   ],
   "devDependencies": {
     "@we/cli": "workspace:*",
-    "@we/design-system-types": "workspace:*",
+    "@we/design-types": "workspace:*",
     "@we/tokens": "workspace:*",
     "tsup": "^8.5.1"
   },
