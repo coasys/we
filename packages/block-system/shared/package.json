@@ -14,11 +14,11 @@
       "import": "./dist/index.js"
     }
   },
-  "peerDependencies": {
-    "@coasys/ad4m": "0.11.0"
-  },
   "dependencies": {
     "@we/models": "workspace:*"
+  },
+  "peerDependencies": {
+    "@coasys/ad4m": "0.11.0"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",

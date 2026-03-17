@@ -23,14 +23,14 @@ packages/
 
 Use the **shortest unambiguous** name within the `@we/` scope:
 
-| Package | Name | Rationale |
-|---------|------|-----------|
-| `schema-system/shared` | `@we/schema-shared` | Needs prefix — "shared" alone is ambiguous |
-| `schema-system/solid` | `@we/schema-solid` | Needs prefix — "solid" alone is ambiguous |
-| `design-system/types` | `@we/design-types` | Needs prefix — "types" alone is ambiguous |
-| `design-system/1-tokens` | `@we/tokens` | Standalone identity — unambiguous without prefix |
-| `block-system/models` | `@we/models` | Standalone identity — unambiguous without prefix |
-| `design-system/3-primitives` | `@we/primitives` | Standalone identity — unambiguous without prefix |
+| Package                      | Name                | Rationale                                        |
+| ---------------------------- | ------------------- | ------------------------------------------------ |
+| `schema-system/shared`       | `@we/schema-shared` | Needs prefix — "shared" alone is ambiguous       |
+| `schema-system/solid`        | `@we/schema-solid`  | Needs prefix — "solid" alone is ambiguous        |
+| `design-system/types`        | `@we/design-types`  | Needs prefix — "types" alone is ambiguous        |
+| `design-system/1-tokens`     | `@we/tokens`        | Standalone identity — unambiguous without prefix |
+| `block-system/models`        | `@we/models`        | Standalone identity — unambiguous without prefix |
+| `design-system/3-primitives` | `@we/primitives`    | Standalone identity — unambiguous without prefix |
 
 ## Package structure patterns
 
@@ -61,6 +61,7 @@ schema-system/
 ```
 
 **Characteristics:**
+
 - Separate `package.json`, `tsconfig.json`, `tsup.config.ts` per sub-package
 - Each sub-package has its own `src/` directory
 - Framework packages depend on shared via `workspace:*`
@@ -90,6 +91,7 @@ Used when the shared layer is **trivial or empty** and everything ships as one p
 ```
 
 **Characteristics:**
+
 - One `package.json` at the root
 - One `src/` with `shared/` and `solid/` subdirectories inside
 - Single build, single version

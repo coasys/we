@@ -2,4 +2,7 @@
 // export { dynamicTemplate, type DynamicTemplateProps } from './templates/old/dynamic/DynamicTemplate';
 
 export { DefaultTemplate, type DefaultTemplateProps } from '../templates/default/DefaultTemplate/DefaultTemplate.solid';
-export { CenteredTemplate, type CenteredTemplateProps } from '../templates/centered/CenteredTemplate/CenteredTemplate.solid';
+export {
+  CenteredTemplate,
+  type CenteredTemplateProps,
+} from '../templates/centered/CenteredTemplate/CenteredTemplate.solid';

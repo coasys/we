@@ -31,27 +31,28 @@ If 1000 communities each generate their own Recipe/Track/Post model, they create
 The universal building blocks for all content. Each has standardized properties and a default renderer. Every WE instance ships with these — they're always available, no installation needed.
 
 **Block types serve double duty:**
+
 1. **As composable content** — a recipe is a CollectionBlock containing TextBlocks, ImageBlocks, and ChecklistBlocks
 2. **As queryable data** — "find all AudioBlocks" gives you a music library; "find all CalendarBlocks" gives you events
 
 **Core Block Types:**
 
-| Block Type | Key Properties | Covers |
-|-----------|---------------|--------|
-| `TextBlock` | text, format, direction, indent, textStyle, tag, listType | Headings, paragraphs, quotes, lists, code snippets |
-| `ImageBlock` | src, altText, width, height, caption | Photos, artwork, screenshots, diagrams |
-| `AudioBlock` | title, duration, src, mimeType, bitrate, waveformData, albumArt | Music tracks, podcast episodes, voice memos, sound effects |
-| `VideoBlock` | title, duration, src, mimeType, resolution, thumbnail | Movies, clips, streams, tutorials |
-| `FileBlock` | name, size, mimeType, src, checksum | Generic binary files, documents |
-| `CodeBlock` | code, language, filename | Source code, config snippets |
-| `TableBlock` | columns[], rows[] | Data tables, spreadsheets, nutrition info |
-| `ChecklistBlock` | items (text, checked) | Todo lists, ingredient lists, checklists |
-| `MapBlock` | lat, lng, zoom, markers[] | Locations, routes, geographic data |
-| `CalendarBlock` | events (date, title, description) | Schedules, timelines, event listings |
-| `PollBlock` | question, options[], votes | Polls, surveys, voting |
-| `EmbedBlock` | url, provider, embedType | External content, iframes, widgets |
-| `LinkBlock` | url, title, description, thumbnail | Bookmarks, link previews |
-| `CollectionBlock` | display, direction, ordering | Playlists, albums, folders, galleries, any grouping |
+| Block Type        | Key Properties                                                  | Covers                                                     |
+| ----------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
+| `TextBlock`       | text, format, direction, indent, textStyle, tag, listType       | Headings, paragraphs, quotes, lists, code snippets         |
+| `ImageBlock`      | src, altText, width, height, caption                            | Photos, artwork, screenshots, diagrams                     |
+| `AudioBlock`      | title, duration, src, mimeType, bitrate, waveformData, albumArt | Music tracks, podcast episodes, voice memos, sound effects |
+| `VideoBlock`      | title, duration, src, mimeType, resolution, thumbnail           | Movies, clips, streams, tutorials                          |
+| `FileBlock`       | name, size, mimeType, src, checksum                             | Generic binary files, documents                            |
+| `CodeBlock`       | code, language, filename                                        | Source code, config snippets                               |
+| `TableBlock`      | columns[], rows[]                                               | Data tables, spreadsheets, nutrition info                  |
+| `ChecklistBlock`  | items (text, checked)                                           | Todo lists, ingredient lists, checklists                   |
+| `MapBlock`        | lat, lng, zoom, markers[]                                       | Locations, routes, geographic data                         |
+| `CalendarBlock`   | events (date, title, description)                               | Schedules, timelines, event listings                       |
+| `PollBlock`       | question, options[], votes                                      | Polls, surveys, voting                                     |
+| `EmbedBlock`      | url, provider, embedType                                        | External content, iframes, widgets                         |
+| `LinkBlock`       | url, title, description, thumbnail                              | Bookmarks, link previews                                   |
+| `CollectionBlock` | display, direction, ordering                                    | Playlists, albums, folders, galleries, any grouping        |
 
 **Block type admission criteria:** A new block type = a new rendering primitive. If it needs a genuinely different renderer (a different kind of thing on screen), it's a new block type. If it's the same rendering with different domain meaning, it's an existing block type with a different `semanticRole`.
 
@@ -59,12 +60,12 @@ The universal building blocks for all content. Each has standardized properties 
 
 Fixed-schema, flat models for things that don't benefit from block-style composition:
 
-| Model | Properties | Purpose |
-|-------|-----------|---------|
-| `Space` | name, description, visibility, members[] | Named containers/communities |
-| `Profile` | displayName, bio, avatar, links[] | User/agent identity |
-| `Permission` | role, capabilities[] | Access control |
-| `Setting` | key, value | Configuration |
+| Model        | Properties                               | Purpose                      |
+| ------------ | ---------------------------------------- | ---------------------------- |
+| `Space`      | name, description, visibility, members[] | Named containers/communities |
+| `Profile`    | displayName, bio, avatar, links[]        | User/agent identity          |
+| `Permission` | role, capabilities[]                     | Access control               |
+| `Setting`    | key, value                               | Configuration                |
 
 ---
 
@@ -100,6 +101,7 @@ children: Block[] = [];
 ```
 
 This means:
+
 - **Ordering is a type-system guarantee** — enforced by the executor, not the UI layer
 - **All clients see the same order** — JS, MCP agents, Rust CLI, future consumers
 - **Concurrent edits resolve deterministically** — two agents reordering the same playlist get consistent results via RGA conflict resolution
@@ -131,6 +133,7 @@ AudioBlock {
 ```
 
 **Key properties:**
+
 - Multiple roles on a single block — no graph duplication
 - Add new roles without touching existing structure
 - Each perspective interprets the same block its own way
@@ -210,6 +213,7 @@ AD4M's `Ad4mModel` already provides a full query and subscription API — `findA
 The renderer sees `$query`, executes it through a **reactive query service**, and passes the resulting Solid signal to the component.
 
 **Other query examples:**
+
 ```json
 { "$query": { "model": "CollectionBlock", "where": { "semanticRole": { "contains": "music://playlist" } } } }
 { "$query": { "model": "Block", "parent": { "$expr": "route.params.playlistId" }, "through": "we://contains" } }
@@ -217,6 +221,7 @@ The renderer sees `$query`, executes it through a **reactive query service**, an
 ```
 
 **Mutations** use the `$action` token with the query service:
+
 ```json
 { "$action": "query.create", "args": ["AudioBlock", { "title": "New Track", "src": "..." }] }
 { "$action": "query.delete", "args": ["AudioBlock", "$arg.id"] }
@@ -261,14 +266,14 @@ const queryService = {
 
 These manage non-data concerns — authentication, routing, theming, templates, modals, AI. They're hand-written Solid contexts with specific logic:
 
-| Store | Purpose | Example Access |
-|-------|---------|---------------|
-| `adamStore` | AD4M client, agent auth, spaces | `$store: 'adamStore.me'` |
-| `routeStore` | Navigation state | `$store: 'routeStore.currentPath'` |
-| `themeStore` | Current theme | `$store: 'themeStore.currentTheme'` |
+| Store           | Purpose                            | Example Access                            |
+| --------------- | ---------------------------------- | ----------------------------------------- |
+| `adamStore`     | AD4M client, agent auth, spaces    | `$store: 'adamStore.me'`                  |
+| `routeStore`    | Navigation state                   | `$store: 'routeStore.currentPath'`        |
+| `themeStore`    | Current theme                      | `$store: 'themeStore.currentTheme'`       |
 | `templateStore` | Current schema, template switching | `$store: 'templateStore.currentTemplate'` |
-| `modalStore` | Modal visibility | `$action: 'modalStore.openModal'` |
-| `aiStore` | AI prompts, schema generation | `$action: 'aiStore.handleSchemaPrompt'` |
+| `modalStore`    | Modal visibility                   | `$action: 'modalStore.openModal'`         |
+| `aiStore`       | AI prompts, schema generation      | `$action: 'aiStore.handleSchemaPrompt'`   |
 
 These don't change. They manage auth state, routing, themes — things that aren't block queries.
 
@@ -279,8 +284,8 @@ Domain-specific logic that can't be expressed as a data query — audio playback
 ```typescript
 // What an app builder exports in their component package
 export const PlayerStore = defineAppStore({
-  name: "player",
-  dependencies: ["query"],  // declares what it needs, doesn't import framework internals
+  name: 'player',
+  dependencies: ['query'], // declares what it needs, doesn't import framework internals
 
   create: ({ query }) => {
     const [currentTrack, setCurrentTrack] = createSignal(null);
@@ -297,16 +302,24 @@ export const PlayerStore = defineAppStore({
     };
 
     return {
-      currentTrack, isPlaying, queue,
+      currentTrack,
+      isPlaying,
+      queue,
       playTrack,
-      pause: () => { audio.pause(); setIsPlaying(false); },
-      next: () => { /* queue logic */ },
+      pause: () => {
+        audio.pause();
+        setIsPlaying(false);
+      },
+      next: () => {
+        /* queue logic */
+      },
     };
-  }
+  },
 });
 ```
 
 **Schema usage:**
+
 ```json
 { "$store": "player.currentTrack" }
 { "$store": "player.isPlaying" }
@@ -314,6 +327,7 @@ export const PlayerStore = defineAppStore({
 ```
 
 **Key design decisions:**
+
 - App stores **declare dependencies**, not import them — keeps packages decoupled from framework internals
 - Store namespaces must be **collision-safe** — two packages can't both register `player`
 - Registration is **dynamic** — happens when a component package is installed, not at build time
@@ -374,15 +388,33 @@ Data flows cleanly: `$query` is the reactive data layer, `$store` is the logic l
   },
   "type": "Row",
   "children": [
-    { "type": "PlaylistSidebar", "props": {
-      "playlists": { "$query": { "model": "CollectionBlock", "where": { "semanticRole": { "contains": "music://playlist" } } } }
-    } },
-    { "type": "$routes", "routes": [
-      { "path": "/", "type": "TrackList", "props": {
-        "tracks": { "$query": { "model": "AudioBlock", "where": { "semanticRole": { "contains": "music://track" } }, "order": { "title": "ASC" } } }
-      } },
-      { "path": "/playlist/:id", "type": "PlaylistView" }
-    ] }
+    {
+      "type": "PlaylistSidebar",
+      "props": {
+        "playlists": {
+          "$query": { "model": "CollectionBlock", "where": { "semanticRole": { "contains": "music://playlist" } } }
+        }
+      }
+    },
+    {
+      "type": "$routes",
+      "routes": [
+        {
+          "path": "/",
+          "type": "TrackList",
+          "props": {
+            "tracks": {
+              "$query": {
+                "model": "AudioBlock",
+                "where": { "semanticRole": { "contains": "music://track" } },
+                "order": { "title": "ASC" }
+              }
+            }
+          }
+        },
+        { "path": "/playlist/:id", "type": "PlaylistView" }
+      ]
+    }
   ],
   "slots": {
     "footer": { "type": "MusicPlayer", "props": { "current": { "$store": "player.currentTrack" } } }
@@ -391,18 +423,21 @@ Data flows cleanly: `$query` is the reactive data layer, `$store` is the logic l
 ```
 
 **Receiver opens it in WE:**
+
 1. WE resolves dependencies — installs `@we-pkg/music` component package if needed
 2. `$query` props resolve against built-in block types (AudioBlock, CollectionBlock) via the reactive query service — no stores to install for data access
 3. `$store` props for `player.*` resolve against the dynamically registered PlayerStore from the package
 4. Experience renders immediately
 
 **Receiver remixes it:**
+
 1. "Add the music player from Harmony as a persistent footer in my main template"
 2. AI extracts the MusicPlayer component reference and store bindings from the Harmony schema
 3. Splices them into the user's root schema
 4. Done — pure JSON surgery, no code changes
 
 **Competing apps share data:**
+
 - Two different music apps both use `$query: { model: "AudioBlock", where: { semanticRole: { contains: "music://track" } } }`
 - Same Ad4mModel query, same SurrealDB subscription, same music library — different UIs
 - Switch apps freely, data stays

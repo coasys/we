@@ -15,6 +15,7 @@ Meanwhile, the platforms that do achieve integration (social networks, app store
 Instead of building apps, contributors build **modules** — reusable pieces at every level of abstraction. These span the entire stack:
 
 ### Design System Modules
+
 The visual building blocks, each layer composing from those below:
 
 - **Design tokens** — colors, spacing, typography that define a visual identity
@@ -24,11 +25,13 @@ The visual building blocks, each layer composing from those below:
 - **Pages** — complete views composed from widgets (a feed page, a settings page)
 
 ### Content & Composition Modules
+
 - **Blocks** — composable content units for the block composer (text blocks, image blocks, embed blocks, code blocks) that users arrange freely within pages
 - **Themes** — complete visual identities (token sets + styling) shareable across deployments
 - **Templates** — full application shells ready to customize (a social app, a project manager, a marketplace)
 
 ### Feature Modules
+
 Self-contained systems that can be installed into any community:
 
 - **Layer systems** — rich interactive modules with their own sub-module ecosystems (e.g., the Cesium globe layer with geographic visualization, spatial exploration, and location-based community mapping)
@@ -37,6 +40,7 @@ Self-contained systems that can be installed into any community:
 - **Integration modules** — bridges to external systems, data imports, API connectors
 
 ### Shareable via Module Marketplace
+
 All of these — from a single design token to a complete governance system — are shareable through the same module marketplace. Install a theme, a block type, or an entire economics layer with the same mechanism.
 
 A "social app" is just a specific seed that composes community templates, messaging widgets, a governance module for moderation, and a theme — all the way down to design tokens.
@@ -50,6 +54,7 @@ WE's `@we/schema-solid` turns JSON schemas into live interfaces. Define your dat
 ### The Seed System
 
 Every WE deployment starts from a **seed file** (`we-seed.json`) — a single configuration that defines:
+
 - Which modules to include
 - How to arrange and theme them
 - Platform-specific settings (web, desktop, mobile)
@@ -68,6 +73,7 @@ WE's data layer is [AD4M](https://ad4m.dev) — an agent-centric, distributed ap
 ### Multi-Platform from Day One
 
 WE runs everywhere through platform adapters:
+
 - **Web** — browser-based, zero install
 - **Electron** — full desktop experience on Linux, macOS, Windows
 - **Tauri** — lightweight Rust-based desktop alternative
@@ -89,6 +95,7 @@ The goal isn't just another framework. It's infrastructure for a new kind of int
 **Don't think "build an app." Think "contribute a module."**
 
 The most valuable contributions fit into the composability stack:
+
 - A better date picker element → every app that uses dates improves
 - A kanban board widget → any template can drag it in
 - A meditation timer page → seed it into a wellness community template
@@ -105,6 +112,7 @@ Start small, compose upward. The ecosystem gets richer with every module.
 ### For AI Agents
 
 WE is designed to be AI-friendly:
+
 - Schema-driven UI means agents can generate interfaces from data models
 - The module system means agents can contribute composable pieces, not monolithic apps
 - AD4M's MCP server provides structured tool access to the data layer
@@ -112,4 +120,4 @@ WE is designed to be AI-friendly:
 
 ---
 
-*WE exists because the tools we use to connect should be as distributed and composable as the communities that use them.*
+_WE exists because the tools we use to connect should be as distributed and composable as the communities that use them._
