@@ -99,7 +99,7 @@ The SpacePage and DefaultTemplate SCSS defines sizing constraints (sidebar width
 
 Only one small enhancement needed:
 
-- [ ] **Native HTML element rendering** — SchemaRenderer fallback for lowercase tag names (renders as HTML elements instead of requiring registry entries)
+- [x] **Native HTML element rendering** — SchemaRenderer fallback for lowercase tag names (renders as HTML elements instead of requiring registry entries)
 
 No `$slot` directive needed — the slot *content* is already defined inline in schemas as TypeScript variables. When we inline the layout structure, contents go directly into the tree as `children`.
 

@@ -18,9 +18,7 @@ import {
   RerenderLog,
   Row,
 } from '@we/components/solid';
-import { HomePage, PageNotFound, SpacePage } from '@we/pages/solid';
 import type { ComponentRegistry } from '@we/schema-solid';
-import { CenteredTemplate, DefaultTemplate } from '@we/templates/solid';
 import {
   CesiumGlobe,
   CollapsibleSidebar,
@@ -73,15 +71,6 @@ export const componentRegistry: ComponentRegistry = {
   CesiumGlobe: (props) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
   // Inject mockGraphData dependency
   GraphWidget: (props) => <GraphWidget {...props} data={props.data || mockGraphData} />,
-
-  // @we/pages
-  PageNotFound,
-  HomePage,
-  SpacePage,
-
-  // @we/templates
-  DefaultTemplate,
-  CenteredTemplate,
 
   // @we/block-solid
   BlockComposer,

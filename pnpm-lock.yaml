@@ -326,9 +326,6 @@ importers:
       '@we/models':
         specifier: workspace:*
         version: link:../block-system/models
-      '@we/pages':
-        specifier: workspace:*
-        version: link:../design-system/6-pages
       '@we/primitives':
         specifier: workspace:*
         version: link:../design-system/3-primitives
@@ -338,9 +335,6 @@ importers:
       '@we/schema-solid':
         specifier: workspace:*
         version: link:../schema-system/solid
-      '@we/templates':
-        specifier: workspace:*
-        version: link:../design-system/7-templates
       '@we/themes':
         specifier: workspace:*
         version: link:../design-system/2-themes
@@ -671,83 +665,6 @@ importers:
       vite-plugin-cesium:
         specifier: ^1.2.23
         version: 1.2.23(cesium@1.139.1)(rollup@4.59.0)(vite@7.3.1(@types/node@24.12.0)(sass@1.98.0)(tsx@4.21.0)(yaml@2.8.2))
-
-  packages/design-system/6-pages:
-    dependencies:
-      '@coasys/ad4m':
-        specifier: file:../../../../ad4m/core
-        version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-    devDependencies:
-      '@we/block-solid':
-        specifier: workspace:*
-        version: link:../../block-system/solid
-      '@we/cli':
-        specifier: workspace:*
-        version: link:../../cli
-      '@we/components':
-        specifier: workspace:*
-        version: link:../4-components
-      '@we/models':
-        specifier: workspace:*
-        version: link:../../block-system/models
-      '@we/primitives':
-        specifier: workspace:*
-        version: link:../3-primitives
-      '@we/tokens':
-        specifier: workspace:*
-        version: link:../1-tokens
-      '@we/widgets':
-        specifier: workspace:*
-        version: link:../5-widgets
-      esbuild-plugin-solid:
-        specifier: ^0.6.0
-        version: 0.6.0(esbuild@0.27.4)(solid-js@1.9.11)
-      sass:
-        specifier: ^1.92.1
-        version: 1.98.0
-      solid-js:
-        specifier: ^1.9.5
-        version: 1.9.11
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
-
-  packages/design-system/7-templates:
-    dependencies:
-      zod:
-        specifier: ^4.1.11
-        version: 4.3.6
-    devDependencies:
-      '@we/cli':
-        specifier: workspace:*
-        version: link:../../cli
-      '@we/components':
-        specifier: workspace:*
-        version: link:../4-components
-      '@we/pages':
-        specifier: workspace:*
-        version: link:../6-pages
-      '@we/primitives':
-        specifier: workspace:*
-        version: link:../3-primitives
-      '@we/tokens':
-        specifier: workspace:*
-        version: link:../1-tokens
-      '@we/widgets':
-        specifier: workspace:*
-        version: link:../5-widgets
-      esbuild-plugin-solid:
-        specifier: ^0.6.0
-        version: 0.6.0(esbuild@0.27.4)(solid-js@1.9.11)
-      sass:
-        specifier: ^1.92.1
-        version: 1.98.0
-      solid-js:
-        specifier: ^1.9.5
-        version: 1.9.11
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
 
   packages/design-system/types:
     devDependencies:
