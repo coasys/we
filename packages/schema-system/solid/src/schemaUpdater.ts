@@ -1,9 +1,8 @@
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { findMutations } from '@we/schema-shared';
+import { validateSchema } from '@we/schema-shared';
 import { batch } from 'solid-js';
 import { produce, SetStoreFunction } from 'solid-js/store';
-
-import { findMutations } from '@we/schema-shared';
-import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { validateSchema } from '@we/schema-shared';
 
 // TODO: test & improve
 function cleanSchemaNode(node: any): any {

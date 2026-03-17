@@ -1,10 +1,9 @@
-import type { JSX } from 'solid-js';
-
 import type {
   ComponentRegistry as SharedComponentRegistry,
   RendererOutput as SharedRendererOutput,
   RenderProps as SharedRenderProps,
 } from '@we/schema-shared';
+import type { JSX } from 'solid-js';
 
 export type { SchemaNode } from '@we/schema-shared';
 
