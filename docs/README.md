@@ -38,4 +38,4 @@ Working notes for maintainers.
 
 - [Todos](internal/todos.md)
 - [Block System Notes](internal/block-system-notes.md)
-- [Package Restructure Plan](internal/package-restructure-plan.md)
+- [plans/](internal/plans/) — Strategy docs for upcoming work (delete after merging)
