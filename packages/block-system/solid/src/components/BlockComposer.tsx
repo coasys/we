@@ -2,8 +2,9 @@ import { PerspectiveProxy } from '@coasys/ad4m';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { CHECK_LIST, HEADING, ORDERED_LIST, QUOTE, UNORDERED_LIST } from '@lexical/markdown';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
+import type { BlockComposerProps, SerializedBlockNode } from '@we/block-shared';
+import { createBlocks } from '@we/block-shared';
 import { Column, Row } from '@we/components/solid';
-import { Block, CollectionBlock, ImageBlock, TextBlock } from '@we/models';
 import {
   ContentEditable,
   HistoryPlugin,
@@ -23,107 +24,18 @@ import IndentationPlugin from '../plugins/IndentationPlugin';
 import PlaceholdersPlugin from '../plugins/PlaceholdersPlugin';
 import SlashCommandPlugin from '../plugins/SlashCommandPlugin';
 
-// type BlockType = ImageBlock | TextBlock | CollectionBlock;
-type Post = any; // Partial<BlockType & { children?: Post[] }> & SerializedRootNode<SerializedLexicalNode>;
-
-type BlockComposerProps = {
-  post?: Post;
-  perspective: PerspectiveProxy;
-};
-
 function SaveButton({ perspective }: { perspective: PerspectiveProxy }) {
-  // console.log('999 save');
-  // TODO: may need to return early here if ad4mClient or perspective isnt ready
   const [editor] = useLexicalComposerContext();
-
-  async function createBlocks(node: Post, parent?: Post, existingBatchId?: string) {
-    let blockType = '';
-    if (node.type === 'root') blockType = 'collection';
-    if (['text', 'paragraph', 'heading', 'quote', 'list', 'listitem'].includes(node.type)) blockType = 'text';
-    if (node.type === 'image') blockType = 'image';
-
-    // Create batch
-    const batchId = existingBatchId || (await perspective.createBatch());
-    console.log('Creating blocks in batch:', batchId);
-
-    // Create block
-    const blockWrapper = new Block(perspective, undefined);
-    blockWrapper.type = blockType;
-    await blockWrapper.save(batchId);
-    console.log('blockWrapper', blockWrapper);
-
-    // Create collection block
-    if (blockType === 'collection') {
-      const elementNode = node as Post;
-      const collectionBlock = new CollectionBlock(perspective, undefined);
-      collectionBlock.type = elementNode.type || '';
-      collectionBlock.display = elementNode.display || '';
-      collectionBlock.direction = elementNode.direction || '';
-      collectionBlock.format = elementNode.format || '';
-      collectionBlock.indent = elementNode.indent || 0;
-      collectionBlock.version = elementNode.version || 0;
-      console.log('collectionBlock', collectionBlock);
-      await collectionBlock.save(batchId);
-    }
-
-    // Create text block
-    if (blockType === 'text') {
-      const elementNode = node as any;
-      const textBlock = new TextBlock(perspective, undefined);
-      textBlock.type = elementNode.type || '';
-      textBlock.direction = elementNode.direction || '';
-      textBlock.format = elementNode.format || '';
-      textBlock.indent = elementNode.indent || 0;
-      textBlock.textFormat = elementNode.textFormat || 0;
-      textBlock.textStyle = elementNode.textStyle || '';
-      textBlock.listType = elementNode.listType || '';
-      textBlock.start = elementNode.start || 0;
-      textBlock.tag = elementNode.tag || '';
-      textBlock.text = elementNode.text || '';
-      textBlock.version = elementNode.version || 0;
-      console.log('textBlock', textBlock);
-      await textBlock.save(batchId);
-    }
-
-    if (node.type === 'image') {
-      const elementNode = node as any;
-      const imageBlock = new ImageBlock(perspective, undefined);
-      imageBlock.type = elementNode.type || '';
-      imageBlock.src = elementNode.src || '';
-      imageBlock.altText = elementNode.altText || '';
-      imageBlock.width = elementNode.width || 0;
-      imageBlock.height = elementNode.height || 0;
-      imageBlock.version = elementNode.version || 0;
-      await imageBlock.save(batchId);
-      console.log('imageBlock', imageBlock);
-    }
-
-    if (node.children) {
-      node.baseExpression = blockWrapper.baseExpression;
-      for (const child of node.children) await createBlocks(child, node, batchId);
-    }
-
-    if (existingBatchId) return;
-    // Commit batch
-    console.log('Committing batch:', batchId);
-    await perspective.commitBatch(batchId);
-  }
 
   function save() {
     editor.update(async () => {
       const editorState = editor.getEditorState();
-      console.log('Editor State:', editorState);
-      console.log('Editor State JSON:', editorState.toJSON().root);
       const { root } = editorState.toJSON();
-      console.log('Root:', root);
-      console.log('Perspective:', perspective);
       if (!perspective) {
         console.error('No perspective available for saving blocks.');
         return;
       }
-      await createBlocks(root);
-
-      console.log('Saved!');
+      await createBlocks(perspective, root);
     });
   }
 
@@ -138,7 +50,7 @@ function SaveButton({ perspective }: { perspective: PerspectiveProxy }) {
 
 // question abgout ds component vs block distinction (especially for external devs)
 
-function LoadPostIntoEditor({ post }: { post?: Post }) {
+function LoadPostIntoEditor({ post }: { post?: SerializedBlockNode }) {
   // console.log('888 LoadPostIntoEditor post:', post);
   const [editor] = useLexicalComposerContext();
 
