@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { zSchemaNode, zTemplateSchema } from '../src/shared/zodSchemas';
+import { zSchemaNode, zTemplateSchema } from '../src/zodSchemas';
 
 describe('zodSchemas', () => {
   it('parses a minimal schema node', () => {

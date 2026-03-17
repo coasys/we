@@ -1,0 +1,30 @@
+{
+  "name": "@we/schema-solid",
+  "version": "0.1.0",
+  "description": "SolidJS schema renderer for WE",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@we/schema-shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "solid-js": "^1.9.5"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "esbuild-plugin-solid": "^0.6.0",
+    "solid-js": "^1.9.5",
+    "tsup": "^8.5.1"
+  },
+  "sideEffects": false
+}

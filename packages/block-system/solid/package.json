@@ -1,5 +1,5 @@
 {
-  "name": "@we/block-composer-solid",
+  "name": "@we/block-solid",
   "version": "0.1.0",
   "description": "Composable block-based editor and renderer for posts, comments, pages, and more.",
   "author": "James Weir",

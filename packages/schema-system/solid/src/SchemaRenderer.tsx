@@ -2,8 +2,8 @@ import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Sho
 import { createStore, produce } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
-import { resolveProp, resolveProps, splitProps } from '../../shared/propResolvers';
-import type { TransitionConfig } from '../../shared/types';
+import { resolveProp, resolveProps, splitProps } from '@we/schema-shared';
+import type { TransitionConfig } from '@we/schema-shared';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 
 export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { validateNode, validateSchema } from '../src/shared/validators';
+import { validateNode, validateSchema } from '../src/validators';
 
 describe('validators', () => {
   it('validates a node successfully', () => {

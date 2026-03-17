@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { findMutations } from '../src/shared/mutations';
+import { findMutations } from '../src/mutations';
 
 describe('mutations.findMutations (combined)', () => {
   it('detects primitive change', () => {

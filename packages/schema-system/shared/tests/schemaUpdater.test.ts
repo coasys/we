@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { updateSchema } from '../src/frameworks/solid/schemaUpdater';
+import { updateSchema } from '../../solid/src/schemaUpdater';
 
 describe('schemaUpdater.updateSchema (combined)', () => {
   it('applies small mutation via setSchema calls', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { hasToken, isDeepEqual, isObject, isPrimitive } from '../src/shared/predicates';
+import { hasToken, isDeepEqual, isObject, isPrimitive } from '../src/predicates';
 
 describe('predicates', () => {
   it('isObject detects plain objects', () => {

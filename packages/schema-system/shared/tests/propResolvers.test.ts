@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { resolveProp, resolveProps, splitProps } from '../src/shared/propResolvers';
+import { resolveProp, resolveProps, splitProps } from '../src/propResolvers';
 
 describe('propResolvers (combined)', () => {
   it('resolves $store single and nested paths', () => {
