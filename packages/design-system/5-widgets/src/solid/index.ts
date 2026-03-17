@@ -1,17 +1,23 @@
 // Modals
-export { CreateSpaceModalWidget, type CreateSpaceModalWidgetProps } from './widgets/modals/CreateSpaceModalWidget';
+export {
+  CreateSpaceModalWidget,
+  type CreateSpaceModalWidgetProps,
+} from '../widgets/modals/CreateSpaceModalWidget/CreateSpaceModalWidget.solid';
 
 // Sidebars
-export { SpaceSidebarWidget, type SpaceSidebarWidgetProps } from './widgets/sidebars/SpaceSidebarWidget';
+export {
+  SpaceSidebarWidget,
+  type SpaceSidebarWidgetProps,
+} from '../widgets/sidebars/SpaceSidebarWidget/SpaceSidebarWidget.solid';
 export {
   CollapsibleSidebar,
   CollapsibleSidebarContext,
   type CollapsibleSidebarProps,
   type CollapsibleSidebarItem,
-} from './widgets/sidebars/CollapsibleSidebar';
+} from '../widgets/sidebars/CollapsibleSidebar';
 
 // Cesium
-export { CesiumGlobe, type CesiumGlobeProps } from './widgets/cesium/CesiumGlobe';
+export { CesiumGlobe, type CesiumGlobeProps } from '../widgets/cesium/CesiumGlobe/CesiumGlobe.solid';
 export type {
   CesiumLayer,
   LayerFactory,
@@ -21,11 +27,11 @@ export type {
   LayerStore,
   LayerMetadata,
   CameraState,
-} from './widgets/cesium/types';
+} from '../widgets/cesium/CesiumGlobe/types';
 
 // Graph
-export { GraphWidget, type GraphWidgetProps } from './widgets/graph/GraphWidget';
-export { mockGraphData } from './widgets/graph/mockData';
+export { GraphWidget, type GraphWidgetProps } from '../widgets/graph/GraphWidget/GraphWidget.solid';
+export { mockGraphData } from '../widgets/graph/GraphWidget/mockData';
 export type {
   GraphData,
   GraphNode,
@@ -36,4 +42,4 @@ export type {
   EdgeStyleConfig,
   LayoutConfig,
   InteractionConfig,
-} from './widgets/graph/types';
+} from '../widgets/graph/GraphWidget/types';
