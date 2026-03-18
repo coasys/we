@@ -1,7 +1,9 @@
 import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
 import type { Placement } from '@we/design-types';
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement, property, query } from 'lit/decorators.js';
+
+import { LayoutElement } from '../shared/design-system-element';
 
 const CSS_STYLES = css`
   [popover] {
@@ -20,7 +22,7 @@ const CSS_STYLES = css`
 `;
 
 @customElement('we-popover')
-export default class Popover extends LitElement {
+export default class Popover extends LayoutElement {
   static styles = CSS_STYLES;
 
   @property({ type: Boolean, reflect: true }) open = false;

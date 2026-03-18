@@ -1,6 +1,7 @@
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement } from 'lit/decorators.js';
 
+import { LayoutVisualElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
 const styles = css`
@@ -15,7 +16,7 @@ const styles = css`
 `;
 
 @customElement('we-menu')
-export default class Menu extends LitElement {
+export default class Menu extends LayoutVisualElement {
   static styles = [sharedStyles, styles];
 
   render() {

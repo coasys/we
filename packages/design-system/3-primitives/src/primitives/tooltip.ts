@@ -7,16 +7,17 @@ import {
   Placement as FloatingPlacement,
   shift,
 } from '@floating-ui/dom';
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 
+import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import { Placement } from '../types';
 
 const CSS_STYLES = css`
   :host {
     position: relative;
-    display: inline-block;
+    --we-tooltip-host-display: inline-block;
   }
 
   [part='trigger'] {
@@ -63,7 +64,7 @@ const CSS_STYLES = css`
 `;
 
 @customElement('we-tooltip')
-export default class Tooltip extends LitElement {
+export default class Tooltip extends LayoutElement {
   static styles = [sharedStyles, CSS_STYLES];
 
   @property({ type: Boolean, reflect: true }) open = false;
