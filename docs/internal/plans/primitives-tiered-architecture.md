@@ -6,10 +6,10 @@ Refactor `@we/primitives` from its current split (some components extend `Design
 
 | Phase                                                                | Status      |
 | -------------------------------------------------------------------- | ----------- |
-| P1 — Define prop layers in `@we/design-utils`                        | Not started |
-| P2 — Refactor `DesignSystemMixin` to accept layers                   | Not started |
-| P3 — Refactor CSS generation + eliminate dynamic `<style>` injection | Not started |
-| P4 — Migrate bespoke components to tiered mixin                      | Not started |
+| P1 — Define prop layers in `@we/design-utils`                        | ✅ Complete  |
+| P2 — Refactor `DesignSystemMixin` to accept layers                   | ✅ Complete  |
+| P3 — Refactor CSS generation + eliminate dynamic `<style>` injection | ✅ Complete  |
+| P4 — Migrate bespoke components to tiered mixin                      | ✅ Complete  |
 | P5 — Fix stale Storybook stories + old `j-` references               | Not started |
 | P6 — Standardize event contract + a11y baseline                      | Not started |
 | P7 — Icon bundling + SVG sanitization                                | Not started |
