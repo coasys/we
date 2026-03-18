@@ -1,31 +1,35 @@
-import type { DesignSystemProps } from '@we/design-types';
+import type { DSLayer } from '@we/design-utils';
 import { LitElement } from 'lit';
 
 import { DesignSystemMixin } from './design-system-mixin';
 import { getDesignSystemCSS } from './helpers';
 
-// Base class for all design system elements
-export abstract class DesignSystemElement extends DesignSystemMixin(LitElement) {
-  // Style element to hold design system CSS
-  protected _dsStyle?: HTMLStyleElement;
+// Shared lifecycle logic for DS elements (dynamic style injection)
+function applyDSLifecycle<T extends new (...args: any[]) => any>(Base: T) {
+  return class extends Base {
+    protected _dsStyle?: HTMLStyleElement;
 
-  // Update the design system CSS based on current props
-  private _updateDesignSystem() {
-    if (!this._dsStyle) return;
-    this._dsStyle.textContent = getDesignSystemCSS(this, this.getInstanceProps());
-  }
+    private _updateDesignSystem() {
+      if (!this._dsStyle) return;
+      this._dsStyle.textContent = getDesignSystemCSS(this as any, (this as any).getInstanceProps());
+    }
 
-  firstUpdated() {
-    // Create a style element to hold design system CSS variables and append it to the render root
-    this._dsStyle = document.createElement('style');
-    this.renderRoot.appendChild(this._dsStyle);
+    firstUpdated() {
+      this._dsStyle = document.createElement('style');
+      (this as any).renderRoot.appendChild(this._dsStyle);
+      this._updateDesignSystem();
+    }
 
-    // Initial update of design system CSS
-    this._updateDesignSystem();
-  }
+    updated() {
+      this._updateDesignSystem();
+    }
+  };
+}
 
-  updated() {
-    // Update design system CSS whenever the component updates
-    this._updateDesignSystem();
-  }
+// Class form: default all layers, CEM-compatible (existing DS-aware components extend this)
+export abstract class DesignSystemElement extends applyDSLifecycle(DesignSystemMixin(LitElement)) {}
+
+// Factory form: returns a base class scoped to specific layers (for migrated components)
+export function DSElement(layers: DSLayer[]) {
+  return applyDSLifecycle(DesignSystemMixin(LitElement, layers));
 }
