@@ -2,6 +2,20 @@
 
 Post-refactoring work to solidify the schema-system foundation before feature generation.
 
+## Status
+
+| Phase | Commit | Status |
+|-------|--------|--------|
+| P1 — Signal fix, schemaVersion, $expr docs | `32e022d` | ✅ Complete |
+| P2 — ConditionalRenderer, camelCase props, resolveRelativePath, cleanSchemaNode | `244b253` | ✅ Complete |
+| P3 — Expanded zodSchemas (3→17) and schemaUpdater (3→10) tests | `607eaef` | ✅ Complete |
+| P4 — $and/$or operators, $action warnings | `db7a6cc` | ✅ Complete |
+| P4.3 — Schema-aware prop validation | — | ⏭️ Deferred (aspirational) |
+
+Branch: `feature/schema-system-hardening` (5 commits off `dev`)
+
+---
+
 ## Priority 1 — Must Fix Before Feature Work
 
 ### 1.1 Fix Signal Detection — `readSignal` Check Is Already Broken
@@ -213,13 +227,20 @@ Currently Zod validates schema _structure_ but not prop _values_ against compone
 
 ## Execution Order
 
+All items complete. Branch ready for review/merge to `dev`.
+
 ```
-1.1 signal detection fix  ← ACTIVE BUG, boot screen affected (tag w/ Symbol + fix 3 renderer sites)
-1.2 schemaVersion         ← trivial type addition
-1.3 $expr docs            ← documentation only
-2.1 extract transitions   ← refactor
-2.2 camelCase props       ← import change
-2.3 window.location fix   ← parameter change
-2.4 cleanSchemaNode       ← clone before mutate
-3.1-3.3 test coverage     ← ongoing, add alongside feature work
+1.1 signal detection fix  ✅ (32e022d)
+1.2 schemaVersion         ✅ (32e022d)
+1.3 $expr docs            ✅ (32e022d)
+2.1 extract transitions   ✅ (244b253)
+2.2 camelCase props       ✅ (244b253)
+2.3 window.location fix   ✅ (244b253)
+2.4 cleanSchemaNode       ✅ (244b253)
+3.1 zodSchemas tests      ✅ (607eaef) — 3→17 tests
+3.2 schemaUpdater tests   ✅ (607eaef) — 3→10 tests
+3.3 RenderSchema tests    ⏭️  deferred (needs solid-testing-library)
+4.1 $and/$or operators    ✅ (db7a6cc)
+4.2 $action warnings      ✅ (db7a6cc)
+4.3 schema-aware props    ⏭️  aspirational
 ```
