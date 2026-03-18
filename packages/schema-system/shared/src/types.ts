@@ -5,7 +5,6 @@ export type SchemaProp =
   | boolean
   | Record<string, unknown>
   | SchemaProp[]
-  | TransitionConfig
   | undefined;
 export type TemplateMeta = { name: string; description: string; icon: string };
 export type TemplateSchema = SchemaNode & { id?: string; schemaVersion?: number; meta: TemplateMeta };
