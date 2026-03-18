@@ -8,6 +8,18 @@ export type {
   TemplateSchema,
   RouteSchema,
   TransitionConfig,
+  StoreToken,
+  ExprToken,
+  ActionToken,
+  IfToken,
+  MapToken,
+  PickToken,
+  EqToken,
+  NeToken,
+  NotToken,
+  AndToken,
+  OrToken,
+  OperatorToken,
 } from './types';
 
 export { validateSchema } from './validators';

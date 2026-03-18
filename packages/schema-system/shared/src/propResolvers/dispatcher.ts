@@ -1,5 +1,4 @@
 import { hasToken } from '../predicates';
-
 import { resolveActionProp } from './action';
 import { resolveAndProp, resolveEqProp, resolveNeProp, resolveNotProp, resolveOrProp } from './comparisons';
 import { resolveIfProp } from './conditional';

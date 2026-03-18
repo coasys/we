@@ -43,3 +43,32 @@ export type RenderProps<NodeType = unknown> = {
 };
 
 export type RendererOutput<NodeType = unknown> = NodeType | null;
+
+// --- Operator Token Types ---
+// Opt-in types for schema authors. SchemaProp remains `Record<string, unknown>` for Zod compatibility.
+
+export type StoreToken = { $store: string };
+export type ExprToken = { $expr: string };
+export type ActionToken = { $action: string; args?: unknown[] };
+export type IfToken = { $if: { condition: unknown; then: unknown; else?: unknown } };
+export type MapToken = { $map: { items: unknown; select: Record<string, unknown> } };
+export type PickToken = { $pick: { from: unknown; props: string[] } };
+export type EqToken = { $eq: [unknown, unknown] };
+export type NeToken = { $ne: [unknown, unknown] };
+export type NotToken = { $not: unknown };
+export type AndToken = { $and: unknown[] };
+export type OrToken = { $or: unknown[] };
+
+/** Union of all prop-level operator tokens */
+export type OperatorToken =
+  | StoreToken
+  | ExprToken
+  | ActionToken
+  | IfToken
+  | MapToken
+  | PickToken
+  | EqToken
+  | NeToken
+  | NotToken
+  | AndToken
+  | OrToken;
