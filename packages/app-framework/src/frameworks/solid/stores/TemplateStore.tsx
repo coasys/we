@@ -2,7 +2,6 @@ import { templateRegistry } from '@shared/registries/templateRegistry';
 import { testMutations } from '@shared/schemas/TestTemplate.schema';
 import { deepClone } from '@shared/utils';
 import type { TemplateMeta, TemplateSchema } from '@we/schema-shared';
-import { validateSchema } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore } from 'solid-js/store';
@@ -62,9 +61,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   // Actions
   function updateTemplate(newTemplate: TemplateSchema) {
-    const { valid, errors } = validateSchema(newTemplate);
-    if (valid) updateSchema(currentTemplate, newTemplate, setCurrentTemplate);
-    else console.error('Invalid template schema:', errors);
+    updateSchema(currentTemplate, newTemplate, setCurrentTemplate);
   }
 
   async function switchTemplate(newTemplateId: string) {

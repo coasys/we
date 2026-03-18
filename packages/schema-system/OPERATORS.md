@@ -4,15 +4,67 @@ This document describes the operators available in the schema system for declara
 
 ## Table of Contents
 
+- [Prop-Level vs Renderer-Level Operators](#prop-level-vs-renderer-level-operators)
 - [Data Access Operators](#data-access-operators)
 - [Transformation Operators](#transformation-operators)
 - [Action Operators](#action-operators)
 - [Conditional Operators](#conditional-operators)
 - [Comparison Operators](#comparison-operators)
 - [Logical Operators](#logical-operators)
+- [Composing Operators](#composing-operators)
+- [Renderer Operators](#renderer-operators)
+- [Best Practices](#best-practices)
+- [Error Handling](#error-handling)
 - [Security](#security)
 
 ---
+
+## Prop-Level vs Renderer-Level Operators
+
+The schema system has **two categories** of operators:
+
+**Prop-level operators** (resolved by `resolveProp` in `@we/schema-shared`) — these appear inside `props` and produce a value:
+
+- `$store`, `$expr`, `$action`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$not`, `$and`, `$or`
+
+**Renderer-level operators** (handled by the framework-specific renderer) — these appear as the `type` field and control rendering structure:
+
+- `$if` (node), `$forEach`, `$routes`, and fragment (no `type`)
+
+### Dual-Use: `$if`
+
+The `$if` operator has two distinct forms:
+
+|                 | Node-Level                                          | Prop-Level                                               |
+| --------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| **Appears in**  | `{ type: '$if', props: { condition, then, else } }` | `{ $if: { condition, then, else } }` inside a prop value |
+| **Returns**     | Rendered DOM nodes                                  | A resolved value                                         |
+| **Transitions** | Supports `enterTransition`/`exitTransition`         | No                                                       |
+| **Handled by**  | Framework renderer (`SchemaRenderer`)               | `resolveProp()` in shared                                |
+
+**Node-level** — conditionally renders entire subtrees:
+
+```typescript
+{
+  type: '$if',
+  props: {
+    condition: { $store: 'userStore.isLoggedIn' },
+    then: { type: 'we-text', children: ['Welcome!'] },
+    else: { type: 'we-button', props: { label: 'Log In' } }
+  }
+}
+```
+
+**Prop-level** — conditionally resolves a value:
+
+```typescript
+{
+  type: 'we-text',
+  props: {
+    variant: { $if: { condition: { $store: 'appStore.isDark' }, then: 'light', else: 'dark' } }
+  }
+}
+```
 
 ## Data Access Operators
 
@@ -296,9 +348,11 @@ Call store methods, with support for argument extraction from callbacks.
 
 ## Conditional Operators
 
-### `$if`
+### `$if` (Prop-Level)
 
-Conditional rendering based on boolean condition.
+Conditional value resolution — resolves to `then` or `else` value based on condition.
+
+> **Note:** This is the prop-level form. For conditionally rendering entire DOM subtrees, use [node-level `$if`](#if-node-level-conditional) in the Renderer Operators section.
 
 **Syntax:**
 
@@ -306,8 +360,8 @@ Conditional rendering based on boolean condition.
 {
   $if: {
     condition: <boolean-expression>,
-    then: <schema-node>,
-    else?: <schema-node>
+    then: <value>,
+    else?: <value>
   }
 }
 ```
@@ -316,17 +370,14 @@ Conditional rendering based on boolean condition.
 
 ```typescript
 {
-  type: '$if',
+  type: 'we-text',
   props: {
-    condition: { $store: 'modalStore.isOpen' },
-    then: {
-      type: 'we-modal',
-      props: { ... },
-      children: [ ... ]
-    },
-    else: {
-      type: 'we-text',
-      children: ['Modal closed']
+    variant: {
+      $if: {
+        condition: { $store: 'appStore.isDark' },
+        then: 'light',
+        else: 'dark'
+      }
     }
   }
 }
@@ -535,6 +586,218 @@ Operators can be composed together for complex logic:
 - **Non-array/object in `$map`**: Returns `[]`
 - **Missing action store/method**: Returns `undefined` and logs warning
 - **Invalid `$arg` path**: Returns `undefined`
+
+---
+
+## Renderer Operators
+
+Renderer operators are handled by the framework-specific renderer (e.g. `@we/schema-solid`). They appear as the `type` field on a `SchemaNode` and control rendering structure rather than resolving values.
+
+### `$if` (Node-Level Conditional)
+
+Conditionally renders entire subtrees based on a boolean condition.
+
+**Syntax:**
+
+```typescript
+{
+  type: '$if',
+  props: {
+    condition: <boolean-expression>,
+    then: <SchemaNode>,
+    else?: <SchemaNode>,
+    enterTransition?: TransitionConfig,
+    exitTransition?: TransitionConfig
+  }
+}
+```
+
+**Examples:**
+
+```typescript
+// Simple conditional render
+{
+  type: '$if',
+  props: {
+    condition: { $store: 'modalStore.isOpen' },
+    then: {
+      type: 'we-modal',
+      props: { title: 'Settings' },
+      children: [{ type: 'we-text', children: ['Modal content'] }]
+    },
+    else: {
+      type: 'we-text',
+      children: ['Modal closed']
+    }
+  }
+}
+
+// With transitions
+{
+  type: '$if',
+  props: {
+    condition: { $store: 'sidebarStore.isVisible' },
+    then: { type: 'we-sidebar', children: [...] },
+    enterTransition: { type: 'fade', duration: 200 },
+    exitTransition: { type: 'fade', duration: 150 }
+  }
+}
+```
+
+**Transition types:** `fade`, `slide`, `scale` — configured via `TransitionConfig` (`type`, `duration`, `easing`, `delay`).
+
+**Notes:**
+
+- Delegates to `ConditionalRenderer` which uses Solid's `<Show>` component
+- Without transitions, switches instantly; with transitions, manages opacity and delayed unmounting
+- `else` branch is optional
+- Automatically unwraps reactive accessors in condition
+
+---
+
+### `$forEach`
+
+Iterate over an array and render a template for each item.
+
+**Syntax:**
+
+```typescript
+{
+  type: '$forEach',
+  props: {
+    items: <array-source>,
+    as?: '<context-key>'  // Default: 'item'
+  },
+  children: [<template-SchemaNode>]
+}
+```
+
+**Examples:**
+
+```typescript
+// Render a list of cards
+{
+  type: '$forEach',
+  props: {
+    items: { $store: 'templateStore.templates' },
+    as: 'template'
+  },
+  children: [{
+    type: 'we-card',
+    props: {
+      title: { $expr: 'template.meta.name' },
+      icon: { $expr: 'template.meta.icon' }
+    }
+  }]
+}
+```
+
+**How it works:**
+
+1. Resolves `items` prop (can be `$store`, literal array, etc.) and ensures it's an array
+2. For each item, creates a new context with the item available under the `as` key (default: `"item"`)
+3. Renders the first child node as the template for each item
+4. Uses Solid's `<For>` for efficient reactive list rendering
+
+---
+
+### `$routes`
+
+Placeholder for routed content. Marks where child route content should be inserted in a layout.
+
+**Syntax:**
+
+```typescript
+{
+  type: '$routes';
+}
+```
+
+**Example:**
+
+```typescript
+// Layout shell with routed content area
+{
+  type: 'we-layout',
+  children: [
+    { type: 'we-navbar', props: { title: 'My App' } },
+    { type: '$routes' },  // Route content renders here
+    { type: 'we-footer' }
+  ]
+}
+```
+
+**Notes:**
+
+- Returns whatever `children` are passed to `RenderSchema` by the host component
+- The actual routing logic is external — the renderer just inserts the routed content at this marker
+
+---
+
+### Fragment (No `type`)
+
+Renders children without a wrapper DOM element.
+
+**Syntax:**
+
+```typescript
+{
+  // No type property
+  children: [<SchemaNode>, ...]
+}
+```
+
+**Example:**
+
+```typescript
+// Group multiple nodes without a wrapper div
+{
+  children: [
+    { type: 'we-text', children: ['Hello'] },
+    { type: 'we-text', children: ['World'] },
+  ];
+}
+```
+
+**Notes:**
+
+- Detected when `node.type` is absent or falsy
+- Rendered as a JSX fragment (`<>...</>`)
+- Useful for conditional groups or organizing layout without extra DOM nodes
+
+---
+
+### HTML Element Passthrough
+
+Native HTML elements can be used directly via lowercase tag names.
+
+**Syntax:**
+
+```typescript
+{
+  type: 'div' | 'span' | 'button' | ...,
+  props: { /* HTML attributes */ },
+  children: [...]
+}
+```
+
+**Example:**
+
+```typescript
+{
+  type: 'div',
+  props: { class: 'container', style: 'padding: 16px' },
+  children: [
+    { type: 'we-text', children: ['Inside a plain div'] }
+  ]
+}
+```
+
+**Resolution order:**
+
+1. Check component registry (PascalCase names, `we-*` web components)
+2. If not found, check if lowercase — passed through as native HTML element
+3. If neither, throws error: `Schema node has unknown type`
 
 ---
 

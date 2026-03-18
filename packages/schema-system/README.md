@@ -9,13 +9,46 @@ The schema system provides a framework-agnostic, schema-driven UI renderer desig
 
 ## Features
 
-- **Schema-based UI:** Describe layouts, components, and routing using a flexible schema format.
-- **Dynamic props:** Supports `$store`, `$expr`, `$action`, `$map`, and `$pick` tokens for state, expressions, actions, array mapping, and object property selection.
-- **Routing:** Handles nested route trees and `$routes` outlets for dynamic page content.
-- **Slots:** Named slots for layout composition; renders slot content using a registry or as fragments.
-- **Component registry:** Looks up components by type from a registry, allowing apps to provide their own mapping.
-- **Extensible:** Shared logic and types for multi-framework support; only the rendering layer is framework-specific.
-- **AI-friendly:** Designed for automated UI generation and mutation, with conventions for slotting, routing, and layout.
+### Prop-Level Operators
+
+Operators that appear inside `props` and resolve to values:
+
+| Operator       | Purpose                     | Example                                             |
+| -------------- | --------------------------- | --------------------------------------------------- |
+| `$store`       | Reactive store access       | `{ $store: 'userStore.name' }`                      |
+| `$expr`        | JavaScript expression eval  | `{ $expr: '\`Hello ${user.name}\`' }`               |
+| `$action`      | Store method call           | `{ $action: 'store.method', args: ['$arg.id'] }`    |
+| `$map`         | Array/object transformation | `{ $map: { items: ..., select: { ... } } }`         |
+| `$pick`        | Property extraction         | `{ $pick: { from: ..., props: ['a', 'b'] } }`       |
+| `$if`          | Conditional value           | `{ $if: { condition: ..., then: 'a', else: 'b' } }` |
+| `$eq` / `$ne`  | Equality / inequality       | `{ $eq: [{ $store: 'x.role' }, 'admin'] }`          |
+| `$not`         | Logical NOT                 | `{ $not: { $store: 'x.locked' } }`                  |
+| `$and` / `$or` | Logical AND / OR            | `{ $and: [cond1, cond2] }`                          |
+
+### Renderer Operators
+
+Operators that appear as the `type` field and control rendering structure:
+
+| Operator         | Purpose                                         |
+| ---------------- | ----------------------------------------------- |
+| `$if` (node)     | Conditional rendering with optional transitions |
+| `$forEach`       | List rendering with context injection           |
+| `$routes`        | Route outlet placeholder                        |
+| Fragment         | Renders children without wrapper (no `type`)    |
+| HTML passthrough | Lowercase types render as native elements       |
+
+### Other Features
+
+- **Slots:** Named slots for layout composition
+- **Component registry:** PascalCase → registered component, `we-*` → web component, lowercase → HTML element
+- **REACTIVE_ACCESSOR:** Signal tagging for web component prop unwrapping
+- **Schema validation:** Zod-based validation with `validateSchema()`
+- **Schema mutations:** `findMutations()` for diff-based updates, `updateSchema()` for applying changes
+- **Schema versioning:** `schemaVersion` field for future migrations
+- **Transitions:** `TransitionConfig` for animated `$if` node show/hide (`fade`, `slide`, `scale`)
+- **Operator token types:** `StoreToken`, `ActionToken`, `OperatorToken`, etc. for typed schema authoring
+
+See [OPERATORS.md](./OPERATORS.md) for the full operator reference.
 
 ## Usage
 
@@ -53,9 +86,17 @@ The schema system provides a framework-agnostic, schema-driven UI renderer desig
 
 ## API
 
-- `RenderSchema`: Main renderer function/component for SolidJS (other frameworks can implement their own).
-- `ComponentRegistry`: Mapping of type strings to actual components.
-- `SchemaNode`, `RouteSchema`, `TemplateSchema`: Generic types for describing UI structure.
+### `@we/schema-shared`
+
+- **Types:** `SchemaNode`, `TemplateSchema`, `RouteSchema`, `SchemaProp`, `ComponentRegistry`, `RenderProps`, `RendererOutput`, `TransitionConfig`
+- **Operator token types:** `StoreToken`, `ExprToken`, `ActionToken`, `IfToken`, `MapToken`, `PickToken`, `EqToken`, `NeToken`, `NotToken`, `AndToken`, `OrToken`, `OperatorToken`
+- **Functions:** `resolveProp()`, `resolveProps()`, `splitProps()`, `validateSchema()`, `findMutations()`, `hasToken()`
+- **Constants:** `REACTIVE_ACCESSOR`
+
+### `@we/schema-solid`
+
+- **`RenderSchema`:** Main renderer component
+- **`updateSchema()`:** Apply mutations to a reactive Solid store
 
 ## License
 
