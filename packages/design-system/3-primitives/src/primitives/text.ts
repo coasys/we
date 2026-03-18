@@ -1,27 +1,19 @@
 import { tokenVar } from '@we/design-utils';
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
+import { LayoutTypographyElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import { SpaceToken, TextTag, TextVariant } from '../types';
 
 const styles = css`
-  :host {
-    display: flex;
-  }
-
   :host > *:first-child {
-    color: var(--we-color);
-    font-weight: var(--we-weight);
-    font-size: var(--we-font-size);
-    line-height: var(--we-line-height);
-    letter-spacing: var(--we-letter-spacing);
+    color: var(--we-text-color, inherit);
     font-family: var(--we-font-family);
-    text-transform: var(--we-transform);
   }
 
   :host([uppercase]) {
-    --we-transform: uppercase;
+    --we-text-text-transform: uppercase;
   }
 
   :host([tag='p']) {
@@ -46,7 +38,7 @@ const tagTemplates: Record<string, (content: unknown) => unknown> = {
 };
 
 @customElement('we-text')
-export default class Text extends LitElement {
+export default class Text extends LayoutTypographyElement {
   static styles = [sharedStyles, styles];
 
   @property({ type: String }) text?: string;
@@ -60,18 +52,16 @@ export default class Text extends LitElement {
   updated(changedProperties: Map<string, unknown>) {
     super.updated(changedProperties);
 
-    // Handle dynamic props
     if (changedProperties.has('size')) {
-      if (this.size) this.style.setProperty('--we-font-size', `var(--we-font-size-${this.size})`);
-      else this.style.removeProperty('--we-font-size');
+      if (this.size) this.style.setProperty('--we-text-font-size', `var(--we-font-size-${this.size})`);
+      else this.style.removeProperty('--we-text-font-size');
     }
     if (changedProperties.has('weight')) {
-      if (this.weight) this.style.setProperty('--we-weight', this.weight);
-      else this.style.removeProperty('--we-weight');
+      if (this.weight) this.style.setProperty('--we-text-font-weight', this.weight);
+      else this.style.removeProperty('--we-text-font-weight');
     }
     if (changedProperties.has('color')) {
-      // Use tokenVar to handle tokens, raw CSS values, and inherit
-      this.style.setProperty('--we-color', tokenVar('color', this.color, 'inherit'));
+      this.style.setProperty('--we-text-color', tokenVar('color', this.color, 'inherit'));
     }
   }
 
