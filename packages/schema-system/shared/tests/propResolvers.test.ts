@@ -159,8 +159,10 @@ describe('propResolvers (combined)', () => {
   });
 
   it('action with missing method should return undefined', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const missing = resolveProp({ $action: 'noStore.noMethod', args: [] }, {}, {});
     expect(missing).toBeUndefined();
+    spy.mockRestore();
   });
 
   it('resolvePickProp returns empty object when source is primitive', () => {
@@ -315,5 +317,77 @@ describe('propResolvers (combined)', () => {
     fn({ id: 'test-id', name: 'Test' });
 
     expect(callback).toHaveBeenCalledWith('test-id', 'static-value', 2);
+  });
+
+  // --- $and / $or operators ---
+
+  it('$and returns true when all operands are truthy', () => {
+    expect(resolveProp({ $and: [true, 1, 'yes'] }, {}, {})).toBe(true);
+  });
+
+  it('$and returns false when any operand is falsy', () => {
+    expect(resolveProp({ $and: [true, false, true] }, {}, {})).toBe(false);
+    expect(resolveProp({ $and: [1, 0] }, {}, {})).toBe(false);
+  });
+
+  it('$and short-circuits on first falsy value', () => {
+    // The $expr should never be evaluated because the first operand is false
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(resolveProp({ $and: [false, { $expr: 'this.would.break..' }] }, {}, {})).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('$and works with $store operands', () => {
+    const stores = { s: { a: () => true, b: () => false } };
+    expect(resolveProp({ $and: [{ $store: 's.a' }, { $store: 's.b' }] }, stores, {})).toBe(false);
+    const stores2 = { s: { a: () => true, b: () => true } };
+    expect(resolveProp({ $and: [{ $store: 's.a' }, { $store: 's.b' }] }, stores2, {})).toBe(true);
+  });
+
+  it('$or returns true when any operand is truthy', () => {
+    expect(resolveProp({ $or: [false, 0, 'yes'] }, {}, {})).toBe(true);
+    expect(resolveProp({ $or: [false, true] }, {}, {})).toBe(true);
+  });
+
+  it('$or returns false when all operands are falsy', () => {
+    expect(resolveProp({ $or: [false, 0, '', null] }, {}, {})).toBe(false);
+  });
+
+  it('$or short-circuits on first truthy value', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(resolveProp({ $or: [true, { $expr: 'this.would.break..' }] }, {}, {})).toBe(true);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('$and/$or compose with $not and $store', () => {
+    const stores = { s: { isAdmin: () => true, isLocked: () => false } };
+    // { $and: [{ $store: 's.isAdmin' }, { $not: { $store: 's.isLocked' } }] }
+    const result = resolveProp(
+      { $and: [{ $store: 's.isAdmin' }, { $not: { $store: 's.isLocked' } }] },
+      stores,
+      {},
+    );
+    expect(result).toBe(true);
+  });
+
+  // --- $action error handling ---
+
+  it('$action warns on missing store', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = resolveProp({ $action: 'noStore.noMethod', args: [] }, {}, {});
+    expect(result).toBeUndefined();
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('noStore'));
+    spy.mockRestore();
+  });
+
+  it('$action warns on missing method', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const stores = { myStore: { exists: () => {} } };
+    const result = resolveProp({ $action: 'myStore.missing', args: [] }, stores, {});
+    expect(result).toBeUndefined();
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('missing'));
+    spy.mockRestore();
   });
 });

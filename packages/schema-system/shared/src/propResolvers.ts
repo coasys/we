@@ -149,6 +149,10 @@ function resolveActionProp(value: unknown, context: Props, stores: Props, memo: 
       return method.apply(store, argsToUse);
     };
   }
+
+  // Warn on missing store or method for debuggability
+  if (!store) console.warn(`Schema $action: store "${storeName}" not found`);
+  else if (!method) console.warn(`Schema $action: method "${methodName}" not found on store "${storeName}"`);
 }
 
 // Resolves $map props: { $map: { items: { "$store": "templateStore.templates" }, select: { "name": "$item.meta.name", "icon": "$item.meta.icon" } } }
@@ -319,6 +323,28 @@ function resolveNotProp(value: unknown, stores: Props, context: Props, memo: Mem
   return !resolved;
 }
 
+// Resolves $and (logical and) props: { $and: [condA, condB, ...] }
+function resolveAndProp(value: unknown, stores: Props, context: Props, memo: Memo): unknown {
+  const operands = (value as { $and: unknown[] }).$and;
+  for (const operand of operands) {
+    let resolved = resolveProp(operand, stores, context, memo);
+    if (typeof resolved === 'function') resolved = resolved();
+    if (!resolved) return false;
+  }
+  return true;
+}
+
+// Resolves $or (logical or) props: { $or: [condA, condB, ...] }
+function resolveOrProp(value: unknown, stores: Props, context: Props, memo: Memo): unknown {
+  const operands = (value as { $or: unknown[] }).$or;
+  for (const operand of operands) {
+    let resolved = resolveProp(operand, stores, context, memo);
+    if (typeof resolved === 'function') resolved = resolved();
+    if (resolved) return true;
+  }
+  return false;
+}
+
 /**
  * Check if an object contains any schema tokens (keys starting with $)
  */
@@ -353,6 +379,8 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$not', 'object')) return resolveNotProp(value, stores, context, memo);
     if (hasToken(value, '$eq', 'array')) return resolveEqProp(value, stores, context, memo);
     if (hasToken(value, '$ne', 'array')) return resolveNeProp(value, stores, context, memo);
+    if (hasToken(value, '$and', 'array')) return resolveAndProp(value, stores, context, memo);
+    if (hasToken(value, '$or', 'array')) return resolveOrProp(value, stores, context, memo);
   }
 
   // Recursively resolve arrays

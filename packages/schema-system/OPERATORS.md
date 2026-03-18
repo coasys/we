@@ -9,6 +9,7 @@ This document describes the operators available in the schema system for declara
 - [Action Operators](#action-operators)
 - [Conditional Operators](#conditional-operators)
 - [Comparison Operators](#comparison-operators)
+- [Logical Operators](#logical-operators)
 - [Security](#security)
 
 ---
@@ -408,6 +409,69 @@ Not equal comparison.
 
 ---
 
+## Logical Operators
+
+### `$and`
+
+Logical AND — returns `true` if all operands are truthy. Short-circuits on the first falsy value.
+
+**Syntax:**
+
+```typescript
+{ $and: [<condition1>, <condition2>, ...] }
+```
+
+**Examples:**
+
+```typescript
+// Both must be true
+{ $and: [{ $store: 'userStore.isAdmin' }, { $not: { $store: 'appStore.isLocked' } }] }
+
+// Multiple conditions
+{ $and: [
+  { $store: 'userStore.isLoggedIn' },
+  { $ne: [{ $store: 'userStore.role' }, 'guest'] },
+  { $store: 'featureStore.isEnabled' }
+] }
+```
+
+---
+
+### `$or`
+
+Logical OR — returns `true` if any operand is truthy. Short-circuits on the first truthy value.
+
+**Syntax:**
+
+```typescript
+{ $or: [<condition1>, <condition2>, ...] }
+```
+
+**Examples:**
+
+```typescript
+// Either condition
+{ $or: [{ $store: 'userStore.isAdmin' }, { $store: 'userStore.isModerator' }] }
+
+// With nested operators
+{ $or: [
+  { $eq: [{ $store: 'userStore.role' }, 'admin'] },
+  { $and: [
+    { $store: 'userStore.isVerified' },
+    { $eq: [{ $store: 'userStore.role' }, 'editor'] }
+  ] }
+] }
+```
+
+**Notes:**
+
+- Both `$and` and `$or` take an array of operands
+- Operands can be any resolvable value (literals, `$store`, `$not`, `$eq`, `$ne`, nested `$and`/`$or`)
+- Short-circuit evaluation: `$and` stops on the first falsy value, `$or` stops on the first truthy value
+- Preferred over `$expr` for compound boolean logic (safe for untrusted schemas)
+
+---
+
 ## Composing Operators
 
 Operators can be composed together for complex logic:
@@ -464,7 +528,7 @@ Operators can be composed together for complex logic:
 - **Missing store/property**: Returns `undefined`
 - **Invalid `$expr`**: Returns `undefined` and logs error
 - **Non-array/object in `$map`**: Returns `[]`
-- **Missing action method**: Returns `undefined`
+- **Missing action store/method**: Returns `undefined` and logs warning
 - **Invalid `$arg` path**: Returns `undefined`
 
 ---
@@ -490,6 +554,6 @@ This is **not safe** for schemas from untrusted sources:
 
 **Alternatives to `$expr` for untrusted schemas:**
 
-- `$if` / `$eq` / `$ne` / `$not` — declarative conditionals (safe)
+- `$if` / `$eq` / `$ne` / `$not` / `$and` / `$or` — declarative conditionals (safe)
 - `$map` / `$pick` — declarative transformations (safe)
 - `$store` — reactive data access (safe, scoped to registered stores)
