@@ -1,7 +1,9 @@
 import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
 import type { Placement } from '@we/design-types';
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement, property, query } from 'lit/decorators.js';
+
+import { LayoutElement } from '../shared/design-system-element';
 
 const CSS_STYLES = css`
   [popover] {
@@ -20,7 +22,7 @@ const CSS_STYLES = css`
 `;
 
 @customElement('we-popover')
-export default class Popover extends LitElement {
+export default class Popover extends LayoutElement {
   static styles = CSS_STYLES;
 
   @property({ type: Boolean, reflect: true }) open = false;
@@ -33,7 +35,14 @@ export default class Popover extends LitElement {
 
   firstUpdated() {
     if (this.triggerElement) this.triggerElement.addEventListener('click', () => (this.open = !this.open));
+    this.addEventListener('keydown', this._onKeyDown);
   }
+
+  private _onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && this.open) {
+      this.open = false;
+    }
+  };
 
   private async updatePosition() {
     if (!this.triggerElement || !this.popoverElement) return;
@@ -83,7 +92,7 @@ export default class Popover extends LitElement {
 
   render() {
     return html`
-      <div part="trigger">
+      <div part="trigger" aria-expanded=${this.open ? 'true' : 'false'}>
         <slot name="trigger"></slot>
       </div>
 

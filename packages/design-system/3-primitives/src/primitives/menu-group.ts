@@ -1,7 +1,8 @@
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
+import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
 const styles = css`
@@ -64,7 +65,7 @@ const styles = css`
 `;
 
 @customElement('we-menu-group')
-export default class MenuGroup extends LitElement {
+export default class MenuGroup extends LayoutElement {
   static styles = [styles, sharedStyles];
 
   @property({ type: Boolean, reflect: true }) collapsible = false;

@@ -15,3 +15,5 @@ import './primitives/text';
 import './primitives/tooltip';
 import './primitives/tab';
 import './primitives/tabs';
+
+export { setIconResolver } from './primitives/icon';

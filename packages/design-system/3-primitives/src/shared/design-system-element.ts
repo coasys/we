@@ -1,31 +1,69 @@
-import type { DesignSystemProps } from '@we/design-types';
+import type { DSLayer } from '@we/design-utils';
 import { LitElement } from 'lit';
 
 import { DesignSystemMixin } from './design-system-mixin';
-import { getDesignSystemCSS } from './helpers';
+import { getStaticDSStyles, updateAllCustomVars } from './helpers';
 
-// Base class for all design system elements
-export abstract class DesignSystemElement extends DesignSystemMixin(LitElement) {
-  // Style element to hold design system CSS
-  protected _dsStyle?: HTMLStyleElement;
+type ComponentCtor = abstract new (...args: unknown[]) => LitElement;
 
-  // Update the design system CSS based on current props
-  private _updateDesignSystem() {
-    if (!this._dsStyle) return;
-    this._dsStyle.textContent = getDesignSystemCSS(this, this.getInstanceProps());
-  }
+// Cache of DS stylesheets — one per component class, created once, reused for all instances
+const dsStyleSheets = new WeakMap<ComponentCtor, CSSStyleSheet>();
 
-  firstUpdated() {
-    // Create a style element to hold design system CSS variables and append it to the render root
-    this._dsStyle = document.createElement('style');
-    this.renderRoot.appendChild(this._dsStyle);
+// Shared DS lifecycle: adopt static stylesheet + dirty-checked custom var updates
+function applyDSBehavior<T extends new (...args: any[]) => LitElement>(Base: T): T {
+  return class extends Base {
+    _prevDSSnapshot?: string;
+    _componentName?: string;
 
-    // Initial update of design system CSS
-    this._updateDesignSystem();
-  }
+    connectedCallback() {
+      super.connectedCallback();
+      const ctor = this.constructor as ComponentCtor;
+      this._componentName = this.tagName.toLowerCase().replace('we-', '');
 
-  updated() {
-    // Update design system CSS whenever the component updates
-    this._updateDesignSystem();
-  }
+      // Create and cache the static DS stylesheet (once per component class)
+      if (!dsStyleSheets.has(ctor)) {
+        const sheet = new CSSStyleSheet();
+        const layers = (ctor as any).__dsLayers as readonly DSLayer[] | undefined;
+        sheet.replaceSync(getStaticDSStyles(this._componentName, layers));
+        dsStyleSheets.set(ctor, sheet);
+      }
+
+      // Adopt the DS stylesheet after Lit's own styles (last = highest cascade priority)
+      const root = this.shadowRoot;
+      if (root) {
+        const sheet = dsStyleSheets.get(ctor)!;
+        if (!root.adoptedStyleSheets.includes(sheet)) {
+          root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+        }
+      }
+    }
+
+    updated() {
+      const props = (this as any).getInstanceProps();
+      const snapshot = JSON.stringify(props);
+      if (snapshot === this._prevDSSnapshot) return;
+      this._prevDSSnapshot = snapshot;
+      updateAllCustomVars(this, this._componentName!, props);
+    }
+  } as unknown as T;
 }
+
+// Class form: default all layers, CEM-compatible (existing DS-aware components extend this)
+export abstract class DesignSystemElement extends applyDSBehavior(DesignSystemMixin(LitElement)) {}
+
+// Factory form: returns a base class scoped to specific layers (for migrated components)
+export function DSElement(layers: DSLayer[]) {
+  return applyDSBehavior(DesignSystemMixin(LitElement, layers));
+}
+
+// Pre-built base classes for common layer combinations (CEM-compatible — no function call in extends)
+export abstract class LayoutElement extends applyDSBehavior(DesignSystemMixin(LitElement, ['layout'])) {}
+export abstract class LayoutTypographyElement extends applyDSBehavior(
+  DesignSystemMixin(LitElement, ['layout', 'typography']),
+) {}
+export abstract class LayoutVisualElement extends applyDSBehavior(
+  DesignSystemMixin(LitElement, ['layout', 'visual']),
+) {}
+export abstract class LayoutVisualTypographyElement extends applyDSBehavior(
+  DesignSystemMixin(LitElement, ['layout', 'visual', 'typography']),
+) {}

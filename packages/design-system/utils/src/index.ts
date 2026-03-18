@@ -2,9 +2,52 @@ import type { DesignSystemProps, FlexDirection } from '@we/design-types';
 
 export * from './iconSize';
 
-const colorKeys = ['bg', 'color'] as const;
-const visualEffectKeys = ['opacity', 'border', 'shadow', 'transform', 'transition'] as const;
-const typographyKeys = [
+// --- Shared sub-arrays (used by CSS helpers directly) ---
+export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;
+export const marginKeys = ['m', 'mx', 'my', 'mt', 'mr', 'mb', 'ml'] as const;
+export const radiusKeys = ['r', 'rr', 'rt', 'rb', 'rl', 'rtl', 'rtr', 'rbr', 'rbl'] as const;
+export const stateKeys = ['hoverProps', 'activeProps', 'focusProps', 'disabledProps'] as const;
+
+// --- DS Layer key arrays ---
+
+/** Layout layer: box model & positioning in parent. Every component gets this. */
+export const layoutKeys = [
+  'width',
+  'height',
+  'minWidth',
+  'minHeight',
+  'maxWidth',
+  'maxHeight',
+  'position',
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'zIndex',
+  'display',
+  'overflow',
+  ...marginKeys,
+] as const;
+
+/** Visual layer: appearance & decoration. Most components. */
+export const visualKeys = [
+  'bg',
+  'color',
+  'opacity',
+  'border',
+  'shadow',
+  'cursor',
+  'pointerEvents',
+  'transform',
+  'transition',
+  ...radiusKeys,
+] as const;
+
+/** Flex layer: container layout for arranging children. */
+export const flexKeys = ['direction', 'ax', 'ay', 'wrap', 'gap', ...paddingKeys] as const;
+
+/** Typography layer: text styling. */
+export const typographyKeys = [
   'textAlign',
   'fontWeight',
   'fontSize',
@@ -13,41 +56,34 @@ const typographyKeys = [
   'textDecoration',
   'textTransform',
 ] as const;
-const interactionKeys = ['cursor', 'pointerEvents'] as const;
-const layoutKeys = [
-  'height',
-  'width',
-  'minWidth',
-  'minHeight',
-  'maxWidth',
-  'maxHeight',
-  'display',
-  'direction',
-  'ax',
-  'ay',
-  'wrap',
-  'gap',
-  'overflow',
-  'zIndex',
-  'position',
-  'top',
-  'right',
-  'bottom',
-  'left',
-] as const;
-export const stateKeys = ['hoverProps', 'activeProps', 'focusProps', 'disabledProps'] as const;
-export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;
-export const marginKeys = ['m', 'mx', 'my', 'mt', 'mr', 'mb', 'ml'] as const;
-export const radiusKeys = ['r', 'rr', 'rt', 'rb', 'rl', 'rtl', 'rtr', 'rbr', 'rbl'] as const;
+
+// --- Layer composition ---
+
+export type DSLayer = 'layout' | 'visual' | 'flex' | 'typography' | 'state';
+
+export const layerKeyMap: Record<DSLayer, readonly string[]> = {
+  layout: layoutKeys,
+  visual: visualKeys,
+  flex: flexKeys,
+  typography: typographyKeys,
+  state: stateKeys,
+};
+
+/** Get the combined set of keys for the given layers (deduplicated). */
+export function getKeysForLayers(layers: DSLayer[]): string[] {
+  const keys = new Set<string>();
+  for (const layer of layers) {
+    for (const key of layerKeyMap[layer]) keys.add(key);
+  }
+  return [...keys];
+}
+
+// --- Backwards-compatible combined key array ---
 export const designSystemKeys = [
-  ...colorKeys,
-  ...visualEffectKeys,
-  ...typographyKeys,
-  ...interactionKeys,
   ...layoutKeys,
-  ...paddingKeys,
-  ...marginKeys,
-  ...radiusKeys,
+  ...visualKeys,
+  ...flexKeys,
+  ...typographyKeys,
   ...stateKeys,
   'styles',
 ] as const;

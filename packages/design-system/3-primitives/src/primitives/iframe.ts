@@ -1,11 +1,13 @@
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+
+import { LayoutElement } from '../shared/design-system-element';
 
 const CSS_STYLES = css`
   :host {
-    display: block;
-    width: 100%;
-    height: 100%;
+    --we-iframe-host-display: block;
+    --we-iframe-width: 100%;
+    --we-iframe-height: 100%;
   }
 
   iframe {
@@ -16,12 +18,12 @@ const CSS_STYLES = css`
 `;
 
 @customElement('we-iframe')
-export default class Iframe extends LitElement {
+export default class Iframe extends LayoutElement {
   static styles = CSS_STYLES;
 
   @property({ type: String }) src = '';
   @property({ type: String }) title = 'Embedded content';
-  @property({ type: String }) allow = 'camera; microphone; display-capture';
+  @property({ type: String }) allow = '';
 
   private iframe?: HTMLIFrameElement;
 
@@ -29,8 +31,18 @@ export default class Iframe extends LitElement {
     this.iframe = this.shadowRoot?.querySelector('iframe') ?? undefined;
   }
 
-  // Method to send messages to iframe
-  postMessage(data: unknown, targetOrigin = '*') {
+  /**
+   * Send a message to the embedded iframe.
+   * @param data The data to send.
+   * @param targetOrigin The expected origin of the iframe content. Must be specified explicitly.
+   */
+  postMessage(data: unknown, targetOrigin: string) {
+    if (!targetOrigin) {
+      console.warn(
+        'we-iframe: postMessage requires an explicit targetOrigin. Use "*" only if you understand the security implications.',
+      );
+      return;
+    }
     this.iframe?.contentWindow?.postMessage(data, targetOrigin);
   }
 

@@ -1,14 +1,15 @@
-import { tokenVar } from '@we/design-utils';
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
+import { LayoutVisualTypographyElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import { BadgeSize, BadgeVariant } from '../types';
 
 const styles = css`
   :host {
-    --we-badge-border-radius: var(--we-border-radius);
+    --we-badge-host-display: inline-flex;
+    --we-badge-radius: var(--we-border-radius);
     --we-badge-bg: var(--we-color-ui-100);
     --we-badge-color: var(--we-color-ui-500);
     --we-badge-font-size: var(--we-font-size-400);
@@ -40,20 +41,14 @@ const styles = css`
     --we-badge-color: var(--we-color-danger-600);
   }
   [part='base'] {
-    font-size: var(--we-badge-font-size);
-    font-weight: var(--we-badge-font-weight);
-    border-radius: var(--we-badge-border-radius);
-    display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: var(--we-badge-padding);
-    background: var(--we-badge-bg);
-    color: var(--we-badge-color);
   }
 `;
 
 @customElement('we-badge')
-export default class Badge extends LitElement {
+export default class Badge extends LayoutVisualTypographyElement {
   static styles = [sharedStyles, styles];
 
   @property({ type: String, reflect: true }) variant: BadgeVariant = '';
@@ -65,22 +60,6 @@ export default class Badge extends LitElement {
 
   updated(changedProperties: Map<string, unknown>) {
     super.updated(changedProperties);
-
-    if (changedProperties.has('bg')) {
-      if (this.bg) {
-        this.style.setProperty('--we-badge-bg', tokenVar('color', this.bg, ''));
-      } else {
-        this.style.removeProperty('--we-badge-bg');
-      }
-    }
-
-    if (changedProperties.has('color')) {
-      if (this.color) {
-        this.style.setProperty('--we-badge-color', tokenVar('color', this.color, ''));
-      } else {
-        this.style.removeProperty('--we-badge-color');
-      }
-    }
 
     if (changedProperties.has('weight')) {
       if (this.weight) {

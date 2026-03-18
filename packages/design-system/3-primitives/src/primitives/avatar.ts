@@ -1,20 +1,24 @@
 import { toSvg } from 'jdenticon';
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
 
+import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import type { AvatarSizeValue } from '../types';
 
 const styles = css`
   :host {
-    display: contents;
+    --we-avatar-host-display: inline-flex;
+    --we-avatar-width: var(--we-avatar-size);
+    --we-avatar-height: var(--we-avatar-size);
     --we-avatar-size: var(--we-size-md);
     --we-avatar-box-shadow: none;
     --we-avatar-border: none;
     --we-avatar-color: var(--we-color-black);
     --we-avatar-bg: var(--we-color-ui-100);
+    flex-shrink: 0;
   }
   :host([src]) {
     --we-avatar-bg: transparent;
@@ -53,7 +57,6 @@ const styles = css`
   }
   [part='base'] {
     position: relative;
-    display: inline-flex;
     align-items: center;
     justify-content: center;
     cursor: inherit;
@@ -62,8 +65,6 @@ const styles = css`
     background: var(--we-avatar-bg);
     border: var(--we-avatar-border);
     padding: 0;
-    width: var(--we-avatar-size);
-    height: var(--we-avatar-size);
     border-radius: 50%;
   }
 
@@ -90,7 +91,7 @@ const styles = css`
 `;
 
 @customElement('we-avatar')
-export default class Avatar extends LitElement {
+export default class Avatar extends LayoutElement {
   static styles = [sharedStyles, styles];
 
   @property({ type: String, reflect: true }) image = '';
@@ -100,7 +101,7 @@ export default class Avatar extends LitElement {
   @property({ type: String, reflect: true }) initials = '';
   @property({ type: String }) icon = '';
   @property({ type: String, reflect: true }) size?: AvatarSizeValue;
-  @property({ attribute: false }) onClick: undefined | (() => void) = undefined;
+  @property({ type: Boolean, reflect: true }) clickable = false;
   @property({ type: Object }) styles?: Record<string, any>;
 
   updated(props: Map<string, unknown>) {
@@ -124,10 +125,8 @@ export default class Avatar extends LitElement {
 
   render() {
     const inlineStyles = this.styles || {};
-    return this.onClick
-      ? html`
-          <button part="base" style=${styleMap(inlineStyles)} @click=${this.onClick}>${this.renderContent()}</button>
-        `
+    return this.clickable
+      ? html` <button part="base" style=${styleMap(inlineStyles)}>${this.renderContent()}</button> `
       : html` <div part="base" style=${styleMap(inlineStyles)}>${this.renderContent()}</div> `;
   }
 }

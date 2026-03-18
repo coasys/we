@@ -51,10 +51,27 @@ export default class Modal extends OverlayElement {
     return DEFAULT_PROPS;
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    this._onKeyDown = this._onKeyDown.bind(this);
+    document.addEventListener('keydown', this._onKeyDown);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    document.removeEventListener('keydown', this._onKeyDown);
+  }
+
+  private _onKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      this.close();
+    }
+  }
+
   render() {
     return html`
       <div part="backdrop" @click=${this.close}></div>
-      <div part="base">
+      <div part="base" role="dialog" aria-modal="true">
         ${!this.hideclosebutton
           ? html`
               <div part="close-button-wrapper">

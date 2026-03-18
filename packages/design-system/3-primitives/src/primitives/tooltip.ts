@@ -7,16 +7,19 @@ import {
   Placement as FloatingPlacement,
   shift,
 } from '@floating-ui/dom';
-import { css, html, LitElement } from 'lit';
+import type { Placement } from '@we/design-types';
+import { css, html } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 
+import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import { Placement } from '../types';
+
+let tooltipIdCounter = 0;
 
 const CSS_STYLES = css`
   :host {
+    --we-tooltip-host-display: inline-block;
     position: relative;
-    display: inline-block;
   }
 
   [part='trigger'] {
@@ -63,8 +66,10 @@ const CSS_STYLES = css`
 `;
 
 @customElement('we-tooltip')
-export default class Tooltip extends LitElement {
+export default class Tooltip extends LayoutElement {
   static styles = [sharedStyles, CSS_STYLES];
+
+  private _tooltipId = `we-tooltip-${++tooltipIdCounter}`;
 
   @property({ type: Boolean, reflect: true }) open = false;
   @property({ type: String, reflect: true }) title = '';
@@ -90,7 +95,8 @@ export default class Tooltip extends LitElement {
 
   updated(changed: Map<string, unknown>) {
     if (changed.has('open')) {
-      this.open ? this.openTooltip() : this.closeTooltip();
+      if (this.open) this.openTooltip();
+      else this.closeTooltip();
       this.dispatchEvent(new CustomEvent('toggle', { bubbles: true }));
     }
   }
@@ -148,8 +154,8 @@ export default class Tooltip extends LitElement {
 
   render() {
     return html`
-      <span part="trigger"><slot></slot></span>
-      <span part="tooltip">
+      <span part="trigger" aria-describedby=${this._tooltipId}><slot></slot></span>
+      <span part="tooltip" id=${this._tooltipId} role="tooltip">
         ${this.title}
         <span part="arrow"></span>
       </span>

@@ -40,7 +40,6 @@ export default class MenuItem extends DesignSystemElement {
 
   @property({ type: Boolean, reflect: true }) selected = false;
   @property({ type: Boolean, reflect: true }) active = false;
-  @property({ attribute: false }) onClick: (event: MouseEvent) => void = () => {};
   @property({ type: Object }) styles?: Record<string, any>;
 
   static getDefaultProps() {
@@ -71,9 +70,29 @@ export default class MenuItem extends DesignSystemElement {
     this.setAttribute('value', val);
   }
 
+  private _handleClick() {
+    this.dispatchEvent(
+      new CustomEvent('we-select', { detail: { value: this.value, label: this.label }, bubbles: true, composed: true }),
+    );
+  }
+
+  private _handleKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      this._handleClick();
+    }
+  }
+
   render() {
     const inline = this.styles || {};
-    return html`<div part="base" role="menuitem" style=${styleMap(inline)}>
+    return html`<div
+      part="base"
+      role="menuitem"
+      tabindex="0"
+      @click=${this._handleClick}
+      @keydown=${this._handleKeyDown}
+      style=${styleMap(inline)}
+    >
       <slot name="start"></slot>
       <slot></slot>
       <slot name="end"></slot>

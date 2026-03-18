@@ -5,9 +5,12 @@ import { customElement, property } from 'lit/decorators.js';
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
+let inputIdCounter = 0;
+
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
-  // height: '36px',
+  direction: 'column',
+  ay: 'center',
   px: '300',
   bg: 'ui-75',
   r: 'sm',
@@ -17,19 +20,35 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const styles = css`
-  [part='base']::placeholder {
+  [part='input-wrapper'] {
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+
+  [part='input'] {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+    padding: 0;
+    min-width: 0;
+  }
+
+  [part='input']::placeholder {
     color: var(--we-color-ui-400);
   }
 
-  [part='help-text'],
-  [part='error-text'] {
-    left: 0;
-    bottom: -20px;
-    position: absolute;
+  [part='help-text'] {
     font-size: var(--we-font-size-300);
+    margin-top: var(--we-space-100);
   }
 
   [part='error-text'] {
+    font-size: var(--we-font-size-300);
+    margin-top: var(--we-space-100);
     color: var(--we-color-danger-500);
   }
 `;
@@ -37,6 +56,8 @@ const styles = css`
 @customElement('we-input')
 export default class Input extends DesignSystemElement {
   static styles = [sharedStyles, styles];
+
+  private _inputId = `we-input-${++inputIdCounter}`;
 
   @property({ type: String, reflect: true }) value = '';
   @property({ type: String, reflect: true }) max = '';
@@ -58,11 +79,6 @@ export default class Input extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) required = false;
   @property({ type: Boolean, reflect: true }) readonly = false;
   @property({ type: String, reflect: true }) type = 'text';
-  @property({ attribute: false }) onInput: (event: InputEvent) => void = () => {};
-  @property({ attribute: false }) onChange: (event: Event) => void = () => {};
-  @property({ attribute: false }) onFocus: (event: FocusEvent) => void = () => {};
-  @property({ attribute: false }) onBlur: (event: FocusEvent) => void = () => {};
-  @property({ attribute: false }) onKeyDown: (event: KeyboardEvent) => void = () => {};
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -84,69 +100,71 @@ export default class Input extends DesignSystemElement {
   }
 
   handleInput(e: InputEvent) {
-    e.stopPropagation();
     this.value = (e.target as HTMLInputElement)?.value;
-    this.dispatchEvent(new CustomEvent('input', { detail: this.value, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('we-input', { detail: this.value, bubbles: true, composed: true }));
   }
 
   handleChange(e: Event) {
-    e.stopPropagation();
     this.value = (e.target as HTMLInputElement)?.value;
-    this.dispatchEvent(new CustomEvent('change', e));
+    this.dispatchEvent(new CustomEvent('we-change', { detail: this.value, bubbles: true, composed: true }));
   }
 
-  handleFocus(e: FocusEvent) {
-    e.stopPropagation();
-    this.value = (e.target as HTMLInputElement)?.value;
-    this.dispatchEvent(new CustomEvent('focus', e));
+  handleFocus() {
+    this.dispatchEvent(new CustomEvent('we-focus', { bubbles: true, composed: true }));
   }
 
-  handleBlur(e: FocusEvent) {
-    e.stopPropagation();
+  handleBlur() {
     if (this.autovalidate) this.validate();
-    this.dispatchEvent(new CustomEvent('blur', e));
+    this.dispatchEvent(new CustomEvent('we-blur', { bubbles: true, composed: true }));
   }
 
   handleKeyDown(e: KeyboardEvent) {
-    e.stopPropagation();
-    const event = new KeyboardEvent(e.type, e);
-    this.dispatchEvent(event);
+    this.dispatchEvent(
+      new CustomEvent('we-keydown', { detail: { key: e.key, code: e.code }, bubbles: true, composed: true }),
+    );
   }
 
   render() {
+    const descId =
+      this.error && this.errortext ? `${this._inputId}-error` : this.helptext ? `${this._inputId}-help` : undefined;
+
     return html`
-      <div>
-        ${this.label && html` <j-text tag="label" variant="label" part="label">${this.label} </j-text> `}
-        <slot part="start" name="start"></slot>
-        <input
-          part="base"
-          .value=${this.value}
-          .type=${this.type}
-          .max=${this.max}
-          .min=${this.min}
-          .step=${this.step}
-          .autocomplete=${this.autocomplete}
-          maxlength=${this.maxlength}
-          minlength=${this.minlength}
-          pattern=${this.pattern}
-          placeholder=${this.placeholder}
-          ?autofocus=${this.autofocus}
-          ?readonly=${this.readonly}
-          ?required=${this.required}
-          ?disabled=${this.disabled}
-          @input=${this.handleInput}
-          @change=${this.handleChange}
-          @blur=${this.handleBlur}
-          @focus=${this.handleFocus}
-          @keydown=${this.handleKeyDown}
-        />
-        <slot part="end" name="end"></slot>
+      <div part="base">
+        ${this.label ? html`<label part="label" for=${this._inputId}>${this.label}</label>` : null}
+        <div part="input-wrapper">
+          <slot name="start"></slot>
+          <input
+            part="input"
+            id=${this._inputId}
+            aria-describedby=${descId || ''}
+            .value=${this.value}
+            .type=${this.type}
+            .max=${this.max}
+            .min=${this.min}
+            .step=${this.step}
+            .autocomplete=${this.autocomplete}
+            maxlength=${this.maxlength}
+            minlength=${this.minlength}
+            pattern=${this.pattern}
+            placeholder=${this.placeholder}
+            ?autofocus=${this.autofocus}
+            ?readonly=${this.readonly}
+            ?required=${this.required}
+            ?disabled=${this.disabled}
+            @input=${this.handleInput}
+            @change=${this.handleChange}
+            @blur=${this.handleBlur}
+            @focus=${this.handleFocus}
+            @keydown=${this.handleKeyDown}
+          />
+          <slot name="end"></slot>
+        </div>
         ${this.error
           ? this.errortext
-            ? html`<div part="error-text">${this.errortext}</div>`
+            ? html`<div part="error-text" id=${`${this._inputId}-error`}>${this.errortext}</div>`
             : null
           : this.helptext
-            ? html`<div part="help-text">${this.helptext}</div>`
+            ? html`<div part="help-text" id=${`${this._inputId}-help`}>${this.helptext}</div>`
             : null}
       </div>
     `;
