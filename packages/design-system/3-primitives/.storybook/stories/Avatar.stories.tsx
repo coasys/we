@@ -18,9 +18,7 @@ export const WithIcon: StoryObj = {
 };
 
 export const WithImage: StoryObj = {
-  render: () => html`
-    <we-avatar image="https://i.pravatar.cc/100?img=3"></we-avatar>
-  `,
+  render: () => html` <we-avatar image="https://i.pravatar.cc/100?img=3"></we-avatar> `,
 };
 
 export const Sizes: StoryObj = {

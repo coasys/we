@@ -13,12 +13,12 @@ const styles = css`
     --we-avatar-host-display: inline-flex;
     --we-avatar-width: var(--we-avatar-size);
     --we-avatar-height: var(--we-avatar-size);
-    --we-avatar-display: inline-flex;
     --we-avatar-size: var(--we-size-md);
     --we-avatar-box-shadow: none;
     --we-avatar-border: none;
     --we-avatar-color: var(--we-color-black);
     --we-avatar-bg: var(--we-color-ui-100);
+    flex-shrink: 0;
   }
   :host([src]) {
     --we-avatar-bg: transparent;
@@ -126,9 +126,7 @@ export default class Avatar extends LayoutElement {
   render() {
     const inlineStyles = this.styles || {};
     return this.clickable
-      ? html`
-          <button part="base" style=${styleMap(inlineStyles)}>${this.renderContent()}</button>
-        `
+      ? html` <button part="base" style=${styleMap(inlineStyles)}>${this.renderContent()}</button> `
       : html` <div part="base" style=${styleMap(inlineStyles)}>${this.renderContent()}</div> `;
   }
 }

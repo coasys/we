@@ -10,6 +10,7 @@ let inputIdCounter = 0;
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
   direction: 'column',
+  ay: 'center',
   px: '300',
   bg: 'ui-75',
   r: 'sm',
@@ -108,25 +109,24 @@ export default class Input extends DesignSystemElement {
     this.dispatchEvent(new CustomEvent('we-change', { detail: this.value, bubbles: true, composed: true }));
   }
 
-  handleFocus(_e: FocusEvent) {
+  handleFocus() {
     this.dispatchEvent(new CustomEvent('we-focus', { bubbles: true, composed: true }));
   }
 
-  handleBlur(_e: FocusEvent) {
+  handleBlur() {
     if (this.autovalidate) this.validate();
     this.dispatchEvent(new CustomEvent('we-blur', { bubbles: true, composed: true }));
   }
 
   handleKeyDown(e: KeyboardEvent) {
-    this.dispatchEvent(new CustomEvent('we-keydown', { detail: { key: e.key, code: e.code }, bubbles: true, composed: true }));
+    this.dispatchEvent(
+      new CustomEvent('we-keydown', { detail: { key: e.key, code: e.code }, bubbles: true, composed: true }),
+    );
   }
 
   render() {
-    const descId = this.error && this.errortext
-      ? `${this._inputId}-error`
-      : this.helptext
-        ? `${this._inputId}-help`
-        : undefined;
+    const descId =
+      this.error && this.errortext ? `${this._inputId}-error` : this.helptext ? `${this._inputId}-help` : undefined;
 
     return html`
       <div part="base">

@@ -36,7 +36,5 @@ export const Sizes: StoryObj = {
 };
 
 export const CustomColors: StoryObj = {
-  render: () => html`
-    <we-badge bg="primary-100" color="primary-600">Custom</we-badge>
-  `,
+  render: () => html` <we-badge bg="primary-100" color="primary-600">Custom</we-badge> `,
 };

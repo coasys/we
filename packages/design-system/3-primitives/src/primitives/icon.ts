@@ -39,7 +39,7 @@ function sanitizeSvg(raw: string): string {
   allElements.forEach((el) => {
     const attrs = Array.from(el.attributes);
     for (const attr of attrs) {
-      if (attr.name.startsWith('on') || attr.name === 'href' && !el.tagName.match(/^(use|image)$/i)) {
+      if (attr.name.startsWith('on') || (attr.name === 'href' && !el.tagName.match(/^(use|image)$/i))) {
         el.removeAttribute(attr.name);
       }
     }

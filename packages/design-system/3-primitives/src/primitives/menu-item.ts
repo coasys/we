@@ -71,7 +71,9 @@ export default class MenuItem extends DesignSystemElement {
   }
 
   private _handleClick() {
-    this.dispatchEvent(new CustomEvent('we-select', { detail: { value: this.value, label: this.label }, bubbles: true, composed: true }));
+    this.dispatchEvent(
+      new CustomEvent('we-select', { detail: { value: this.value, label: this.label }, bubbles: true, composed: true }),
+    );
   }
 
   private _handleKeyDown(e: KeyboardEvent) {

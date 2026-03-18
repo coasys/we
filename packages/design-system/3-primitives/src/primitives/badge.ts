@@ -9,7 +9,6 @@ import { BadgeSize, BadgeVariant } from '../types';
 const styles = css`
   :host {
     --we-badge-host-display: inline-flex;
-    --we-badge-display: inline-flex;
     --we-badge-radius: var(--we-border-radius);
     --we-badge-bg: var(--we-color-ui-100);
     --we-badge-color: var(--we-color-ui-500);

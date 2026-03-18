@@ -228,7 +228,8 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
       // Host state
       if (hostSpecs.length > 0 || l.has('visual')) {
         const lines: string[] = [];
-        if (l.has('visual')) lines.push(`transition: var(${sp}transition, var(${p}transition, ${DEFAULT_TRANSITION}));`);
+        if (l.has('visual'))
+          lines.push(`transition: var(${sp}transition, var(${p}transition, ${DEFAULT_TRANSITION}));`);
         if (hostSpecs.length > 0) lines.push(joinStateDecls(sp, p, hostSpecs));
         const sel = state === 'disabled' ? ':host([disabled])' : `:host(:${state})`;
         styles.push(`${sel} { ${lines.join('\n    ')} }`);
@@ -237,7 +238,8 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
       // Base state
       if (baseSpecs.length > 0) {
         const lines: string[] = [];
-        if (l.has('visual')) lines.push(`transition: var(${sp}transition, var(${p}transition, ${DEFAULT_TRANSITION}));`);
+        if (l.has('visual'))
+          lines.push(`transition: var(${sp}transition, var(${p}transition, ${DEFAULT_TRANSITION}));`);
         lines.push(joinStateDecls(sp, p, baseSpecs));
         const sel =
           state === 'disabled'

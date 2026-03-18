@@ -18,8 +18,7 @@ export default meta;
 
 export const Basic: StoryObj = {
   args: { text: 'Button', disabled: false, loading: false },
-  render: (args) =>
-    html`<we-button ?disabled="${args.disabled}" ?loading=${args.loading}>${args.text}</we-button>`,
+  render: (args) => html`<we-button ?disabled="${args.disabled}" ?loading=${args.loading}>${args.text}</we-button>`,
 };
 
 export const WithHref: StoryObj = {

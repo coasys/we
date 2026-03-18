@@ -38,7 +38,9 @@ export default class Iframe extends LayoutElement {
    */
   postMessage(data: unknown, targetOrigin: string) {
     if (!targetOrigin) {
-      console.warn('we-iframe: postMessage requires an explicit targetOrigin. Use "*" only if you understand the security implications.');
+      console.warn(
+        'we-iframe: postMessage requires an explicit targetOrigin. Use "*" only if you understand the security implications.',
+      );
       return;
     }
     this.iframe?.contentWindow?.postMessage(data, targetOrigin);

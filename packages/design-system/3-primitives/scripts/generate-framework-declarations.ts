@@ -128,6 +128,16 @@ function generateComponentProps(component: Component, typesPath: string, framewo
     `${indent(4)}styles?: Record<string, any>;`,
     `${indent(4)}children?: any;`,
 
+    // Add DOM event handlers
+    `${indent(4)}onClick?: (event: MouseEvent) => void;`,
+    `${indent(4)}onInput?: (event: InputEvent) => void;`,
+    `${indent(4)}onChange?: (event: Event) => void;`,
+    `${indent(4)}onFocus?: (event: FocusEvent) => void;`,
+    `${indent(4)}onBlur?: (event: FocusEvent) => void;`,
+    `${indent(4)}onKeyDown?: (event: KeyboardEvent) => void;`,
+    `${indent(4)}onKeyUp?: (event: KeyboardEvent) => void;`,
+    `${indent(4)}onSubmit?: (event: Event) => void;`,
+
     // Add prop: namespace for Solid.js to explicitly set object properties
     ...(framework?.name === 'solid'
       ? [

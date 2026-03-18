@@ -11,12 +11,7 @@ export default meta;
 
 export const Basic: StoryObj = {
   render: () => html`
-    <we-image
-      src="https://picsum.photos/300/200"
-      alt="Sample image"
-      width="300"
-      height="200"
-    ></we-image>
+    <we-image src="https://picsum.photos/300/200" alt="Sample image" width="300" height="200"></we-image>
   `,
 };
 
@@ -30,7 +25,5 @@ export const ObjectFit: StoryObj = {
 };
 
 export const LazyLoading: StoryObj = {
-  render: () => html`
-    <we-image src="https://picsum.photos/400/300" alt="Lazy loaded" loading="lazy"></we-image>
-  `,
+  render: () => html` <we-image src="https://picsum.photos/400/300" alt="Lazy loaded" loading="lazy"></we-image> `,
 };

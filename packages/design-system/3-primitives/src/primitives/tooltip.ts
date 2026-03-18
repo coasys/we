@@ -7,19 +7,19 @@ import {
   Placement as FloatingPlacement,
   shift,
 } from '@floating-ui/dom';
+import type { Placement } from '@we/design-types';
 import { css, html } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 
 import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import { Placement } from '../types';
 
 let tooltipIdCounter = 0;
 
 const CSS_STYLES = css`
   :host {
-    position: relative;
     --we-tooltip-host-display: inline-block;
+    position: relative;
   }
 
   [part='trigger'] {
@@ -95,7 +95,8 @@ export default class Tooltip extends LayoutElement {
 
   updated(changed: Map<string, unknown>) {
     if (changed.has('open')) {
-      this.open ? this.openTooltip() : this.closeTooltip();
+      if (this.open) this.openTooltip();
+      else this.closeTooltip();
       this.dispatchEvent(new CustomEvent('toggle', { bubbles: true }));
     }
   }

@@ -1,12 +1,5 @@
 import type { DesignSystemProps } from '@we/design-types';
-import {
-  type DSLayer,
-  designSystemKeys,
-  filterProps,
-  getKeysForLayers,
-  mergeProps,
-  stateKeys,
-} from '@we/design-utils';
+import { type DSLayer, filterProps, getKeysForLayers, mergeProps, stateKeys } from '@we/design-utils';
 import { LitElement } from 'lit';
 import { property } from 'lit/decorators.js';
 
@@ -36,9 +29,7 @@ export function DesignSystemMixin<T extends Constructor<LitElement>>(
 
   // Register only the keys for the selected layers as Lit reactive properties
   const primitiveKeys = activeKeys.filter((key) => !stateKeySet.has(key));
-  primitiveKeys.forEach((key) =>
-    property({ type: primitiveTypes[key] || String, reflect: true })(Base.prototype, key),
-  );
+  primitiveKeys.forEach((key) => property({ type: primitiveTypes[key] || String, reflect: true })(Base.prototype, key));
   if (hasState) {
     stateKeys.forEach((key) => property({ type: Object, attribute: false })(Base.prototype, key));
   }

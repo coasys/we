@@ -4,18 +4,20 @@ import { LitElement } from 'lit';
 import { DesignSystemMixin } from './design-system-mixin';
 import { getStaticDSStyles, updateAllCustomVars } from './helpers';
 
+type ComponentCtor = abstract new (...args: unknown[]) => LitElement;
+
 // Cache of DS stylesheets — one per component class, created once, reused for all instances
-const dsStyleSheets = new WeakMap<Function, CSSStyleSheet>();
+const dsStyleSheets = new WeakMap<ComponentCtor, CSSStyleSheet>();
 
 // Shared DS lifecycle: adopt static stylesheet + dirty-checked custom var updates
-function applyDSBehavior<T extends new (...args: any[]) => LitElement>(Base: T) {
+function applyDSBehavior<T extends new (...args: any[]) => LitElement>(Base: T): T {
   return class extends Base {
-    private _prevDSSnapshot?: string;
-    private _componentName?: string;
+    _prevDSSnapshot?: string;
+    _componentName?: string;
 
     connectedCallback() {
       super.connectedCallback();
-      const ctor = this.constructor;
+      const ctor = this.constructor as ComponentCtor;
       this._componentName = this.tagName.toLowerCase().replace('we-', '');
 
       // Create and cache the static DS stylesheet (once per component class)
@@ -43,7 +45,7 @@ function applyDSBehavior<T extends new (...args: any[]) => LitElement>(Base: T) 
       this._prevDSSnapshot = snapshot;
       updateAllCustomVars(this, this._componentName!, props);
     }
-  };
+  } as unknown as T;
 }
 
 // Class form: default all layers, CEM-compatible (existing DS-aware components extend this)

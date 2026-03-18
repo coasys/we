@@ -1,3 +1,5 @@
+import type { LitElement } from 'lit';
+
 import { DesignSystemElement } from './design-system-element';
 
 /**
@@ -12,8 +14,10 @@ import { DesignSystemElement } from './design-system-element';
  * it's adopted after the DS stylesheet, so at equal specificity the overlay rules win.
  */
 
+type ComponentCtor = abstract new (...args: unknown[]) => LitElement;
+
 // Cache of overlay stylesheets — one per component class
-const overlayStyleSheets = new WeakMap<Function, CSSStyleSheet>();
+const overlayStyleSheets = new WeakMap<ComponentCtor, CSSStyleSheet>();
 
 export abstract class OverlayElement extends DesignSystemElement {
   // Marker property for runtime detection (minification-safe)
@@ -21,7 +25,7 @@ export abstract class OverlayElement extends DesignSystemElement {
 
   override connectedCallback() {
     super.connectedCallback();
-    const ctor = this.constructor;
+    const ctor = this.constructor as ComponentCtor;
 
     // Mark as overlay for specificity (matches :host([data-we-overlay]))
     this.setAttribute('data-we-overlay', '');

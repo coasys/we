@@ -11,8 +11,7 @@ export default meta;
 
 export const Basic: StoryObj = {
   args: { placeholder: 'Enter text…', label: 'Name' },
-  render: (args) =>
-    html`<we-input placeholder="${args.placeholder}" label="${args.label}"></we-input>`,
+  render: (args) => html`<we-input placeholder="${args.placeholder}" label="${args.label}"></we-input>`,
 };
 
 export const WithHelpText: StoryObj = {
