@@ -9,6 +9,7 @@ This document describes the operators available in the schema system for declara
 - [Action Operators](#action-operators)
 - [Conditional Operators](#conditional-operators)
 - [Comparison Operators](#comparison-operators)
+- [Security](#security)
 
 ---
 
@@ -465,3 +466,30 @@ Operators can be composed together for complex logic:
 - **Non-array/object in `$map`**: Returns `[]`
 - **Missing action method**: Returns `undefined`
 - **Invalid `$arg` path**: Returns `undefined`
+
+---
+
+## Security
+
+### `$expr` — Trusted Schemas Only
+
+The `$expr` operator uses `new Function()` to evaluate JavaScript expressions at runtime. This means **any schema containing `$expr` has the ability to execute arbitrary code** in the user's browser context.
+
+This is safe when schemas come from trusted sources:
+
+- Bundled schema files in the application (`*.schema.ts`)
+- Schemas authored by the app developer
+
+This is **not safe** for schemas from untrusted sources:
+
+- User-submitted or community-generated schemas
+- Schemas received from external agents or peers
+- Schemas loaded from shared neighbourhoods without validation
+
+**Current status:** All schemas in WE are authored internally and bundled at build time. The `$expr` operator is safe in this context. If schemas from untrusted sources are ever loaded at runtime, `$expr` must be gated behind an allowlist or disabled entirely for those schemas.
+
+**Alternatives to `$expr` for untrusted schemas:**
+
+- `$if` / `$eq` / `$ne` / `$not` — declarative conditionals (safe)
+- `$map` / `$pick` — declarative transformations (safe)
+- `$store` — reactive data access (safe, scoped to registered stores)

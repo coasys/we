@@ -1,5 +1,5 @@
 import type { TransitionConfig } from '@we/schema-shared';
-import { resolveProp, resolveProps, splitProps } from '@we/schema-shared';
+import { REACTIVE_ACCESSOR, resolveProp, resolveProps, splitProps } from '@we/schema-shared';
 import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
@@ -283,15 +283,15 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     }
 
     for (const [k, v] of Object.entries(safeProps)) {
-      const isSignal = typeof v === 'function' && v.name.includes('readSignal');
+      const isReactiveAccessor = typeof v === 'function' && REACTIVE_ACCESSOR in v;
 
       // Skip design system camelCase props for web components - they'll be set as properties instead
       if (isWebComponent && designSystemCamelCaseProps.has(k)) {
         continue;
       }
 
-      // Unwrap signal accessors for web components
-      if (isWebComponent && isSignal) attrs[k] = v();
+      // Unwrap reactive accessors for web components
+      if (isWebComponent && isReactiveAccessor) attrs[k] = v();
       // Pass through for Solid components, event handlers, and all other values
       else attrs[k] = v;
     }
@@ -305,16 +305,16 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
     // Set complex props as properties
     for (const [k, v] of Object.entries(complexProps)) {
-      // Unwrap signal accessors for web components
-      const isSignal = typeof v === 'function' && v.name.includes('readSignal');
-      hostRef[k] = isWebComponent && isSignal ? v() : v;
+      // Unwrap reactive accessors for web components
+      const isReactiveAccessor = typeof v === 'function' && REACTIVE_ACCESSOR in v;
+      hostRef[k] = isWebComponent && isReactiveAccessor ? v() : v;
     }
 
     // Set design system camelCase props as properties (not attributes)
     for (const [k, v] of Object.entries(safeProps)) {
       if (designSystemCamelCaseProps.has(k)) {
-        const isSignal = typeof v === 'function' && v.name.includes('readSignal');
-        hostRef[k] = isWebComponent && isSignal ? v() : v;
+        const isReactiveAccessor = typeof v === 'function' && REACTIVE_ACCESSOR in v;
+        hostRef[k] = isWebComponent && isReactiveAccessor ? v() : v;
       }
     }
   });

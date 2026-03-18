@@ -8,7 +8,7 @@ export type SchemaProp =
   | TransitionConfig
   | undefined;
 export type TemplateMeta = { name: string; description: string; icon: string };
-export type TemplateSchema = SchemaNode & { id?: string; meta: TemplateMeta };
+export type TemplateSchema = SchemaNode & { id?: string; schemaVersion?: number; meta: TemplateMeta };
 export type RouteSchema = SchemaNode & { path: string };
 
 // Transition configuration for $if operator (can be used in props via prop resolution)
