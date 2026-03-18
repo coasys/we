@@ -6,11 +6,11 @@ Follow-up to the hardening plan. The core architecture is sound — this plan co
 
 | Phase | Status |
 |-------|--------|
-| P1 — Split propResolvers into directory | Not started |
-| P2 — Operator token types | Not started |
-| P3 — Document renderer operators + dual $if | Not started |
-| P4 — Update README + minor type fixes | Not started |
-| P5 — Solid renderer tests | Not started |
+| P1 — Split propResolvers into directory | Done |
+| P2 — Operator token types | Done |
+| P3 — Document renderer operators + dual $if | Done |
+| P4 — Update README + minor type fixes | Done |
+| P5 — Solid renderer tests | Done |
 
 ---
 
