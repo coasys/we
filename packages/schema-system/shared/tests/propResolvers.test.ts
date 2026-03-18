@@ -364,11 +364,7 @@ describe('propResolvers (combined)', () => {
   it('$and/$or compose with $not and $store', () => {
     const stores = { s: { isAdmin: () => true, isLocked: () => false } };
     // { $and: [{ $store: 's.isAdmin' }, { $not: { $store: 's.isLocked' } }] }
-    const result = resolveProp(
-      { $and: [{ $store: 's.isAdmin' }, { $not: { $store: 's.isLocked' } }] },
-      stores,
-      {},
-    );
+    const result = resolveProp({ $and: [{ $store: 's.isAdmin' }, { $not: { $store: 's.isLocked' } }] }, stores, {});
     expect(result).toBe(true);
   });
 

@@ -4,13 +4,13 @@ Post-refactoring work to solidify the schema-system foundation before feature ge
 
 ## Status
 
-| Phase | Commit | Status |
-|-------|--------|--------|
-| P1 — Signal fix, schemaVersion, $expr docs | `32e022d` | ✅ Complete |
-| P2 — ConditionalRenderer, camelCase props, resolveRelativePath, cleanSchemaNode | `244b253` | ✅ Complete |
-| P3 — Expanded zodSchemas (3→17) and schemaUpdater (3→10) tests | `607eaef` | ✅ Complete |
-| P4 — $and/$or operators, $action warnings | `db7a6cc` | ✅ Complete |
-| P4.3 — Schema-aware prop validation | — | ⏭️ Deferred (aspirational) |
+| Phase                                                                           | Commit    | Status                     |
+| ------------------------------------------------------------------------------- | --------- | -------------------------- |
+| P1 — Signal fix, schemaVersion, $expr docs                                      | `32e022d` | ✅ Complete                |
+| P2 — ConditionalRenderer, camelCase props, resolveRelativePath, cleanSchemaNode | `244b253` | ✅ Complete                |
+| P3 — Expanded zodSchemas (3→17) and schemaUpdater (3→10) tests                  | `607eaef` | ✅ Complete                |
+| P4 — $and/$or operators, $action warnings                                       | `db7a6cc` | ✅ Complete                |
+| P4.3 — Schema-aware prop validation                                             | —         | ⏭️ Deferred (aspirational) |
 
 Branch: `feature/schema-system-hardening` (5 commits off `dev`)
 

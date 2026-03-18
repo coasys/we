@@ -425,14 +425,18 @@ Logical AND — returns `true` if all operands are truthy. Short-circuits on the
 
 ```typescript
 // Both must be true
-{ $and: [{ $store: 'userStore.isAdmin' }, { $not: { $store: 'appStore.isLocked' } }] }
+{
+  $and: [{ $store: 'userStore.isAdmin' }, { $not: { $store: 'appStore.isLocked' } }];
+}
 
 // Multiple conditions
-{ $and: [
-  { $store: 'userStore.isLoggedIn' },
-  { $ne: [{ $store: 'userStore.role' }, 'guest'] },
-  { $store: 'featureStore.isEnabled' }
-] }
+{
+  $and: [
+    { $store: 'userStore.isLoggedIn' },
+    { $ne: [{ $store: 'userStore.role' }, 'guest'] },
+    { $store: 'featureStore.isEnabled' },
+  ];
+}
 ```
 
 ---
@@ -451,16 +455,17 @@ Logical OR — returns `true` if any operand is truthy. Short-circuits on the fi
 
 ```typescript
 // Either condition
-{ $or: [{ $store: 'userStore.isAdmin' }, { $store: 'userStore.isModerator' }] }
+{
+  $or: [{ $store: 'userStore.isAdmin' }, { $store: 'userStore.isModerator' }];
+}
 
 // With nested operators
-{ $or: [
-  { $eq: [{ $store: 'userStore.role' }, 'admin'] },
-  { $and: [
-    { $store: 'userStore.isVerified' },
-    { $eq: [{ $store: 'userStore.role' }, 'editor'] }
-  ] }
-] }
+{
+  $or: [
+    { $eq: [{ $store: 'userStore.role' }, 'admin'] },
+    { $and: [{ $store: 'userStore.isVerified' }, { $eq: [{ $store: 'userStore.role' }, 'editor'] }] },
+  ];
+}
 ```
 
 **Notes:**
