@@ -1,7 +1,7 @@
 import type { TemplateSchema } from '@we/schema-shared';
-import { describe, expect, it, vi } from 'vitest';
 import { createRoot } from 'solid-js';
 import { createStore } from 'solid-js/store';
+import { describe, expect, it, vi } from 'vitest';
 
 import { updateSchema } from '../src/schemaUpdater';
 

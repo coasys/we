@@ -1,11 +1,5 @@
 // Pure framework-agnostic schema types
-export type SchemaProp =
-  | string
-  | number
-  | boolean
-  | Record<string, unknown>
-  | SchemaProp[]
-  | undefined;
+export type SchemaProp = string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined;
 export type TemplateMeta = { name: string; description: string; icon: string };
 export type TemplateSchema = SchemaNode & { id?: string; schemaVersion?: number; meta: TemplateMeta };
 export type RouteSchema = SchemaNode & { path: string };

@@ -13,29 +13,29 @@ The schema system provides a framework-agnostic, schema-driven UI renderer desig
 
 Operators that appear inside `props` and resolve to values:
 
-| Operator | Purpose | Example |
-|----------|---------|---------|
-| `$store` | Reactive store access | `{ $store: 'userStore.name' }` |
-| `$expr` | JavaScript expression eval | `{ $expr: '\`Hello ${user.name}\`' }` |
-| `$action` | Store method call | `{ $action: 'store.method', args: ['$arg.id'] }` |
-| `$map` | Array/object transformation | `{ $map: { items: ..., select: { ... } } }` |
-| `$pick` | Property extraction | `{ $pick: { from: ..., props: ['a', 'b'] } }` |
-| `$if` | Conditional value | `{ $if: { condition: ..., then: 'a', else: 'b' } }` |
-| `$eq` / `$ne` | Equality / inequality | `{ $eq: [{ $store: 'x.role' }, 'admin'] }` |
-| `$not` | Logical NOT | `{ $not: { $store: 'x.locked' } }` |
-| `$and` / `$or` | Logical AND / OR | `{ $and: [cond1, cond2] }` |
+| Operator       | Purpose                     | Example                                             |
+| -------------- | --------------------------- | --------------------------------------------------- |
+| `$store`       | Reactive store access       | `{ $store: 'userStore.name' }`                      |
+| `$expr`        | JavaScript expression eval  | `{ $expr: '\`Hello ${user.name}\`' }`               |
+| `$action`      | Store method call           | `{ $action: 'store.method', args: ['$arg.id'] }`    |
+| `$map`         | Array/object transformation | `{ $map: { items: ..., select: { ... } } }`         |
+| `$pick`        | Property extraction         | `{ $pick: { from: ..., props: ['a', 'b'] } }`       |
+| `$if`          | Conditional value           | `{ $if: { condition: ..., then: 'a', else: 'b' } }` |
+| `$eq` / `$ne`  | Equality / inequality       | `{ $eq: [{ $store: 'x.role' }, 'admin'] }`          |
+| `$not`         | Logical NOT                 | `{ $not: { $store: 'x.locked' } }`                  |
+| `$and` / `$or` | Logical AND / OR            | `{ $and: [cond1, cond2] }`                          |
 
 ### Renderer Operators
 
 Operators that appear as the `type` field and control rendering structure:
 
-| Operator | Purpose |
-|----------|---------|
-| `$if` (node) | Conditional rendering with optional transitions |
-| `$forEach` | List rendering with context injection |
-| `$routes` | Route outlet placeholder |
-| Fragment | Renders children without wrapper (no `type`) |
-| HTML passthrough | Lowercase types render as native elements |
+| Operator         | Purpose                                         |
+| ---------------- | ----------------------------------------------- |
+| `$if` (node)     | Conditional rendering with optional transitions |
+| `$forEach`       | List rendering with context injection           |
+| `$routes`        | Route outlet placeholder                        |
+| Fragment         | Renders children without wrapper (no `type`)    |
+| HTML passthrough | Lowercase types render as native elements       |
 
 ### Other Features
 

@@ -35,12 +35,12 @@ The schema system has **two categories** of operators:
 
 The `$if` operator has two distinct forms:
 
-| | Node-Level | Prop-Level |
-|---|---|---|
-| **Appears in** | `{ type: '$if', props: { condition, then, else } }` | `{ $if: { condition, then, else } }` inside a prop value |
-| **Returns** | Rendered DOM nodes | A resolved value |
-| **Transitions** | Supports `enterTransition`/`exitTransition` | No |
-| **Handled by** | Framework renderer (`SchemaRenderer`) | `resolveProp()` in shared |
+|                 | Node-Level                                          | Prop-Level                                               |
+| --------------- | --------------------------------------------------- | -------------------------------------------------------- |
+| **Appears in**  | `{ type: '$if', props: { condition, then, else } }` | `{ $if: { condition, then, else } }` inside a prop value |
+| **Returns**     | Rendered DOM nodes                                  | A resolved value                                         |
+| **Transitions** | Supports `enterTransition`/`exitTransition`         | No                                                       |
+| **Handled by**  | Framework renderer (`SchemaRenderer`)               | `resolveProp()` in shared                                |
 
 **Node-level** — conditionally renders entire subtrees:
 
@@ -709,7 +709,7 @@ Placeholder for routed content. Marks where child route content should be insert
 
 ```typescript
 {
-  type: '$routes'
+  type: '$routes';
 }
 ```
 
@@ -754,8 +754,8 @@ Renders children without a wrapper DOM element.
 {
   children: [
     { type: 'we-text', children: ['Hello'] },
-    { type: 'we-text', children: ['World'] }
-  ]
+    { type: 'we-text', children: ['World'] },
+  ];
 }
 ```
 

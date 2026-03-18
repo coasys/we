@@ -4,13 +4,13 @@ Follow-up to the hardening plan. The core architecture is sound — this plan co
 
 ## Status
 
-| Phase | Status |
-|-------|--------|
-| P1 — Split propResolvers into directory | Done |
-| P2 — Operator token types | Done |
-| P3 — Document renderer operators + dual $if | Done |
-| P4 — Update README + minor type fixes | Done |
-| P5 — Solid renderer tests | Done |
+| Phase                                       | Status |
+| ------------------------------------------- | ------ |
+| P1 — Split propResolvers into directory     | Done   |
+| P2 — Operator token types                   | Done   |
+| P3 — Document renderer operators + dual $if | Done   |
+| P4 — Update README + minor type fixes       | Done   |
+| P5 — Solid renderer tests                   | Done   |
 
 ---
 
@@ -19,11 +19,13 @@ Follow-up to the hardening plan. The core architecture is sound — this plan co
 **Why:** `propResolvers.ts` is 310 lines with 12 resolver functions, the dispatcher, utilities, and types — all in one flat file. Adding a new operator means modifying a monolith. Each resolver is self-contained with no shared mutable state, making this a clean split.
 
 **Current structure:**
+
 ```
 shared/src/propResolvers.ts  ← everything in one file
 ```
 
 **Target structure:**
+
 ```
 shared/src/propResolvers/
   index.ts                ← re-exports public API (resolveProp, resolveProps, splitProps, REACTIVE_ACCESSOR)
@@ -41,6 +43,7 @@ shared/src/propResolvers/
 ```
 
 **Rules:**
+
 - Public export surface stays identical — `index.ts` re-exports the same symbols
 - No new dependencies, no runtime behavior changes
 - Each resolver file exports a single named function
@@ -72,14 +75,23 @@ export type AndToken = { $and: unknown[] };
 export type OrToken = { $or: unknown[] };
 
 export type OperatorToken =
-  | StoreToken | ExprToken | ActionToken | IfToken
-  | MapToken | PickToken | EqToken | NeToken
-  | NotToken | AndToken | OrToken;
+  | StoreToken
+  | ExprToken
+  | ActionToken
+  | IfToken
+  | MapToken
+  | PickToken
+  | EqToken
+  | NeToken
+  | NotToken
+  | AndToken
+  | OrToken;
 ```
 
 **Also export from `shared/src/index.ts`.**
 
 **Rules:**
+
 - Types only — no runtime changes
 - Don't change `SchemaProp` itself (that would break Zod schema compatibility)
 - Don't force consumers to use these types — they're opt-in for better DX
@@ -96,21 +108,25 @@ export type OperatorToken =
 Document the four node-type behaviors the renderer recognizes:
 
 **`$if` (node-level):**
+
 - `type: '$if'`
 - Props: `condition`, `then` (SchemaNode), `else` (SchemaNode, optional), `enterTransition`, `exitTransition`
 - Renders/hides child nodes based on condition
 
 **`$forEach`:**
+
 - `type: '$forEach'`
 - Props: `items` (array or $store ref), `as` (string, default `'item'`)
 - `children[0]` is the template node, rendered once per item
 - Each iteration injects `context[as]` with the current item
 
 **`$routes`:**
+
 - `type: '$routes'`
 - Placeholder for route outlet — replaced with routed children by the parent
 
 **Fragment (no type):**
+
 - When `type` is omitted, children are rendered as a JSX fragment
 - Used for grouping without a wrapper element
 
@@ -118,10 +134,10 @@ Document the four node-type behaviors the renderer recognizes:
 
 Explicitly document both forms side-by-side:
 
-| Context | Syntax | Where handled | Supports transitions | Supports `$arg` |
-|---------|--------|---------------|---------------------|-----------------|
-| Node type | `{ type: '$if', props: { condition, then, else } }` | SchemaRenderer → ConditionalRenderer | Yes | No |
-| Prop value | `{ $if: { condition, then, else } }` | propResolvers → resolveIfProp | No | Yes |
+| Context    | Syntax                                              | Where handled                        | Supports transitions | Supports `$arg` |
+| ---------- | --------------------------------------------------- | ------------------------------------ | -------------------- | --------------- |
+| Node type  | `{ type: '$if', props: { condition, then, else } }` | SchemaRenderer → ConditionalRenderer | Yes                  | No              |
+| Prop value | `{ $if: { condition, then, else } }`                | propResolvers → resolveIfProp        | No                   | Yes             |
 
 With examples of each.
 
@@ -136,6 +152,7 @@ Document that lowercase type strings (`aside`, `main`, `header`, `div`, `span`) 
 ### 4.1 Update README.md
 
 Current README is missing half the operators. Update to list all features:
+
 - All 12 operators ($store, $expr, $action, $map, $pick, $if, $eq, $ne, $not, $and, $or, $arg)
 - Renderer operators ($if node, $forEach, $routes, fragment)
 - REACTIVE_ACCESSOR signal tagging
@@ -168,6 +185,7 @@ Current README is missing half the operators. Update to list all features:
 ### Test cases
 
 **SchemaRenderer:**
+
 - [ ] Renders registered component by type lookup
 - [ ] Renders HTML element for lowercase type (passthrough)
 - [ ] Renders children as fragment when no type
@@ -180,12 +198,14 @@ Current README is missing half the operators. Update to list all features:
 - [ ] `$routes` returns children prop
 
 **ConditionalRenderer:**
+
 - [ ] Shows `then` branch when condition is truthy
 - [ ] Shows `else` branch when condition is falsy
 - [ ] Updates when condition changes
 - [ ] Applies enter/exit transitions (opacity, timing)
 
 **schemaUpdater:**
+
 - [ ] Calls Solid's setStore with correct mutations
 - [ ] Rejects invalid schemas with console.error
 - [ ] Handles large mutation batches via produce
