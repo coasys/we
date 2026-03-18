@@ -12,5 +12,5 @@ export type {
 
 export { validateSchema } from './validators';
 export { findMutations } from './mutations';
-export { resolveProp, resolveProps, splitProps } from './propResolvers';
+export { resolveProp, resolveProps, splitProps, REACTIVE_ACCESSOR } from './propResolvers';
 export { hasToken } from './predicates';

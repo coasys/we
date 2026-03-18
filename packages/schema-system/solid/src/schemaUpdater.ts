@@ -4,19 +4,22 @@ import { validateSchema } from '@we/schema-shared';
 import { batch } from 'solid-js';
 import { produce, SetStoreFunction } from 'solid-js/store';
 
-// TODO: test & improve
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function cleanSchemaNode(node: any): any {
-  if (Array.isArray(node?.children)) {
-    node.children = node.children.filter((child: any) => child !== null && child !== undefined);
-    node.children.forEach(cleanSchemaNode);
+  if (!node || typeof node !== 'object') return node;
+  const cleaned = { ...node };
+  if (Array.isArray(cleaned.children)) {
+    cleaned.children = cleaned.children
+      .filter((child: any) => child !== null && child !== undefined)
+      .map(cleanSchemaNode);
   }
-  if (node?.slots && typeof node.slots === 'object') {
-    Object.values(node.slots).forEach(cleanSchemaNode);
+  if (cleaned.slots && typeof cleaned.slots === 'object') {
+    cleaned.slots = Object.fromEntries(Object.entries(cleaned.slots).map(([k, v]) => [k, cleanSchemaNode(v)]));
   }
-  if (Array.isArray(node?.routes)) {
-    node.routes.forEach(cleanSchemaNode);
+  if (Array.isArray(cleaned.routes)) {
+    cleaned.routes = cleaned.routes.map(cleanSchemaNode);
   }
-  return node;
+  return cleaned;
 }
 
 export function updateSchema<T extends TemplateSchema | SchemaNode>(

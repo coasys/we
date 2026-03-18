@@ -1,5 +1,16 @@
 import { hasToken } from './predicates';
 
+/** Symbol used to tag reactive accessors (signals, memos) so the renderer can distinguish them from event handlers */
+export const REACTIVE_ACCESSOR = Symbol('schema-reactive-accessor');
+
+function markReactive<T>(value: T): T {
+  if (typeof value === 'function') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (value as any)[REACTIVE_ACCESSOR] = true;
+  }
+  return value;
+}
+
 type Props = Record<string, unknown>;
 type MapProp = { items: unknown; select: Props };
 type PickProp = { from: unknown; props: string[] };
@@ -8,9 +19,9 @@ type Memo = <T>(fn: () => T) => T; // Framework specific memoization function (e
 const noMemo: Memo = (fn) => fn(); // Fallback if no memoization provided
 
 // Resolves relative paths used in router navigation (e.g. '.', './', '../')
-function resolveRelativePath(rawPath: string, baseDepth: number): string {
+function resolveRelativePath(rawPath: string, baseDepth: number, pathname: string): string {
   // Get current path segments and start from the base depth
-  const segs = window.location.pathname.split('/').filter(Boolean);
+  const segs = pathname.split('/').filter(Boolean);
   let depth = Math.min(baseDepth, segs.length);
 
   // Navigate to the parent index for '' or '.'
@@ -39,22 +50,24 @@ export function resolveStoreProp(value: unknown, stores: Props, memo: Memo = noM
   if (propertyPath.length === 0) throw new Error(`Schema error: Cannot pass entire store "${storeName}"`);
 
   // Return the accessor directly for single-level access
-  if (propertyPath.length === 1) return (stores[storeName] as Props)[propertyPath[0]];
+  if (propertyPath.length === 1) return markReactive((stores[storeName] as Props)[propertyPath[0]]);
 
   // Create a derived accessor for nested paths
-  return memo(() => {
-    // Walk down property path to get final value (userStore → userStore.profile → userStore.profile.name)
-    let current = stores[storeName];
-    for (const prop of propertyPath) {
-      if (current && typeof current === 'object' && prop in current) {
-        const propValue = (current as Props)[prop];
-        current = typeof propValue === 'function' ? propValue() : propValue;
-      } else {
-        return undefined;
+  return markReactive(
+    memo(() => {
+      // Walk down property path to get final value (userStore → userStore.profile → userStore.profile.name)
+      let current = stores[storeName];
+      for (const prop of propertyPath) {
+        if (current && typeof current === 'object' && prop in current) {
+          const propValue = (current as Props)[prop];
+          current = typeof propValue === 'function' ? propValue() : propValue;
+        } else {
+          return undefined;
+        }
       }
-    }
-    return current;
-  });
+      return current;
+    }),
+  );
 }
 
 // Resolves $expr props: { $expr: 'space.name' } or { $expr: '`/space/${space.uuid}`' }
@@ -119,7 +132,10 @@ function resolveActionProp(value: unknown, context: Props, stores: Props, memo: 
         const baseDepth = (context?.$nav as { baseDepth?: number })?.baseDepth;
 
         if (!isAbsolute && typeof baseDepth === 'number') {
-          const normalizedPath = resolveRelativePath(path, baseDepth);
+          const pathname =
+            (context?.$nav as { pathname?: string })?.pathname ??
+            (typeof window !== 'undefined' ? window.location.pathname : '/');
+          const normalizedPath = resolveRelativePath(path, baseDepth, pathname);
           const nextArgs = [normalizedPath, ...resolvedArgs.slice(1)];
           return method.apply(store, nextArgs);
         }
@@ -133,22 +149,44 @@ function resolveActionProp(value: unknown, context: Props, stores: Props, memo: 
       return method.apply(store, argsToUse);
     };
   }
+
+  // Warn on missing store or method for debuggability
+  if (!store) console.warn(`Schema $action: store "${storeName}" not found`);
+  else if (!method) console.warn(`Schema $action: method "${methodName}" not found on store "${storeName}"`);
 }
 
 // Resolves $map props: { $map: { items: { "$store": "templateStore.templates" }, select: { "name": "$item.meta.name", "icon": "$item.meta.icon" } } }
 function resolveMapProp(map: MapProp, stores: Props, context: Props, memo: Memo): unknown {
-  return memo(() => {
-    const items = resolveProp(map.items, stores, context, memo);
-    const resolvedItems = typeof items === 'function' ? items() : items;
+  return markReactive(
+    memo(() => {
+      const items = resolveProp(map.items, stores, context, memo);
+      const resolvedItems = typeof items === 'function' ? items() : items;
 
-    // Handle arrays - map over each item
-    if (Array.isArray(resolvedItems)) {
-      return resolvedItems.map((item) => {
+      // Handle arrays - map over each item
+      if (Array.isArray(resolvedItems)) {
+        return resolvedItems.map((item) => {
+          const result: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(map.select)) {
+            if (typeof value === 'string' && value.startsWith('$item.')) {
+              const path = value.slice(6).split('.');
+              let current = item;
+              for (const p of path) current = current?.[p];
+              result[key] = current;
+            } else {
+              result[key] = value;
+            }
+          }
+          return result;
+        });
+      }
+
+      // Handle single object - transform it
+      if (resolvedItems && typeof resolvedItems === 'object') {
         const result: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(map.select)) {
           if (typeof value === 'string' && value.startsWith('$item.')) {
             const path = value.slice(6).split('.');
-            let current = item;
+            let current = resolvedItems;
             for (const p of path) current = current?.[p];
             result[key] = current;
           } else {
@@ -156,43 +194,29 @@ function resolveMapProp(map: MapProp, stores: Props, context: Props, memo: Memo)
           }
         }
         return result;
-      });
-    }
-
-    // Handle single object - transform it
-    if (resolvedItems && typeof resolvedItems === 'object') {
-      const result: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(map.select)) {
-        if (typeof value === 'string' && value.startsWith('$item.')) {
-          const path = value.slice(6).split('.');
-          let current = resolvedItems;
-          for (const p of path) current = current?.[p];
-          result[key] = current;
-        } else {
-          result[key] = value;
-        }
       }
-      return result;
-    }
 
-    // Return empty array for null/undefined
-    return [];
-  });
+      // Return empty array for null/undefined
+      return [];
+    }),
+  );
 }
 
 // Resolves $pick props: { $pick: { from: { "$store": "userStore.profile" }, props: ["name", "email"] } }
 function resolvePickProp(pick: PickProp, stores: Props, context: Props, memo: Memo): unknown {
-  return memo(() => {
-    // Resolve the source object
-    const source = resolveProp(pick.from, stores, context, memo);
-    // If source is an accessor, call it
-    const resolvedSource = typeof source === 'function' ? source() : source;
-    if (typeof resolvedSource !== 'object' || resolvedSource === null) return {};
-    // Pick the specified props, wrapping each in a memo accessor
-    const result: Record<string, unknown> = {};
-    for (const key of pick.props) result[key] = (resolvedSource as Record<string, unknown>)[key];
-    return result;
-  });
+  return markReactive(
+    memo(() => {
+      // Resolve the source object
+      const source = resolveProp(pick.from, stores, context, memo);
+      // If source is an accessor, call it
+      const resolvedSource = typeof source === 'function' ? source() : source;
+      if (typeof resolvedSource !== 'object' || resolvedSource === null) return {};
+      // Pick the specified props, wrapping each in a memo accessor
+      const result: Record<string, unknown> = {};
+      for (const key of pick.props) result[key] = (resolvedSource as Record<string, unknown>)[key];
+      return result;
+    }),
+  );
 }
 
 // Resolves $if props: { $if: { condition, then, else } }
@@ -250,14 +274,16 @@ function resolveIfProp(value: unknown, stores: Props, context: Props, memo: Memo
   }
 
   // Standard $if without $arg - wrap in memo to reactively re-evaluate when condition changes
-  return memo(() => {
-    const conditionResult = resolveProp(condition, stores, context, memo);
-    // Unwrap signal accessor if condition resolved to one
-    const conditionMet = typeof conditionResult === 'function' ? conditionResult() : conditionResult;
-    const branchResult = resolveProp(conditionMet ? thenValue : elseValue, stores, context, memo);
-    // Unwrap signal accessor if branch result is one
-    return typeof branchResult === 'function' ? branchResult() : branchResult;
-  });
+  return markReactive(
+    memo(() => {
+      const conditionResult = resolveProp(condition, stores, context, memo);
+      // Unwrap signal accessor if condition resolved to one
+      const conditionMet = typeof conditionResult === 'function' ? conditionResult() : conditionResult;
+      const branchResult = resolveProp(conditionMet ? thenValue : elseValue, stores, context, memo);
+      // Unwrap signal accessor if branch result is one
+      return typeof branchResult === 'function' ? branchResult() : branchResult;
+    }),
+  );
 }
 
 // Resolves $eq (equal) props: { $eq: [a, b] }
@@ -297,6 +323,28 @@ function resolveNotProp(value: unknown, stores: Props, context: Props, memo: Mem
   return !resolved;
 }
 
+// Resolves $and (logical and) props: { $and: [condA, condB, ...] }
+function resolveAndProp(value: unknown, stores: Props, context: Props, memo: Memo): unknown {
+  const operands = (value as { $and: unknown[] }).$and;
+  for (const operand of operands) {
+    let resolved = resolveProp(operand, stores, context, memo);
+    if (typeof resolved === 'function') resolved = resolved();
+    if (!resolved) return false;
+  }
+  return true;
+}
+
+// Resolves $or (logical or) props: { $or: [condA, condB, ...] }
+function resolveOrProp(value: unknown, stores: Props, context: Props, memo: Memo): unknown {
+  const operands = (value as { $or: unknown[] }).$or;
+  for (const operand of operands) {
+    let resolved = resolveProp(operand, stores, context, memo);
+    if (typeof resolved === 'function') resolved = resolved();
+    if (resolved) return true;
+  }
+  return false;
+}
+
 /**
  * Check if an object contains any schema tokens (keys starting with $)
  */
@@ -331,6 +379,8 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$not', 'object')) return resolveNotProp(value, stores, context, memo);
     if (hasToken(value, '$eq', 'array')) return resolveEqProp(value, stores, context, memo);
     if (hasToken(value, '$ne', 'array')) return resolveNeProp(value, stores, context, memo);
+    if (hasToken(value, '$and', 'array')) return resolveAndProp(value, stores, context, memo);
+    if (hasToken(value, '$or', 'array')) return resolveOrProp(value, stores, context, memo);
   }
 
   // Recursively resolve arrays

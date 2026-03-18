@@ -37,7 +37,12 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
   .strict();
 
 export const zTemplateSchema: z.ZodType<TemplateSchema> = z
-  .object({ ...schemaNodeShape(), id: z.string().optional(), meta: zTemplateMeta })
+  .object({
+    ...schemaNodeShape(),
+    id: z.string().optional(),
+    schemaVersion: z.number().optional(),
+    meta: zTemplateMeta,
+  })
   .strict();
 
 export const zRouteSchema: z.ZodType<RouteSchema> = z.object({ ...schemaNodeShape(), path: z.string() }).strict();

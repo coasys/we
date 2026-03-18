@@ -1,9 +1,10 @@
-import type { TransitionConfig } from '@we/schema-shared';
-import { resolveProp, resolveProps, splitProps } from '@we/schema-shared';
-import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show } from 'solid-js';
+import { DESIGN_SYSTEM_CAMEL_CASE_PROPS } from '@we/design-types';
+import { REACTIVE_ACCESSOR, resolveProp, resolveProps, splitProps } from '@we/schema-shared';
+import { batch, createEffect, createMemo, For, JSX } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
+import { ConditionalRenderer } from './ConditionalRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 
 export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
@@ -43,158 +44,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   // Handle conditional rendering
   if (node.type === '$if') {
-    // Get transition configs from props (can be dynamic via prop resolution)
-    const enterTransition = node.props?.enterTransition as TransitionConfig | undefined;
-    const exitTransition = node.props?.exitTransition as TransitionConfig | undefined;
-    const hasTransitions = enterTransition || exitTransition;
-
-    const conditionMet = createMemo(() => {
-      const condition = resolveProp(node.props?.condition, stores, context, createMemo);
-      return typeof condition === 'function' ? condition() : condition;
-    });
-
-    // If no transitions, use standard Show component
-    if (!hasTransitions) {
-      return (
-        <Show when={conditionMet()} fallback={renderNode(node.props?.else as SchemaNode | undefined)}>
-          {renderNode(node.props?.then as SchemaNode | undefined)}
-        </Show>
-      );
-    }
-
-    // With transitions, we need to manage opacity and delayed unmounting
-    const [isVisible, setIsVisible] = createSignal(conditionMet());
-    const [shouldRender, setShouldRender] = createSignal(conditionMet());
-    const [opacity, setOpacity] = createSignal(conditionMet() ? 1 : 0);
-
-    // Watch for condition changes and handle transitions
-    createEffect(() => {
-      const newCondition = conditionMet();
-
-      if (newCondition && !isVisible()) {
-        // Condition became true - mount and fade in
-        setShouldRender(true);
-        setIsVisible(true);
-
-        if (enterTransition) {
-          // Start with opacity 0, then fade in on next frame
-          setOpacity(0);
-          requestAnimationFrame(() => {
-            setTimeout(() => setOpacity(1), enterTransition.delay ?? 0);
-          });
-        } else {
-          setOpacity(1);
-        }
-      } else if (!newCondition && isVisible()) {
-        // Condition became false - fade out then unmount
-        setIsVisible(false);
-
-        if (exitTransition) {
-          const duration = exitTransition.duration ?? 300;
-          const delay = exitTransition.delay ?? 0;
-
-          setTimeout(() => {
-            setOpacity(0);
-
-            // Unmount after transition completes
-            const timer = setTimeout(() => {
-              setShouldRender(false);
-            }, duration);
-
-            onCleanup(() => clearTimeout(timer));
-          }, delay);
-        } else {
-          setShouldRender(false);
-          setOpacity(0);
-        }
-      }
-    });
-
-    // Build transition CSS based on config
-    const getTransitionCSS = (config: TransitionConfig | undefined): string => {
-      if (!config) return '';
-      const duration = config.duration ?? 300;
-      const easing = config.easing ?? 'ease';
-      return `opacity ${duration}ms ${easing}`;
-    };
-
-    const transitionCSS = exitTransition
-      ? getTransitionCSS(exitTransition)
-      : enterTransition
-        ? getTransitionCSS(enterTransition)
-        : '';
-
-    // Helper to check if a web component extends OverlayElement
-    // Uses static property marker since class names get minified in production
-    const isOverlayComponent = (tagName: string): boolean => {
-      if (!tagName?.startsWith('we-')) return false;
-
-      const ComponentClass = customElements.get(tagName);
-      if (!ComponentClass) return false;
-
-      // Check for static isOverlay marker property (minification-safe)
-      return 'isOverlay' in ComponentClass && ComponentClass.isOverlay === true;
-    };
-
-    // Get content node to check for positioning props
-    const contentNode = node.props?.then as SchemaNode | undefined;
-    const contentProps = contentNode?.props || {};
-    const contentType = String(contentNode?.type || '');
-
-    // Check if content is a self-positioning overlay component
-    const isOverlay = isOverlayComponent(contentType);
-
-    // Check if content has position or z-index props
-    const hasPosition = contentProps.position;
-    const hasZIndex = contentProps['z-index'] || contentProps.zIndex;
-
-    // Build wrapper style - use a memo to make it reactive
-    const wrapperStyle = createMemo(() => {
-      const style: Record<string, string | number> = {
-        opacity: opacity(),
-        transition: transitionCSS,
-      };
-
-      // If content is an overlay component, don't interfere with its positioning
-      // But copy z-index to wrapper for proper stacking during transitions
-      if (isOverlay) {
-        // Copy z-index from overlay if present (for proper stacking during fade)
-        if (hasZIndex) {
-          const zIndexValue = String(contentProps['z-index'] || contentProps.zIndex);
-          style['z-index'] = zIndexValue;
-        }
-        // Let overlay handle its own positioning, wrapper just manages opacity & z-index
-        return style;
-      }
-
-      // If content has position or z-index, copy them to wrapper to maintain stacking behavior
-      if (hasPosition || hasZIndex) {
-        // Copy position (default to relative if only z-index is set)
-        const positionValue = String(contentProps.position || 'relative');
-        style.position = positionValue;
-
-        // Copy z-index (normalize from both camelCase and kebab-case)
-        if (hasZIndex) {
-          const zIndexValue = String(contentProps['z-index'] || contentProps.zIndex);
-          style['z-index'] = zIndexValue;
-        }
-
-        // Make wrapper fill available space to not disrupt layout
-        style.width = '100%';
-        style.height = '100%';
-        return style;
-      }
-
-      // For everything else (non-overlay, non-positioned), use layout-neutral wrapper
-      style.display = 'contents';
-      return style;
-    });
-
-    return (
-      <Show when={shouldRender()} fallback={renderNode(node.props?.else as SchemaNode | undefined)}>
-        <div style={wrapperStyle()}>{renderNode(contentNode)}</div>
-      </Show>
-    );
+    return <ConditionalRenderer node={node} stores={stores} context={context} renderNode={renderNode} />;
   }
 
   // Handle for-each loops
@@ -261,14 +111,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   const split = createMemo(() => splitProps(resolveProps(node.props, stores, context, createMemo)));
 
   // Design system props that need special handling for web components (camelCase properties)
-  const designSystemCamelCaseProps = new Set([
-    'zIndex',
-    'minWidth',
-    'maxWidth',
-    'minHeight',
-    'maxHeight',
-    'pointerEvents',
-  ]);
+  const designSystemCamelCaseProps = DESIGN_SYSTEM_CAMEL_CASE_PROPS;
 
   // Handle safe props with reactivity
   const isWebComponent = node.type?.startsWith('we-');
@@ -283,15 +126,15 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     }
 
     for (const [k, v] of Object.entries(safeProps)) {
-      const isSignal = typeof v === 'function' && v.name.includes('readSignal');
+      const isReactiveAccessor = typeof v === 'function' && REACTIVE_ACCESSOR in v;
 
       // Skip design system camelCase props for web components - they'll be set as properties instead
       if (isWebComponent && designSystemCamelCaseProps.has(k)) {
         continue;
       }
 
-      // Unwrap signal accessors for web components
-      if (isWebComponent && isSignal) attrs[k] = v();
+      // Unwrap reactive accessors for web components
+      if (isWebComponent && isReactiveAccessor) attrs[k] = v();
       // Pass through for Solid components, event handlers, and all other values
       else attrs[k] = v;
     }
@@ -305,16 +148,16 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
     // Set complex props as properties
     for (const [k, v] of Object.entries(complexProps)) {
-      // Unwrap signal accessors for web components
-      const isSignal = typeof v === 'function' && v.name.includes('readSignal');
-      hostRef[k] = isWebComponent && isSignal ? v() : v;
+      // Unwrap reactive accessors for web components
+      const isReactiveAccessor = typeof v === 'function' && REACTIVE_ACCESSOR in v;
+      hostRef[k] = isWebComponent && isReactiveAccessor ? v() : v;
     }
 
     // Set design system camelCase props as properties (not attributes)
     for (const [k, v] of Object.entries(safeProps)) {
       if (designSystemCamelCaseProps.has(k)) {
-        const isSignal = typeof v === 'function' && v.name.includes('readSignal');
-        hostRef[k] = isWebComponent && isSignal ? v() : v;
+        const isReactiveAccessor = typeof v === 'function' && REACTIVE_ACCESSOR in v;
+        hostRef[k] = isWebComponent && isReactiveAccessor ? v() : v;
       }
     }
   });
