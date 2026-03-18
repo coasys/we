@@ -723,6 +723,9 @@ importers:
 
   packages/schema-system/solid:
     dependencies:
+      '@we/design-types':
+        specifier: workspace:*
+        version: link:../../design-system/types
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../shared

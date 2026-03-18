@@ -19,9 +19,9 @@ type Memo = <T>(fn: () => T) => T; // Framework specific memoization function (e
 const noMemo: Memo = (fn) => fn(); // Fallback if no memoization provided
 
 // Resolves relative paths used in router navigation (e.g. '.', './', '../')
-function resolveRelativePath(rawPath: string, baseDepth: number): string {
+function resolveRelativePath(rawPath: string, baseDepth: number, pathname: string): string {
   // Get current path segments and start from the base depth
-  const segs = window.location.pathname.split('/').filter(Boolean);
+  const segs = pathname.split('/').filter(Boolean);
   let depth = Math.min(baseDepth, segs.length);
 
   // Navigate to the parent index for '' or '.'
@@ -132,7 +132,10 @@ function resolveActionProp(value: unknown, context: Props, stores: Props, memo: 
         const baseDepth = (context?.$nav as { baseDepth?: number })?.baseDepth;
 
         if (!isAbsolute && typeof baseDepth === 'number') {
-          const normalizedPath = resolveRelativePath(path, baseDepth);
+          const pathname =
+            (context?.$nav as { pathname?: string })?.pathname ??
+            (typeof window !== 'undefined' ? window.location.pathname : '/');
+          const normalizedPath = resolveRelativePath(path, baseDepth, pathname);
           const nextArgs = [normalizedPath, ...resolvedArgs.slice(1)];
           return method.apply(store, nextArgs);
         }
