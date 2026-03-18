@@ -1,0 +1,77 @@
+import { hasToken } from '../predicates';
+
+import { resolveActionProp } from './action';
+import { resolveAndProp, resolveEqProp, resolveNeProp, resolveNotProp, resolveOrProp } from './comparisons';
+import { resolveIfProp } from './conditional';
+import { resolveExpressionProp } from './expression';
+import { resolveMapProp } from './map';
+import { resolvePickProp } from './pick';
+import { resolveStoreProp } from './store';
+import type { MapProp, Memo, PickProp, Props } from './types';
+import { noMemo } from './types';
+
+/**
+ * Check if an object contains any schema tokens (keys starting with $)
+ */
+function hasAnyToken(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.keys(value).some((k) => k.startsWith('$'));
+}
+
+/**
+ * Resolve any prop based on its token type, with recursive resolution for nested structures
+ * @param value - The value to resolve
+ * @param stores - Store objects for $store tokens
+ * @param context - Context for $expr tokens
+ * @param memo - Memoization function (framework-specific)
+ * @param depth - Current recursion depth (for safety limit)
+ */
+export function resolveProp(value: unknown, stores: Props, context: Props, memo: Memo = noMemo, depth = 0): unknown {
+  // Safety: prevent infinite recursion
+  if (depth > 10) {
+    console.warn('resolveProp: Maximum recursion depth exceeded');
+    return value;
+  }
+
+  // Handle token objects (objects with $ keys)
+  if (hasAnyToken(value)) {
+    if (hasToken(value, '$store', 'string')) return resolveStoreProp(value, stores, memo);
+    if (hasToken(value, '$expr', 'string')) return resolveExpressionProp(value, context);
+    if (hasToken(value, '$action', 'string')) return resolveActionProp(value, context, stores, memo, resolveProp);
+    if (hasToken(value, '$map', 'object'))
+      return resolveMapProp(value['$map'] as MapProp, stores, context, memo, resolveProp);
+    if (hasToken(value, '$pick', 'object'))
+      return resolvePickProp(value['$pick'] as PickProp, stores, context, memo, resolveProp);
+    if (hasToken(value, '$if', 'object')) return resolveIfProp(value, stores, context, memo, resolveProp);
+    if (hasToken(value, '$not', 'object')) return resolveNotProp(value, stores, context, memo, resolveProp);
+    if (hasToken(value, '$eq', 'array')) return resolveEqProp(value, stores, context, memo, resolveProp);
+    if (hasToken(value, '$ne', 'array')) return resolveNeProp(value, stores, context, memo, resolveProp);
+    if (hasToken(value, '$and', 'array')) return resolveAndProp(value, stores, context, memo, resolveProp);
+    if (hasToken(value, '$or', 'array')) return resolveOrProp(value, stores, context, memo, resolveProp);
+  }
+
+  // Recursively resolve arrays
+  if (Array.isArray(value)) {
+    return value.map((item) => resolveProp(item, stores, context, memo, depth + 1));
+  }
+
+  // Recursively resolve plain objects (no tokens)
+  if (value && typeof value === 'object') {
+    const resolved: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      resolved[k] = resolveProp(v, stores, context, memo, depth + 1);
+    }
+    return resolved;
+  }
+
+  // Primitives, functions, null, undefined - return as-is
+  return value;
+}
+
+// Resolve all props in an object
+export function resolveProps(props: Props | undefined, stores: Props, context: Props, memo: Memo = noMemo): Props {
+  const resolvedProps: Props = {};
+  for (const [key, value] of Object.entries(props ?? {}))
+    resolvedProps[key] = resolveProp(value, stores, context, memo);
+  return resolvedProps;
+}
