@@ -1,11 +1,10 @@
 // import type { Preview } from '@storybook/html-vite';
 import { setCustomElementsManifest } from '@storybook/web-components';
 import customElements from '../custom-elements.json';
-// import '../src/main.ts';
-import '../src/themes/black.css';
-import '../src/themes/cyberpunk.css';
-import '../src/themes/dark.css';
-import '../src/themes/retro.css';
+import '@we/themes/black';
+import '@we/themes/cyberpunk';
+import '@we/themes/dark';
+import '@we/themes/retro';
 
 setCustomElementsManifest(customElements);
 
@@ -44,7 +43,7 @@ const preview = {
       // apply global theme when changed in toolbar
       const selectedTheme = context.globals.theme || 'light';
       document.documentElement.className = selectedTheme;
-      document.body.style.backgroundColor = 'var(--j-color-ui-100)';
+      document.body.style.backgroundColor = 'var(--we-color-ui-100)';
 
       return Story();
     },

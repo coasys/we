@@ -1,9 +1,21 @@
-import { designSystemKeys } from '@we/design-utils';
+import { designSystemKeys, getKeysForLayers } from '@we/design-utils';
 
 const DESIGN_SYSTEM_PROPS = Object.fromEntries(designSystemKeys.map((key) => [key, `DesignSystemProps['${key}']`]));
 
+// Map of base class names to their DS layer sets
+const BASE_CLASS_LAYERS = {
+  DesignSystemElement: ['layout', 'visual', 'flex', 'typography', 'state'],
+  OverlayElement: ['layout', 'visual', 'flex', 'typography', 'state'],
+  LayoutElement: ['layout'],
+  LayoutTypographyElement: ['layout', 'typography'],
+  LayoutVisualElement: ['layout', 'visual'],
+  LayoutVisualTypographyElement: ['layout', 'visual', 'typography'],
+};
+
+const DS_BASE_CLASSES = new Set(Object.keys(BASE_CLASS_LAYERS));
+
 export default {
-  globs: ['src/components/**/*.ts'],
+  globs: ['src/**/*.ts'],
   plugins: [
     {
       name: 'inject-design-system-props',
@@ -11,16 +23,23 @@ export default {
         const declarations = moduleDoc?.declarations;
         if (!declarations) return;
 
-        // Iterate over declarations and inject design system props where needed
         for (const decl of declarations) {
-          // Only process classes that extend DesignSystemElement
-          if (decl.kind !== 'class' || decl.superclass.name !== 'DesignSystemElement') continue;
+          if (decl.kind !== 'class' || !decl.superclass) continue;
+          const superName = decl.superclass.name;
+          if (!DS_BASE_CLASSES.has(superName)) continue;
 
-          // Add design system props to the class members
+          const layers = BASE_CLASS_LAYERS[superName];
+          const activeKeys = getKeysForLayers(layers);
+
           decl.members ??= [];
-          for (const [name, typeText] of Object.entries(DESIGN_SYSTEM_PROPS)) {
-            if (decl.members.some((m) => m.name === name)) continue;
-            decl.members.push({ kind: 'field', name, type: { text: typeText }, privacy: 'public' });
+          decl.attributes ??= [];
+          for (const key of activeKeys) {
+            if (decl.members.some((m) => m.name === key)) continue;
+            const typeText = DESIGN_SYSTEM_PROPS[key];
+            if (typeText) {
+              decl.members.push({ kind: 'field', name: key, type: { text: typeText }, privacy: 'public' });
+              decl.attributes.push({ name: key, type: { text: typeText }, fieldName: key });
+            }
           }
         }
       },
