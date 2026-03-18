@@ -1,12 +1,13 @@
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
+import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import { ImageFit, ImageLoading } from '../types';
 
 const styles = css`
   :host {
-    display: inline-block;
+    --we-image-host-display: inline-block;
     line-height: 0;
   }
 
@@ -49,26 +50,14 @@ const styles = css`
 `;
 
 @customElement('we-image')
-export default class Image extends LitElement {
+export default class Image extends LayoutElement {
   static styles = [sharedStyles, styles];
 
   @property({ type: String, reflect: true }) src = '';
   @property({ type: String, reflect: true }) alt = '';
-  @property({ type: String, reflect: true }) width = '';
-  @property({ type: String, reflect: true }) height = '';
   @property({ type: String, reflect: true }) fit: ImageFit = '';
   @property({ type: String, reflect: true }) loading: ImageLoading = 'eager';
   @property({ type: String, reflect: true }) gradient = '';
-
-  updated(props: Map<string, unknown>) {
-    super.updated(props);
-    if (props.has('width') && this.width) {
-      this.style.width = this.width.includes('px') || this.width.includes('%') ? this.width : `${this.width}px`;
-    }
-    if (props.has('height') && this.height) {
-      this.style.height = this.height.includes('px') || this.height.includes('%') ? this.height : `${this.height}px`;
-    }
-  }
 
   render() {
     // If gradient is provided, use SVG as a mask with gradient background

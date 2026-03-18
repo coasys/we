@@ -191,7 +191,7 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
   const styles: string[] = [];
 
   // ── Host (:host) ──
-  const hostLines: string[] = ['display: flex;'];
+  const hostLines: string[] = [`display: var(${p}host-display, flex);`];
   if (l.has('layout')) hostLines.push(joinDecls(p, HOST_LAYOUT));
   if (l.has('visual')) hostLines.push(`transition: var(${p}transition, ${DEFAULT_TRANSITION});`);
   styles.push(`:host { ${hostLines.join('\n    ')} }`);

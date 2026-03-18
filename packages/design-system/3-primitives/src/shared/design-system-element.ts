@@ -53,3 +53,15 @@ export abstract class DesignSystemElement extends applyDSBehavior(DesignSystemMi
 export function DSElement(layers: DSLayer[]) {
   return applyDSBehavior(DesignSystemMixin(LitElement, layers));
 }
+
+// Pre-built base classes for common layer combinations (CEM-compatible — no function call in extends)
+export abstract class LayoutElement extends applyDSBehavior(DesignSystemMixin(LitElement, ['layout'])) {}
+export abstract class LayoutTypographyElement extends applyDSBehavior(
+  DesignSystemMixin(LitElement, ['layout', 'typography']),
+) {}
+export abstract class LayoutVisualElement extends applyDSBehavior(
+  DesignSystemMixin(LitElement, ['layout', 'visual']),
+) {}
+export abstract class LayoutVisualTypographyElement extends applyDSBehavior(
+  DesignSystemMixin(LitElement, ['layout', 'visual', 'typography']),
+) {}

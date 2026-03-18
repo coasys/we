@@ -1,14 +1,15 @@
 import { tokenVar } from '@we/design-utils';
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
+import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import { SpinnerSize } from '../types';
 
 const styles = css`
   :host {
-    display: contents;
+    --we-spinner-host-display: inline-flex;
     --we-spinner-size: var(--we-size-md);
     --we-spinner-stroke: 2px;
     --we-spinner-color: var(--we-color-primary-500);
@@ -81,7 +82,7 @@ const styles = css`
 `;
 
 @customElement('we-spinner')
-export default class Spinner extends LitElement {
+export default class Spinner extends LayoutElement {
   static styles = [sharedStyles, styles];
 
   @property({ type: String, reflect: true }) size: SpinnerSize = '';

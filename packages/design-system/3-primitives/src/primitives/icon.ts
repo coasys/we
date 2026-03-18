@@ -1,8 +1,9 @@
 import { tokenVar } from '@we/design-utils';
-import { css, html, LitElement } from 'lit';
+import { css, html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 
+import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import { IconSize, IconWeight } from '../types';
 
@@ -47,7 +48,7 @@ const styles = css`
 // Todo: allow users to pass in their own icon set
 
 @customElement('we-icon')
-export default class Icon extends LitElement {
+export default class Icon extends LayoutElement {
   static styles = [sharedStyles, styles];
 
   @property({ type: String, reflect: true }) name = '';
