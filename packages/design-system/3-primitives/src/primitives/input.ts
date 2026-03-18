@@ -5,6 +5,8 @@ import { customElement, property } from 'lit/decorators.js';
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
+let inputIdCounter = 0;
+
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
   direction: 'column',
@@ -54,6 +56,8 @@ const styles = css`
 export default class Input extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
+  private _inputId = `we-input-${++inputIdCounter}`;
+
   @property({ type: String, reflect: true }) value = '';
   @property({ type: String, reflect: true }) max = '';
   @property({ type: String, reflect: true }) min = '';
@@ -74,11 +78,6 @@ export default class Input extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) required = false;
   @property({ type: Boolean, reflect: true }) readonly = false;
   @property({ type: String, reflect: true }) type = 'text';
-  @property({ attribute: false }) onInput: (event: InputEvent) => void = () => {};
-  @property({ attribute: false }) onChange: (event: Event) => void = () => {};
-  @property({ attribute: false }) onFocus: (event: FocusEvent) => void = () => {};
-  @property({ attribute: false }) onBlur: (event: FocusEvent) => void = () => {};
-  @property({ attribute: false }) onKeyDown: (event: KeyboardEvent) => void = () => {};
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -100,43 +99,44 @@ export default class Input extends DesignSystemElement {
   }
 
   handleInput(e: InputEvent) {
-    e.stopPropagation();
     this.value = (e.target as HTMLInputElement)?.value;
-    this.dispatchEvent(new CustomEvent('input', { detail: this.value, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('we-input', { detail: this.value, bubbles: true, composed: true }));
   }
 
   handleChange(e: Event) {
-    e.stopPropagation();
     this.value = (e.target as HTMLInputElement)?.value;
-    this.dispatchEvent(new CustomEvent('change', e));
+    this.dispatchEvent(new CustomEvent('we-change', { detail: this.value, bubbles: true, composed: true }));
   }
 
-  handleFocus(e: FocusEvent) {
-    e.stopPropagation();
-    this.value = (e.target as HTMLInputElement)?.value;
-    this.dispatchEvent(new CustomEvent('focus', e));
+  handleFocus(_e: FocusEvent) {
+    this.dispatchEvent(new CustomEvent('we-focus', { bubbles: true, composed: true }));
   }
 
-  handleBlur(e: FocusEvent) {
-    e.stopPropagation();
+  handleBlur(_e: FocusEvent) {
     if (this.autovalidate) this.validate();
-    this.dispatchEvent(new CustomEvent('blur', e));
+    this.dispatchEvent(new CustomEvent('we-blur', { bubbles: true, composed: true }));
   }
 
   handleKeyDown(e: KeyboardEvent) {
-    e.stopPropagation();
-    const event = new KeyboardEvent(e.type, e);
-    this.dispatchEvent(event);
+    this.dispatchEvent(new CustomEvent('we-keydown', { detail: { key: e.key, code: e.code }, bubbles: true, composed: true }));
   }
 
   render() {
+    const descId = this.error && this.errortext
+      ? `${this._inputId}-error`
+      : this.helptext
+        ? `${this._inputId}-help`
+        : undefined;
+
     return html`
       <div part="base">
-        ${this.label ? html`<we-text tag="label" part="label">${this.label}</we-text>` : null}
+        ${this.label ? html`<label part="label" for=${this._inputId}>${this.label}</label>` : null}
         <div part="input-wrapper">
           <slot name="start"></slot>
           <input
             part="input"
+            id=${this._inputId}
+            aria-describedby=${descId || ''}
             .value=${this.value}
             .type=${this.type}
             .max=${this.max}
@@ -161,10 +161,10 @@ export default class Input extends DesignSystemElement {
         </div>
         ${this.error
           ? this.errortext
-            ? html`<div part="error-text">${this.errortext}</div>`
+            ? html`<div part="error-text" id=${`${this._inputId}-error`}>${this.errortext}</div>`
             : null
           : this.helptext
-            ? html`<div part="help-text">${this.helptext}</div>`
+            ? html`<div part="help-text" id=${`${this._inputId}-help`}>${this.helptext}</div>`
             : null}
       </div>
     `;

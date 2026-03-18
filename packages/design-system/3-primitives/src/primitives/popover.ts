@@ -35,7 +35,14 @@ export default class Popover extends LayoutElement {
 
   firstUpdated() {
     if (this.triggerElement) this.triggerElement.addEventListener('click', () => (this.open = !this.open));
+    this.addEventListener('keydown', this._onKeyDown);
   }
+
+  private _onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && this.open) {
+      this.open = false;
+    }
+  };
 
   private async updatePosition() {
     if (!this.triggerElement || !this.popoverElement) return;
@@ -85,7 +92,7 @@ export default class Popover extends LayoutElement {
 
   render() {
     return html`
-      <div part="trigger">
+      <div part="trigger" aria-expanded=${this.open ? 'true' : 'false'}>
         <slot name="trigger"></slot>
       </div>
 

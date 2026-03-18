@@ -101,7 +101,7 @@ export default class Avatar extends LayoutElement {
   @property({ type: String, reflect: true }) initials = '';
   @property({ type: String }) icon = '';
   @property({ type: String, reflect: true }) size?: AvatarSizeValue;
-  @property({ attribute: false }) onClick: undefined | (() => void) = undefined;
+  @property({ type: Boolean, reflect: true }) clickable = false;
   @property({ type: Object }) styles?: Record<string, any>;
 
   updated(props: Map<string, unknown>) {
@@ -125,9 +125,9 @@ export default class Avatar extends LayoutElement {
 
   render() {
     const inlineStyles = this.styles || {};
-    return this.onClick
+    return this.clickable
       ? html`
-          <button part="base" style=${styleMap(inlineStyles)} @click=${this.onClick}>${this.renderContent()}</button>
+          <button part="base" style=${styleMap(inlineStyles)}>${this.renderContent()}</button>
         `
       : html` <div part="base" style=${styleMap(inlineStyles)}>${this.renderContent()}</div> `;
   }

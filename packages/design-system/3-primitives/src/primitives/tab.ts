@@ -31,19 +31,14 @@ export class Tab extends DesignSystemElement {
   @property({ type: String, reflect: true }) key = '';
   @property({ type: Boolean, reflect: true }) active = false;
   @property({ type: String }) label?: string;
-  @property({ type: Object }) onClick?: any;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
   }
 
-  private handleClick(e: MouseEvent) {
+  private handleClick() {
     this.dispatchEvent(new CustomEvent('tab-select', { detail: { value: this.key }, bubbles: true, composed: true }));
-    if (this.onClick) {
-      if (typeof this.onClick === 'function') this.onClick(e);
-      // Handle schema action objects here if needed { $action: 'routeStore.navigate', args: ['/'] }
-    }
   }
 
   render() {

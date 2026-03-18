@@ -40,7 +40,6 @@ export default class Button extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) loading = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
-  @property({ attribute: false }) onClick = () => {};
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -71,6 +70,7 @@ export default class Button extends DesignSystemElement {
       return html`
         <a
           part="base"
+          role="button"
           href=${this.href}
           aria-disabled=${this.disabled || this.loading ? 'true' : 'false'}
           @click=${this._onClick}

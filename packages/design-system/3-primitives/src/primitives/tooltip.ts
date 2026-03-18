@@ -14,6 +14,8 @@ import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import { Placement } from '../types';
 
+let tooltipIdCounter = 0;
+
 const CSS_STYLES = css`
   :host {
     position: relative;
@@ -66,6 +68,8 @@ const CSS_STYLES = css`
 @customElement('we-tooltip')
 export default class Tooltip extends LayoutElement {
   static styles = [sharedStyles, CSS_STYLES];
+
+  private _tooltipId = `we-tooltip-${++tooltipIdCounter}`;
 
   @property({ type: Boolean, reflect: true }) open = false;
   @property({ type: String, reflect: true }) title = '';
@@ -149,8 +153,8 @@ export default class Tooltip extends LayoutElement {
 
   render() {
     return html`
-      <span part="trigger"><slot></slot></span>
-      <span part="tooltip">
+      <span part="trigger" aria-describedby=${this._tooltipId}><slot></slot></span>
+      <span part="tooltip" id=${this._tooltipId} role="tooltip">
         ${this.title}
         <span part="arrow"></span>
       </span>
