@@ -7,7 +7,7 @@ import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
-  // height: '36px',
+  direction: 'column',
   px: '300',
   bg: 'ui-75',
   r: 'sm',
@@ -17,19 +17,35 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const styles = css`
-  [part='base']::placeholder {
+  [part='input-wrapper'] {
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+
+  [part='input'] {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+    padding: 0;
+    min-width: 0;
+  }
+
+  [part='input']::placeholder {
     color: var(--we-color-ui-400);
   }
 
-  [part='help-text'],
-  [part='error-text'] {
-    left: 0;
-    bottom: -20px;
-    position: absolute;
+  [part='help-text'] {
     font-size: var(--we-font-size-300);
+    margin-top: var(--we-space-100);
   }
 
   [part='error-text'] {
+    font-size: var(--we-font-size-300);
+    margin-top: var(--we-space-100);
     color: var(--we-color-danger-500);
   }
 `;
@@ -115,32 +131,34 @@ export default class Input extends DesignSystemElement {
 
   render() {
     return html`
-      <div>
-        ${this.label && html` <j-text tag="label" variant="label" part="label">${this.label} </j-text> `}
-        <slot part="start" name="start"></slot>
-        <input
-          part="base"
-          .value=${this.value}
-          .type=${this.type}
-          .max=${this.max}
-          .min=${this.min}
-          .step=${this.step}
-          .autocomplete=${this.autocomplete}
-          maxlength=${this.maxlength}
-          minlength=${this.minlength}
-          pattern=${this.pattern}
-          placeholder=${this.placeholder}
-          ?autofocus=${this.autofocus}
-          ?readonly=${this.readonly}
-          ?required=${this.required}
-          ?disabled=${this.disabled}
-          @input=${this.handleInput}
-          @change=${this.handleChange}
-          @blur=${this.handleBlur}
-          @focus=${this.handleFocus}
-          @keydown=${this.handleKeyDown}
-        />
-        <slot part="end" name="end"></slot>
+      <div part="base">
+        ${this.label ? html`<we-text tag="label" part="label">${this.label}</we-text>` : null}
+        <div part="input-wrapper">
+          <slot name="start"></slot>
+          <input
+            part="input"
+            .value=${this.value}
+            .type=${this.type}
+            .max=${this.max}
+            .min=${this.min}
+            .step=${this.step}
+            .autocomplete=${this.autocomplete}
+            maxlength=${this.maxlength}
+            minlength=${this.minlength}
+            pattern=${this.pattern}
+            placeholder=${this.placeholder}
+            ?autofocus=${this.autofocus}
+            ?readonly=${this.readonly}
+            ?required=${this.required}
+            ?disabled=${this.disabled}
+            @input=${this.handleInput}
+            @change=${this.handleChange}
+            @blur=${this.handleBlur}
+            @focus=${this.handleFocus}
+            @keydown=${this.handleKeyDown}
+          />
+          <slot name="end"></slot>
+        </div>
         ${this.error
           ? this.errortext
             ? html`<div part="error-text">${this.errortext}</div>`
