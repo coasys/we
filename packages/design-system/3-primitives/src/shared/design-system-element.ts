@@ -2,34 +2,54 @@ import type { DSLayer } from '@we/design-utils';
 import { LitElement } from 'lit';
 
 import { DesignSystemMixin } from './design-system-mixin';
-import { getDesignSystemCSS } from './helpers';
+import { getStaticDSStyles, updateAllCustomVars } from './helpers';
 
-// Shared lifecycle logic for DS elements (dynamic style injection)
-function applyDSLifecycle<T extends new (...args: any[]) => any>(Base: T) {
+// Cache of DS stylesheets — one per component class, created once, reused for all instances
+const dsStyleSheets = new WeakMap<Function, CSSStyleSheet>();
+
+// Shared DS lifecycle: adopt static stylesheet + dirty-checked custom var updates
+function applyDSBehavior<T extends new (...args: any[]) => LitElement>(Base: T) {
   return class extends Base {
-    protected _dsStyle?: HTMLStyleElement;
+    private _prevDSSnapshot?: string;
+    private _componentName?: string;
 
-    private _updateDesignSystem() {
-      if (!this._dsStyle) return;
-      this._dsStyle.textContent = getDesignSystemCSS(this as any, (this as any).getInstanceProps());
-    }
+    connectedCallback() {
+      super.connectedCallback();
+      const ctor = this.constructor;
+      this._componentName = this.tagName.toLowerCase().replace('we-', '');
 
-    firstUpdated() {
-      this._dsStyle = document.createElement('style');
-      (this as any).renderRoot.appendChild(this._dsStyle);
-      this._updateDesignSystem();
+      // Create and cache the static DS stylesheet (once per component class)
+      if (!dsStyleSheets.has(ctor)) {
+        const sheet = new CSSStyleSheet();
+        const layers = (ctor as any).__dsLayers as readonly DSLayer[] | undefined;
+        sheet.replaceSync(getStaticDSStyles(this._componentName, layers));
+        dsStyleSheets.set(ctor, sheet);
+      }
+
+      // Adopt the DS stylesheet after Lit's own styles (last = highest cascade priority)
+      const root = this.shadowRoot;
+      if (root) {
+        const sheet = dsStyleSheets.get(ctor)!;
+        if (!root.adoptedStyleSheets.includes(sheet)) {
+          root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+        }
+      }
     }
 
     updated() {
-      this._updateDesignSystem();
+      const props = (this as any).getInstanceProps();
+      const snapshot = JSON.stringify(props);
+      if (snapshot === this._prevDSSnapshot) return;
+      this._prevDSSnapshot = snapshot;
+      updateAllCustomVars(this, this._componentName!, props);
     }
   };
 }
 
 // Class form: default all layers, CEM-compatible (existing DS-aware components extend this)
-export abstract class DesignSystemElement extends applyDSLifecycle(DesignSystemMixin(LitElement)) {}
+export abstract class DesignSystemElement extends applyDSBehavior(DesignSystemMixin(LitElement)) {}
 
 // Factory form: returns a base class scoped to specific layers (for migrated components)
 export function DSElement(layers: DSLayer[]) {
-  return applyDSLifecycle(DesignSystemMixin(LitElement, layers));
+  return applyDSBehavior(DesignSystemMixin(LitElement, layers));
 }
