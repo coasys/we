@@ -10,10 +10,10 @@ Refactor `@we/primitives` from its current split (some components extend `Design
 | P2 — Refactor `DesignSystemMixin` to accept layers                   | ✅ Complete  |
 | P3 — Refactor CSS generation + eliminate dynamic `<style>` injection | ✅ Complete  |
 | P4 — Migrate bespoke components to tiered mixin                      | ✅ Complete  |
-| P5 — Fix stale Storybook stories + old `j-` references               | Not started |
-| P6 — Standardize event contract + a11y baseline                      | Not started |
-| P7 — Icon bundling + SVG sanitization                                | Not started |
-| P8 — Update CEM config + framework declarations                      | Not started |
+| P5 — Fix stale Storybook stories + old `j-` references               | ✅ Complete  |
+| P6 — Standardize event contract + a11y baseline                      | ✅ Complete  |
+| P7 — Icon bundling + SVG sanitization                                | ✅ Complete  |
+| P8 — Update CEM config + framework declarations                      | ✅ Complete  |
 
 ---
 
