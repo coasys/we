@@ -11,10 +11,11 @@ Post-refactoring work to solidify the schema-system foundation before feature ge
 **Problem:** Signal detection relies on `v.name.includes('readSignal')`, but **Solid signal accessor `.name` is already `""` (empty string) at runtime** — verified with Solid 1.9.11. The check never matches, making `isSignal` always `false`. This is dead code.
 
 **Observed behavior:** The boot screen login form uses `$store` props on web components (`we-input value`, `we-input error`, `we-button loading`) which resolve to signal accessor functions. Despite the dead `readSignal` check, the UI works correctly — the input starts blank, typing works, error/loading states behave as expected. This suggests either:
+
 1. There's a compensating mechanism in the Solid→Lit rendering pipeline that handles function values correctly at runtime, or
 2. The symptoms are masked by rendering timing and Lit's internal input handling (`handleInput` overwrites `this.value` on first keystroke, sidestepping the signal→value flow)
 
-**Regardless of why it appears to work:** The `readSignal` check is provably dead code. The system works *despite* it, not *because* of it. The current behavior relies on undocumented framework interop rather than explicit, correct logic. This is fragile — a Solid, Lit, or bundler update could break it.
+**Regardless of why it appears to work:** The `readSignal` check is provably dead code. The system works _despite_ it, not _because_ of it. The current behavior relies on undocumented framework interop rather than explicit, correct logic. This is fragile — a Solid, Lit, or bundler update could break it.
 
 **Verified code flow:** `$store: 'adamStore.password'` → `resolveStoreProp` returns raw signal accessor (single-level path, returned directly without unwrapping) → `splitProps` classifies it as `safeProps` (function) → `reactiveAttrs` memo stores the function in attrs (dead `readSignal` check, never unwraps) → `<Dynamic>` → registry wrapper `(props) => <we-input {...props} />` → Solid's `spread → assignProp` → sets `node['value'] = signalAccessorFn` on the custom element.
 
@@ -54,6 +55,7 @@ else attrs[k] = v;
 ### 1.2 Add `schemaVersion` to TemplateSchema
 
 **Files:**
+
 - `packages/schema-system/shared/src/types.ts`
 - `packages/schema-system/shared/src/zodSchemas.ts`
 
@@ -92,9 +94,12 @@ solid/src/
 ```
 
 The `$if` block in `RenderSchema` becomes:
+
 ```tsx
 if (node.type === '$if') {
-  return <ConditionalRenderer node={node} stores={stores} registry={registry} context={context} renderNode={renderNode} />;
+  return (
+    <ConditionalRenderer node={node} stores={stores} registry={registry} context={context} renderNode={renderNode} />
+  );
 }
 ```
 
@@ -103,13 +108,20 @@ if (node.type === '$if') {
 ### 2.2 Derive `designSystemCamelCaseProps` from Source of Truth
 
 **Files:**
+
 - `packages/schema-system/solid/src/SchemaRenderer.tsx`
 - `packages/design-system/types/src/index.ts`
 
 **Problem:** The hardcoded set in SchemaRenderer will silently miss new design-system props:
+
 ```typescript
 const designSystemCamelCaseProps = new Set([
-  'zIndex', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight', 'pointerEvents',
+  'zIndex',
+  'minWidth',
+  'maxWidth',
+  'minHeight',
+  'maxHeight',
+  'pointerEvents',
 ]);
 ```
 
@@ -142,6 +154,7 @@ const designSystemCamelCaseProps = new Set([
 ### 3.1 Expand `zodSchemas.test.ts` (Currently 3 Tests)
 
 This is the validation boundary. Needs coverage for:
+
 - [ ] Every `SchemaNode` shape (with/without type, props, slots, children, routes)
 - [ ] Nested children (node within node within node)
 - [ ] All `SchemaProp` union arms (string, number, boolean, record, array, undefined)
@@ -153,6 +166,7 @@ This is the validation boundary. Needs coverage for:
 ### 3.2 Expand `schemaUpdater.test.ts` (Currently 3 Tests)
 
 This is the hot-path for schema mutations. Needs coverage for:
+
 - [ ] Threshold behavior: exactly 10 mutations (batch) vs 11 (produce)
 - [ ] Nested path application (children[0].props.text changes)
 - [ ] Deletion semantics (value set to undefined)
@@ -164,6 +178,7 @@ This is the hot-path for schema mutations. Needs coverage for:
 ### 3.3 Add Integration Tests for `RenderSchema`
 
 The solid package currently has **zero tests**. Needs at minimum:
+
 - [ ] Basic component rendering (type lookup in registry)
 - [ ] `$if` conditional show/hide
 - [ ] `$forEach` list rendering
@@ -192,7 +207,7 @@ Currently compound conditions require `$expr`, which means arbitrary JS. Adding 
 
 ### 4.3 Schema-Aware Prop Validation
 
-Currently Zod validates schema *structure* but not prop *values* against component interfaces. A future enhancement could validate that props match the target component's accepted props (using the component registry + DesignSystemProps).
+Currently Zod validates schema _structure_ but not prop _values_ against component interfaces. A future enhancement could validate that props match the target component's accepted props (using the component registry + DesignSystemProps).
 
 ---
 
