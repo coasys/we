@@ -4,19 +4,19 @@ Targeted cleanup of `@we/app-framework`: fix the seed import, remove dead integr
 
 ## Status
 
-| Phase                                                            | Status      |
-| ---------------------------------------------------------------- | ----------- |
-| P1 — Inject seed from launcher apps (remove hardcoded import)    | Not started |
-| P2 — Add `Ad4mIframe` wrapper component in app-framework        | Not started |
-| P3 — Remove dead integration infrastructure + dead code          | Not started |
-| P4 — Unify validators + fix type/reality mismatch                | Not started |
+| Phase                                                         | Status      |
+| ------------------------------------------------------------- | ----------- |
+| P1 — Inject seed from launcher apps (remove hardcoded import) | Not started |
+| P2 — Add `Ad4mIframe` wrapper component in app-framework      | Not started |
+| P3 — Remove dead integration infrastructure + dead code       | Not started |
+| P4 — Unify validators + fix type/reality mismatch             | Not started |
 
 ### Deferred (not needed yet)
 
-| Phase                                                                  | Reason deferred                                                                                                                                  |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ~~Extract `@we/seed` package~~                                         | Code is already well-organized under `src/seed/` with clear files. Creating a separate package adds monorepo overhead for no current consumer.   |
-| ~~Internal restructure: `core/` vs `app/` boundary~~                   | YAGNI — WE is one product. The current structure is clear enough to extract `app/` later if a second consumer appears. No concrete need today.  |
+| Phase                                                | Reason deferred                                                                                                                                |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| ~~Extract `@we/seed` package~~                       | Code is already well-organized under `src/seed/` with clear files. Creating a separate package adds monorepo overhead for no current consumer. |
+| ~~Internal restructure: `core/` vs `app/` boundary~~ | YAGNI — WE is one product. The current structure is clear enough to extract `app/` later if a second consumer appears. No concrete need today. |
 
 ---
 
@@ -35,7 +35,7 @@ Targeted cleanup of `@we/app-framework`: fix the seed import, remove dead integr
 ### What we're NOT doing (and why)
 
 - **Not extracting `@we/seed` to a separate package** — The code under `src/seed/` (cli.ts, processor.ts, validator.ts, examples.ts) is already well-organized. A separate package adds a package.json, build config, versioning, and dependency management for a CLI that only build scripts use. Until there's an external consumer, the overhead isn't justified.
-- **Not restructuring into `core/` vs `app/` directories** — This would touch 30+ files and rewrite all their imports to prepare for extracting `app/` to a separate package *if* a second consumer appears. WE is one product — the framework and the native experience ship together. If extraction is needed later, the current code is organized well enough to do it then.
+- **Not restructuring into `core/` vs `app/` directories** — This would touch 30+ files and rewrite all their imports to prepare for extracting `app/` to a separate package _if_ a second consumer appears. WE is one product — the framework and the native experience ship together. If extraction is needed later, the current code is organized well enough to do it then.
 - **Not putting AD4M logic in `we-iframe`** — See P2 reasoning below.
 
 ---
@@ -102,11 +102,7 @@ A thin Solid component (~20 lines) that composes `we-iframe` with platform-aware
 import { createEffect, createSignal } from 'solid-js';
 import { usePlatform } from '../../shared/platform/context';
 
-export default function Ad4mIframe(props: {
-  src: string;
-  capabilities?: string[];
-  [key: string]: unknown;
-}) {
+export default function Ad4mIframe(props: { src: string; capabilities?: string[]; [key: string]: unknown }) {
   const platform = usePlatform();
   const [resolvedSrc, setResolvedSrc] = createSignal(props.src);
 
@@ -124,10 +120,7 @@ export default function Ad4mIframe(props: {
     if (platform.isDesktop && platform.getConnectionDetails) {
       const iframe = e.target as HTMLIFrameElement;
       platform.getConnectionDetails().then(({ port, token }) => {
-        iframe.contentWindow?.postMessage(
-          { type: 'AD4M_CONFIG', port, token },
-          new URL(resolvedSrc()).origin,
-        );
+        iframe.contentWindow?.postMessage({ type: 'AD4M_CONFIG', port, token }, new URL(resolvedSrc()).origin);
       });
     }
   }
@@ -150,11 +143,13 @@ export const componentRegistry = {
 ### Schema usage
 
 AD4M-aware embedded app:
+
 ```json
 { "type": "Ad4mIframe", "props": { "src": "/apps/flux", "capabilities": ["perspectives", "agents"] } }
 ```
 
 Plain iframe (no AD4M):
+
 ```json
 { "type": "we-iframe", "props": { "src": "https://example.com" } }
 ```
@@ -172,12 +167,12 @@ Plain iframe (no AD4M):
 
 ### What gets deleted
 
-| File                                     | Reason                                                             |
-| ---------------------------------------- | ------------------------------------------------------------------ |
-| `src/shared/integrationComposer.ts`      | Generates launcher templates from seed apps — seed has no apps     |
-| `src/shared/integrationLoader.ts`        | Loads pre-generated integration files the runtime doesn't use      |
-| `src/shared/seedLoader.ts`               | Explicitly marked unused with detailed comment explaining why      |
-| `src/shared/schemas/integrations/flux/*` | Generated files never consumed at runtime                          |
+| File                                     | Reason                                                         |
+| ---------------------------------------- | -------------------------------------------------------------- |
+| `src/shared/integrationComposer.ts`      | Generates launcher templates from seed apps — seed has no apps |
+| `src/shared/integrationLoader.ts`        | Loads pre-generated integration files the runtime doesn't use  |
+| `src/shared/seedLoader.ts`               | Explicitly marked unused with detailed comment explaining why  |
+| `src/shared/schemas/integrations/flux/*` | Generated files never consumed at runtime                      |
 
 ### What gets simplified
 
@@ -226,6 +221,7 @@ P1 (inject seed) → P3 (remove dead infra) → P4 (fix validators + types)
 ```
 
 P1 must come first since P3 simplifies `initializeIntegrations.ts` which P1 modifies. P4 is last since it cleans up types that P3 changes. P2 is independent and can be done in parallel or after.
+
 - Remove unused exports from `src/shared/index.ts`
 - Remove `@ts-ignore` in `initializeIntegrations.ts` (fix launcherUIRegistry API with a proper setter)
 - Remove `resolveAppUrl` from `PlatformAdapter` interface and all implementations

@@ -16,26 +16,26 @@ The [original plan](./experience-sharing-system.md) described 6 phases building 
 
 What exists:
 
-| Capability | Status |
-|---|---|
-| Schema renderer | **Working** — 13 tokens ($store, $action, $expr, $if, $map, $pick, $eq, $ne, $not, $and, $or, $routes, $forEach) |
-| Component registry | **Static** — hardcoded imports in `componentRegistry.tsx`, ~20 components |
-| Block models | **3 types** — TextBlock, ImageBlock, CollectionBlock (via Ad4mModel) |
-| Block composer | **Working** — Lexical-based, creates blocks via `Ad4mModel.save()` in batches |
-| Store system | **Working** — 7 Solid.js context providers, wired to schema renderer via `stores` object |
-| Ad4mModel API | **Available** — full CRUD, query builder with `.where()/.order()/.limit()/.subscribe()`, SurrealDB-backed |
+| Capability         | Status                                                                                                           |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Schema renderer    | **Working** — 13 tokens ($store, $action, $expr, $if, $map, $pick, $eq, $ne, $not, $and, $or, $routes, $forEach) |
+| Component registry | **Static** — hardcoded imports in `componentRegistry.tsx`, ~20 components                                        |
+| Block models       | **3 types** — TextBlock, ImageBlock, CollectionBlock (via Ad4mModel)                                             |
+| Block composer     | **Working** — Lexical-based, creates blocks via `Ad4mModel.save()` in batches                                    |
+| Store system       | **Working** — 7 Solid.js context providers, wired to schema renderer via `stores` object                         |
+| Ad4mModel API      | **Available** — full CRUD, query builder with `.where()/.order()/.limit()/.subscribe()`, SurrealDB-backed        |
 
 What doesn't exist:
 
-| Capability | Gap |
-|---|---|
-| `$query` token | Not implemented — no way for schemas to bind to block data declaratively |
-| `semanticRole` | Not on any block model — "two experiences query the same data" isn't possible yet |
-| Dynamic component registration | No `register()` / `unregister()` API on the component registry |
-| `defineAppStore()` | No API for third-party store definitions |
-| Package loading | No dynamic `import()` pipeline, no manifest format |
-| Experience format | `TemplateSchema` has basic `meta` (name, description, icon) but no `dependencies` field |
-| Package distribution | Nothing — no URLs, no AD4M expressions, no marketplace |
+| Capability                     | Gap                                                                                     |
+| ------------------------------ | --------------------------------------------------------------------------------------- |
+| `$query` token                 | Not implemented — no way for schemas to bind to block data declaratively                |
+| `semanticRole`                 | Not on any block model — "two experiences query the same data" isn't possible yet       |
+| Dynamic component registration | No `register()` / `unregister()` API on the component registry                          |
+| `defineAppStore()`             | No API for third-party store definitions                                                |
+| Package loading                | No dynamic `import()` pipeline, no manifest format                                      |
+| Experience format              | `TemplateSchema` has basic `meta` (name, description, icon) but no `dependencies` field |
+| Package distribution           | Nothing — no URLs, no AD4M expressions, no marketplace                                  |
 
 ## Design Principles
 
@@ -127,8 +127,8 @@ interface QueryParams {
   where?: Record<string, unknown>;
   order?: Record<string, 'ASC' | 'DESC'>;
   limit?: number;
-  parent?: string;    // parent block ID for child queries
-  through?: string;   // relationship predicate (default: "we://contains")
+  parent?: string; // parent block ID for child queries
+  through?: string; // relationship predicate (default: "we://contains")
 }
 
 interface QueryService {
@@ -148,6 +148,7 @@ Three responsibilities:
 1. **Perspective injection** — every Ad4mModel call needs the current perspective. The service injects it so schemas don't need to know about it. Gets the perspective from `SpaceStore.perspective()` (already in context).
 
 2. **Signal bridging** — Ad4mModel's `.subscribe(callback)` wraps in `createSignal()`:
+
    ```typescript
    const [data, setData] = createSignal<T[]>([]);
    ModelClass.query(perspective)
@@ -155,7 +156,7 @@ Three responsibilities:
      .order(params.order)
      .limit(params.limit)
      .subscribe((results) => setData(results));
-   return data;  // Solid Accessor<T[]>
+   return data; // Solid Accessor<T[]>
    ```
 
 3. **Subscription deduplication** — if two components query the same model + where + order + limit, one SurrealDB subscription feeds both signal readers. Cache key is `hash(model, where, order, limit)`. Cache entries are reference-counted and disposed when no readers remain.
@@ -178,6 +179,7 @@ export function resolveQueryProp(
 ```
 
 In the dispatcher:
+
 ```typescript
 if (hasToken(value, '$query', 'object')) return resolveQueryProp(value, stores.__queryService, memo);
 ```
@@ -213,14 +215,14 @@ The first end-to-end test of the architecture: user creates a TextBlock in the b
 
 ### Files
 
-| File | Action | Lines |
-|---|---|---|
-| `packages/block-system/models/src/registry.ts` | New | ~25 |
-| `packages/schema-system/shared/src/propResolvers/query.ts` | New | ~30 |
-| `packages/schema-system/shared/src/propResolvers/dispatcher.ts` | Edit | ~3 |
-| `packages/schema-system/shared/src/types.ts` | Edit | ~10 |
-| `packages/schema-system/solid/src/queryService.ts` | New | ~120 |
-| `packages/app-framework/src/frameworks/solid/providers/QueryProvider.tsx` | New | ~30 |
+| File                                                                      | Action | Lines |
+| ------------------------------------------------------------------------- | ------ | ----- |
+| `packages/block-system/models/src/registry.ts`                            | New    | ~25   |
+| `packages/schema-system/shared/src/propResolvers/query.ts`                | New    | ~30   |
+| `packages/schema-system/shared/src/propResolvers/dispatcher.ts`           | Edit   | ~3    |
+| `packages/schema-system/shared/src/types.ts`                              | Edit   | ~10   |
+| `packages/schema-system/solid/src/queryService.ts`                        | New    | ~120  |
+| `packages/app-framework/src/frameworks/solid/providers/QueryProvider.tsx` | New    | ~30   |
 
 Total: ~220 lines of new code.
 
@@ -300,11 +302,11 @@ Later (Phase 4) this gets an install button. For now it's a clear visual indicat
 
 ### Files
 
-| File | Action | Lines |
-|---|---|---|
-| `packages/app-framework/src/frameworks/solid/registries/componentRegistry.tsx` | Edit | ~30 |
-| `packages/schema-system/solid/src/SchemaRenderer.tsx` | Edit | ~10 |
-| `packages/schema-system/solid/src/components/MissingComponent.tsx` | New | ~15 |
+| File                                                                           | Action | Lines |
+| ------------------------------------------------------------------------------ | ------ | ----- |
+| `packages/app-framework/src/frameworks/solid/registries/componentRegistry.tsx` | Edit   | ~30   |
+| `packages/schema-system/solid/src/SchemaRenderer.tsx`                          | Edit   | ~10   |
+| `packages/schema-system/solid/src/components/MissingComponent.tsx`             | New    | ~15   |
 
 Total: ~55 lines changed.
 
@@ -322,12 +324,12 @@ Total: ~55 lines changed.
 // packages/app-framework/src/core/defineAppStore.ts
 interface StoreDefinition {
   name: string;
-  dependencies?: string[];  // e.g. ['query'] — framework provides at instantiation
+  dependencies?: string[]; // e.g. ['query'] — framework provides at instantiation
   create: (deps: Record<string, unknown>) => Record<string, unknown>;
 }
 
 export function defineAppStore(definition: StoreDefinition): StoreDefinition {
-  return definition;  // identity function — validates shape, provides type safety
+  return definition; // identity function — validates shape, provides type safety
 }
 ```
 
@@ -384,11 +386,11 @@ $store: "player.currentTrack"
 
 ### Files
 
-| File | Action | Lines |
-|---|---|---|
-| `packages/app-framework/src/core/defineAppStore.ts` | New | ~15 |
-| `packages/app-framework/src/frameworks/solid/registries/storeRegistry.ts` | New | ~50 |
-| `packages/schema-system/shared/src/propResolvers/store.ts` | Edit | ~15 |
+| File                                                                      | Action | Lines |
+| ------------------------------------------------------------------------- | ------ | ----- |
+| `packages/app-framework/src/core/defineAppStore.ts`                       | New    | ~15   |
+| `packages/app-framework/src/frameworks/solid/registries/storeRegistry.ts` | New    | ~50   |
+| `packages/schema-system/shared/src/propResolvers/store.ts`                | Edit   | ~15   |
 
 Total: ~80 lines.
 
@@ -409,11 +411,11 @@ interface ExperienceSchema extends SchemaNode {
   meta: {
     name: string;
     description?: string;
-    author?: string;         // DID or display name
+    author?: string; // DID or display name
     version?: string;
     icon?: string;
-    preview?: string;        // URL to screenshot
-    forkedFrom?: string;     // address of parent experience (for forks)
+    preview?: string; // URL to screenshot
+    forkedFrom?: string; // address of parent experience (for forks)
   };
   dependencies?: {
     packages?: PackageDependency[];
@@ -421,9 +423,9 @@ interface ExperienceSchema extends SchemaNode {
 }
 
 interface PackageDependency {
-  name: string;              // e.g. "@we-pkg/music"
-  source: string;            // URL to ESM bundle (initially), later also pkg:// address
-  hash?: string;             // content hash for integrity verification
+  name: string; // e.g. "@we-pkg/music"
+  source: string; // URL to ESM bundle (initially), later also pkg:// address
+  hash?: string; // content hash for integrity verification
 }
 ```
 
@@ -434,18 +436,18 @@ What a loaded ESM bundle must export:
 ```typescript
 // What a package author builds and hosts
 interface PackageManifest {
-  name: string;              // "@we-pkg/music"
+  name: string; // "@we-pkg/music"
   version: string;
   description?: string;
   author?: string;
 
   // What the package provides
-  components?: Record<string, Component>;           // name → SolidJS component
-  stores?: Record<string, StoreDefinition>;          // name → defineAppStore() result
-  models?: Record<string, typeof Ad4mModel>;         // name → model class
+  components?: Record<string, Component>; // name → SolidJS component
+  stores?: Record<string, StoreDefinition>; // name → defineAppStore() result
+  models?: Record<string, typeof Ad4mModel>; // name → model class
 
   // Security
-  capabilities?: string[];   // declared permissions
+  capabilities?: string[]; // declared permissions
 }
 
 // ESM bundle default export
@@ -489,6 +491,7 @@ Experience opened with dependency "@we-pkg/music"
 ### Why URLs first, not AD4M-native
 
 Building a custom AD4M expression language for package distribution requires:
+
 - Language implementation (Holochain or IPFS backend)
 - Content-addressed storage integration
 - Marketplace perspective conventions
@@ -496,6 +499,7 @@ Building a custom AD4M expression language for package distribution requires:
 - Testing peer-to-peer bundle retrieval
 
 This is months of work with high uncertainty. URL-based loading:
+
 - Works today (browsers do `import('https://...')` natively)
 - Validates the entire registration pipeline
 - Packages can be hosted anywhere (GitHub Pages, IPFS gateway, personal server)
@@ -510,9 +514,9 @@ interface CachedPackage {
   name: string;
   version: string;
   hash: string;
-  bundle: string;          // the JS source
-  installedAt: number;     // timestamp
-  source: string;          // original URL
+  bundle: string; // the JS source
+  installedAt: number; // timestamp
+  source: string; // original URL
 }
 ```
 
@@ -520,14 +524,14 @@ On app start, load cached packages and re-register their components/stores/model
 
 ### Files
 
-| File | Action | Lines |
-|---|---|---|
-| `packages/schema-system/shared/src/types.ts` | Edit | ~25 |
-| `packages/schema-system/shared/src/validators.ts` | New | ~40 |
-| `packages/app-framework/src/core/packageLoader.ts` | New | ~100 |
-| `packages/app-framework/src/core/packageCache.ts` | New | ~60 |
-| `packages/app-framework/src/core/experienceManager.ts` | New | ~80 |
-| `packages/schema-system/solid/src/components/MissingComponent.tsx` | Edit | ~20 |
+| File                                                               | Action | Lines |
+| ------------------------------------------------------------------ | ------ | ----- |
+| `packages/schema-system/shared/src/types.ts`                       | Edit   | ~25   |
+| `packages/schema-system/shared/src/validators.ts`                  | New    | ~40   |
+| `packages/app-framework/src/core/packageLoader.ts`                 | New    | ~100  |
+| `packages/app-framework/src/core/packageCache.ts`                  | New    | ~60   |
+| `packages/app-framework/src/core/experienceManager.ts`             | New    | ~80   |
+| `packages/schema-system/solid/src/components/MissingComponent.tsx` | Edit   | ~20   |
 
 Total: ~325 lines.
 
@@ -541,11 +545,11 @@ Total: ~325 lines.
 
 ```typescript
 capabilities: [
-  'query:AudioBlock',              // can query this model
+  'query:AudioBlock', // can query this model
   'query:CollectionBlock',
-  'store:read:adamStore.me',       // can read this store path
-  'action:modalStore.openModal',   // can call this action
-]
+  'store:read:adamStore.me', // can read this store path
+  'action:modalStore.openModal', // can call this action
+];
 ```
 
 ### Enforcement points
@@ -555,11 +559,7 @@ capabilities: [
 3. **At store access time**: Store resolver proxy checks `store:read:{path}` before returning.
 
 ```typescript
-function createGatedQueryService(
-  realService: QueryService,
-  capabilities: string[],
-  packageName: string,
-): QueryService {
+function createGatedQueryService(realService: QueryService, capabilities: string[], packageName: string): QueryService {
   return {
     subscribe(params) {
       const cap = `query:${params.model}`;
@@ -578,10 +578,10 @@ Initially: warn-only enforcement (dev mode). Strict blocking comes when the ecos
 
 ### Files
 
-| File | Action | Lines |
-|---|---|---|
-| `packages/app-framework/src/core/capabilities.ts` | New | ~60 |
-| `packages/app-framework/src/core/packageLoader.ts` | Edit | ~20 |
+| File                                               | Action | Lines |
+| -------------------------------------------------- | ------ | ----- |
+| `packages/app-framework/src/core/capabilities.ts`  | New    | ~60   |
+| `packages/app-framework/src/core/packageLoader.ts` | Edit   | ~20   |
 
 Total: ~80 lines.
 
@@ -648,6 +648,7 @@ export class Block extends Ad4mModel {
 This is a small change with outsized impact — it enables "query all blocks with a specific meaning" which is the foundation of the data-sharing thesis. Without it, two experiences can't query the same data differently.
 
 **Question: Should semanticRole be on the base `Block`, or on specific block types?** Cases for both:
+
 - On `Block`: every block type gets it automatically, queries can span block types ("all content tagged music://favourite")
 - On specific types: more explicit, less noise on types that don't need it
 
@@ -679,11 +680,13 @@ Register in the model registry. The block composer doesn't need to know about it
 ### Block type admission criteria
 
 A new block type is warranted when:
+
 1. It needs a **genuinely different renderer** (a different kind of thing on screen)
 2. It has **standardized properties** that multiple experiences would query
 3. It **can't be composed** from existing blocks + semanticRole
 
 Things that DON'T warrant a new block type:
+
 - A recipe (composition of TextBlocks + ImageBlocks + ChecklistBlocks in a CollectionBlock)
 - A bookmark (TextBlock with semanticRole `web://bookmark` and a URL in the text)
 - Genre metadata (TextBlock with semanticRole `music://genre`)
@@ -729,15 +732,15 @@ Add block types as needed ─────────┤
 
 ### What's usable at each milestone
 
-| After | What works |
-|---|---|
-| semanticRole | Blocks can be tagged with meaning. Foundation for cross-experience data sharing. |
-| Phase 1 | Schemas declaratively bind to block data via `$query`. Two schemas reading the same data "just work." BlockComposer → $query → render loop proven. |
-| Phase 2 | Components can be added at runtime. Missing components show placeholder. |
-| Phase 3 | Third-party stores work. `defineAppStore()` API exists. Full Level 1-3 onramp functional. |
-| Phase 4 | Experiences are a real unit — open one, missing packages auto-install from URLs. First real sharing between users. |
-| Phase 5 | Capability prompts on install. Packages can't silently read data they didn't declare. |
-| Phase 6+ | Full decentralized loop: AD4M-native packages, marketplace perspectives, peer sharing, forking. |
+| After        | What works                                                                                                                                         |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| semanticRole | Blocks can be tagged with meaning. Foundation for cross-experience data sharing.                                                                   |
+| Phase 1      | Schemas declaratively bind to block data via `$query`. Two schemas reading the same data "just work." BlockComposer → $query → render loop proven. |
+| Phase 2      | Components can be added at runtime. Missing components show placeholder.                                                                           |
+| Phase 3      | Third-party stores work. `defineAppStore()` API exists. Full Level 1-3 onramp functional.                                                          |
+| Phase 4      | Experiences are a real unit — open one, missing packages auto-install from URLs. First real sharing between users.                                 |
+| Phase 5      | Capability prompts on install. Packages can't silently read data they didn't declare.                                                              |
+| Phase 6+     | Full decentralized loop: AD4M-native packages, marketplace perspectives, peer sharing, forking.                                                    |
 
 ---
 
@@ -751,17 +754,17 @@ The [app-framework-refactor](./app-framework-refactor.md) (P1: inject seed, P3: 
 
 The [architecture overview](../../architecture/overview.md) describes the north star. This plan implements it incrementally:
 
-| Overview concept | Implemented by |
-|---|---|
-| `$query` — declarative data binding | Phase 1 |
-| Dynamic component packages | Phase 2 + Phase 4 |
-| `defineAppStore()` | Phase 3 |
-| Experience format (meta + deps + schema) | Phase 4 |
-| Capability declarations | Phase 5 |
-| AD4M-native distribution | Phase 6 |
-| Peer sharing, forking, community templates | Phase 7 |
-| ~14 block types | Parallel track (as needed) |
-| Remixing via AI | Falls out naturally once Phase 4 exists — AI operates on JSON |
+| Overview concept                           | Implemented by                                                |
+| ------------------------------------------ | ------------------------------------------------------------- |
+| `$query` — declarative data binding        | Phase 1                                                       |
+| Dynamic component packages                 | Phase 2 + Phase 4                                             |
+| `defineAppStore()`                         | Phase 3                                                       |
+| Experience format (meta + deps + schema)   | Phase 4                                                       |
+| Capability declarations                    | Phase 5                                                       |
+| AD4M-native distribution                   | Phase 6                                                       |
+| Peer sharing, forking, community templates | Phase 7                                                       |
+| ~14 block types                            | Parallel track (as needed)                                    |
+| Remixing via AI                            | Falls out naturally once Phase 4 exists — AI operates on JSON |
 
 ### Module development guide
 
@@ -778,6 +781,7 @@ Component packages export SolidJS components. The ecosystem is SolidJS-specific.
 ### 2. Store persistence
 
 Some app store state should persist across sessions (audio queue, preferences). Three options:
+
 - AD4M perspective links (syncs across devices)
 - Local storage (simple, no sync)
 - `defineAppStore({ persist: ['queue'] })` and the framework handles it
@@ -795,6 +799,7 @@ Experiences should pin to a specific package hash (content-addressed), not a flo
 ### 5. `$query` vs. `$store` — when to use which
 
 Clear guidance for schema authors:
+
 - **`$query`** — for reading/writing block data. Declarative. No code needed. Reactive via Ad4mModel subscriptions.
 - **`$store`** — for non-data state (playback, navigation, UI state) or logic that can't be expressed as a query (audio playback, WebRTC, canvas).
 - **`$action`** — calls methods on either (mutations, side effects).
