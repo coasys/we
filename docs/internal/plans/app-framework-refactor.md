@@ -1,22 +1,22 @@
 # App Framework Refactor
 
-Restructure `@we/app-framework` to:
-
-- **Clean up the runtime package** with clear internal boundaries between platform infrastructure (`core/`) and the WE native application (`app/`). One package, two distinct layers — `app/` imports from `core/` but never the reverse. When a second consumer appears (coasys monorepo), the `app/` directory can be extracted to its own package in ~30 minutes.
-- **Extract `@we/seed`** as a standalone build-time package: CLI, processor, validator, types. No browser deps.
-- **Remove embedded app special-casing** — iframes become a regular schema component via an enhanced `we-iframe` primitive.
+Targeted cleanup of `@we/app-framework`: fix the seed import, remove dead integration infrastructure, fix type/validator mismatches, and add an `Ad4mIframe` wrapper for embedded app credential sharing.
 
 ## Status
 
-| Phase                                                                  | Status      |
-| ---------------------------------------------------------------------- | ----------- |
-| P1 — Inject seed from launcher apps (remove hardcoded import)          | Not started |
-| P2 — Enhance `we-iframe` with AD4M credential sharing + URL resolution | Not started |
-| P3 — Remove integration infrastructure (composer, loader, seed apps)   | Not started |
-| P4 — Extract `@we/seed` package (CLI, processor, validator, types)     | Not started |
-| P5 — Unify validators + fix type/reality mismatch                      | Not started |
-| P6 — Internal restructure: `core/` vs `app/` boundary                  | Not started |
-| P7 — Clean up dead code + final polish                                 | Not started |
+| Phase                                                            | Status      |
+| ---------------------------------------------------------------- | ----------- |
+| P1 — Inject seed from launcher apps (remove hardcoded import)    | Not started |
+| P2 — Add `Ad4mIframe` wrapper component in app-framework        | Not started |
+| P3 — Remove dead integration infrastructure + dead code          | Not started |
+| P4 — Unify validators + fix type/reality mismatch                | Not started |
+
+### Deferred (not needed yet)
+
+| Phase                                                                  | Reason deferred                                                                                                                                  |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ~~Extract `@we/seed` package~~                                         | Code is already well-organized under `src/seed/` with clear files. Creating a separate package adds monorepo overhead for no current consumer.   |
+| ~~Internal restructure: `core/` vs `app/` boundary~~                   | YAGNI — WE is one product. The current structure is clear enough to extract `app/` later if a second consumer appears. No concrete need today.  |
 
 ---
 
@@ -24,42 +24,19 @@ Restructure `@we/app-framework` to:
 
 ### Current state
 
-`@we/app-framework` is a single package responsible for:
+`@we/app-framework` has several concrete issues worth fixing:
 
-- SolidJS application shell (7 stores, providers, App component)
-- Schema/template registry system
-- Seed file processor + CLI tool (`we-seed` binary)
-- Platform abstraction layer
-- AI prompt library
-- Design system integration (imports all DS layers)
-- Launcher infrastructure (integration composer, loader, 3-mode detection)
-- **WE-specific domain logic** (SpaceStore, AiStore, CesiumGlobe, 3D layers, post schemas)
+1. **Hardcoded seed import**: `import weSeedFile from '../../../../we-seed.json'` in `initializeIntegrations.ts` — fragile relative path, breaks if repo structure changes, prevents framework reuse
+2. **Dead integration infrastructure**: `integrationComposer.ts`, `integrationLoader.ts`, `seedLoader.ts`, and `schemas/integrations/flux/*` — the seed has `apps: []`, the composer generates templates from apps that don't exist, the loader loads files the runtime never uses, `seedLoader.ts` is explicitly marked unused
+3. **Validator inconsistency**: `validateSeed()` (in `seed/validator.ts`) requires ≥1 app; `validateSeedForLauncher()` (in `integrationComposer.ts`) allows 0 apps; actual seed has `apps: []`
+4. **Type/reality mismatch**: `WeSeedFile` defines `ad4m.ai`, `ad4m.perspectives`, `ad4m.executor`; actual seed uses `ad4m.dataPath`, `ad4m.executorPath`, `ad4m.repoPath` — fields not in the type. `electron` field also missing from type.
+5. **No clean way to embed AD4M-aware apps**: Currently scattered between AdamStore (credential sharing), PlatformAdapter (URL resolution), and integrationComposer (launcher generation)
 
-The framework conflates **platform infrastructure** (boot, auth, routing, theming — things any AD4M app needs) with **application logic** (spaces, posts, AI generation, 3D visualization — things specific to the WE native experience). Anyone using the framework to build a different AD4M application inherits all of WE's domain code.
+### What we're NOT doing (and why)
 
-The launcher infrastructure also treats embedded apps as architecturally special — with dedicated types, validators, a multi-mode composer (0/1/N apps), platform adapter URL resolution, and the entire seed `apps[]` specification. This creates a parallel path that undermines the schema-driven UI model.
-
-### Key issues
-
-1. **Platform ≠ application**: SpaceStore, AiStore, CesiumGlobe, GSAP, Three.js are WE app concerns interleaved with platform infrastructure. No clear boundary between the two.
-2. **Hardcoded seed import**: `import weSeedFile from '../../../../we-seed.json'` — fragile relative path, breaks if repo structure changes, prevents framework reuse
-3. **Dual integration paths**: Processor generates code (schemas/integrations/flux/\*) that the runtime never loads; the composer generates templates on-the-fly instead
-4. **Validator inconsistency**: `validateSeed()` requires ≥1 app; `validateSeedForLauncher()` allows 0 apps; actual seed has `apps: []`
-5. **Type/reality mismatch**: `WeSeedFile` defines `ad4m.ai`, `ad4m.perspectives`, `ad4m.executor`; actual seed uses `ad4m.dataPath`, `ad4m.executorPath`, `ad4m.repoPath` — fields not in the type
-6. **Dead code**: `seedLoader.ts` (marked unused), generated flux integration files, `loadFluxIntegration()` hardcoded loader
-7. **God package**: Build-time CLI + runtime framework + AI prompts + domain app in one package
-
-### Target state
-
-- **`@we/app-framework`** — Single package with clear internal structure:
-  - **`core/`** — Platform infrastructure: core stores (Adam, Route, Template, Theme, Modal), registries, platform adapter, App shell, base component registry
-  - **`app/`** — WE native application: SpaceStore, AiStore, AI prompts, weNativeApp/DefaultTemplate/TwitterTemplate schemas, domain component registry extensions (CesiumGlobe, GraphWidget, PostCard)
-  - `app/` imports from `core/` but never the reverse — enforced by convention or lint rule
-  - If a second AD4M app needs the platform without WE's domain logic, `app/` extracts to `@we/native-app` trivially
-- **`@we/seed`** — Build-time tooling: CLI, processor, validator, types. Zero browser deps.
-- Seed file injected by launcher apps, not imported by the framework
-- Embedded apps use `we-iframe` with `ad4m` and `capabilities` props — no special infrastructure
-- Single validation path, types match reality
+- **Not extracting `@we/seed` to a separate package** — The code under `src/seed/` (cli.ts, processor.ts, validator.ts, examples.ts) is already well-organized. A separate package adds a package.json, build config, versioning, and dependency management for a CLI that only build scripts use. Until there's an external consumer, the overhead isn't justified.
+- **Not restructuring into `core/` vs `app/` directories** — This would touch 30+ files and rewrite all their imports to prepare for extracting `app/` to a separate package *if* a second consumer appears. WE is one product — the framework and the native experience ship together. If extraction is needed later, the current code is organized well enough to do it then.
+- **Not putting AD4M logic in `we-iframe`** — See P2 reasoning below.
 
 ---
 
@@ -100,136 +77,130 @@ render(
 
 ---
 
-## Phase 2 — Enhance `we-iframe` with AD4M + URL resolution
+## Phase 2 — Add `Ad4mIframe` wrapper component
 
-**Goal**: Make `we-iframe` a self-contained primitive that handles credential sharing and platform-aware URL resolution, replacing the scattered logic in AdamStore and PlatformAdapter.
+**Goal**: Provide a clean way to embed AD4M-aware apps in schemas, without putting platform logic in a design system primitive.
 
-### New props on `we-iframe`
+### Why NOT in `we-iframe`
 
-| Prop           | Type       | Default | Description                                    |
-| -------------- | ---------- | ------- | ---------------------------------------------- |
-| `ad4m`         | `boolean`  | `false` | Enable AD4M credential sharing via postMessage |
-| `capabilities` | `string[]` | `[]`    | AD4M capability scoping (future use)           |
+`we-iframe` is a design system primitive in `@we/primitives`. Putting AD4M credential sharing and platform-aware URL resolution there means:
 
-### Credential sharing (moved from AdamStore)
+- **Layer violation**: `@we/primitives` (design system) would depend on platform concepts (AD4M client, Electron/Tauri URL protocols). Every consumer of the DS (Storybook, external projects) inherits AD4M types.
+- **Context access**: `we-iframe` is a Lit web component. It has no access to SolidJS context (`usePlatform()`). You'd need to pass platform details through attributes or a global, defeating the purpose of the platform abstraction.
+- **Testability**: A pure iframe primitive is testable in isolation. An iframe with AD4M credential logic baked in requires mocking the platform layer in every test.
 
-When `ad4m={true}` and the platform is desktop:
+### Why NOT in `@we/components`
 
-1. Read `getConnectionDetails()` from platform context
-2. On iframe load, postMessage `{ type: 'AD4M_CONFIG', port, token }` to iframe origin
-3. Clean up listener on component disconnect
+`@we/components` is a Solid component library that wraps primitives — part of the design system stack. But `Ad4mIframe` needs `usePlatform()` from `@we/app-framework`. Putting it in `@we/components` would create a circular dependency: `@we/app-framework` → `@we/components` (already exists via componentRegistry) → `@we/app-framework`.
 
-### URL resolution (moved from PlatformAdapter)
+### Solution: wrapper in `@we/app-framework`
 
-When `src` is not a full URL (no `http://` prefix):
+A thin Solid component (~20 lines) that composes `we-iframe` with platform-aware behavior:
 
-- **Electron**: Resolve via bundled port map → `http://localhost:{port}`
-- **Tauri**: Resolve via asset protocol → `asset://localhost{src}/index.html`
-- **Web**: Treat as relative path
+```tsx
+// packages/app-framework/src/frameworks/solid/components/Ad4mIframe.tsx
+import { createEffect, createSignal } from 'solid-js';
+import { usePlatform } from '../../shared/platform/context';
 
-This is ~40 lines of logic inside the `we-iframe` component, replacing `PlatformAdapter.resolveAppUrl()` and the credential-sharing code in AdamStore.
+export default function Ad4mIframe(props: {
+  src: string;
+  capabilities?: string[];
+  [key: string]: unknown;
+}) {
+  const platform = usePlatform();
+  const [resolvedSrc, setResolvedSrc] = createSignal(props.src);
+
+  // Platform-aware URL resolution
+  createEffect(() => {
+    if (props.src.startsWith('http')) {
+      setResolvedSrc(props.src);
+    } else {
+      setResolvedSrc(platform.resolveAppUrl(props.src));
+    }
+  });
+
+  // Credential sharing on load
+  function handleLoad(e: Event) {
+    if (platform.isDesktop && platform.getConnectionDetails) {
+      const iframe = e.target as HTMLIFrameElement;
+      platform.getConnectionDetails().then(({ port, token }) => {
+        iframe.contentWindow?.postMessage(
+          { type: 'AD4M_CONFIG', port, token },
+          new URL(resolvedSrc()).origin,
+        );
+      });
+    }
+  }
+
+  return <we-iframe {...props} src={resolvedSrc()} onLoad={handleLoad} />;
+}
+```
+
+Register in `componentRegistry.tsx`:
+
+```ts
+import Ad4mIframe from '../components/Ad4mIframe';
+
+export const componentRegistry = {
+  // ...existing entries
+  Ad4mIframe,
+};
+```
+
+### Schema usage
+
+AD4M-aware embedded app:
+```json
+{ "type": "Ad4mIframe", "props": { "src": "/apps/flux", "capabilities": ["perspectives", "agents"] } }
+```
+
+Plain iframe (no AD4M):
+```json
+{ "type": "we-iframe", "props": { "src": "https://example.com" } }
+```
 
 ### Files changed
 
-- `packages/design-system/3-primitives/src/primitives/iframe.ts` — add `ad4m`, `capabilities` props; add credential sharing + URL resolution
-- `packages/app-framework/src/frameworks/solid/stores/AdamStore.tsx` — remove iframe postMessage logic
+- `packages/app-framework/src/frameworks/solid/components/Ad4mIframe.tsx` — new (~20 lines)
+- `packages/app-framework/src/frameworks/solid/registries/componentRegistry.tsx` — add registry entry
 
 ---
 
-## Phase 3 — Remove integration infrastructure
+## Phase 3 — Remove dead integration infrastructure + dead code
 
-**Goal**: Delete the launcher mode detection, integration composer, integration loader, and seed `apps[]` machinery. Embedded apps become `we-iframe` nodes in schemas.
+**Goal**: Delete the integration composer, loader, seed loader, and generated flux files. The seed has `apps: []` — this infrastructure serves no current purpose.
 
 ### What gets deleted
 
 | File                                     | Reason                                                             |
 | ---------------------------------------- | ------------------------------------------------------------------ |
-| `src/shared/integrationComposer.ts`      | Replaced by schemas authored directly                              |
-| `src/shared/integrationLoader.ts`        | Dead code — was loading pre-generated files the runtime didn't use |
-| `src/shared/seedLoader.ts`               | Already marked unused                                              |
+| `src/shared/integrationComposer.ts`      | Generates launcher templates from seed apps — seed has no apps     |
+| `src/shared/integrationLoader.ts`        | Loads pre-generated integration files the runtime doesn't use      |
+| `src/shared/seedLoader.ts`               | Explicitly marked unused with detailed comment explaining why      |
 | `src/shared/schemas/integrations/flux/*` | Generated files never consumed at runtime                          |
-| `PlatformAdapter.resolveAppUrl()`        | Moved into `we-iframe`                                             |
-| `PlatformAdapter.getConnectionDetails()` | Stays but consumed by `we-iframe` directly                         |
 
 ### What gets simplified
 
 - `initializeIntegrations.ts` — reduces to: validate seed, apply host UI config, register default template. No launcher generation.
-- `WeSeedFile` type — remove `apps[]`, `paths`, `commands` fields
+- `WeSeedFile` type — remove `apps` array, `paths`, `commands` fields (can be re-added if embedded apps are needed later)
+- `PlatformAdapter` interface — keep `resolveAppUrl()` and `getConnectionDetails()` (still used by `Ad4mIframe` through `usePlatform()`)
 - `src/shared/index.ts` — remove integration exports
 
-### Migration for existing Flux integration
-
-The Electron/Tauri launcher apps that currently embed Flux via seed config instead use a template schema:
-
-```json
-{
-  "type": "we-iframe",
-  "props": {
-    "src": {
-      "$if": {
-        "condition": { "$store": "adamStore.isDevelopment" },
-        "then": "http://localhost:3000",
-        "else": "/apps/flux"
-      }
-    },
-    "ad4m": true,
-    "capabilities": ["perspectives", "languages", "agents"],
-    "width": "100%",
-    "height": "100%"
-  }
-}
-```
-
-Build-time packaging of Flux dist files remains in the Electron/Tauri build scripts — that's build tooling, not framework concern.
-
 ---
 
-## Phase 4 — Extract `@we/seed` package
+## Phase 4 — Unify validators + fix types
 
-**Goal**: Move all build-time seed tooling into a standalone package with no browser or SolidJS dependencies.
-
-### Package structure
-
-```
-packages/seed/
-├── package.json          (@we/seed, bin: we-seed)
-├── tsconfig.json
-├── tsup.config.ts
-└── src/
-    ├── index.ts          (public API)
-    ├── types.ts          (WeSeedFile, SeedValidationResult, SeedMetadata)
-    ├── processor.ts      (SeedProcessor class)
-    ├── validator.ts      (validateSeed — unified)
-    ├── cli.ts            (we-seed binary)
-    └── examples.ts       (seed file examples)
-```
-
-### Dependencies
-
-- `zod` (for validation, if we upgrade from manual checks)
-- Zero browser/framework deps
-
-### Consumers
-
-- `@we/app-framework` imports types only: `import type { WeSeedFile } from '@we/seed'`
-- Build scripts in we-electron, we-tauri can use the processor/validator directly
-- CI can run `we-seed validate` independently
-
----
-
-## Phase 5 — Unify validators + fix types
-
-**Goal**: Single validation function that handles all cases. Types match the actual seed file.
+**Goal**: Single validation function. Types match the actual seed file.
 
 ### Validator changes
 
-- Merge `validateSeed()` and `validateSeedForLauncher()` into one `validateSeed()` in `@we/seed`
+- Merge `validateSeed()` (from `src/seed/validator.ts`) and `validateSeedForLauncher()` (from `integrationComposer.ts`, deleted in P3) into one `validateSeed()` in `src/seed/validator.ts`
 - 0 apps is valid (native WE mode)
 - AD4M fields are optional and validated when present
 
 ### Type fixes
 
-Add actually-used fields to `WeSeedFile`:
+Add actually-used fields to `WeSeedFile` in `src/types/seed.ts`:
 
 ```typescript
 ad4m?: {
@@ -247,137 +218,14 @@ electron?: {
 
 ---
 
-## Phase 6 — Internal restructure: `core/` vs `app/` boundary
-
-**Goal**: Establish a clear internal boundary within `@we/app-framework` between platform infrastructure and WE-specific application logic. One package, two layers — `app/` imports from `core/` but never the reverse.
-
-This is deliberately **not** a package extraction. WE is one product — the framework and the native experience ship together. The internal boundary exists so that if a second consumer appears (coasys monorepo, another AD4M project), the `app/` directory can be extracted to `@we/native-app` in a single move.
-
-### Directory structure after restructure
+## Implementation Order
 
 ```
-packages/app-framework/src/
-├── core/                              ← platform infrastructure
-│   ├── stores/
-│   │   ├── AdamStore.tsx              (AD4M client, boot, auth)
-│   │   ├── RouteStore.tsx             (navigation)
-│   │   ├── TemplateStore.tsx          (template switching)
-│   │   ├── ThemeStore.tsx             (theme application)
-│   │   └── ModalStore.tsx             (modal state)
-│   ├── platform/
-│   │   ├── types.ts                   (PlatformAdapter interface)
-│   │   └── context.tsx                (platform context provider)
-│   ├── registries/
-│   │   ├── templateRegistry.ts
-│   │   ├── themeRegistry.ts
-│   │   ├── launcherUIRegistry.ts
-│   │   └── componentRegistry.tsx      (base: primitives, Row, Column, etc.)
-│   ├── schemas/
-│   │   ├── BaseTemplate.schema.ts
-│   │   └── defaults/                  (BootScreen, AppSettings)
-│   ├── providers/
-│   │   ├── StoreProvider.tsx
-│   │   └── TemplateProvider.tsx
-│   ├── components/
-│   │   ├── Splashscreen.tsx
-│   │   └── AppSettings.tsx
-│   ├── App.tsx                        (shell: boot → auth → render)
-│   └── initializeIntegrations.ts      (seed config + host UI)
-│
-├── app/                               ← WE native application
-│   ├── stores/
-│   │   ├── SpaceStore.tsx             (perspectives, posts, 3D layers)
-│   │   └── AiStore.tsx                (AI schema generation)
-│   ├── prompts/
-│   │   ├── schemaContext.ts
-│   │   ├── schemaExamples.ts
-│   │   └── testPrompts.ts
-│   ├── schemas/
-│   │   ├── weNativeApp.ts
-│   │   ├── DefaultTemplate.schema.ts
-│   │   ├── TwitterTemplate.schema.ts
-│   │   └── TestTemplate.schema.ts
-│   ├── registry.ts                    (extends component registry: CesiumGlobe, GraphWidget, PostCard)
-│   └── index.ts                       (registerApp — wires stores, schemas, widgets into core)
-│
-└── shared/                            ← truly shared (types, utils, styles)
-    ├── index.ts
-    ├── utils.ts
-    └── styles/
+P1 (inject seed) → P3 (remove dead infra) → P4 (fix validators + types)
+                  ↘ P2 (Ad4mIframe wrapper) — independent, can be done anytime
 ```
 
-### Dependency rule
-
-**`app/` → `core/`** — allowed (app imports platform infrastructure)  
-**`core/` → `app/`** — **forbidden** (platform must not know about the WE app)
-
-Enforced by convention initially. Can later add an ESLint rule (`no-restricted-imports`) or use a boundary tool.
-
-### Store classification
-
-| Store         | Layer   | Reason                                                  |
-| ------------- | ------- | ------------------------------------------------------- |
-| AdamStore     | `core/` | AD4M client, boot state, auth — any AD4M app needs this |
-| RouteStore    | `core/` | Navigation — platform infrastructure                    |
-| TemplateStore | `core/` | Template switching — platform infrastructure            |
-| ThemeStore    | `core/` | Theme application — platform infrastructure             |
-| ModalStore    | `core/` | Modal state — platform infrastructure                   |
-| SpaceStore    | `app/`  | Perspectives, posts, layers — WE domain model           |
-| AiStore       | `app/`  | AI generation, prompts — WE feature                     |
-
-### Component registry split
-
-`core/registries/componentRegistry.tsx` registers only base components:
-
-- Primitives: we-text, we-button, we-icon, we-modal, we-iframe
-- Layout: Column, Row
-- Base widgets: CircleButton, PopoverMenu
-
-`app/registry.ts` extends it with domain widgets:
-
-- CesiumGlobe, GraphWidget, PostCard, CreateSpaceModalWidget
-
-### App registration pattern
-
-```typescript
-// app/index.ts
-import { componentRegistry, templateRegistry } from '../core/registries';
-import { SpaceStore, AiStore } from './stores';
-import { weNativeApp, DefaultTemplate, TwitterTemplate } from './schemas';
-import { nativeAppComponents } from './registry';
-
-export function registerApp() {
-  Object.assign(componentRegistry, nativeAppComponents);
-  templateRegistry.weNative = weNativeApp;
-  templateRegistry.default = DefaultTemplate;
-  templateRegistry.twitter = TwitterTemplate;
-}
-
-export { SpaceStore, AiStore };
-```
-
-Called from `App.tsx` during initialization — no change to launcher app entry points.
-
-### Future extraction path
-
-When a second consumer needs the platform without WE's domain logic:
-
-1. `mv app/ ../native-app/src/`
-2. Add `packages/native-app/package.json` with deps on `@we/app-framework`
-3. Move `three`, `gsap`, `@we/cesium-layers` to native-app's deps
-4. Launcher apps add `import { registerApp } from '@we/native-app'`
-
-The internal boundary makes this a mechanical move, not an architectural change.
-
----
-
-## Phase 7 — Clean up dead code + final polish
-
-**Goal**: Remove all orphaned code and tighten the remaining surface.
-
-- Delete `src/shared/seedLoader.ts`
-- Delete `src/shared/schemas/integrations/` directory
-- Remove `src/shared/integrationLoader.ts` and `src/shared/integrationComposer.ts` (if not already deleted in P3)
+P1 must come first since P3 simplifies `initializeIntegrations.ts` which P1 modifies. P4 is last since it cleans up types that P3 changes. P2 is independent and can be done in parallel or after.
 - Remove unused exports from `src/shared/index.ts`
 - Remove `@ts-ignore` in `initializeIntegrations.ts` (fix launcherUIRegistry API with a proper setter)
 - Remove `resolveAppUrl` from `PlatformAdapter` interface and all implementations
