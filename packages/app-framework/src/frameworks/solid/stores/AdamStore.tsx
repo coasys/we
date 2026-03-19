@@ -1,7 +1,9 @@
-import { Ad4mClient, Agent } from '@coasys/ad4m';
+import { Ad4mClient, Agent, Perspective } from '@coasys/ad4m';
 import { usePlatform } from '@shared/platform';
 import { useNavigate } from '@solidjs/router';
-import { Space } from '@we/models';
+import { CollectionBlock, ImageBlock, TextBlock } from '@we/block-shared';
+import type { FileData } from '@we/models';
+import { blobToDataURL, resizeImage, Space, WeNode } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 export { type Ad4mClient, PerspectiveProxy } from '@coasys/ad4m';
@@ -35,6 +37,7 @@ export interface AdamStore {
   unlockAgent: () => Promise<void>;
   navigate: (to: string, options?: Record<string, unknown>) => void;
   addNewSpace: (space: Space) => void;
+  createSpace: (name: string, description: string, shared: boolean, imageFile?: File) => Promise<void>;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -71,7 +74,7 @@ export function AdamStoreProvider(props: ParentProps) {
     try {
       const perspectives = await client.perspective.all();
       const spaces = await Promise.all(perspectives.map(async (perspective) => (await Space.findAll(perspective))[0]));
-      const filteredSpaces = spaces.filter((s) => s).sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+      const filteredSpaces = spaces.filter((s) => s).sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
       setMySpaces(filteredSpaces);
     } catch (error) {
       console.error('AdamStore: getMySpaces error', error);
@@ -183,8 +186,69 @@ export function AdamStoreProvider(props: ParentProps) {
   }
 
   function addNewSpace(space: Space): void {
-    // console.log('AdamStore: addNewSpace', space);
     setMySpaces((prev) => [...prev, space]);
+  }
+
+  async function createSpace(name: string, description: string, shared: boolean, imageFile?: File): Promise<void> {
+    const client = adamClient();
+    if (!client) return;
+
+    try {
+      // Create the perspective
+      const spacePerspective = await client.perspective.add(name);
+
+      // Register SDNA models
+      const models = [Space, WeNode, ImageBlock, TextBlock, CollectionBlock];
+      await Promise.all(models.map((model) => spacePerspective.ensureSDNASubjectClass(model)));
+
+      // HACK: AD4M's ensureSDNASubjectClass resolves before the SDNA is actually ready
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // If shared, publish as neighbourhood
+      if (shared) {
+        const uid = crypto.randomUUID();
+        const langs = await client.runtime.knownLinkLanguageTemplates();
+        const templateAddress = langs?.[0];
+        if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
+        const templateData = JSON.stringify({ uid, name: `${name}-link-language` });
+        const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
+        await client.neighbourhood.publishFromPerspective(
+          spacePerspective.uuid,
+          linkLanguage.address,
+          new Perspective([]),
+        );
+      }
+
+      // Create and save Space model
+      const space = new Space(spacePerspective);
+      space.uuid = spacePerspective.uuid;
+      if (spacePerspective.sharedUrl) space.url = spacePerspective.sharedUrl;
+      space.name = name;
+      space.description = description;
+      space.visibility = shared ? 'shared' : 'personal';
+
+      // Process image if provided
+      if (imageFile) {
+        const thumbnailBlob = await resizeImage(imageFile, 0.3);
+        const compressedBlob = await resizeImage(imageFile, 0.6);
+        const thumbnailBase64 = await blobToDataURL(thumbnailBlob);
+        const imageBase64 = await blobToDataURL(compressedBlob);
+        space.thumbnail = {
+          data_base64: thumbnailBase64,
+          name: 'space-thumbnail',
+          file_type: 'image/png',
+        } as FileData as any;
+        space.image = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData as any;
+      }
+
+      await space.save();
+
+      // Update sidebar and navigate
+      addNewSpace(space);
+      navigate(`/space/${space.url || space.uuid}`);
+    } catch (error) {
+      console.error('AdamStore: createSpace error', error);
+    }
   }
 
   function navigate(to: string, options?: Record<string, unknown>) {
@@ -221,6 +285,7 @@ export function AdamStoreProvider(props: ParentProps) {
     unlockAgent,
     navigate,
     addNewSpace,
+    createSpace,
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;

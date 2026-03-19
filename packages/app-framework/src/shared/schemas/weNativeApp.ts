@@ -137,36 +137,27 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
               },
             ],
           },
-          // Spaces group
+          // Spaces group — items mapped from adamStore.mySpaces via $map
           {
             type: 'group',
             id: 'spaces',
             label: 'Spaces',
             collapsible: true,
             collapsed: false,
-            items: [
-              {
-                type: 'item',
-                id: 'design-team',
-                avatar: {
-                  src: 'https://i.pravatar.cc/150?img=1',
-                  name: 'Design Team',
-                  status: 'online',
+            items: {
+              $map: {
+                items: { $store: 'adamStore.mySpaces' },
+                select: {
+                  id: { $expr: 'item.url || item.uuid' },
+                  label: '$item.name',
+                  avatar: { src: '$item.thumbnail', name: '$item.name' },
+                  onClick: {
+                    $action: 'adamStore.navigate',
+                    args: [{ $expr: "'/space/' + (item.url || item.uuid)" }],
+                  },
                 },
-                label: 'Design Team',
-                badge: 3,
-                onClick: { $action: 'routeStore.navigate', args: ['/spaces/design'] },
-                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/spaces/design'] },
               },
-              {
-                type: 'item',
-                id: 'dev-team',
-                avatar: { src: 'https://i.pravatar.cc/150?img=2', name: 'Dev Team' },
-                label: 'Dev Team',
-                onClick: { $action: 'routeStore.navigate', args: ['/spaces/dev'] },
-                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/spaces/dev'] },
-              },
-            ],
+            },
           },
           // // Quest group
           // {
@@ -194,7 +185,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             id: 'logout',
             icon: 'list',
             label: 'Logout',
-            onClick: { $action: 'authStore.logout' },
+            // onClick: { $action: 'authStore.logout' },
           },
         ],
       },
@@ -389,7 +380,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             id: 'logout',
             icon: 'list',
             label: 'Logout',
-            onClick: { $action: 'authStore.logout' },
+            // onClick: { $action: 'authStore.logout' },
           },
         ],
       },
@@ -1471,8 +1462,13 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         { type: 'BlockComposer', props: {} },
       ],
     },
+    {
+      path: '/new-space',
+      type: 'Column',
+      props: { width: '100%', height: '100%' },
+      children: [{ type: 'CreateSpacePage' }],
+    },
     // {
-    //   path: '/profile',
     //   type: 'Column',
     //   props: {
     //     width: '100%',

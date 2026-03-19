@@ -276,7 +276,13 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
     const collapsed = createMemo(() => isGroupCollapsed(getGroup()));
 
     // Access items reactively to preserve reactivity for nested items
-    const groupItems = createMemo(() => getGroup().items);
+    // Unwrap accessor-valued items (e.g. from schema $store resolution)
+    const groupItems = createMemo(() => {
+      const items: unknown = getGroup().items;
+      return typeof items === 'function'
+        ? (items as () => CollapsibleSidebarItem[])()
+        : (items as CollapsibleSidebarItem[]);
+    });
 
     return (
       <div class="we-collapsible-sidebar__group">
