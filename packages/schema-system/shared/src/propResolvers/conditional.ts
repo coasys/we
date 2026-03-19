@@ -14,7 +14,7 @@ export function resolveIfProp(
 
   // Check if condition contains $arg tokens - if so, we need to return a function
   // that evaluates the condition on each call with access to callback arguments
-  const conditionStr = JSON.stringify(condition);
+  const conditionStr = JSON.stringify(condition) ?? '';
   if (conditionStr.includes('$arg')) {
     // Return a function that evaluates the conditional when called
     return (...callArgs: unknown[]) => {

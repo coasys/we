@@ -38,9 +38,6 @@ export interface AdamStore {
   navigate: (to: string, options?: Record<string, unknown>) => void;
   addNewSpace: (space: Space) => void;
   createSpace: (name: string, description: string, shared: boolean, imageFile?: File) => Promise<void>;
-
-  // Derived
-  mySpaceSidebarItems: Accessor<Array<{ type: string; id: string; label: string; icon: string; onClick: () => void }>>;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -224,6 +221,8 @@ export function AdamStoreProvider(props: ParentProps) {
 
       // Create and save Space model
       const space = new Space(spacePerspective);
+      space.uuid = spacePerspective.uuid;
+      if (spacePerspective.sharedUrl) space.url = spacePerspective.sharedUrl;
       space.name = name;
       space.description = description;
       space.visibility = shared ? 'shared' : 'personal';
@@ -246,23 +245,10 @@ export function AdamStoreProvider(props: ParentProps) {
 
       // Update sidebar and navigate
       addNewSpace(space);
-      navigate(`/space/${spacePerspective.uuid}`);
+      navigate(`/space/${space.url || space.uuid}`);
     } catch (error) {
       console.error('AdamStore: createSpace error', error);
     }
-  }
-
-  function mySpaceSidebarItems() {
-    return mySpaces().map((space) => {
-      const thumbnail = typeof space.thumbnail === 'string' ? space.thumbnail : undefined;
-      return {
-        type: 'item' as const,
-        id: space.uuid || space.name || '',
-        label: space.name || 'Untitled',
-        ...(thumbnail ? { avatar: { src: thumbnail, name: space.name || 'Space' } } : { icon: 'map-pin-area' }),
-        onClick: () => navigate(`/space/${space.uuid}`),
-      };
-    });
   }
 
   function navigate(to: string, options?: Record<string, unknown>) {
@@ -300,9 +286,6 @@ export function AdamStoreProvider(props: ParentProps) {
     navigate,
     addNewSpace,
     createSpace,
-
-    // Derived
-    mySpaceSidebarItems,
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;

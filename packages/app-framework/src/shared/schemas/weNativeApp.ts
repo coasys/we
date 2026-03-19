@@ -137,14 +137,27 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
               },
             ],
           },
-          // Spaces group — items populated dynamically from adamStore.mySpaceSidebarItems
+          // Spaces group — items mapped from adamStore.mySpaces via $map
           {
             type: 'group',
             id: 'spaces',
             label: 'Spaces',
             collapsible: true,
             collapsed: false,
-            items: { $store: 'adamStore.mySpaceSidebarItems' },
+            items: {
+              $map: {
+                items: { $store: 'adamStore.mySpaces' },
+                select: {
+                  id: { $expr: 'item.url || item.uuid' },
+                  label: '$item.name',
+                  avatar: { src: '$item.thumbnail', name: '$item.name' },
+                  onClick: {
+                    $action: 'adamStore.navigate',
+                    args: [{ $expr: "'/space/' + (item.url || item.uuid)" }],
+                  },
+                },
+              },
+            },
           },
           // // Quest group
           // {
@@ -172,7 +185,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             id: 'logout',
             icon: 'list',
             label: 'Logout',
-            onClick: { $action: 'authStore.logout' },
+            // onClick: { $action: 'authStore.logout' },
           },
         ],
       },
@@ -367,7 +380,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             id: 'logout',
             icon: 'list',
             label: 'Logout',
-            onClick: { $action: 'authStore.logout' },
+            // onClick: { $action: 'authStore.logout' },
           },
         ],
       },
