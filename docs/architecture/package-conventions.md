@@ -15,7 +15,7 @@ Multi-package directories use a `-system` suffix to signal they contain sub-pack
 ```
 packages/
 ├── schema-system/    ← contains @we/schema-shared, @we/schema-solid
-├── block-system/     ← contains @we/block-shared, @we/block-solid, @we/models
+├── block-system/     ← contains @we/block-shared, @we/block-solid
 ├── design-system/    ← contains @we/tokens, @we/primitives, @we/components, ...
 ```
 
@@ -29,7 +29,7 @@ Use the **shortest unambiguous** name within the `@we/` scope:
 | `schema-system/solid`        | `@we/schema-solid`  | Needs prefix — "solid" alone is ambiguous        |
 | `design-system/types`        | `@we/design-types`  | Needs prefix — "types" alone is ambiguous        |
 | `design-system/1-tokens`     | `@we/tokens`        | Standalone identity — unambiguous without prefix |
-| `block-system/models`        | `@we/models`        | Standalone identity — unambiguous without prefix |
+| `models`                     | `@we/models`        | Standalone package — WeNode base + entities      |
 | `design-system/3-primitives` | `@we/primitives`    | Standalone identity — unambiguous without prefix |
 
 ## Package structure patterns
