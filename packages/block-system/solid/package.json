@@ -36,14 +36,12 @@
   "peerDependencies": {
     "@coasys/ad4m": "0.11.0",
     "@we/components": "^0.1.0",
-    "@we/models": "^0.1.0",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/components": "workspace:*",
     "@we/primitives": "workspace:*",
-    "@we/models": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
     "sass": "^1.92.1",
     "solid-js": "^1.9.5",

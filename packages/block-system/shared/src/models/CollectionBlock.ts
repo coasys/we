@@ -1,7 +1,8 @@
-import { Ad4mModel, Model, Property } from '@coasys/ad4m';
+import { Model, Property } from '@coasys/ad4m';
+import { WeNode } from '@we/models';
 
 @Model({ name: 'CollectionBlock' })
-export class CollectionBlock extends Ad4mModel {
+export class CollectionBlock extends WeNode {
   @Property({
     through: 'we://collection_block_node_type',
     required: true,

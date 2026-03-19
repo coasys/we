@@ -1,5 +1,6 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
-import { Block, CollectionBlock, ImageBlock, TextBlock } from '@we/models';
+
+import { CollectionBlock, ImageBlock, TextBlock } from './models';
 
 import type { SerializedBlockNode } from './types';
 
@@ -27,50 +28,48 @@ export async function createBlocks(
 
   const batchId = existingBatchId || (await perspective.createBatch());
 
-  const blockWrapper = new Block(perspective, undefined);
-  blockWrapper.type = blockType;
-  await blockWrapper.save(batchId);
+  let block: CollectionBlock | TextBlock | ImageBlock | undefined;
 
   if (blockType === 'collection') {
-    const collectionBlock = new CollectionBlock(perspective, undefined);
-    collectionBlock.type = node.type || '';
-    collectionBlock.display = node.display || '';
-    collectionBlock.direction = node.direction || '';
-    collectionBlock.format = node.format || '';
-    collectionBlock.indent = node.indent || 0;
-    collectionBlock.version = node.version || 0;
-    await collectionBlock.save(batchId);
+    block = new CollectionBlock(perspective, undefined);
+    block.type = node.type || '';
+    block.display = node.display || '';
+    block.direction = node.direction || '';
+    block.format = node.format || '';
+    block.indent = node.indent || 0;
+    block.version = node.version || 0;
+    await block.save(batchId);
   }
 
   if (blockType === 'text') {
-    const textBlock = new TextBlock(perspective, undefined);
-    textBlock.type = node.type || '';
-    textBlock.direction = node.direction || '';
-    textBlock.format = node.format || '';
-    textBlock.indent = node.indent || 0;
-    textBlock.textFormat = node.textFormat || 0;
-    textBlock.textStyle = node.textStyle || '';
-    textBlock.listType = node.listType || '';
-    textBlock.start = node.start || 0;
-    textBlock.tag = node.tag || '';
-    textBlock.text = node.text || '';
-    textBlock.version = node.version || 0;
-    await textBlock.save(batchId);
+    block = new TextBlock(perspective, undefined);
+    block.type = node.type || '';
+    block.direction = node.direction || '';
+    block.format = node.format || '';
+    block.indent = node.indent || 0;
+    block.textFormat = node.textFormat || 0;
+    block.textStyle = node.textStyle || '';
+    block.listType = node.listType || '';
+    block.start = node.start || 0;
+    block.tag = node.tag || '';
+    block.text = node.text || '';
+    block.version = node.version || 0;
+    await block.save(batchId);
   }
 
-  if (node.type === 'image') {
-    const imageBlock = new ImageBlock(perspective, undefined);
-    imageBlock.type = node.type || '';
-    imageBlock.src = node.src || '';
-    imageBlock.altText = node.altText || '';
-    imageBlock.width = node.width || 0;
-    imageBlock.height = node.height || 0;
-    imageBlock.version = node.version || 0;
-    await imageBlock.save(batchId);
+  if (blockType === 'image') {
+    block = new ImageBlock(perspective, undefined);
+    block.type = node.type || '';
+    block.src = node.src || '';
+    block.altText = node.altText || '';
+    block.width = node.width || 0;
+    block.height = node.height || 0;
+    block.version = node.version || 0;
+    await block.save(batchId);
   }
 
-  if (node.children) {
-    node.baseExpression = blockWrapper.baseExpression;
+  if (block && node.children) {
+    node.baseExpression = block.baseExpression;
     for (const child of node.children) {
       await createBlocks(perspective, child, node, batchId);
     }

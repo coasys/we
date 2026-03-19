@@ -1,7 +1,8 @@
-import { Ad4mModel, Model, Property } from '@coasys/ad4m';
+import { Model, Property } from '@coasys/ad4m';
+import { WeNode } from '@we/models';
 
 @Model({ name: 'TextBlock' })
-export class TextBlock extends Ad4mModel {
+export class TextBlock extends WeNode {
   @Property({
     through: 'we://text_block_node_type',
     required: true,
