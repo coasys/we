@@ -4,6 +4,7 @@ import '@we/themes';
 import '@we/primitives/solid';
 import '@we/components/styles';
 import '@we/widgets/styles';
+import '@we/block-solid/styles';
 import '../../shared/styles/layouts.scss';
 
 // App
