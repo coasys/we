@@ -1,6 +1,7 @@
 import { Ad4mClient } from '@coasys/ad4m';
 import { Column } from '@we/components/solid';
-import { Block, CollectionBlock, ImageBlock, Space, TextBlock } from '@we/models';
+import { CollectionBlock, ImageBlock, TextBlock } from '@we/block-shared';
+import { Space, WeNode } from '@we/models';
 import { Accessor, createSignal, JSX } from 'solid-js';
 
 export interface CreateSpaceModalWidgetProps {
@@ -29,7 +30,7 @@ export function CreateSpaceModalWidget(props: CreateSpaceModalWidgetProps) {
     const spacePerspective = await client.perspective.add(name());
 
     // Add models to the perspectives SDNA
-    const models = [Space, Block, ImageBlock, TextBlock, CollectionBlock];
+    const models = [Space, WeNode, ImageBlock, TextBlock, CollectionBlock];
     await Promise.all(models.map((model) => spacePerspective.ensureSDNASubjectClass(model)));
 
     // HACK: AD4M's ensureSDNASubjectClass resolves before the SDNA is actually ready in the perspective so we need to wait.

@@ -1,17 +1,13 @@
-import { Ad4mModel, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
+import { HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
+
+import { WeNode } from '../WeNode';
 
 @Model({ name: 'Space' })
-export class Space extends Ad4mModel {
-  @Property({
-    through: 'we://has_name',
-    required: true,
-  })
+export class Space extends WeNode {
+  @Property({ through: 'we://has_name', required: true })
   name: string = '';
 
-  @Property({
-    through: 'we://has_description',
-    required: true,
-  })
+  @Property({ through: 'we://has_description', required: true })
   description: string = '';
 
   @Property({ through: 'we://has_visibility' })

@@ -1,7 +1,7 @@
 {
   "name": "@we/models",
   "version": "0.1.0",
-  "description": "Shared adam models for WE",
+  "description": "Shared WE models — WeNode base class and entity models",
   "author": "James Weir",
   "license": "MIT",
   "type": "module",

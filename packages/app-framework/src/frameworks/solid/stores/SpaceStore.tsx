@@ -1,6 +1,7 @@
 import { PerspectiveProxy } from '@coasys/ad4m';
 import { useAdamStore, useRouteStore } from '@solid/stores';
-import { Block, CollectionBlock, ImageBlock, Space, TextBlock } from '@we/models';
+import { CollectionBlock, ImageBlock, TextBlock } from '@we/block-shared';
+import { Space, WeNode } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 type BlockType = ImageBlock | TextBlock | CollectionBlock;
@@ -139,8 +140,8 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function getPosts(perspective: PerspectiveProxy): Promise<void> {
     try {
       setLoading(true);
-      // get root blocks based on source being space uuid?
-      const postsArr = await Block.findAll(perspective, { where: { type: 'collection' } });
+      // get root collection blocks as posts
+      const postsArr = await CollectionBlock.findAll(perspective, { where: { type: 'root' } });
       const postsWithBlocks = await Promise.all(postsArr.map((post) => getBlockTree(post, perspective)));
       setPosts(postsWithBlocks.filter((post) => !!post));
 
@@ -152,24 +153,12 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  async function getBlockNode(perspective: PerspectiveProxy, block: Block): Promise<BlockType | undefined> {
-    switch (block.type) {
-      case 'image': {
-        const [node] = await ImageBlock.findAll(perspective, { source: block.baseExpression });
-        return node;
-      }
-      case 'text': {
-        const [node] = await TextBlock.findAll(perspective, { source: block.baseExpression });
-        return node;
-      }
-      case 'collection': {
-        const [node] = await CollectionBlock.findAll(perspective, { source: block.baseExpression });
-        return node;
-      }
-      default:
-        console.warn(`No model found for block type: ${block.type}`);
-        return undefined;
-    }
+  async function getBlockNode(perspective: PerspectiveProxy, block: WeNode): Promise<BlockType | undefined> {
+    if (block instanceof ImageBlock) return block as ImageBlock;
+    if (block instanceof TextBlock) return block as TextBlock;
+    if (block instanceof CollectionBlock) return block as CollectionBlock;
+    console.warn(`Unknown block type: ${block.constructor.name}`);
+    return undefined;
   }
 
   // Temp fix for adam returning empty arrays instead of undefined
@@ -194,11 +183,11 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   // Recursive helper
-  async function getBlockTree(parent: Block, perspective: PerspectiveProxy): Promise<Post | undefined> {
+  async function getBlockTree(parent: WeNode, perspective: PerspectiveProxy): Promise<Post | undefined> {
     try {
       const block = await getBlockNode(perspective, parent);
 
-      const children = await Block.findAll(perspective, { source: parent.baseExpression });
+      const children = await CollectionBlock.findAll(perspective, { source: parent.baseExpression });
       const childrenWithBlocks = await Promise.all(children.map((child) => getBlockTree(child, perspective)));
       return cleanBlockData({ ...block, children: childrenWithBlocks.filter((child) => !!child) });
     } catch (error) {

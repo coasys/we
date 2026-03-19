@@ -29,7 +29,7 @@ pnpm dev:tauri     # Tauri app
 - **[@we/schema-shared](./packages/schema-system/shared)** + **[@we/schema-solid](./packages/schema-system/solid)** - Schema-driven UI renderer with shared types/validators and SolidJS rendering
 - **[@we/design-system](./packages/design-system)** - Complete design system with tokens, themes, elements, components, widgets, pages, and templates
 - **[@we/block-solid](./packages/block-system/solid)** + **[@we/block-shared](./packages/block-system/shared)** - Block-based content composition system
-- **[@we/models](./packages/block-system/models)** - Shared TypeScript types and interfaces
+- **[@we/models](./packages/models)** - Shared WE models (WeNode base class and entity models)
 - **[@we/cli](./packages/cli)** - Command-line tools and build utilities
 - **[@we/utils](./packages/utils)** - Shared utility functions
 
