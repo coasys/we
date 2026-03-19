@@ -13,6 +13,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // Paths
 const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
@@ -76,6 +77,9 @@ function main() {
     // Create empty config files so build doesn't fail
     fs.writeFileSync(PORT_MAP_FILE, JSON.stringify({}, null, 2));
     fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify({}, null, 2));
+
+    // Format generated files with Prettier to avoid noisy git diffs
+    formatGeneratedFiles([PORT_MAP_FILE, PORT_MAP_FILE_WEB]);
 
     console.log('✅ Minimal configuration files generated');
     return;
@@ -202,11 +206,26 @@ pub use seed_servers::setup_seed_servers;
   // Update tauri.conf.json
   updateTauriConfig(bundleResources);
 
+  // Format generated files with Prettier to avoid noisy git diffs
+  const generatedFiles = [PORT_MAP_FILE, PORT_MAP_FILE_WEB, BUNDLE_RESOURCES_FILE, TAURI_CONF_FILE];
+  formatGeneratedFiles(generatedFiles);
+
   console.log('\n✨ Tauri seed configuration generated successfully!');
   console.log('\n📝 Next steps:');
   console.log('   1. The bundle resources in tauri.conf.json have been updated');
   console.log('   2. Update lib.rs to use the generated seed_servers.rs');
   console.log('   3. Build with: pnpm tauri:build');
+}
+
+function formatGeneratedFiles(files) {
+  try {
+    const filePaths = files.map((f) => path.relative(WORKSPACE_ROOT, f)).join(' ');
+    execSync(`npx prettier --write ${filePaths}`, { cwd: WORKSPACE_ROOT, stdio: 'ignore' });
+    console.log('✅ Formatted generated files with Prettier');
+  } catch {
+    // Prettier not available or failed — not critical
+    console.warn('⚠️  Could not format generated files with Prettier (non-critical)');
+  }
 }
 
 function generateAppServerCode(apps, portMap) {

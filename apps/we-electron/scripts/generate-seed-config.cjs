@@ -13,6 +13,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 // Paths
 const WORKSPACE_ROOT = path.resolve(__dirname, '../../..');
@@ -133,11 +134,25 @@ function main() {
   fs.writeFileSync(SERVER_SETUP_FILE, serverSetupCode, 'utf8');
   console.log(`✅ Server setup code written to: ${path.relative(process.cwd(), SERVER_SETUP_FILE)}`);
 
+  // Format generated files with Prettier to avoid noisy git diffs
+  formatGeneratedFiles([PORT_MAP_FILE, EXTRA_RESOURCES_FILE, SERVER_SETUP_FILE]);
+
   console.log('\n✨ Seed configuration generated successfully!');
   console.log('\n📝 Next steps:');
   console.log('   1. The extraResources in package.json build config will be read from seed-extra-resources.json');
   console.log('   2. Import setupSeedServers() from ./seed-servers.js in main.js and call it');
   console.log('   3. Build with: pnpm electron:build');
+}
+
+function formatGeneratedFiles(files) {
+  try {
+    const filePaths = files.map((f) => path.relative(WORKSPACE_ROOT, f)).join(' ');
+    execSync(`npx prettier --write ${filePaths}`, { cwd: WORKSPACE_ROOT, stdio: 'ignore' });
+    console.log('✅ Formatted generated files with Prettier');
+  } catch {
+    // Prettier not available or failed — not critical
+    console.warn('⚠️  Could not format generated files with Prettier (non-critical)');
+  }
 }
 
 function generateServerSetupCode(apps, portMap) {
