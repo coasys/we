@@ -1,4 +1,5 @@
 import { BlockComposer } from '@we/block-solid';
+import { CreateSpacePage } from '../pages/CreateSpacePage';
 import {
   countryOutlinesLayer,
   h3HexagonsLayer,
@@ -74,6 +75,9 @@ export const componentRegistry: ComponentRegistry = {
 
   // @we/block-solid
   BlockComposer,
+
+  // Pages
+  CreateSpacePage,
 
   // Testing
   RerenderLog,

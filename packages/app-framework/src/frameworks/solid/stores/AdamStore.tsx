@@ -1,7 +1,8 @@
-import { Ad4mClient, Agent } from '@coasys/ad4m';
+import { Ad4mClient, Agent, Perspective } from '@coasys/ad4m';
+import { CollectionBlock, ImageBlock, TextBlock } from '@we/block-shared';
 import { usePlatform } from '@shared/platform';
 import { useNavigate } from '@solidjs/router';
-import { Space } from '@we/models';
+import { Space, WeNode } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 export { type Ad4mClient, PerspectiveProxy } from '@coasys/ad4m';
@@ -35,6 +36,10 @@ export interface AdamStore {
   unlockAgent: () => Promise<void>;
   navigate: (to: string, options?: Record<string, unknown>) => void;
   addNewSpace: (space: Space) => void;
+  createSpace: (name: string, description: string, shared: boolean) => Promise<void>;
+
+  // Derived
+  mySpaceSidebarItems: Accessor<Array<{ type: string; id: string; label: string; icon: string; onClick: () => void }>>;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -183,8 +188,62 @@ export function AdamStoreProvider(props: ParentProps) {
   }
 
   function addNewSpace(space: Space): void {
-    // console.log('AdamStore: addNewSpace', space);
     setMySpaces((prev) => [...prev, space]);
+  }
+
+  async function createSpace(name: string, description: string, shared: boolean): Promise<void> {
+    const client = adamClient();
+    if (!client) return;
+
+    try {
+      // Create the perspective
+      const spacePerspective = await client.perspective.add(name);
+
+      // Register SDNA models
+      const models = [Space, WeNode, ImageBlock, TextBlock, CollectionBlock];
+      await Promise.all(models.map((model) => spacePerspective.ensureSDNASubjectClass(model)));
+
+      // HACK: AD4M's ensureSDNASubjectClass resolves before the SDNA is actually ready
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // If shared, publish as neighbourhood
+      if (shared) {
+        const uid = crypto.randomUUID();
+        const langs = await client.runtime.knownLinkLanguageTemplates();
+        const templateAddress = langs?.[0];
+        if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
+        const templateData = JSON.stringify({ uid, name: `${name}-link-language` });
+        const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
+        await client.neighbourhood.publishFromPerspective(
+          spacePerspective.uuid,
+          linkLanguage.address,
+          new Perspective([]),
+        );
+      }
+
+      // Create and save Space model
+      const space = new Space(spacePerspective);
+      space.name = name;
+      space.description = description;
+      space.visibility = shared ? 'shared' : 'personal';
+      await space.save();
+
+      // Update sidebar and navigate
+      addNewSpace(space);
+      navigate(`/space/${spacePerspective.uuid}`);
+    } catch (error) {
+      console.error('AdamStore: createSpace error', error);
+    }
+  }
+
+  function mySpaceSidebarItems() {
+    return mySpaces().map((space) => ({
+      type: 'item' as const,
+      id: space.uuid || space.name || '',
+      label: space.name || 'Untitled',
+      icon: 'map-pin-area',
+      onClick: () => navigate(`/space/${space.uuid}`),
+    }));
   }
 
   function navigate(to: string, options?: Record<string, unknown>) {
@@ -221,6 +280,10 @@ export function AdamStoreProvider(props: ParentProps) {
     unlockAgent,
     navigate,
     addNewSpace,
+    createSpace,
+
+    // Derived
+    mySpaceSidebarItems,
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;

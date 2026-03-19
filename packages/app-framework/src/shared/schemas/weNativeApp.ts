@@ -137,36 +137,14 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
               },
             ],
           },
-          // Spaces group
+          // Spaces group — items populated dynamically from adamStore.mySpaceSidebarItems
           {
             type: 'group',
             id: 'spaces',
             label: 'Spaces',
             collapsible: true,
             collapsed: false,
-            items: [
-              {
-                type: 'item',
-                id: 'design-team',
-                avatar: {
-                  src: 'https://i.pravatar.cc/150?img=1',
-                  name: 'Design Team',
-                  status: 'online',
-                },
-                label: 'Design Team',
-                badge: 3,
-                onClick: { $action: 'routeStore.navigate', args: ['/spaces/design'] },
-                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/spaces/design'] },
-              },
-              {
-                type: 'item',
-                id: 'dev-team',
-                avatar: { src: 'https://i.pravatar.cc/150?img=2', name: 'Dev Team' },
-                label: 'Dev Team',
-                onClick: { $action: 'routeStore.navigate', args: ['/spaces/dev'] },
-                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/spaces/dev'] },
-              },
-            ],
+            items: { $store: 'adamStore.mySpaceSidebarItems' },
           },
           // // Quest group
           // {
@@ -1471,8 +1449,13 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         { type: 'BlockComposer', props: {} },
       ],
     },
+    {
+      path: '/new-space',
+      type: 'Column',
+      props: { width: '100%', height: '100%' },
+      children: [{ type: 'CreateSpacePage', props: {} }],
+    },
     // {
-    //   path: '/profile',
     //   type: 'Column',
     //   props: {
     //     width: '100%',
