@@ -1,8 +1,9 @@
 import { Ad4mClient, Agent, Perspective } from '@coasys/ad4m';
-import { CollectionBlock, ImageBlock, TextBlock } from '@we/block-shared';
 import { usePlatform } from '@shared/platform';
 import { useNavigate } from '@solidjs/router';
-import { Space, WeNode } from '@we/models';
+import { CollectionBlock, ImageBlock, TextBlock } from '@we/block-shared';
+import type { FileData } from '@we/models';
+import { blobToDataURL, resizeImage, Space, WeNode } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 export { type Ad4mClient, PerspectiveProxy } from '@coasys/ad4m';
@@ -36,7 +37,7 @@ export interface AdamStore {
   unlockAgent: () => Promise<void>;
   navigate: (to: string, options?: Record<string, unknown>) => void;
   addNewSpace: (space: Space) => void;
-  createSpace: (name: string, description: string, shared: boolean) => Promise<void>;
+  createSpace: (name: string, description: string, shared: boolean, imageFile?: File) => Promise<void>;
 
   // Derived
   mySpaceSidebarItems: Accessor<Array<{ type: string; id: string; label: string; icon: string; onClick: () => void }>>;
@@ -76,7 +77,7 @@ export function AdamStoreProvider(props: ParentProps) {
     try {
       const perspectives = await client.perspective.all();
       const spaces = await Promise.all(perspectives.map(async (perspective) => (await Space.findAll(perspective))[0]));
-      const filteredSpaces = spaces.filter((s) => s).sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+      const filteredSpaces = spaces.filter((s) => s).sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
       setMySpaces(filteredSpaces);
     } catch (error) {
       console.error('AdamStore: getMySpaces error', error);
@@ -191,7 +192,7 @@ export function AdamStoreProvider(props: ParentProps) {
     setMySpaces((prev) => [...prev, space]);
   }
 
-  async function createSpace(name: string, description: string, shared: boolean): Promise<void> {
+  async function createSpace(name: string, description: string, shared: boolean, imageFile?: File): Promise<void> {
     const client = adamClient();
     if (!client) return;
 
@@ -226,6 +227,21 @@ export function AdamStoreProvider(props: ParentProps) {
       space.name = name;
       space.description = description;
       space.visibility = shared ? 'shared' : 'personal';
+
+      // Process image if provided
+      if (imageFile) {
+        const thumbnailBlob = await resizeImage(imageFile, 0.3);
+        const compressedBlob = await resizeImage(imageFile, 0.6);
+        const thumbnailBase64 = await blobToDataURL(thumbnailBlob);
+        const imageBase64 = await blobToDataURL(compressedBlob);
+        space.thumbnail = {
+          data_base64: thumbnailBase64,
+          name: 'space-thumbnail',
+          file_type: 'image/png',
+        } as FileData as any;
+        space.image = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData as any;
+      }
+
       await space.save();
 
       // Update sidebar and navigate
@@ -237,13 +253,16 @@ export function AdamStoreProvider(props: ParentProps) {
   }
 
   function mySpaceSidebarItems() {
-    return mySpaces().map((space) => ({
-      type: 'item' as const,
-      id: space.uuid || space.name || '',
-      label: space.name || 'Untitled',
-      icon: 'map-pin-area',
-      onClick: () => navigate(`/space/${space.uuid}`),
-    }));
+    return mySpaces().map((space) => {
+      const thumbnail = typeof space.thumbnail === 'string' ? space.thumbnail : undefined;
+      return {
+        type: 'item' as const,
+        id: space.uuid || space.name || '',
+        label: space.name || 'Untitled',
+        ...(thumbnail ? { avatar: { src: thumbnail, name: space.name || 'Space' } } : { icon: 'map-pin-area' }),
+        onClick: () => navigate(`/space/${space.uuid}`),
+      };
+    });
   }
 
   function navigate(to: string, options?: Record<string, unknown>) {

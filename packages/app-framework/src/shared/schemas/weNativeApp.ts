@@ -1453,7 +1453,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
       path: '/new-space',
       type: 'Column',
       props: { width: '100%', height: '100%' },
-      children: [{ type: 'CreateSpacePage', props: {} }],
+      children: [{ type: 'CreateSpacePage' }],
     },
     // {
     //   type: 'Column',
