@@ -2,6 +2,7 @@ import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
@@ -90,6 +91,7 @@ export default class Input extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) readonly = false;
   @property({ type: String, reflect: true }) type = 'text';
   @property({ type: String, reflect: true }) size: InputSize = 'md';
+  @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -147,8 +149,9 @@ export default class Input extends DesignSystemElement {
     const descId =
       this.error && this.errortext ? `${this._inputId}-error` : this.helptext ? `${this._inputId}-help` : undefined;
 
+    const inline = this.styles || {};
     return html`
-      <div part="base">
+      <div part="base" style=${styleMap(inline)}>
         ${this.label ? html`<label part="label" for=${this._inputId}>${this.label}</label>` : null}
         <div part="input-wrapper">
           <slot name="start"></slot>

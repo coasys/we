@@ -42,7 +42,7 @@ export class Tab extends DesignSystemElement {
   }
 
   render() {
-    const inlineStyles = this.styles || {};
+    const inline = this.styles || {};
     return html`
       <button
         part="base"
@@ -50,7 +50,7 @@ export class Tab extends DesignSystemElement {
         ?active=${this.active}
         aria-selected=${this.active}
         @click=${this.handleClick}
-        style=${styleMap(inlineStyles)}
+        style=${styleMap(inline)}
       >
         ${this.label ? this.label : html`<slot></slot>`}
       </button>

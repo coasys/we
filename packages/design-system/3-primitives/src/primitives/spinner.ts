@@ -109,8 +109,8 @@ export default class Spinner extends LayoutElement {
   }
 
   render() {
-    const inlineStyles = this.styles || {};
-    return html`<div class="lds-ring" style=${styleMap(inlineStyles)}>
+    const inline = this.styles || {};
+    return html`<div class="lds-ring" style=${styleMap(inline)}>
       <div></div>
       <div></div>
       <div></div>

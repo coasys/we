@@ -2,6 +2,7 @@ import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
@@ -29,20 +30,20 @@ const styles = css`
   }
 `;
 
-const tagTemplates: Record<string, (content: unknown) => unknown> = {
-  h1: (content) => html`<h1 part="base">${content}</h1>`,
-  h2: (content) => html`<h2 part="base">${content}</h2>`,
-  h3: (content) => html`<h3 part="base">${content}</h3>`,
-  h4: (content) => html`<h4 part="base">${content}</h4>`,
-  h5: (content) => html`<h5 part="base">${content}</h5>`,
-  h6: (content) => html`<h6 part="base">${content}</h6>`,
-  p: (content) => html`<p part="base">${content}</p>`,
-  small: (content) => html`<small part="base">${content}</small>`,
-  b: (content) => html`<b part="base">${content}</b>`,
-  i: (content) => html`<i part="base">${content}</i>`,
-  span: (content) => html`<span part="base">${content}</span>`,
-  label: (content) => html`<label part="base">${content}</label>`,
-  div: (content) => html`<div part="base">${content}</div>`,
+const tagTemplates: Record<string, (content: unknown, styles: Record<string, string | number | undefined>) => unknown> = {
+  h1: (content, s) => html`<h1 part="base" style=${styleMap(s)}>${content}</h1>`,
+  h2: (content, s) => html`<h2 part="base" style=${styleMap(s)}>${content}</h2>`,
+  h3: (content, s) => html`<h3 part="base" style=${styleMap(s)}>${content}</h3>`,
+  h4: (content, s) => html`<h4 part="base" style=${styleMap(s)}>${content}</h4>`,
+  h5: (content, s) => html`<h5 part="base" style=${styleMap(s)}>${content}</h5>`,
+  h6: (content, s) => html`<h6 part="base" style=${styleMap(s)}>${content}</h6>`,
+  p: (content, s) => html`<p part="base" style=${styleMap(s)}>${content}</p>`,
+  small: (content, s) => html`<small part="base" style=${styleMap(s)}>${content}</small>`,
+  b: (content, s) => html`<b part="base" style=${styleMap(s)}>${content}</b>`,
+  i: (content, s) => html`<i part="base" style=${styleMap(s)}>${content}</i>`,
+  span: (content, s) => html`<span part="base" style=${styleMap(s)}>${content}</span>`,
+  label: (content, s) => html`<label part="base" style=${styleMap(s)}>${content}</label>`,
+  div: (content, s) => html`<div part="base" style=${styleMap(s)}>${content}</div>`,
 };
 
 @customElement('we-text')
@@ -54,6 +55,7 @@ export default class Text extends DesignSystemElement {
   @property({ type: String, reflect: true }) tag: TextTag = 'span';
   @property({ type: Boolean, reflect: true }) inline = false;
   @property({ type: Boolean, reflect: true }) uppercase = false;
+  @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   override getInstanceProps() {
     const ctor = this.constructor as typeof Text & { __dsLayers: readonly DSLayer[] };
@@ -64,7 +66,8 @@ export default class Text extends DesignSystemElement {
   }
 
   render() {
+    const inline = this.styles || {};
     const renderFn = tagTemplates[this.tag] ?? tagTemplates['span'];
-    return renderFn(this.text ?? html`<slot></slot>`);
+    return renderFn(this.text ?? html`<slot></slot>`, inline);
   }
 }
