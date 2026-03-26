@@ -16,10 +16,10 @@ export const Basic: StoryObj = {
 export const Heading: StoryObj = {
   render: () => html`
     <div style="display: flex; flex-direction: column; gap: 8px;">
-      <we-text tag="h1" size="900">Heading 1</we-text>
-      <we-text tag="h2" size="800">Heading 2</we-text>
-      <we-text tag="h3" size="700">Heading 3</we-text>
-      <we-text tag="h4" size="600">Heading 4</we-text>
+      <we-text tag="h1" fontSize="900">Heading 1</we-text>
+      <we-text tag="h2" fontSize="800">Heading 2</we-text>
+      <we-text tag="h3" fontSize="700">Heading 3</we-text>
+      <we-text tag="h4" fontSize="600">Heading 4</we-text>
     </div>
   `,
 };
@@ -36,5 +36,5 @@ export const WithColor: StoryObj = {
 };
 
 export const Uppercase: StoryObj = {
-  render: () => html`<we-text uppercase weight="600">Uppercased Text</we-text>`,
+  render: () => html`<we-text uppercase fontWeight="600">Uppercased Text</we-text>`,
 };

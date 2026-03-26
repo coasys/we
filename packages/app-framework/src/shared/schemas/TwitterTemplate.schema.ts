@@ -202,7 +202,7 @@ export const twitterTemplateSchema: TemplateSchema = {
       path: '/explore',
       type: 'Column',
       props: {},
-      children: [{ type: 'we-text', props: { size: '700', weight: '600' }, children: ['Explore Page'] }],
+      children: [{ type: 'we-text', props: { fontSize: '700', fontWeight: '600' }, children: ['Explore Page'] }],
     },
   ],
 };

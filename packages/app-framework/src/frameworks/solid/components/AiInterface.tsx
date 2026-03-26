@@ -31,7 +31,7 @@ export default function AiInterface() {
         {aiResponse() && (
           <Row ay="center" gap="400" bg="ui-50" p="400" r="sm" mb="400">
             <we-icon name="robot" color="ui-600" size="lg" weight="duotone" />
-            <we-text size="500" color="ui-600" tag="i">
+            <we-text fontSize="500" color="ui-600" tag="i">
               {aiResponse()}
             </we-text>
           </Row>

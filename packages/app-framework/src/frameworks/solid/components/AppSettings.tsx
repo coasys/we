@@ -33,10 +33,10 @@ export default function AppSettings() {
       {modalOpen() && (
         <we-modal close={() => setModalOpen(false)}>
           <Column gap="600" p="600" ax="center">
-            <we-text size="800">App Settings</we-text>
+            <we-text fontSize="800">App Settings</we-text>
 
             <Row gap="400" ay="center">
-              <we-text size="600">Template:</we-text>
+              <we-text fontSize="600">Template:</we-text>
               <PopoverMenu
                 options={templateOptions}
                 selectedOption={selectedTemplate}
@@ -45,7 +45,7 @@ export default function AppSettings() {
             </Row>
 
             <Row gap="400" ay="center">
-              <we-text size="600">Theme:</we-text>
+              <we-text fontSize="600">Theme:</we-text>
               <PopoverMenu
                 options={themeStore.themes}
                 selectedOption={themeStore.currentTheme}

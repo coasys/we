@@ -25,15 +25,15 @@ export function PostCard(props: PostCardProps) {
       {props.creator && (
         <Row ay="center" gap="300">
           <we-avatar image={props.creator.avatar} size="md" />
-          <we-text size="600">{props.creator.name}</we-text>
+          <we-text fontSize="600">{props.creator.name}</we-text>
         </Row>
       )}
 
       <Column gap="100">
-        <we-text tag="h3" size="600" weight="600">
+        <we-text tag="h3" fontSize="600" fontWeight="600">
           {props.title}
         </we-text>
-        <we-text tag="p" size="400">
+        <we-text tag="p" fontSize="400">
           {props.text}
         </we-text>
       </Column>

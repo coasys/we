@@ -1,23 +1,17 @@
-import { tokenVar } from '@we/design-utils';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
-import { LayoutTypographyElement } from '../shared/design-system-element';
+import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import { SpaceToken, TextTag, TextVariant } from '../types';
+import type { TextTag } from '../types';
 
 const styles = css`
-  :host > *:first-child {
-    color: var(--we-text-color, inherit);
-    font-family: var(--we-font-family);
-  }
-
   :host([uppercase]) {
     --we-text-text-transform: uppercase;
   }
 
   :host([tag='p']) {
-    --we-margin-bottom: 1em;
+    --we-text-margin: 0 0 1em 0;
   }
 `;
 
@@ -38,32 +32,13 @@ const tagTemplates: Record<string, (content: unknown) => unknown> = {
 };
 
 @customElement('we-text')
-export default class Text extends LayoutTypographyElement {
+export default class Text extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
   @property({ type: String }) text?: string;
-  @property({ type: String, reflect: true }) size?: SpaceToken;
   @property({ type: String, reflect: true }) tag: TextTag = 'span';
   @property({ type: Boolean, reflect: true }) inline = false;
   @property({ type: Boolean, reflect: true }) uppercase = false;
-  @property({ type: String, reflect: true }) color = '';
-  @property({ type: String, reflect: true }) weight = '';
-
-  updated(changedProperties: Map<string, unknown>) {
-    super.updated(changedProperties);
-
-    if (changedProperties.has('size')) {
-      if (this.size) this.style.setProperty('--we-text-font-size', `var(--we-font-size-${this.size})`);
-      else this.style.removeProperty('--we-text-font-size');
-    }
-    if (changedProperties.has('weight')) {
-      if (this.weight) this.style.setProperty('--we-text-font-weight', this.weight);
-      else this.style.removeProperty('--we-text-font-weight');
-    }
-    if (changedProperties.has('color')) {
-      this.style.setProperty('--we-text-color', tokenVar('color', this.color, 'inherit'));
-    }
-  }
 
   render() {
     const renderFn = tagTemplates[this.tag] ?? tagTemplates['span'];

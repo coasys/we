@@ -8,7 +8,7 @@ import type { SchemaNode } from '@we/schema-shared';
  */
 export function getAppSettingsSchema(enableTemplateSwitching: boolean): SchemaNode {
   const settingsChildren: SchemaNode[] = [
-    { type: 'we-text', props: { size: '700', weight: '600' }, children: ['App Settings'] },
+    { type: 'we-text', props: { fontSize: '700', fontWeight: '600' }, children: ['App Settings'] },
   ];
 
   // Conditionally add template switcher
