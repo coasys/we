@@ -24,6 +24,11 @@
                     ┌─────────────────────┐
                     │ 2. Deep Unwrap Props │
                     └─────────────────────┘
+                              │
+                    ┌─────────────────────┐
+                    │2b. Fine-Grained      │
+                    │    Reactivity        │
+                    └─────────────────────┘
 
                     ┌─────────────────────┐
                     │ 3. Schema–Theme      │
@@ -105,13 +110,22 @@ Migrated badge and text to `DesignSystemElement` with `getInstanceProps()`. Adde
 
 Moved design-scale types (`FontWeight`, `LineHeight`, `LetterSpacing`, `Shadow`) from `@we/design-types` to `@we/tokens` with proper value maps. Consolidated duplicate `BorderRadiusToken`. Added escape hatch `*Value` types. Created `shadow.ts`, tokens `CONVENTIONS.md`, and `deferred.md` for tracking future work.
 
-### 2. Deep Unwrap Schema Props
+### 2. Deep Unwrap Schema Props ✅
 
-**Plan:** [deep-unwrap-schema-props](../prs/deep-unwrap-schema-props.md)
+**Plan:** [deep-unwrap-schema-props](../prs/deep-unwrap-schema-props.md) | **Summary:** [deep-unwrap-schema-props-summary](../prs/deep-unwrap-schema-props-summary.md)
+**Status:** Complete (branch `feat/deep-unwrap-schema-props`, 1 commit, 4 files)
 **Depends on:** nothing
 **Unblocks:** correct nested reactive prop handling for all components
 
-Fixes core schema renderer bug where nested `$store` accessors leak through to components as raw functions. CollapsibleSidebar currently needs manual unwrap workarounds — this removes that class of bugs system-wide.
+Added `deepUnwrap` function to SchemaRenderer that recursively unwraps `REACTIVE_ACCESSOR`-marked functions in complex props before distributing to components. Removed manual unwrap workarounds from CollapsibleSidebar and CesiumGlobe. ConditionalRenderer and cesium user-locations correctly left unchanged (different resolution paths).
+
+### 2b. Fine-Grained Schema Reactivity
+
+**Plan:** [fine-grained-schema-reactivity](../prs/fine-grained-schema-reactivity.md)
+**Depends on:** Deep Unwrap (#2) — `deepUnwrap` as a pure function is the foundation
+**Unblocks:** performant large templates, per-prop update granularity
+
+Replaces the single-memo-per-component prop resolution with per-prop memos. Currently, changing one store value re-evaluates all props for every component reading that store. After: only the prop referencing the changed store re-evaluates. Static props (no tokens) skip the memo system entirely. Pure performance optimization — no API or behavioural changes.
 
 ### 3. Schema–Theme Integration
 
@@ -241,6 +255,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | 1b  | Primitive Pattern Alignment ✅ | A  | 1                | Small  | Low  |
 | 1c  | Token Type Consolidation    | A     | 1b               | S–Med  | Low  |
 | 2   | Deep Unwrap Props           | A     | —                | Small  | Low  |
+| 2b  | Fine-Grained Reactivity     | A     | 2                | Medium | Med  |
 | 3   | Schema–Theme Integration    | A     | —                | Medium | Low  |
 | 4   | Local Schema State          | C     | 6                | Medium | Med  |
 | 4b  | $concat + remove $expr      | A     | —                | Small  | Low  |
@@ -271,7 +286,7 @@ The critical path is: **5 → 6 → 9** (block migration → schema customizatio
 Time →
 
 Track 1:  [1. Buttons ✅] [1b. Primitives ✅] [1c. Tokens] [3. Themes] [8b-Ph1. Token Validation] ──
-Track 2:  [2. Unwrap]  ─────────────────────────────────────────────────
+Track 2:  [2. Unwrap]  [2b. Fine-Grained] ──────────────────────────────
 Track 2b: [4b. $concat] ────────────────────────────────────────────────
 Track 2c: [10. Components Ph1] ─────────────────────────────────────────
 Track 3:  [5. Models]  [5c. $query] ────────────────────────────────────
