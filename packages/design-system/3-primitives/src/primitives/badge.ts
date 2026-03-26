@@ -44,7 +44,7 @@ export default class Badge extends DesignSystemElement {
 
   @property({ type: String, reflect: true }) variant: BadgeVariant = '';
   @property({ type: String, reflect: true }) size: BadgeSize = '';
-  @property({ type: Object }) styles?: Record<string, any>;
+  @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;

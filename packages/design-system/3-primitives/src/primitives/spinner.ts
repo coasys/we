@@ -87,7 +87,7 @@ export default class Spinner extends LayoutElement {
 
   @property({ type: String, reflect: true }) size: SpinnerSize = '';
   @property({ type: String, reflect: true }) color = '';
-  @property({ type: Object }) styles?: Record<string, any>;
+  @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   updated(props: Map<string, unknown>) {
     super.updated(props);

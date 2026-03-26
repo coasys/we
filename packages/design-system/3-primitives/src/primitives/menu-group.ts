@@ -71,7 +71,7 @@ export default class MenuGroup extends LayoutElement {
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) open = false;
   @property({ type: String, reflect: true }) title = '';
-  @property({ type: Object }) styles?: Record<string, any>;
+  @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   collapsibleContent() {
     const inlineStyles = this.styles || {};

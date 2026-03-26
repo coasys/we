@@ -102,7 +102,7 @@ export default class Avatar extends LayoutElement {
   @property({ type: String }) icon = '';
   @property({ type: String, reflect: true }) size?: AvatarSizeValue;
   @property({ type: Boolean, reflect: true }) clickable = false;
-  @property({ type: Object }) styles?: Record<string, any>;
+  @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   updated(props: Map<string, unknown>) {
     super.updated(props);

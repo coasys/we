@@ -50,7 +50,7 @@ export default class MenuItem extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) selected = false;
   @property({ type: Boolean, reflect: true }) active = false;
   @property({ type: String, reflect: true }) variant: MenuItemVariant = 'default';
-  @property({ type: Object }) styles?: Record<string, any>;
+  @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
