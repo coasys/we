@@ -76,6 +76,14 @@ Fix existing gaps in the schema system. PRs 1–3 and 4b are independent of each
 
 Adds `variant` prop (`primary`, `secondary`, `ghost`, `danger`, `outline`) to `we-button`. Pure design system change — small, self-contained, immediately improves every schema template.
 
+### 1b. Primitive Pattern Alignment
+
+**Plan:** [primitive-pattern-alignment](../prs/primitive-pattern-alignment.md)
+**Depends on:** Button Variants (#1) — establishes the DS pipeline pattern for variant/size
+**Unblocks:** consistent pattern for Component Library Expansion (#10) — new primitives with variants follow one canonical approach
+
+Migrates `we-badge` from manual CSS `:host([variant])` custom vars to the DS pipeline `getInstanceProps()` pattern established in #1. Icon, avatar, and spinner stay as-is (single-dimension sizing doesn't need the pipeline). Small — one component migration.
+
 ### 2. Deep Unwrap Schema Props
 
 **Plan:** [deep-unwrap-schema-props](../prs/deep-unwrap-schema-props.md)
@@ -209,6 +217,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | #   | PR                          | Phase | Depends on       | Size   | Risk |
 | --- | --------------------------- | ----- | ---------------- | ------ | ---- |
 | 1   | Button Variants             | A     | —                | Small  | Low  |
+| 1b  | Primitive Pattern Alignment | A     | 1                | Small  | Low  |
 | 2   | Deep Unwrap Props           | A     | —                | Small  | Low  |
 | 3   | Schema–Theme Integration    | A     | —                | Medium | Low  |
 | 4   | Local Schema State          | C     | 6                | Medium | Med  |
@@ -228,7 +237,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 
 ## Parallelisation Opportunities
 
-Phase A PRs (1–3, 4b, 10) are fully independent — all five can run in parallel.
+Phase A PRs (1–3, 4b, 10) are fully independent — all five can run in parallel. #1b follows #1 sequentially (same track).
 
 Within Phase B, #5b (Core Block Types), #5c ($query Service), and #6 (Schema Customization) are all independent of each other — they can run in parallel once #5 lands.
 
@@ -239,7 +248,7 @@ The critical path is: **5 → 6 → 9** (block migration → schema customizatio
 ```
 Time →
 
-Track 1:  [1. Buttons] [3. Themes] [8b-Ph1. Token Validation] ──────────
+Track 1:  [1. Buttons] [1b. Badge] [3. Themes] [8b-Ph1. Token Validation] ──────
 Track 2:  [2. Unwrap]  ─────────────────────────────────────────────────
 Track 2b: [4b. $concat] ────────────────────────────────────────────────
 Track 2c: [10. Components Ph1] ─────────────────────────────────────────

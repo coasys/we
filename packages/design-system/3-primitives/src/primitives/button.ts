@@ -1,23 +1,58 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
+import type { ButtonSize, ButtonVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   cursor: 'pointer',
-  bg: 'primary-100',
-  color: 'primary-800',
   r: 'md',
   px: '400',
   py: '200',
-  // height: '36px',
   ax: 'center',
   ay: 'center',
   gap: '300',
   disabledProps: { cursor: 'default', opacity: 0.5 },
+};
+
+const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
+  primary: {
+    bg: 'primary-500',
+    color: 'ui-0',
+    hoverProps: { bg: 'primary-600', color: 'ui-0' },
+  },
+  secondary: {
+    bg: 'ui-100',
+    color: 'ui-800',
+    hoverProps: { bg: 'ui-200', color: 'ui-900' },
+  },
+  ghost: {
+    bg: 'transparent',
+    color: 'ui-700',
+    hoverProps: { bg: 'ui-100', color: 'ui-900' },
+  },
+  danger: {
+    bg: 'red-500',
+    color: 'ui-0',
+    hoverProps: { bg: 'red-600', color: 'ui-0' },
+  },
+  outline: {
+    bg: 'transparent',
+    color: 'ui-700',
+    border: '1px solid var(--we-color-ui-300)',
+    hoverProps: { bg: 'ui-50', color: 'ui-900' },
+  },
+};
+
+const SIZE_DEFAULTS: Record<ButtonSize, Partial<DesignSystemProps>> = {
+  xs: { px: '200', py: '100', fontSize: '200' },
+  sm: { px: '300', py: '100', fontSize: '300' },
+  md: { px: '400', py: '200', fontSize: '400' },
+  lg: { px: '500', py: '300', fontSize: '500' },
 };
 
 const CSS_STYLES = css`
@@ -35,6 +70,8 @@ const CSS_STYLES = css`
 export default class Button extends DesignSystemElement {
   static styles = [sharedStyles, CSS_STYLES];
 
+  @property({ type: String, reflect: true }) variant: ButtonVariant = 'primary';
+  @property({ type: String, reflect: true }) size: ButtonSize = 'md';
   @property({ type: String }) text?: string;
   @property({ type: String }) href?: string;
   @property({ type: Boolean, reflect: true }) disabled = false;
@@ -43,6 +80,19 @@ export default class Button extends DesignSystemElement {
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  override getInstanceProps() {
+    const ctor = this.constructor as typeof Button & { __dsLayers: readonly DSLayer[] };
+    const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
+    const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
+    const variantDefaults = VARIANT_DEFAULTS[this.variant] ?? {};
+    const sizeDefaults = SIZE_DEFAULTS[this.size] ?? {};
+    // Merge chain: explicit user props > variant > size > component defaults
+    return mergeProps(
+      usedProps,
+      mergeProps(variantDefaults, mergeProps(sizeDefaults, DEFAULT_PROPS)),
+    ) as Partial<DesignSystemProps>;
   }
 
   private _onClick = (e: MouseEvent) => {
