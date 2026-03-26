@@ -10,6 +10,16 @@
                     ┌─────────────────────┐
                     │ 1. Button Variants   │
                     └─────────────────────┘
+                              │
+                    ┌─────────────────────┐
+                    │1b. Primitive Pattern │
+                    │    Alignment        │
+                    └─────────────────────┘
+                              │
+                    ┌─────────────────────┐
+                    │1c. Token Type        │
+                    │    Consolidation    │
+                    └─────────────────────┘
 
                     ┌─────────────────────┐
                     │ 2. Deep Unwrap Props │
@@ -83,6 +93,14 @@ Adds `variant` prop (`primary`, `secondary`, `ghost`, `danger`, `outline`) to `w
 **Unblocks:** consistent pattern for Component Library Expansion (#10) — new primitives with variants follow one canonical approach
 
 Migrates `we-badge` from manual CSS `:host([variant])` custom vars to the DS pipeline `getInstanceProps()` pattern established in #1. Icon, avatar, and spinner stay as-is (single-dimension sizing doesn't need the pipeline). Small — one component migration.
+
+### 1c. Token Type Consolidation
+
+**Plan:** [token-type-consolidation](../prs/token-type-consolidation.md)
+**Depends on:** Primitive Pattern Alignment (#1b) — surfaces the need for `FontWeightToken` in badge defaults
+**Unblocks:** consistent token architecture for Component Library Expansion (#10), proper `tokenVar()` lookups for font-weight/line-height/shadow
+
+Moves design-scale types (`FontWeight`, `LineHeight`, `LetterSpacing`, `Shadow`) from `@we/design-types` to `@we/tokens` with proper value maps. CSS keyword enums (`Display`, `Cursor`, etc.) stay in design-types. Updates the helpers pipeline to use `tokenVar()` for the newly tokenized properties. Small–medium.
 
 ### 2. Deep Unwrap Schema Props
 
@@ -218,6 +236,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | --- | --------------------------- | ----- | ---------------- | ------ | ---- |
 | 1   | Button Variants             | A     | —                | Small  | Low  |
 | 1b  | Primitive Pattern Alignment | A     | 1                | Small  | Low  |
+| 1c  | Token Type Consolidation    | A     | 1b               | S–Med  | Low  |
 | 2   | Deep Unwrap Props           | A     | —                | Small  | Low  |
 | 3   | Schema–Theme Integration    | A     | —                | Medium | Low  |
 | 4   | Local Schema State          | C     | 6                | Medium | Med  |
@@ -237,7 +256,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 
 ## Parallelisation Opportunities
 
-Phase A PRs (1–3, 4b, 10) are fully independent — all five can run in parallel. #1b follows #1 sequentially (same track).
+Phase A PRs (1–3, 4b, 10) are fully independent — all five can run in parallel. #1b follows #1 sequentially, and #1c follows #1b (same track).
 
 Within Phase B, #5b (Core Block Types), #5c ($query Service), and #6 (Schema Customization) are all independent of each other — they can run in parallel once #5 lands.
 
@@ -248,7 +267,7 @@ The critical path is: **5 → 6 → 9** (block migration → schema customizatio
 ```
 Time →
 
-Track 1:  [1. Buttons] [1b. Badge] [3. Themes] [8b-Ph1. Token Validation] ──────
+Track 1:  [1. Buttons] [1b. Badge] [1c. Tokens] [3. Themes] [8b-Ph1. Token Validation] ──
 Track 2:  [2. Unwrap]  ─────────────────────────────────────────────────
 Track 2b: [4b. $concat] ────────────────────────────────────────────────
 Track 2c: [10. Components Ph1] ─────────────────────────────────────────
