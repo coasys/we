@@ -14,21 +14,24 @@ const MAX_UNWRAP_DEPTH = 10;
  * complex prop values so that components receive plain data instead of leaked
  * signal functions.  Event handlers and other plain functions pass through
  * untouched.
+ *
+ * Called inside tracked computations (createMemo / createEffect), so calling
+ * accessors here registers them as dependencies — reactivity is preserved
+ * without wrapping each value in its own memo.
  */
-function deepUnwrap(value: unknown, memo: typeof createMemo, depth = 0): unknown {
+function deepUnwrap(value: unknown, depth = 0): unknown {
   if (depth > MAX_UNWRAP_DEPTH) return value;
   if (typeof value === 'function' && REACTIVE_ACCESSOR in value) {
-    const accessor = value as unknown as () => unknown;
-    return memo(() => deepUnwrap(accessor(), memo, depth + 1));
+    return deepUnwrap((value as unknown as () => unknown)(), depth + 1);
   }
   if (typeof value === 'function') return value;
   if (Array.isArray(value)) {
-    return value.map((item) => deepUnwrap(item, memo, depth + 1));
+    return value.map((item) => deepUnwrap(item, depth + 1));
   }
   if (value && typeof value === 'object') {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
-      result[k] = deepUnwrap(v, memo, depth + 1);
+      result[k] = deepUnwrap(v, depth + 1);
     }
     return result;
   }
@@ -151,7 +154,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     // For Solid components and HTML elements, include complex props directly (deep unwrapped)
     if (!isWebComponent) {
       for (const [k, v] of Object.entries(complexProps)) {
-        attrs[k] = deepUnwrap(v, createMemo);
+        attrs[k] = deepUnwrap(v);
       }
     }
 
@@ -178,7 +181,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
     // Set complex props as properties (deep unwrapped)
     for (const [k, v] of Object.entries(complexProps)) {
-      hostRef[k] = deepUnwrap(v, createMemo);
+      hostRef[k] = deepUnwrap(v);
     }
 
     // Set design system camelCase props as properties (not attributes)
