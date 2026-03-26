@@ -33,24 +33,52 @@ const reactiveAttrs = createMemo(() => {
 
 For simple templates (10-20 nodes, 3-5 props each) this is negligible. For large templates (100+ nodes, complex layer configs, data tables) it becomes measurable.
 
+### After: cost model with stable bindings + per-prop memos
+
+| What happens on a single store change | Cost |
+|---|---|
+| Stable binding fires (inner memo from setup) | One path walk for the changed prop only |
+| Per-prop memo re-evaluates | `deepUnwrap` on one prop's value |
+| `reactiveAttrs` re-runs if memo value changed | Shallow object construction |
+| `<Dynamic>` shallow-diffs | Key comparison (inherent, unavoidable) |
+| Other props' memos | Untouched — deps unchanged |
+| Static props | Zero cost — no memos involved |
+
 ## Proposed Fix: Per-prop resolution
 
 Move from one-memo-per-component to one-memo-per-prop. Each prop's memo tracks only the store signals it actually references.
 
 ### Architecture
 
+**Two changes working together:**
+
+**1. Stable bindings — resolve once at setup, not inside memos:**
+
+```
+Current (re-creates inner memos on every change):
+  per-prop memo → resolveProp() → resolveStoreProp() → createMemo(walkPath) ← new memo each run
+                                                                               old memo disposed
+
+Stable (inner memos live for component lifetime):
+  resolveProp() → resolveStoreProp() → createMemo(walkPath) ← created once at setup
+  per-prop memo → binding()                                  ← just reads the stable accessor
+```
+
+**2. Per-prop memos — isolate each prop's dependencies:**
+
 ```
 Schema node props: { label: { $store: 'a.x' }, color: { $store: 'b.y' }, items: [...] }
                           ↓                         ↓                        ↓
-                    createMemo(() =>          createMemo(() =>          (static value,
-                      resolveProp('a.x'))       resolveProp('b.y'))      no memo needed)
+              binding = resolveProp()    binding = resolveProp()        (static value,
+              at setup (stable memo)    at setup (stable memo)          no memo needed)
                           ↓                         ↓                        ↓
-                    deepUnwrap(result)         deepUnwrap(result)       items as-is
+                    createMemo(() =>          createMemo(() =>          items as-is
+                      deepUnwrap(binding()))    deepUnwrap(binding()))
                           ↓                         ↓                        ↓
                     label="Hello"             color="#ff0000"           items=[...]
 ```
 
-Store `a` changes → only `label` memo re-evaluates. Store `b` unchanged → `color` memo untouched. Static props never re-evaluate.
+Store `a` changes → only `label`'s stable binding fires → only `label` memo re-evaluates. Store `b` unchanged → `color` memo untouched. Static props never re-evaluate. No inner memos are created or disposed.
 
 ### Implementation
 
@@ -63,26 +91,37 @@ Replace the current `split` + `reactiveAttrs` pattern:
 const split = createMemo(() => splitProps(resolveProps(node.props, stores, context, createMemo)));
 const reactiveAttrs = createMemo(() => { /* reads split(), builds attrs */ });
 
-// --- Proposed (fine-grained) ---
+// --- Proposed (fine-grained with stable bindings) ---
 
-// 1. Resolve each prop independently — each gets its own memo
-const propMemos: Record<string, () => unknown> = {};
+// 1. Resolve each prop ONCE at setup — stable bindings, never re-created
+const propBindings: Record<string, { binding: unknown; isStatic: boolean }> = {};
 for (const [key, value] of Object.entries(node.props ?? {})) {
   if (isStaticValue(value)) {
-    // No token, no reactivity needed — constant value
-    propMemos[key] = () => value;
+    propBindings[key] = { binding: value, isStatic: true };
   } else {
-    // Has tokens — create a tracked memo that resolves + unwraps
+    // resolveProp runs ONCE — any inner memos (from $store, $if, etc.) live
+    // for the component's lifetime. No disposal/re-creation on change.
+    const binding = resolveProp(value, stores, context, createMemo);
+    propBindings[key] = { binding, isStatic: false };
+  }
+}
+
+// 2. Per-prop memos — each only reads its own stable binding
+const propMemos: Record<string, () => unknown> = {};
+for (const [key, { binding, isStatic }] of Object.entries(propBindings)) {
+  if (isStatic) {
+    propMemos[key] = () => binding;
+  } else {
     propMemos[key] = createMemo(() => {
-      const resolved = resolveProp(value, stores, context, createMemo);
-      return typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved
-        ? deepUnwrap(resolved())
-        : deepUnwrap(resolved);
+      // Just read the stable accessor and unwrap — no resolver work
+      return typeof binding === 'function' && REACTIVE_ACCESSOR in binding
+        ? deepUnwrap((binding as () => unknown)())
+        : deepUnwrap(binding);
     });
   }
 }
 
-// 2. Build attrs — each propMemo call only triggers if that prop's deps changed
+// 3. Build attrs — each propMemo call only triggers if that prop's deps changed
 const reactiveAttrs = createMemo(() => {
   const attrs: Record<string, unknown> = {};
   for (const [key, memo] of Object.entries(propMemos)) {
@@ -92,7 +131,7 @@ const reactiveAttrs = createMemo(() => {
 });
 ```
 
-**Key insight:** The outer `reactiveAttrs` memo still produces a single object (Dynamic spread requires it), but Solid's memo equality check means it only re-runs when an inner memo's value actually changes. The inner memos are the fine-grained boundary.
+**Key insight:** Store bindings are created once at setup — the inner memos from `resolveStoreProp` (and `$if`, `$map`, etc.) live for the component's lifetime instead of being re-created on every change. Per-prop memos then read these stable accessors, so only changed props re-evaluate. Static props bypass both layers entirely. The outer `reactiveAttrs` memo still produces a single object (Dynamic spread requires it), but Solid's memo equality check means it only re-runs when an inner memo's value actually changes.
 
 ### Helper: `isStaticValue`
 
@@ -136,27 +175,31 @@ With per-prop resolution, `splitProps` is no longer needed in the renderer. The 
 
 ## Key considerations
 
-### 1. Memo overhead vs tracking savings
+### 1. Stable bindings eliminate memo churn
+
+Previously, `resolveProp` ran inside a memo — each re-run of the memo called `resolveStoreProp`, which called `createMemo` to create a new path-walking memo. Solid would dispose the old one and allocate the new one on every store change. With stable bindings, `resolveProp` runs once at setup, and the inner memo lives for the component's lifetime. Zero allocation/disposal overhead on updates.
+
+### 2. Memo overhead vs tracking savings
 
 Creating N memos per component (one per prop) adds baseline overhead. For components with mostly static props (2-3 props, no tokens), the memos cost more than they save.
 
 **Mitigation:** Only create memos for props containing tokens. Static props bypass the memo system entirely. Most components have 3-8 props, typically 1-3 with tokens → only 1-3 memos per component.
 
-### 2. Dynamic spread still produces a new object
+### 3. Dynamic spread still produces a new object
 
 Even with per-prop memos, `reactiveAttrs` returns a new object reference each time any prop changes. Solid's `<Dynamic>` does shallow-diff the spread, so unchanged attributes aren't re-applied to the DOM — but the diff work still runs.
 
 This is inherent to the `<Dynamic>` component pattern. The alternative (assigning props via individual `createEffect` calls, like the web component path) avoids the diff but loses Solid's JSX optimization. For Solid components, the spread approach is the standard pattern and performs well.
 
-### 3. Prop resolution must remain synchronous
+### 4. Prop resolution must remain synchronous
 
 `resolveProp` is synchronous and must stay that way — Solid's `createMemo` expects a synchronous factory. This is already the case; no changes needed.
 
-### 4. `$forEach` and `$if` special cases
+### 5. `$forEach` and `$if` special cases
 
 These are handled before the prop resolution loop (they have their own rendering paths). No changes needed — they already create their own memos for the `items` / `condition` props.
 
-### 5. Backward compatibility
+### 6. Backward compatibility
 
 Components receive identical values — this is a pure performance optimization with no API changes. The `deepUnwrap` function added in PR #2 works unchanged.
 
