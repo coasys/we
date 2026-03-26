@@ -8,7 +8,21 @@ export type FlexCrossAxis = 'start' | 'center' | 'end' | 'stretch';
 export type Position = 'relative' | 'absolute' | 'fixed' | 'sticky';
 export type Overflow = 'hidden' | 'auto';
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
-export type FontWeight = 'light' | 'normal' | 'medium' | 'bold' | 'bolder';
+export type FontWeight =
+  | 'light'
+  | 'normal'
+  | 'medium'
+  | 'bold'
+  | 'bolder'
+  | '100'
+  | '200'
+  | '300'
+  | '400'
+  | '500'
+  | '600'
+  | '700'
+  | '800'
+  | '900';
 export type Cursor = 'pointer' | 'default' | 'text' | 'not-allowed';
 export type TextDecoration = 'underline' | 'line-through' | 'overline' | 'none';
 export type TextTransform = 'uppercase' | 'lowercase' | 'capitalize' | 'none';

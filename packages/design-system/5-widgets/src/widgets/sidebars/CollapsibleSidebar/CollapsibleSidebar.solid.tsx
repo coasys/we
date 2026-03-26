@@ -259,7 +259,7 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
             <we-badge
               class="we-collapsible-sidebar__item-badge"
               size="sm"
-              weight="600"
+              fontWeight="600"
               bg={badgeBg()}
               color={badgeColor()}
             >
