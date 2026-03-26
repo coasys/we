@@ -8,12 +8,12 @@
 
 ```
                     ┌─────────────────────┐
-                    │ 1. Button Variants   │
+                    │ 1. Button Variants ✅│
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
                     │1b. Primitive Pattern │
-                    │    Alignment        │
+                    │    Alignment     ✅ │
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
@@ -78,21 +78,23 @@
 
 Fix existing gaps in the schema system. PRs 1–3 and 4b are independent of each other and can be parallelised.
 
-### 1. Button Variants
+### 1. Button Variants ✅
 
 **Plan:** [button-variants](../prs/button-variants.md)
+**Status:** Merged to dev
 **Depends on:** nothing
 **Unblocks:** cleaner schema templates, less manual `bg`/`color` boilerplate
 
 Adds `variant` prop (`primary`, `secondary`, `ghost`, `danger`, `outline`) to `we-button`. Pure design system change — small, self-contained, immediately improves every schema template.
 
-### 1b. Primitive Pattern Alignment
+### 1b. Primitive Pattern Alignment ✅
 
-**Plan:** [primitive-pattern-alignment](../prs/primitive-pattern-alignment.md)
-**Depends on:** Button Variants (#1) — establishes the DS pipeline pattern for variant/size
+**Plan:** [primitive-pattern-alignment](../prs/primitive-pattern-alignment.md) | **Summary:** [primitive-pattern-alignment-summary](../prs/primitive-pattern-alignment-summary.md)
+**Status:** Complete (branch `feat/primitive-pattern-alignment`, 7 commits, 32 files)
+**Depends on:** Button Variants (#1)
 **Unblocks:** consistent pattern for Component Library Expansion (#10) — new primitives with variants follow one canonical approach
 
-Migrates `we-badge` from manual CSS `:host([variant])` custom vars to the DS pipeline `getInstanceProps()` pattern established in #1. Icon, avatar, and spinner stay as-is (single-dimension sizing doesn't need the pipeline). Small — one component migration.
+Migrated badge and text to `DesignSystemElement` with `getInstanceProps()`. Added variant/size systems to input, menu-item, text. Aligned all primitives: consistent `styles` prop type, `inline` styleMap variable, dead code removal. Created `CONVENTIONS.md` contributor guide. Scope grew from single-component migration to full primitives alignment pass.
 
 ### 1c. Token Type Consolidation
 
@@ -234,8 +236,8 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 
 | #   | PR                          | Phase | Depends on       | Size   | Risk |
 | --- | --------------------------- | ----- | ---------------- | ------ | ---- |
-| 1   | Button Variants             | A     | —                | Small  | Low  |
-| 1b  | Primitive Pattern Alignment | A     | 1                | Small  | Low  |
+| 1   | Button Variants ✅          | A     | —                | Small  | Low  |
+| 1b  | Primitive Pattern Alignment ✅ | A  | 1                | Small  | Low  |
 | 1c  | Token Type Consolidation    | A     | 1b               | S–Med  | Low  |
 | 2   | Deep Unwrap Props           | A     | —                | Small  | Low  |
 | 3   | Schema–Theme Integration    | A     | —                | Medium | Low  |
@@ -267,7 +269,7 @@ The critical path is: **5 → 6 → 9** (block migration → schema customizatio
 ```
 Time →
 
-Track 1:  [1. Buttons] [1b. Badge] [1c. Tokens] [3. Themes] [8b-Ph1. Token Validation] ──
+Track 1:  [1. Buttons ✅] [1b. Primitives ✅] [1c. Tokens] [3. Themes] [8b-Ph1. Token Validation] ──
 Track 2:  [2. Unwrap]  ─────────────────────────────────────────────────
 Track 2b: [4b. $concat] ────────────────────────────────────────────────
 Track 2c: [10. Components Ph1] ─────────────────────────────────────────
