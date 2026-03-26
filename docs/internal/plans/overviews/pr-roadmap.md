@@ -18,7 +18,7 @@
                               │
                     ┌─────────────────────┐
                     │1c. Token Type        │
-                    │    Consolidation    │
+                    │    Consolidation  ✅│
                     └─────────────────────┘
 
                     ┌─────────────────────┐
@@ -96,13 +96,14 @@ Adds `variant` prop (`primary`, `secondary`, `ghost`, `danger`, `outline`) to `w
 
 Migrated badge and text to `DesignSystemElement` with `getInstanceProps()`. Added variant/size systems to input, menu-item, text. Aligned all primitives: consistent `styles` prop type, `inline` styleMap variable, dead code removal. Created `CONVENTIONS.md` contributor guide. Scope grew from single-component migration to full primitives alignment pass.
 
-### 1c. Token Type Consolidation
+### 1c. Token Type Consolidation ✅
 
-**Plan:** [token-type-consolidation](../prs/token-type-consolidation.md)
+**Plan:** [token-type-consolidation](../prs/token-type-consolidation.md) | **Summary:** [token-type-consolidation-summary](../prs/token-type-consolidation-summary.md)
+**Status:** Complete (branch `feat/token-type-consolidation`, 3 commits, 12 files)
 **Depends on:** Primitive Pattern Alignment (#1b) — surfaces the need for `FontWeightToken` in badge defaults
 **Unblocks:** consistent token architecture for Component Library Expansion (#10), proper `tokenVar()` lookups for font-weight/line-height/shadow
 
-Moves design-scale types (`FontWeight`, `LineHeight`, `LetterSpacing`, `Shadow`) from `@we/design-types` to `@we/tokens` with proper value maps. CSS keyword enums (`Display`, `Cursor`, etc.) stay in design-types. Updates the helpers pipeline to use `tokenVar()` for the newly tokenized properties. Small–medium.
+Moved design-scale types (`FontWeight`, `LineHeight`, `LetterSpacing`, `Shadow`) from `@we/design-types` to `@we/tokens` with proper value maps. Consolidated duplicate `BorderRadiusToken`. Added escape hatch `*Value` types. Created `shadow.ts`, tokens `CONVENTIONS.md`, and `deferred.md` for tracking future work.
 
 ### 2. Deep Unwrap Schema Props
 
