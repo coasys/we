@@ -124,9 +124,9 @@ export default class Avatar extends LayoutElement {
   }
 
   render() {
-    const inlineStyles = this.styles || {};
+    const inline = this.styles || {};
     return this.clickable
-      ? html` <button part="base" style=${styleMap(inlineStyles)}>${this.renderContent()}</button> `
-      : html` <div part="base" style=${styleMap(inlineStyles)}>${this.renderContent()}</div> `;
+      ? html` <button part="base" style=${styleMap(inline)}>${this.renderContent()}</button> `
+      : html` <div part="base" style=${styleMap(inline)}>${this.renderContent()}</div> `;
   }
 }

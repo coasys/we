@@ -63,8 +63,8 @@ export default class Badge extends DesignSystemElement {
   }
 
   render() {
-    const inlineStyles = this.styles || {};
-    return html`<span part="base" style=${styleMap(inlineStyles)}>
+    const inline = this.styles || {};
+    return html`<span part="base" style=${styleMap(inline)}>
       <slot></slot>
     </span>`;
   }

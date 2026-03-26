@@ -74,7 +74,7 @@ export default class MenuGroup extends LayoutElement {
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   collapsibleContent() {
-    const inlineStyles = this.styles || {};
+    const inline = this.styles || {};
     return html`
       <details
         .open=${this.open}
@@ -84,6 +84,7 @@ export default class MenuGroup extends LayoutElement {
         }}
         part="base"
         role="menuitem"
+        style=${styleMap(inline)}
       >
         <summary part="summary">
           <slot part="start" name="start"></slot>
@@ -98,9 +99,9 @@ export default class MenuGroup extends LayoutElement {
   }
 
   normal() {
-    const inlineStyles = this.styles || {};
+    const inline = this.styles || {};
     return html`
-      <div part="base" role="menuitem" style=${styleMap(inlineStyles)}>
+      <div part="base" role="menuitem" style=${styleMap(inline)}>
         <div part="summary">
           <slot part="start" name="start"></slot>
           <div part="title">${this.title}</div>
