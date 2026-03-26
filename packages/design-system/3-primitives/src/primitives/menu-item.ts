@@ -1,10 +1,12 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { css, html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
+import type { MenuItemVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   cursor: 'pointer',
@@ -19,6 +21,13 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   hoverProps: {
     bg: 'ui-50',
     color: 'ui-700',
+  },
+};
+
+const VARIANT_DEFAULTS: Partial<Record<MenuItemVariant, Partial<DesignSystemProps>>> = {
+  danger: {
+    color: 'danger-500',
+    hoverProps: { bg: 'danger-50', color: 'danger-600' },
   },
 };
 
@@ -40,10 +49,19 @@ export default class MenuItem extends DesignSystemElement {
 
   @property({ type: Boolean, reflect: true }) selected = false;
   @property({ type: Boolean, reflect: true }) active = false;
+  @property({ type: String, reflect: true }) variant: MenuItemVariant = 'default';
   @property({ type: Object }) styles?: Record<string, any>;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  override getInstanceProps() {
+    const ctor = this.constructor as typeof MenuItem & { __dsLayers: readonly DSLayer[] };
+    const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
+    const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
+    const variantDefaults = VARIANT_DEFAULTS[this.variant] ?? {};
+    return mergeProps(usedProps, mergeProps(variantDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
   @state()
