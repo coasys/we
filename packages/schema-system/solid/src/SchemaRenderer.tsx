@@ -1,5 +1,5 @@
 import { DESIGN_SYSTEM_CAMEL_CASE_PROPS } from '@we/design-types';
-import { REACTIVE_ACCESSOR, resolveProp, resolveProps, splitProps } from '@we/schema-shared';
+import { REACTIVE_ACCESSOR, resolveProp } from '@we/schema-shared';
 import { batch, createEffect, createMemo, For, JSX } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
@@ -36,6 +36,20 @@ function deepUnwrap(value: unknown, depth = 0): unknown {
     return result;
   }
   return value;
+}
+
+/** Detect values with no schema tokens — can be passed through without reactive tracking. */
+function isStaticValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (typeof value !== 'object') return true;
+  if (Array.isArray(value)) return value.every(isStaticValue);
+  return !Object.keys(value).some((k) => k.startsWith('$')) && Object.values(value).every(isStaticValue);
+}
+
+/** Check if a resolved value is complex (object/array), requiring property-based setting for web components. */
+function isComplexValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  return typeof value === 'object';
 }
 
 export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
@@ -137,60 +151,59 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     }
   });
 
-  // Split resolved props into safe and complex props
+  // --- Per-prop resolution (fine-grained reactivity) ---
   let hostRef: (HTMLElement & Record<string, unknown>) | undefined;
-  const split = createMemo(() => splitProps(resolveProps(node.props, stores, context, createMemo)));
-
-  // Design system props that need special handling for web components (camelCase properties)
-  const designSystemCamelCaseProps = DESIGN_SYSTEM_CAMEL_CASE_PROPS;
-
-  // Handle safe props with reactivity
   const isWebComponent = node.type?.startsWith('we-');
-  const needsPropertyHandling = isWebComponent; // Only web components need ref-based property setting
+  const needsPropertyHandling = isWebComponent;
+
+  // Phase 1: Create per-prop memos — each prop resolves independently,
+  // isolating its reactive dependencies. Static props bypass resolution entirely.
+  // resolveProp is called INSIDE the memo so that plain-value resolvers
+  // ($not, $eq, $ne, $and, $or) correctly track signal dependencies.
+  const propMemos: Record<string, () => unknown> = {};
+  for (const [key, rawValue] of Object.entries(node.props ?? {})) {
+    if (isStaticValue(rawValue)) {
+      const value = rawValue;
+      propMemos[key] = () => value;
+    } else {
+      const raw = rawValue;
+      propMemos[key] = createMemo(() => {
+        const resolved = resolveProp(raw, stores, context, createMemo);
+        if (typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved) {
+          // Web components can't call accessors — eagerly unwrap
+          if (isWebComponent) {
+            return deepUnwrap((resolved as unknown as () => unknown)());
+          }
+          // Solid components: pass accessor through — component calls it in its own reactive scope
+          return resolved;
+        }
+        return deepUnwrap(resolved);
+      });
+    }
+  }
+
+  // Phase 2: Web component per-prop effects (property-based setting for complex values and camelCase props)
+  const webComponentPropertyKeys = new Set<string>();
+  if (needsPropertyHandling) {
+    for (const [key, memo] of Object.entries(propMemos)) {
+      const initialValue = memo();
+      if (isComplexValue(initialValue) || DESIGN_SYSTEM_CAMEL_CASE_PROPS.has(key)) {
+        webComponentPropertyKeys.add(key);
+        createEffect(() => {
+          if (hostRef) hostRef[key] = memo();
+        });
+      }
+    }
+  }
+
+  // Phase 3: Build reactive attrs — each propMemo call only triggers if that prop's deps changed
   const reactiveAttrs = createMemo(() => {
     const attrs: Record<string, unknown> = {};
-    const { safeProps, complexProps } = split();
-
-    // For Solid components and HTML elements, include complex props directly (deep unwrapped)
-    if (!isWebComponent) {
-      for (const [k, v] of Object.entries(complexProps)) {
-        attrs[k] = deepUnwrap(v);
-      }
-    }
-
-    for (const [k, v] of Object.entries(safeProps)) {
-      const isReactiveAccessor = typeof v === 'function' && REACTIVE_ACCESSOR in v;
-
-      // Skip design system camelCase props for web components - they'll be set as properties instead
-      if (isWebComponent && designSystemCamelCaseProps.has(k)) {
-        continue;
-      }
-
-      // Unwrap reactive accessors for web components
-      if (isWebComponent && isReactiveAccessor) attrs[k] = v();
-      // Pass through for Solid components, event handlers, and all other values
-      else attrs[k] = v;
+    for (const [key, memo] of Object.entries(propMemos)) {
+      if (webComponentPropertyKeys.has(key)) continue;
+      attrs[key] = memo();
     }
     return attrs;
-  });
-
-  // Handle complex props AND design system camelCase props with reactivity (web components only)
-  createEffect(() => {
-    if (!hostRef || !needsPropertyHandling) return;
-    const { safeProps, complexProps } = split();
-
-    // Set complex props as properties (deep unwrapped)
-    for (const [k, v] of Object.entries(complexProps)) {
-      hostRef[k] = deepUnwrap(v);
-    }
-
-    // Set design system camelCase props as properties (not attributes)
-    for (const [k, v] of Object.entries(safeProps)) {
-      if (designSystemCamelCaseProps.has(k)) {
-        const isReactiveAccessor = typeof v === 'function' && REACTIVE_ACCESSOR in v;
-        hostRef[k] = isWebComponent && isReactiveAccessor ? v() : v;
-      }
-    }
   });
 
   const slotProp = node.slot ? { slot: node.slot } : {};
