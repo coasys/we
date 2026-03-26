@@ -10,20 +10,21 @@ For **nested values inside objects/arrays**, the accessor leaks through to the c
 
 This is not specific to CollapsibleSidebar — it affects any component receiving schema-resolved deeply nested reactive values.
 
-### Current workaround
+### Current workarounds
 
-Components manually unwrap with an `unknown` cast:
+3 components currently have manual unwrap patterns for leaked schema accessors:
 
-```ts
-const groupItems = createMemo(() => {
-  const items: unknown = getGroup().items;
-  return typeof items === 'function'
-    ? (items as () => CollapsibleSidebarItem[])()
-    : (items as CollapsibleSidebarItem[]);
-});
-```
+| Component | File | Pattern |
+|---|---|---|
+| CollapsibleSidebar | `5-widgets/.../CollapsibleSidebar.solid.tsx` | `typeof items === 'function' ? items() : items` |
+| CesiumGlobe | `5-widgets/.../CesiumGlobe.solid.tsx` | `typeof enabled === 'function' ? enabled() : enabled` (2 places) |
+| ConditionalRenderer | `schema-system/solid/src/ConditionalRenderer.tsx` | `typeof condition === 'function' ? condition() : condition` |
 
-This works but pushes schema system concerns into component code.
+Additionally, `cesium-layers/.../user-locations/index.ts` has a similar pattern for `locations` (comment: "could be a signal accessor").
+
+**Not in scope:** GraphWidget's `labelColor(node)` / `labelBgColor(node)` are legitimate callback checks (they pass a parameter), not leaked schema accessors.
+
+These workarounds push schema system concerns into component code.
 
 ## Proposed Fix: Deep unwrap in schema renderer
 
@@ -37,10 +38,12 @@ In the prop resolution pipeline, after `resolveProps()` and before passing to co
 
 ```ts
 function deepUnwrap(value: unknown, memo: typeof createMemo): unknown {
-  if (typeof value === 'function') {
-    // Wrap accessor in memo to preserve reactivity
+  // Only unwrap reactive accessors (marked with REACTIVE_ACCESSOR symbol).
+  // Event handlers and other plain functions must pass through untouched.
+  if (typeof value === 'function' && REACTIVE_ACCESSOR in value) {
     return memo(() => deepUnwrap(value(), memo));
   }
+  if (typeof value === 'function') return value;
   if (Array.isArray(value)) {
     return value.map((item) => deepUnwrap(item, memo));
   }
@@ -55,7 +58,13 @@ function deepUnwrap(value: unknown, memo: typeof createMemo): unknown {
 }
 ```
 
-Apply this to complex props (objects/arrays) before they are set on the component ref or passed as JSX attributes.
+**Critical:** Must check `REACTIVE_ACCESSOR in value` — not just `typeof value === 'function'` — to avoid unwrapping event handlers (`onClick`, `onInput`, etc.). The `REACTIVE_ACCESSOR` symbol is already defined in `reactive.ts` and used by `resolveStoreProp()` to mark reactive accessors.
+
+Apply in both places the renderer distributes props:
+1. The `reactiveAttrs` memo (~line 122) — where `complexProps` are spread for Solid components
+2. The `createEffect` (~line 143) — where `complexProps` are set via `hostRef[k]` for web components
+
+The `$map` resolver already implements this pattern (lines 56-57, 61) and serves as the working model.
 
 ### Key considerations
 
@@ -87,7 +96,11 @@ Option 1 (deep unwrap in renderer) is the right long-term fix — it keeps the b
 
 ## Files to change
 
-| File                                                                                                    | Change                                                         |
-| ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `packages/schema-system/solid/src/SchemaRenderer.tsx`                                                   | Add deep unwrap for complex props before passing to components |
-| `packages/design-system/5-widgets/src/widgets/sidebars/CollapsibleSidebar/CollapsibleSidebar.solid.tsx` | Remove manual unwrap workaround once renderer handles it       |
+| File | Change |
+|---|---|
+| `packages/schema-system/solid/src/SchemaRenderer.tsx` | Add `deepUnwrap` for complex props before passing to components. Import `REACTIVE_ACCESSOR` from shared. |
+| `packages/schema-system/shared/src/propResolvers/reactive.ts` | Ensure `REACTIVE_ACCESSOR` is exported (verify current export) |
+| `packages/design-system/5-widgets/src/widgets/sidebars/CollapsibleSidebar/CollapsibleSidebar.solid.tsx` | Remove manual unwrap workaround |
+| `packages/design-system/5-widgets/src/widgets/cesium/CesiumGlobe/CesiumGlobe.solid.tsx` | Remove 2 manual unwrap workarounds |
+| `packages/cesium-layers/src/planet/user-locations/index.ts` | Remove manual unwrap workaround |
+| `packages/schema-system/solid/src/ConditionalRenderer.tsx` | Remove manual unwrap workaround |

@@ -7,6 +7,34 @@ import { Dynamic } from 'solid-js/web';
 import { ConditionalRenderer } from './ConditionalRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 
+const MAX_UNWRAP_DEPTH = 10;
+
+/**
+ * Recursively unwrap reactive accessors (marked with REACTIVE_ACCESSOR) inside
+ * complex prop values so that components receive plain data instead of leaked
+ * signal functions.  Event handlers and other plain functions pass through
+ * untouched.
+ */
+function deepUnwrap(value: unknown, memo: typeof createMemo, depth = 0): unknown {
+  if (depth > MAX_UNWRAP_DEPTH) return value;
+  if (typeof value === 'function' && REACTIVE_ACCESSOR in value) {
+    const accessor = value as unknown as () => unknown;
+    return memo(() => deepUnwrap(accessor(), memo, depth + 1));
+  }
+  if (typeof value === 'function') return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => deepUnwrap(item, memo, depth + 1));
+  }
+  if (value && typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = deepUnwrap(v, memo, depth + 1);
+    }
+    return result;
+  }
+  return value;
+}
+
 export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
   if (!node) return null;
 
@@ -120,9 +148,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const attrs: Record<string, unknown> = {};
     const { safeProps, complexProps } = split();
 
-    // For Solid components and HTML elements, include complex props directly
+    // For Solid components and HTML elements, include complex props directly (deep unwrapped)
     if (!isWebComponent) {
-      Object.assign(attrs, complexProps);
+      for (const [k, v] of Object.entries(complexProps)) {
+        attrs[k] = deepUnwrap(v, createMemo);
+      }
     }
 
     for (const [k, v] of Object.entries(safeProps)) {
@@ -146,11 +176,9 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     if (!hostRef || !needsPropertyHandling) return;
     const { safeProps, complexProps } = split();
 
-    // Set complex props as properties
+    // Set complex props as properties (deep unwrapped)
     for (const [k, v] of Object.entries(complexProps)) {
-      // Unwrap reactive accessors for web components
-      const isReactiveAccessor = typeof v === 'function' && REACTIVE_ACCESSOR in v;
-      hostRef[k] = isWebComponent && isReactiveAccessor ? v() : v;
+      hostRef[k] = deepUnwrap(v, createMemo);
     }
 
     // Set design system camelCase props as properties (not attributes)

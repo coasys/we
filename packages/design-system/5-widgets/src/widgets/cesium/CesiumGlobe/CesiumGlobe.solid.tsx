@@ -236,11 +236,8 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     const currentLayers = props.backgroundLayers || [];
     const mountedLayers = viewer._weMountedBackgroundLayers;
 
-    // Get enabled layers (tracking reactive dependencies)
-    const enabledLayers = currentLayers.filter((config) => {
-      const enabled = config.enabled;
-      return typeof enabled === 'function' ? (enabled as () => boolean)() !== false : enabled !== false;
-    });
+    // Get enabled layers
+    const enabledLayers = currentLayers.filter((config) => config.enabled !== false);
 
     const enabledFactoryNames = new Set(enabledLayers.map((c) => String(c.factory)));
 
@@ -313,11 +310,8 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     const currentLayers = props.planetLayers || [];
     const mountedLayers = viewer._weMountedLayers;
 
-    // Get enabled layers (tracking reactive dependencies)
-    const enabledLayers = currentLayers.filter((config) => {
-      const enabled = config.enabled;
-      return typeof enabled === 'function' ? (enabled as () => boolean)() !== false : enabled !== false;
-    });
+    // Get enabled layers
+    const enabledLayers = currentLayers.filter((config) => config.enabled !== false);
 
     const enabledFactoryNames = new Set(enabledLayers.map((c) => String(c.factory)));
 
