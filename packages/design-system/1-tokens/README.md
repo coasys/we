@@ -118,21 +118,22 @@ Full TypeScript support with exported types:
 
 ```typescript
 import {
+  // Strict token types (autocomplete only)
   type ColorHueToken, // 'ui' | 'primary' | 'success' | 'warning' | 'danger'
   type ColorLightnessToken, // '0' | '25' | '50' | ... | '1000'
   type SpaceToken, // '0' | '100' | '200' | '300' | ... | '1000'
   type FontSizeToken, // 'base' | '100' | '200' | ... | '1000'
-  type AnimationTransitionToken, // '0' | '100' | '200' | '300' | '400' | '500'
-} from '@we/tokens';
+  type RadiusToken, // 'none' | 'xxs' | ... | 'xl' | 'pill' | 'full'
 
-// Type-checked function
-function createButton(size: SpaceToken, color: ColorHueToken) {
-  return {
-    padding: space[size],
-    backgroundColor: color.primary['500'],
-  };
-}
+  // Value types (token + raw CSS escape hatch)
+  type ColorValue, // ColorToken | (string & {}) — allows '#ff0000', 'rgb(...)'
+  type SpaceValue, // SpaceToken | (string & {}) — allows '2rem', '10px'
+  type RadiusValue, // RadiusToken | (string & {}) — allows '50%', '4px'
+  type SizeValue, // SizeToken | (string & {}) — allows '20px', '3rem'
+} from '@we/tokens';
 ```
+
+Value types use `Token | (string & {})` to preserve autocomplete while allowing raw CSS passthrough for custom values.
 
 ## CSS Custom Properties
 

@@ -1,12 +1,12 @@
 /**
  * BORDER TOKEN DEFINITIONS
  * This file defines border tokens that serve as the source of truth for the design system.
+ * Note: Border radius tokens are in size.ts (RadiusToken/RadiusValue).
  */
 
 import { color } from './color.js';
 
 // Literal union types for border tokens
-export type BorderRadiusToken = 'none' | 'base' | 'sm' | 'md' | 'lg';
 export type BorderColorToken = 'base' | 'strong';
 
 /**
@@ -14,18 +14,6 @@ export type BorderColorToken = 'base' | 'strong';
  * Defines the standard border width used throughout the system.
  */
 export const borderWidth = '1px';
-
-/**
- * Border radius values for different sizes.
- * These define the roundness of corners for UI elements.
- */
-export const borderRadius = {
-  none: '0px',
-  base: '8px',
-  sm: '4px',
-  md: '8px',
-  lg: '16px',
-} satisfies Record<BorderRadiusToken, string>;
 
 /**
  * Border color definitions.
@@ -43,6 +31,5 @@ export const borderColor = {
  */
 export const border = {
   width: borderWidth,
-  radius: borderRadius,
   color: borderColor,
 };
