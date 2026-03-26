@@ -8,6 +8,7 @@ import type { color as colorTokens } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
 import type { effect as effectTokens } from '../src/effect.js';
 import type { font as fontTokens } from '../src/font.js';
+import type { shadow as shadowTokens } from '../src/shadow.js';
 import type { avatarSize as avatarSizeTokens, radius as radiusTokens, size as sizeTokens } from '../src/size.js';
 import type { space as spaceTokens } from '../src/space.js';
 
@@ -24,7 +25,7 @@ export async function generateCSS() {
     // Import the compiled tokens dynamically
     const indexFile = path.resolve(__dirname, '../dist/index.js');
     const tokens = await import(`file://${indexFile}`);
-    const { animation, border, color, component, effect, font, size, radius, avatarSize, space } = tokens;
+    const { animation, border, color, component, effect, font, shadow, size, radius, avatarSize, space } = tokens;
 
     // Generate CSS files
     generateAnimationCSS(animation, outputDir);
@@ -33,6 +34,7 @@ export async function generateCSS() {
     generateComponentCSS(component, outputDir);
     generateEffectCSS(effect, outputDir);
     generateFontCSS(font, outputDir);
+    generateShadowCSS(shadow, outputDir);
     generateSizeCSS(size, radius, avatarSize, outputDir);
     generateSpaceCSS(space, outputDir);
 
@@ -63,21 +65,14 @@ ${transitionVars}
 }
 
 function generateBorderCSS(border: typeof borderTokens, outputDir: string) {
-  const radiusVars = Object.entries(border.radius)
-    .map(([key, value]) => {
-      const varName = key === 'base' ? '--we-border-radius' : `--we-border-radius-${key}`;
-      return `  ${varName}: ${value};`;
-    })
-    .join('\n');
-
   const css = `/* BORDER TOKENS - Generated from JS tokens */
 
 :root {
   /* Border Width */
   --we-border-width: ${border.width};
 
-  /* Border Radius */
-${radiusVars}
+  /* Semantic border radius alias (override in themes) */
+  --we-border-radius: var(--we-radius-md);
 
   /* Border Colors */
   --we-border-color: var(--we-color-ui-100);
@@ -184,6 +179,18 @@ function generateFontCSS(font: typeof fontTokens, outputDir: string) {
     .map(([key, value]) => `  --we-font-size-${key}: ${value};`)
     .join('\n');
 
+  const fontWeightVars = Object.entries(font.weight)
+    .map(([key, value]) => `  --we-font-weight-${key}: ${value};`)
+    .join('\n');
+
+  const lineHeightVars = Object.entries(font.lineHeight)
+    .map(([key, value]) => `  --we-line-height-${key}: ${value};`)
+    .join('\n');
+
+  const letterSpacingVars = Object.entries(font.letterSpacing)
+    .map(([key, value]) => `  --we-letter-spacing-${key}: ${value};`)
+    .join('\n');
+
   const css = `/* FONT TOKENS - Generated from JS tokens */
 
 :root {
@@ -193,9 +200,33 @@ function generateFontCSS(font: typeof fontTokens, outputDir: string) {
   /* Font Sizes */
   --we-font-base-size: ${font.size.base};
 ${fontSizeVars}
+
+  /* Font Weights */
+${fontWeightVars}
+
+  /* Line Heights */
+${lineHeightVars}
+
+  /* Letter Spacing */
+${letterSpacingVars}
 }`;
 
   fs.writeFileSync(path.join(outputDir, 'font.css'), css);
+}
+
+function generateShadowCSS(shadow: typeof shadowTokens, outputDir: string) {
+  const shadowVars = Object.entries(shadow)
+    .map(([key, value]) => `  --we-shadow-${key}: ${value};`)
+    .join('\n');
+
+  const css = `/* SHADOW TOKENS - Generated from JS tokens */
+
+:root {
+  /* Box Shadows */
+${shadowVars}
+}`;
+
+  fs.writeFileSync(path.join(outputDir, 'shadow.css'), css);
 }
 
 function generateSizeCSS(
@@ -260,6 +291,7 @@ function generateCombinedCSS(outputDir: string) {
 @import './component.css';
 @import './effect.css';
 @import './font.css';
+@import './shadow.css';
 @import './size.css';
 @import './space.css';
 `;

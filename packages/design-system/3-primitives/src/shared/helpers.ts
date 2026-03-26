@@ -60,7 +60,7 @@ function updateCustomVars(
   setProperty(el, `${prefix}color`, props.color ? tokenVar('color', props.color, '') : undefined);
   setProperty(el, `${prefix}opacity`, props.opacity?.toString());
   setProperty(el, `${prefix}border`, props.border);
-  setProperty(el, `${prefix}shadow`, props.shadow);
+  setProperty(el, `${prefix}shadow`, props.shadow ? tokenVar('shadow', props.shadow) : undefined);
   setProperty(el, `${prefix}transform`, props.transform);
   setProperty(el, `${prefix}transition`, props.transition);
   setProperty(el, `${prefix}cursor`, props.cursor);
@@ -86,8 +86,12 @@ function updateCustomVars(
   setProperty(el, `${prefix}text-align`, props.textAlign);
   setProperty(el, `${prefix}font-weight`, props.fontWeight);
   setProperty(el, `${prefix}font-size`, props.fontSize ? tokenVar('font', props.fontSize) : undefined);
-  setProperty(el, `${prefix}line-height`, props.lineHeight);
-  setProperty(el, `${prefix}letter-spacing`, props.letterSpacing);
+  setProperty(el, `${prefix}line-height`, props.lineHeight ? tokenVar('line-height', props.lineHeight) : undefined);
+  setProperty(
+    el,
+    `${prefix}letter-spacing`,
+    props.letterSpacing ? tokenVar('letter-spacing', props.letterSpacing) : undefined,
+  );
   setProperty(el, `${prefix}text-decoration`, props.textDecoration);
   setProperty(el, `${prefix}text-transform`, props.textTransform);
 }
