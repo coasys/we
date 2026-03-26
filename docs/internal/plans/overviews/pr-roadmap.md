@@ -105,13 +105,14 @@ Migrated badge and text to `DesignSystemElement` with `getInstanceProps()`. Adde
 
 Moved design-scale types (`FontWeight`, `LineHeight`, `LetterSpacing`, `Shadow`) from `@we/design-types` to `@we/tokens` with proper value maps. Consolidated duplicate `BorderRadiusToken`. Added escape hatch `*Value` types. Created `shadow.ts`, tokens `CONVENTIONS.md`, and `deferred.md` for tracking future work.
 
-### 2. Deep Unwrap Schema Props
+### 2. Deep Unwrap Schema Props ✅
 
-**Plan:** [deep-unwrap-schema-props](../prs/deep-unwrap-schema-props.md)
+**Plan:** [deep-unwrap-schema-props](../prs/deep-unwrap-schema-props.md) | **Summary:** [deep-unwrap-schema-props-summary](../prs/deep-unwrap-schema-props-summary.md)
+**Status:** Complete (branch `feat/deep-unwrap-schema-props`, 1 commit, 4 files)
 **Depends on:** nothing
 **Unblocks:** correct nested reactive prop handling for all components
 
-Fixes core schema renderer bug where nested `$store` accessors leak through to components as raw functions. CollapsibleSidebar currently needs manual unwrap workarounds — this removes that class of bugs system-wide.
+Added `deepUnwrap` function to SchemaRenderer that recursively unwraps `REACTIVE_ACCESSOR`-marked functions in complex props before distributing to components. Removed manual unwrap workarounds from CollapsibleSidebar and CesiumGlobe. ConditionalRenderer and cesium user-locations correctly left unchanged (different resolution paths).
 
 ### 3. Schema–Theme Integration
 

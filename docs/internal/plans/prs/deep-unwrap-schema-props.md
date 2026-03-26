@@ -94,13 +94,18 @@ export function unwrapProp<T>(value: T | (() => T)): T {
 
 Option 1 (deep unwrap in renderer) is the right long-term fix — it keeps the boundary clean between schema resolution and component code. Components should never need to know about accessors in their nested props.
 
-## Files to change
+## Files changed
 
 | File | Change |
 |---|---|
-| `packages/schema-system/solid/src/SchemaRenderer.tsx` | Add `deepUnwrap` for complex props before passing to components. Import `REACTIVE_ACCESSOR` from shared. |
-| `packages/schema-system/shared/src/propResolvers/reactive.ts` | Ensure `REACTIVE_ACCESSOR` is exported (verify current export) |
-| `packages/design-system/5-widgets/src/widgets/sidebars/CollapsibleSidebar/CollapsibleSidebar.solid.tsx` | Remove manual unwrap workaround |
-| `packages/design-system/5-widgets/src/widgets/cesium/CesiumGlobe/CesiumGlobe.solid.tsx` | Remove 2 manual unwrap workarounds |
-| `packages/cesium-layers/src/planet/user-locations/index.ts` | Remove manual unwrap workaround |
-| `packages/schema-system/solid/src/ConditionalRenderer.tsx` | Remove manual unwrap workaround |
+| `packages/schema-system/solid/src/SchemaRenderer.tsx` | Added `deepUnwrap` function with `REACTIVE_ACCESSOR` guard and depth limit. Applied to complex props in both Solid component (`reactiveAttrs` memo) and web component (`createEffect`) distribution paths. |
+| `packages/design-system/5-widgets/src/widgets/sidebars/CollapsibleSidebar/CollapsibleSidebar.solid.tsx` | Removed manual unwrap workaround — simplified `groupItems` memo |
+| `packages/design-system/5-widgets/src/widgets/cesium/CesiumGlobe/CesiumGlobe.solid.tsx` | Removed 2 manual unwrap workarounds in `enabledLayers` filter blocks |
+| `docs/internal/plans/prs/deep-unwrap-schema-props.md` | Updated plan with findings from codebase audit |
+
+### Not changed (correctly out of scope)
+
+| File | Reason |
+|---|---|
+| `packages/schema-system/solid/src/ConditionalRenderer.tsx` | Calls `resolveProp` directly — bypasses renderer's prop pipeline, still needs its own unwrap |
+| `packages/cesium-layers/src/planet/user-locations/index.ts` | Type explicitly accepts `(() => T)` — intentional API design, not a schema leak |
