@@ -25,7 +25,7 @@ export function IconLabelButton(props: IconLabelButtonProps) {
     >
       <we-icon name={toValue(props.icon)} weight={toValue(props.iconWeight)} />
       {/* {toValue(props.label) && ( */}
-      <we-text size="600" color="ui-black">
+      <we-text fontSize="600" color="ui-black">
         {toValue(props.label)}
       </we-text>
       {/* )} */}

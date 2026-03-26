@@ -110,7 +110,7 @@ const spacePageHeader = {
   type: 'Row',
   props: { bg: 'ui-100', p: '400', gap: '400', ay: 'center' },
   children: [
-    { type: 'we-text', props: { size: '600' }, children: ['Space page'] },
+    { type: 'we-text', props: { fontSize: '600' }, children: ['Space page'] },
     {
       type: 'we-button',
       props: { onClick: { $action: 'routeStore.navigate', args: ['.'] } },
@@ -155,13 +155,13 @@ export const defaultTemplateSchema: TemplateSchema = {
       path: '*',
       type: 'Column',
       props: { ax: 'center', bg: 'ui-0', p: '500' },
-      children: [{ type: 'we-text', props: { size: '600' }, children: ['Page not found :_('] }],
+      children: [{ type: 'we-text', props: { fontSize: '600' }, children: ['Page not found :_('] }],
     },
     {
       path: '/',
       type: 'Column',
       props: { ax: 'center', bg: 'ui-0', p: '500' },
-      children: [{ type: 'we-text', props: { size: '600' }, children: ['Home page!!!'] }],
+      children: [{ type: 'we-text', props: { fontSize: '600' }, children: ['Home page!!!'] }],
     },
     {
       path: '/space/:spaceId',
@@ -197,7 +197,7 @@ export const defaultTemplateSchema: TemplateSchema = {
           path: '/',
           type: 'Row',
           props: { bg: 'ui-200', ay: 'center', px: '400', style: { height: '60px' } },
-          children: [{ type: 'we-text', props: { size: '600' }, children: ['About sub-page'] }],
+          children: [{ type: 'we-text', props: { fontSize: '600' }, children: ['About sub-page'] }],
         },
         {
           path: '/posts',
@@ -230,17 +230,17 @@ export const defaultTemplateSchema: TemplateSchema = {
             },
           ],
           routes: [
-            { path: '/*', type: 'we-text', props: { size: '600' }, children: ['Post not found...'] },
-            { path: '/', type: 'we-text', props: { size: '600' }, children: ['No posts selected...'] },
-            { path: '/1', type: 'we-text', props: { size: '600' }, children: ['Post 1 sub-sub-page'] },
-            { path: '/2', type: 'we-text', props: { size: '600' }, children: ['Post 2 sub-sub-page'] },
+            { path: '/*', type: 'we-text', props: { fontSize: '600' }, children: ['Post not found...'] },
+            { path: '/', type: 'we-text', props: { fontSize: '600' }, children: ['No posts selected...'] },
+            { path: '/1', type: 'we-text', props: { fontSize: '600' }, children: ['Post 1 sub-sub-page'] },
+            { path: '/2', type: 'we-text', props: { fontSize: '600' }, children: ['Post 2 sub-sub-page'] },
           ],
         },
         {
           path: '/users',
           type: 'Row',
           props: { bg: 'ui-200', ay: 'center', px: '400', style: { height: '60px' } },
-          children: [{ type: 'we-text', props: { size: '600' }, children: ['User sub-page'] }],
+          children: [{ type: 'we-text', props: { fontSize: '600' }, children: ['User sub-page'] }],
         },
       ],
     },

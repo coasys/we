@@ -1,6 +1,7 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { css, html } from 'lit';
-import { customElement } from 'lit/decorators.js';
+import { customElement, property } from 'lit/decorators.js';
+import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
@@ -23,6 +24,8 @@ const styles = css`
 @customElement('we-menu')
 export default class Menu extends DesignSystemElement {
   static styles = [sharedStyles, styles];
+
+  @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -65,6 +68,7 @@ export default class Menu extends DesignSystemElement {
   };
 
   render() {
-    return html` <div part="base" role="menu"><slot></slot></div>`;
+    const inline = this.styles || {};
+    return html` <div part="base" role="menu" style=${styleMap(inline)}><slot></slot></div>`;
   }
 }

@@ -45,7 +45,7 @@ export function CreateSpacePage() {
   return (
     <Column p="600" gap="500" ax="center" ay="center" width="100%" height="100%">
       <Column gap="400" width="100%" maxWidth="400px">
-        <we-text size="700" weight="600" color="ui-700">
+        <we-text fontSize="700" fontWeight="600" color="ui-700">
           New space
         </we-text>
         <we-input
@@ -63,7 +63,7 @@ export function CreateSpacePage() {
 
         {/* Image picker */}
         <Column gap="200">
-          <we-text size="300" weight="500" color="ui-600">
+          <we-text fontSize="300" fontWeight="500" color="ui-600">
             Image
           </we-text>
           {imagePreview() ? (
@@ -116,7 +116,7 @@ export function CreateSpacePage() {
                 cursor: 'pointer',
               }}
             >
-              <we-text size="400" color="ui-400">
+              <we-text fontSize="400" color="ui-400">
                 +
               </we-text>
             </div>
@@ -132,7 +132,7 @@ export function CreateSpacePage() {
 
         {/* Personal / Shared toggle using button pair */}
         <Column gap="200">
-          <we-text size="300" weight="500" color="ui-600">
+          <we-text fontSize="300" fontWeight="500" color="ui-600">
             Visibility
           </we-text>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -155,7 +155,7 @@ export function CreateSpacePage() {
               Shared
             </we-button>
           </div>
-          <we-text size="200" color="ui-500">
+          <we-text fontSize="200" color="ui-500">
             {shared()
               ? 'Shared spaces are published as neighbourhoods that others can join.'
               : 'Personal spaces are private and stored locally.'}

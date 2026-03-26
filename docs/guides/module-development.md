@@ -310,7 +310,7 @@ export function GovernancePanel(props: GovernancePanelProps) {
     <Column gap="800" p="800" width="100%">
       {/* Header */}
       <Row justify="space-between" align="center">
-        <we-text size="2xl" weight="bold">Governance</we-text>
+        <we-text fontSize="2xl" fontWeight="bold">Governance</we-text>
         <Show when={props.showCreateForm !== false}>
           <we-button
             bg="primary-500"
@@ -325,7 +325,7 @@ export function GovernancePanel(props: GovernancePanelProps) {
       {/* Create form */}
       <Show when={showForm()}>
         <Column gap="400" bg="ui-100" r="400" p="600">
-          <we-text size="lg" weight="bold">Create Proposal</we-text>
+          <we-text fontSize="lg" fontWeight="bold">Create Proposal</we-text>
 
           <we-input
             placeholder="Proposal title..."

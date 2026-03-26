@@ -259,7 +259,7 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
             <we-badge
               class="we-collapsible-sidebar__item-badge"
               size="sm"
-              weight="600"
+              fontWeight="600"
               bg={badgeBg()}
               color={badgeColor()}
             >
@@ -296,8 +296,8 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
         >
           <we-text
             class="we-collapsible-sidebar__group-label"
-            size="300"
-            weight="600"
+            fontSize="300"
+            fontWeight="600"
             color={group.collapsible !== false ? 'ui-400' : 'ui-500'}
           >
             {group.label}

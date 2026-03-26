@@ -102,7 +102,7 @@ export default class Avatar extends LayoutElement {
   @property({ type: String }) icon = '';
   @property({ type: String, reflect: true }) size?: AvatarSizeValue;
   @property({ type: Boolean, reflect: true }) clickable = false;
-  @property({ type: Object }) styles?: Record<string, any>;
+  @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   updated(props: Map<string, unknown>) {
     super.updated(props);
@@ -124,9 +124,9 @@ export default class Avatar extends LayoutElement {
   }
 
   render() {
-    const inlineStyles = this.styles || {};
+    const inline = this.styles || {};
     return this.clickable
-      ? html` <button part="base" style=${styleMap(inlineStyles)}>${this.renderContent()}</button> `
-      : html` <div part="base" style=${styleMap(inlineStyles)}>${this.renderContent()}</div> `;
+      ? html` <button part="base" style=${styleMap(inline)}>${this.renderContent()}</button> `
+      : html` <div part="base" style=${styleMap(inline)}>${this.renderContent()}</div> `;
   }
 }

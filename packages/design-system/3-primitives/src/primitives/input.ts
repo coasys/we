@@ -1,9 +1,12 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
+import type { InputSize } from '../types';
 
 let inputIdCounter = 0;
 
@@ -12,11 +15,19 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   direction: 'column',
   ay: 'center',
   px: '300',
+  py: '200',
+  fontSize: '400',
   bg: 'ui-75',
   r: 'sm',
   color: 'ui-1000',
   hoverProps: { bg: 'ui-100' },
   focusProps: { bg: 'ui-100', shadow: '0 0 0 2px var(--we-color-primary-500)' },
+};
+
+const SIZE_DEFAULTS: Record<InputSize, Partial<DesignSystemProps>> = {
+  sm: { px: '200', py: '100', fontSize: '300' },
+  md: { px: '300', py: '200', fontSize: '400' },
+  lg: { px: '400', py: '300', fontSize: '500' },
 };
 
 const styles = css`
@@ -79,9 +90,19 @@ export default class Input extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) required = false;
   @property({ type: Boolean, reflect: true }) readonly = false;
   @property({ type: String, reflect: true }) type = 'text';
+  @property({ type: String, reflect: true }) size: InputSize = 'md';
+  @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  override getInstanceProps() {
+    const ctor = this.constructor as typeof Input & { __dsLayers: readonly DSLayer[] };
+    const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
+    const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
+    const sizeDefaults = SIZE_DEFAULTS[this.size] ?? {};
+    return mergeProps(usedProps, mergeProps(sizeDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
   select() {
@@ -128,8 +149,9 @@ export default class Input extends DesignSystemElement {
     const descId =
       this.error && this.errortext ? `${this._inputId}-error` : this.helptext ? `${this._inputId}-help` : undefined;
 
+    const inline = this.styles || {};
     return html`
-      <div part="base">
+      <div part="base" style=${styleMap(inline)}>
         ${this.label ? html`<label part="label" for=${this._inputId}>${this.label}</label>` : null}
         <div part="input-wrapper">
           <slot name="start"></slot>
