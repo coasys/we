@@ -20,11 +20,13 @@ The current `weNativeApp` template schema is a single ~900-line JSON tree. Users
 Rather than storing one monolithic schema or decomposing every `SchemaNode` into fine-grained AD4M links, use a **segmented JSON blob approach with AD4M links as the index/relationship layer**.
 
 **Why JSON blobs, not graph decomposition:**
+
 - A single route like `/globe` has ~100 nested nodes. Decomposing each `SchemaNode` into links would create 500+ links per route — expensive to query, impossible for AI to reason about, and tree ordering would need explicit `we://has_child_index` links.
 - JSON blobs preserve structure, are fast to load (one link target read), and AI models work natively with JSON.
-- The AD4M graph layer provides the *index* — which sections exist, their relationships, versioning, authorship — while JSON provides the *content*.
+- The AD4M graph layer provides the _index_ — which sections exist, their relationships, versioning, authorship — while JSON provides the _content_.
 
 **Why not one giant blob:**
+
 - AI must load and rewrite the entire 900+ line schema for any change — slow, expensive, error-prone.
 - Sharing requires sending the whole template even when only one page is relevant.
 - No granular versioning or undo.
@@ -35,16 +37,16 @@ Rather than storing one monolithic schema or decomposing every `SchemaNode` into
 
 ## 1. Section Type Taxonomy
 
-A small, stable set of `sectionType` values that describe *what role* a section plays. These are not fixed section names — they are classification labels.
+A small, stable set of `sectionType` values that describe _what role_ a section plays. These are not fixed section names — they are classification labels.
 
-| `sectionType`  | Description                                                      | Examples                                         |
-| -------------- | ---------------------------------------------------------------- | ------------------------------------------------ |
-| `"layout"`     | The root skeleton — slots where other sections plug in           | The outer `Row` with `$section` refs             |
-| `"navigation"` | Any navigation structure (sidebar, topbar, tabbar, bottom nav)   | `CollapsibleSidebar`, top navbar, mobile tab bar |
-| `"route"`      | A routable page                                                  | `/`, `/globe`, `/settings`                       |
-| `"panel"`      | A non-routed content area (widget panel, detail pane)            | Right detail panel, floating widget              |
-| `"theme"`      | Style/token overrides                                            | Color, font, spacing overrides                   |
-| `"meta"`       | Template metadata                                                | Name, description, icon                          |
+| `sectionType`  | Description                                                    | Examples                                         |
+| -------------- | -------------------------------------------------------------- | ------------------------------------------------ |
+| `"layout"`     | The root skeleton — slots where other sections plug in         | The outer `Row` with `$section` refs             |
+| `"navigation"` | Any navigation structure (sidebar, topbar, tabbar, bottom nav) | `CollapsibleSidebar`, top navbar, mobile tab bar |
+| `"route"`      | A routable page                                                | `/`, `/globe`, `/settings`                       |
+| `"panel"`      | A non-routed content area (widget panel, detail pane)          | Right detail panel, floating widget              |
+| `"theme"`      | Style/token overrides                                          | Color, font, spacing overrides                   |
+| `"meta"`       | Template metadata                                              | Name, description, icon                          |
 
 ---
 
@@ -113,6 +115,7 @@ The `layout` section is the only one that references other sections. It uses a n
 ```
 
 This means:
+
 - The AI can **add a section** by creating it + adding a `$section` ref to the layout.
 - The AI can **remove a section** by deleting it + removing its `$section` ref.
 - The layout clearly declares the template's topology.
@@ -127,22 +130,22 @@ This means:
 @Model({ name: 'SchemaSection' })
 class SchemaSection extends WeNode {
   @Property({ through: 'we://has_section_key', required: true })
-  key: string = '';                    // e.g. "route:/globe", "navigation:left"
+  key: string = ''; // e.g. "route:/globe", "navigation:left"
 
   @Property({ through: 'we://has_section_type', required: true })
-  sectionType: string = '';            // "route" | "navigation" | "layout" | "meta" | "theme" | "panel"
+  sectionType: string = ''; // "route" | "navigation" | "layout" | "meta" | "theme" | "panel"
 
   @Property({ through: 'we://has_schema_json', required: true })
-  schemaJson: string = '';             // The actual SchemaNode JSON blob
+  schemaJson: string = ''; // The actual SchemaNode JSON blob
 
   @Property({ through: 'we://has_version' })
-  version: number = 0;                // Incremented on each AI edit
+  version: number = 0; // Incremented on each AI edit
 
   @Property({ through: 'we://has_author_did' })
-  authorDid: string = '';              // Who created/last modified
+  authorDid: string = ''; // Who created/last modified
 
   @Property({ through: 'we://has_description' })
-  description: string = '';            // Human-readable description of this section
+  description: string = ''; // Human-readable description of this section
 }
 ```
 
@@ -155,13 +158,13 @@ class TemplateInstall extends WeNode {
   name: string = '';
 
   @Property({ through: 'we://has_origin' })
-  origin: string = '';                 // 'builtin:weNative' | 'shared:<did>'
+  origin: string = ''; // 'builtin:weNative' | 'shared:<did>'
 
   @Property({ through: 'we://has_active' })
-  active: string = 'false';           // Is this the currently active template?
+  active: string = 'false'; // Is this the currently active template?
 
   @HasMany({ through: 'we://has_section' })
-  sections: string[] = [];            // UUIDs of SchemaSection instances
+  sections: string[] = []; // UUIDs of SchemaSection instances
 }
 ```
 
@@ -207,12 +210,12 @@ function sectionizeTemplate(template: TemplateSchema): SchemaSection[] {
       const qualifier = inferQualifier(child); // 'left', 'right', 'topbar', etc.
       const key = `navigation:${qualifier}`;
       sections.push({ key, sectionType: 'navigation', schemaJson: child });
-      layoutChildren.push({ '$section': key });
+      layoutChildren.push({ $section: key });
     } else if (isPanelComponent(nodeType, child)) {
       const qualifier = inferPanelName(child);
       const key = `panel:${qualifier}`;
       sections.push({ key, sectionType: 'panel', schemaJson: child });
-      layoutChildren.push({ '$section': key });
+      layoutChildren.push({ $section: key });
     } else {
       // Keep inline in layout (e.g., the main content column with $routes)
       layoutChildren.push(child);
@@ -256,7 +259,7 @@ A `SchemaAssembler` reads all sections from the perspective and composes them in
 ```typescript
 async function assembleTemplate(perspectiveUuid: string, templateUuid: string): Promise<TemplateSchema> {
   const sections = await SchemaSection.findByTemplate(perspectiveUuid, templateUuid);
-  const sectionMap = new Map(sections.map(s => [s.key, JSON.parse(s.schemaJson)]));
+  const sectionMap = new Map(sections.map((s) => [s.key, JSON.parse(s.schemaJson)]));
 
   // Get layout skeleton
   const layout = sectionMap.get('layout');
@@ -270,18 +273,20 @@ async function assembleTemplate(perspectiveUuid: string, templateUuid: string): 
     props: layout.props,
     children: resolvedChildren,
     routes: sections
-      .filter(s => s.sectionType === 'route')
-      .map(s => ({ path: s.key.replace('route:', ''), ...JSON.parse(s.schemaJson) })),
+      .filter((s) => s.sectionType === 'route')
+      .map((s) => ({ path: s.key.replace('route:', ''), ...JSON.parse(s.schemaJson) })),
   };
 }
 
 function resolveSection(children: any[], sectionMap: Map<string, any>): any[] {
-  return children.map(child => {
-    if (child.$section) {
-      return sectionMap.get(child.$section) ?? null;
-    }
-    return child;
-  }).filter(Boolean);
+  return children
+    .map((child) => {
+      if (child.$section) {
+        return sectionMap.get(child.$section) ?? null;
+      }
+      return child;
+    })
+    .filter(Boolean);
 }
 ```
 
@@ -349,11 +354,11 @@ Ship a curated set in the code registry:
 ```typescript
 // templateRegistry.ts
 export const builtinTemplates: Record<string, TemplateSchema> = {
-  weNative:  weNativeAppTemplateSchema,    // Full-featured native app
-  twitter:   twitterTemplateSchema,        // Social feed layout
-  minimal:   minimalTemplateSchema,        // Clean single-column
-  dashboard: dashboardTemplateSchema,      // Data-heavy grid layout
-  wiki:      wikiTemplateSchema,           // Knowledge base style
+  weNative: weNativeAppTemplateSchema, // Full-featured native app
+  twitter: twitterTemplateSchema, // Social feed layout
+  minimal: minimalTemplateSchema, // Clean single-column
+  dashboard: dashboardTemplateSchema, // Data-heavy grid layout
+  wiki: wikiTemplateSchema, // Knowledge base style
 };
 ```
 
@@ -393,12 +398,12 @@ interface SharedSchemaPayload {
   sections: Array<{
     key: string;
     sectionType: string;
-    schemaJson: string;        // The SchemaNode JSON
+    schemaJson: string; // The SchemaNode JSON
     description: string;
   }>;
   meta: {
-    sharedBy: string;          // Agent DID
-    sharedAt: string;          // ISO timestamp
+    sharedBy: string; // Agent DID
+    sharedAt: string; // ISO timestamp
     templateName: string;
   };
 }
@@ -409,6 +414,7 @@ This travels as a single AD4M expression through any AD4M language (direct messa
 ### Three Sharing Granularities
 
 **a) Share a single section (most common)**
+
 ```
 User: "Share my globe page with Marcus"
 
@@ -420,6 +426,7 @@ User: "Share my globe page with Marcus"
 ```
 
 **b) Share a section group**
+
 ```
 User: "Share my entire sidebar setup"
 
@@ -429,6 +436,7 @@ User: "Share my entire sidebar setup"
 ```
 
 **c) Share full template**
+
 ```
 → Export all sections
 → Recipient gets a complete template they can adopt wholesale
@@ -436,11 +444,11 @@ User: "Share my entire sidebar setup"
 
 ### Installation Options for Received Templates
 
-| Option                         | Behavior                                                                                                |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| **Install as new template**    | Create new `TemplateInstall` in templates perspective. For missing sections, use defaults from a base.  |
-| **Merge into current**         | Show diff/preview per section. User picks which to accept. Overwrite those sections, increment version. |
-| **Save to library**            | Store the payload in the templates perspective as a saved share. User can browse and install later.     |
+| Option                      | Behavior                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Install as new template** | Create new `TemplateInstall` in templates perspective. For missing sections, use defaults from a base.  |
+| **Merge into current**      | Show diff/preview per section. User picks which to accept. Overwrite those sections, increment version. |
+| **Save to library**         | Store the payload in the templates perspective as a saved share. User can browse and install later.     |
 
 ---
 
@@ -549,16 +557,16 @@ saveSection(key: string, json: string): void   // Write back modified section
 
 ## Summary Table
 
-| Concern              | Approach                                                                                      |
-| -------------------- | --------------------------------------------------------------------------------------------- |
-| **Storage format**   | JSON blobs for section content, AD4M links for indexing/relationships                         |
-| **Granularity**      | Sections (~50–150 lines each) — small enough for AI, large enough to be meaningful            |
-| **Section naming**   | Type taxonomy + auto-generated qualifier keys from actual template structure                   |
-| **Absent features**  | Templates with no sidebar simply have no `navigation:*` sections — nothing empty to fill      |
-| **AI efficiency**    | Load only affected section(s), not entire schema                                              |
-| **Built-in gallery** | Ship as read-only `TemplateSchema` in code registry. Copy-on-activate into AD4M.              |
-| **Sharing**          | Export section(s) as JSON payload via AD4M expressions. Install, merge, or save on receipt.   |
-| **Composability**    | Sections are independent; swapping a route doesn't break sidebars                             |
-| **Versioning**       | Per-section version counter + optional history links                                          |
-| **Reactivity**       | Section change → reassemble → schema renderer picks up diff                                   |
-| **Migration**        | Current monolithic schemas trivially split into sections at the natural boundaries             |
+| Concern              | Approach                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| **Storage format**   | JSON blobs for section content, AD4M links for indexing/relationships                       |
+| **Granularity**      | Sections (~50–150 lines each) — small enough for AI, large enough to be meaningful          |
+| **Section naming**   | Type taxonomy + auto-generated qualifier keys from actual template structure                |
+| **Absent features**  | Templates with no sidebar simply have no `navigation:*` sections — nothing empty to fill    |
+| **AI efficiency**    | Load only affected section(s), not entire schema                                            |
+| **Built-in gallery** | Ship as read-only `TemplateSchema` in code registry. Copy-on-activate into AD4M.            |
+| **Sharing**          | Export section(s) as JSON payload via AD4M expressions. Install, merge, or save on receipt. |
+| **Composability**    | Sections are independent; swapping a route doesn't break sidebars                           |
+| **Versioning**       | Per-section version counter + optional history links                                        |
+| **Reactivity**       | Section change → reassemble → schema renderer picks up diff                                 |
+| **Migration**        | Current monolithic schemas trivially split into sections at the natural boundaries          |

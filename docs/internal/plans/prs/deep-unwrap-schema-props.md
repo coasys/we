@@ -1,6 +1,7 @@
 # Plan: Deep Unwrap of Schema-Resolved Props
 
 ## Problem
+
 The schema system's prop resolver recursively resolves `$store` / `$action` tokens at any nesting depth. When a token like `{ $store: 'adamStore.mySpaceSidebarItems' }` appears inside a nested object (e.g. a group's `items` array within a sidebar config), the resolver returns a **reactive accessor (function)** in place of the value.
 
 For **top-level props**, the schema renderer's `splitProps` system handles this — it detects accessors, separates them from plain values, and either passes them as JSX attributes or sets them as DOM properties via `createEffect`.
@@ -10,7 +11,9 @@ For **nested values inside objects/arrays**, the accessor leaks through to the c
 This is not specific to CollapsibleSidebar — it affects any component receiving schema-resolved deeply nested reactive values.
 
 ### Current workaround
+
 Components manually unwrap with an `unknown` cast:
+
 ```ts
 const groupItems = createMemo(() => {
   const items: unknown = getGroup().items;
@@ -39,7 +42,7 @@ function deepUnwrap(value: unknown, memo: typeof createMemo): unknown {
     return memo(() => deepUnwrap(value(), memo));
   }
   if (Array.isArray(value)) {
-    return value.map(item => deepUnwrap(item, memo));
+    return value.map((item) => deepUnwrap(item, memo));
   }
   if (value && typeof value === 'object') {
     const result: Record<string, unknown> = {};
@@ -65,6 +68,7 @@ Apply this to complex props (objects/arrays) before they are set on the componen
 4. **Where to apply:** Only in the `complexProps` branch of `splitProps` handling — safe props (primitives, functions) don't need this.
 
 ## Alternative: Utility helper approach
+
 Instead of fixing in the renderer, provide a shared `unwrapProp` utility that components use explicitly:
 
 ```ts
@@ -78,10 +82,12 @@ export function unwrapProp<T>(value: T | (() => T)): T {
 **Cons:** Every component that receives nested schema props must know to use it. Schema concerns leak into components.
 
 ## Recommendation
+
 Option 1 (deep unwrap in renderer) is the right long-term fix — it keeps the boundary clean between schema resolution and component code. Components should never need to know about accessors in their nested props.
 
 ## Files to change
-| File | Change |
-|------|--------|
-| `packages/schema-system/solid/src/SchemaRenderer.tsx` | Add deep unwrap for complex props before passing to components |
-| `packages/design-system/5-widgets/src/widgets/sidebars/CollapsibleSidebar/CollapsibleSidebar.solid.tsx` | Remove manual unwrap workaround once renderer handles it |
+
+| File                                                                                                    | Change                                                         |
+| ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `packages/schema-system/solid/src/SchemaRenderer.tsx`                                                   | Add deep unwrap for complex props before passing to components |
+| `packages/design-system/5-widgets/src/widgets/sidebars/CollapsibleSidebar/CollapsibleSidebar.solid.tsx` | Remove manual unwrap workaround once renderer handles it       |

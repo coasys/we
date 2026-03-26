@@ -10,6 +10,9 @@
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
   "stylelint.validate": ["css"],
   "eslint.validate": ["javascript", "typescript", "typescriptreact"],
   "eslint.useFlatConfig": true,

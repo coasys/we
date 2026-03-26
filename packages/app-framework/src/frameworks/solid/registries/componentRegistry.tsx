@@ -1,5 +1,4 @@
 import { BlockComposer } from '@we/block-solid';
-import { CreateSpacePage } from '../pages/CreateSpacePage';
 import {
   countryOutlinesLayer,
   h3HexagonsLayer,
@@ -28,6 +27,8 @@ import {
   mockGraphData,
   SpaceSidebarWidget,
 } from '@we/widgets/solid';
+
+import { CreateSpacePage } from '../pages/CreateSpacePage';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
