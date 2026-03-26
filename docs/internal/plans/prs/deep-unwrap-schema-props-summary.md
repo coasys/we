@@ -36,3 +36,7 @@ Added a `deepUnwrap` function to `SchemaRenderer.tsx` that recursively walks com
 ## Impact
 
 Any component receiving nested reactive values via schema props (objects containing `$store` tokens, arrays of configs with reactive fields, etc.) now gets plain values automatically. No more need for manual `typeof x === 'function' ? x() : x` workarounds in component code.
+
+## Follow-up: Fine-Grained Reactivity (PR #2b)
+
+This PR revealed that the current renderer uses coarse reactivity — one memo resolves all props, so any store change re-evaluates everything. The direct-call `deepUnwrap` is the right foundation for the per-prop memo architecture planned in [PR #2b](fine-grained-schema-reactivity.md).
