@@ -96,7 +96,7 @@ export default class Modal extends OverlayElement {
           ? html`
               <div part="close-button-wrapper">
                 <slot name="close-button">
-                  <we-button part="close-button" p="0" bg="none" @click=${this.close}>
+                  <we-button part="close-button" variant="ghost" p="0" @click=${this.close}>
                     <we-icon name="x" size="sm"></we-icon>
                   </we-button>
                 </slot>
