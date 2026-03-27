@@ -5,7 +5,7 @@ import type {
 } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
 
-export type { SchemaNode } from '@we/schema-shared';
+export type { SchemaNode, ThemeOverrides } from '@we/schema-shared';
 
 export type ComponentRegistry = SharedComponentRegistry<JSX.Element>;
 export type RenderProps = SharedRenderProps<JSX.Element>;

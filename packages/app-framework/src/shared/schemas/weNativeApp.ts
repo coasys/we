@@ -15,6 +15,10 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
   },
   type: 'Row',
   props: { width: '100%', height: '100%' },
+  // theme: {
+  //   primaryHue: 180, // teal/cyan instead of the default purple
+  //   saturation: '70%', // bump saturation so it pops
+  // },
   children: [
     // Left sidebar
     {
@@ -217,6 +221,10 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     {
       type: 'Column',
       props: { zIndex: 1, width: '100%', height: '100%', bg: 'ui-50', px: '66px' },
+      theme: {
+        primaryHue: 180, // teal/cyan instead of the default purple
+        saturation: '70%', // bump saturation so it pops
+      },
       children: [{ type: '$routes' }],
     },
     // Right sidebar

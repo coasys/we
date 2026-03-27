@@ -6,6 +6,7 @@ export type {
   SchemaProp,
   TemplateMeta,
   TemplateSchema,
+  ThemeOverrides,
   RouteSchema,
   TransitionConfig,
   StoreToken,
@@ -26,3 +27,4 @@ export { validateSchema } from './validators';
 export { findMutations } from './mutations';
 export { resolveProp, resolveProps, splitProps, REACTIVE_ACCESSOR } from './propResolvers';
 export { hasToken } from './predicates';
+export { themeToStyle } from './themeStyles';

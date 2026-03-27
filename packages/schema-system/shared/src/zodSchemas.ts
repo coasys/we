@@ -6,6 +6,21 @@ const lazySchemaNode = z.lazy(() => zSchemaNode);
 const lazySchemaProp = z.lazy(() => zSchemaProp);
 const lazyRouteSchema = z.lazy(() => zRouteSchema);
 
+const zThemeOverrides = z
+  .object({
+    primaryHue: z.number().optional(),
+    successHue: z.number().optional(),
+    warningHue: z.number().optional(),
+    dangerHue: z.number().optional(),
+    uiHue: z.number().optional(),
+    saturation: z.string().optional(),
+    uiSaturation: z.string().optional(),
+    multiplier: z.number().optional(),
+    subtractor: z.string().optional(),
+    fontFamily: z.string().optional(),
+  })
+  .strict();
+
 function schemaNodeShape() {
   return {
     type: z.string().optional(),
@@ -14,6 +29,7 @@ function schemaNodeShape() {
     slot: z.string().optional(),
     routes: z.array(lazyRouteSchema).optional(),
     children: z.array(z.union([lazySchemaNode, z.string()])).optional(),
+    theme: zThemeOverrides.optional(),
   };
 }
 

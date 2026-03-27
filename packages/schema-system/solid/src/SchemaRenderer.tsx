@@ -1,4 +1,4 @@
-import { REACTIVE_ACCESSOR, resolveProp } from '@we/schema-shared';
+import { REACTIVE_ACCESSOR, resolveProp, themeToStyle } from '@we/schema-shared';
 import { batch, createEffect, createMemo, For, JSX } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
@@ -74,8 +74,15 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     );
   }
 
-  // If no type is provided, render children in a JSX fragment
-  if (!node.type) return <>{renderChildren(node.children)}</>;
+  // If no type is provided, render children in a JSX fragment (with optional theme wrapper)
+  if (!node.type) {
+    const fragment = <>{renderChildren(node.children)}</>;
+    if (node.theme) {
+      const style = { display: 'contents' as const, ...themeToStyle(node.theme) };
+      return <div style={style}>{fragment}</div>;
+    }
+    return fragment;
+  }
 
   // Render routed children at $routes token
   if (node.type === '$routes') return children ?? null;
@@ -175,6 +182,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   }
 
   const slotProp = node.slot ? { slot: node.slot } : {};
+  const themeStyle = node.theme ? { display: 'contents', ...themeToStyle(node.theme) } : undefined;
 
   // Render: web components use per-prop property effects, Solid/HTML use reactive spread
   if (isWebComponent) {
@@ -199,11 +207,13 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       return attrs;
     });
 
-    return (
+    const wcElement = (
       <Dynamic ref={hostRef} component={component()} {...eventAttrs()} {...slotProp} {...slotElements}>
         {renderChildren(node.children)}
       </Dynamic>
     );
+
+    return themeStyle ? <div style={themeStyle}>{wcElement}</div> : wcElement;
   }
 
   // Solid components / HTML elements: all props via reactive spread (standard Solid pattern)
@@ -215,9 +225,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     return attrs;
   });
 
-  return (
+  const solidElement = (
     <Dynamic component={component()} {...reactiveAttrs()} {...slotProp} {...slotElements}>
       {renderChildren(node.children)}
     </Dynamic>
   );
+
+  return themeStyle ? <div style={themeStyle}>{solidElement}</div> : solidElement;
 }

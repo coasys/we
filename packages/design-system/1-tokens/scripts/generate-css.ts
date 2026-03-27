@@ -84,7 +84,11 @@ function generateBorderCSS(border: typeof borderTokens, outputDir: string) {
 
 function generateColorCSS(color: typeof colorTokens, outputDir: string) {
   const hueVars = Object.entries(color.hues)
-    .map(([key, value]) => `  --we-color-${key}-hue: ${value};`)
+    .map(([key, value]) => {
+      // ui-hue inherits from primary-hue by default so neutral surfaces tint to match the primary color
+      if (key === 'ui') return `  --we-color-${key}-hue: var(--we-color-primary-hue);`;
+      return `  --we-color-${key}-hue: ${value};`;
+    })
     .join('\n');
 
   const lightnessVars = Object.entries(color.lightness)

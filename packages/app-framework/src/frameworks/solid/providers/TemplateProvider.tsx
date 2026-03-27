@@ -93,6 +93,10 @@ export default function TemplateProvider() {
   // Build the full app schema - only include template when user is logged in
   const appSchema: TemplateSchema = {
     meta: { name: 'App Layout', description: 'Root application layout', icon: '' },
+    // theme: {
+    //   primaryHue: 180, // teal/cyan instead of the default purple
+    //   saturation: '70%', // bump saturation so it pops
+    // },
     children: [
       launcherUIRegistry.bootScreen,
       launcherUIRegistry.appSettings,

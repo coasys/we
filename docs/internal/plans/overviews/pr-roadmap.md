@@ -39,6 +39,11 @@
                     │ 3. Schema–Theme      │
                     │    Integration       │
                     └─────────────────────┘
+                              │
+                    ┌─────────────────────┐
+                    │3b. color-ui →        │
+                    │    color-neutral     │
+                    └─────────────────────┘
 
                     ┌─────────────────────┐
                     │10. Component Library │
@@ -149,6 +154,14 @@ Unified dual-channel prop delivery into single per-prop effect channel. All web 
 **Unblocks:** seed-driven theming, scoped theme zones, dynamic theme registration, theme sections in customization architecture
 
 Bridges the schema/seed layer with the CSS theme system. Defines `ThemeOverrides` type, scoped CSS variable application, seed theme consumption, and runtime theme registration. Currently seeds declare themes but nothing reads them.
+
+### 3b. Rename `color-ui` → `color-neutral`
+
+**Plan:** [neutral-rename](../prs/neutral-rename.md)
+**Depends on:** Schema–Theme Integration (#3) — renames fields added in that PR
+**Unblocks:** consistent naming before any external consumers adopt the token vocabulary
+
+Renames the `ui` color family to `neutral` across all layers (CSS tokens, JS types, theme files, schema types, component styles). No deprecation — no external consumers exist. Purely mechanical rename with zero logic changes.
 
 ### 4b. Add `$concat`, Remove `$expr`
 

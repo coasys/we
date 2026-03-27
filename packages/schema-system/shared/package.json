@@ -17,6 +17,7 @@
     }
   },
   "dependencies": {
+    "@we/tokens": "workspace:*",
     "zod": "^4.1.12"
   },
   "devDependencies": {
