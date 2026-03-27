@@ -12,6 +12,21 @@ export type TransitionConfig = {
   delay?: number; // Milliseconds (default: 0)
 };
 
+/** Parametric theme overrides — each field maps to a CSS custom property on the design system. */
+export type ThemeOverrides = {
+  themeName?: string; // Named theme preset (e.g. 'dark', 'cyberpunk', 'retro') — sets data-we-theme attribute
+  primaryHue?: number; // --we-color-primary-hue
+  successHue?: number; // --we-color-success-hue
+  warningHue?: number; // --we-color-warning-hue
+  dangerHue?: number; // --we-color-danger-hue
+  uiHue?: number; // --we-color-ui-hue
+  saturation?: string; // --we-color-saturation  (e.g. "50%")
+  uiSaturation?: string; // --we-color-ui-saturation
+  multiplier?: number; // --we-color-multiplier
+  subtractor?: string; // --we-color-subtractor  (e.g. "108%")
+  fontFamily?: string; // --we-font-family
+};
+
 export type SchemaNode = {
   type?: string; // Used to look up the node's component in the registry (if not included, children rendered in a fragment)
   props?: Record<string, SchemaProp>; // Props to pass to the component
@@ -19,6 +34,7 @@ export type SchemaNode = {
   slot?: string; // The name of the slot this node should be rendered into
   routes?: RouteSchema[]; // Routes for routing components
   children?: (SchemaNode | string)[]; // Child nodes (or strings for text nodes like <we-text>)
+  theme?: ThemeOverrides; // Scoped theme overrides — applied as CSS custom properties on a display:contents wrapper
 };
 
 // Types that need to be passed a framework specific NodeType (e.g. JSX.Element for Solid, React.ReactNode for React)

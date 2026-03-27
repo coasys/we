@@ -1,17 +1,19 @@
 /* ===== BASE THEME VARIABLES ===== */
 
-html[data-we-theme='black'] {
+[data-we-theme='black'] {
   --we-color-subtractor: 100%;
   --we-color-multiplier: -1;
+  --we-color-saturation: 50%;
+  --we-color-ui-saturation: 20%;
 }
 
 /* ===== ELEMENTS OVERRIDES ===== */
-html[data-we-theme='black'] we-tooltip::part(tooltip) {
+[data-we-theme='black'] we-tooltip::part(tooltip) {
   background: var(--we-color-ui-100);
   color: var(--we-color-black);
 }
 
-html[data-we-theme='black'] we-menu-item::part(base) {
+[data-we-theme='black'] we-menu-item::part(base) {
   margin-top: var(--we-space-100);
   margin-left: var(--we-space-400);
   margin-right: var(--we-space-400);
@@ -20,12 +22,12 @@ html[data-we-theme='black'] we-menu-item::part(base) {
 
 /* ===== COMPONENTS OVERRIDES ===== */
 
-/* html[data-we-theme='black'] .we-card {
+/* [data-we-theme='black'] .we-card {
   box-shadow: var(--we-depth-400);
 } */
 
 /* ===== WIDGETS OVERRIDES ===== */
 
-/* html[data-we-theme='black'] .we-data-table {
+/* [data-we-theme='black'] .we-data-table {
   border: var(--we-border-width) solid var(--we-border-color-strong);
 } */

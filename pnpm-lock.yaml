@@ -704,6 +704,9 @@ importers:
 
   packages/schema-system/shared:
     dependencies:
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../../design-system/1-tokens
       zod:
         specifier: ^4.1.12
         version: 4.3.6

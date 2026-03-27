@@ -1,10 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
-html[data-we-theme='retro'] {
-  --we-color-primary-hue: 230 !important;
+[data-we-theme='retro'] {
+  /* Color system — must be complete so the theme is self-contained */
+  --we-color-primary-hue: 230;
+  --we-color-multiplier: 1;
+  --we-color-subtractor: 0%;
+  --we-color-saturation: 60%;
+  --we-color-ui-saturation: 10%;
   --we-border-radius: 0px;
   --we-border-color: silver;
-  --we-font-family: monospace !important;
+  --we-font-family: monospace;
   --we-size-sm: 30px;
   --we-size-md: 40px;
   --we-size-lg: 50px;
@@ -16,7 +21,7 @@ html[data-we-theme='retro'] {
   --we-scrollbar-thumb-border-radius: 0;
 }
 
-html[data-we-theme='retro'] we-modal::part(modal) {
+[data-we-theme='retro'] we-modal::part(modal) {
   position: relative;
   background: silver;
   box-shadow:
@@ -27,7 +32,7 @@ html[data-we-theme='retro'] we-modal::part(modal) {
   padding: 0;
 }
 
-html[data-we-theme='retro'] we-modal::part(close-button) {
+[data-we-theme='retro'] we-modal::part(close-button) {
   top: 10px;
   right: 10px;
   padding: var(--we-space-200);
@@ -44,13 +49,13 @@ html[data-we-theme='retro'] we-modal::part(close-button) {
   justify-content: center;
 }
 
-html[data-we-theme='retro'] we-modal::part(header) {
+[data-we-theme='retro'] we-modal::part(header) {
   display: block;
   height: 50px;
   background: linear-gradient(90deg, navy, #1084d0);
 }
 
-html[data-we-theme='retro'] we-toggle::part(indicator) {
+[data-we-theme='retro'] we-toggle::part(indicator) {
   border-radius: 0;
   box-shadow:
     inset -1px -1px #0a0a0a,
@@ -59,7 +64,7 @@ html[data-we-theme='retro'] we-toggle::part(indicator) {
     inset 2px 2px #dfdfdf;
 }
 
-html[data-we-theme='retro'] we-toggle::part(toggle) {
+[data-we-theme='retro'] we-toggle::part(toggle) {
   border-radius: 0;
   box-shadow:
     inset -1px -1px #0a0a0a,
@@ -68,7 +73,7 @@ html[data-we-theme='retro'] we-toggle::part(toggle) {
     inset 2px 2px #dfdfdf;
 }
 
-html[data-we-theme='retro'] we-avatar::part(base) {
+[data-we-theme='retro'] we-avatar::part(base) {
   border-radius: 0;
   border: 0;
   box-shadow:
@@ -78,16 +83,16 @@ html[data-we-theme='retro'] we-avatar::part(base) {
     inset 2px 2px #dfdfdf;
 }
 
-html[data-we-theme='retro'] we-avatar[selected]::part(base) {
+[data-we-theme='retro'] we-avatar[selected]::part(base) {
   border-radius: 0;
   box-shadow: 0 0 0 2px var(--we-color-primary-500);
 }
 
-html[data-we-theme='retro'] we-avatar::part(img) {
+[data-we-theme='retro'] we-avatar::part(img) {
   border-radius: 0;
 }
 
-html[data-we-theme='retro'] we-button::part(base) {
+[data-we-theme='retro'] we-button::part(base) {
   background: silver !important;
   color: #222 !important;
   font-weight: 400;
@@ -99,11 +104,11 @@ html[data-we-theme='retro'] we-button::part(base) {
     inset 2px 2px #dfdfdf;
 }
 
-html[data-we-theme='retro'] we-button[disabled]::part(base) {
+[data-we-theme='retro'] we-button[disabled]::part(base) {
   text-shadow: 1px 1px 0 #fff;
 }
 
-html[data-we-theme='retro'] we-button::part(base):active {
+[data-we-theme='retro'] we-button::part(base):active {
   box-shadow:
     inset -1px -1px #fff,
     inset 1px 1px #0a0a0a,
@@ -111,7 +116,7 @@ html[data-we-theme='retro'] we-button::part(base):active {
     inset 2px 2px grey;
 }
 
-html[data-we-theme='retro'] we-button[variant='primary']::part(base) {
+[data-we-theme='retro'] we-button[variant='primary']::part(base) {
   border: 0;
   box-shadow:
     inset -1px -1px #0a0a0a,
@@ -120,37 +125,37 @@ html[data-we-theme='retro'] we-button[variant='primary']::part(base) {
     inset 2px 2px #dfdfdf;
 }
 
-html[data-we-theme='retro'] we-button[circle]::part(base) {
+[data-we-theme='retro'] we-button[circle]::part(base) {
   border-radius: 0;
 }
 
-html[data-we-theme='retro'] we-tabs::part(base) {
+[data-we-theme='retro'] we-tabs::part(base) {
   background: none;
   border: 0;
 }
 
-html[data-we-theme='retro'] we-tabs::part(base)::before {
+[data-we-theme='retro'] we-tabs::part(base)::before {
   content: none;
 }
 
-html[data-we-theme='retro'] we-menu::part(base) {
+[data-we-theme='retro'] we-menu::part(base) {
   background: var(--we-color-ui-100);
 }
 
-html[data-we-theme='retro'] we-menu-group-item::part(summary) {
+[data-we-theme='retro'] we-menu-group-item::part(summary) {
   padding-left: var(--we-space-300);
 }
 
-html[data-we-theme='retro'] we-menu-group-item::part(content) {
+[data-we-theme='retro'] we-menu-group-item::part(content) {
   border-left: 1px dotted grey;
   margin-left: var(--we-space-500);
 }
 
-html[data-we-theme='retro'] we-menu-item::part(base) {
+[data-we-theme='retro'] we-menu-item::part(base) {
   position: relative;
 }
 
-html[data-we-theme='retro'] we-menu-item::part(base)::after {
+[data-we-theme='retro'] we-menu-item::part(base)::after {
   position: absolute;
   content: '';
   display: block;
@@ -160,7 +165,7 @@ html[data-we-theme='retro'] we-menu-item::part(base)::after {
   border-top: 1px dotted grey;
 }
 
-html[data-we-theme='retro'] we-tab-item::part(base) {
+[data-we-theme='retro'] we-tab-item::part(base) {
   box-shadow:
     inset -1px -1px #0a0a0a,
     inset 1px 1px #fff,
@@ -168,7 +173,7 @@ html[data-we-theme='retro'] we-tab-item::part(base) {
     inset 2px 2px #dfdfdf;
 }
 
-html[data-we-theme='retro'] we-input::part(input-wrapper) {
+[data-we-theme='retro'] we-input::part(input-wrapper) {
   background: white;
   border: 0;
   box-shadow:
@@ -178,7 +183,7 @@ html[data-we-theme='retro'] we-input::part(input-wrapper) {
     inset 2px 2px #dfdfdf;
 }
 
-html[data-we-theme='retro'] we-input::part(input-wrapper):focus-within {
+[data-we-theme='retro'] we-input::part(input-wrapper):focus-within {
   border: 0;
   box-shadow:
     inset -1px -1px #0a0a0a,

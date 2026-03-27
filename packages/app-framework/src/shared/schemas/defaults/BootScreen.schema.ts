@@ -30,7 +30,7 @@ export const bootScreenSchema: SchemaNode = {
             alt: 'WE Logo',
             width: '150px',
             height: '75px',
-            gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            gradient: 'var(--we-gradient-primary)',
           },
         },
         // Initialising state

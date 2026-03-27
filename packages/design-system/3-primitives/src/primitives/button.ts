@@ -26,9 +26,9 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     hoverProps: { bg: 'primary-600', color: 'ui-0' },
   },
   secondary: {
-    bg: 'ui-100',
+    bg: 'ui-200',
     color: 'ui-800',
-    hoverProps: { bg: 'ui-200', color: 'ui-900' },
+    hoverProps: { bg: 'ui-300', color: 'ui-900' },
   },
   ghost: {
     bg: 'transparent',
@@ -63,6 +63,29 @@ const CSS_STYLES = css`
   [part='base'] {
     all: unset;
     box-sizing: border-box;
+    position: relative;
+    overflow: hidden;
+  }
+
+  [part='base']::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--we-button-gradient, none);
+    opacity: 1;
+    transition: opacity var(--we-button-transition, 0.2s);
+    pointer-events: none;
+  }
+
+  [part='base']:hover:not(:disabled):not([aria-disabled='true'])::before {
+    opacity: 0;
+  }
+
+  /* Ensure text content sits above the gradient overlay */
+  [part='base'] > * {
+    position: relative;
+    z-index: 1;
   }
 `;
 
@@ -76,10 +99,20 @@ export default class Button extends DesignSystemElement {
   @property({ type: String }) href?: string;
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) loading = false;
+  @property({ type: Boolean, reflect: true }) gradient = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  override updated(changedProperties: Map<string, unknown>) {
+    super.updated(changedProperties);
+    // Apply gradient CSS variable on the host — only works with primary variant
+    this.style.setProperty(
+      '--we-button-gradient',
+      this.gradient && this.variant === 'primary' ? 'var(--we-gradient-primary)' : 'none',
+    );
   }
 
   override getInstanceProps() {
@@ -108,7 +141,7 @@ export default class Button extends DesignSystemElement {
     return html`
       ${this.loading ? html`<we-spinner size="sm" color="currentColor"></we-spinner>` : null}
       <slot name="start"></slot>
-      ${this.text ?? html`<slot></slot>`}
+      ${this.text ? html`<span>${this.text}</span>` : html`<slot></slot>`}
       <slot name="end"></slot>
     `;
   }
