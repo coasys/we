@@ -132,14 +132,14 @@ const templateSidebar = {
         //   },
         // },
         // {
-        //   type: '$forEach',
+        //   type: '$each',
         //   props: { items: { $store: 'adamStore.mySpaces' }, as: 'space' },
         //   children: [
         //     {
         //       type: 'CircleButton',
         //       props: {
-        //         label: { $expr: 'space.name' },
-        //         onClick: { $action: 'routeStore.navigate', args: [{ $expr: '`/space/${space.uuid}`' }] },
+        //         label: '$space.name',
+        //         onClick: { $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$space.uuid'] }] },
         //       },
         //     },
         //   ],

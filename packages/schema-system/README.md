@@ -16,7 +16,7 @@ Operators that appear inside `props` and resolve to values:
 | Operator       | Purpose                     | Example                                             |
 | -------------- | --------------------------- | --------------------------------------------------- |
 | `$store`       | Reactive store access       | `{ $store: 'userStore.name' }`                      |
-| `$expr`        | JavaScript expression eval  | `{ $expr: '\`Hello ${user.name}\`' }`               |
+| `$concat`      | String building             | `{ $concat: ['/space/', '$item.uuid'] }`            |
 | `$action`      | Store method call           | `{ $action: 'store.method', args: ['$arg.id'] }`    |
 | `$map`         | Array/object transformation | `{ $map: { items: ..., select: { ... } } }`         |
 | `$pick`        | Property extraction         | `{ $pick: { from: ..., props: ['a', 'b'] } }`       |
@@ -24,6 +24,7 @@ Operators that appear inside `props` and resolve to values:
 | `$eq` / `$ne`  | Equality / inequality       | `{ $eq: [{ $store: 'x.role' }, 'admin'] }`          |
 | `$not`         | Logical NOT                 | `{ $not: { $store: 'x.locked' } }`                  |
 | `$and` / `$or` | Logical AND / OR            | `{ $and: [cond1, cond2] }`                          |
+| `$item.*`      | Context reference           | `'$space.name'` (inside `$each` children)           |
 
 ### Renderer Operators
 
@@ -32,7 +33,7 @@ Operators that appear as the `type` field and control rendering structure:
 | Operator         | Purpose                                         |
 | ---------------- | ----------------------------------------------- |
 | `$if` (node)     | Conditional rendering with optional transitions |
-| `$forEach`       | List rendering with context injection           |
+| `$each`          | List rendering with context injection           |
 | `$routes`        | Route outlet placeholder                        |
 | Fragment         | Renders children without wrapper (no `type`)    |
 | HTML passthrough | Lowercase types render as native elements       |
@@ -46,7 +47,7 @@ Operators that appear as the `type` field and control rendering structure:
 - **Schema mutations:** `findMutations()` for diff-based updates, `updateSchema()` for applying changes
 - **Schema versioning:** `schemaVersion` field for future migrations
 - **Transitions:** `TransitionConfig` for animated `$if` node show/hide (`fade`, `slide`, `scale`)
-- **Operator token types:** `StoreToken`, `ActionToken`, `OperatorToken`, etc. for typed schema authoring
+- **Operator token types:** `StoreToken`, `ConcatToken`, `ActionToken`, `OperatorToken`, etc. for typed schema authoring
 
 See [OPERATORS.md](./OPERATORS.md) for the full operator reference.
 

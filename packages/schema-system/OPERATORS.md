@@ -25,11 +25,12 @@ The schema system has **two categories** of operators:
 
 **Prop-level operators** (resolved by `resolveProp` in `@we/schema-shared`) — these appear inside `props` and produce a value:
 
-- `$store`, `$expr`, `$action`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$not`, `$and`, `$or`
+- `$store`, `$concat`, `$action`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$not`, `$and`, `$or`
+- Context reference strings: `$item.name`, `$space.uuid` (resolved inline by the dispatcher)
 
 **Renderer-level operators** (handled by the framework-specific renderer) — these appear as the `type` field and control rendering structure:
 
-- `$if` (node), `$forEach`, `$routes`, and fragment (no `type`)
+- `$if` (node), `$each`, `$routes`, and fragment (no `type`)
 
 ### Dual-Use: `$if`
 
@@ -222,40 +223,79 @@ Extract specific properties from an object.
 
 ### `$expr`
 
-Evaluate JavaScript expressions with context variables.
+> **Removed.** Use context reference strings (`"$space.name"`) for simple property access and `$concat` for string building. See [Context Reference Strings](#context-reference-strings) and [`$concat`](#concat) below.
+
+---
+
+### `$concat`
+
+Join multiple parts into a single string.
 
 **Syntax:**
 
 ```typescript
-{
-  $expr: '<javascript-expression>';
-}
+{ $concat: [<part1>, <part2>, ...] }
 ```
 
 **Examples:**
 
 ```typescript
-// Template literals
+// Build a route path
 {
-  $expr: '`/space/${space.uuid}`';
+  $concat: ['/space/', '$space.uuid'];
 }
+// → "/space/abc123"
 
-// Calculations
+// Mix static and dynamic parts
 {
-  $expr: 'count * 2 + 1';
+  $concat: ['Hello, ', '$user.name', '!'];
 }
+// → "Hello, Alice!"
 
-// Conditionals
+// Parts can be any resolvable value
 {
-  $expr: 'user.role === "admin" ? "Edit" : "View"';
+  $concat: ['/space/', { $store: 'appStore.currentId' }];
 }
 ```
 
 **Notes:**
 
-- Has access to context variables
-- Returns evaluated result
-- Use with caution - errors return `undefined`
+- Each part is resolved via `resolveProp` (supports `$store`, context strings, etc.)
+- `null`/`undefined` parts become empty strings
+- Returns a reactive accessor when used with a memo function
+
+---
+
+### Context Reference Strings
+
+Plain strings starting with `$` followed by a key present in the context resolve to context values. This is the primary way to access iteration variables in `$each` children.
+
+**Syntax:**
+
+```typescript
+'$<contextKey>'; // Whole context value
+'$<contextKey>.<path>'; // Dot-path into context value
+```
+
+**Examples:**
+
+```typescript
+// Simple property access
+'$item.name'; // → context.item.name
+'$space.uuid'; // → context.space.uuid
+
+// Deep path
+'$item.meta.icon'; // → context.item.meta.icon
+
+// Whole value
+'$item'; // → context.item
+```
+
+**Notes:**
+
+- The context key (between `$` and first `.`) must exist in context — otherwise returned as a plain string
+- `$each` injects items via the `as` prop (default: `'item'`), so `$item.name` works by default
+- For nested `$each` loops, use distinct `as` values: `as: 'team'` → `$team.name`
 
 ---
 
@@ -331,7 +371,7 @@ Call store methods, with support for argument extraction from callbacks.
     args: [
       '$arg.id',              // Extract from callback
       'static-value',         // Static value
-      { $expr: 'context.id' } // Dynamic value
+      { $concat: ['/item/', '$arg.id'] } // Dynamic value
     ]
   }
 }
@@ -524,7 +564,7 @@ Logical OR — returns `true` if any operand is truthy. Short-circuits on the fi
 - Both `$and` and `$or` take an array of operands
 - Operands can be any resolvable value (literals, `$store`, `$not`, `$eq`, `$ne`, nested `$and`/`$or`)
 - Short-circuit evaluation: `$and` stops on the first falsy value, `$or` stops on the first truthy value
-- Preferred over `$expr` for compound boolean logic (safe for untrusted schemas)
+- Preferred over `$expr` (removed) for compound boolean logic (safe for untrusted schemas)
 
 ---
 
@@ -573,7 +613,7 @@ Operators can be composed together for complex logic:
 
 1. **Use `$map` for transformation**, `$pick` for simple extraction
 2. **Use `$arg.<path>` to extract properties** in action callbacks
-3. **Keep expressions simple** - complex logic should be in stores
+3. **Keep logic simple** - complex logic should be in stores
 4. **Leverage composition** - combine operators for complex scenarios
 5. **Handle edge cases** - operators return safe defaults (empty arrays, undefined, etc.)
 
@@ -582,10 +622,10 @@ Operators can be composed together for complex logic:
 ## Error Handling
 
 - **Missing store/property**: Returns `undefined`
-- **Invalid `$expr`**: Returns `undefined` and logs error
 - **Non-array/object in `$map`**: Returns `[]`
 - **Missing action store/method**: Returns `undefined` and logs warning
 - **Invalid `$arg` path**: Returns `undefined`
+- **Non-existent context key in `$item.*` string**: Returns the string as-is
 
 ---
 
@@ -655,7 +695,7 @@ Conditionally renders entire subtrees based on a boolean condition.
 
 ---
 
-### `$forEach`
+### `$each`
 
 Iterate over an array and render a template for each item.
 
@@ -663,7 +703,7 @@ Iterate over an array and render a template for each item.
 
 ```typescript
 {
-  type: '$forEach',
+  type: '$each',
   props: {
     items: <array-source>,
     as?: '<context-key>'  // Default: 'item'
@@ -677,7 +717,7 @@ Iterate over an array and render a template for each item.
 ```typescript
 // Render a list of cards
 {
-  type: '$forEach',
+  type: '$each',
   props: {
     items: { $store: 'templateStore.templates' },
     as: 'template'
@@ -685,8 +725,8 @@ Iterate over an array and render a template for each item.
   children: [{
     type: 'we-card',
     props: {
-      title: { $expr: 'template.meta.name' },
-      icon: { $expr: 'template.meta.icon' }
+      title: '$template.meta.name',
+      icon: '$template.meta.icon'
     }
   }]
 }
@@ -698,6 +738,7 @@ Iterate over an array and render a template for each item.
 2. For each item, creates a new context with the item available under the `as` key (default: `"item"`)
 3. Renders the first child node as the template for each item
 4. Uses Solid's `<For>` for efficient reactive list rendering
+5. Children access the current item via context reference strings (e.g. `"$template.meta.name"`)
 
 ---
 
@@ -803,20 +844,12 @@ Native HTML elements can be used directly via lowercase tag names.
 
 ## Security
 
-### `$expr` — Trusted Schemas Only
+The `$expr` operator has been removed. All remaining operators are safe for use with untrusted schemas — they resolve structured tokens without executing arbitrary code.
 
-The `$expr` operator uses `new Function()` to evaluate JavaScript expressions at runtime. This means **any schema containing `$expr` has the ability to execute arbitrary code** in the user's browser context.
-
-This is safe when schemas come from trusted sources:
-
-- Bundled schema files in the application (`*.schema.ts`)
-- Schemas authored by the app developer
-
-This is **not safe** for schemas from untrusted sources:
-
-- User-submitted or community-generated schemas
-- Schemas received from external agents or peers
-- Schemas loaded from shared neighbourhoods without validation
+- `$store` / `$action`: Only access stores and methods explicitly provided in the `stores` object
+- `$concat`: String concatenation only — no code execution
+- Context strings (`$item.*`): Read-only access to the context object
+- All comparison/logical operators: Pure boolean operations
 
 **Current status:** All schemas in WE are authored internally and bundled at build time. The `$expr` operator is safe in this context. If schemas from untrusted sources are ever loaded at runtime, `$expr` must be gated behind an allowlist or disabled entirely for those schemas.
 

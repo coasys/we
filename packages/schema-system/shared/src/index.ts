@@ -10,7 +10,7 @@ export type {
   RouteSchema,
   TransitionConfig,
   StoreToken,
-  ExprToken,
+  ConcatToken,
   ActionToken,
   IfToken,
   MapToken,

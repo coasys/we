@@ -200,7 +200,7 @@ All store state and actions are available in context for dynamic logic, expressi
 6. Prop-level Dynamic Logic & Expressions
 
 You can use special tokens in props for dynamic, reactive, or computed behavior.
-Each token ($store, $action, $if, $map, $pick, $expr, and $eq) has a specific structure and context requirements:
+Each token ($store, $action, $if, $map, $pick, $concat, and $eq) has a specific structure and context requirements:
 
 Store reference:
 { "$store": "storeName.property.path" }
@@ -227,12 +227,15 @@ Pick:
 Picks specific properties from an object.
 Example: { "$pick": { "from": { "$store": "userStore.profile" }, "props": ["name", "email"] } } resolves to { name: ..., email: ... }.
 
-Expression:
-{ "$expr": "expression" }
-Computes a value using a JavaScript expression string. Can use template literals.
-Example: { "$expr": "space.name" } or { "$expr": "/space/\${space.uuid}" }
-Context: All variables referenced in the expression must exist as keys in the context object.
-Example context for { "$expr": "user.name" }: { user: { name: "Alice" } }
+Concat (string building):
+{ "$concat": ["part1", "$context.value", "part2"] }
+Joins multiple parts into a single string. Parts can be literal strings or context references.
+Example: { "$concat": ["/space/", "$space.uuid"] } resolves to "/space/abc123".
+
+Context references:
+Strings starting with "$" followed by a context key resolve to context values.
+Example: "$space.name" resolves to the name property of the space context variable.
+Dot paths supported: "$item.profile.avatar" resolves to context.item.profile.avatar.
 
 Equality check:
 { "$eq": [a, b] }
@@ -246,21 +249,21 @@ Context: Both a and b can be tokens or values.
 
 You can also use special block-level structures for dynamic rendering of schema nodes.
 
-Each structure has a "type" starting with "$" and has specific props and children ($forEach and $if).
+Each structure has a "type" starting with "$" and has specific props and children ($each and $if).
 
-ForEach loop:
-{ "type": "$forEach", "props": { items: { "$store": "storeName.arrayProperty" }, as: "itemName" }, "children": [ ... ] }
-Renders its children once for each item in the array resolved from items. The variable name given in "as" (e.g. "space") is available in expressions and props inside children.
+Each loop:
+{ "type": "$each", "props": { items: { "$store": "storeName.arrayProperty" }, as: "itemName" }, "children": [ ... ] }
+Renders its children once for each item in the array resolved from items. The variable name given in "as" (e.g. "space") becomes a context key, so "$space.name" accesses the current item's name.
 Example:
 {
-  "type": "$forEach",
+  "type": "$each",
   "props": { "items": { "$store": "adamStore.mySpaces" }, "as": "space" },
   "children": [
     {
       "type": "CircleButton",
       "props": {
-        "label": { "$expr": "space.name" },
-        "onClick": { "$action": "routeStore.navigate", "args": [ { "$expr": "\`/space/\${space.uuid}\`" } ] }
+        "label": "$space.name",
+        "onClick": { "$action": "routeStore.navigate", "args": [ { "$concat": ["/space/", "$space.uuid"] } ] }
       }
     }
   ]

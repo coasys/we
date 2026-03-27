@@ -86,15 +86,15 @@ describe('SchemaRenderer', () => {
     expect(container.textContent).toBe('routed content');
   });
 
-  // --- $forEach ---
-  it('$forEach renders a template for each item', () => {
+  // --- $each ---
+  it('$each renders a template for each item', () => {
     const TestItem = (props: any) => <li>{typeof props.label === 'function' ? props.label() : props.label}</li>;
     const registry: ComponentRegistry = { TestItem };
     const stores = { listStore: { items: ['a', 'b', 'c'] } };
     const node: SchemaNode = {
-      type: '$forEach',
+      type: '$each',
       props: { items: { $store: 'listStore.items' }, as: 'item' },
-      children: [{ type: 'TestItem', props: { label: { $expr: 'item' } } }],
+      children: [{ type: 'TestItem', props: { label: '$item' } }],
     };
     const { container } = renderSchema(node, { registry, stores });
     const lis = container.querySelectorAll('li');
