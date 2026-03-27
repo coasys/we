@@ -46,6 +46,16 @@
                     └─────────────────────┘
 
                     ┌─────────────────────┐
+                    │4b. $concat, remove✅│
+                    │    $expr             │
+                    └─────────────────────┘
+
+                    ┌─────────────────────┐
+                    │8b. Schema Validation │
+                    │    (Phase 1)         │
+                    └─────────────────────┘
+
+                    ┌─────────────────────┐
                     │10. Component Library │
                     │    Expansion (Ph 1)  │
                     └─────────────────────┘
@@ -81,11 +91,17 @@
                               │
                               ▼
                     ┌─────────────────────┐
+                    │8b. Schema Validation │
+                    │    (Phase 2)         │
+                    └─────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────────┐
                     │ 9. MCP Tools         │
                     └─────────────────────┘
 ```
 
-> **Note:** #5 → #7b dependency (showcase needs clean model imports) is noted in #7b’s description but not drawn to avoid crossing arrows. #5b, #5c, and #6 all depend on #5 independently — they can run in parallel.
+> **Note:** #5 → #7b dependency (showcase needs clean model imports) is noted in #7b's description but not drawn to avoid crossing arrows. #5b, #5c, and #6 all depend on #5 independently — they can run in parallel. #6 → #9 dependency is noted in #9's description but not drawn to avoid crossing arrows. #8b has two phases: Phase 1 (token shape checks) has no dependencies; Phase 2 (semantic checks) depends on #8.
 
 ---
 
@@ -165,13 +181,14 @@ Bridges the schema/seed layer with the CSS theme system. Added `ThemeOverrides` 
 
 Renamed the `ui` color family to `neutral` across all layers: JS tokens (`ColorHueToken`, `colorConfig`), CSS generation, 5 theme files, schema types (`ThemeOverrides`, Zod), `themeStyles.ts`, all component defaults (`'ui-NNN'` → `'neutral-NNN'`), templates, Solid components, prompt context, and documentation. Purely mechanical rename — zero logic changes.
 
-### 4b. Add `$concat`, Remove `$expr`
+### 4b. Add `$concat`, Extend `$item`, Rename `$forEach` → `$each`, Remove `$expr` ✅
 
-**Plan:** [concat-remove-expr](../prs/concat-remove-expr.md)
+**Plan:** [concat-remove-expr](../prs/concat-remove-expr.md) | **Summary:** [concat-remove-expr-summary](../prs/concat-remove-expr-summary.md)
+**Status:** Complete (branch `feat/concat-remove-expr`, 1 commit, 19 files)
 **Depends on:** nothing
-**Unblocks:** CSP compatibility, schema validation coverage, safer token set
+**Unblocks:** CSP compatibility, schema validation coverage, safer token set, unified `$item.*` context access
 
-Removes `$expr` (arbitrary JS via `new Function()`) entirely — no external consumers exist. Adds `$concat` for safe string building. Migrates all 11 `$expr` uses in internal templates to `$concat`, `$if`, or direct `$forEach` context references. Net token count unchanged (−1 `$expr`, +1 `$concat`).
+Removed `$expr` (arbitrary JS via `new Function()`) entirely — no external consumers exist. Added `$concat` for safe string building. Extended `$item.*` string resolution from `$map`-only to the dispatcher, so `$each` children access items via `$item.name` instead of `{ $expr: 'item.name' }`. Renamed `$forEach` → `$each` to match the single-word naming convention of all other tokens. Generalised to `$<contextKey>.*` for nested `$each` with custom `as` bindings. Migrated all 11 `$expr` uses to `$item.*`, `$concat`, or `$if`. Added schema system `CONVENTIONS.md`. Fixed `isStaticValue()` to treat `$`-prefixed strings as non-static. Net token count unchanged (−1 `$expr`, +1 `$concat`); `$item.*` is a dispatcher resolution rule, not a new token type.
 
 ### 10. Core Component Library Expansion (Phase 1)
 
@@ -265,7 +282,7 @@ Creates `@we/ai-context` with extractors (CEM, TypeScript, tokens, stores), asse
 **Depends on:** Token shape checks (#8b Phase 1): none. Semantic checks (#8b Phase 2): @we/ai-context (#8) for `ValidationContext`.
 **Unblocks:** AI feedback loop — prevents broken schema generation, MCP `validate_schema` tool
 
-Extends existing Zod validation in `packages/schema-system/shared/src/`. Phase 1 adds token shape Zod schemas (validates `$if` has `condition`/`then`, `$forEach` has `items`/child template, etc.) — no dependencies, can land early in Phase A. Phase 2 adds a semantic walker that accepts component/store metadata from ai-context to check component existence, prop validity, and store references.
+Extends existing Zod validation in `packages/schema-system/shared/src/`. Phase 1 adds token shape Zod schemas (validates `$if` has `condition`/`then`, `$each` has `items`/child template, etc.) — no dependencies, can land early in Phase A. Phase 2 adds a semantic walker that accepts component/store metadata from ai-context to check component existence, prop validity, and store references.
 
 ### 9. MCP Tools
 
@@ -279,27 +296,33 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 
 ## Summary Table
 
-| #   | PR                             | Phase | Depends on       | Size   | Risk |
-| --- | ------------------------------ | ----- | ---------------- | ------ | ---- |
-| 1   | Button Variants ✅             | A     | —                | Small  | Low  |
-| 1b  | Primitive Pattern Alignment ✅ | A     | 1                | Small  | Low  |
-| 1c  | Token Type Consolidation ✅    | A     | 1b               | S–Med  | Low  |
-| 2   | Deep Unwrap Props ✅           | A     | —                | Small  | Low  |
-| 2b  | Fine-Grained Reactivity ✅     | A     | 2                | Medium | Med  |
-| 2c  | Web Component Prop Unify ✅    | A     | 2b               | Small  | Low  |
-| 3   | Schema–Theme Integration ✅    | A     | —                | Medium | Low  |
-| 4   | Local Schema State             | C     | 6                | Medium | Med  |
-| 4b  | $concat + remove $expr         | A     | —                | Small  | Low  |
-| 5   | Block Model Migration          | B     | —                | Small  | Low  |
-| 5b  | Core Block Types               | B     | 5                | Medium | Low  |
-| 5c  | $query Service                 | B     | 5                | Medium | Med  |
-| 6   | Schema Customization           | C     | 5                | Large  | Med  |
-| 7a  | Shared \*.types.ts             | D     | —                | Medium | Low  |
-| 7b  | Component Showcase             | D     | 5                | Medium | Low  |
-| 8   | @we/ai-context                 | D     | 7a               | Large  | Med  |
-| 8b  | Schema Validation              | A→D   | — (Ph1), 8 (Ph2) | Small  | Low  |
-| 9   | MCP Tools                      | D     | 6, 8, 8b         | Large  | Med  |
-| 10  | Component Library (Phase 1)    | A     | —                | Medium | Low  |
+> Ordered by **execution wave** — all items within a wave are independent and can run in parallel. "Theme" groups PRs by topic (Schema, Data, Customization, AI tooling); it doesn't imply ordering.
+
+| Wave | #   | PR                             | Theme | Depends on | Size   | Risk |
+| ---- | --- | ------------------------------ | ----- | ---------- | ------ | ---- |
+| ✅   | 1   | Button Variants                | Sch   | —          | Small  | Low  |
+| ✅   | 1b  | Primitive Pattern Alignment    | Sch   | 1          | Small  | Low  |
+| ✅   | 1c  | Token Type Consolidation       | Sch   | 1b         | S–Med  | Low  |
+| ✅   | 2   | Deep Unwrap Props              | Sch   | —          | Small  | Low  |
+| ✅   | 2b  | Fine-Grained Reactivity        | Sch   | 2          | Medium | Med  |
+| ✅   | 2c  | Web Component Prop Unify       | Sch   | 2b         | Small  | Low  |
+| ✅   | 3   | Schema–Theme Integration       | Sch   | —          | Medium | Low  |
+| ✅   | 3b  | color-ui → color-neutral       | Sch   | 3          | Small  | Low  |
+| ✅   | 4b  | $concat + remove $expr         | Sch   | —          | Small  | Low  |
+| 1    | 5   | Block Model Migration          | Data  | —          | Small  | Low  |
+| 1    | 7a  | Shared \*.types.ts             | AI    | —          | Medium | Low  |
+| 1    | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
+| 1    | 10  | Component Library (Ph 1)       | Sch   | —          | Medium | Low  |
+| 2    | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
+| 2    | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
+| 2    | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
+| 2    | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
+| 2    | 8   | @we/ai-context                 | AI    | 7a         | Large  | Med  |
+| 3    | 4   | Local Schema State             | Cust  | 6          | Medium | Med  |
+| 3    | 8b‡ | Schema Validation (semantic)   | AI    | 8          | Small  | Low  |
+| 4    | 9   | MCP Tools                      | AI    | 6, 8, 8b   | Large  | Med  |
+
+> **†** 8b structural = token shape Zod schemas (no deps). **‡** 8b semantic = component/store validation (needs ai-context).
 
 ---
 

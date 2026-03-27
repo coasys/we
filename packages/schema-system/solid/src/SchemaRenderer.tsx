@@ -40,6 +40,7 @@ function deepUnwrap(value: unknown, depth = 0): unknown {
 /** Detect values with no schema tokens — can be passed through without reactive tracking. */
 function isStaticValue(value: unknown): boolean {
   if (value === null || value === undefined) return true;
+  if (typeof value === 'string') return !value.startsWith('$') || value.length <= 1;
   if (typeof value !== 'object') return true;
   if (Array.isArray(value)) return value.every(isStaticValue);
   return !Object.keys(value).some((k) => k.startsWith('$')) && Object.values(value).every(isStaticValue);
@@ -96,8 +97,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     return <ConditionalRenderer node={node} stores={stores} context={context} renderNode={renderNode} />;
   }
 
-  // Handle for-each loops
-  if (node.type === '$forEach') {
+  // Handle each loops
+  if (node.type === '$each') {
     // Get the schema used to render each item
     const itemSchema = node.children?.[0] as SchemaNode | undefined;
 

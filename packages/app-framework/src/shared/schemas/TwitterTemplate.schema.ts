@@ -19,7 +19,7 @@ const sidebarLeft = {
       children: [{ type: 'we-icon', props: { name: 'x-logo', size: 'lg' } }],
     },
     {
-      type: '$forEach',
+      type: '$each',
       props: {
         items: [
           { label: 'Home', icon: 'house', path: '/' },
@@ -50,18 +50,18 @@ const sidebarLeft = {
             focusProps: { bg: 'warning-500' },
             activeProps: { bg: 'success-500' },
             disabledProps: { bg: 'danger-500' },
-            onClick: { $action: 'routeStore.navigate', args: [{ $expr: 'button.path' }] },
+            onClick: { $action: 'routeStore.navigate', args: ['$button.path'] },
           },
           children: [
             {
               type: 'we-icon',
               props: {
-                name: { $expr: 'button.icon' },
+                name: '$button.icon',
                 color: 'neutral-1000',
                 weight: {
                   $if: {
-                    condition: { $eq: [{ $store: 'routeStore.currentPath' }, { $expr: 'button.path' }] },
-                    then: { $if: { condition: { $expr: 'button.bold' }, then: 'bold', else: 'fill' } },
+                    condition: { $eq: [{ $store: 'routeStore.currentPath' }, '$button.path'] },
+                    then: { $if: { condition: '$button.bold', then: 'bold', else: 'fill' } },
                     else: 'regular',
                   },
                 },
@@ -70,12 +70,12 @@ const sidebarLeft = {
             {
               type: 'we-text',
               props: {
-                text: { $expr: 'button.label' },
+                text: '$button.label',
                 size: '600',
                 color: 'neutral-1000',
                 weight: {
                   $if: {
-                    condition: { $eq: [{ $store: 'routeStore.currentPath' }, { $expr: 'button.path' }] },
+                    condition: { $eq: [{ $store: 'routeStore.currentPath' }, '$button.path'] },
                     then: '600',
                     else: '400',
                   },

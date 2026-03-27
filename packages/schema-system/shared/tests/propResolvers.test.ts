@@ -9,11 +9,11 @@ describe('propResolvers (combined)', () => {
     expect(resolveProp({ $store: 'userStore.profile.name' }, stores, {})).toBe('Sam');
   });
 
-  it('evaluates $expr expressions', () => {
+  it('resolves $item.* context references', () => {
     const ctx = { user: { name: 'Zed' } };
-    expect(resolveProp({ $expr: 'user.name + "!"' }, {}, ctx)).toBe('Zed!');
-    // invalid expression should return undefined
-    expect(resolveProp({ $expr: 'not.a.valid..' }, {}, ctx)).toBe(undefined);
+    expect(resolveProp('$user.name', {}, ctx)).toBe('Zed');
+    // non-existent context key returns string as-is
+    expect(resolveProp('$missing.key', {}, ctx)).toBe('$missing.key');
   });
 
   it('maps arrays with $map and $item selectors', () => {
@@ -102,7 +102,7 @@ describe('propResolvers (combined)', () => {
   it('resolveIfProp chooses else branch when false', () => {
     const stores = {};
     const ctx = { val: false };
-    const val = resolveProp({ $if: { condition: { $expr: 'val' }, then: 'A', else: 'B' } }, stores, ctx);
+    const val = resolveProp({ $if: { condition: '$val', then: 'A', else: 'B' } }, stores, ctx);
     expect(val).toBe('B');
   });
 
@@ -174,11 +174,11 @@ describe('propResolvers (combined)', () => {
 
   it('resolveProps resolves mixed props', () => {
     const stores = { s: { v: 1 } };
-    const props = { a: 1, b: { $store: 's.v' }, c: { $expr: '1+2' } };
+    const props = { a: 1, b: { $store: 's.v' }, c: { $concat: ['hello', ' ', 'world'] } };
     const out = resolveProps(props, stores, {});
     expect(out.a).toBe(1);
     expect(out.b).toBe(1);
-    expect(out.c).toBe(3);
+    expect(out.c).toBe('hello world');
   });
 
   it('$map transforms single objects (not just arrays)', () => {
@@ -311,12 +311,12 @@ describe('propResolvers (combined)', () => {
   it('$arg with multiple args processes only $arg tokens', () => {
     const callback = vi.fn();
     const stores = { store: { callback } };
-    const action = { $action: 'store.callback', args: ['$arg.id', 'static-value', { $expr: '1+1' }] };
+    const action = { $action: 'store.callback', args: ['$arg.id', 'static-value', 42] };
 
     const fn = resolveProp(action, stores, { ignored: true }) as (arg: unknown) => void;
     fn({ id: 'test-id', name: 'Test' });
 
-    expect(callback).toHaveBeenCalledWith('test-id', 'static-value', 2);
+    expect(callback).toHaveBeenCalledWith('test-id', 'static-value', 42);
   });
 
   // --- $and / $or operators ---
@@ -331,11 +331,7 @@ describe('propResolvers (combined)', () => {
   });
 
   it('$and short-circuits on first falsy value', () => {
-    // The $expr should never be evaluated because the first operand is false
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(resolveProp({ $and: [false, { $expr: 'this.would.break..' }] }, {}, {})).toBe(false);
-    expect(spy).not.toHaveBeenCalled();
-    spy.mockRestore();
+    expect(resolveProp({ $and: [false, 'should-not-matter'] }, {}, {})).toBe(false);
   });
 
   it('$and works with $store operands', () => {
@@ -355,10 +351,7 @@ describe('propResolvers (combined)', () => {
   });
 
   it('$or short-circuits on first truthy value', () => {
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(resolveProp({ $or: [true, { $expr: 'this.would.break..' }] }, {}, {})).toBe(true);
-    expect(spy).not.toHaveBeenCalled();
-    spy.mockRestore();
+    expect(resolveProp({ $or: [true, 'should-not-matter'] }, {}, {})).toBe(true);
   });
 
   it('$and/$or compose with $not and $store', () => {
@@ -385,5 +378,45 @@ describe('propResolvers (combined)', () => {
     expect(result).toBeUndefined();
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('missing'));
     spy.mockRestore();
+  });
+
+  // --- $concat ---
+
+  it('$concat joins string parts', () => {
+    const result = resolveProp({ $concat: ['/space/', 'abc123'] }, {}, {});
+    expect(result).toBe('/space/abc123');
+  });
+
+  it('$concat resolves context references in parts', () => {
+    const ctx = { space: { uuid: 'xyz' } };
+    const result = resolveProp({ $concat: ['/space/', '$space.uuid'] }, {}, ctx);
+    expect(result).toBe('/space/xyz');
+  });
+
+  it('$concat treats null/undefined parts as empty strings', () => {
+    const result = resolveProp({ $concat: ['hello', null, 'world'] }, {}, {});
+    expect(result).toBe('helloworld');
+  });
+
+  // --- Context reference strings ---
+
+  it('resolves $contextKey.path strings from context', () => {
+    const ctx = { item: { name: 'Test', meta: { icon: 'star' } } };
+    expect(resolveProp('$item.name', {}, ctx)).toBe('Test');
+    expect(resolveProp('$item.meta.icon', {}, ctx)).toBe('star');
+  });
+
+  it('resolves $contextKey without dot path to whole value', () => {
+    const ctx = { item: 'hello' };
+    expect(resolveProp('$item', {}, ctx)).toBe('hello');
+  });
+
+  it('returns string as-is when context key not found', () => {
+    expect(resolveProp('$unknown.key', {}, {})).toBe('$unknown.key');
+  });
+
+  it('returns undefined for missing nested path in context', () => {
+    const ctx = { item: { name: 'Test' } };
+    expect(resolveProp('$item.nonexistent.deep', {}, ctx)).toBeUndefined();
   });
 });

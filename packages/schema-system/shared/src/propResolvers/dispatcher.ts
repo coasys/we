@@ -1,8 +1,8 @@
 import { hasToken } from '../predicates';
 import { resolveActionProp } from './action';
 import { resolveAndProp, resolveEqProp, resolveNeProp, resolveNotProp, resolveOrProp } from './comparisons';
+import { resolveConcatProp } from './concat';
 import { resolveIfProp } from './conditional';
-import { resolveExpressionProp } from './expression';
 import { resolveMapProp } from './map';
 import { resolvePickProp } from './pick';
 import { resolveStoreProp } from './store';
@@ -21,7 +21,7 @@ function hasAnyToken(value: unknown): boolean {
  * Resolve any prop based on its token type, with recursive resolution for nested structures
  * @param value - The value to resolve
  * @param stores - Store objects for $store tokens
- * @param context - Context for $expr tokens
+ * @param context - Context for $item.* context references
  * @param memo - Memoization function (framework-specific)
  * @param depth - Current recursion depth (for safety limit)
  */
@@ -35,8 +35,9 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
   // Handle token objects (objects with $ keys)
   if (hasAnyToken(value)) {
     if (hasToken(value, '$store', 'string')) return resolveStoreProp(value, stores, memo);
-    if (hasToken(value, '$expr', 'string')) return resolveExpressionProp(value, context);
     if (hasToken(value, '$action', 'string')) return resolveActionProp(value, context, stores, memo, resolveProp);
+    if (hasToken(value, '$concat', 'array'))
+      return resolveConcatProp((value as { $concat: unknown[] })['$concat'], stores, context, memo, resolveProp);
     if (hasToken(value, '$map', 'object'))
       return resolveMapProp(value['$map'] as MapProp, stores, context, memo, resolveProp);
     if (hasToken(value, '$pick', 'object'))
@@ -64,6 +65,19 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
   }
 
   // Primitives, functions, null, undefined - return as-is
+  // Resolve $<contextKey> and $<contextKey>.<path> strings against context
+  // e.g. "$item.name" → context.item.name, "$team.id" → context.team.id, "$item" → context.item
+  if (typeof value === 'string' && value.startsWith('$') && value.length > 1) {
+    const dotIndex = value.indexOf('.');
+    const contextKey = dotIndex > 1 ? value.slice(1, dotIndex) : value.slice(1);
+    if (contextKey in context) {
+      if (dotIndex === -1) return context[contextKey];
+      const path = value.slice(dotIndex + 1).split('.');
+      let current: unknown = context[contextKey];
+      for (const p of path) current = (current as Record<string, unknown>)?.[p];
+      return current;
+    }
+  }
   return value;
 }
 

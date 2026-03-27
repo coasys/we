@@ -252,9 +252,9 @@ const mapStoreArray: SchemaPromptExample = {
             children: ['Home'],
           },
           {
-            type: '$forEach',
+            type: '$each',
             props: { items: { $store: 'adamStore.mySpaces' }, as: 'space' },
-            children: [{ type: 'we-text', props: { text: { $expr: 'space.name' } } }],
+            children: [{ type: 'we-text', props: { text: '$space.name' } }],
           },
         ],
       },

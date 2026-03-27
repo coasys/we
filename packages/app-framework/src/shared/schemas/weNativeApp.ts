@@ -152,12 +152,19 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
               $map: {
                 items: { $store: 'adamStore.mySpaces' },
                 select: {
-                  id: { $expr: 'item.url || item.uuid' },
+                  id: { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
                   label: '$item.name',
                   avatar: { src: '$item.thumbnail', name: '$item.name' },
                   onClick: {
                     $action: 'adamStore.navigate',
-                    args: [{ $expr: "'/space/' + (item.url || item.uuid)" }],
+                    args: [
+                      {
+                        $concat: [
+                          '/space/',
+                          { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
+                        ],
+                      },
+                    ],
                   },
                 },
               },

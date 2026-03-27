@@ -57,7 +57,7 @@ export type RendererOutput<NodeType = unknown> = NodeType | null;
 // Opt-in types for schema authors. SchemaProp remains `Record<string, unknown>` for Zod compatibility.
 
 export type StoreToken = { $store: string };
-export type ExprToken = { $expr: string };
+export type ConcatToken = { $concat: unknown[] };
 export type ActionToken = { $action: string; args?: unknown[] };
 export type IfToken = { $if: { condition: unknown; then: unknown; else?: unknown } };
 export type MapToken = { $map: { items: unknown; select: Record<string, unknown> } };
@@ -71,7 +71,7 @@ export type OrToken = { $or: unknown[] };
 /** Union of all prop-level operator tokens */
 export type OperatorToken =
   | StoreToken
-  | ExprToken
+  | ConcatToken
   | ActionToken
   | IfToken
   | MapToken
