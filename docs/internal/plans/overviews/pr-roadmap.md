@@ -282,7 +282,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | --- | ------------------------------ | ----- | ---------------- | ------ | ---- |
 | 1   | Button Variants ✅             | A     | —                | Small  | Low  |
 | 1b  | Primitive Pattern Alignment ✅ | A     | 1                | Small  | Low  |
-| 1c  | Token Type Consolidation  ✅   | A     | 1b               | S–Med  | Low  |
+| 1c  | Token Type Consolidation ✅    | A     | 1b               | S–Med  | Low  |
 | 2   | Deep Unwrap Props ✅           | A     | —                | Small  | Low  |
 | 2b  | Fine-Grained Reactivity ✅     | A     | 2                | Medium | Med  |
 | 2c  | Web Component Prop Unify ✅    | A     | 2b               | Small  | Low  |

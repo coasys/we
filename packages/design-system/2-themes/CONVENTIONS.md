@@ -7,6 +7,7 @@ Rules and patterns for adding or modifying visual themes in `@we/themes`.
 A theme is a **CSS stylesheet** that overrides design tokens and applies visual effects (clip-paths, animations, box-shadows, etc.) to primitives via `::part()` selectors. Themes are activated by the `data-we-theme` attribute on a DOM element — all descendants inherit the theme.
 
 Themes can be applied at any level:
+
 - **Root level** — `<html data-we-theme="dark">` for app-wide theming.
 - **Scoped level** — on any descendant element via the schema system's `theme.themeName` property, enabling different themes on different parts of the UI simultaneously.
 
@@ -61,19 +62,19 @@ Every theme **must** declare the full set of color system input variables. This 
 ```css
 [data-we-theme='my-theme'] {
   /* ── Required color system variables ── */
-  --we-color-multiplier: 1;       /* 1 = light mode, -1 = dark mode */
-  --we-color-subtractor: 0%;      /* 0% = light mode, 100%+ = dark mode */
-  --we-color-saturation: 60%;     /* Main color family saturation */
-  --we-color-ui-saturation: 10%;  /* UI/neutral color saturation */
+  --we-color-multiplier: 1; /* 1 = light mode, -1 = dark mode */
+  --we-color-subtractor: 0%; /* 0% = light mode, 100%+ = dark mode */
+  --we-color-saturation: 60%; /* Main color family saturation */
+  --we-color-ui-saturation: 10%; /* UI/neutral color saturation */
 }
 ```
 
-| Variable                    | Light-mode default | Dark-mode default | Purpose                         |
-| --------------------------- | ------------------ | ----------------- | ------------------------------- |
-| `--we-color-multiplier`     | `1`                | `-1`              | Inverts lightness scale         |
-| `--we-color-subtractor`     | `0%`               | `100%`–`110%`     | Shifts lightness baseline       |
-| `--we-color-saturation`     | `60%`              | `50%`             | Saturation for primary/success/warning/danger |
-| `--we-color-ui-saturation`  | `10%`              | `20%`             | Saturation for neutral/ui greys |
+| Variable                   | Light-mode default | Dark-mode default | Purpose                                       |
+| -------------------------- | ------------------ | ----------------- | --------------------------------------------- |
+| `--we-color-multiplier`    | `1`                | `-1`              | Inverts lightness scale                       |
+| `--we-color-subtractor`    | `0%`               | `100%`–`110%`     | Shifts lightness baseline                     |
+| `--we-color-saturation`    | `60%`              | `50%`             | Saturation for primary/success/warning/danger |
+| `--we-color-ui-saturation` | `10%`              | `20%`             | Saturation for neutral/ui greys               |
 
 Without these, a scoped theme inherits whatever the parent context has set — e.g. a light retro theme inside a dark app would show dark colors.
 
@@ -82,7 +83,7 @@ Without these, a scoped theme inherits whatever the parent context has set — e
 These are inherited from `:root` if not set, which is usually fine:
 
 ```css
---we-color-primary-hue: 270;    /* Override the primary hue */
+--we-color-primary-hue: 270; /* Override the primary hue */
 /* success, warning, danger hues are rarely overridden by themes */
 ```
 

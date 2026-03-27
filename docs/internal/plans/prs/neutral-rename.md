@@ -9,6 +9,7 @@
 The `ui` color family is the low-saturation scale used for surfaces, backgrounds, borders, and text. The name "ui" is ambiguous — every color in the system is used in UI. Industry convention is `neutral` or `gray` (Tailwind, Radix, Shadcn, Open Props all use these terms).
 
 Renaming now is cheap:
+
 - No published API consumers — `ThemeOverrides`, `@we/tokens`, and `@we/design-system` are all internal.
 - The `color-ui` tokens were just wired into the schema-theme system (PR #3) but haven't shipped.
 - A clean rename avoids carrying a confusing name into every future template, component, and theme file.
@@ -19,19 +20,19 @@ Renaming now is cheap:
 
 ### What changes
 
-| Layer | Old | New |
-|---|---|---|
-| CSS custom properties | `--we-color-ui-*` | `--we-color-neutral-*` |
-| CSS config variables | `--we-color-ui-hue`, `--we-color-ui-saturation` | `--we-color-neutral-hue`, `--we-color-neutral-saturation` |
-| JS token type | `ColorHueToken: 'ui'` | `ColorHueToken: 'neutral'` |
-| JS token object | `color.hues.ui` | `color.hues.neutral` |
-| JS config | `color.config.uiSaturation` | `color.config.neutralSaturation` |
-| ThemeOverrides fields | `uiHue`, `uiSaturation` | `neutralHue`, `neutralSaturation` |
-| Zod schema | `zThemeOverrides.uiHue`, `.uiSaturation` | `.neutralHue`, `.neutralSaturation` |
-| themeStyles.ts | `THEME_CSS_MAP.uiHue`, `FAMILY_SAT_VAR.ui` | `THEME_CSS_MAP.neutralHue`, `FAMILY_SAT_VAR.neutral` |
-| CSS generation script | `ui` family references | `neutral` family references |
-| Theme CSS files | `--we-color-ui-*` overrides | `--we-color-neutral-*` overrides |
-| Component CSS | `var(--we-color-ui-*)` references | `var(--we-color-neutral-*)` references |
+| Layer                 | Old                                             | New                                                       |
+| --------------------- | ----------------------------------------------- | --------------------------------------------------------- |
+| CSS custom properties | `--we-color-ui-*`                               | `--we-color-neutral-*`                                    |
+| CSS config variables  | `--we-color-ui-hue`, `--we-color-ui-saturation` | `--we-color-neutral-hue`, `--we-color-neutral-saturation` |
+| JS token type         | `ColorHueToken: 'ui'`                           | `ColorHueToken: 'neutral'`                                |
+| JS token object       | `color.hues.ui`                                 | `color.hues.neutral`                                      |
+| JS config             | `color.config.uiSaturation`                     | `color.config.neutralSaturation`                          |
+| ThemeOverrides fields | `uiHue`, `uiSaturation`                         | `neutralHue`, `neutralSaturation`                         |
+| Zod schema            | `zThemeOverrides.uiHue`, `.uiSaturation`        | `.neutralHue`, `.neutralSaturation`                       |
+| themeStyles.ts        | `THEME_CSS_MAP.uiHue`, `FAMILY_SAT_VAR.ui`      | `THEME_CSS_MAP.neutralHue`, `FAMILY_SAT_VAR.neutral`      |
+| CSS generation script | `ui` family references                          | `neutral` family references                               |
+| Theme CSS files       | `--we-color-ui-*` overrides                     | `--we-color-neutral-*` overrides                          |
+| Component CSS         | `var(--we-color-ui-*)` references               | `var(--we-color-neutral-*)` references                    |
 
 ### What does NOT change
 
@@ -79,6 +80,7 @@ Update all 5 theme files (light, dark, black, retro, cyberpunk) — find/replace
 **Packages:** `@we/design-system` primitives, any component using `var(--we-color-ui-*)`
 
 Global find/replace across all `.css` and `.ts` files in the design-system and component packages:
+
 - `--we-color-ui-` → `--we-color-neutral-`
 - `color-ui-hue` → `color-neutral-hue`
 - `color-ui-saturation` → `color-neutral-saturation`
