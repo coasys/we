@@ -116,24 +116,3 @@ export interface DesignSystemProps {
   focusProps?: Partial<DesignSystemProps>;
   disabledProps?: Partial<DesignSystemProps>;
 }
-
-/** camelCase DesignSystemProps keys that must be set as properties (not attributes) on web components */
-export const DESIGN_SYSTEM_CAMEL_CASE_PROPS: ReadonlySet<string> = new Set([
-  'textAlign',
-  'fontWeight',
-  'fontSize',
-  'lineHeight',
-  'letterSpacing',
-  'textDecoration',
-  'textTransform',
-  'pointerEvents',
-  'minWidth',
-  'minHeight',
-  'maxWidth',
-  'maxHeight',
-  'zIndex',
-  'hoverProps',
-  'activeProps',
-  'focusProps',
-  'disabledProps',
-]);

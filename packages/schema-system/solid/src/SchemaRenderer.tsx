@@ -1,4 +1,3 @@
-import { DESIGN_SYSTEM_CAMEL_CASE_PROPS } from '@we/design-types';
 import { REACTIVE_ACCESSOR, resolveProp } from '@we/schema-shared';
 import { batch, createEffect, createMemo, For, JSX } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
@@ -44,12 +43,6 @@ function isStaticValue(value: unknown): boolean {
   if (typeof value !== 'object') return true;
   if (Array.isArray(value)) return value.every(isStaticValue);
   return !Object.keys(value).some((k) => k.startsWith('$')) && Object.values(value).every(isStaticValue);
-}
-
-/** Check if a resolved value is complex (object/array), requiring property-based setting for web components. */
-function isComplexValue(value: unknown): boolean {
-  if (value === null || value === undefined) return false;
-  return typeof value === 'object';
 }
 
 export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
@@ -112,10 +105,13 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     );
   }
 
-  // Resolve component: registry entry > native HTML element (lowercase) > error
-  // Convention: PascalCase = registry component, we-* = web component, lowercase = HTML element
+  // Resolve component: registry entry > native HTML/custom element > error
+  // Convention: PascalCase = registry component, hyphenated = web component, lowercase = HTML element
   const isHtmlElement = /^[a-z][a-z0-9]*$/.test(node.type ?? '');
-  const component = createMemo(() => registry[node.type ?? ''] ?? (isHtmlElement ? node.type : undefined));
+  const isWebComponent = node.type?.includes('-') ?? false;
+  const component = createMemo(
+    () => registry[node.type ?? ''] ?? (isHtmlElement || isWebComponent ? node.type : undefined),
+  );
   if (!component()) throw new Error(`Schema node has unknown type "${node.type}".`);
 
   // Prepare the slot elements in a reactive store
@@ -152,11 +148,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   });
 
   // --- Per-prop resolution (fine-grained reactivity) ---
-  let hostRef: (HTMLElement & Record<string, unknown>) | undefined;
-  const isWebComponent = node.type?.startsWith('we-');
-  const needsPropertyHandling = isWebComponent;
-
-  // Phase 1: Create per-prop memos — each prop resolves independently,
+  // Create per-prop memos — each prop resolves independently,
   // isolating its reactive dependencies. Static props bypass resolution entirely.
   // resolveProp is called INSIDE the memo so that plain-value resolvers
   // ($not, $eq, $ne, $and, $or) correctly track signal dependencies.
@@ -182,35 +174,49 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     }
   }
 
-  // Phase 2: Web component per-prop effects (property-based setting for complex values and camelCase props)
-  const webComponentPropertyKeys = new Set<string>();
-  if (needsPropertyHandling) {
+  const slotProp = node.slot ? { slot: node.slot } : {};
+
+  // Render: web components use per-prop property effects, Solid/HTML use reactive spread
+  if (isWebComponent) {
+    // All props delivered via per-prop effects (DOM property assignment).
+    // Event handlers stay in the JSX spread so Solid's event delegation works correctly.
+    let hostRef: (HTMLElement & Record<string, unknown>) | undefined;
+
     for (const [key, memo] of Object.entries(propMemos)) {
-      const initialValue = memo();
-      if (isComplexValue(initialValue) || DESIGN_SYSTEM_CAMEL_CASE_PROPS.has(key)) {
-        webComponentPropertyKeys.add(key);
-        createEffect(() => {
-          if (hostRef) hostRef[key] = memo();
-        });
-      }
+      if (key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase()) continue;
+      createEffect(() => {
+        if (hostRef) hostRef[key] = memo();
+      });
     }
+
+    const eventAttrs = createMemo(() => {
+      const attrs: Record<string, unknown> = {};
+      for (const [key, memo] of Object.entries(propMemos)) {
+        if (key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase()) {
+          attrs[key] = memo();
+        }
+      }
+      return attrs;
+    });
+
+    return (
+      <Dynamic ref={hostRef} component={component()} {...eventAttrs()} {...slotProp} {...slotElements}>
+        {renderChildren(node.children)}
+      </Dynamic>
+    );
   }
 
-  // Phase 3: Build reactive attrs — each propMemo call only triggers if that prop's deps changed
+  // Solid components / HTML elements: all props via reactive spread (standard Solid pattern)
   const reactiveAttrs = createMemo(() => {
     const attrs: Record<string, unknown> = {};
     for (const [key, memo] of Object.entries(propMemos)) {
-      if (webComponentPropertyKeys.has(key)) continue;
       attrs[key] = memo();
     }
     return attrs;
   });
 
-  const slotProp = node.slot ? { slot: node.slot } : {};
-
-  // Return the component with merged props, slots, and children
   return (
-    <Dynamic ref={hostRef} component={component()} {...reactiveAttrs()} {...slotProp} {...slotElements}>
+    <Dynamic component={component()} {...reactiveAttrs()} {...slotProp} {...slotElements}>
       {renderChildren(node.children)}
     </Dynamic>
   );
