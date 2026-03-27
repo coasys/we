@@ -17,12 +17,12 @@ export const borderWidth = '1px';
 
 /**
  * Border color definitions.
- * These colors reference UI color tokens and are used for borders in different contexts.
+ * These colors reference neutral color tokens and are used for borders in different contexts.
  * The integration with the color system ensures borders adapt to theme changes.
  */
 export const borderColor = {
-  base: color.ui['100'], // Light border - subtle boundaries
-  strong: color.ui['200'], // Strong border - more visible boundaries
+  base: color.neutral['100'], // Light border - subtle boundaries
+  strong: color.neutral['200'], // Strong border - more visible boundaries
 } satisfies Record<BorderColorToken, string>;
 
 /**

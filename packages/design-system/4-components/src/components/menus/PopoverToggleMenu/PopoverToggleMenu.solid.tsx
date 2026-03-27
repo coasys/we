@@ -134,8 +134,8 @@ export function PopoverToggleMenu(props: PopoverToggleMenuProps) {
             onClick={() => !group.disabled && toggleGroup(group.id)}
             opacity={group.disabled ? 0.5 : 1}
             cursor={group.disabled ? 'not-allowed' : 'pointer'}
-            color="ui-400"
-            prop:hoverProps={{ color: 'ui-500' }}
+            color="neutral-400"
+            prop:hoverProps={{ color: 'neutral-500' }}
           >
             <we-icon name={collapsed() ? 'caret-right' : 'caret-down'} size="xs" />
             <we-text>{group.label}</we-text>
@@ -144,7 +144,7 @@ export function PopoverToggleMenu(props: PopoverToggleMenuProps) {
 
         {/* Non-collapsible header */}
         <Show when={group.collapsible === false}>
-          <we-menu-item color="ui-500" cursor="default" pointerEvents="none">
+          <we-menu-item color="neutral-500" cursor="default" pointerEvents="none">
             <we-text>{group.label}</we-text>
           </we-menu-item>
         </Show>
@@ -175,7 +175,7 @@ export function PopoverToggleMenu(props: PopoverToggleMenuProps) {
       placement={props.placement || 'bottom'}
       data-we-menu
     >
-      <we-button slot="trigger" bg="ui-200" color="ui-800">
+      <we-button slot="trigger" bg="neutral-200" color="neutral-800">
         <Show when={props.triggerIcon}>
           <we-icon name={props.triggerIcon!} />
         </Show>

@@ -17,7 +17,7 @@ const styles = css`
     --we-avatar-box-shadow: none;
     --we-avatar-border: none;
     --we-avatar-color: var(--we-color-black);
-    --we-avatar-bg: var(--we-color-ui-100);
+    --we-avatar-bg: var(--we-color-neutral-100);
     flex-shrink: 0;
   }
   :host([src]) {

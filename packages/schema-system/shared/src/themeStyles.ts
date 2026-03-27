@@ -12,9 +12,9 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   successHue: '--we-color-success-hue',
   warningHue: '--we-color-warning-hue',
   dangerHue: '--we-color-danger-hue',
-  uiHue: '--we-color-ui-hue',
+  neutralHue: '--we-color-neutral-hue',
   saturation: '--we-color-saturation',
-  uiSaturation: '--we-color-ui-saturation',
+  neutralSaturation: '--we-color-neutral-saturation',
   multiplier: '--we-color-multiplier',
   subtractor: '--we-color-subtractor',
   fontFamily: '--we-font-family',
@@ -26,7 +26,7 @@ const FAMILY_SAT_VAR: Record<ColorHueToken, string> = {
   success: '--we-color-saturation',
   warning: '--we-color-saturation',
   danger: '--we-color-saturation',
-  ui: '--we-color-ui-saturation',
+  neutral: '--we-color-neutral-saturation',
 };
 
 const LIGHTNESS_STEPS = Object.keys(color.lightness) as ColorLightnessToken[];
@@ -56,9 +56,9 @@ export function themeToStyle(theme: ThemeOverrides): Record<string, string> {
     if (value !== undefined) style[cssVar] = String(value);
   }
 
-  // 2. Re-declare ui-hue linkage when primaryHue is explicitly overridden
-  if (theme.primaryHue !== undefined && theme.uiHue === undefined) {
-    style['--we-color-ui-hue'] = 'var(--we-color-primary-hue)';
+  // 2. Re-declare neutral-hue linkage when primaryHue is explicitly overridden
+  if (theme.primaryHue !== undefined && theme.neutralHue === undefined) {
+    style['--we-color-neutral-hue'] = 'var(--we-color-primary-hue)';
   }
 
   // 3. Re-declare lightness scale
@@ -78,12 +78,12 @@ export function themeToStyle(theme: ThemeOverrides): Record<string, string> {
   // the theme's values here).
   const affectsAllSatFamilies = hasNamedTheme || theme.saturation !== undefined || affectsLightness;
   for (const family of COLOR_FAMILIES) {
-    const hueKey = family === 'ui' ? 'uiHue' : (`${family}Hue` as ParametricKey);
+    const hueKey = family === 'neutral' ? 'neutralHue' : (`${family}Hue` as ParametricKey);
     const familyAffected =
       hasNamedTheme ||
       theme[hueKey] !== undefined ||
-      (family === 'ui'
-        ? theme.primaryHue !== undefined || theme.uiSaturation !== undefined || affectsLightness
+      (family === 'neutral'
+        ? theme.primaryHue !== undefined || theme.neutralSaturation !== undefined || affectsLightness
         : affectsAllSatFamilies);
     if (!familyAffected) continue;
 

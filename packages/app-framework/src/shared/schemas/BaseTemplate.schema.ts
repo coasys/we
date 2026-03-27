@@ -9,7 +9,7 @@ export const aiSampleTemplateSchema: TemplateSchema = {
       children: [
         {
           type: 'we-button',
-          props: { onClick: { $action: 'routeStore.navigate', args: ['/'] }, hoverProps: { bg: 'ui-200' } },
+          props: { onClick: { $action: 'routeStore.navigate', args: ['/'] }, hoverProps: { bg: 'neutral-200' } },
           children: ['Home'],
         },
       ],
@@ -23,15 +23,15 @@ export const aiSampleTemplateSchema: TemplateSchema = {
 // export const aiSampleTemplateSchema: TemplateSchema = {
 //   meta: { name: 'Base', description: '', icon: '' },
 //   type: 'Row',
-//   props: { bg: 'ui-50', width: '100%', height: '100%' },
+//   props: { bg: 'neutral-50', width: '100%', height: '100%' },
 //   children: [
 //     {
 //       type: 'Row',
-//       // props: { bg: 'ui-500', width: '100%' }, // button full height (normal width)
-//       // props: { bg: 'ui-500', height: '100%' }, // button full height (normal width)
+//       // props: { bg: 'neutral-500', width: '100%' }, // button full height (normal width)
+//       // props: { bg: 'neutral-500', height: '100%' }, // button full height (normal width)
 //       // type: 'Column',
-//       // props: { bg: 'ui-500', width: '100%' }, // button full width (normal height)
-//       // props: { bg: 'ui-500', height: '100%' }, // button normal width/height
+//       // props: { bg: 'neutral-500', width: '100%' }, // button full width (normal height)
+//       // props: { bg: 'neutral-500', height: '100%' }, // button normal width/height
 //       children: [
 //         {
 //           type: 'we-button',
@@ -46,15 +46,15 @@ export const aiSampleTemplateSchema: TemplateSchema = {
 // export const aiSampleTemplateSchema: TemplateSchema = {
 //   meta: { name: 'Base', description: '', icon: '' },
 //   type: 'Column',
-//   props: { bg: 'ui-50', width: '100%', height: '100%' },
+//   props: { bg: 'neutral-50', width: '100%', height: '100%' },
 //   children: [
 //     {
 //       // type: 'Row',
-//       // props: { bg: 'ui-500', width: '100%' }, // button normal width/height
-//       // props: { bg: 'ui-500', height: '100%' }, // button full height (normal width)
+//       // props: { bg: 'neutral-500', width: '100%' }, // button normal width/height
+//       // props: { bg: 'neutral-500', height: '100%' }, // button full height (normal width)
 //       type: 'Column',
-//       // props: { bg: 'ui-500', width: '100%' }, // button full width (normal height)
-//       props: { bg: 'ui-500', height: '100%' }, // button full width (normal height)
+//       // props: { bg: 'neutral-500', width: '100%' }, // button full width (normal height)
+//       props: { bg: 'neutral-500', height: '100%' }, // button full width (normal height)
 //       children: [
 //         {
 //           type: 'we-button',

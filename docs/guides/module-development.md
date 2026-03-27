@@ -324,7 +324,7 @@ export function GovernancePanel(props: GovernancePanelProps) {
 
       {/* Create form */}
       <Show when={showForm()}>
-        <Column gap="400" bg="ui-100" r="400" p="600">
+        <Column gap="400" bg="neutral-100" r="400" p="600">
           <we-text fontSize="lg" fontWeight="bold">Create Proposal</we-text>
 
           <we-input
@@ -345,7 +345,7 @@ export function GovernancePanel(props: GovernancePanelProps) {
             <we-button bg="primary-500" color="white" onClick={handleSubmit}>
               Create
             </we-button>
-            <we-button bg="ui-200" onClick={() => setShowForm(false)}>
+            <we-button bg="neutral-200" onClick={() => setShowForm(false)}>
               Cancel
             </we-button>
           </Row>
@@ -364,7 +364,7 @@ export function GovernancePanel(props: GovernancePanelProps) {
         </For>
 
         <Show when={props.proposals.length === 0}>
-          <we-text color="ui-600">No proposals yet</we-text>
+          <we-text color="neutral-600">No proposals yet</we-text>
         </Show>
       </Column>
     </Column>

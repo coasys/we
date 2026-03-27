@@ -2,7 +2,7 @@
   --we-color-saturation: 50%;
   --we-color-subtractor: 108%;
   --we-color-multiplier: -1;
-  --we-color-ui-saturation: 20%;
+  --we-color-neutral-saturation: 20%;
   --we-color-primary-50: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-50));
 }
 
@@ -11,7 +11,7 @@
 }
 
 [data-we-theme='dark'] we-tooltip::part(tooltip) {
-  background: var(--we-color-ui-50);
+  background: var(--we-color-neutral-50);
   color: var(--we-color-black);
 }
 

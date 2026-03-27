@@ -29,14 +29,14 @@ export default function AiInterface() {
     <Row ax="center" gap="400" styles={{ width: '100%', position: 'absolute', bottom: '40px' }}>
       <Column styles={{ width: '100%', 'max-width': '900px' }}>
         {aiResponse() && (
-          <Row ay="center" gap="400" bg="ui-50" p="400" r="sm" mb="400">
-            <we-icon name="robot" color="ui-600" size="lg" weight="duotone" />
-            <we-text fontSize="500" color="ui-600" tag="i">
+          <Row ay="center" gap="400" bg="neutral-50" p="400" r="sm" mb="400">
+            <we-icon name="robot" color="neutral-600" size="lg" weight="duotone" />
+            <we-text fontSize="500" color="neutral-600" tag="i">
               {aiResponse()}
             </we-text>
           </Row>
         )}
-        <Row ay="center" gap="400" bg="ui-200" p="400" r="sm">
+        <Row ay="center" gap="400" bg="neutral-200" p="400" r="sm">
           <we-input
             placeholder="Prompt AI with your schema request..."
             size="lg"
@@ -51,8 +51,8 @@ export default function AiInterface() {
             px="400"
             py="300"
             r="pill"
-            color="ui-1000"
-            hoverProps={{ bg: 'ui-50' }}
+            color="neutral-1000"
+            hoverProps={{ bg: 'neutral-50' }}
             onClick={promptAI}
             loading={loading()}
             disabled={loading() || userInput().trim() === ''}

@@ -118,7 +118,7 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
   const expandOnHover = () => props.expandOnHover ?? true;
   const iconSize = () => props.iconSize ?? '';
   const badgeBg = () => props.badgeBg ?? 'primary-500';
-  const badgeColor = () => props.badgeColor ?? 'ui-0';
+  const badgeColor = () => props.badgeColor ?? 'neutral-0';
   const padding = () => tokenVar('space', props.padding ?? '300');
   const itemPadding = () => tokenVar('space', props.itemPadding ?? '300');
   const itemGap = () => tokenVar('space', props.itemGap ?? '300');
@@ -136,7 +136,7 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
   const footerItems = () => props.footerItems;
 
   // Convert tokens to CSS variables (only for sidebar container, not button)
-  const bg = () => tokenVar('color', props.bg ?? 'ui-0');
+  const bg = () => tokenVar('color', props.bg ?? 'neutral-0');
   const border = () => parseBorder(props.border, '1px solid ui-200');
 
   // State
@@ -229,13 +229,13 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
         ax="start"
         direction={side() === 'left' ? 'row' : 'row-reverse'}
         gap="0" // Gap handled in CSS to avoid shifting on collapse
-        bg={isActive() ? (props.itemBgActive ?? 'ui-100') : (props.itemBg ?? '')}
-        color={isActive() ? (props.itemColorActive ?? 'primary-600') : (props.itemColor ?? 'ui-700')}
+        bg={isActive() ? (props.itemBgActive ?? 'neutral-100') : (props.itemBg ?? '')}
+        color={isActive() ? (props.itemColorActive ?? 'primary-600') : (props.itemColor ?? 'neutral-700')}
         prop:hoverProps={{
-          bg: isActive() ? (props.itemBgActive ?? 'ui-100') : (props.itemBgHover ?? 'ui-50'),
+          bg: isActive() ? (props.itemBgActive ?? 'neutral-100') : (props.itemBgHover ?? 'neutral-50'),
           color: isActive()
             ? (props.itemColorActive ?? 'primary-600')
-            : (props.itemColorHover ?? props.itemColor ?? 'ui-900'),
+            : (props.itemColorHover ?? props.itemColor ?? 'neutral-900'),
           opacity: isActive() ? 0.9 : undefined,
         }}
       >
@@ -291,12 +291,12 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
             class="we-collapsible-sidebar__group-label"
             fontSize="300"
             fontWeight="600"
-            color={group.collapsible !== false ? 'ui-400' : 'ui-500'}
+            color={group.collapsible !== false ? 'neutral-400' : 'neutral-500'}
           >
             {group.label}
           </we-text>
           <Show when={group.badge}>
-            <we-badge class="we-collapsible-sidebar__group-badge" size="sm" bg="ui-200" color="ui-600">
+            <we-badge class="we-collapsible-sidebar__group-badge" size="sm" bg="neutral-200" color="neutral-600">
               {group.badge}
             </we-badge>
           </Show>
@@ -305,7 +305,7 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
               class="we-collapsible-sidebar__group-icon"
               name={collapsed() ? 'caret-right' : 'caret-down'}
               size="xs"
-              color="ui-400"
+              color="neutral-400"
             />
           </Show>
         </Dynamic>

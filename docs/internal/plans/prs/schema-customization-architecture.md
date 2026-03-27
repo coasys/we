@@ -105,7 +105,7 @@ The `layout` section is the only one that references other sections. It uses a n
       { "$section": "navigation:left" },
       {
         "type": "Column",
-        "props": { "zIndex": 1, "width": "100%", "height": "100%", "bg": "ui-50", "px": "66px" },
+        "props": { "zIndex": 1, "width": "100%", "height": "100%", "bg": "neutral-50", "px": "66px" },
         "children": [{ "type": "$routes" }]
       },
       { "$section": "navigation:right" }
@@ -479,7 +479,7 @@ A special `theme` section type stores design token overrides separately from str
   "schemaJson": {
     "colorOverrides": {
       "primary-500": "#8b5cf6",
-      "ui-50": "#1a1a2e"
+      "neutral-50": "#1a1a2e"
     },
     "fontOverrides": {
       "heading": "Inter",

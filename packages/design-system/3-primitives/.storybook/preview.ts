@@ -43,7 +43,7 @@ const preview = {
       // apply global theme when changed in toolbar
       const selectedTheme = context.globals.theme || 'light';
       document.documentElement.className = selectedTheme;
-      document.body.style.backgroundColor = 'var(--we-color-ui-100)';
+      document.body.style.backgroundColor = 'var(--we-color-neutral-100)';
 
       return Story();
     },

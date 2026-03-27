@@ -65,16 +65,16 @@ Every theme **must** declare the full set of color system input variables. This 
   --we-color-multiplier: 1; /* 1 = light mode, -1 = dark mode */
   --we-color-subtractor: 0%; /* 0% = light mode, 100%+ = dark mode */
   --we-color-saturation: 60%; /* Main color family saturation */
-  --we-color-ui-saturation: 10%; /* UI/neutral color saturation */
+  --we-color-neutral-saturation: 10%; /* Neutral color saturation */
 }
 ```
 
-| Variable                   | Light-mode default | Dark-mode default | Purpose                                       |
-| -------------------------- | ------------------ | ----------------- | --------------------------------------------- |
-| `--we-color-multiplier`    | `1`                | `-1`              | Inverts lightness scale                       |
-| `--we-color-subtractor`    | `0%`               | `100%`–`110%`     | Shifts lightness baseline                     |
-| `--we-color-saturation`    | `60%`              | `50%`             | Saturation for primary/success/warning/danger |
-| `--we-color-ui-saturation` | `10%`              | `20%`             | Saturation for neutral/ui greys               |
+| Variable                        | Light-mode default | Dark-mode default | Purpose                                       |
+| ------------------------------- | ------------------ | ----------------- | --------------------------------------------- |
+| `--we-color-multiplier`         | `1`                | `-1`              | Inverts lightness scale                       |
+| `--we-color-subtractor`         | `0%`               | `100%`–`110%`     | Shifts lightness baseline                     |
+| `--we-color-saturation`         | `60%`              | `50%`             | Saturation for primary/success/warning/danger |
+| `--we-color-neutral-saturation` | `10%`              | `20%`             | Saturation for neutral greys                  |
 
 Without these, a scoped theme inherits whatever the parent context has set — e.g. a light retro theme inside a dark app would show dark colors.
 
@@ -121,7 +121,7 @@ Token overrides on the `[data-we-theme]` selector:
   --we-color-multiplier: -1;
   --we-color-subtractor: 110%;
   --we-color-saturation: 60%;
-  --we-color-ui-saturation: 10%;
+  --we-color-neutral-saturation: 10%;
 
   /* Optional overrides */
   --we-color-primary-hue: 180;
@@ -155,7 +155,7 @@ When referencing colors in component overrides, use CSS custom properties rather
 ```css
 /* ✅ Correct — adapts to primaryHue overrides */
 border-color: var(--we-color-primary-200);
-background: var(--we-color-ui-50);
+background: var(--we-color-neutral-50);
 
 /* ❌ Avoid — hardcoded colors don't respond to overrides */
 border-color: #00ffcc;

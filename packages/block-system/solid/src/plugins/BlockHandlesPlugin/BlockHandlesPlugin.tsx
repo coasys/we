@@ -130,10 +130,10 @@ function BlockHandle({ nodeKey, nodeData }: { nodeKey: string; nodeData: NodeDat
         }}
       >
         <button class="we-block-handle-settings-button" onClick={() => setShowMenu(true)}>
-          <we-icon name="cube" size="sm" color="ui-600" />
+          <we-icon name="cube" size="sm" color="neutral-600" />
         </button>
         <div class="we-block-handle-dragger" draggable={true} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-          <we-icon name="dots-six-vertical" weight="bold" size="sm" color="ui-600" />
+          <we-icon name="dots-six-vertical" weight="bold" size="sm" color="neutral-600" />
         </div>
       </div>
 

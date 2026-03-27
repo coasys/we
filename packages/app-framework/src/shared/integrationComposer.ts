@@ -161,7 +161,7 @@ function generateMultiAppLauncher(seed: WeSeedFile, platformAdapter: PlatformAda
         type: 'Column',
         props: {
           width: '100px',
-          bg: 'ui-0',
+          bg: 'neutral-0',
           p: '15px',
           gap: '10px',
         },
@@ -172,7 +172,7 @@ function generateMultiAppLauncher(seed: WeSeedFile, platformAdapter: PlatformAda
             height: '70px',
             r: 'full',
             onClick: { $action: 'routeStore.navigate', args: [app.route] },
-            hoverProps: { bg: 'ui-200' },
+            hoverProps: { bg: 'neutral-200' },
           },
           children: [app.name],
         })),
@@ -180,7 +180,7 @@ function generateMultiAppLauncher(seed: WeSeedFile, platformAdapter: PlatformAda
       // Content area with routes
       {
         type: 'Column',
-        props: { width: '100%', bg: 'ui-50' },
+        props: { width: '100%', bg: 'neutral-50' },
         children: [{ type: '$routes' }],
       },
     ],

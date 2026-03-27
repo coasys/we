@@ -19,9 +19,9 @@ export type ThemeOverrides = {
   successHue?: number; // --we-color-success-hue
   warningHue?: number; // --we-color-warning-hue
   dangerHue?: number; // --we-color-danger-hue
-  uiHue?: number; // --we-color-ui-hue
+  neutralHue?: number; // --we-color-neutral-hue
   saturation?: string; // --we-color-saturation  (e.g. "50%")
-  uiSaturation?: string; // --we-color-ui-saturation
+  neutralSaturation?: string; // --we-color-neutral-saturation
   multiplier?: number; // --we-color-multiplier
   subtractor?: string; // --we-color-subtractor  (e.g. "108%")
   fontFamily?: string; // --we-font-family

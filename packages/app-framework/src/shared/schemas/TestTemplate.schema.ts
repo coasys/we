@@ -7,7 +7,7 @@ import { deepClone } from '../utils';
 // Schema fragments
 const testButtons = {
   type: 'Row',
-  props: { bg: 'ui-200', ay: 'center', gap: '400', p: '400' },
+  props: { bg: 'neutral-200', ay: 'center', gap: '400', p: '400' },
   children: [
     { type: 'we-text', props: { fontSize: '600' }, children: ['Testing buttons'] },
     // {
@@ -80,7 +80,7 @@ const testButtons = {
 
 const templateSidebar = {
   type: 'Column',
-  props: { bg: 'ui-0', p: '500', ay: 'between' },
+  props: { bg: 'neutral-0', p: '500', ay: 'between' },
   children: [
     {
       type: 'Column',
@@ -237,7 +237,7 @@ const spacePageSidebar = {
 
 const spacePageHeader = {
   type: 'Row',
-  props: { bg: 'ui-100', p: '400', gap: '400', ay: 'center' },
+  props: { bg: 'neutral-100', p: '400', gap: '400', ay: 'center' },
   children: [
     { type: 'we-text', props: { fontSize: '600' }, children: ['Space page'] },
     {
@@ -276,7 +276,7 @@ export const testTemplateSchema: TemplateSchema = {
     },
     {
       type: 'Column',
-      props: { class: 'we-default-template-content', ax: 'center', bg: 'ui-50' },
+      props: { class: 'we-default-template-content', ax: 'center', bg: 'neutral-50' },
       children: [
         {
           type: 'main',
@@ -291,13 +291,13 @@ export const testTemplateSchema: TemplateSchema = {
     {
       path: '*',
       type: 'Column',
-      props: { ax: 'center', bg: 'ui-0', p: '500' },
+      props: { ax: 'center', bg: 'neutral-0', p: '500' },
       children: [{ type: 'we-text', props: { fontSize: '600' }, children: ['Page not found :_('] }],
     },
     {
       path: '/',
       type: 'Column',
-      props: { ax: 'center', bg: 'ui-0', p: '500' },
+      props: { ax: 'center', bg: 'neutral-0', p: '500' },
       children: [{ type: 'we-text', props: { fontSize: '600' }, children: ['Home page!!!'] }],
     },
     {
@@ -312,7 +312,7 @@ export const testTemplateSchema: TemplateSchema = {
         },
         {
           type: 'Column',
-          props: { class: 'we-space-page-content', bg: 'ui-50' },
+          props: { class: 'we-space-page-content', bg: 'neutral-50' },
           children: [
             {
               type: 'header',
@@ -333,7 +333,7 @@ export const testTemplateSchema: TemplateSchema = {
         {
           path: '/',
           type: 'Row',
-          props: { bg: 'ui-200', ay: 'center', px: '400', style: { height: '60px' } },
+          props: { bg: 'neutral-200', ay: 'center', px: '400', style: { height: '60px' } },
           children: [
             { type: 'we-text', props: { fontSize: '600' }, children: ['About sub-page'] },
             { type: 'RerenderLog', props: { location: 'AboutPage' } },
@@ -344,7 +344,7 @@ export const testTemplateSchema: TemplateSchema = {
           children: [
             {
               type: 'Row',
-              props: { bg: 'ui-200', ay: 'center', gap: '400', px: '400', style: { height: '60px' } },
+              props: { bg: 'neutral-200', ay: 'center', gap: '400', px: '400', style: { height: '60px' } },
               children: [
                 {
                   type: 'we-button',
@@ -366,7 +366,7 @@ export const testTemplateSchema: TemplateSchema = {
             },
             {
               type: 'Column',
-              props: { bg: 'ui-300', p: '400' },
+              props: { bg: 'neutral-300', p: '400' },
               children: [{ type: '$routes' }],
             },
             { type: 'RerenderLog', props: { location: 'PostsPage' } },
@@ -381,7 +381,7 @@ export const testTemplateSchema: TemplateSchema = {
         {
           path: '/users',
           type: 'Row',
-          props: { bg: 'ui-200', ay: 'center', px: '400', style: { height: '60px' } },
+          props: { bg: 'neutral-200', ay: 'center', px: '400', style: { height: '60px' } },
           children: [
             { type: 'we-text', props: { fontSize: '600' }, children: ['User sub-page'] },
             { type: 'RerenderLog', props: { location: 'UserPage' } },
@@ -469,7 +469,7 @@ export function testMutations(currentSchema: TemplateSchema, setCurrentSchema: S
     // Header is first child of content Column > first child (Row)
     const contentColumn = newSchema.children[1];
     if (contentColumn.children[0]?.type === 'header') {
-      contentColumn.children[0].children[0].props.bg = 'ui-900';
+      contentColumn.children[0].children[0].props.bg = 'neutral-900';
     }
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
@@ -478,7 +478,7 @@ export function testMutations(currentSchema: TemplateSchema, setCurrentSchema: S
     const newSchema = deepClone(currentSchema) as any;
     const contentColumn = newSchema.children[1];
     if (contentColumn.children[0]?.type === 'header') {
-      contentColumn.children[0].children[0].children[0].props.color = 'ui-900';
+      contentColumn.children[0].children[0].children[0].props.color = 'neutral-900';
     }
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
@@ -486,7 +486,7 @@ export function testMutations(currentSchema: TemplateSchema, setCurrentSchema: S
   function changeSidebarProp() {
     const newSchema = deepClone(currentSchema) as any;
     // Sidebar Column is at children[0] (aside) > children[0]
-    newSchema.children[0].children[0].props.bg = 'ui-900';
+    newSchema.children[0].children[0].props.bg = 'neutral-900';
     updateSchema(currentSchema, newSchema, setCurrentSchema);
   }
 
@@ -557,14 +557,14 @@ export function testMutations(currentSchema: TemplateSchema, setCurrentSchema: S
         r: 'pill',
         onClick: { $action: 'routeStore.navigate', args: ['/new'] },
         styles: { height: '50px' },
-        hoverProps: { bg: 'ui-100', styles: { height: '100px' } },
+        hoverProps: { bg: 'neutral-100', styles: { height: '100px' } },
       },
       children: [
         {
           type: 'we-icon',
           props: {
             name: 'x-logo',
-            color: 'ui-1000',
+            color: 'neutral-1000',
             weight: {
               $if: {
                 condition: { $eq: [{ $store: 'routeStore.currentPath' }, '/new'] },
@@ -578,7 +578,7 @@ export function testMutations(currentSchema: TemplateSchema, setCurrentSchema: S
           type: 'we-text',
           props: {
             size: '600',
-            color: 'ui-1000',
+            color: 'neutral-1000',
             weight: {
               $if: { condition: { $eq: [{ $store: 'routeStore.currentPath' }, '/new'] }, then: '600', else: '400' },
             },

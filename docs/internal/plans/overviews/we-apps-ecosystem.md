@@ -571,7 +571,7 @@ Each section is ~50-150 lines of JSON. The `/playlist/:id` route uses `parent` t
         "props": { "gap": "300", "ay": "center" },
         "children": [
           { "type": "we-text", "props": { "content": "$item.title" } },
-          { "type": "we-text", "props": { "content": "$item.artist", "color": "ui-500" } },
+          { "type": "we-text", "props": { "content": "$item.artist", "color": "neutral-500" } },
           {
             "type": "we-button",
             "props": { "onClick": { "$action": "audioPlayer.play", "args": ["$item"] } },

@@ -220,11 +220,11 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     // Main panel
     {
       type: 'Column',
-      props: { zIndex: 1, width: '100%', height: '100%', bg: 'ui-50', px: '66px' },
+      props: { zIndex: 1, width: '100%', height: '100%', bg: 'neutral-50', px: '66px' },
       // theme: {
       //   // themeName: 'cyberpunk',
       //   primaryHue: 180, // teal/cyan instead of the default purple
-      //   uiSaturation: '0%', // desaturate UI colors for a more muted look, to let the content pop - feels more "app-like" and less "webpage-like"
+      //   neutralSaturation: '0%', // desaturate UI colors for a more muted look, to let the content pop - feels more "app-like" and less "webpage-like"
       //   // saturation: '70%', // bump saturation so it pops
       // },
       children: [{ type: '$routes' }],
@@ -400,7 +400,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     {
       path: '/',
       type: 'Column',
-      props: { width: '100%', height: '100%', bg: 'ui-50', overflow: 'auto' },
+      props: { width: '100%', height: '100%', bg: 'neutral-50', overflow: 'auto' },
       children: [
         // Welcome header
         {
@@ -409,18 +409,18 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             width: '100%',
             p: '2rem',
             gap: '0.5rem',
-            bg: 'ui-0',
+            bg: 'neutral-0',
             borderBottom: '1px solid',
-            borderColor: 'ui-200',
+            borderColor: 'neutral-200',
           },
           children: [
             {
               type: 'we-text',
-              props: { text: 'Welcome back, James', fontSize: '800', fontWeight: '600', color: 'ui-900' },
+              props: { text: 'Welcome back, James', fontSize: '800', fontWeight: '600', color: 'neutral-900' },
             },
             {
               type: 'we-text',
-              props: { text: "Here's what's happening today", fontSize: '400', color: 'ui-600' },
+              props: { text: "Here's what's happening today", fontSize: '400', color: 'neutral-600' },
             },
           ],
         },
@@ -451,7 +451,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                     minWidth: '200px',
                     p: '1.5rem',
                     gap: '0.5rem',
-                    bg: 'ui-0',
+                    bg: 'neutral-0',
                     r: 'md',
                     borderLeft: '4px solid',
                     borderColor: 'primary-500',
@@ -463,7 +463,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                         text: 'Active Spaces',
                         fontSize: '400',
                         fontWeight: '600',
-                        color: 'ui-600',
+                        color: 'neutral-600',
                       },
                     },
                     {
@@ -472,7 +472,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                         text: '12',
                         fontSize: '900',
                         fontWeight: '700',
-                        color: 'ui-900',
+                        color: 'neutral-900',
                       },
                     },
                     {
@@ -493,7 +493,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                     minWidth: '200px',
                     p: '1.5rem',
                     gap: '0.5rem',
-                    bg: 'ui-0',
+                    bg: 'neutral-0',
                     r: 'md',
                     borderLeft: '4px solid',
                     borderColor: 'blue-500',
@@ -505,7 +505,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                         text: 'Unread Messages',
                         fontSize: '400',
                         fontWeight: '600',
-                        color: 'ui-600',
+                        color: 'neutral-600',
                       },
                     },
                     {
@@ -514,7 +514,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                         text: '24',
                         fontSize: '900',
                         fontWeight: '700',
-                        color: 'ui-900',
+                        color: 'neutral-900',
                       },
                     },
                     {
@@ -522,7 +522,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       props: {
                         text: 'Across 5 spaces',
                         fontSize: '400',
-                        color: 'ui-600',
+                        color: 'neutral-600',
                       },
                     },
                   ],
@@ -535,7 +535,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                     minWidth: '200px',
                     p: '1.5rem',
                     gap: '0.5rem',
-                    bg: 'ui-0',
+                    bg: 'neutral-0',
                     r: 'md',
                     borderLeft: '4px solid',
                     borderColor: 'green-500',
@@ -547,7 +547,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                         text: 'Active Quests',
                         fontSize: '400',
                         fontWeight: '600',
-                        color: 'ui-600',
+                        color: 'neutral-600',
                       },
                     },
                     {
@@ -556,7 +556,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                         text: '7',
                         fontSize: '900',
                         fontWeight: '700',
-                        color: 'ui-900',
+                        color: 'neutral-900',
                       },
                     },
                     {
@@ -577,7 +577,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                     minWidth: '200px',
                     p: '1.5rem',
                     gap: '0.5rem',
-                    bg: 'ui-0',
+                    bg: 'neutral-0',
                     r: 'md',
                     borderLeft: '4px solid',
                     borderColor: 'orange-500',
@@ -589,7 +589,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                         text: 'Notifications',
                         fontSize: '400',
                         fontWeight: '600',
-                        color: 'ui-600',
+                        color: 'neutral-600',
                       },
                     },
                     {
@@ -598,7 +598,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                         text: '18',
                         fontSize: '900',
                         fontWeight: '700',
-                        color: 'ui-900',
+                        color: 'neutral-900',
                       },
                     },
                     {
@@ -606,7 +606,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       props: {
                         text: 'New today',
                         fontSize: '400',
-                        color: 'ui-600',
+                        color: 'neutral-600',
                       },
                     },
                   ],
@@ -638,7 +638,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                         text: 'Recent Activity',
                         fontSize: '600',
                         fontWeight: '600',
-                        color: 'ui-900',
+                        color: 'neutral-900',
                       },
                     },
                     // Activity cards
@@ -654,7 +654,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                           props: {
                             p: '1rem',
                             gap: '1rem',
-                            bg: 'ui-0',
+                            bg: 'neutral-0',
                             r: 'md',
                             ay: 'center',
                           },
@@ -679,7 +679,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                     text: 'Sarah Chen commented on your post',
                                     fontSize: '400',
                                     fontWeight: '500',
-                                    color: 'ui-900',
+                                    color: 'neutral-900',
                                   },
                                 },
                                 {
@@ -687,7 +687,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   props: {
                                     text: '2 minutes ago',
                                     fontSize: '300',
-                                    color: 'ui-600',
+                                    color: 'neutral-600',
                                   },
                                 },
                               ],
@@ -700,7 +700,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                           props: {
                             p: '1rem',
                             gap: '1rem',
-                            bg: 'ui-0',
+                            bg: 'neutral-0',
                             r: 'md',
                             ay: 'center',
                           },
@@ -725,7 +725,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                     text: 'Marcus Rodriguez invited you to Design Team',
                                     fontSize: '400',
                                     fontWeight: '500',
-                                    color: 'ui-900',
+                                    color: 'neutral-900',
                                   },
                                 },
                                 {
@@ -733,7 +733,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   props: {
                                     text: '1 hour ago',
                                     fontSize: '300',
-                                    color: 'ui-600',
+                                    color: 'neutral-600',
                                   },
                                 },
                               ],
@@ -746,7 +746,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                           props: {
                             p: '1rem',
                             gap: '1rem',
-                            bg: 'ui-0',
+                            bg: 'neutral-0',
                             r: 'md',
                             ay: 'center',
                           },
@@ -771,7 +771,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                     text: 'Elena Popov shared a new file in Dev Team',
                                     fontSize: '400',
                                     fontWeight: '500',
-                                    color: 'ui-900',
+                                    color: 'neutral-900',
                                   },
                                 },
                                 {
@@ -779,7 +779,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   props: {
                                     text: '3 hours ago',
                                     fontSize: '300',
-                                    color: 'ui-600',
+                                    color: 'neutral-600',
                                   },
                                 },
                               ],
@@ -792,7 +792,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                           props: {
                             p: '1rem',
                             gap: '1rem',
-                            bg: 'ui-0',
+                            bg: 'neutral-0',
                             r: 'md',
                             ay: 'center',
                           },
@@ -817,7 +817,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                     text: 'Quest "Launch MVP" was completed',
                                     fontSize: '400',
                                     fontWeight: '500',
-                                    color: 'ui-900',
+                                    color: 'neutral-900',
                                   },
                                 },
                                 {
@@ -825,7 +825,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   props: {
                                     text: 'Yesterday',
                                     fontSize: '300',
-                                    color: 'ui-600',
+                                    color: 'neutral-600',
                                   },
                                 },
                               ],
@@ -858,7 +858,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                             text: 'Quick Actions',
                             fontSize: '600',
                             fontWeight: '600',
-                            color: 'ui-900',
+                            color: 'neutral-900',
                           },
                         },
                         {
@@ -919,7 +919,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                             text: 'Upcoming',
                             fontSize: '600',
                             fontWeight: '600',
-                            color: 'ui-900',
+                            color: 'neutral-900',
                           },
                         },
                         {
@@ -934,7 +934,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                               props: {
                                 p: '1rem',
                                 gap: '0.5rem',
-                                bg: 'ui-0',
+                                bg: 'neutral-0',
                                 r: 'md',
                               },
                               children: [
@@ -944,7 +944,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                     text: 'Team Standup',
                                     fontSize: '400',
                                     fontWeight: '600',
-                                    color: 'ui-900',
+                                    color: 'neutral-900',
                                   },
                                 },
                                 {
@@ -952,7 +952,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   props: {
                                     text: 'Today at 10:00 AM',
                                     fontSize: '300',
-                                    color: 'ui-600',
+                                    color: 'neutral-600',
                                   },
                                 },
                               ],
@@ -963,7 +963,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                               props: {
                                 p: '1rem',
                                 gap: '0.5rem',
-                                bg: 'ui-0',
+                                bg: 'neutral-0',
                                 r: 'md',
                               },
                               children: [
@@ -973,7 +973,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                     text: 'Design Review',
                                     fontSize: '400',
                                     fontWeight: '600',
-                                    color: 'ui-900',
+                                    color: 'neutral-900',
                                   },
                                 },
                                 {
@@ -981,7 +981,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   props: {
                                     text: 'Tomorrow at 2:00 PM',
                                     fontSize: '300',
-                                    color: 'ui-600',
+                                    color: 'neutral-600',
                                   },
                                 },
                               ],
@@ -992,7 +992,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                               props: {
                                 p: '1rem',
                                 gap: '0.5rem',
-                                bg: 'ui-0',
+                                bg: 'neutral-0',
                                 r: 'md',
                               },
                               children: [
@@ -1002,7 +1002,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                     text: 'Sprint Planning',
                                     fontSize: '400',
                                     fontWeight: '600',
-                                    color: 'ui-900',
+                                    color: 'neutral-900',
                                   },
                                 },
                                 {
@@ -1010,7 +1010,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   props: {
                                     text: 'Friday at 9:00 AM',
                                     fontSize: '300',
-                                    color: 'ui-600',
+                                    color: 'neutral-600',
                                   },
                                 },
                               ],
@@ -1030,7 +1030,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     {
       path: '/list',
       type: 'Column',
-      props: { width: '100%', height: '100%', bg: 'ui-50' },
+      props: { width: '100%', height: '100%', bg: 'neutral-50' },
       children: [
         // Header section with filters and search
         {
@@ -1039,9 +1039,9 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
             width: '100%',
             p: '2rem',
             gap: '1rem',
-            bg: 'ui-0',
+            bg: 'neutral-0',
             borderBottom: '1px solid',
-            borderColor: 'ui-200',
+            borderColor: 'neutral-200',
           },
           children: [
             // Title
@@ -1051,7 +1051,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                 text: 'Feed',
                 fontSize: '800',
                 fontWeight: '600',
-                color: 'ui-900',
+                color: 'neutral-900',
               },
             },
             // Filters and Search Row
@@ -1446,7 +1446,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
           children: [
             {
               type: 'we-text',
-              props: { text: 'Network Graph', fontSize: '600', fontWeight: '600', color: 'ui-900' },
+              props: { text: 'Network Graph', fontSize: '600', fontWeight: '600', color: 'neutral-900' },
             },
           ],
         },
@@ -1478,7 +1478,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
           type: 'Column',
           props: { my: '400' },
           children: [
-            { type: 'we-text', props: { text: 'New post', fontSize: '700', fontWeight: '600', color: 'ui-700' } },
+            { type: 'we-text', props: { text: 'New post', fontSize: '700', fontWeight: '600', color: 'neutral-700' } },
           ],
         },
         { type: 'BlockComposer', props: {} },

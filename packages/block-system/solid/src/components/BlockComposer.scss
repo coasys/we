@@ -13,12 +13,12 @@
       padding: 10px;
       border-radius: 10px;
       margin: 0;
-      color: var(--we-color-ui-900);
+      color: var(--we-color-neutral-900);
       position: relative;
       // transition: background-color var(--we-transition-200);
 
       &[data-block-highlighted='true'] {
-        background-color: var(--we-color-ui-25);
+        background-color: var(--we-color-neutral-25);
       }
     }
 
@@ -33,7 +33,7 @@
 
     blockquote {
       padding-left: 30px;
-      color: var(--we-color-ui-600);
+      color: var(--we-color-neutral-600);
       // font-style: italic;
 
       &:before {
@@ -46,7 +46,7 @@
         top: 10px;
         left: 10px;
         height: calc(100% - 20px);
-        background-color: var(--we-color-ui-100);
+        background-color: var(--we-color-neutral-100);
       }
     }
 
