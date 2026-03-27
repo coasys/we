@@ -36,7 +36,7 @@
                     └─────────────────────┘
 
                     ┌─────────────────────┐
-                    │ 3. Schema–Theme      │
+                    │ 3. Schema–Theme   ✅│
                     │    Integration       │
                     └─────────────────────┘
                               │
@@ -147,13 +147,14 @@ Replaces the single-memo-per-component prop resolution with per-prop memos and s
 
 Unified dual-channel prop delivery into single per-prop effect channel. All web component props delivered via `hostRef[k] = value` property assignment; event handlers stay in JSX spread for Solid's event delegation. Extended component resolution to support hyphenated tag names as fallthrough. Removed 11 ceremony wrapper functions from component registry. Removed `DESIGN_SYSTEM_CAMEL_CASE_PROPS` set.
 
-### 3. Schema–Theme Integration
+### 3. Schema–Theme Integration ✅
 
-**Plan:** [schema-theme-integration](../prs/schema-theme-integration.md)
+**Plan:** [schema-theme-integration](../prs/schema-theme-integration.md) | **Summary:** [schema-theme-integration-summary](../prs/schema-theme-integration-summary.md)
+**Status:** Complete (branch `feat/schema-theme-integration`, 2 commits, 22 files)
 **Depends on:** nothing
 **Unblocks:** seed-driven theming, scoped theme zones, dynamic theme registration, theme sections in customization architecture
 
-Bridges the schema/seed layer with the CSS theme system. Defines `ThemeOverrides` type, scoped CSS variable application, seed theme consumption, and runtime theme registration. Currently seeds declare themes but nothing reads them.
+Bridges the schema/seed layer with the CSS theme system. Added `ThemeOverrides` type with Zod validation, `themeToStyle()` converter, scoped CSS variable application via `display: contents` wrappers in SchemaRenderer. Fixed `isRawCSSValue()` for `var()` passthrough, `tokenVar` font-size prefix, theme CSS issues. Added `gradient` prop to `we-button` (primary variant, `::before` overlay). Standardised all `we-text` props to `fontSize`/`fontWeight`. Created theme `CONVENTIONS.md`.
 
 ### 3b. Rename `color-ui` → `color-neutral`
 
@@ -285,7 +286,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | 2   | Deep Unwrap Props ✅           | A     | —                | Small  | Low  |
 | 2b  | Fine-Grained Reactivity ✅     | A     | 2                | Medium | Med  |
 | 2c  | Web Component Prop Unify ✅    | A     | 2b               | Small  | Low  |
-| 3   | Schema–Theme Integration       | A     | —                | Medium | Low  |
+| 3   | Schema–Theme Integration ✅    | A     | —                | Medium | Low  |
 | 4   | Local Schema State             | C     | 6                | Medium | Med  |
 | 4b  | $concat + remove $expr         | A     | —                | Small  | Low  |
 | 5   | Block Model Migration          | B     | —                | Small  | Low  |
