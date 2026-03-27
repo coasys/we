@@ -43,19 +43,6 @@ export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
 };
 
 export const componentRegistry: ComponentRegistry = {
-  // @we/primitives
-  'we-text': (props) => <we-text {...props}>{props.children}</we-text>,
-  'we-button': (props) => <we-button {...props}>{props.children}</we-button>,
-  'we-icon': (props) => <we-icon {...props} />,
-  'we-image': (props) => <we-image {...props} />,
-  'we-tabs': (props) => <we-tabs {...props}>{props.children}</we-tabs>,
-  'we-tab': (props) => <we-tab {...props}>{props.children}</we-tab>,
-  'we-spinner': (props) => <we-spinner {...props} />,
-  'we-input': (props) => <we-input {...props} />,
-  'we-modal': (props) => <we-modal {...props}>{props.children}</we-modal>,
-  'we-iframe': (props) => <we-iframe {...props} />,
-  'we-avatar': (props) => <we-avatar {...props} />,
-
   // @we/components
   Column,
   Row,

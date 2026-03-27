@@ -31,8 +31,8 @@
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
-                    │2c. Web Component     │
-                    │    Prop Unification  │
+                    │2c. Web Component  ✅│
+                    │    Prop Unification │
                     └─────────────────────┘
 
                     ┌─────────────────────┐
@@ -133,13 +133,14 @@ Added `deepUnwrap` function to SchemaRenderer that recursively unwraps `REACTIVE
 
 Replaces the single-memo-per-component prop resolution with per-prop memos and stable bindings. Store bindings are created once at setup (no memo churn), per-prop memos isolate each prop's dependencies, and static props bypass reactivity entirely. Pure performance optimization — no API or behavioural changes.
 
-### 2c. Web Component Prop Unification
+### 2c. Web Component Prop Unification ✅
 
-**Plan:** [web-component-prop-unification](../prs/web-component-prop-unification.md)
+**Plan:** [web-component-prop-unification](../prs/web-component-prop-unification.md) | **Summary:** [web-component-prop-unification-summary](../prs/web-component-prop-unification-summary.md)
+**Status:** Complete (branch `feat/web-component-prop-unification`, 1 commit, 3 files)
 **Depends on:** Fine-Grained Reactivity (#2b) — per-prop memos are the foundation for per-prop effects
 **Unblocks:** cleaner web component prop delivery, removes `DESIGN_SYSTEM_CAMEL_CASE_PROPS` maintenance burden, eliminates ceremony registry wrappers
 
-Unifies the dual-channel prop delivery for web components (JSX spread + ref effect) into a single per-prop effect channel. All props delivered via `hostRef[k] = value`. Removes ceremony wrapper functions for web components from the component registry. Removes `DESIGN_SYSTEM_CAMEL_CASE_PROPS` set.
+Unified dual-channel prop delivery into single per-prop effect channel. All web component props delivered via `hostRef[k] = value` property assignment; event handlers stay in JSX spread for Solid's event delegation. Extended component resolution to support hyphenated tag names as fallthrough. Removed 11 ceremony wrapper functions from component registry. Removed `DESIGN_SYSTEM_CAMEL_CASE_PROPS` set.
 
 ### 3. Schema–Theme Integration
 
@@ -267,10 +268,10 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | --- | ------------------------------ | ----- | ---------------- | ------ | ---- |
 | 1   | Button Variants ✅             | A     | —                | Small  | Low  |
 | 1b  | Primitive Pattern Alignment ✅ | A     | 1                | Small  | Low  |
-| 1c  | Token Type Consolidation       | A     | 1b               | S–Med  | Low  |
-| 2   | Deep Unwrap Props              | A     | —                | Small  | Low  |
-| 2b  | Fine-Grained Reactivity        | A     | 2                | Medium | Med  |
-| 2c  | Web Component Prop Unify       | A     | 2b               | Small  | Low  |
+| 1c  | Token Type Consolidation  ✅   | A     | 1b               | S–Med  | Low  |
+| 2   | Deep Unwrap Props ✅           | A     | —                | Small  | Low  |
+| 2b  | Fine-Grained Reactivity ✅     | A     | 2                | Medium | Med  |
+| 2c  | Web Component Prop Unify ✅    | A     | 2b               | Small  | Low  |
 | 3   | Schema–Theme Integration       | A     | —                | Medium | Low  |
 | 4   | Local Schema State             | C     | 6                | Medium | Med  |
 | 4b  | $concat + remove $expr         | A     | —                | Small  | Low  |
