@@ -1,5 +1,6 @@
 import { Model, Property } from '@coasys/ad4m';
-import { WeNode } from '@we/models';
+
+import { WeNode } from '../WeNode';
 
 @Model({ name: 'ImageBlock' })
 export class ImageBlock extends WeNode {

@@ -1,7 +1,6 @@
 import { Ad4mClient } from '@coasys/ad4m';
-import { CollectionBlock, ImageBlock, TextBlock } from '@we/block-shared';
 import { Column } from '@we/components/solid';
-import { Space, WeNode } from '@we/models';
+import { CollectionBlock, ImageBlock, Space, TextBlock, WeNode } from '@we/models';
 import { Accessor, createSignal, JSX } from 'solid-js';
 
 export interface CreateSpaceModalWidgetProps {

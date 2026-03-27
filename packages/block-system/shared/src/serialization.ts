@@ -1,6 +1,6 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
+import { CollectionBlock, ImageBlock, TextBlock } from '@we/models';
 
-import { CollectionBlock, ImageBlock, TextBlock } from './models';
 import type { SerializedBlockNode } from './types';
 
 /**
