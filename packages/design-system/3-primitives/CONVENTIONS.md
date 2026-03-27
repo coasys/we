@@ -4,13 +4,13 @@ Rules and patterns for building and maintaining `@we/primitives` components.
 
 ## Base Class Selection
 
-| Base Class | Layers | Use When |
-|---|---|---|
-| `DesignSystemElement` | layout, visual, flex, typography, state | Component needs padding, gap, alignment, hover/focus/disabled states — **default choice** |
-| `OverlayElement` | (extends DSE) | Full-viewport backdrop with sized content (modals, drawers) |
-| `LayoutElement` | layout only | Truly structural — no visual/interactive styling needed |
-| `LayoutTypographyElement` | layout, typography | Text-only, no background/border/padding |
-| `LayoutVisualTypographyElement` | layout, visual, typography | **Avoid** — prefer `DesignSystemElement` so padding/gap/alignment are available |
+| Base Class                      | Layers                                  | Use When                                                                                  |
+| ------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `DesignSystemElement`           | layout, visual, flex, typography, state | Component needs padding, gap, alignment, hover/focus/disabled states — **default choice** |
+| `OverlayElement`                | (extends DSE)                           | Full-viewport backdrop with sized content (modals, drawers)                               |
+| `LayoutElement`                 | layout only                             | Truly structural — no visual/interactive styling needed                                   |
+| `LayoutTypographyElement`       | layout, typography                      | Text-only, no background/border/padding                                                   |
+| `LayoutVisualTypographyElement` | layout, visual, typography              | **Avoid** — prefer `DesignSystemElement` so padding/gap/alignment are available           |
 
 **Rule:** When in doubt, use `DesignSystemElement`. Unused layer keys are harmless (they only apply when set). Choosing a narrow base class to "save" keys leads to CSS escape hatches when requirements grow.
 

@@ -1457,7 +1457,9 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
         {
           type: 'Column',
           props: { my: '400' },
-          children: [{ type: 'we-text', props: { text: 'New post', fontSize: '700', fontWeight: '600', color: 'ui-700' } }],
+          children: [
+            { type: 'we-text', props: { text: 'New post', fontSize: '700', fontWeight: '600', color: 'ui-700' } },
+          ],
         },
         { type: 'BlockComposer', props: {} },
       ],

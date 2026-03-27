@@ -8,10 +8,10 @@
 
 WE has two distinct layers with different rules:
 
-| Layer | Format | Can import npm packages? | Can use browser APIs? | Trust model |
-|-------|--------|--------------------------|----------------------|-------------|
-| **Schema** | JSON | No | No | Inert — safe to share freely |
-| **Component / Store** | JavaScript (ESM bundle) | Yes (bundled in) | Yes (full access) | Executable — requires user consent |
+| Layer                 | Format                  | Can import npm packages? | Can use browser APIs? | Trust model                        |
+| --------------------- | ----------------------- | ------------------------ | --------------------- | ---------------------------------- |
+| **Schema**            | JSON                    | No                       | No                    | Inert — safe to share freely       |
+| **Component / Store** | JavaScript (ESM bundle) | Yes (bundled in)         | Yes (full access)     | Executable — requires user consent |
 
 Schemas reference components by **name**. The component registry maps names to implementations. Everything about how an implementation works — including which npm packages it uses, which browser APIs it calls — is invisible to the schema.
 
@@ -140,20 +140,20 @@ The author develops with normal npm tooling, imports whatever they need, and the
 
 **Components and stores can use any browser API. Schemas cannot.**
 
-A schema says *what* to render. A component decides *how*. Browser APIs are part of *how*:
+A schema says _what_ to render. A component decides _how_. Browser APIs are part of _how_:
 
-| Browser API | Used by | Schema visibility |
-|-------------|---------|-------------------|
-| `navigator.mediaDevices.getUserMedia()` | `callService` store, `VideoGrid` component | `$store: "callService.localStream"` |
-| `navigator.geolocation` | `LocationPicker` component | `{ "type": "LocationPicker" }` |
-| `ResizeObserver` | `ChartWidget` component | `{ "type": "ChartWidget" }` |
-| `fetch()` | Service stores, custom components | `$action: "weatherService.refresh"` |
-| `IndexedDB` | Package cache (framework-level) | Not visible at all |
-| `RTCPeerConnection` | `callService` store | `$store: "callService.participants"` |
-| `Web Audio API` | `AudioWaveform` component | `{ "type": "AudioWaveform" }` |
-| `Canvas / WebGL` | Visualisation components | `{ "type": "Canvas3D" }` |
-| `Clipboard API` | `CopyButton` component | `{ "type": "CopyButton" }` |
-| `localStorage` | Theme persistence (framework-level) | `$store: "themeStore.mode"` |
+| Browser API                             | Used by                                    | Schema visibility                    |
+| --------------------------------------- | ------------------------------------------ | ------------------------------------ |
+| `navigator.mediaDevices.getUserMedia()` | `callService` store, `VideoGrid` component | `$store: "callService.localStream"`  |
+| `navigator.geolocation`                 | `LocationPicker` component                 | `{ "type": "LocationPicker" }`       |
+| `ResizeObserver`                        | `ChartWidget` component                    | `{ "type": "ChartWidget" }`          |
+| `fetch()`                               | Service stores, custom components          | `$action: "weatherService.refresh"`  |
+| `IndexedDB`                             | Package cache (framework-level)            | Not visible at all                   |
+| `RTCPeerConnection`                     | `callService` store                        | `$store: "callService.participants"` |
+| `Web Audio API`                         | `AudioWaveform` component                  | `{ "type": "AudioWaveform" }`        |
+| `Canvas / WebGL`                        | Visualisation components                   | `{ "type": "Canvas3D" }`             |
+| `Clipboard API`                         | `CopyButton` component                     | `{ "type": "CopyButton" }`           |
+| `localStorage`                          | Theme persistence (framework-level)        | `$store: "themeStore.mode"`          |
 
 The pattern is always the same: the component or store uses the browser API internally and exposes a **props or store interface** that the schema binds to. The schema never mentions the API.
 
@@ -229,10 +229,10 @@ If the trust model proves insufficient, packages could be loaded in sandboxed if
 
 ## The Three Audiences
 
-| Audience | What they do | npm/browser API exposure |
-|----------|-------------|--------------------------|
-| **App builders** (most users) | Write schema JSON, use AI to generate/edit | None — they pick components by name, bind data with `$query`, wire actions with `$action` |
-| **Component authors** (developers) | Build SolidJS components with full tooling | Full — they import npm packages, use browser APIs, bundle into ESM packages |
-| **WE core team** | Build the framework, core components, service stores | Full — standard monorepo development with Vite |
+| Audience                           | What they do                                         | npm/browser API exposure                                                                  |
+| ---------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **App builders** (most users)      | Write schema JSON, use AI to generate/edit           | None — they pick components by name, bind data with `$query`, wire actions with `$action` |
+| **Component authors** (developers) | Build SolidJS components with full tooling           | Full — they import npm packages, use browser APIs, bundle into ESM packages               |
+| **WE core team**                   | Build the framework, core components, service stores | Full — standard monorepo development with Vite                                            |
 
 The packaging requirement creates a clean separation: **app builders never touch JavaScript**, component authors use standard frontend tooling, and the registry is the bridge between them. This is the same division of labour as WordPress (theme/plugin developers write PHP, site builders use the admin UI) or Figma (plugin developers write JS, designers use the visual tool).

@@ -23,15 +23,17 @@ The renderer carefully partitions props between channels. If partitioning fails 
 ### 2. Ceremony wrapper functions
 
 Every web component needs a registry wrapper that does nothing:
+
 ```tsx
 'we-text': (props) => <we-text {...props}>{props.children}</we-text>,
 'we-button': (props) => <we-button {...props}>{props.children}</we-button>,
 ```
+
 These exist solely because `ComponentRegistry` requires functions. Only CesiumGlobe and GraphWidget use wrappers meaningfully (for dependency injection).
 
 ### 3. setAttribute vs property mismatch
 
-Channel 1 (JSX spread) sets HTML attributes via `setAttribute()`. Channel 2 (ref effect) sets DOM properties. For web components, properties are the correct delivery mechanism — attributes only work for primitive string/boolean values and require manual parsing in the component. Complex values (objects, arrays) *must* go through properties.
+Channel 1 (JSX spread) sets HTML attributes via `setAttribute()`. Channel 2 (ref effect) sets DOM properties. For web components, properties are the correct delivery mechanism — attributes only work for primitive string/boolean values and require manual parsing in the component. Complex values (objects, arrays) _must_ go through properties.
 
 ### 4. `DESIGN_SYSTEM_CAMEL_CASE_PROPS` maintenance burden
 
@@ -96,9 +98,8 @@ With the renderer handling web component rendering directly, wrapper functions b
 The `isHtmlElement` regex (`/^[a-z][a-z0-9]*$/`) currently excludes hyphenated names. Extend it or add a `isWebComponent` fallthrough:
 
 ```tsx
-const component = createMemo(() =>
-  registry[node.type ?? '']
-    ?? (isHtmlElement || isWebComponent ? node.type : undefined)
+const component = createMemo(
+  () => registry[node.type ?? ''] ?? (isHtmlElement || isWebComponent ? node.type : undefined),
 );
 ```
 
@@ -138,12 +139,12 @@ WE's web components use Lit. Lit elements accept properties via direct property 
 
 ## Files to change
 
-| File | Change |
-|---|---|
+| File                                                  | Change                                                                                                                                                        |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `packages/schema-system/solid/src/SchemaRenderer.tsx` | Split render path: web components use per-prop effects (no spread), Solid components use reactiveAttrs spread. Remove `DESIGN_SYSTEM_CAMEL_CASE_PROPS` usage. |
-| `packages/app-framework/.../componentRegistry.tsx` | Remove ceremony wrappers for web components (`we-text`, `we-button`, etc.). Keep CesiumGlobe and GraphWidget wrappers (dependency injection). |
-| `packages/schema-system/solid/src/SchemaRenderer.tsx` | Extend component resolution to allow `we-*` tag names as fallthrough (no registry entry required). |
-| `packages/design-system/types/src/index.ts` | Remove `DESIGN_SYSTEM_CAMEL_CASE_PROPS` export (verify no other consumers first). |
+| `packages/app-framework/.../componentRegistry.tsx`    | Remove ceremony wrappers for web components (`we-text`, `we-button`, etc.). Keep CesiumGlobe and GraphWidget wrappers (dependency injection).                 |
+| `packages/schema-system/solid/src/SchemaRenderer.tsx` | Extend component resolution to allow `we-*` tag names as fallthrough (no registry entry required).                                                            |
+| `packages/design-system/types/src/index.ts`           | Remove `DESIGN_SYSTEM_CAMEL_CASE_PROPS` export (verify no other consumers first).                                                                             |
 
 ## Relationship to other PRs
 

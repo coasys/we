@@ -205,15 +205,15 @@ function createCallServiceStore(client: Ad4mClient, perspectiveId: string) {
 
     // Methods
     async startCall(mediaConstraints?: MediaStreamConstraints) {
-      const stream = await navigator.mediaDevices.getUserMedia(
-        mediaConstraints ?? { audio: true, video: true }
-      );
+      const stream = await navigator.mediaDevices.getUserMedia(mediaConstraints ?? { audio: true, video: true });
       setLocalStream(stream);
       setCallState('ringing');
       // Exchange SDP via AD4M's TelepresenceAdapter...
     },
 
-    async joinCall(callId: string) { /* ... */ },
+    async joinCall(callId: string) {
+      /* ... */
+    },
 
     toggleMute() {
       const stream = localStream();
@@ -232,7 +232,9 @@ function createCallServiceStore(client: Ad4mClient, perspectiveId: string) {
     },
 
     async endCall() {
-      localStream()?.getTracks().forEach((t) => t.stop());
+      localStream()
+        ?.getTracks()
+        .forEach((t) => t.stop());
       peerConnections.forEach((pc) => pc.close());
       peerConnections.clear();
       setLocalStream(null);
@@ -280,14 +282,18 @@ A call UI in any community space:
               {
                 "type": "IconButton",
                 "props": {
-                  "icon": { "$if": { "condition": { "$store": "callService.isMuted" }, "then": "mic-off", "else": "mic" } },
+                  "icon": {
+                    "$if": { "condition": { "$store": "callService.isMuted" }, "then": "mic-off", "else": "mic" }
+                  },
                   "onClick": { "$action": "callService.toggleMute" }
                 }
               },
               {
                 "type": "IconButton",
                 "props": {
-                  "icon": { "$if": { "condition": { "$store": "callService.isVideoOff" }, "then": "video-off", "else": "video" } },
+                  "icon": {
+                    "$if": { "condition": { "$store": "callService.isVideoOff" }, "then": "video-off", "else": "video" }
+                  },
                   "onClick": { "$action": "callService.toggleVideo" }
                 }
               },
@@ -324,8 +330,14 @@ const aiService = createAIServiceStore(adamClient);
 
 // Merged into the stores bag alongside existing stores
 const stores = {
-  adamStore, spaceStore, modalStore, themeStore, routeStore, // existing
-  paymentService, callService, aiService,                    // service stores
+  adamStore,
+  spaceStore,
+  modalStore,
+  themeStore,
+  routeStore, // existing
+  paymentService,
+  callService,
+  aiService, // service stores
 };
 ```
 
@@ -404,11 +416,11 @@ This mirrors the package capability model from the ecosystem doc — same enforc
 
 WE's service capability declarations map directly to AD4M's existing capability system:
 
-| WE service declaration       | AD4M capability                                                                    |
-| ---------------------------- | ---------------------------------------------------------------------------------- |
-| `"paymentService"`           | `{ can: ["READ", "CREATE"], with: { domain: "runtime.hosting", pointers: ["*"] } }`|
-| `"aiService"`                | `{ can: ["PROMPT", "TRANSCRIBE"], with: { domain: "artificial intelligence" } }`   |
-| `"callService"`              | `{ can: ["READ", "CREATE"], with: { domain: "neighbourhood", pointers: ["*"] } }`  |
+| WE service declaration | AD4M capability                                                                     |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| `"paymentService"`     | `{ can: ["READ", "CREATE"], with: { domain: "runtime.hosting", pointers: ["*"] } }` |
+| `"aiService"`          | `{ can: ["PROMPT", "TRANSCRIBE"], with: { domain: "artificial intelligence" } }`    |
+| `"callService"`        | `{ can: ["READ", "CREATE"], with: { domain: "neighbourhood", pointers: ["*"] } }`   |
 
 WE doesn't create a parallel authorization layer — it maps its human-readable service names to AD4M's capability checks and delegates enforcement to the runtime.
 
@@ -482,9 +494,7 @@ const manifest: PackageManifest = {
   version: '1.0.0',
   description: 'Community reputation and rating service',
 
-  blocks: [
-    { type: 'RatingBlock', model: RatingBlock, editorComponent: RatingEditor },
-  ],
+  blocks: [{ type: 'RatingBlock', model: RatingBlock, editorComponent: RatingEditor }],
 
   stores: [reputationServiceStore],
 
@@ -492,10 +502,7 @@ const manifest: PackageManifest = {
     StarRating: StarRatingComponent,
   },
 
-  capabilities: [
-    'query:RatingBlock',
-    'store:reputationService',
-  ],
+  capabilities: ['query:RatingBlock', 'store:reputationService'],
 };
 ```
 
@@ -511,12 +518,12 @@ User browses marketplace → finds @we-pkg/reputation
 
 ### The spectrum from built-in to community
 
-| Layer | Examples | Backing | Ships with WE? | Installation |
-|-------|----------|---------|-----------------|--------------|
-| **Built-in service store** | `paymentService`, `callService`, `aiService` | AD4M runtime services (GraphQL) | Yes | Always available |
-| **Framework store** | `routeStore`, `themeStore`, `modalStore` | Local signals | Yes | Always available |
-| **Community service store** | `reputationService`, `schedulingService` | AD4M data (`$query` internally) + custom logic | No | Marketplace package |
-| **App-specific store** | `audioPlayer`, `dragDropState` | Local signals | No | Bundled with template |
+| Layer                       | Examples                                     | Backing                                        | Ships with WE? | Installation          |
+| --------------------------- | -------------------------------------------- | ---------------------------------------------- | -------------- | --------------------- |
+| **Built-in service store**  | `paymentService`, `callService`, `aiService` | AD4M runtime services (GraphQL)                | Yes            | Always available      |
+| **Framework store**         | `routeStore`, `themeStore`, `modalStore`     | Local signals                                  | Yes            | Always available      |
+| **Community service store** | `reputationService`, `schedulingService`     | AD4M data (`$query` internally) + custom logic | No             | Marketplace package   |
+| **App-specific store**      | `audioPlayer`, `dragDropState`               | Local signals                                  | No             | Bundled with template |
 
 All four are consumed identically via `$store` / `$action`. The schema doesn't know or care which layer a store comes from.
 
@@ -571,6 +578,7 @@ A dedicated `$service` token would add a new resolver, Zod schema, tests, AI con
 ### Why lazy instantiation?
 
 Eagerly creating all service stores on app start would:
+
 - Open unnecessary GraphQL subscriptions
 - Trigger capability checks / consent prompts for unused services
 - Allocate resources (WebRTC, media streams) that may never be needed

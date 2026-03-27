@@ -12,16 +12,16 @@ A token is a **named design value with a curated scale** that generates CSS cust
 
 Each token category lives in its own source file under `src/`:
 
-| File | Tokens | CSS Prefix |
-|------|--------|------------|
-| `color.ts` | Color hues, lightness, base colors | `--we-color-*` |
-| `space.ts` | Spacing scale | `--we-space-*` |
-| `font.ts` | Font family, size, weight, line-height, letter-spacing | `--we-font-*` |
-| `size.ts` | Component sizes, radius, avatar sizes | `--we-size-*`, `--we-radius-*`, `--we-avatar-size-*` |
-| `border.ts` | Border width, color | `--we-border-*` |
-| `effect.ts` | Depth/shadow presets | `--we-depth-*` |
-| `animation.ts` | Transition durations | `--we-transition-*` |
-| `component.ts` | Component-specific tokens (scrollbar) | `--we-scrollbar-*` |
+| File           | Tokens                                                 | CSS Prefix                                           |
+| -------------- | ------------------------------------------------------ | ---------------------------------------------------- |
+| `color.ts`     | Color hues, lightness, base colors                     | `--we-color-*`                                       |
+| `space.ts`     | Spacing scale                                          | `--we-space-*`                                       |
+| `font.ts`      | Font family, size, weight, line-height, letter-spacing | `--we-font-*`                                        |
+| `size.ts`      | Component sizes, radius, avatar sizes                  | `--we-size-*`, `--we-radius-*`, `--we-avatar-size-*` |
+| `border.ts`    | Border width, color                                    | `--we-border-*`                                      |
+| `effect.ts`    | Depth/shadow presets                                   | `--we-depth-*`                                       |
+| `animation.ts` | Transition durations                                   | `--we-transition-*`                                  |
+| `component.ts` | Component-specific tokens (scrollbar)                  | `--we-scrollbar-*`                                   |
 
 All files are re-exported through `src/index.ts`.
 
@@ -45,10 +45,10 @@ export type SpaceToken = '0' | '100' | '200' | ... | '1000';
 export type SpaceValue = SpaceToken | (string & {});
 ```
 
-| Suffix | Purpose | Example |
-|--------|---------|---------|
-| `*Token` | Strict union of scale values | `SpaceToken`, `FontSizeToken`, `RadiusToken` |
-| `*Value` | Token + `(string & {})` escape hatch | `SpaceValue`, `ColorValue`, `RadiusValue` |
+| Suffix   | Purpose                              | Example                                      |
+| -------- | ------------------------------------ | -------------------------------------------- |
+| `*Token` | Strict union of scale values         | `SpaceToken`, `FontSizeToken`, `RadiusToken` |
+| `*Value` | Token + `(string & {})` escape hatch | `SpaceValue`, `ColorValue`, `RadiusValue`    |
 
 **When to add an escape hatch (`*Value` type):**
 
@@ -98,6 +98,7 @@ The `scripts/generate-css.ts` script runs as a post-build hook (via tsup). It:
 3. Creates `dist/css/index.css` as an aggregator with `@import` statements
 
 **Naming rule:** CSS custom properties follow `--we-{category}-{key}`, e.g.:
+
 - `--we-space-300`
 - `--we-color-primary-500`
 - `--we-font-size-400`
@@ -108,9 +109,9 @@ The `scripts/generate-css.ts` script runs as a post-build hook (via tsup). It:
 Tokens are consumed at runtime via `tokenVar()` from `@we/design-utils`:
 
 ```ts
-tokenVar('space', '300')       // → 'var(--we-space-300)'
-tokenVar('color', '#ff0000')   // → '#ff0000' (raw CSS passthrough)
-tokenVar('space', undefined)   // → '0' (fallback)
+tokenVar('space', '300'); // → 'var(--we-space-300)'
+tokenVar('color', '#ff0000'); // → '#ff0000' (raw CSS passthrough)
+tokenVar('space', undefined); // → '0' (fallback)
 ```
 
 Raw CSS values (hex, px, rem, %, rgba, etc.) are detected by `isRawCSSValue()` and passed through unchanged. Named tokens become CSS variable references.

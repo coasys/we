@@ -263,27 +263,27 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 
 ## Summary Table
 
-| #   | PR                          | Phase | Depends on       | Size   | Risk |
-| --- | --------------------------- | ----- | ---------------- | ------ | ---- |
-| 1   | Button Variants ✅          | A     | —                | Small  | Low  |
-| 1b  | Primitive Pattern Alignment ✅ | A  | 1                | Small  | Low  |
-| 1c  | Token Type Consolidation    | A     | 1b               | S–Med  | Low  |
-| 2   | Deep Unwrap Props           | A     | —                | Small  | Low  |
-| 2b  | Fine-Grained Reactivity     | A     | 2                | Medium | Med  |
-| 2c  | Web Component Prop Unify    | A     | 2b               | Small  | Low  |
-| 3   | Schema–Theme Integration    | A     | —                | Medium | Low  |
-| 4   | Local Schema State          | C     | 6                | Medium | Med  |
-| 4b  | $concat + remove $expr      | A     | —                | Small  | Low  |
-| 5   | Block Model Migration       | B     | —                | Small  | Low  |
-| 5b  | Core Block Types            | B     | 5                | Medium | Low  |
-| 5c  | $query Service              | B     | 5                | Medium | Med  |
-| 6   | Schema Customization        | C     | 5                | Large  | Med  |
-| 7a  | Shared \*.types.ts          | D     | —                | Medium | Low  |
-| 7b  | Component Showcase          | D     | 5                | Medium | Low  |
-| 8   | @we/ai-context              | D     | 7a               | Large  | Med  |
-| 8b  | Schema Validation           | A→D   | — (Ph1), 8 (Ph2) | Small  | Low  |
-| 9   | MCP Tools                   | D     | 6, 8, 8b         | Large  | Med  |
-| 10  | Component Library (Phase 1) | A     | —                | Medium | Low  |
+| #   | PR                             | Phase | Depends on       | Size   | Risk |
+| --- | ------------------------------ | ----- | ---------------- | ------ | ---- |
+| 1   | Button Variants ✅             | A     | —                | Small  | Low  |
+| 1b  | Primitive Pattern Alignment ✅ | A     | 1                | Small  | Low  |
+| 1c  | Token Type Consolidation       | A     | 1b               | S–Med  | Low  |
+| 2   | Deep Unwrap Props              | A     | —                | Small  | Low  |
+| 2b  | Fine-Grained Reactivity        | A     | 2                | Medium | Med  |
+| 2c  | Web Component Prop Unify       | A     | 2b               | Small  | Low  |
+| 3   | Schema–Theme Integration       | A     | —                | Medium | Low  |
+| 4   | Local Schema State             | C     | 6                | Medium | Med  |
+| 4b  | $concat + remove $expr         | A     | —                | Small  | Low  |
+| 5   | Block Model Migration          | B     | —                | Small  | Low  |
+| 5b  | Core Block Types               | B     | 5                | Medium | Low  |
+| 5c  | $query Service                 | B     | 5                | Medium | Med  |
+| 6   | Schema Customization           | C     | 5                | Large  | Med  |
+| 7a  | Shared \*.types.ts             | D     | —                | Medium | Low  |
+| 7b  | Component Showcase             | D     | 5                | Medium | Low  |
+| 8   | @we/ai-context                 | D     | 7a               | Large  | Med  |
+| 8b  | Schema Validation              | A→D   | — (Ph1), 8 (Ph2) | Small  | Low  |
+| 9   | MCP Tools                      | D     | 6, 8, 8b         | Large  | Med  |
+| 10  | Component Library (Phase 1)    | A     | —                | Medium | Low  |
 
 ---
 
