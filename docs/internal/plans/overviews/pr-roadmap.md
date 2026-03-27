@@ -46,7 +46,7 @@
                     └─────────────────────┘
 
                     ┌─────────────────────┐
-                    │4b. $concat, remove  │
+                    │4b. $concat, remove✅│
                     │    $expr             │
                     └─────────────────────┘
 
@@ -181,13 +181,14 @@ Bridges the schema/seed layer with the CSS theme system. Added `ThemeOverrides` 
 
 Renamed the `ui` color family to `neutral` across all layers: JS tokens (`ColorHueToken`, `colorConfig`), CSS generation, 5 theme files, schema types (`ThemeOverrides`, Zod), `themeStyles.ts`, all component defaults (`'ui-NNN'` → `'neutral-NNN'`), templates, Solid components, prompt context, and documentation. Purely mechanical rename — zero logic changes.
 
-### 4b. Add `$concat`, Extend `$item`, Rename `$forEach` → `$each`, Remove `$expr`
+### 4b. Add `$concat`, Extend `$item`, Rename `$forEach` → `$each`, Remove `$expr` ✅
 
-**Plan:** [concat-remove-expr](../prs/concat-remove-expr.md)
+**Plan:** [concat-remove-expr](../prs/concat-remove-expr.md) | **Summary:** [concat-remove-expr-summary](../prs/concat-remove-expr-summary.md)
+**Status:** Complete (branch `feat/concat-remove-expr`, 1 commit, 19 files)
 **Depends on:** nothing
 **Unblocks:** CSP compatibility, schema validation coverage, safer token set, unified `$item.*` context access
 
-Removes `$expr` (arbitrary JS via `new Function()`) entirely — no external consumers exist. Adds `$concat` for safe string building. Extends `$item.*` string resolution from `$map`-only to the dispatcher, so `$each` children access items via `$item.name` instead of `{ $expr: 'item.name' }`. Renames `$forEach` → `$each` to match the single-word naming convention of all other tokens. Generalises to `$<contextKey>.*` for nested `$each` with custom `as` bindings. Migrates all 11 `$expr` uses to `$item.*`, `$concat`, or `$if`. Net token count unchanged (−1 `$expr`, +1 `$concat`); `$item.*` is a dispatcher resolution rule, not a new token type.
+Removed `$expr` (arbitrary JS via `new Function()`) entirely — no external consumers exist. Added `$concat` for safe string building. Extended `$item.*` string resolution from `$map`-only to the dispatcher, so `$each` children access items via `$item.name` instead of `{ $expr: 'item.name' }`. Renamed `$forEach` → `$each` to match the single-word naming convention of all other tokens. Generalised to `$<contextKey>.*` for nested `$each` with custom `as` bindings. Migrated all 11 `$expr` uses to `$item.*`, `$concat`, or `$if`. Added schema system `CONVENTIONS.md`. Fixed `isStaticValue()` to treat `$`-prefixed strings as non-static. Net token count unchanged (−1 `$expr`, +1 `$concat`); `$item.*` is a dispatcher resolution rule, not a new token type.
 
 ### 10. Core Component Library Expansion (Phase 1)
 
@@ -281,7 +282,7 @@ Creates `@we/ai-context` with extractors (CEM, TypeScript, tokens, stores), asse
 **Depends on:** Token shape checks (#8b Phase 1): none. Semantic checks (#8b Phase 2): @we/ai-context (#8) for `ValidationContext`.
 **Unblocks:** AI feedback loop — prevents broken schema generation, MCP `validate_schema` tool
 
-Extends existing Zod validation in `packages/schema-system/shared/src/`. Phase 1 adds token shape Zod schemas (validates `$if` has `condition`/`then`, `$forEach` has `items`/child template, etc.) — no dependencies, can land early in Phase A. Phase 2 adds a semantic walker that accepts component/store metadata from ai-context to check component existence, prop validity, and store references.
+Extends existing Zod validation in `packages/schema-system/shared/src/`. Phase 1 adds token shape Zod schemas (validates `$if` has `condition`/`then`, `$each` has `items`/child template, etc.) — no dependencies, can land early in Phase A. Phase 2 adds a semantic walker that accepts component/store metadata from ai-context to check component existence, prop validity, and store references.
 
 ### 9. MCP Tools
 
@@ -307,7 +308,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 2c  | Web Component Prop Unify       | Sch   | 2b         | Small  | Low  |
 | ✅   | 3   | Schema–Theme Integration       | Sch   | —          | Medium | Low  |
 | ✅   | 3b  | color-ui → color-neutral       | Sch   | 3          | Small  | Low  |
-| 1    | 4b  | $concat + remove $expr         | Sch   | —          | Small  | Low  |
+| ✅   | 4b  | $concat + remove $expr         | Sch   | —          | Small  | Low  |
 | 1    | 5   | Block Model Migration          | Data  | —          | Small  | Low  |
 | 1    | 7a  | Shared \*.types.ts             | AI    | —          | Medium | Low  |
 | 1    | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
