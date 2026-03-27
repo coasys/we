@@ -94,8 +94,9 @@ export default function TemplateProvider() {
   const appSchema: TemplateSchema = {
     meta: { name: 'App Layout', description: 'Root application layout', icon: '' },
     // theme: {
-    //   primaryHue: 180, // teal/cyan instead of the default purple
-    //   saturation: '70%', // bump saturation so it pops
+    //   primaryHue: 200, //350, // 210, // teal/cyan instead of the default purple
+    //   // uiSaturation: '0%', // desaturate UI colors for a more muted look, to let the content pop - feels more "app-like" and less "webpage-like"
+    //   // saturation: '70%', // bump saturation so it pops
     // },
     children: [
       launcherUIRegistry.bootScreen,

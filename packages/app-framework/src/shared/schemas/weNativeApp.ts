@@ -210,7 +210,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                 alt: 'WE Logo',
                 width: '38px',
                 height: '38px',
-                gradient: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                gradient: 'var(--we-gradient-primary)',
               },
             },
           ],
@@ -221,10 +221,12 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     {
       type: 'Column',
       props: { zIndex: 1, width: '100%', height: '100%', bg: 'ui-50', px: '66px' },
-      theme: {
-        primaryHue: 180, // teal/cyan instead of the default purple
-        saturation: '70%', // bump saturation so it pops
-      },
+      // theme: {
+      //   // themeName: 'cyberpunk',
+      //   primaryHue: 180, // teal/cyan instead of the default purple
+      //   uiSaturation: '0%', // desaturate UI colors for a more muted look, to let the content pop - feels more "app-like" and less "webpage-like"
+      //   // saturation: '70%', // bump saturation so it pops
+      // },
       children: [{ type: '$routes' }],
     },
     // Right sidebar
@@ -414,11 +416,11 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
           children: [
             {
               type: 'we-text',
-              props: { text: 'Welcome back, James', size: '800', weight: '600', color: 'ui-900' },
+              props: { text: 'Welcome back, James', fontSize: '800', fontWeight: '600', color: 'ui-900' },
             },
             {
               type: 'we-text',
-              props: { text: "Here's what's happening today", size: '400', color: 'ui-600' },
+              props: { text: "Here's what's happening today", fontSize: '400', color: 'ui-600' },
             },
           ],
         },
@@ -459,8 +461,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: 'Active Spaces',
-                        size: '300',
-                        weight: '600',
+                        fontSize: '400',
+                        fontWeight: '600',
                         color: 'ui-600',
                       },
                     },
@@ -468,8 +470,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: '12',
-                        size: '900',
-                        weight: '700',
+                        fontSize: '900',
+                        fontWeight: '700',
                         color: 'ui-900',
                       },
                     },
@@ -477,7 +479,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: '+2 this week',
-                        size: '200',
+                        fontSize: '400',
                         color: 'primary-600',
                       },
                     },
@@ -501,8 +503,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: 'Unread Messages',
-                        size: '300',
-                        weight: '600',
+                        fontSize: '400',
+                        fontWeight: '600',
                         color: 'ui-600',
                       },
                     },
@@ -510,8 +512,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: '24',
-                        size: '900',
-                        weight: '700',
+                        fontSize: '900',
+                        fontWeight: '700',
                         color: 'ui-900',
                       },
                     },
@@ -519,7 +521,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: 'Across 5 spaces',
-                        size: '200',
+                        fontSize: '400',
                         color: 'ui-600',
                       },
                     },
@@ -543,8 +545,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: 'Active Quests',
-                        size: '300',
-                        weight: '600',
+                        fontSize: '400',
+                        fontWeight: '600',
                         color: 'ui-600',
                       },
                     },
@@ -552,8 +554,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: '7',
-                        size: '900',
-                        weight: '700',
+                        fontSize: '900',
+                        fontWeight: '700',
                         color: 'ui-900',
                       },
                     },
@@ -561,8 +563,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: '3 due this week',
-                        size: '200',
-                        color: 'green-600',
+                        fontSize: '400',
+                        color: 'primary-600',
                       },
                     },
                   ],
@@ -585,8 +587,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: 'Notifications',
-                        size: '300',
-                        weight: '600',
+                        fontSize: '400',
+                        fontWeight: '600',
                         color: 'ui-600',
                       },
                     },
@@ -594,8 +596,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: '18',
-                        size: '900',
-                        weight: '700',
+                        fontSize: '900',
+                        fontWeight: '700',
                         color: 'ui-900',
                       },
                     },
@@ -603,7 +605,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: 'New today',
-                        size: '200',
+                        fontSize: '400',
                         color: 'ui-600',
                       },
                     },
@@ -634,8 +636,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                       type: 'we-text',
                       props: {
                         text: 'Recent Activity',
-                        size: '600',
-                        weight: '600',
+                        fontSize: '600',
+                        fontWeight: '600',
                         color: 'ui-900',
                       },
                     },
@@ -675,8 +677,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: 'Sarah Chen commented on your post',
-                                    size: '400',
-                                    weight: '500',
+                                    fontSize: '400',
+                                    fontWeight: '500',
                                     color: 'ui-900',
                                   },
                                 },
@@ -684,7 +686,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: '2 minutes ago',
-                                    size: '300',
+                                    fontSize: '300',
                                     color: 'ui-600',
                                   },
                                 },
@@ -721,8 +723,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: 'Marcus Rodriguez invited you to Design Team',
-                                    size: '400',
-                                    weight: '500',
+                                    fontSize: '400',
+                                    fontWeight: '500',
                                     color: 'ui-900',
                                   },
                                 },
@@ -730,7 +732,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: '1 hour ago',
-                                    size: '300',
+                                    fontSize: '300',
                                     color: 'ui-600',
                                   },
                                 },
@@ -767,8 +769,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: 'Elena Popov shared a new file in Dev Team',
-                                    size: '400',
-                                    weight: '500',
+                                    fontSize: '400',
+                                    fontWeight: '500',
                                     color: 'ui-900',
                                   },
                                 },
@@ -776,7 +778,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: '3 hours ago',
-                                    size: '300',
+                                    fontSize: '300',
                                     color: 'ui-600',
                                   },
                                 },
@@ -813,8 +815,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: 'Quest "Launch MVP" was completed',
-                                    size: '400',
-                                    weight: '500',
+                                    fontSize: '400',
+                                    fontWeight: '500',
                                     color: 'ui-900',
                                   },
                                 },
@@ -822,7 +824,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: 'Yesterday',
-                                    size: '300',
+                                    fontSize: '300',
                                     color: 'ui-600',
                                   },
                                 },
@@ -854,8 +856,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                           type: 'we-text',
                           props: {
                             text: 'Quick Actions',
-                            size: '600',
-                            weight: '600',
+                            fontSize: '600',
+                            fontWeight: '600',
                             color: 'ui-900',
                           },
                         },
@@ -871,13 +873,15 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                 text: 'Create New Post',
                                 variant: 'primary',
                                 width: '100%',
+                                gradient: true,
+                                // bg: 'var(--we-gradient-primary)',
                               },
                             },
                             {
                               type: 'we-button',
                               props: {
                                 text: 'Start New Quest',
-                                variant: 'ghost',
+                                variant: 'secondary',
                                 width: '100%',
                               },
                             },
@@ -885,6 +889,14 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                               type: 'we-button',
                               props: {
                                 text: 'Invite Members',
+                                variant: 'outline',
+                                width: '100%',
+                              },
+                            },
+                            {
+                              type: 'we-button',
+                              props: {
+                                text: 'Other',
                                 variant: 'ghost',
                                 width: '100%',
                               },
@@ -905,8 +917,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                           type: 'we-text',
                           props: {
                             text: 'Upcoming',
-                            size: '600',
-                            weight: '600',
+                            fontSize: '600',
+                            fontWeight: '600',
                             color: 'ui-900',
                           },
                         },
@@ -930,8 +942,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: 'Team Standup',
-                                    size: '400',
-                                    weight: '600',
+                                    fontSize: '400',
+                                    fontWeight: '600',
                                     color: 'ui-900',
                                   },
                                 },
@@ -939,7 +951,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: 'Today at 10:00 AM',
-                                    size: '300',
+                                    fontSize: '300',
                                     color: 'ui-600',
                                   },
                                 },
@@ -959,8 +971,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: 'Design Review',
-                                    size: '400',
-                                    weight: '600',
+                                    fontSize: '400',
+                                    fontWeight: '600',
                                     color: 'ui-900',
                                   },
                                 },
@@ -968,7 +980,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: 'Tomorrow at 2:00 PM',
-                                    size: '300',
+                                    fontSize: '300',
                                     color: 'ui-600',
                                   },
                                 },
@@ -988,8 +1000,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: 'Sprint Planning',
-                                    size: '400',
-                                    weight: '600',
+                                    fontSize: '400',
+                                    fontWeight: '600',
                                     color: 'ui-900',
                                   },
                                 },
@@ -997,7 +1009,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                   type: 'we-text',
                                   props: {
                                     text: 'Friday at 9:00 AM',
-                                    size: '300',
+                                    fontSize: '300',
                                     color: 'ui-600',
                                   },
                                 },
@@ -1037,8 +1049,8 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
               type: 'we-text',
               props: {
                 text: 'Feed',
-                size: '800',
-                weight: '600',
+                fontSize: '800',
+                fontWeight: '600',
                 color: 'ui-900',
               },
             },
@@ -1434,7 +1446,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
           children: [
             {
               type: 'we-text',
-              props: { text: 'Network Graph', size: '600', weight: '600', color: 'ui-900' },
+              props: { text: 'Network Graph', fontSize: '600', fontWeight: '600', color: 'ui-900' },
             },
           ],
         },
@@ -1491,7 +1503,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     //       props: {
     //         text: 'Profile View',
     //         size: '2xl',
-    //         weight: 'bold',
+    //         fontWeight: 'bold',
     //       },
     //     },
     //   ],

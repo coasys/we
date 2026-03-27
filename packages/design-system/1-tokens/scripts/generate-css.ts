@@ -137,6 +137,9 @@ ${colorPalettes}
   /* Focus Colors */
   --we-color-focus: var(--we-color-primary-500);
   --we-focus-outline: 0 0 0 2px var(--we-color-focus);
+
+  /* Gradient */
+  --we-gradient-primary: linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-500)) 100%);
 }`;
 
   fs.writeFileSync(path.join(outputDir, 'color.css'), css);

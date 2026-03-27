@@ -8,6 +8,7 @@ const lazyRouteSchema = z.lazy(() => zRouteSchema);
 
 const zThemeOverrides = z
   .object({
+    themeName: z.string().optional(),
     primaryHue: z.number().optional(),
     successHue: z.number().optional(),
     warningHue: z.number().optional(),

@@ -3,8 +3,11 @@ import { color } from '@we/tokens';
 
 import type { ThemeOverrides } from './types';
 
-/** Map ThemeOverrides keys to their CSS custom property equivalents. */
-const THEME_CSS_MAP: Record<keyof ThemeOverrides, string> = {
+/** Parametric keys (excludes themeName which is handled separately). */
+type ParametricKey = Exclude<keyof ThemeOverrides, 'themeName'>;
+
+/** Map parametric ThemeOverrides keys to their CSS custom property equivalents. */
+const THEME_CSS_MAP: Record<ParametricKey, string> = {
   primaryHue: '--we-color-primary-hue',
   successHue: '--we-color-success-hue',
   warningHue: '--we-color-warning-hue',
@@ -38,25 +41,29 @@ const COLOR_FAMILIES = Object.keys(color.hues) as ColorHueToken[];
  * which are computed once using :root's values.  Children inherit the computed
  * color, so overriding --we-color-primary-hue on a descendant has no effect
  * unless we ALSO re-declare the derived token formulas on that descendant.
+ *
+ * When a named theme is used (themeName), the CSS theme file sets the input
+ * variables via [data-we-theme] selectors. We unconditionally re-declare ALL
+ * derived formulas so they resolve locally against whatever inputs the theme sets.
  */
 export function themeToStyle(theme: ThemeOverrides): Record<string, string> {
   const style: Record<string, string> = {};
+  const hasNamedTheme = !!theme.themeName;
 
-  // 1. Set the input custom properties
+  // 1. Set any explicit parametric overrides as custom properties
   for (const [key, cssVar] of Object.entries(THEME_CSS_MAP)) {
-    const value = theme[key as keyof ThemeOverrides];
+    const value = theme[key as ParametricKey];
     if (value !== undefined) style[cssVar] = String(value);
   }
 
-  // 2. Re-declare ui-hue linkage: ui-hue inherits from primary-hue via CSS,
-  //    but that var() reference is resolved at :root. When primaryHue is overridden
-  //    on a descendant, we must re-declare the linkage so it resolves locally.
+  // 2. Re-declare ui-hue linkage when primaryHue is explicitly overridden
   if (theme.primaryHue !== undefined && theme.uiHue === undefined) {
     style['--we-color-ui-hue'] = 'var(--we-color-primary-hue)';
   }
 
-  // 2. Re-declare lightness scale if multiplier/subtractor changed
-  const affectsLightness = theme.multiplier !== undefined || theme.subtractor !== undefined;
+  // 3. Re-declare lightness scale
+  // Named themes may change multiplier/subtractor via CSS, so always re-declare.
+  const affectsLightness = hasNamedTheme || theme.multiplier !== undefined || theme.subtractor !== undefined;
   if (affectsLightness) {
     for (const step of LIGHTNESS_STEPS) {
       const base = parseFloat(color.lightness[step]);
@@ -65,12 +72,15 @@ export function themeToStyle(theme: ThemeOverrides): Record<string, string> {
     }
   }
 
-  // 3. Re-declare derived color tokens for affected families
-  // Note: ui-hue inherits from primary-hue via CSS, so changing primaryHue also affects ui
-  const affectsAllSatFamilies = theme.saturation !== undefined || affectsLightness;
+  // 4. Re-declare derived color tokens for affected families
+  // Named themes: re-declare all families unconditionally (the CSS theme file
+  // may change any input variable, and we can't know which without duplicating
+  // the theme's values here).
+  const affectsAllSatFamilies = hasNamedTheme || theme.saturation !== undefined || affectsLightness;
   for (const family of COLOR_FAMILIES) {
-    const hueKey = family === 'ui' ? 'uiHue' : (`${family}Hue` as keyof ThemeOverrides);
+    const hueKey = family === 'ui' ? 'uiHue' : (`${family}Hue` as ParametricKey);
     const familyAffected =
+      hasNamedTheme ||
       theme[hueKey] !== undefined ||
       (family === 'ui'
         ? theme.primaryHue !== undefined || theme.uiSaturation !== undefined || affectsLightness
@@ -82,6 +92,14 @@ export function themeToStyle(theme: ThemeOverrides): Record<string, string> {
       style[`--we-color-${family}-${step}`] =
         `hsl(var(--we-color-${family}-hue) var(${satVar}) var(--we-color-lightness-${step}))`;
     }
+  }
+
+  // 5. Re-declare gradient when primary hue or saturation may have changed
+  const affectsPrimaryGradient =
+    hasNamedTheme || theme.primaryHue !== undefined || theme.saturation !== undefined || affectsLightness;
+  if (affectsPrimaryGradient) {
+    style['--we-gradient-primary'] =
+      'linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 30) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 30) var(--we-color-saturation) var(--we-color-lightness-500)) 100%)';
   }
 
   return style;

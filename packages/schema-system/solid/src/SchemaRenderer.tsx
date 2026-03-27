@@ -79,7 +79,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const fragment = <>{renderChildren(node.children)}</>;
     if (node.theme) {
       const style = { display: 'contents' as const, ...themeToStyle(node.theme) };
-      return <div style={style}>{fragment}</div>;
+      return (
+        <div style={style} data-we-theme={node.theme.themeName}>
+          {fragment}
+        </div>
+      );
     }
     return fragment;
   }
@@ -183,6 +187,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   const slotProp = node.slot ? { slot: node.slot } : {};
   const themeStyle = node.theme ? { display: 'contents', ...themeToStyle(node.theme) } : undefined;
+  const themeAttr = node.theme?.themeName;
 
   // Render: web components use per-prop property effects, Solid/HTML use reactive spread
   if (isWebComponent) {
@@ -213,7 +218,13 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       </Dynamic>
     );
 
-    return themeStyle ? <div style={themeStyle}>{wcElement}</div> : wcElement;
+    return themeStyle ? (
+      <div style={themeStyle} data-we-theme={themeAttr}>
+        {wcElement}
+      </div>
+    ) : (
+      wcElement
+    );
   }
 
   // Solid components / HTML elements: all props via reactive spread (standard Solid pattern)
@@ -231,5 +242,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     </Dynamic>
   );
 
-  return themeStyle ? <div style={themeStyle}>{solidElement}</div> : solidElement;
+  return themeStyle ? (
+    <div style={themeStyle} data-we-theme={themeAttr}>
+      {solidElement}
+    </div>
+  ) : (
+    solidElement
+  );
 }

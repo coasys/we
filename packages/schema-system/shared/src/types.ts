@@ -14,6 +14,7 @@ export type TransitionConfig = {
 
 /** Parametric theme overrides — each field maps to a CSS custom property on the design system. */
 export type ThemeOverrides = {
+  themeName?: string; // Named theme preset (e.g. 'dark', 'cyberpunk', 'retro') — sets data-we-theme attribute
   primaryHue?: number; // --we-color-primary-hue
   successHue?: number; // --we-color-success-hue
   warningHue?: number; // --we-color-warning-hue
