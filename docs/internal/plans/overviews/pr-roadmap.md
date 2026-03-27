@@ -22,12 +22,17 @@
                     └─────────────────────┘
 
                     ┌─────────────────────┐
-                    │ 2. Deep Unwrap Props │
+                    │ 2. Deep Unwrap Props✅│
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
-                    │2b. Fine-Grained      │
+                    │2b. Fine-Grained   ✅│
                     │    Reactivity        │
+                    └─────────────────────┘
+                              │
+                    ┌─────────────────────┐
+                    │2c. Web Component     │
+                    │    Prop Unification  │
                     └─────────────────────┘
 
                     ┌─────────────────────┐
@@ -119,13 +124,22 @@ Moved design-scale types (`FontWeight`, `LineHeight`, `LetterSpacing`, `Shadow`)
 
 Added `deepUnwrap` function to SchemaRenderer that recursively unwraps `REACTIVE_ACCESSOR`-marked functions in complex props before distributing to components. Removed manual unwrap workarounds from CollapsibleSidebar and CesiumGlobe. ConditionalRenderer and cesium user-locations correctly left unchanged (different resolution paths).
 
-### 2b. Fine-Grained Schema Reactivity
+### 2b. Fine-Grained Schema Reactivity ✅
 
-**Plan:** [fine-grained-schema-reactivity](../prs/fine-grained-schema-reactivity.md)
+**Plan:** [fine-grained-schema-reactivity](../prs/fine-grained-schema-reactivity.md) | **Summary:** [fine-grained-schema-reactivity-summary](../prs/fine-grained-schema-reactivity-summary.md)
+**Status:** Complete (branch `feat/fine-grained-schema-reactivity`, 2 commits, 2 code files)
 **Depends on:** Deep Unwrap (#2) — `deepUnwrap` as a pure function is the foundation
 **Unblocks:** performant large templates, per-prop update granularity
 
-Replaces the single-memo-per-component prop resolution with per-prop memos. Currently, changing one store value re-evaluates all props for every component reading that store. After: only the prop referencing the changed store re-evaluates. Static props (no tokens) skip the memo system entirely. Pure performance optimization — no API or behavioural changes.
+Replaces the single-memo-per-component prop resolution with per-prop memos and stable bindings. Store bindings are created once at setup (no memo churn), per-prop memos isolate each prop's dependencies, and static props bypass reactivity entirely. Pure performance optimization — no API or behavioural changes.
+
+### 2c. Web Component Prop Unification
+
+**Plan:** [web-component-prop-unification](../prs/web-component-prop-unification.md)
+**Depends on:** Fine-Grained Reactivity (#2b) — per-prop memos are the foundation for per-prop effects
+**Unblocks:** cleaner web component prop delivery, removes `DESIGN_SYSTEM_CAMEL_CASE_PROPS` maintenance burden, eliminates ceremony registry wrappers
+
+Unifies the dual-channel prop delivery for web components (JSX spread + ref effect) into a single per-prop effect channel. All props delivered via `hostRef[k] = value`. Removes ceremony wrapper functions for web components from the component registry. Removes `DESIGN_SYSTEM_CAMEL_CASE_PROPS` set.
 
 ### 3. Schema–Theme Integration
 
@@ -256,6 +270,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | 1c  | Token Type Consolidation    | A     | 1b               | S–Med  | Low  |
 | 2   | Deep Unwrap Props           | A     | —                | Small  | Low  |
 | 2b  | Fine-Grained Reactivity     | A     | 2                | Medium | Med  |
+| 2c  | Web Component Prop Unify    | A     | 2b               | Small  | Low  |
 | 3   | Schema–Theme Integration    | A     | —                | Medium | Low  |
 | 4   | Local Schema State          | C     | 6                | Medium | Med  |
 | 4b  | $concat + remove $expr      | A     | —                | Small  | Low  |
@@ -286,7 +301,7 @@ The critical path is: **5 → 6 → 9** (block migration → schema customizatio
 Time →
 
 Track 1:  [1. Buttons ✅] [1b. Primitives ✅] [1c. Tokens] [3. Themes] [8b-Ph1. Token Validation] ──
-Track 2:  [2. Unwrap]  [2b. Fine-Grained] ──────────────────────────────
+Track 2:  [2. Unwrap ✅] [2b. Fine-Grained ✅] [2c. WC Props] ────────────
 Track 2b: [4b. $concat] ────────────────────────────────────────────────
 Track 2c: [10. Components Ph1] ─────────────────────────────────────────
 Track 3:  [5. Models]  [5c. $query] ────────────────────────────────────

@@ -115,9 +115,9 @@ export const skyboxLayer: LayerFactory<SkyboxLayerOptions> = (options?: SkyboxLa
 
     // Register cleanup
     onCleanup(() => {
-      // Hide the skybox when layer is unmounted
+      // Remove the skybox when layer is unmounted
       if (viewer.scene.skyBox === skybox) {
-        viewer.scene.skyBox.show = false;
+        viewer.scene.skyBox = undefined as unknown as SkyBox;
       }
     });
   },
