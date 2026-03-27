@@ -4,12 +4,12 @@
   --we-color-subtractor: 100%;
   --we-color-multiplier: -1;
   --we-color-saturation: 50%;
-  --we-color-ui-saturation: 20%;
+  --we-color-neutral-saturation: 20%;
 }
 
 /* ===== ELEMENTS OVERRIDES ===== */
 [data-we-theme='black'] we-tooltip::part(tooltip) {
-  background: var(--we-color-ui-100);
+  background: var(--we-color-neutral-100);
   color: var(--we-color-black);
 }
 

@@ -1,19 +1,19 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
-const border = '1px solid var(--we-color-ui-50)';
+const border = '1px solid var(--we-color-neutral-50)';
 
 const sidebarLeft = {
   type: 'Column',
-  props: { ax: 'start', bg: 'ui-0', py: '400', pr: '600', gap: '300', width: '275px', height: '100%' },
+  props: { ax: 'start', bg: 'neutral-0', py: '400', pr: '600', gap: '300', width: '275px', height: '100%' },
   children: [
     {
       type: 'we-button',
       props: {
         p: '300',
         r: 'full',
-        bg: 'ui-0',
-        color: 'ui-1000',
-        hoverProps: { bg: 'ui-100' },
+        bg: 'neutral-0',
+        color: 'neutral-1000',
+        hoverProps: { bg: 'neutral-100' },
         onClick: { $action: 'routeStore.navigate', args: ['/'] },
       },
       children: [{ type: 'we-icon', props: { name: 'x-logo', size: 'lg' } }],
@@ -43,10 +43,10 @@ const sidebarLeft = {
             pr: '600',
             gap: '400',
             r: 'pill',
-            bg: 'ui-0',
+            bg: 'neutral-0',
             height: '50px',
             // disabled: true,
-            hoverProps: { bg: 'ui-100' },
+            hoverProps: { bg: 'neutral-100' },
             focusProps: { bg: 'warning-500' },
             activeProps: { bg: 'success-500' },
             disabledProps: { bg: 'danger-500' },
@@ -57,7 +57,7 @@ const sidebarLeft = {
               type: 'we-icon',
               props: {
                 name: { $expr: 'button.icon' },
-                color: 'ui-1000',
+                color: 'neutral-1000',
                 weight: {
                   $if: {
                     condition: { $eq: [{ $store: 'routeStore.currentPath' }, { $expr: 'button.path' }] },
@@ -72,7 +72,7 @@ const sidebarLeft = {
               props: {
                 text: { $expr: 'button.label' },
                 size: '600',
-                color: 'ui-1000',
+                color: 'neutral-1000',
                 weight: {
                   $if: {
                     condition: { $eq: [{ $store: 'routeStore.currentPath' }, { $expr: 'button.path' }] },
@@ -90,17 +90,17 @@ const sidebarLeft = {
       type: 'we-button',
       props: {
         r: 'pill',
-        bg: 'ui-1000',
+        bg: 'neutral-1000',
         width: '100%',
         height: '50px',
         // m: '800',
-        hoverProps: { bg: 'ui-800', width: '50%' },
+        hoverProps: { bg: 'neutral-800', width: '50%' },
         onClick: { $action: 'routeStore.navigate', args: ['/post'] },
       },
       children: [
         {
           type: 'we-text',
-          props: { color: 'ui-0', size: '500', weight: '800' },
+          props: { color: 'neutral-0', size: '500', weight: '800' },
           children: ['Post'],
         },
       ],
@@ -146,11 +146,11 @@ export const twitterTemplateSchema: TemplateSchema = {
     icon: 'x-logo',
   },
   type: 'Row',
-  props: { bg: 'ui-0', ax: 'center', width: '100%', height: '100%' },
+  props: { bg: 'neutral-0', ax: 'center', width: '100%', height: '100%' },
   children: [
     {
       type: 'Row',
-      props: { bg: 'ui-0', height: '100%' },
+      props: { bg: 'neutral-0', height: '100%' },
       children: [sidebarLeft, centerContent, sidebarRight],
     },
   ],
@@ -177,7 +177,7 @@ export const twitterTemplateSchema: TemplateSchema = {
                 label: 'For you',
                 key: '/',
                 // width: '50%',
-                hoverProps: { bg: 'ui-500' },
+                hoverProps: { bg: 'neutral-500' },
                 onClick: { $action: 'routeStore.navigate', args: ['/'] },
                 // style: { flex: 1 },
               },
@@ -189,7 +189,7 @@ export const twitterTemplateSchema: TemplateSchema = {
                 label: 'Following',
                 key: '/following',
                 // width: '50%',
-                hoverProps: { bg: 'ui-500' },
+                hoverProps: { bg: 'neutral-500' },
                 onClick: { $action: 'routeStore.navigate', args: ['/following'] },
                 // style: { flex: 1 },
               },

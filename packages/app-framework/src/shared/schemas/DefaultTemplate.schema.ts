@@ -2,7 +2,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 
 const templateSidebar = {
   type: 'Column',
-  props: { bg: 'ui-0', p: '500', ay: 'between' },
+  props: { bg: 'neutral-0', p: '500', ay: 'between' },
   children: [
     {
       type: 'Column',
@@ -108,7 +108,7 @@ const spacePageSidebar = {
 
 const spacePageHeader = {
   type: 'Row',
-  props: { bg: 'ui-100', p: '400', gap: '400', ay: 'center' },
+  props: { bg: 'neutral-100', p: '400', gap: '400', ay: 'center' },
   children: [
     { type: 'we-text', props: { fontSize: '600' }, children: ['Space page'] },
     {
@@ -145,7 +145,7 @@ export const defaultTemplateSchema: TemplateSchema = {
     },
     {
       type: 'Column',
-      props: { class: 'we-default-template-content', ax: 'center', bg: 'ui-50' },
+      props: { class: 'we-default-template-content', ax: 'center', bg: 'neutral-50' },
       children: [{ type: 'main', props: { class: 'we-default-template-pages' }, children: [{ type: '$routes' }] }],
     },
     templateModals,
@@ -154,13 +154,13 @@ export const defaultTemplateSchema: TemplateSchema = {
     {
       path: '*',
       type: 'Column',
-      props: { ax: 'center', bg: 'ui-0', p: '500' },
+      props: { ax: 'center', bg: 'neutral-0', p: '500' },
       children: [{ type: 'we-text', props: { fontSize: '600' }, children: ['Page not found :_('] }],
     },
     {
       path: '/',
       type: 'Column',
-      props: { ax: 'center', bg: 'ui-0', p: '500' },
+      props: { ax: 'center', bg: 'neutral-0', p: '500' },
       children: [{ type: 'we-text', props: { fontSize: '600' }, children: ['Home page!!!'] }],
     },
     {
@@ -175,7 +175,7 @@ export const defaultTemplateSchema: TemplateSchema = {
         },
         {
           type: 'Column',
-          props: { class: 'we-space-page-content', bg: 'ui-50' },
+          props: { class: 'we-space-page-content', bg: 'neutral-50' },
           children: [
             {
               type: 'header',
@@ -196,7 +196,7 @@ export const defaultTemplateSchema: TemplateSchema = {
         {
           path: '/',
           type: 'Row',
-          props: { bg: 'ui-200', ay: 'center', px: '400', style: { height: '60px' } },
+          props: { bg: 'neutral-200', ay: 'center', px: '400', style: { height: '60px' } },
           children: [{ type: 'we-text', props: { fontSize: '600' }, children: ['About sub-page'] }],
         },
         {
@@ -204,7 +204,7 @@ export const defaultTemplateSchema: TemplateSchema = {
           children: [
             {
               type: 'Row',
-              props: { bg: 'ui-200', ay: 'center', gap: '400', px: '400', height: '60px' },
+              props: { bg: 'neutral-200', ay: 'center', gap: '400', px: '400', height: '60px' },
               children: [
                 {
                   type: 'we-button',
@@ -225,7 +225,7 @@ export const defaultTemplateSchema: TemplateSchema = {
             },
             {
               type: 'Column',
-              props: { bg: 'ui-300', p: '400' },
+              props: { bg: 'neutral-300', p: '400' },
               children: [{ type: '$routes' }],
             },
           ],
@@ -239,7 +239,7 @@ export const defaultTemplateSchema: TemplateSchema = {
         {
           path: '/users',
           type: 'Row',
-          props: { bg: 'ui-200', ay: 'center', px: '400', style: { height: '60px' } },
+          props: { bg: 'neutral-200', ay: 'center', px: '400', style: { height: '60px' } },
           children: [{ type: 'we-text', props: { fontSize: '600' }, children: ['User sub-page'] }],
         },
       ],

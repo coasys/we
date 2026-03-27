@@ -117,7 +117,7 @@ export function tokenVar(prefix: string, token?: string, fallback = '0') {
 
 /**
  * Parse border shorthand value and convert color tokens to CSS variables
- * Example: "1px solid ui-200" -> "1px solid var(--we-color-ui-200)"
+ * Example: "1px solid ui-200" -> "1px solid var(--we-color-neutral-200)"
  */
 export function parseBorder(value: string | undefined, defaultValue = ''): string {
   const val = value ?? defaultValue;

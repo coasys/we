@@ -1,7 +1,7 @@
 [data-placeholder].we-block-placeholder-empty {
   &:before {
     content: attr(data-placeholder);
-    color: var(--we-color-ui-200);
+    color: var(--we-color-neutral-200);
     position: absolute;
     left: 10px;
     opacity: 0;
@@ -15,6 +15,6 @@
   &.we-block-placeholder-focused:before,
   &:hover:before {
     opacity: 0.8;
-    color: var(--we-color-ui-300);
+    color: var(--we-color-neutral-300);
   }
 }

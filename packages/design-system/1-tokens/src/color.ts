@@ -8,9 +8,9 @@ export type Percentage = `${string}%`;
 export type HexColor = `#${string}`;
 
 // Literal union types
-export type ColorHueToken = 'ui' | 'primary' | 'success' | 'warning' | 'danger';
+export type ColorHueToken = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
 export type ColorBaseToken = 'white' | 'black';
-export type ColorConfigToken = 'multiplier' | 'subtractor' | 'saturation' | 'uiSaturation';
+export type ColorConfigToken = 'multiplier' | 'subtractor' | 'saturation' | 'neutralSaturation';
 export type ColorLightnessToken =
   | '0'
   | '25'
@@ -41,7 +41,7 @@ export const colorConfig = {
   multiplier: 1,
   subtractor: '0%',
   saturation: '60%',
-  uiSaturation: '10%',
+  neutralSaturation: '10%',
 } satisfies Record<ColorConfigToken, number | Percentage>;
 
 /**
@@ -49,7 +49,7 @@ export const colorConfig = {
  * Values represent positions on the color wheel (standard range is 0-360).
  */
 export const colorHues = {
-  ui: 610,
+  neutral: 610,
   primary: 610,
   success: 130,
   warning: 45,
@@ -118,7 +118,7 @@ function generateColorScale(hue: number, saturation: string): Record<ColorLightn
 }
 
 // Generate concrete color scales using the hue and saturation values
-export const colorUI = generateColorScale(colorHues.ui, colorConfig.uiSaturation);
+export const colorNeutral = generateColorScale(colorHues.neutral, colorConfig.neutralSaturation);
 export const colorPrimary = generateColorScale(colorHues.primary, colorConfig.saturation);
 export const colorSuccess = generateColorScale(colorHues.success, colorConfig.saturation);
 export const colorWarning = generateColorScale(colorHues.warning, colorConfig.saturation);
@@ -133,7 +133,7 @@ export const color = {
   hues: colorHues,
   lightness: colorLightness,
   base: colorBase,
-  ui: colorUI,
+  neutral: colorNeutral,
   primary: colorPrimary,
   success: colorSuccess,
   warning: colorWarning,

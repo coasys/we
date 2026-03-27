@@ -16,7 +16,7 @@ export function PostCard(props: PostCardProps) {
     <Column
       class={`we-post-card ${props.class || ''}`}
       styles={props.styles}
-      bg="ui-100"
+      bg="neutral-100"
       gap="300"
       p="400"
       r="md"

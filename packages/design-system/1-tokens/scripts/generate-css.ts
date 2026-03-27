@@ -75,8 +75,8 @@ function generateBorderCSS(border: typeof borderTokens, outputDir: string) {
   --we-border-radius: var(--we-radius-md);
 
   /* Border Colors */
-  --we-border-color: var(--we-color-ui-100);
-  --we-border-color-strong: var(--we-color-ui-200);
+  --we-border-color: var(--we-color-neutral-100);
+  --we-border-color-strong: var(--we-color-neutral-200);
 }`;
 
   fs.writeFileSync(path.join(outputDir, 'border.css'), css);
@@ -85,8 +85,8 @@ function generateBorderCSS(border: typeof borderTokens, outputDir: string) {
 function generateColorCSS(color: typeof colorTokens, outputDir: string) {
   const hueVars = Object.entries(color.hues)
     .map(([key, value]) => {
-      // ui-hue inherits from primary-hue by default so neutral surfaces tint to match the primary color
-      if (key === 'ui') return `  --we-color-${key}-hue: var(--we-color-primary-hue);`;
+      // neutral-hue inherits from primary-hue by default so neutral surfaces tint to match the primary color
+      if (key === 'neutral') return `  --we-color-${key}-hue: var(--we-color-primary-hue);`;
       return `  --we-color-${key}-hue: ${value};`;
     })
     .join('\n');
@@ -98,12 +98,13 @@ function generateColorCSS(color: typeof colorTokens, outputDir: string) {
     )
     .join('\n');
 
-  const colorTypes = ['ui', 'primary', 'success', 'warning', 'danger'];
+  const colorTypes = ['neutral', 'primary', 'success', 'warning', 'danger'];
   const colorPalettes = colorTypes
     .map((type) => {
       const paletteVars = Object.keys(color.lightness)
         .map((lightnessKey) => {
-          const saturationVar = type === 'ui' ? 'var(--we-color-ui-saturation)' : 'var(--we-color-saturation)';
+          const saturationVar =
+            type === 'neutral' ? 'var(--we-color-neutral-saturation)' : 'var(--we-color-saturation)';
           return `  --we-color-${type}-${lightnessKey}: hsl(var(--we-color-${type}-hue) ${saturationVar} var(--we-color-lightness-${lightnessKey}));`;
         })
         .join('\n');
@@ -120,7 +121,7 @@ ${paletteVars}`;
   --we-color-multiplier: ${color.config.multiplier};
   --we-color-subtractor: ${color.config.subtractor};
   --we-color-saturation: ${color.config.saturation};
-  --we-color-ui-saturation: ${color.config.uiSaturation};
+  --we-color-neutral-saturation: ${color.config.neutralSaturation};
 
   /* Color Hues */
 ${hueVars}
@@ -131,8 +132,8 @@ ${lightnessVars}
 ${colorPalettes}
 
   /* Base Colors */
-  --we-color-white: hsl(var(--we-color-ui-hue) var(--we-color-ui-saturation) var(--we-color-lightness-0));
-  --we-color-black: hsl(var(--we-color-ui-hue) var(--we-color-ui-saturation) var(--we-color-lightness-1000));
+  --we-color-white: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-0));
+  --we-color-black: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-1000));
 
   /* Focus Colors */
   --we-color-focus: var(--we-color-primary-500);
@@ -157,7 +158,7 @@ function generateComponentCSS(component: typeof componentTokens, outputDir: stri
   /* Scrollbar Styles */
 ${scrollbarVars}
   --we-scrollbar-thumbBorderRadius: var(--we-border-radius);
-  --we-scrollbar-thumbBackground: hsl(var(--we-color-ui-hue) 5% var(--we-color-lightness-100));
+  --we-scrollbar-thumbBackground: hsl(var(--we-color-neutral-hue) 5% var(--we-color-lightness-100));
 }`;
 
   fs.writeFileSync(path.join(outputDir, 'component.css'), css);

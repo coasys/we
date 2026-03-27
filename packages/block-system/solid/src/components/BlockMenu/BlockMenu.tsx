@@ -120,7 +120,13 @@ export default function BlockTypeMenu(props: {
               onKeyDown={(e) => onOptionKeyDown(e, option.type)}
             >
               <Row>
-                <we-icon name={option.icon} weight="bold" color="ui-300" size="sm" style={{ margin: '0 10px 0 0' }} />
+                <we-icon
+                  name={option.icon}
+                  weight="bold"
+                  color="neutral-300"
+                  size="sm"
+                  style={{ margin: '0 10px 0 0' }}
+                />
                 {option.label}
               </Row>
               <span class="we-block-menu-markdown">{option.md}</span>

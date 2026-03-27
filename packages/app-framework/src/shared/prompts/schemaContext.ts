@@ -108,7 +108,7 @@ Radius:
 - 'none', 'xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'pill', 'full'
 
 Color:
-- Hues: 'ui', 'primary', 'success', 'warning', 'danger'
+- Hues: 'neutral', 'primary', 'success', 'warning', 'danger'
 - Lightness: '0' (lightest) to '1000' (darkest)
 
 Size:
@@ -295,8 +295,8 @@ Special Node:
 Example:
 {
   "routes": [
-    { "path": "*", "type": "Column", "props": { "ax": "center", "bg": "ui-0", "p": "500" }, "children": [{ "type": "we-text", "props": { "size": "600" }, "children": ["Page not found"] }] },
-    { "path": "/", "type": "Column", "props": { "ax": "center", "bg": "ui-0", "p": "500" }, "children": [{ "type": "we-text", "props": { "size": "600" }, "children": ["Home page"] }] },
+    { "path": "*", "type": "Column", "props": { "ax": "center", "bg": "neutral-0", "p": "500" }, "children": [{ "type": "we-text", "props": { "size": "600" }, "children": ["Page not found"] }] },
+    { "path": "/", "type": "Column", "props": { "ax": "center", "bg": "neutral-0", "p": "500" }, "children": [{ "type": "we-text", "props": { "size": "600" }, "children": ["Home page"] }] },
     {
       "path": "/space/:spaceId",
       "type": "Row",
@@ -345,11 +345,11 @@ Example:
 {
   "meta": { "name": "My Template", "description": "Demo", "icon": "home" },
   "type": "Row",
-  "props": { "bg": "ui-0" },
+  "props": { "bg": "neutral-0" },
   "children": [{ "type": "we-text", "props": { "children": ["Welcome"] } }],
   "routes": [
-    { "path": "/", "type": "Column", "props": { "ax": "center", "bg": "ui-0", "p": "500" }, "children": [{ "type": "we-text", "children": ["Welcome"] }] },
-    { "path": "*", "type": "Column", "props": { "ax": "center", "bg": "ui-0", "p": "500" }, "children": [{ "type": "we-text", "props": { "size": "600" }, "children": ["Page not found"] }] }
+    { "path": "/", "type": "Column", "props": { "ax": "center", "bg": "neutral-0", "p": "500" }, "children": [{ "type": "we-text", "children": ["Welcome"] }] },
+    { "path": "*", "type": "Column", "props": { "ax": "center", "bg": "neutral-0", "p": "500" }, "children": [{ "type": "we-text", "props": { "size": "600" }, "children": ["Page not found"] }] }
   ]
 }
 

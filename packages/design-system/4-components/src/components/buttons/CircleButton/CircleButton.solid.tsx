@@ -24,7 +24,7 @@ export function CircleButton(props: CircleButtonProps) {
         {props.image ? (
           <we-avatar image={props.image} />
         ) : props.icon ? (
-          <we-icon name={props.icon} color="ui-700" />
+          <we-icon name={props.icon} color="neutral-700" />
         ) : (
           <we-avatar initials={props.label.slice(0, 2)} />
         )}

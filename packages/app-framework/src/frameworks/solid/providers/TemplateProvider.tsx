@@ -94,9 +94,9 @@ export default function TemplateProvider() {
   const appSchema: TemplateSchema = {
     meta: { name: 'App Layout', description: 'Root application layout', icon: '' },
     // theme: {
-    //   primaryHue: 200, //350, // 210, // teal/cyan instead of the default purple
-    //   // uiSaturation: '0%', // desaturate UI colors for a more muted look, to let the content pop - feels more "app-like" and less "webpage-like"
-    //   // saturation: '70%', // bump saturation so it pops
+    //   primaryHue: 210, // 350, //  teal/cyan instead of the default purple
+    //   neutralSaturation: '10%', // desaturate UI colors for a more muted look, to let the content pop - feels more "app-like" and less "webpage-like"
+    //   saturation: '70%', // bump saturation so it pops
     // },
     children: [
       launcherUIRegistry.bootScreen,
@@ -125,7 +125,7 @@ export default function TemplateProvider() {
             RenderSchema({
               node: {
                 type: 'Column',
-                props: { ax: 'center', bg: 'ui-0', p: '500' },
+                props: { ax: 'center', bg: 'neutral-0', p: '500' },
                 children: [{ type: 'we-text', props: { size: '600' }, children: ['Page not found :_('] }],
               },
               stores,

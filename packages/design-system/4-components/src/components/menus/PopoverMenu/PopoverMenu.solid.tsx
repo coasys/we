@@ -30,7 +30,7 @@ export function PopoverMenu<T extends Option>(props: PopoverMenuProps<T>) {
       placement="bottom-end"
       data-we-menu
     >
-      <we-button slot="trigger" bg="ui-100" color="ui-1000" r="pill">
+      <we-button slot="trigger" bg="neutral-100" color="neutral-1000" r="pill">
         <we-icon name={props.selectedOption().icon} />
         {props.selectedOption().name}
       </we-button>

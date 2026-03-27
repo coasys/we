@@ -6,7 +6,7 @@
   --we-color-multiplier: 1;
   --we-color-subtractor: 0%;
   --we-color-saturation: 60%;
-  --we-color-ui-saturation: 10%;
+  --we-color-neutral-saturation: 10%;
   --we-border-radius: 0px;
   --we-border-color: silver;
   --we-font-family: monospace;
@@ -139,7 +139,7 @@
 }
 
 [data-we-theme='retro'] we-menu::part(base) {
-  background: var(--we-color-ui-100);
+  background: var(--we-color-neutral-100);
 }
 
 [data-we-theme='retro'] we-menu-group-item::part(summary) {

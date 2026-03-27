@@ -102,7 +102,7 @@ The color system supports dynamic theming through CSS variable relationships:
 /* Change the base saturation - all colors update automatically */
 :root {
   --we-color-saturation: 80%; /* More vibrant */
-  --we-color-ui-saturation: 15%; /* Slightly more colorful UI */
+  --we-color-neutral-saturation: 15%; /* Slightly more colorful UI */
 }
 
 /* Or adjust lightness calculations for dark mode */
@@ -186,10 +186,10 @@ function applyTheme(theme) {
 
   if (theme === 'vibrant') {
     root.style.setProperty('--we-color-saturation', '80%');
-    root.style.setProperty('--we-color-ui-saturation', '20%');
+    root.style.setProperty('--we-color-neutral-saturation', '20%');
   } else if (theme === 'muted') {
     root.style.setProperty('--we-color-saturation', '40%');
-    root.style.setProperty('--we-color-ui-saturation', '5%');
+    root.style.setProperty('--we-color-neutral-saturation', '5%');
   }
 }
 ```

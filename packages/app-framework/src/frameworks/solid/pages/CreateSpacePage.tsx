@@ -45,7 +45,7 @@ export function CreateSpacePage() {
   return (
     <Column p="600" gap="500" ax="center" ay="center" width="100%" height="100%">
       <Column gap="400" width="100%" maxWidth="400px">
-        <we-text fontSize="700" fontWeight="600" color="ui-700">
+        <we-text fontSize="700" fontWeight="600" color="neutral-700">
           New space
         </we-text>
         <we-input
@@ -63,7 +63,7 @@ export function CreateSpacePage() {
 
         {/* Image picker */}
         <Column gap="200">
-          <we-text fontSize="300" fontWeight="500" color="ui-600">
+          <we-text fontSize="300" fontWeight="500" color="neutral-600">
             Image
           </we-text>
           {imagePreview() ? (
@@ -89,8 +89,8 @@ export function CreateSpacePage() {
                   height: '20px',
                   'border-radius': '50%',
                   border: 'none',
-                  background: 'var(--we-color-ui-700)',
-                  color: 'var(--we-color-ui-0)',
+                  background: 'var(--we-color-neutral-700)',
+                  color: 'var(--we-color-neutral-0)',
                   cursor: 'pointer',
                   'font-size': '12px',
                   display: 'flex',
@@ -109,14 +109,14 @@ export function CreateSpacePage() {
                 width: '80px',
                 height: '80px',
                 'border-radius': '12px',
-                border: '2px dashed var(--we-color-ui-300)',
+                border: '2px dashed var(--we-color-neutral-300)',
                 display: 'flex',
                 'align-items': 'center',
                 'justify-content': 'center',
                 cursor: 'pointer',
               }}
             >
-              <we-text fontSize="400" color="ui-400">
+              <we-text fontSize="400" color="neutral-400">
                 +
               </we-text>
             </div>
@@ -132,13 +132,13 @@ export function CreateSpacePage() {
 
         {/* Personal / Shared toggle using button pair */}
         <Column gap="200">
-          <we-text fontSize="300" fontWeight="500" color="ui-600">
+          <we-text fontSize="300" fontWeight="500" color="neutral-600">
             Visibility
           </we-text>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <we-button
               bg={!shared() ? 'primary-500' : ''}
-              color={!shared() ? 'ui-0' : 'ui-700'}
+              color={!shared() ? 'neutral-0' : 'neutral-700'}
               px="300"
               py="100"
               onClick={() => setShared(false)}
@@ -147,7 +147,7 @@ export function CreateSpacePage() {
             </we-button>
             <we-button
               bg={shared() ? 'primary-500' : ''}
-              color={shared() ? 'ui-0' : 'ui-700'}
+              color={shared() ? 'neutral-0' : 'neutral-700'}
               px="300"
               py="100"
               onClick={() => setShared(true)}
@@ -155,7 +155,7 @@ export function CreateSpacePage() {
               Shared
             </we-button>
           </div>
-          <we-text fontSize="200" color="ui-500">
+          <we-text fontSize="200" color="neutral-500">
             {shared()
               ? 'Shared spaces are published as neighbourhoods that others can join.'
               : 'Personal spaces are private and stored locally.'}
@@ -164,7 +164,7 @@ export function CreateSpacePage() {
 
         <we-button
           bg="primary-500"
-          color="ui-0"
+          color="neutral-0"
           disabled={!name() || loading()}
           loading={loading()}
           onClick={handleCreate}

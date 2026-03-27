@@ -31,7 +31,7 @@ const styles = css`
   }
 
   [part='summary']:hover {
-    color: var(--we-color-ui-700);
+    color: var(--we-color-neutral-700);
   }
   :host([collapsible]) [part='summary']:after {
     top: 50%;
@@ -39,8 +39,8 @@ const styles = css`
     position: absolute;
     display: block;
     content: '';
-    border-right: 1px solid var(--we-color-ui-500);
-    border-bottom: 1px solid var(--we-color-ui-500);
+    border-right: 1px solid var(--we-color-neutral-500);
+    border-bottom: 1px solid var(--we-color-neutral-500);
     width: 4px;
     height: 4px;
     transition: all var(--we-transition-300) ease;
@@ -53,7 +53,7 @@ const styles = css`
   [part='title'] {
     text-transform: uppercase;
     font-size: var(--we-font-size-400);
-    color: var(--we-color-ui-400);
+    color: var(--we-color-neutral-400);
     font-weight: 500;
     flex: 1;
     white-space: nowrap;

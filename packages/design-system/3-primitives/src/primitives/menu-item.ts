@@ -11,7 +11,7 @@ import type { MenuItemVariant } from '../types';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   cursor: 'pointer',
   bg: 'transparent',
-  color: 'ui-600',
+  color: 'neutral-600',
   px: '500',
   py: '200',
   ax: 'start',
@@ -19,8 +19,8 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   gap: '300',
   height: 'md',
   hoverProps: {
-    bg: 'ui-50',
-    color: 'ui-700',
+    bg: 'neutral-50',
+    color: 'neutral-700',
   },
 };
 

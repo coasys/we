@@ -9,8 +9,8 @@ import sharedStyles from '../shared/styles';
 import { BadgeSize, BadgeVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
-  bg: 'ui-100',
-  color: 'ui-500',
+  bg: 'neutral-100',
+  color: 'neutral-500',
   fontSize: '400',
   fontWeight: '400',
   r: 'sm',

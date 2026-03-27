@@ -17,11 +17,11 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   px: '300',
   py: '200',
   fontSize: '400',
-  bg: 'ui-75',
+  bg: 'neutral-75',
   r: 'sm',
-  color: 'ui-1000',
-  hoverProps: { bg: 'ui-100' },
-  focusProps: { bg: 'ui-100', shadow: '0 0 0 2px var(--we-color-primary-500)' },
+  color: 'neutral-1000',
+  hoverProps: { bg: 'neutral-100' },
+  focusProps: { bg: 'neutral-100', shadow: '0 0 0 2px var(--we-color-primary-500)' },
 };
 
 const SIZE_DEFAULTS: Record<InputSize, Partial<DesignSystemProps>> = {
@@ -49,7 +49,7 @@ const styles = css`
   }
 
   [part='input']::placeholder {
-    color: var(--we-color-ui-400);
+    color: var(--we-color-neutral-400);
   }
 
   [part='help-text'] {

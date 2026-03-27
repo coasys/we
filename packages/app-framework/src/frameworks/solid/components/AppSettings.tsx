@@ -54,10 +54,10 @@ export default function AppSettings() {
             </Row>
 
             <we-button
-              color="ui-1000"
-              bg="ui-100"
+              color="neutral-1000"
+              bg="neutral-100"
               r="pill"
-              hoverProps={{ bg: 'ui-200' }}
+              hoverProps={{ bg: 'neutral-200' }}
               onClick={templateStore.removeTemplate}
             >
               Remove Template
@@ -76,10 +76,10 @@ export default function AppSettings() {
                 }}
               />
               <we-button
-                color="ui-1000"
-                bg="ui-100"
+                color="neutral-1000"
+                bg="neutral-100"
                 r="pill"
-                hoverProps={{ bg: 'ui-200' }}
+                hoverProps={{ bg: 'neutral-200' }}
                 onClick={() => templateStore.saveTemplate(newTemplateName())}
                 disabled={newTemplateName().trim() === ''}
               >

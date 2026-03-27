@@ -41,7 +41,7 @@
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
-                    │3b. color-ui →        │
+                    │3b. color-ui →     ✅│
                     │    color-neutral     │
                     └─────────────────────┘
 
@@ -156,13 +156,14 @@ Unified dual-channel prop delivery into single per-prop effect channel. All web 
 
 Bridges the schema/seed layer with the CSS theme system. Added `ThemeOverrides` type with Zod validation, `themeToStyle()` converter, scoped CSS variable application via `display: contents` wrappers in SchemaRenderer. Fixed `isRawCSSValue()` for `var()` passthrough, `tokenVar` font-size prefix, theme CSS issues. Added `gradient` prop to `we-button` (primary variant, `::before` overlay). Standardised all `we-text` props to `fontSize`/`fontWeight`. Created theme `CONVENTIONS.md`.
 
-### 3b. Rename `color-ui` → `color-neutral`
+### 3b. Rename `color-ui` → `color-neutral` ✅
 
-**Plan:** [neutral-rename](../prs/neutral-rename.md)
+**Plan:** [neutral-rename](../prs/neutral-rename.md) | **Summary:** [neutral-rename-summary](../prs/neutral-rename-summary.md)
+**Status:** Complete (branch `feat/neutral-rename`, 1 commit, 57 files)
 **Depends on:** Schema–Theme Integration (#3) — renames fields added in that PR
 **Unblocks:** consistent naming before any external consumers adopt the token vocabulary
 
-Renames the `ui` color family to `neutral` across all layers (CSS tokens, JS types, theme files, schema types, component styles). No deprecation — no external consumers exist. Purely mechanical rename with zero logic changes.
+Renamed the `ui` color family to `neutral` across all layers: JS tokens (`ColorHueToken`, `colorConfig`), CSS generation, 5 theme files, schema types (`ThemeOverrides`, Zod), `themeStyles.ts`, all component defaults (`'ui-NNN'` → `'neutral-NNN'`), templates, Solid components, prompt context, and documentation. Purely mechanical rename — zero logic changes.
 
 ### 4b. Add `$concat`, Remove `$expr`
 

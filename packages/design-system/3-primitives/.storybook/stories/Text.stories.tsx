@@ -30,7 +30,7 @@ export const WithColor: StoryObj = {
       <we-text color="primary-500">Primary</we-text>
       <we-text color="success-500">Success</we-text>
       <we-text color="danger-500">Danger</we-text>
-      <we-text color="ui-400">Muted</we-text>
+      <we-text color="neutral-400">Muted</we-text>
     </div>
   `,
 };
