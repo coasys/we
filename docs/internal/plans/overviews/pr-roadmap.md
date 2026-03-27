@@ -26,7 +26,7 @@
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
-                    │2b. Fine-Grained      │
+                    │2b. Fine-Grained   ✅│
                     │    Reactivity        │
                     └─────────────────────┘
                               │
@@ -124,9 +124,10 @@ Moved design-scale types (`FontWeight`, `LineHeight`, `LetterSpacing`, `Shadow`)
 
 Added `deepUnwrap` function to SchemaRenderer that recursively unwraps `REACTIVE_ACCESSOR`-marked functions in complex props before distributing to components. Removed manual unwrap workarounds from CollapsibleSidebar and CesiumGlobe. ConditionalRenderer and cesium user-locations correctly left unchanged (different resolution paths).
 
-### 2b. Fine-Grained Schema Reactivity
+### 2b. Fine-Grained Schema Reactivity ✅
 
-**Plan:** [fine-grained-schema-reactivity](../prs/fine-grained-schema-reactivity.md)
+**Plan:** [fine-grained-schema-reactivity](../prs/fine-grained-schema-reactivity.md) | **Summary:** [fine-grained-schema-reactivity-summary](../prs/fine-grained-schema-reactivity-summary.md)
+**Status:** Complete (branch `feat/fine-grained-schema-reactivity`, 2 commits, 2 code files)
 **Depends on:** Deep Unwrap (#2) — `deepUnwrap` as a pure function is the foundation
 **Unblocks:** performant large templates, per-prop update granularity
 
@@ -300,7 +301,7 @@ The critical path is: **5 → 6 → 9** (block migration → schema customizatio
 Time →
 
 Track 1:  [1. Buttons ✅] [1b. Primitives ✅] [1c. Tokens] [3. Themes] [8b-Ph1. Token Validation] ──
-Track 2:  [2. Unwrap ✅] [2b. Fine-Grained] [2c. WC Props] ────────────
+Track 2:  [2. Unwrap ✅] [2b. Fine-Grained ✅] [2c. WC Props] ────────────
 Track 2b: [4b. $concat] ────────────────────────────────────────────────
 Track 2c: [10. Components Ph1] ─────────────────────────────────────────
 Track 3:  [5. Models]  [5c. $query] ────────────────────────────────────
