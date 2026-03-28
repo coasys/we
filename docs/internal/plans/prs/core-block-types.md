@@ -10,7 +10,7 @@ WE currently has 3 block types (TextBlock, ImageBlock, CollectionBlock). These w
 
 Every block type added to a perspective automatically gets SHACL MCP tools (`{block}_create`, `_query`, `_get`, `_delete`, `_set_{property}`), so AI agents can immediately CRUD instances.
 
-**Prerequisite:** [block-model-migration](block-model-migration.md) (models must live in `@we/models`, registry must exist in `@we/block-system`).
+**Prerequisite:** [block-model-migration](block-model-migration.md) (models must live in `@we/models`).
 
 ---
 
@@ -250,14 +250,25 @@ Editor component: `EmbedRenderer` — renders entity card or oEmbed widget based
 
 ## Implementation
 
-### Phase 1: Model definitions + migration (do with block-model-migration PR)
+### Phase 1: Editor infrastructure (deferred from #5)
+
+These items were originally scoped in #5 but deferred here because they're only needed when adding new block types. The existing 3-block setup works fine with direct imports and the current `ImageNode` Lexical node.
+
+- [ ] Create `@we/block-system/shared/src/registry.ts` — `registerBlock()`, `blockRegistry` Map, `BlockRegistration` type, `resolveBlockType()` using registry lookup
+- [ ] Create `@we/block-system/solid/src/GenericBlockNode.ts` — single Lexical `DecoratorNode` that looks up `editorComponent` from the registry by block type
+- [ ] Extract ImageBlock SolidJS component from `@we/block-system/solid/src/components/ImageBlock/` to `@we/components` — split Lexical-coupled logic from pure display component
+- [ ] Create `@we/block-system/solid/src/core-blocks.ts` — imports models + components, calls `registerBlock()` for each
+- [ ] Update `@we/block-system/shared/src/serialization.ts` — use registry lookup instead of if-branches
+- [ ] Update `BlockComposer.tsx` — use `GenericBlockNode` in nodes array instead of individual node classes
+
+### Phase 2: Model definitions
 
 - [ ] Add `variant`, `icon`, `style` fields to TextBlock for callout/divider support
 - [ ] Create 10 new model files in `@we/models/src/blocks/`
 - [ ] Export all from `@we/models` index
-- [ ] Register all in model registry
+- [ ] Register all in model registry via `core-blocks.ts`
 
-### Phase 2: Editor components (can be incremental)
+### Phase 3: Editor components (can be incremental)
 
 Each new block type needs a SolidJS component in `@we/components` (or `@we/widgets` for complex ones) and a `registerBlock()` call in `@we/block-system/solid/src/core-blocks.ts`. All non-text blocks are rendered via `GenericBlockNode` — no custom Lexical nodes needed.
 

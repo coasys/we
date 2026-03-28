@@ -1,9 +1,8 @@
 import { Ad4mClient, Agent, Perspective } from '@coasys/ad4m';
 import { usePlatform } from '@shared/platform';
 import { useNavigate } from '@solidjs/router';
-import { CollectionBlock, ImageBlock, TextBlock } from '@we/block-shared';
 import type { FileData } from '@we/models';
-import { blobToDataURL, resizeImage, Space, WeNode } from '@we/models';
+import { blobToDataURL, CollectionBlock, ImageBlock, resizeImage, Space, TextBlock, WeNode } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 export { type Ad4mClient, PerspectiveProxy } from '@coasys/ad4m';

@@ -1,7 +1,6 @@
 import { PerspectiveProxy } from '@coasys/ad4m';
 import { useAdamStore, useRouteStore } from '@solid/stores';
-import { CollectionBlock, ImageBlock, TextBlock } from '@we/block-shared';
-import { Space, WeNode } from '@we/models';
+import { CollectionBlock, ImageBlock, Space, TextBlock, WeNode } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 type BlockType = ImageBlock | TextBlock | CollectionBlock;
