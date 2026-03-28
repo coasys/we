@@ -253,13 +253,14 @@ Adds `$localState` / `$local` / `$setLocal` tokens for ephemeral form state scop
 
 ## Phase D: AI Tooling
 
-### 7a. Shared `*.types.ts` Refactor
+### 7a. Shared `*.types.ts` Refactor ✅
 
-**Plan:** [shared-types-refactor](../prs/shared-types-refactor.md)
+**Plan:** [shared-types-refactor](../prs/shared-types-refactor.md) | **Summary:** [shared-types-refactor-summary](../prs/shared-types-refactor-summary.md)
+**Status:** Complete (branch `feat/shared-types-refactor`, 1 commit, 84 files)
 **Depends on:** nothing (but strategically placed here — its value is realised by #8)
 **Unblocks:** @we/ai-context auto-extraction, multi-framework component support
 
-Extract shared prop interfaces from framework-specific files into `*.types.ts`. Add `@ai` JSDoc to components with non-obvious contracts. Move `solid/` → `frameworks/solid/` in 4-components and 5-widgets to match app-framework convention. Pure mechanical refactor — no behaviour changes.
+Extracted shared prop interfaces from 13 `.solid.tsx` files into co-located `*.types.ts` files across 4-components and 5-widgets. Moved `solid/` → `frameworks/solid/` in all four packages (4-components, 5-widgets, block-system, schema-system). Refactored 3 components from `Accessor<T>` to plain props and simplified SchemaRenderer by removing the accessor passthrough branch. Added `@ai` JSDoc to 5 non-obvious components. Established `export type *` (TS 5.0+) re-export pattern and `extends` for Solid-specific slot props. Created design-system `CONVENTIONS.md`.
 
 ### 7b. Component Showcase
 
@@ -311,7 +312,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 3b  | color-ui → color-neutral       | Sch   | 3          | Small  | Low  |
 | ✅   | 4b  | $concat + remove $expr         | Sch   | —          | Small  | Low  |
 | ✅   | 5   | Block Model Migration          | Data  | —          | Small  | Low  |
-| 1    | 7a  | Shared \*.types.ts             | AI    | —          | Medium | Low  |
+| ✅   | 7a  | Shared \*.types.ts             | AI    | —          | Medium | Low  |
 | 1    | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
 | 1    | 10  | Component Library (Ph 1)       | Sch   | —          | Medium | Low  |
 | 2    | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
