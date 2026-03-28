@@ -2,17 +2,14 @@ import { MaybeAccessor, toValue } from '@we/design-utils/solid';
 import type { IconWeight } from '@we/primitives/types';
 import { JSX } from 'solid-js';
 
-export interface IconLabelButtonProps {
-  icon: MaybeAccessor<string>;
-  label: MaybeAccessor<string>;
-  selected?: MaybeAccessor<boolean>;
-  iconWeight?: MaybeAccessor<IconWeight>;
-  onClick?: () => void;
-  class?: MaybeAccessor<string>;
-  styles?: MaybeAccessor<JSX.CSSProperties>;
-}
+export type * from './IconLabelButton.types';
+import type { IconLabelButtonProps as SharedIconLabelButtonProps } from './IconLabelButton.types';
 
-export function IconLabelButton(props: IconLabelButtonProps) {
+type SolidIconLabelButtonProps = {
+  [K in keyof SharedIconLabelButtonProps]: MaybeAccessor<SharedIconLabelButtonProps[K]>;
+};
+
+export function IconLabelButton(props: SolidIconLabelButtonProps) {
   return (
     <we-button
       class={`we-icon-label-button ${props.class || ''}`}

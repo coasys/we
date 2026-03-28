@@ -1,116 +1,28 @@
 import { iconSizeToVar, parseBorder, tokenVar } from '@we/design-utils';
-import { IconSize } from 'packages/design-system/3-primitives/dist/types';
 import { createContext, createEffect, createMemo, createSignal, Index, type JSX, Show } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
+
+export type * from './CollapsibleSidebar.types';
+import type {
+  CollapsibleSidebarItem,
+  CollapsibleSidebarProps,
+  SidebarGroup,
+  SidebarNavItem,
+} from './CollapsibleSidebar.types';
 
 /**
  * Context provided by CollapsibleSidebar to its children
  * Allows header/footer content to react to expansion state
  */
-export const CollapsibleSidebarContext = createContext<{
-  isExpanded: () => boolean;
-}>();
+export const CollapsibleSidebarContext = createContext<{ isExpanded: () => boolean }>();
 
-/**
- * Avatar props for user items
- */
-export interface AvatarProps {
-  src: string;
-  name: string;
-  status?: 'online' | 'offline' | 'away';
+// Solid-specific: add slot props as JSX.Element
+export interface SolidCollapsibleSidebarProps extends CollapsibleSidebarProps {
+  header?: JSX.Element;
+  footer?: JSX.Element;
 }
 
-/**
- * Base interface for common sidebar item properties
- */
-interface SidebarItemBase {
-  id: string;
-  label: string;
-  badge?: string | number;
-  disabled?: boolean;
-}
-
-/**
- * Regular navigation item
- */
-export interface SidebarNavItem extends SidebarItemBase {
-  type?: 'item'; // Default type
-  icon?: string;
-  avatar?: AvatarProps;
-  onClick?: () => void;
-  active?: boolean;
-}
-
-/**
- * Group header with nested items
- */
-export interface SidebarGroup extends SidebarItemBase {
-  type: 'group';
-  collapsible?: boolean;
-  collapsed?: boolean;
-  items: CollapsibleSidebarItem[];
-}
-
-/**
- * Union type for all sidebar items
- */
-export type CollapsibleSidebarItem = SidebarNavItem | SidebarGroup;
-
-export interface CollapsibleSidebarProps {
-  // Core navigation items (required)
-  items: CollapsibleSidebarItem[];
-
-  // Optional footer items (simple icon/label buttons at bottom)
-  footerItems?: CollapsibleSidebarItem[];
-
-  // Slots for flexible content (use SchemaNode children via slots)
-  header?: JSX.Element; // Custom header (logo, brand)
-  footer?: JSX.Element; // Custom footer (overrides footerItems)
-
-  // Positioning
-  side?: 'left' | 'right';
-  position?: 'static' | 'absolute' | 'fixed'; // Layout positioning
-  zIndex?: string | number; // Z-index for overlay mode
-
-  // Sizing
-  collapsedWidth?: string;
-  expandedWidth?: string;
-
-  // Behavior
-  defaultExpanded?: boolean;
-  expandOnHover?: boolean; // vs click to toggle
-  transitionDuration?: number; // milliseconds
-
-  // Styling
-  bg?: string;
-  border?: string;
-  padding?: string; // padding for items sections (main and footer)
-  gap?: string; // gap between main items and footer items
-  centerItems?: boolean; // vertically center main items
-
-  // Item styling
-  itemColor?: string;
-  itemColorHover?: string;
-  itemColorActive?: string;
-  itemBg?: string;
-  itemBgHover?: string;
-  itemBgActive?: string;
-  itemPadding?: string; // padding inside each button item
-  itemGap?: string; // gap between icon and label inside each item
-
-  // Badge styling (separate since it's visually distinct)
-  badgeBg?: string;
-  badgeColor?: string;
-
-  // Icon sizing
-  iconSize?: IconSize;
-
-  // Callbacks
-  onItemClick?: (item: CollapsibleSidebarItem) => void;
-  onExpandedChange?: (expanded: boolean) => void;
-}
-
-export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
+export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
   // Merge with defaults
   const side = () => props.side ?? 'left';
   const position = () => props.position ?? 'static';
@@ -207,17 +119,6 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
 
     // Create a reactive memo for the active state by accessing getItem() inside
     const isActive = createMemo(() => getItem().active || false);
-
-    // // Map icon size to avatar size token
-    // const avatarSize = () => {
-    //   const size = iconSize();
-    //   if (size === 'xs') return 'xs';
-    //   if (size === 'sm') return 'sm';
-    //   if (size === 'md') return 'md';
-    //   if (size === 'lg') return 'lg';
-    //   if (size === 'xl') return 'xl';
-    //   return 'md'; // default
-    // };
 
     return (
       <we-button
@@ -342,9 +243,7 @@ export function CollapsibleSidebar(props: CollapsibleSidebarProps) {
     return renderItem(getEntry as () => SidebarNavItem);
   };
 
-  const contextValue = {
-    isExpanded,
-  };
+  const contextValue = { isExpanded };
 
   return (
     <CollapsibleSidebarContext.Provider value={contextValue}>

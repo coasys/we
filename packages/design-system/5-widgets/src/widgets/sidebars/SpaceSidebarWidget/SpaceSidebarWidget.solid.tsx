@@ -1,13 +1,8 @@
 import { Column, Row } from '@we/components/solid';
-import { Accessor, JSX } from 'solid-js';
+import { JSX } from 'solid-js';
 
-export interface SpaceSidebarWidgetProps {
-  name: Accessor<string>;
-  description?: Accessor<string>;
-  // image?: Accessor<string>;
-  class?: string;
-  style?: JSX.CSSProperties;
-}
+export type * from './SpaceSidebarWidget.types';
+import type { SpaceSidebarWidgetProps } from './SpaceSidebarWidget.types';
 
 export function SpaceSidebarWidget(props: SpaceSidebarWidgetProps) {
   return (
@@ -17,11 +12,11 @@ export function SpaceSidebarWidget(props: SpaceSidebarWidgetProps) {
         <Row gap="300" ay="center">
           {/* <we-avatar size="xxl" image={props.image?.()} /> */}
           <we-text fontSize="800" fontWeight="500">
-            {props.name()}
+            {props.name}
           </we-text>
         </Row>
 
-        {props.description && <we-text>{props.description()}</we-text>}
+        {props.description && <we-text>{props.description}</we-text>}
       </Column>
     </Column>
   );

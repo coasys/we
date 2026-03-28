@@ -255,11 +255,11 @@ Adds `$localState` / `$local` / `$setLocal` tokens for ephemeral form state scop
 
 ### 7a. Shared `*.types.ts` Refactor
 
-**Plan:** [ai-context-package](../prs/ai-context-package.md) (PR 1 section)
+**Plan:** [shared-types-refactor](../prs/shared-types-refactor.md)
 **Depends on:** nothing (but strategically placed here — its value is realised by #8)
 **Unblocks:** @we/ai-context auto-extraction, multi-framework component support
 
-Extract shared prop interfaces from framework-specific files into `*.types.ts`. Add `@ai` JSDoc to components with non-obvious contracts. Pure mechanical refactor — no behaviour changes.
+Extract shared prop interfaces from framework-specific files into `*.types.ts`. Add `@ai` JSDoc to components with non-obvious contracts. Move `solid/` → `frameworks/solid/` in 4-components and 5-widgets to match app-framework convention. Pure mechanical refactor — no behaviour changes.
 
 ### 7b. Component Showcase
 

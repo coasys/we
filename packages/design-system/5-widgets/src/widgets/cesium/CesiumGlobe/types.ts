@@ -116,3 +116,24 @@ export interface LayerConfig<TOptions = unknown> {
   /** Whether layer is initially enabled */
   enabled?: boolean;
 }
+
+/**
+ * @ai 3D globe widget using CesiumJS with a modular layer system.
+ * Layers are injected via factory functions (planet surface + background).
+ * Requires a layer factory registry mapping string names to factory functions.
+ * Not schema-renderable — used directly in application code.
+ */
+export interface CesiumGlobeProps {
+  /**
+   * Cesium Ion access token. Get one free at https://ion.cesium.com/
+   * If not provided, uses Cesium's default demo token (limited quota)
+   */
+  ionAccessToken?: string;
+  /** Planet surface layer configurations (locations, outlines, hexagons, etc.) */
+  planetLayers?: LayerConfig[];
+  /** Background/space layer configurations (skybox, stars, etc.) */
+  backgroundLayers?: LayerConfig[];
+  /** Layer factory registry - injected from app */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  layerFactoryRegistry: Record<string, LayerFactory<any>>;
+}

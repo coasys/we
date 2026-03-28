@@ -1,15 +1,10 @@
 import { Ad4mClient } from '@coasys/ad4m';
 import { Column } from '@we/components/solid';
 import { CollectionBlock, ImageBlock, Space, TextBlock, WeNode } from '@we/models';
-import { Accessor, createSignal, JSX } from 'solid-js';
+import { createSignal, JSX } from 'solid-js';
 
-export interface CreateSpaceModalWidgetProps {
-  adamClient: Accessor<Ad4mClient | undefined>;
-  addNewSpace: (space: Space) => void;
-  close: () => void;
-  class?: string;
-  style?: JSX.CSSProperties;
-}
+export type * from './CreateSpaceModalWidget.types';
+import type { CreateSpaceModalWidgetProps } from './CreateSpaceModalWidget.types';
 
 // type SpaceVisibility = 'hidden' | 'private' | 'public';
 
@@ -21,7 +16,7 @@ export function CreateSpaceModalWidget(props: CreateSpaceModalWidgetProps) {
   const [loading, setLoading] = createSignal(false);
 
   async function createSpace() {
-    const client = props.adamClient();
+    const client = props.adamClient;
     if (!client) return;
     setLoading(true);
 

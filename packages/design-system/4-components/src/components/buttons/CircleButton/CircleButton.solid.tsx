@@ -1,13 +1,7 @@
 import { JSX } from 'solid-js';
 
-export interface CircleButtonProps {
-  label: string;
-  icon?: string;
-  image?: string;
-  onClick?: () => void;
-  class?: string;
-  styles?: JSX.CSSProperties;
-}
+export type * from './CircleButton.types';
+import type { CircleButtonProps } from './CircleButton.types';
 
 export function CircleButton(props: CircleButtonProps) {
   return (

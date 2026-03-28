@@ -1,9 +1,9 @@
-import type { FlexCrossAxis, FlexMainAxis } from '@we/design-types';
 import { designSystemKeys, filterProps, mergeProps } from '@we/design-utils';
-import { buildLayoutStyles, type LayoutProps } from '@we/design-utils/solid';
+import { buildLayoutStyles } from '@we/design-utils/solid';
 import { createMemo, splitProps } from 'solid-js';
 
-export type RowProps = Omit<LayoutProps, 'ax' | 'ay'> & { ax?: FlexMainAxis; ay?: FlexCrossAxis };
+export type * from './Row.types';
+import type { RowProps } from './Row.types';
 
 const DEFAULTS: Partial<RowProps> = {};
 const rowKeys = [...designSystemKeys.filter((key) => key !== 'direction'), 'reverse', 'children'];

@@ -4,7 +4,9 @@ packages:
   - packages/*
   - packages/design-system/*
   - packages/schema-system/*
+  - packages/schema-system/frameworks/*
   - packages/block-system/*
+  - packages/block-system/frameworks/*
 
 ignoredBuiltDependencies:
   - electron

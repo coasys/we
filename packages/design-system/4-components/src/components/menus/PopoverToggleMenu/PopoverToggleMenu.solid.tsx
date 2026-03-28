@@ -1,48 +1,23 @@
-import type { Placement } from '@we/design-types';
 import { Accessor, createMemo, createSignal, Index, JSX, Show } from 'solid-js';
 
-/**
- * Base interface for common menu item properties
- */
-interface MenuItemBase {
-  id: string;
-  label: string;
-  disabled?: boolean;
-}
+export type * from './PopoverToggleMenu.types';
+import type {
+  PopoverToggleMenuEntry,
+  PopoverToggleMenuGroup,
+  PopoverToggleMenuItem,
+  PopoverToggleMenuProps,
+} from './PopoverToggleMenu.types';
 
-/**
- * Regular toggle menu item
- */
-export interface PopoverToggleMenuItem extends MenuItemBase {
-  type?: 'item'; // Default type
-  icon?: string;
+// Solid-specific: items within arrays can pass reactive accessors for checked state
+type SolidToggleMenuItem = Omit<PopoverToggleMenuItem, 'checked'> & {
   checked: Accessor<boolean> | boolean;
-  onToggle?: () => void;
-}
-
-/**
- * Group of toggle items with a header
- */
-export interface PopoverToggleMenuGroup extends MenuItemBase {
-  type: 'group';
-  collapsible?: boolean;
-  collapsed?: boolean;
-  items: PopoverToggleMenuEntry[];
-}
-
-/**
- * Union type for all menu entries
- */
-export type PopoverToggleMenuEntry = PopoverToggleMenuItem | PopoverToggleMenuGroup;
-
-export interface PopoverToggleMenuProps {
-  items: PopoverToggleMenuEntry[];
-  placement?: Placement;
-  triggerLabel?: string;
-  triggerIcon?: string;
-  class?: string;
-  styles?: JSX.CSSProperties;
-}
+};
+type SolidToggleMenuEntry =
+  | SolidToggleMenuItem
+  | (Omit<PopoverToggleMenuGroup, 'items'> & { items: SolidToggleMenuEntry[] });
+type SolidToggleMenuProps = Omit<PopoverToggleMenuProps, 'items'> & {
+  items: SolidToggleMenuEntry[];
+};
 
 /**
  * PopoverToggleMenu
@@ -72,18 +47,18 @@ export interface PopoverToggleMenuProps {
  * />
  * ```
  */
-export function PopoverToggleMenu(props: PopoverToggleMenuProps) {
+export function PopoverToggleMenu(props: SolidToggleMenuProps) {
   let popoverRef: HTMLElement | undefined;
 
   // Track group collapse states
   const [groupStates, setGroupStates] = createSignal<Record<string, boolean>>({});
 
-  const handleToggle = (item: PopoverToggleMenuItem) => {
+  const handleToggle = (item: SolidToggleMenuItem) => {
     if (item.disabled) return;
     item.onToggle?.();
   };
 
-  const isChecked = (item: PopoverToggleMenuItem): boolean => {
+  const isChecked = (item: SolidToggleMenuItem): boolean => {
     return typeof item.checked === 'function' ? item.checked() : item.checked;
   };
 
@@ -94,12 +69,12 @@ export function PopoverToggleMenu(props: PopoverToggleMenuProps) {
     }));
   };
 
-  const isGroupCollapsed = (group: PopoverToggleMenuGroup): boolean => {
+  const isGroupCollapsed = (group: SolidToggleMenuEntry & { type: 'group' }): boolean => {
     const internalState = groupStates()[group.id];
     return internalState !== undefined ? internalState : (group.collapsed ?? false);
   };
 
-  const renderItem = (getItem: () => PopoverToggleMenuItem) => {
+  const renderItem = (getItem: () => SolidToggleMenuItem) => {
     const item = getItem();
     const checked = createMemo(() => isChecked(getItem()));
 
@@ -121,7 +96,7 @@ export function PopoverToggleMenu(props: PopoverToggleMenuProps) {
     );
   };
 
-  const renderGroup = (getGroup: () => PopoverToggleMenuGroup) => {
+  const renderGroup = (getGroup: () => SolidToggleMenuEntry & { type: 'group' }) => {
     const group = getGroup();
     const collapsed = createMemo(() => isGroupCollapsed(getGroup()));
     const groupItems = createMemo(() => getGroup().items);
@@ -157,14 +132,14 @@ export function PopoverToggleMenu(props: PopoverToggleMenuProps) {
     );
   };
 
-  const renderEntry = (getEntry: () => PopoverToggleMenuEntry) => {
+  const renderEntry = (getEntry: () => SolidToggleMenuEntry) => {
     const entry = getEntry();
 
     if (entry.type === 'group') {
-      return renderGroup(getEntry as () => PopoverToggleMenuGroup);
+      return renderGroup(getEntry as () => SolidToggleMenuEntry & { type: 'group' });
     }
 
-    return renderItem(getEntry as () => PopoverToggleMenuItem);
+    return renderItem(getEntry as () => SolidToggleMenuItem);
   };
 
   return (

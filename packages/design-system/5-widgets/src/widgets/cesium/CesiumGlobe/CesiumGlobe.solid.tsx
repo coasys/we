@@ -8,22 +8,8 @@
 import { Cartesian3, Ion, Viewer } from 'cesium';
 import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 
-import type { CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from './types';
-
-export interface CesiumGlobeProps {
-  /**
-   * Cesium Ion access token. Get one free at https://ion.cesium.com/
-   * If not provided, uses Cesium's default demo token (limited quota)
-   */
-  ionAccessToken?: string;
-  /** Planet surface layer configurations (locations, outlines, hexagons, etc.) */
-  planetLayers?: LayerConfig[];
-  /** Background/space layer configurations (skybox, stars, etc.) */
-  backgroundLayers?: LayerConfig[];
-  /** Layer factory registry - injected from app */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  layerFactoryRegistry: Record<string, LayerFactory<any>>;
-}
+export type * from './types';
+import type { CesiumGlobeProps, CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from './types';
 
 // Configure Cesium CDN
 (window as Window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL =
