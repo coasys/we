@@ -202,13 +202,14 @@ Phase 1 adds ~10 P0 components: Select, Textarea, Checkbox, Radio, FormField, Gr
 
 ## Phase B: Data Architecture
 
-### 5. Block Model Migration
+### 5. Block Model Migration ✅
 
-**Plan:** [block-model-migration](../prs/block-model-migration.md)
+**Plan:** [block-model-migration](../prs/block-model-migration.md) | **Summary:** [block-model-migration-summary](../prs/block-model-migration-summary.md)
+**Status:** Complete (branch `feat/block-model-migration`, 1 commit, 12 files)
 **Depends on:** nothing (but strategically placed here as prerequisite for Phases B and C)
 **Unblocks:** `$query` service, AI context extraction, clean model imports, core block types
 
-Moves TextBlock, ImageBlock, CollectionBlock from `@we/block-system` to `@we/models`. Small mechanical refactor that decouples model definitions from the Lexical block composer.
+Moved TextBlock, ImageBlock, CollectionBlock from `@we/block-system/shared/src/models/` to `@we/models/src/blocks/`. Updated imports in serialization, AdamStore, SpaceStore, CreateSpaceModal. Re-exported from `@we/block-shared` for back-compat. Editor infrastructure (registry, GenericBlockNode) deferred to #5b.
 
 ### 5b. Core Block Types
 
@@ -309,7 +310,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 3   | Schema–Theme Integration       | Sch   | —          | Medium | Low  |
 | ✅   | 3b  | color-ui → color-neutral       | Sch   | 3          | Small  | Low  |
 | ✅   | 4b  | $concat + remove $expr         | Sch   | —          | Small  | Low  |
-| 1    | 5   | Block Model Migration          | Data  | —          | Small  | Low  |
+| ✅   | 5   | Block Model Migration          | Data  | —          | Small  | Low  |
 | 1    | 7a  | Shared \*.types.ts             | AI    | —          | Medium | Low  |
 | 1    | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
 | 1    | 10  | Component Library (Ph 1)       | Sch   | —          | Medium | Low  |
