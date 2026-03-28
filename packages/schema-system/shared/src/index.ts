@@ -23,7 +23,9 @@ export type {
   OperatorToken,
 } from './types';
 
-export { validateSchema } from './validators';
+export { validateSchema, validateNode } from './validators';
+export type { ValidationError, ValidationResult } from './validators';
+export { NODE_OPERATORS } from './zodSchemas';
 export { findMutations } from './mutations';
 export { resolveProp, resolveProps, splitProps, REACTIVE_ACCESSOR } from './propResolvers';
 export { hasToken } from './predicates';
