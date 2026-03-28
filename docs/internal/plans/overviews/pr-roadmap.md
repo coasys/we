@@ -51,8 +51,8 @@
                     └─────────────────────┘
 
                     ┌─────────────────────┐
-                    │8b. Schema Validation │
-                    │    (Phase 1)         │
+                    │8b. Schema Validation│
+                    │    (Phase 1)     ✅│
                     └─────────────────────┘
 
                     ┌─────────────────────┐
@@ -120,7 +120,7 @@ Adds `variant` prop (`primary`, `secondary`, `ghost`, `danger`, `outline`) to `w
 
 ### 1b. Primitive Pattern Alignment ✅
 
-**Plan:** [primitive-pattern-alignment](../prs/primitive-pattern-alignment.md) | **Summary:** [primitive-pattern-alignment-summary](../prs/primitive-pattern-alignment-summary.md)
+**Plan:** [primitive-pattern-alignment](../prs/primitive-pattern-alignment.md)
 **Status:** Complete (branch `feat/primitive-pattern-alignment`, 7 commits, 32 files)
 **Depends on:** Button Variants (#1)
 **Unblocks:** consistent pattern for Component Library Expansion (#10) — new primitives with variants follow one canonical approach
@@ -129,7 +129,7 @@ Migrated badge and text to `DesignSystemElement` with `getInstanceProps()`. Adde
 
 ### 1c. Token Type Consolidation ✅
 
-**Plan:** [token-type-consolidation](../prs/token-type-consolidation.md) | **Summary:** [token-type-consolidation-summary](../prs/token-type-consolidation-summary.md)
+**Plan:** [token-type-consolidation](../prs/token-type-consolidation.md)
 **Status:** Complete (branch `feat/token-type-consolidation`, 3 commits, 12 files)
 **Depends on:** Primitive Pattern Alignment (#1b) — surfaces the need for `FontWeightToken` in badge defaults
 **Unblocks:** consistent token architecture for Component Library Expansion (#10), proper `tokenVar()` lookups for font-weight/line-height/shadow
@@ -138,7 +138,7 @@ Moved design-scale types (`FontWeight`, `LineHeight`, `LetterSpacing`, `Shadow`)
 
 ### 2. Deep Unwrap Schema Props ✅
 
-**Plan:** [deep-unwrap-schema-props](../prs/deep-unwrap-schema-props.md) | **Summary:** [deep-unwrap-schema-props-summary](../prs/deep-unwrap-schema-props-summary.md)
+**Plan:** [deep-unwrap-schema-props](../prs/deep-unwrap-schema-props.md)
 **Status:** Complete (branch `feat/deep-unwrap-schema-props`, 1 commit, 4 files)
 **Depends on:** nothing
 **Unblocks:** correct nested reactive prop handling for all components
@@ -147,7 +147,7 @@ Added `deepUnwrap` function to SchemaRenderer that recursively unwraps `REACTIVE
 
 ### 2b. Fine-Grained Schema Reactivity ✅
 
-**Plan:** [fine-grained-schema-reactivity](../prs/fine-grained-schema-reactivity.md) | **Summary:** [fine-grained-schema-reactivity-summary](../prs/fine-grained-schema-reactivity-summary.md)
+**Plan:** [fine-grained-schema-reactivity](../prs/fine-grained-schema-reactivity.md)
 **Status:** Complete (branch `feat/fine-grained-schema-reactivity`, 2 commits, 2 code files)
 **Depends on:** Deep Unwrap (#2) — `deepUnwrap` as a pure function is the foundation
 **Unblocks:** performant large templates, per-prop update granularity
@@ -156,7 +156,7 @@ Replaces the single-memo-per-component prop resolution with per-prop memos and s
 
 ### 2c. Web Component Prop Unification ✅
 
-**Plan:** [web-component-prop-unification](../prs/web-component-prop-unification.md) | **Summary:** [web-component-prop-unification-summary](../prs/web-component-prop-unification-summary.md)
+**Plan:** [web-component-prop-unification](../prs/web-component-prop-unification.md)
 **Status:** Complete (branch `feat/web-component-prop-unification`, 1 commit, 3 files)
 **Depends on:** Fine-Grained Reactivity (#2b) — per-prop memos are the foundation for per-prop effects
 **Unblocks:** cleaner web component prop delivery, removes `DESIGN_SYSTEM_CAMEL_CASE_PROPS` maintenance burden, eliminates ceremony registry wrappers
@@ -165,7 +165,7 @@ Unified dual-channel prop delivery into single per-prop effect channel. All web 
 
 ### 3. Schema–Theme Integration ✅
 
-**Plan:** [schema-theme-integration](../prs/schema-theme-integration.md) | **Summary:** [schema-theme-integration-summary](../prs/schema-theme-integration-summary.md)
+**Plan:** [schema-theme-integration](../prs/schema-theme-integration.md)
 **Status:** Complete (branch `feat/schema-theme-integration`, 2 commits, 22 files)
 **Depends on:** nothing
 **Unblocks:** seed-driven theming, scoped theme zones, dynamic theme registration, theme sections in customization architecture
@@ -174,7 +174,7 @@ Bridges the schema/seed layer with the CSS theme system. Added `ThemeOverrides` 
 
 ### 3b. Rename `color-ui` → `color-neutral` ✅
 
-**Plan:** [neutral-rename](../prs/neutral-rename.md) | **Summary:** [neutral-rename-summary](../prs/neutral-rename-summary.md)
+**Plan:** [neutral-rename](../prs/neutral-rename.md)
 **Status:** Complete (branch `feat/neutral-rename`, 1 commit, 57 files)
 **Depends on:** Schema–Theme Integration (#3) — renames fields added in that PR
 **Unblocks:** consistent naming before any external consumers adopt the token vocabulary
@@ -183,7 +183,7 @@ Renamed the `ui` color family to `neutral` across all layers: JS tokens (`ColorH
 
 ### 4b. Add `$concat`, Extend `$item`, Rename `$forEach` → `$each`, Remove `$expr` ✅
 
-**Plan:** [concat-remove-expr](../prs/concat-remove-expr.md) | **Summary:** [concat-remove-expr-summary](../prs/concat-remove-expr-summary.md)
+**Plan:** [concat-remove-expr](../prs/concat-remove-expr.md)
 **Status:** Complete (branch `feat/concat-remove-expr`, 1 commit, 19 files)
 **Depends on:** nothing
 **Unblocks:** CSP compatibility, schema validation coverage, safer token set, unified `$item.*` context access
@@ -204,7 +204,7 @@ Phase 1 adds ~10 P0 components: Select, Textarea, Checkbox, Radio, FormField, Gr
 
 ### 5. Block Model Migration ✅
 
-**Plan:** [block-model-migration](../prs/block-model-migration.md) | **Summary:** [block-model-migration-summary](../prs/block-model-migration-summary.md)
+**Plan:** [block-model-migration](../prs/block-model-migration.md)
 **Status:** Complete (branch `feat/block-model-migration`, 1 commit, 12 files)
 **Depends on:** nothing (but strategically placed here as prerequisite for Phases B and C)
 **Unblocks:** `$query` service, AI context extraction, clean model imports, core block types
@@ -255,7 +255,7 @@ Adds `$localState` / `$local` / `$setLocal` tokens for ephemeral form state scop
 
 ### 7a. Shared `*.types.ts` Refactor ✅
 
-**Plan:** [shared-types-refactor](../prs/shared-types-refactor.md) | **Summary:** [shared-types-refactor-summary](../prs/shared-types-refactor-summary.md)
+**Plan:** [shared-types-refactor](../prs/shared-types-refactor.md)
 **Status:** Complete (branch `feat/shared-types-refactor`, 1 commit, 84 files)
 **Depends on:** nothing (but strategically placed here — its value is realised by #8)
 **Unblocks:** @we/ai-context auto-extraction, multi-framework component support
@@ -281,10 +281,11 @@ Creates `@we/ai-context` with extractors (CEM, TypeScript, tokens, stores), asse
 ### 8b. Schema Validation (Structural → Semantic)
 
 **Plan:** [schema-validation](../prs/schema-validation.md)
+**Status:** Phase 1 complete (branch `feat/schema-validation`, 1 commit, 7 files). Phase 2 not started.
 **Depends on:** Token shape checks (#8b Phase 1): none. Semantic checks (#8b Phase 2): @we/ai-context (#8) for `ValidationContext`.
 **Unblocks:** AI feedback loop — prevents broken schema generation, MCP `validate_schema` tool
 
-Extends existing Zod validation in `packages/schema-system/shared/src/`. Phase 1 adds token shape Zod schemas (validates `$if` has `condition`/`then`, `$each` has `items`/child template, etc.) — no dependencies, can land early in Phase A. Phase 2 adds a semantic walker that accepts component/store metadata from ai-context to check component existence, prop validity, and store references.
+Extends existing Zod validation in `packages/schema-system/shared/src/`. Phase 1 adds 11 token shape Zod schemas with structural enforcement, refines `zSchemaProp` union to reject malformed/unknown `$`-operators, adds `superRefine` node-level checks for `$each`/`$if`/`$routes`, adds `severity` field to `ValidationError`, and includes 49 new tests. Also removes stale `schemaUpdater.test.ts` and legacy `solid/src/SchemaRenderer.tsx`. Phase 2 adds a semantic walker that accepts component/store metadata from ai-context to check component existence, prop validity, and store references.
 
 ### 9. MCP Tools
 
@@ -313,7 +314,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 4b  | $concat + remove $expr         | Sch   | —          | Small  | Low  |
 | ✅   | 5   | Block Model Migration          | Data  | —          | Small  | Low  |
 | ✅   | 7a  | Shared \*.types.ts             | AI    | —          | Medium | Low  |
-| 1    | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
+| ✅   | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
 | 1    | 10  | Component Library (Ph 1)       | Sch   | —          | Medium | Low  |
 | 2    | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
 | 2    | 5c  | $query Service                 | Data  | 5          | Medium | Med  |

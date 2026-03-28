@@ -5,15 +5,6 @@ import { zSchemaNode, zTemplateSchema } from './zodSchemas';
 export type ValidationError = { path: string; message: string; severity: 'error' | 'warning' };
 export type ValidationResult = { valid: boolean; errors: ValidationError[] };
 
-// Utility function to convert Zod errors to our `ValidationError` format
-// function zodErrorToValidationErrors(zodErrors: z.ZodError): ValidationError[] {
-//   console.log(JSON.stringify(z.treeifyError(zodErrors), null, 2));
-//   return zodErrors.issues.map((issue) => ({
-//     path: issue.path.join('.'),
-//     message: issue.message,
-//   }));
-// }
-
 function zodErrorToValidationErrors(zodErrors: z.ZodError): ValidationError[] {
   const tree = z.treeifyError(zodErrors);
   const out: ValidationError[] = [];
