@@ -38,8 +38,8 @@ export default function AppSettings() {
             <Row gap="400" ay="center">
               <we-text fontSize="600">Template:</we-text>
               <PopoverMenu
-                options={templateOptions}
-                selectedOption={selectedTemplate}
+                options={templateOptions()}
+                selectedOption={selectedTemplate()}
                 onSelect={(option) => templateStore.switchTemplate(option.id)}
               />
             </Row>
@@ -47,8 +47,8 @@ export default function AppSettings() {
             <Row gap="400" ay="center">
               <we-text fontSize="600">Theme:</we-text>
               <PopoverMenu
-                options={themeStore.themes}
-                selectedOption={themeStore.currentTheme}
+                options={themeStore.themes()}
+                selectedOption={themeStore.currentTheme()}
                 onSelect={(option) => themeStore.setCurrentTheme(option.id)}
               />
             </Row>

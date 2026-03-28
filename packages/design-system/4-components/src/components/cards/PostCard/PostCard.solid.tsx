@@ -1,15 +1,7 @@
-import { JSX } from 'solid-js';
-
 import { Column } from '../../layout/Column/Column.solid';
 import { Row } from '../../layout/Row/Row.solid';
-
-export interface PostCardProps {
-  creator?: { name: string; avatar: string };
-  title: string;
-  text: string;
-  class?: string;
-  styles?: JSX.CSSProperties;
-}
+export type * from './PostCard.types';
+import type { PostCardProps } from './PostCard.types';
 
 export function PostCard(props: PostCardProps) {
   return (

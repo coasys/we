@@ -8,32 +8,17 @@
 import * as d3 from 'd3-force';
 import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 
+export type * from './types';
 import type {
   EdgeStyleConfig,
   GraphData,
   GraphEdge,
   GraphNode,
+  GraphWidgetProps,
   InteractionConfig,
   LayoutConfig,
   NodeStyleConfig,
 } from './types';
-
-export interface GraphWidgetProps {
-  /** Graph data with nodes and edges */
-  data: GraphData;
-  /** Width of the canvas */
-  width?: string | number;
-  /** Height of the canvas */
-  height?: string | number;
-  /** Node styling configuration */
-  nodeStyle?: NodeStyleConfig;
-  /** Edge styling configuration */
-  edgeStyle?: EdgeStyleConfig;
-  /** Layout configuration */
-  layout?: LayoutConfig;
-  /** Interaction handlers */
-  interactions?: InteractionConfig;
-}
 
 // Default colors for node types
 const DEFAULT_NODE_COLORS = {
