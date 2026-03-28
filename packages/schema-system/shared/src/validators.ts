@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { zSchemaNode, zTemplateSchema } from './zodSchemas';
 
-export type ValidationError = { path: string; message: string };
+export type ValidationError = { path: string; message: string; severity: 'error' | 'warning' };
 export type ValidationResult = { valid: boolean; errors: ValidationError[] };
 
 // Utility function to convert Zod errors to our `ValidationError` format
@@ -24,7 +24,7 @@ function zodErrorToValidationErrors(zodErrors: z.ZodError): ValidationError[] {
     // emit node-level errors
     if (Array.isArray(node.errors) && node.errors.length > 0) {
       for (const msg of node.errors) {
-        out.push({ path: path.map(String).join('.'), message: msg });
+        out.push({ path: path.map(String).join('.'), message: msg, severity: 'error' });
       }
     }
 
@@ -45,7 +45,7 @@ function zodErrorToValidationErrors(zodErrors: z.ZodError): ValidationError[] {
 
   if (out.length === 0) {
     // fallback: include full tree for debugging
-    out.push({ path: '', message: JSON.stringify(tree, null, 2) });
+    out.push({ path: '', message: JSON.stringify(tree, null, 2), severity: 'error' });
   }
 
   return out;

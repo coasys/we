@@ -17,6 +17,7 @@ describe('validators', () => {
     expect(res.errors.length).toBeGreaterThan(0);
     expect(res.errors[0]).toHaveProperty('path');
     expect(res.errors[0]).toHaveProperty('message');
+    expect(res.errors[0]).toHaveProperty('severity', 'error');
   });
 
   it('validateSchema requires meta for template', () => {
