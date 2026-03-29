@@ -68,60 +68,72 @@ export const bootScreenSchema: SchemaNode = {
                   ],
                 },
                 {
-                  type: 'Row',
-                  props: { gap: '300' },
-                  children: [
-                    // Password input
-                    {
-                      type: 'we-input',
-                      props: {
-                        // height: '60px',
-                        height: '36px',
-                        width: '200px',
-                        placeholder: 'Password...',
-                        value: { $store: 'adamStore.password' },
-                        onInput: { $action: 'adamStore.setPassword', args: ['$arg.target.value'] },
-                        onKeyDown: {
-                          $if: {
-                            condition: { $eq: ['$arg.key', 'Enter'] },
-                            then: { $action: 'adamStore.unlockAgent' },
-                          },
-                        },
-                        error: { $store: 'adamStore.passwordError' },
-                        errortext: 'Incorrect password',
-                        type: {
-                          $if: {
-                            condition: { $store: 'adamStore.showPassword' },
-                            then: 'text',
-                            else: 'password',
-                          },
-                        },
+                  type: 'we-form-field',
+                  props: {
+                    error: {
+                      $if: {
+                        condition: { $store: 'adamStore.passwordError' },
+                        then: 'Incorrect password',
+                        else: '',
                       },
                     },
-                    // Show/hide password button
+                  },
+                  children: [
                     {
-                      type: 'we-button',
-                      props: {
-                        bg: 'primary-500',
-                        height: '36px',
-                        onClick: {
-                          $action: 'adamStore.setShowPassword',
-                          args: [{ $not: { $store: 'adamStore.showPassword' } }],
-                        },
-                      },
+                      type: 'Row',
+                      props: { gap: '300' },
                       children: [
+                        // Password input
                         {
-                          type: 'we-icon',
+                          type: 'we-input',
                           props: {
-                            name: {
+                            // height: '60px',
+                            height: '36px',
+                            width: '200px',
+                            placeholder: 'Password...',
+                            value: { $store: 'adamStore.password' },
+                            onInput: { $action: 'adamStore.setPassword', args: ['$arg.target.value'] },
+                            onKeyDown: {
                               $if: {
-                                condition: { $store: 'adamStore.showPassword' },
-                                then: 'eye',
-                                else: 'eye-slash',
+                                condition: { $eq: ['$arg.key', 'Enter'] },
+                                then: { $action: 'adamStore.unlockAgent' },
                               },
                             },
-                            color: 'neutral-0',
+                            type: {
+                              $if: {
+                                condition: { $store: 'adamStore.showPassword' },
+                                then: 'text',
+                                else: 'password',
+                              },
+                            },
                           },
+                        },
+                        // Show/hide password button
+                        {
+                          type: 'we-button',
+                          props: {
+                            bg: 'primary-500',
+                            height: '36px',
+                            onClick: {
+                              $action: 'adamStore.setShowPassword',
+                              args: [{ $not: { $store: 'adamStore.showPassword' } }],
+                            },
+                          },
+                          children: [
+                            {
+                              type: 'we-icon',
+                              props: {
+                                name: {
+                                  $if: {
+                                    condition: { $store: 'adamStore.showPassword' },
+                                    then: 'eye',
+                                    else: 'eye-slash',
+                                  },
+                                },
+                                color: 'neutral-0',
+                              },
+                            },
+                          ],
                         },
                       ],
                     },

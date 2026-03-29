@@ -1,7 +1,6 @@
-import { Ad4mClient } from '@coasys/ad4m';
 import { Column } from '@we/components/solid';
 import { CollectionBlock, ImageBlock, Space, TextBlock, WeNode } from '@we/models';
-import { createSignal, JSX } from 'solid-js';
+import { createSignal } from 'solid-js';
 
 export type * from './CreateSpaceModalWidget.types';
 import type { CreateSpaceModalWidgetProps } from './CreateSpaceModalWidget.types';
@@ -50,19 +49,21 @@ export function CreateSpaceModalWidget(props: CreateSpaceModalWidgetProps) {
       <Column p="600" gap="400" ax="center">
         <we-text>Create a new space</we-text>
 
-        <we-input
-          label="Name"
-          placeholder="Space name"
-          value={name()}
-          onInput={(e: InputEvent) => setName((e.target as HTMLInputElement)?.value)}
-        />
+        <we-form-field label="Name">
+          <we-input
+            placeholder="Space name"
+            value={name()}
+            onInput={(e: InputEvent) => setName((e.target as HTMLInputElement)?.value)}
+          />
+        </we-form-field>
 
-        <we-input
-          label="Description"
-          placeholder="Space description"
-          value={description()}
-          onInput={(e: InputEvent) => setDescription((e.target as HTMLInputElement)?.value)}
-        />
+        <we-form-field label="Description">
+          <we-input
+            placeholder="Space description"
+            value={description()}
+            onInput={(e: InputEvent) => setDescription((e.target as HTMLInputElement)?.value)}
+          />
+        </we-form-field>
 
         <we-button disabled={!name()} loading={loading()} onClick={createSpace}>
           Create

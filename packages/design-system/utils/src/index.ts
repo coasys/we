@@ -49,6 +49,7 @@ export const flexKeys = ['direction', 'ax', 'ay', 'wrap', 'gap', ...paddingKeys]
 /** Typography layer: text styling. */
 export const typographyKeys = [
   'textAlign',
+  'fontFamily',
   'fontWeight',
   'fontSize',
   'lineHeight',

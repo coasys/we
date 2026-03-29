@@ -7,27 +7,27 @@
 ## Dependency Graph
 
 ```
-                    ┌─────────────────────┐
+                    ┌──────────────────────┐
                     │ 1. Button Variants ✅│
-                    └─────────────────────┘
+                    └──────────────────────┘
                               │
                     ┌─────────────────────┐
-                    │1b. Primitive Pattern │
+                    │1b. Primitive Pattern│
                     │    Alignment     ✅ │
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
-                    │1c. Token Type        │
+                    │1c. Token Type       │
                     │    Consolidation  ✅│
                     └─────────────────────┘
 
-                    ┌─────────────────────┐
+                    ┌───────────────────────┐
                     │ 2. Deep Unwrap Props✅│
-                    └─────────────────────┘
+                    └───────────────────────┘
                               │
                     ┌─────────────────────┐
                     │2b. Fine-Grained   ✅│
-                    │    Reactivity        │
+                    │    Reactivity       │
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
@@ -37,67 +37,72 @@
 
                     ┌─────────────────────┐
                     │ 3. Schema–Theme   ✅│
-                    │    Integration       │
+                    │    Integration      │
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
                     │3b. color-ui →     ✅│
-                    │    color-neutral     │
+                    │    color-neutral    │
                     └─────────────────────┘
 
                     ┌─────────────────────┐
                     │4b. $concat, remove✅│
-                    │    $expr             │
+                    │    $expr            │
                     └─────────────────────┘
 
                     ┌─────────────────────┐
                     │8b. Schema Validation│
-                    │    (Phase 1)     ✅│
+                    │    (Phase 1)      ✅│
                     └─────────────────────┘
 
                     ┌─────────────────────┐
-                    │10. Component Library │
-                    │    Expansion (Ph 1)  │
+                    │10. Component       │
+                    │    Library       ✔│
                     └─────────────────────┘
 
                     ┌─────────────────────┐
-                    │ 5. Block Model       │
-                    │    Migration         │
+                    │ 5. Block Model      │
+                    │    Migration        │
                     └─────────────────────┘
                       │        │        │
          ┌────────────┘        │        └─────────────┐
          ▼                     ▼                      ▼
 ┌────────────────┐  ┌────────────────────┐  ┌─────────────────────┐
-│5b. Core Blocks   │  │5c. $query Service  │  │ 6. Schema           │
+│5b. Core Blocks │  │5c. $query Service  │  │ 6. Schema           │
 └────────────────┘  └────────────────────┘  │    Customization    │
                                             └─────────────────────┘
                                                       │
                                                       ▼
                                             ┌─────────────────────┐
-                                            │ 4. Local Schema      │
-                                            │    State ($local)    │
+                                            │ 4. Local Schema     │
+                                            │    State ($local)   │
                                             └─────────────────────┘
 
-                    ┌─────────────────────┐  ┌─────────────────────┐
+                    ┌──────────────────────┐  ┌─────────────────────┐
                     │ 7a. Shared *.types.ts│  │ 7b. Component       │
-                    │     Refactor        │  │     Showcase        │
-                    └─────────────────────┘  └─────────────────────┘
-                              │
-                              ▼
+                    │     Refactor         │  │     Showcase        │
+                    └──────────────────────┘  └─────────────────────┘
+
                     ┌─────────────────────┐
-                    │ 8. @we/ai-context    │
-                    │    Package           │
+                    │7c. Root Storybook   │
+                    │    Migration        │
                     └─────────────────────┘
                               │
                               ▼
                     ┌─────────────────────┐
-                    │8b. Schema Validation │
-                    │    (Phase 2)         │
+                    │ 8. @we/ai-context   │
+                    │    Package          │
                     └─────────────────────┘
                               │
                               ▼
                     ┌─────────────────────┐
-                    │ 9. MCP Tools         │
+                    │8b. Schema Validation│
+                    │    (Phase 2)        │
+                    └─────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────────┐
+                    │ 9. MCP Tools        │
                     └─────────────────────┘
 ```
 
@@ -190,13 +195,14 @@ Renamed the `ui` color family to `neutral` across all layers: JS tokens (`ColorH
 
 Removed `$expr` (arbitrary JS via `new Function()`) entirely — no external consumers exist. Added `$concat` for safe string building. Extended `$item.*` string resolution from `$map`-only to the dispatcher, so `$each` children access items via `$item.name` instead of `{ $expr: 'item.name' }`. Renamed `$forEach` → `$each` to match the single-word naming convention of all other tokens. Generalised to `$<contextKey>.*` for nested `$each` with custom `as` bindings. Migrated all 11 `$expr` uses to `$item.*`, `$concat`, or `$if`. Added schema system `CONVENTIONS.md`. Fixed `isStaticValue()` to treat `$`-prefixed strings as non-static. Net token count unchanged (−1 `$expr`, +1 `$concat`); `$item.*` is a dispatcher resolution rule, not a new token type.
 
-### 10. Core Component Library Expansion (Phase 1)
+### 10. Core Component Library Expansion ✅
 
 **Plan:** [component-library-expansion](../prs/component-library-expansion.md)
+**Status:** Complete (branch `feat/component-library-expansion`, 2 commits, 71 files)
 **Depends on:** nothing
 **Unblocks:** schema-first app viability — without Select, Textarea, Table, Grid, Card, etc., most app archetypes hit missing-component walls
 
-Phase 1 adds ~10 P0 components: Select, Textarea, Checkbox, Radio, FormField, Grid, Card, Table, List, Toast. These are the minimum set for schema-first apps to cover basic archetypes (todo list, form-based apps, data tables, dashboards). FormField is critical for `$validate` integration. Phase 2/3 components land incrementally as templates demand them.
+Added 34 components (25 Lit primitives + 9 SolidJS components) bringing the total to 42 registered primitives. Phase 1: FormField, Textarea, Checkbox, Radio, Select, Card, Grid (Lit) + List, Table, Toast (SolidJS). Stripped Input of label/error chrome; migrated 9 usages to FormField wrapping. Phase 2: Switch, Divider, Tag, ProgressBar, Alert, Skeleton, Link, Code, Blockquote, NumberInput, Slider, Drawer, ScrollArea, Pagination, Combobox, DatePicker, FileUpload, ColorPicker (Lit) + Dialog, Breadcrumbs, Accordion, Stepper, Timeline, Calendar (SolidJS). Added `fontFamily` DS prop across the full pipeline (tokens → types → utils → primitives → components). Moved SolidJS component styles from inline to SCSS with BEM classes. Also created #7c Storybook migration plan.
 
 ---
 
@@ -270,6 +276,14 @@ Extracted shared prop interfaces from 13 `.solid.tsx` files into co-located `*.t
 
 Standalone dev tool (`@we/component-showcase`) for previewing multi-framework components. Can be implemented in parallel with the AI tooling track.
 
+### 7c. Root Storybook Migration
+
+**Plan:** [storybook-migration](../prs/storybook-migration.md)
+**Depends on:** nothing (benefits from #10 landing first for more components to verify)
+**Unblocks:** cross-package story discovery, SolidJS component stories, unified theme preview
+
+Moves Storybook from `3-primitives/.storybook/` to the monorepo root (`we/.storybook/`). Switches framework to `@storybook/html-vite` so both Lit primitives and SolidJS components render in one instance. Co-locates stories next to their components. Adds `renderSolid()` helper for SolidJS stories. Serves a different audience from #7b (internal team vs. external developers).
+
 ### 8. @we/ai-context Package
 
 **Plan:** [ai-context-package](../prs/ai-context-package.md) (PR 2 section)
@@ -315,11 +329,12 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 5   | Block Model Migration          | Data  | —          | Small  | Low  |
 | ✅   | 7a  | Shared \*.types.ts             | AI    | —          | Medium | Low  |
 | ✅   | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
-| 1    | 10  | Component Library (Ph 1)       | Sch   | —          | Medium | Low  |
+| ✅   | 10  | Component Library Expansion    | Sch   | —          | Large  | Low  |
 | 2    | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
 | 2    | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
 | 2    | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
 | 2    | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
+| 2    | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
 | 2    | 8   | @we/ai-context                 | AI    | 7a         | Large  | Med  |
 | 3    | 4   | Local Schema State             | Cust  | 6          | Medium | Med  |
 | 3    | 8b‡ | Schema Validation (semantic)   | AI    | 8          | Small  | Low  |
@@ -351,4 +366,5 @@ Track 4:  ──────────── [5b. Blocks] ──────�
 Track 5:  ──────────── [6. Schema Customization] ────── [4. $local] ────
 Track 6:  [7a. types]  ──────────── [8. ai-context] ─ [8b-Ph2] ─ [9. MCP]
 Track 7:  ────────────────────────── [7b. Showcase] ────────────────────
+Track 8:  ──────────── [7c. Root Storybook] ────────────────────────────
 ```

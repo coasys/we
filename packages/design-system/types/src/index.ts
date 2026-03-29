@@ -1,5 +1,6 @@
 import type {
   ColorValue,
+  FontFamilyValue,
   FontSizeValue,
   FontWeightToken,
   LetterSpacingValue,
@@ -49,6 +50,7 @@ export interface DesignSystemProps {
 
   // Typography
   textAlign?: TextAlign;
+  fontFamily?: FontFamilyValue;
   fontWeight?: FontWeight;
   fontSize?: FontSizeValue;
   lineHeight?: LineHeightValue;

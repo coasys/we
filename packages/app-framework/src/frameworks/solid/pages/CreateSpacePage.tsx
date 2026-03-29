@@ -48,18 +48,20 @@ export function CreateSpacePage() {
         <we-text fontSize="700" fontWeight="600" color="neutral-700">
           New space
         </we-text>
-        <we-input
-          label="Name"
-          placeholder="Space name"
-          value={name()}
-          onInput={(e: InputEvent) => setName((e.target as HTMLInputElement)?.value)}
-        />
-        <we-input
-          label="Description"
-          placeholder="What is this space about?"
-          value={description()}
-          onInput={(e: InputEvent) => setDescription((e.target as HTMLInputElement)?.value)}
-        />
+        <we-form-field label="Name">
+          <we-input
+            placeholder="Space name"
+            value={name()}
+            onInput={(e: InputEvent) => setName((e.target as HTMLInputElement)?.value)}
+          />
+        </we-form-field>
+        <we-form-field label="Description">
+          <we-input
+            placeholder="What is this space about?"
+            value={description()}
+            onInput={(e: InputEvent) => setDescription((e.target as HTMLInputElement)?.value)}
+          />
+        </we-form-field>
 
         {/* Image picker */}
         <Column gap="200">

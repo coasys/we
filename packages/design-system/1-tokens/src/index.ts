@@ -34,6 +34,7 @@ export type { ScrollbarToken } from './component.js';
 export type { DepthToken } from './effect.js';
 export type {
   FontFamilyToken,
+  FontFamilyValue,
   FontSizeToken,
   FontSizeValue,
   FontWeightToken,
