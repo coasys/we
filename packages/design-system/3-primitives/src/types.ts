@@ -4,8 +4,6 @@ export type { DesignSystemProps } from '@we/design-types';
 
 import type { SizeValue } from '@we/tokens';
 
-// TODO: review these types and move to @we/design-types
-
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const allowedTextTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'small', 'b', 'i', 'span', 'label', 'div'] as const;
 
@@ -40,3 +38,14 @@ export type TextVariant =
 export type TooltipStrategy = 'absolute' | 'fixed';
 export type ImageFit = '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down';
 export type ImageLoading = 'eager' | 'lazy';
+export type SwitchSize = 'sm' | 'md' | 'lg';
+export type TagVariant = 'default' | 'primary' | 'success' | 'warning' | 'danger';
+export type ProgressBarSize = 'sm' | 'md' | 'lg';
+export type ProgressBarVariant = 'default' | 'success' | 'warning' | 'danger';
+export type AlertVariant = 'info' | 'success' | 'warning' | 'error';
+export type NumberInputSize = 'sm' | 'md' | 'lg';
+export type SliderSize = 'sm' | 'md' | 'lg';
+export type DrawerPosition = 'left' | 'right' | 'top' | 'bottom';
+export type PaginationSize = 'sm' | 'md' | 'lg';
+export type ComboboxSize = 'sm' | 'md' | 'lg';
+export type DatePickerSize = 'sm' | 'md' | 'lg';

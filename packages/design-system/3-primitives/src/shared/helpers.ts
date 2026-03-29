@@ -84,6 +84,7 @@ function updateCustomVars(
 
   // Typography
   setProperty(el, `${prefix}text-align`, props.textAlign);
+  setProperty(el, `${prefix}font-family`, props.fontFamily);
   setProperty(el, `${prefix}font-weight`, props.fontWeight);
   setProperty(el, `${prefix}font-size`, props.fontSize ? tokenVar('font-size', props.fontSize) : undefined);
   setProperty(el, `${prefix}line-height`, props.lineHeight ? tokenVar('line-height', props.lineHeight) : undefined);
@@ -157,6 +158,7 @@ const BASE_FLEX: PropSpec[] = [
 
 const BASE_TYPOGRAPHY: PropSpec[] = [
   ['text-align', 'text-align'],
+  ['font-family', 'font-family'],
   ['font-weight', 'font-weight'],
   ['font-size', 'font-size'],
   ['line-height', 'line-height'],

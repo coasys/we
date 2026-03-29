@@ -56,8 +56,8 @@
                     └─────────────────────┘
 
                     ┌─────────────────────┐
-                    │10. Component Library │
-                    │    Expansion (Ph 1)  │
+                    │10. Component Library│
+                    │    Expansion (Ph 1)✅│
                     └─────────────────────┘
 
                     ┌─────────────────────┐
@@ -195,13 +195,14 @@ Renamed the `ui` color family to `neutral` across all layers: JS tokens (`ColorH
 
 Removed `$expr` (arbitrary JS via `new Function()`) entirely — no external consumers exist. Added `$concat` for safe string building. Extended `$item.*` string resolution from `$map`-only to the dispatcher, so `$each` children access items via `$item.name` instead of `{ $expr: 'item.name' }`. Renamed `$forEach` → `$each` to match the single-word naming convention of all other tokens. Generalised to `$<contextKey>.*` for nested `$each` with custom `as` bindings. Migrated all 11 `$expr` uses to `$item.*`, `$concat`, or `$if`. Added schema system `CONVENTIONS.md`. Fixed `isStaticValue()` to treat `$`-prefixed strings as non-static. Net token count unchanged (−1 `$expr`, +1 `$concat`); `$item.*` is a dispatcher resolution rule, not a new token type.
 
-### 10. Core Component Library Expansion (Phase 1)
+### 10. Core Component Library Expansion (Phase 1) ✅
 
 **Plan:** [component-library-expansion](../prs/component-library-expansion.md)
+**Status:** Complete (branch `feat/component-library-expansion`, 1 commit, 29 files)
 **Depends on:** nothing
 **Unblocks:** schema-first app viability — without Select, Textarea, Table, Grid, Card, etc., most app archetypes hit missing-component walls
 
-Phase 1 adds ~10 P0 components: Select, Textarea, Checkbox, Radio, FormField, Grid, Card, Table, List, Toast. These are the minimum set for schema-first apps to cover basic archetypes (todo list, form-based apps, data tables, dashboards). FormField is critical for `$validate` integration. Phase 2/3 components land incrementally as templates demand them.
+Added 10 P0 components across primitives and components packages. Lit primitives: FormField (label/error/description wrapper), Textarea, Checkbox, Radio, Select, Card (elevated/outlined/filled variants), Grid (columns/minChildWidth). SolidJS components: List (items/renderItem/children modes), Table (columns/rows, striped/bordered via SCSS), Toast (signal-based service + ToastContainer). Stripped Input of built-in label/error chrome and migrated 9 usages to FormField wrapping. Moved SolidJS component styles from inline to SCSS with BEM classes. Removed redundant input-wrapper div. Added start/end slots to Textarea for parity with Input. Registered List, Table, ToastContainer in componentRegistry. Also created #7c Storybook migration plan.
 
 ---
 
@@ -328,7 +329,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 5   | Block Model Migration          | Data  | —          | Small  | Low  |
 | ✅   | 7a  | Shared \*.types.ts             | AI    | —          | Medium | Low  |
 | ✅   | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
-| 1    | 10  | Component Library (Ph 1)       | Sch   | —          | Medium | Low  |
+| ✅   | 10  | Component Library (Ph 1)       | Sch   | —          | Medium | Low  |
 | 2    | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
 | 2    | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
 | 2    | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |

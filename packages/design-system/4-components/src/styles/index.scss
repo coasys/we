@@ -1,4 +1,10 @@
 @use '../components/cards/PostCard/PostCard.scss';
+@use '../components/data/Accordion/Accordion.scss';
+@use '../components/data/Calendar/Calendar.scss';
 @use '../components/data/List/List.scss';
 @use '../components/data/Table/Table.scss';
+@use '../components/data/Timeline/Timeline.scss';
+@use '../components/feedback/Dialog/Dialog.scss';
 @use '../components/feedback/Toast/Toast.scss';
+@use '../components/navigation/Breadcrumbs/Breadcrumbs.scss';
+@use '../components/navigation/Stepper/Stepper.scss';

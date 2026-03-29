@@ -1,0 +1,35 @@
+.we-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--we-space-200);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.875rem;
+
+  &__item {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-100);
+  }
+
+  &__link {
+    color: var(--we-color-neutral-500);
+    text-decoration: none;
+    transition: color 0.15s ease;
+
+    &:hover {
+      color: var(--we-color-primary-600);
+    }
+  }
+
+  &__current {
+    color: var(--we-color-neutral-800);
+    font-weight: 500;
+  }
+
+  &__separator {
+    color: var(--we-color-neutral-400);
+    user-select: none;
+  }
+}

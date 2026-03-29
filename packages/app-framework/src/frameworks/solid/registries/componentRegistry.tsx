@@ -9,8 +9,12 @@ import {
   userLocationsLayer,
 } from '@we/cesium-layers';
 import {
+  Accordion,
+  Breadcrumbs,
+  Calendar,
   CircleButton,
   Column,
+  Dialog,
   IconLabelButton,
   List,
   PopoverMenu,
@@ -18,7 +22,9 @@ import {
   PostCard,
   RerenderLog,
   Row,
+  Stepper,
   Table,
+  Timeline,
   ToastContainer,
 } from '@we/components/solid';
 import type { ComponentRegistry } from '@we/schema-solid';
@@ -47,7 +53,11 @@ export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
 
 export const componentRegistry: ComponentRegistry = {
   // @we/components
+  Accordion,
+  Breadcrumbs,
+  Calendar,
   Column,
+  Dialog,
   Row,
   CircleButton,
   IconLabelButton,
@@ -55,7 +65,9 @@ export const componentRegistry: ComponentRegistry = {
   PopoverToggleMenu,
   PostCard,
   List,
+  Stepper,
   Table,
+  Timeline,
   ToastContainer,
 
   // @we/widgets

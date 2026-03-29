@@ -37,6 +37,7 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
 
   // Typography
   if (props.textAlign) style['text-align'] = props.textAlign;
+  if (props.fontFamily) style['font-family'] = props.fontFamily;
   if (props.fontWeight) style['font-weight'] = props.fontWeight;
   if (props.fontSize) style['font-size'] = tokenVar('font', props.fontSize);
   if (props.lineHeight) style['line-height'] = props.lineHeight;
