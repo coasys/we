@@ -1,4 +1,5 @@
 import { DecoratorNode, LexicalNode } from 'lexical';
+import { render } from 'solid-js/web';
 
 import ImageBlock from '../../components/ImageBlock';
 
@@ -50,9 +51,7 @@ export class ImageNode extends DecoratorNode<HTMLElement> {
     );
 
     // Use SolidJS's `render` function to mount the component
-    import('solid-js/web').then(({ render }) => {
-      render(() => imageBlock, container);
-    });
+    render(() => imageBlock, container);
 
     return container;
   }
