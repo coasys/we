@@ -1,3 +1,5 @@
+import './PlaceholdersPlugin.module.scss';
+
 import { $isListItemNode } from '@lexical/list';
 import { $isHeadingNode, $isQuoteNode } from '@lexical/rich-text';
 import { mergeRegister } from '@lexical/utils';
@@ -12,8 +14,6 @@ import {
 } from 'lexical';
 import { useLexicalComposerContext } from 'lexical-solid';
 import { createEffect, onCleanup } from 'solid-js';
-
-import styles from './PlaceholdersPlugin.module.scss';
 
 export default function PlaceholdersPlugin() {
   const [editor] = useLexicalComposerContext();

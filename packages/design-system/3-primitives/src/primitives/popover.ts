@@ -82,7 +82,10 @@ export default class Popover extends LayoutElement {
   }
 
   updated(changed: Map<string, unknown>) {
-    if (changed.has('open')) this.open ? this.openPopover() : this.closePopover();
+    if (changed.has('open')) {
+      if (this.open) this.openPopover();
+      else this.closePopover();
+    }
   }
 
   disconnectedCallback() {

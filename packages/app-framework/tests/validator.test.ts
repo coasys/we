@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { fluxSeedExample, minimalExample } from '../src/seed/examples';
-import { loadSeed, normalizeSeedPaths, validateSeed } from '../src/seed/validator';
+import { normalizeSeedPaths, validateSeed } from '../src/seed/validator';
 import type { WeSeedFile } from '../src/types/seed';
 
 describe('validateSeed', () => {
@@ -53,54 +53,34 @@ describe('validateSeed', () => {
       expect(result.errors?.some((e) => e.path === 'project.version')).toBe(true);
     });
 
-    it('should reject missing paths.projectRoot', () => {
+    it('should reject missing app paths.projectRoot', () => {
       const seed = {
         ...minimalExample,
-        paths: { ...minimalExample.paths, projectRoot: '' },
+        apps: [{ ...minimalExample.apps[0], paths: { ...minimalExample.apps[0].paths, projectRoot: '' } }],
       };
       const result = validateSeed(seed);
       expect(result.valid).toBe(false);
-      expect(result.errors?.some((e) => e.path === 'paths.projectRoot')).toBe(true);
+      expect(result.errors?.some((e) => e.path === 'apps[0].paths.projectRoot')).toBe(true);
     });
 
-    it('should reject missing paths.dist', () => {
+    it('should reject missing app paths.dist', () => {
       const seed = {
         ...minimalExample,
-        paths: { ...minimalExample.paths, dist: '' },
+        apps: [{ ...minimalExample.apps[0], paths: { ...minimalExample.apps[0].paths, dist: '' } }],
       };
       const result = validateSeed(seed);
       expect(result.valid).toBe(false);
-      expect(result.errors?.some((e) => e.path === 'paths.dist')).toBe(true);
+      expect(result.errors?.some((e) => e.path === 'apps[0].paths.dist')).toBe(true);
     });
 
-    it('should reject missing commands.install', () => {
+    it('should reject missing app commands.install', () => {
       const seed = {
         ...minimalExample,
-        commands: { ...minimalExample.commands, install: '' },
+        apps: [{ ...minimalExample.apps[0], commands: { ...minimalExample.apps[0].commands, install: '' } }],
       };
       const result = validateSeed(seed);
       expect(result.valid).toBe(false);
-      expect(result.errors?.some((e) => e.path === 'commands.install')).toBe(true);
-    });
-
-    it('should reject missing integration.mount', () => {
-      const seed = {
-        ...minimalExample,
-        integration: { ...minimalExample.integration, mount: '' },
-      };
-      const result = validateSeed(seed);
-      expect(result.valid).toBe(false);
-      expect(result.errors?.some((e) => e.path === 'integration.mount')).toBe(true);
-    });
-
-    it('should reject missing integration.platforms', () => {
-      const seed = {
-        ...minimalExample,
-        integration: { ...minimalExample.integration, platforms: [] },
-      };
-      const result = validateSeed(seed);
-      expect(result.valid).toBe(false);
-      expect(result.errors?.some((e) => e.path === 'integration.platforms')).toBe(true);
+      expect(result.errors?.some((e) => e.path === 'apps[0].commands.install')).toBe(true);
     });
   });
 
@@ -120,7 +100,7 @@ describe('validateSeed', () => {
     it('should warn about empty capabilities', () => {
       const result = validateSeed(minimalExample);
       expect(result.valid).toBe(true);
-      expect(result.warnings?.some((w) => w.path === 'integration.capabilities')).toBe(true);
+      expect(result.warnings?.some((w) => w.path === 'apps[0].capabilities')).toBe(true);
     });
 
     it('should not warn when optional fields are present', () => {
@@ -134,42 +114,26 @@ describe('normalizeSeedPaths', () => {
   it('should resolve relative paths', () => {
     const seed: WeSeedFile = {
       ...minimalExample,
-      paths: {
-        projectRoot: './app',
-        dist: './app/dist',
-      },
+      apps: [
+        {
+          ...minimalExample.apps[0],
+          paths: {
+            projectRoot: './app',
+            dist: './app/dist',
+          },
+        },
+      ],
     };
 
     const normalized = normalizeSeedPaths(seed, '/base/path');
 
-    expect(normalized.paths.projectRoot).toBe('/base/path/app');
-    expect(normalized.paths.dist).toBe('/base/path/app/dist');
-  });
-
-  it('should handle ad4mRoot when present', () => {
-    const seed: WeSeedFile = {
-      ...minimalExample,
-      paths: {
-        projectRoot: './app',
-        dist: './dist',
-        ad4mRoot: './ad4m-data',
-      },
-    };
-
-    const normalized = normalizeSeedPaths(seed, '/base');
-
-    expect(normalized.paths.ad4mRoot).toBe('/base/ad4m-data');
-  });
-
-  it('should leave ad4mRoot undefined when not present', () => {
-    const normalized = normalizeSeedPaths(minimalExample, '/base');
-    expect(normalized.paths.ad4mRoot).toBeUndefined();
+    expect(normalized.apps[0].paths.projectRoot).toBe('/base/path/app');
+    expect(normalized.apps[0].paths.dist).toBe('/base/path/app/dist');
   });
 
   it('should preserve other seed properties', () => {
     const normalized = normalizeSeedPaths(minimalExample, '/base');
     expect(normalized.project.name).toBe(minimalExample.project.name);
-    expect(normalized.commands.build).toBe(minimalExample.commands.build);
-    expect(normalized.integration.mount).toBe(minimalExample.integration.mount);
+    expect(normalized.apps[0].commands.build).toBe(minimalExample.apps[0].commands.build);
   });
 });

@@ -65,7 +65,6 @@ describe('updateSchema', () => {
     createRoot((dispose) => {
       const initial = makeTemplate({ props: { label: 'same' } });
       const [store, setStore] = createStore<TemplateSchema>(initial);
-      const spy = vi.fn(setStore);
       // Note: updateSchema uses the real setStore, so this tests by verifying store is unchanged
       updateSchema(store, makeTemplate({ props: { label: 'same' } }), setStore);
       // Store should be unchanged

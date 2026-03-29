@@ -1,12 +1,7 @@
-import { Accessor, createMemo, createSignal, Index, JSX, Show } from 'solid-js';
+import { Accessor, createMemo, createSignal, Index, Show } from 'solid-js';
 
 export type * from './PopoverToggleMenu.types';
-import type {
-  PopoverToggleMenuEntry,
-  PopoverToggleMenuGroup,
-  PopoverToggleMenuItem,
-  PopoverToggleMenuProps,
-} from './PopoverToggleMenu.types';
+import type { PopoverToggleMenuGroup, PopoverToggleMenuItem, PopoverToggleMenuProps } from './PopoverToggleMenu.types';
 
 // Solid-specific: items within arrays can pass reactive accessors for checked state
 type SolidToggleMenuItem = Omit<PopoverToggleMenuItem, 'checked'> & {

@@ -401,9 +401,6 @@ export const testTemplateSchema: TemplateSchema = {
 //   routes[2] > children[1] = Column > children[0] = header > children[0] = header Row
 //   routes[2].routes[2] = /posts
 export function testMutations(currentSchema: TemplateSchema, setCurrentSchema: SetStoreFunction<TemplateSchema>) {
-  // Sidebar is now at children[0] (aside) > children[0] (Column)
-  const sidebarPath = () => (deepClone(currentSchema) as any).children[0].children[0];
-
   function removeTemplateHeaderSlot() {
     // Header no longer exists as a slot — this mutation adds/removes a header element
     // inside the content Column (children[1])

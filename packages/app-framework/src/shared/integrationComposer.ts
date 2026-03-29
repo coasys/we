@@ -241,7 +241,8 @@ function generateIframePermissions(capabilities: string[]): string {
  * Phase 1: Just return the seed theme for now
  * Phase 2: Actually merge theme into template props
  */
-export function applyThemeToLauncher(template: TemplateSchema, seed: WeSeedFile): TemplateSchema {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function applyThemeToLauncher(template: TemplateSchema, _seed: WeSeedFile): TemplateSchema {
   // For now, theme will be applied globally by the theme system
   // In the future, we could inject theme props into the template
   return template;

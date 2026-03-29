@@ -4,7 +4,7 @@ import type { ScenarioModule } from '../harness/types';
 
 export const scenario: ScenarioModule = {
   name: '10 — CRDT Ordering (Phase 5)',
-  run: async (_perspective) => {
+  run: async () => {
     return [];
   },
 };

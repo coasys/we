@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { Row } from '@we/components/solid';
 import { gsap } from 'gsap';
 import { createEffect, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import * as THREE from 'three';
@@ -1835,9 +1837,9 @@ export function Scene1() {
   return (
     <div class={styles.page}>
       <div ref={(el) => (containerRef = el)} class={styles.modelViewer} onClick={cycleToNextView}>
-        <we-row p="300" ax="end" class={styles.header}>
+        <Row p="300" ax="end" class={styles.header}>
           <we-popover placement="bottom-end">
-            <we-button size="sm" slot="trigger" variant="subtle">
+            <we-button size="sm" slot="trigger" variant="ghost">
               {selectedMaterial()}
             </we-button>
             <we-menu slot="content">
@@ -1848,7 +1850,7 @@ export function Scene1() {
               ))}
             </we-menu>
           </we-popover>
-        </we-row>
+        </Row>
 
         <Show when={showPlaceholder()}>
           <div class={styles.placeholder}></div>

@@ -1,3 +1,5 @@
+import path from 'path';
+
 import type { SeedValidationResult, WeSeedFile } from '../types/seed';
 
 /**
@@ -144,8 +146,6 @@ export async function loadSeed(source: string): Promise<WeSeedFile> {
  * Normalize paths in seed file relative to a base directory
  */
 export function normalizeSeedPaths(seed: WeSeedFile, basePath: string): WeSeedFile {
-  const path = require('path');
-
   return {
     ...seed,
     apps: seed.apps.map((app) => ({

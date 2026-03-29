@@ -1,6 +1,4 @@
 import { MaybeAccessor, toValue } from '@we/design-utils/solid';
-import type { IconWeight } from '@we/primitives/types';
-import { JSX } from 'solid-js';
 
 export type * from './IconLabelButton.types';
 import type { IconLabelButtonProps as SharedIconLabelButtonProps } from './IconLabelButton.types';

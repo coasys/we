@@ -1,5 +1,4 @@
 import { Column, Row } from '@we/components/solid';
-import { JSX } from 'solid-js';
 
 export type * from './SpaceSidebarWidget.types';
 import type { SpaceSidebarWidgetProps } from './SpaceSidebarWidget.types';

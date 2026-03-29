@@ -9,16 +9,7 @@ import * as d3 from 'd3-force';
 import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 
 export type * from './types';
-import type {
-  EdgeStyleConfig,
-  GraphData,
-  GraphEdge,
-  GraphNode,
-  GraphWidgetProps,
-  InteractionConfig,
-  LayoutConfig,
-  NodeStyleConfig,
-} from './types';
+import type { GraphEdge, GraphNode, GraphWidgetProps } from './types';
 
 // Default colors for node types
 const DEFAULT_NODE_COLORS = {

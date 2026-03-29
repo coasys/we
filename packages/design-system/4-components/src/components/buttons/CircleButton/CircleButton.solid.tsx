@@ -1,5 +1,3 @@
-import { JSX } from 'solid-js';
-
 export type * from './CircleButton.types';
 import type { CircleButtonProps } from './CircleButton.types';
 
