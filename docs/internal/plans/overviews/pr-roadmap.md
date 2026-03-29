@@ -82,6 +82,11 @@
                     │ 7a. Shared *.types.ts│  │ 7b. Component       │
                     │     Refactor        │  │     Showcase        │
                     └─────────────────────┘  └─────────────────────┘
+
+                    ┌─────────────────────┐
+                    │7c. Root Storybook    │
+                    │    Migration         │
+                    └─────────────────────┘
                               │
                               ▼
                     ┌─────────────────────┐
@@ -270,6 +275,14 @@ Extracted shared prop interfaces from 13 `.solid.tsx` files into co-located `*.t
 
 Standalone dev tool (`@we/component-showcase`) for previewing multi-framework components. Can be implemented in parallel with the AI tooling track.
 
+### 7c. Root Storybook Migration
+
+**Plan:** [storybook-migration](../prs/storybook-migration.md)
+**Depends on:** nothing (benefits from #10 landing first for more components to verify)
+**Unblocks:** cross-package story discovery, SolidJS component stories, unified theme preview
+
+Moves Storybook from `3-primitives/.storybook/` to the monorepo root (`we/.storybook/`). Switches framework to `@storybook/html-vite` so both Lit primitives and SolidJS components render in one instance. Co-locates stories next to their components. Adds `renderSolid()` helper for SolidJS stories. Serves a different audience from #7b (internal team vs. external developers).
+
 ### 8. @we/ai-context Package
 
 **Plan:** [ai-context-package](../prs/ai-context-package.md) (PR 2 section)
@@ -320,6 +333,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | 2    | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
 | 2    | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
 | 2    | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
+| 2    | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
 | 2    | 8   | @we/ai-context                 | AI    | 7a         | Large  | Med  |
 | 3    | 4   | Local Schema State             | Cust  | 6          | Medium | Med  |
 | 3    | 8b‡ | Schema Validation (semantic)   | AI    | 8          | Small  | Low  |
@@ -351,4 +365,5 @@ Track 4:  ──────────── [5b. Blocks] ──────�
 Track 5:  ──────────── [6. Schema Customization] ────── [4. $local] ────
 Track 6:  [7a. types]  ──────────── [8. ai-context] ─ [8b-Ph2] ─ [9. MCP]
 Track 7:  ────────────────────────── [7b. Showcase] ────────────────────
+Track 8:  ──────────── [7c. Root Storybook] ────────────────────────────
 ```

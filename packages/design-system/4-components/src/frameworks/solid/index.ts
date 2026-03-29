@@ -20,5 +20,18 @@ export {
   type PopoverToggleMenuItem,
 } from '../../components/menus/PopoverToggleMenu/PopoverToggleMenu.solid';
 
+// Data
+export { List, type ListItem, type ListProps } from '../../components/data/List/List.solid';
+export { Table, type TableColumn, type TableProps } from '../../components/data/Table/Table.solid';
+
+// Feedback
+export {
+  ToastContainer,
+  toastService,
+  type ToastContainerProps,
+  type ToastItem,
+  type ToastVariant,
+} from '../../components/feedback/Toast/Toast.solid';
+
 // Testing
 export { RerenderLog, type RerenderLogProps } from '../../components/testing/RerenderLog/RerenderLog.solid';

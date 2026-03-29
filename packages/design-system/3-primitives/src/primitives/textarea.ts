@@ -6,11 +6,10 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { InputSize } from '../types';
+import type { TextareaSize } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
-  ay: 'center',
   px: '300',
   py: '200',
   fontSize: '400',
@@ -21,15 +20,15 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   focusProps: { bg: 'neutral-100', shadow: '0 0 0 2px var(--we-color-primary-500)' },
 };
 
-const SIZE_DEFAULTS: Record<InputSize, Partial<DesignSystemProps>> = {
+const SIZE_DEFAULTS: Record<TextareaSize, Partial<DesignSystemProps>> = {
   sm: { px: '200', py: '100', fontSize: '300' },
   md: { px: '300', py: '200', fontSize: '400' },
   lg: { px: '400', py: '300', fontSize: '500' },
 };
 
 const styles = css`
-  [part='input'] {
-    flex: 1;
+  [part='textarea'] {
+    width: 100%;
     border: none;
     background: transparent;
     color: inherit;
@@ -37,33 +36,30 @@ const styles = css`
     outline: none;
     padding: 0;
     min-width: 0;
+    resize: vertical;
+    min-height: 80px;
   }
 
-  [part='input']::placeholder {
+  [part='textarea']::placeholder {
     color: var(--we-color-neutral-400);
   }
 `;
 
-@customElement('we-input')
-export default class Input extends DesignSystemElement {
+@customElement('we-textarea')
+export default class Textarea extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
   @property({ type: String, reflect: true }) value = '';
-  @property({ type: String, reflect: true }) max = '';
-  @property({ type: String, reflect: true }) min = '';
+  @property({ type: String, reflect: true }) name = '';
+  @property({ type: String, reflect: true }) placeholder = '';
+  @property({ type: Number }) rows = 3;
   @property({ type: Number, reflect: true }) maxlength = Infinity;
   @property({ type: Number, reflect: true }) minlength = 0;
-  @property({ type: String, reflect: true }) pattern = '';
-  @property({ type: String, reflect: true }) name = '';
-  @property({ type: String, reflect: true }) step = '';
-  @property({ type: String, reflect: true }) placeholder = '';
-  @property({ type: String, reflect: true }) autocomplete = '';
-  @property({ type: Boolean, reflect: true }) autofocus = false;
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) required = false;
   @property({ type: Boolean, reflect: true }) readonly = false;
-  @property({ type: String, reflect: true }) type = 'text';
-  @property({ type: String, reflect: true }) size: InputSize = 'md';
+  @property({ type: String, reflect: true }) resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical';
+  @property({ type: String, reflect: true }) size: TextareaSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
@@ -71,28 +67,24 @@ export default class Input extends DesignSystemElement {
   }
 
   override getInstanceProps() {
-    const ctor = this.constructor as typeof Input & { __dsLayers: readonly DSLayer[] };
+    const ctor = this.constructor as typeof Textarea & { __dsLayers: readonly DSLayer[] };
     const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
     const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
     const sizeDefaults = SIZE_DEFAULTS[this.size] ?? {};
     return mergeProps(usedProps, mergeProps(sizeDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
-  select() {
-    this.renderRoot.querySelector('input')?.select();
-  }
-
   focus() {
-    this.renderRoot.querySelector('input')?.focus();
+    this.renderRoot.querySelector('textarea')?.focus();
   }
 
   handleInput(e: InputEvent) {
-    this.value = (e.target as HTMLInputElement)?.value;
+    this.value = (e.target as HTMLTextAreaElement)?.value;
     this.dispatchEvent(new CustomEvent('we-input', { detail: this.value, bubbles: true, composed: true }));
   }
 
   handleChange(e: Event) {
-    this.value = (e.target as HTMLInputElement)?.value;
+    this.value = (e.target as HTMLTextAreaElement)?.value;
     this.dispatchEvent(new CustomEvent('we-change', { detail: this.value, bubbles: true, composed: true }));
   }
 
@@ -104,39 +96,26 @@ export default class Input extends DesignSystemElement {
     this.dispatchEvent(new CustomEvent('we-blur', { bubbles: true, composed: true }));
   }
 
-  handleKeyDown(e: KeyboardEvent) {
-    this.dispatchEvent(
-      new CustomEvent('we-keydown', { detail: { key: e.key, code: e.code }, bubbles: true, composed: true }),
-    );
-  }
-
   render() {
-    const inline = this.styles || {};
     return html`
-      <div part="base" style=${styleMap(inline)}>
+      <div part="base" style=${styleMap(this.styles || {})}>
         <slot name="start"></slot>
-        <input
-          part="input"
+        <textarea
+          part="textarea"
           .value=${this.value}
-          .type=${this.type}
-          .max=${this.max}
-          .min=${this.min}
-          .step=${this.step}
-          .autocomplete=${this.autocomplete}
+          rows=${this.rows}
           maxlength=${this.maxlength}
           minlength=${this.minlength}
-          pattern=${this.pattern}
           placeholder=${this.placeholder}
-          ?autofocus=${this.autofocus}
+          style=${styleMap({ resize: this.resize })}
+          ?disabled=${this.disabled}
           ?readonly=${this.readonly}
           ?required=${this.required}
-          ?disabled=${this.disabled}
           @input=${this.handleInput}
           @change=${this.handleChange}
-          @blur=${this.handleBlur}
           @focus=${this.handleFocus}
-          @keydown=${this.handleKeyDown}
-        />
+          @blur=${this.handleBlur}
+        ></textarea>
         <slot name="end"></slot>
       </div>
     `;

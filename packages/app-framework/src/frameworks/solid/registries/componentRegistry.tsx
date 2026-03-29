@@ -12,11 +12,14 @@ import {
   CircleButton,
   Column,
   IconLabelButton,
+  List,
   PopoverMenu,
   PopoverToggleMenu,
   PostCard,
   RerenderLog,
   Row,
+  Table,
+  ToastContainer,
 } from '@we/components/solid';
 import type { ComponentRegistry } from '@we/schema-solid';
 import {
@@ -51,6 +54,9 @@ export const componentRegistry: ComponentRegistry = {
   PopoverMenu,
   PopoverToggleMenu,
   PostCard,
+  List,
+  Table,
+  ToastContainer,
 
   // @we/widgets
   CreateSpaceModalWidget,
