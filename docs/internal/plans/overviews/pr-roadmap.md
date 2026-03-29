@@ -7,27 +7,27 @@
 ## Dependency Graph
 
 ```
-                    ┌─────────────────────┐
+                    ┌──────────────────────┐
                     │ 1. Button Variants ✅│
-                    └─────────────────────┘
+                    └──────────────────────┘
                               │
                     ┌─────────────────────┐
-                    │1b. Primitive Pattern │
+                    │1b. Primitive Pattern│
                     │    Alignment     ✅ │
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
-                    │1c. Token Type        │
+                    │1c. Token Type       │
                     │    Consolidation  ✅│
                     └─────────────────────┘
 
-                    ┌─────────────────────┐
+                    ┌───────────────────────┐
                     │ 2. Deep Unwrap Props✅│
-                    └─────────────────────┘
+                    └───────────────────────┘
                               │
                     ┌─────────────────────┐
                     │2b. Fine-Grained   ✅│
-                    │    Reactivity        │
+                    │    Reactivity       │
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
@@ -37,72 +37,72 @@
 
                     ┌─────────────────────┐
                     │ 3. Schema–Theme   ✅│
-                    │    Integration       │
+                    │    Integration      │
                     └─────────────────────┘
                               │
                     ┌─────────────────────┐
                     │3b. color-ui →     ✅│
-                    │    color-neutral     │
+                    │    color-neutral    │
                     └─────────────────────┘
 
                     ┌─────────────────────┐
                     │4b. $concat, remove✅│
-                    │    $expr             │
+                    │    $expr            │
                     └─────────────────────┘
 
                     ┌─────────────────────┐
                     │8b. Schema Validation│
-                    │    (Phase 1)     ✅│
+                    │    (Phase 1)      ✅│
                     └─────────────────────┘
 
                     ┌─────────────────────┐
-                    │10. Component Library│
-                    │    Expansion (Ph 1)✅│
+                    │10. Component       │
+                    │    Library       ✔│
                     └─────────────────────┘
 
                     ┌─────────────────────┐
-                    │ 5. Block Model       │
-                    │    Migration         │
+                    │ 5. Block Model      │
+                    │    Migration        │
                     └─────────────────────┘
                       │        │        │
          ┌────────────┘        │        └─────────────┐
          ▼                     ▼                      ▼
 ┌────────────────┐  ┌────────────────────┐  ┌─────────────────────┐
-│5b. Core Blocks   │  │5c. $query Service  │  │ 6. Schema           │
+│5b. Core Blocks │  │5c. $query Service  │  │ 6. Schema           │
 └────────────────┘  └────────────────────┘  │    Customization    │
                                             └─────────────────────┘
                                                       │
                                                       ▼
                                             ┌─────────────────────┐
-                                            │ 4. Local Schema      │
-                                            │    State ($local)    │
+                                            │ 4. Local Schema     │
+                                            │    State ($local)   │
                                             └─────────────────────┘
 
-                    ┌─────────────────────┐  ┌─────────────────────┐
+                    ┌──────────────────────┐  ┌─────────────────────┐
                     │ 7a. Shared *.types.ts│  │ 7b. Component       │
-                    │     Refactor        │  │     Showcase        │
-                    └─────────────────────┘  └─────────────────────┘
+                    │     Refactor         │  │     Showcase        │
+                    └──────────────────────┘  └─────────────────────┘
 
                     ┌─────────────────────┐
-                    │7c. Root Storybook    │
-                    │    Migration         │
+                    │7c. Root Storybook   │
+                    │    Migration        │
                     └─────────────────────┘
                               │
                               ▼
                     ┌─────────────────────┐
-                    │ 8. @we/ai-context    │
-                    │    Package           │
+                    │ 8. @we/ai-context   │
+                    │    Package          │
                     └─────────────────────┘
                               │
                               ▼
                     ┌─────────────────────┐
-                    │8b. Schema Validation │
-                    │    (Phase 2)         │
+                    │8b. Schema Validation│
+                    │    (Phase 2)        │
                     └─────────────────────┘
                               │
                               ▼
                     ┌─────────────────────┐
-                    │ 9. MCP Tools         │
+                    │ 9. MCP Tools        │
                     └─────────────────────┘
 ```
 
@@ -195,14 +195,14 @@ Renamed the `ui` color family to `neutral` across all layers: JS tokens (`ColorH
 
 Removed `$expr` (arbitrary JS via `new Function()`) entirely — no external consumers exist. Added `$concat` for safe string building. Extended `$item.*` string resolution from `$map`-only to the dispatcher, so `$each` children access items via `$item.name` instead of `{ $expr: 'item.name' }`. Renamed `$forEach` → `$each` to match the single-word naming convention of all other tokens. Generalised to `$<contextKey>.*` for nested `$each` with custom `as` bindings. Migrated all 11 `$expr` uses to `$item.*`, `$concat`, or `$if`. Added schema system `CONVENTIONS.md`. Fixed `isStaticValue()` to treat `$`-prefixed strings as non-static. Net token count unchanged (−1 `$expr`, +1 `$concat`); `$item.*` is a dispatcher resolution rule, not a new token type.
 
-### 10. Core Component Library Expansion (Phase 1) ✅
+### 10. Core Component Library Expansion ✅
 
 **Plan:** [component-library-expansion](../prs/component-library-expansion.md)
-**Status:** Complete (branch `feat/component-library-expansion`, 1 commit, 29 files)
+**Status:** Complete (branch `feat/component-library-expansion`, 2 commits, 71 files)
 **Depends on:** nothing
 **Unblocks:** schema-first app viability — without Select, Textarea, Table, Grid, Card, etc., most app archetypes hit missing-component walls
 
-Added 10 P0 components across primitives and components packages. Lit primitives: FormField (label/error/description wrapper), Textarea, Checkbox, Radio, Select, Card (elevated/outlined/filled variants), Grid (columns/minChildWidth). SolidJS components: List (items/renderItem/children modes), Table (columns/rows, striped/bordered via SCSS), Toast (signal-based service + ToastContainer). Stripped Input of built-in label/error chrome and migrated 9 usages to FormField wrapping. Moved SolidJS component styles from inline to SCSS with BEM classes. Removed redundant input-wrapper div. Added start/end slots to Textarea for parity with Input. Registered List, Table, ToastContainer in componentRegistry. Also created #7c Storybook migration plan.
+Added 34 components (25 Lit primitives + 9 SolidJS components) bringing the total to 42 registered primitives. Phase 1: FormField, Textarea, Checkbox, Radio, Select, Card, Grid (Lit) + List, Table, Toast (SolidJS). Stripped Input of label/error chrome; migrated 9 usages to FormField wrapping. Phase 2: Switch, Divider, Tag, ProgressBar, Alert, Skeleton, Link, Code, Blockquote, NumberInput, Slider, Drawer, ScrollArea, Pagination, Combobox, DatePicker, FileUpload, ColorPicker (Lit) + Dialog, Breadcrumbs, Accordion, Stepper, Timeline, Calendar (SolidJS). Added `fontFamily` DS prop across the full pipeline (tokens → types → utils → primitives → components). Moved SolidJS component styles from inline to SCSS with BEM classes. Also created #7c Storybook migration plan.
 
 ---
 
@@ -329,7 +329,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 5   | Block Model Migration          | Data  | —          | Small  | Low  |
 | ✅   | 7a  | Shared \*.types.ts             | AI    | —          | Medium | Low  |
 | ✅   | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
-| ✅   | 10  | Component Library (Ph 1)       | Sch   | —          | Medium | Low  |
+| ✅   | 10  | Component Library Expansion    | Sch   | —          | Large  | Low  |
 | 2    | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
 | 2    | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
 | 2    | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |

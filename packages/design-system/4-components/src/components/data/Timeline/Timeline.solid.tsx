@@ -1,9 +1,9 @@
 import { For, Show } from 'solid-js';
 
 export type * from './Timeline.types';
-import type { TimelineItem, TimelineProps } from './Timeline.types';
-
 import type { JSX } from 'solid-js';
+
+import type { TimelineItem, TimelineProps } from './Timeline.types';
 
 interface SolidTimelineProps extends TimelineProps {
   children?: JSX.Element;
