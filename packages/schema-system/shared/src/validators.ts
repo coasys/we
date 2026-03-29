@@ -9,7 +9,7 @@ function zodErrorToValidationErrors(zodErrors: z.ZodError): ValidationError[] {
   const tree = z.treeifyError(zodErrors);
   const out: ValidationError[] = [];
 
-  function walk(node: any, path: (string | number)[] = []) {
+  function walk(node: Record<string, unknown>, path: (string | number)[] = []) {
     if (!node) return;
 
     // emit node-level errors
@@ -28,7 +28,7 @@ function zodErrorToValidationErrors(zodErrors: z.ZodError): ValidationError[] {
 
     // recur into array items
     if (Array.isArray(node.items)) {
-      node.items.forEach((item: any, idx: number) => walk(item, [...path, idx]));
+      node.items.forEach((item: Record<string, unknown>, idx: number) => walk(item, [...path, idx]));
     }
   }
 

@@ -18,7 +18,7 @@ export interface IntegrationManifest {
 }
 
 export interface IntegrationModule {
-  schemas: Record<string, any>;
+  schemas: Record<string, unknown>;
   routes: Array<{ path: string; component: string }>;
   manifest: IntegrationManifest;
 }
@@ -26,9 +26,9 @@ export interface IntegrationModule {
 export interface LoadedIntegration {
   id: string;
   manifest: IntegrationManifest;
-  schemas: Record<string, any>;
+  schemas: Record<string, unknown>;
   routes: Array<{ path: string; component: string }>;
-  metadata?: any; // Generated metadata from seed processor
+  metadata?: unknown; // Generated metadata from seed processor
 }
 
 /**

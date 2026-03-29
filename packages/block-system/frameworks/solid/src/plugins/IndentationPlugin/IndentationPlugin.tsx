@@ -5,6 +5,7 @@ import {
   $isListNode,
   ListItemNode,
   ListNode,
+  type ListType,
 } from '@lexical/list';
 import { mergeRegister } from '@lexical/utils';
 import {
@@ -82,7 +83,7 @@ function tabKeyPress(event: KeyboardEvent, editor: LexicalEditor): boolean {
       if (!nestedList) {
         // Create a new nested list with the same tag as the parent
         const listType = listNode.getTag(); // 'bullet', 'number', or 'check'
-        nestedList = $createListNode(listType as any);
+        nestedList = $createListNode(listType as ListType);
         previousSibling.append(nestedList);
       }
 

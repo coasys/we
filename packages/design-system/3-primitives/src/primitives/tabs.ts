@@ -14,11 +14,12 @@ export class Tabs extends DesignSystemElement {
 
   @queryAssignedElements({ slot: 'tab' }) _tabs!: HTMLElement[];
 
-  updated() {
-    super.updated();
+  updated(changedProperties: Map<PropertyKey, unknown>) {
+    super.updated(changedProperties);
     // Set selected state on tabs
     this._tabs?.forEach((tab) => {
-      (tab as any).selected = (tab as any).active === this.activeKey;
+      const t = tab as unknown as Record<string, unknown>;
+      t.selected = t.active === this.activeKey;
     });
   }
 

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any */
 import { Row } from '@we/components/solid';
 import { gsap } from 'gsap';
 import { createEffect, createSignal, onCleanup, onMount, Show } from 'solid-js';

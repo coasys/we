@@ -1,15 +1,18 @@
+import type { DesignSystemProps } from '@we/design-types';
 import type { DSLayer } from '@we/design-utils';
 import { LitElement } from 'lit';
 
 import { DesignSystemMixin } from './design-system-mixin';
 import { getStaticDSStyles, updateAllCustomVars } from './helpers';
 
-type ComponentCtor = abstract new (...args: unknown[]) => LitElement;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- TypeScript requires any[] for mixin constructors
+type ComponentCtor = abstract new (...args: any[]) => LitElement;
 
 // Cache of DS stylesheets — one per component class, created once, reused for all instances
 const dsStyleSheets = new WeakMap<ComponentCtor, CSSStyleSheet>();
 
 // Shared DS lifecycle: adopt static stylesheet + dirty-checked custom var updates
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- TypeScript requires any[] for mixin constructors
 function applyDSBehavior<T extends new (...args: any[]) => LitElement>(Base: T): T {
   return class extends Base {
     _prevDSSnapshot?: string;
@@ -23,7 +26,7 @@ function applyDSBehavior<T extends new (...args: any[]) => LitElement>(Base: T):
       // Create and cache the static DS stylesheet (once per component class)
       if (!dsStyleSheets.has(ctor)) {
         const sheet = new CSSStyleSheet();
-        const layers = (ctor as any).__dsLayers as readonly DSLayer[] | undefined;
+        const layers = (ctor as unknown as Record<string, unknown>).__dsLayers as readonly DSLayer[] | undefined;
         sheet.replaceSync(getStaticDSStyles(this._componentName, layers));
         dsStyleSheets.set(ctor, sheet);
       }
@@ -38,8 +41,9 @@ function applyDSBehavior<T extends new (...args: any[]) => LitElement>(Base: T):
       }
     }
 
-    updated() {
-      const props = (this as any).getInstanceProps();
+    updated(changedProperties: Map<PropertyKey, unknown>) {
+      super.updated(changedProperties);
+      const props = (this as unknown as { getInstanceProps(): Partial<DesignSystemProps> }).getInstanceProps();
       const snapshot = JSON.stringify(props);
       if (snapshot === this._prevDSSnapshot) return;
       this._prevDSSnapshot = snapshot;

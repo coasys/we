@@ -1,4 +1,4 @@
-import type { TemplateSchema } from '@we/schema-shared';
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { createRoot } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { describe, expect, it, vi } from 'vitest';
@@ -30,7 +30,7 @@ describe('updateSchema', () => {
       const updated = makeTemplate({ children: [{ type: 'span' }] });
       updateSchema(store, updated, setStore);
       expect(store.children?.length).toBe(1);
-      expect((store.children![0] as any).type).toBe('span');
+      expect((store.children![0] as SchemaNode).type).toBe('span');
       dispose();
     });
   });
@@ -42,7 +42,7 @@ describe('updateSchema', () => {
       const updated = makeTemplate({ children: [{ type: 'div' }] });
       updateSchema(store, updated, setStore);
       // After update, first child should now be div
-      expect((store.children![0] as any).type).toBe('div');
+      expect((store.children![0] as SchemaNode).type).toBe('div');
       dispose();
     });
   });

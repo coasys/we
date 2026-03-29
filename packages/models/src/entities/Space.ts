@@ -25,16 +25,20 @@ export class Space extends WeNode {
   @Property({
     through: 'we://has_image',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: (data: any) =>
-      data?.data_base64 ? `data:${data?.file_type || 'image/png'};base64,${data?.data_base64}` : data,
+    transform: (data: FileData | string | null | undefined) =>
+      data && typeof data === 'object' && 'data_base64' in data
+        ? `data:${data?.file_type || 'image/png'};base64,${data?.data_base64}`
+        : data,
   })
   image?: string | FileData;
 
   @Property({
     through: 'we://has_thumbnail',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: (data: any) =>
-      data?.data_base64 ? `data:${data?.file_type || 'image/png'};base64,${data?.data_base64}` : data,
+    transform: (data: FileData | string | null | undefined) =>
+      data && typeof data === 'object' && 'data_base64' in data
+        ? `data:${data?.file_type || 'image/png'};base64,${data?.data_base64}`
+        : data,
   })
   thumbnail?: string | FileData;
 

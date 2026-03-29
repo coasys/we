@@ -43,7 +43,7 @@ function BlockHandle({ nodeKey, nodeData }: { nodeKey: string; nodeData: NodeDat
   const [showMenu, setShowMenu] = createSignal(false);
   const [isDragging, setIsDragging] = createSignal(false);
   let handleRef: HTMLDivElement | undefined;
-  const heightOffset = { h1: 10, h2: 5, h3: 2 } as any;
+  const heightOffset: Record<string, number> = { h1: 10, h2: 5, h3: 2 };
 
   function closeMenu() {
     setShowMenu(false);

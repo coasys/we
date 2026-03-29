@@ -52,6 +52,7 @@ export async function buildAd4mClientWithApollo(
   const apolloClient = new ApolloClient({ link, cache, defaultOptions });
 
   // Build the Ad4m client and ensure the executor is ready
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ApolloClient type mismatch with Ad4mClient constructor
   const ad4mClient = new Ad4mClient(apolloClient as any, subscribe);
   const { status } = await ensureExecutorReady(ad4mClient);
 

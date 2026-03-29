@@ -12,7 +12,7 @@ declare global {
       getPort: () => Promise<number>;
       getToken: () => Promise<string>;
       getIsDevelopment: () => Promise<boolean>;
-      getDesktopSources: () => Promise<any[]>;
+      getDesktopSources: () => Promise<unknown[]>;
     };
   }
 }

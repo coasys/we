@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { fluxSeedExample, minimalExample } from '../src/seed/examples';
 import { processSeed, SeedProcessor } from '../src/seed/processor';
+import type { WeSeedFile } from '../src/types/seed';
 
 describe('SeedProcessor', () => {
   describe('constructor', () => {
@@ -10,8 +11,8 @@ describe('SeedProcessor', () => {
     });
 
     it('should throw with invalid seed', () => {
-      const invalidSeed: any = { project: {} };
-      expect(() => new SeedProcessor(invalidSeed)).toThrow('Invalid seed file');
+      const invalidSeed = { project: {} };
+      expect(() => new SeedProcessor(invalidSeed as WeSeedFile)).toThrow('Invalid seed file');
     });
   });
 
@@ -46,7 +47,8 @@ describe('SeedProcessor', () => {
   describe('generateSchemas', () => {
     it('should generate main schema', () => {
       const processor = new SeedProcessor(minimalExample);
-      const schemas = processor.generateSchemas();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const schemas = processor.generateSchemas() as Record<string, any>;
 
       expect(schemas.main).toBeDefined();
       expect(schemas.main.type).toBe('container');
@@ -66,7 +68,8 @@ describe('SeedProcessor', () => {
         },
       };
       const processor = new SeedProcessor(seed);
-      const schemas = processor.generateSchemas();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const schemas = processor.generateSchemas() as Record<string, any>;
 
       expect(schemas.customComponent).toBeDefined();
       expect(schemas.customComponent.content).toBe('Custom');
@@ -231,7 +234,7 @@ describe('processSeed', () => {
   });
 
   it('should reject invalid seed', async () => {
-    const invalidSeed: any = { project: {} };
-    await expect(processSeed(invalidSeed)).rejects.toThrow();
+    const invalidSeed = { project: {} };
+    await expect(processSeed(invalidSeed as WeSeedFile)).rejects.toThrow();
   });
 });

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { render } from '@solidjs/testing-library';
 import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it, vi } from 'vitest';

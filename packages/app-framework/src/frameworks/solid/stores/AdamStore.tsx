@@ -236,8 +236,8 @@ export function AdamStoreProvider(props: ParentProps) {
           data_base64: thumbnailBase64,
           name: 'space-thumbnail',
           file_type: 'image/png',
-        } as FileData as any;
-        space.image = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData as any;
+        } as FileData;
+        space.image = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData;
       }
 
       await space.save();

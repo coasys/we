@@ -3,11 +3,13 @@ import { type DSLayer, filterProps, getKeysForLayers, mergeProps, stateKeys } fr
 import { LitElement } from 'lit';
 import { property } from 'lit/decorators.js';
 
-type Constructor<T = any> = new (...args: any[]) => T;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mixin constructor pattern requires flexible constructor type
+type Constructor<T = LitElement> = new (...args: any[]) => T;
 
 const ALL_LAYERS: DSLayer[] = ['layout', 'visual', 'flex', 'typography', 'state'];
 
 type MixedClass<T extends Constructor<LitElement>> = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mixin pattern requires any for constructor spread
   new (...args: any[]): InstanceType<T> & {
     getInstanceProps(): Partial<DesignSystemProps>;
   };

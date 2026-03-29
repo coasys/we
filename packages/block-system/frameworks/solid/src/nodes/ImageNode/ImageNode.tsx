@@ -1,4 +1,4 @@
-import { DecoratorNode } from 'lexical';
+import { DecoratorNode, LexicalNode } from 'lexical';
 
 import ImageBlock from '../../components/ImageBlock';
 
@@ -81,7 +81,7 @@ export class ImageNode extends DecoratorNode<HTMLElement> {
     };
   }
 
-  static importJSON(serializedNode: any): ImageNode {
+  static importJSON(serializedNode: ReturnType<ImageNode['exportJSON']>): ImageNode {
     const { src, altText, width, height } = serializedNode;
     return new ImageNode(src, altText, width, height);
   }
@@ -91,7 +91,7 @@ export function $createImageNode(src?: string, altText?: string, width?: number,
   return new ImageNode(src, altText, width, height);
 }
 
-export function $isImageNode(node: any): node is ImageNode {
+export function $isImageNode(node: LexicalNode | null | undefined): node is ImageNode {
   return node instanceof ImageNode;
 }
 

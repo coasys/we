@@ -4,13 +4,13 @@ import { validateSchema } from '@we/schema-shared';
 import { batch } from 'solid-js';
 import { produce, SetStoreFunction } from 'solid-js/store';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- cleanSchemaNode operates on untyped recursive structures
 function cleanSchemaNode(node: any): any {
   if (!node || typeof node !== 'object') return node;
   const cleaned = { ...node };
   if (Array.isArray(cleaned.children)) {
     cleaned.children = cleaned.children
-      .filter((child: any) => child !== null && child !== undefined)
+      .filter((child: unknown) => child !== null && child !== undefined)
       .map(cleanSchemaNode);
   }
   if (cleaned.slots && typeof cleaned.slots === 'object') {

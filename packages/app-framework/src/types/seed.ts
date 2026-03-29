@@ -51,7 +51,7 @@ export interface WeSeedFile {
       /** Enable AI features */
       enabled: boolean;
       /** Custom prompts or configurations */
-      config?: Record<string, any>;
+      config?: Record<string, unknown>;
     };
     /** Perspective definitions */
     perspectives?: Array<{
@@ -66,7 +66,7 @@ export interface WeSeedFile {
     /** Executor configuration */
     executor?: {
       /** Custom executor settings */
-      config?: Record<string, any>;
+      config?: Record<string, unknown>;
     };
   };
 

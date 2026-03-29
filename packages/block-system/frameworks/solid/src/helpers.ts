@@ -1,4 +1,4 @@
-import { $createListItemNode, $createListNode, $isListItemNode, $isListNode } from '@lexical/list';
+import { $createListItemNode, $createListNode, $isListItemNode, $isListNode, type ListType } from '@lexical/list';
 import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode } from '@lexical/rich-text';
 import {
   $createParagraphNode,
@@ -58,7 +58,7 @@ export function transformBlock({ editor, nodeKey, newNodeType }: TransformBlockP
     else if (['h1', 'h2', 'h3'].includes(newNodeType)) newNode = $createHeadingNode(newNodeType as 'h1' | 'h2' | 'h3');
     else if (['ul', 'ol', 'cl'].includes(newNodeType)) {
       // If the new block is a list we need to create a list node and append a list item node to it
-      const listTypes = { ul: 'bullet', ol: 'number', cl: 'check' } as any;
+      const listTypes: Record<string, ListType> = { ul: 'bullet', ol: 'number', cl: 'check' };
       const listNode = $createListNode(listTypes[newNodeType]);
       const listItemNode = $createListItemNode();
       if ($isElementNode(node)) node.getChildren().forEach((child) => listItemNode.append(child));

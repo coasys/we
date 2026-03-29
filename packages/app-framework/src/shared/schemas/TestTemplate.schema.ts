@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { TemplateSchema } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import { SetStoreFunction } from 'solid-js/store';
@@ -543,7 +544,6 @@ export function testMutations(currentSchema: TemplateSchema, setCurrentSchema: S
   }
 
   function addTwitterButton() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const newSchema = deepClone(currentSchema) as any;
     const newButton = {
       type: 'we-button',

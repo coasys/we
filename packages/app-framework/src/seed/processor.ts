@@ -33,8 +33,8 @@ export class SeedProcessor {
   /**
    * Generate schema definitions for the integration
    */
-  generateSchemas(): Record<string, any> {
-    const schemas: Record<string, any> = {};
+  generateSchemas(): Record<string, unknown> {
+    const schemas: Record<string, unknown> = {};
 
     // Generate main app schema
     schemas.main = {
