@@ -69,8 +69,14 @@
          ▼                     ▼                      ▼
 ┌────────────────┐  ┌────────────────────┐  ┌─────────────────────┐
 │5b. Core Blocks │  │5c. $query Service  │  │ 6. Schema           │
-└────────────────┘  └────────────────────┘  │    Customization    │
-                                            └─────────────────────┘
+│             ✅ │  └────────────────────┘  │    Customization    │
+└────────────────┘                          └─────────────────────┘
+         │
+         ▼
+┌────────────────────┐
+│5d. Block Persist.  │
+│    & Rendering     │
+└────────────────────┘
                                                       │
                                                       ▼
                                             ┌─────────────────────┐
@@ -106,7 +112,7 @@
                     └─────────────────────┘
 ```
 
-> **Note:** #5 → #7b dependency (showcase needs clean model imports) is noted in #7b's description but not drawn to avoid crossing arrows. #5b, #5c, and #6 all depend on #5 independently — they can run in parallel. #6 → #9 dependency is noted in #9's description but not drawn to avoid crossing arrows. #8b has two phases: Phase 1 (token shape checks) has no dependencies; Phase 2 (semantic checks) depends on #8.
+> **Note:** #5 → #7b dependency (showcase needs clean model imports) is noted in #7b's description but not drawn to avoid crossing arrows. #5b, #5c, and #6 all depend on #5 independently — they can run in parallel. #5d depends on #5b. #6 → #9 dependency is noted in #9's description but not drawn to avoid crossing arrows. #8b has two phases: Phase 1 (token shape checks) has no dependencies; Phase 2 (semantic checks) depends on #8.
 
 ---
 
@@ -217,13 +223,22 @@ Added 34 components (25 Lit primitives + 9 SolidJS components) bringing the tota
 
 Moved TextBlock, ImageBlock, CollectionBlock from `@we/block-system/shared/src/models/` to `@we/models/src/blocks/`. Updated imports in serialization, AdamStore, SpaceStore, CreateSpaceModal. Re-exported from `@we/block-shared` for back-compat. Editor infrastructure (registry, GenericBlockNode) deferred to #5b.
 
-### 5b. Core Block Types
+### 5b. Core Block Types ✅
 
 **Plan:** [core-block-types](../prs/core-block-types.md)
+**Status:** Complete (branch `feat/core-block-types`, 4 commits, 24 files)
 **Depends on:** Block Model Migration (#5) — new models go in `@we/models`
-**Unblocks:** richer `$query` data, semantic block rendering outside editor, template diversity
+**Unblocks:** block persistence & rendering (#5d), richer `$query` data, semantic block rendering outside editor, template diversity
 
-Expands block model set from 3 to 13. Adds AudioBlock, VideoBlock, FileBlock, EventBlock, TaskBlock, LocationBlock, LinkBlock, CodeBlock, TagBlock, EmbedBlock. Each model has semantic fields readable by any app via `$query`, plus an editor component registered via `registerBlock()` (uses GenericBlockNode — no per-block Lexical code).
+Expanded block model set from 3 to 15. Added 12 new models: AudioBlock, VideoBlock, FileBlock, EventBlock, TaskBlock, LocationBlock, LinkBlock, CodeBlock, TagBlock, EmbedBlock, CalloutBlock, DividerBlock. Created block type registry (`registerBlock`/`getBlockModel`) with idempotent `registerCoreBlocks()`. Refactored serialization from hardcoded if-branches to registry-based using `getPropertiesMetadata()` + `ModelClass.create()`. Added `createBlockNodeClass` factory for generic Lexical DecoratorNode creation. Migrated existing models to simplified URI convention (`we://field_name`), removed blanket `required: true`, removed `type` field from ImageBlock/CollectionBlock, added `columns`/`gap` to CollectionBlock. Renamed CSS class `we-block-composer-block` → `we-block`.
+
+### 5d. Block Persistence & Rendering
+
+**Plan:** [block-persistence-rendering](../prs/block-persistence-rendering.md)
+**Depends on:** Core Block Types (#5b) — models, registry, and factory must exist
+**Unblocks:** round-trip block editing (create → save → load → display), `$query` + block display in schema templates
+
+Parent-child linking via polymorphic `@HasMany(() => WeNode, { through: 'we://children' })`, refactored `createBlocks()` with relationship linking, `loadBlocks()` for reconstruction, and display components for all block types. Investigates Ad4mModel polymorphic hydration. Aligns with the CRDT ordering strategy for future ordered collections.
 
 ### 5c. `$query` Reactive Query Service
 
@@ -330,8 +345,9 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 7a  | Shared \*.types.ts             | AI    | —          | Medium | Low  |
 | ✅   | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
 | ✅   | 10  | Component Library Expansion    | Sch   | —          | Large  | Low  |
-| 2    | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
+| ✅   | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
 | 2    | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
+| 2    | 5d  | Block Persistence & Rendering  | Data  | 5b         | Medium | Med  |
 | 2    | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
 | 2    | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
 | 2    | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
@@ -362,7 +378,7 @@ Track 2:  [2. Unwrap ✅] [2b. Fine-Grained ✅] [2c. WC Props] ─────�
 Track 2b: [4b. $concat] ────────────────────────────────────────────────
 Track 2c: [10. Components Ph1] ─────────────────────────────────────────
 Track 3:  [5. Models]  [5c. $query] ────────────────────────────────────
-Track 4:  ──────────── [5b. Blocks] ────────────────────────────────────
+Track 4:  ──────────── [5b. Blocks ✅] [5d. Block Persist. & Rendering] ─
 Track 5:  ──────────── [6. Schema Customization] ────── [4. $local] ────
 Track 6:  [7a. types]  ──────────── [8. ai-context] ─ [8b-Ph2] ─ [9. MCP]
 Track 7:  ────────────────────────── [7b. Showcase] ────────────────────
