@@ -27,7 +27,7 @@ export class ImageNode extends DecoratorNode<HTMLElement> {
 
   createDOM(): HTMLElement {
     const div = document.createElement('div');
-    div.className = 'we-block-composer-block';
+    div.className = 'we-block';
     return div;
   }
 
@@ -37,7 +37,7 @@ export class ImageNode extends DecoratorNode<HTMLElement> {
 
   decorate(): HTMLElement {
     const container = document.createElement('div');
-    container.className = 'we-block-composer-block';
+    container.className = 'we-block';
 
     // Render the ImageBlock component into the container
     const imageBlock = (
@@ -123,7 +123,7 @@ export function $isImageNode(node: LexicalNode | null | undefined): node is Imag
 
 //   createDOM(): HTMLElement {
 //     const div = document.createElement('div');
-//     div.className = 'we-block-composer-block';
+//     div.className = 'we-block';
 //     return div;
 //   }
 
