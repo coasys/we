@@ -4,69 +4,36 @@ import { WeNode } from '../WeNode';
 
 @Model({ name: 'TextBlock' })
 export class TextBlock extends WeNode {
-  @Property({
-    through: 'we://text_block_node_type',
-    required: true,
-  })
+  @Property({ through: 'we://type' })
   type: string = '';
 
-  @Property({
-    through: 'we://text_block_direction',
-    required: true,
-  })
+  @Property({ through: 'we://direction' })
   direction: string = '';
 
-  @Property({
-    through: 'we://text_block_format',
-    required: true,
-  })
+  @Property({ through: 'we://format' })
   format: string = '';
 
-  @Property({
-    through: 'we://text_block_indent',
-    required: true,
-  })
+  @Property({ through: 'we://indent' })
   indent: number = 0;
 
-  @Property({
-    through: 'we://text_block_text_format',
-    required: true,
-  })
+  @Property({ through: 'we://textFormat' })
   textFormat: number = 0;
 
-  @Property({
-    through: 'we://text_block_text_style',
-    required: true,
-  })
+  @Property({ through: 'we://textStyle' })
   textStyle: string = '';
 
-  @Property({
-    through: 'we://text_block_list_type',
-    required: true,
-  })
+  @Property({ through: 'we://listType' })
   listType: string = '';
 
-  @Property({
-    through: 'we://text_block_start',
-    required: true,
-  })
+  @Property({ through: 'we://start' })
   start: number = 0;
 
-  @Property({
-    through: 'we://text_block_tag',
-    required: true,
-  })
+  @Property({ through: 'we://tag' })
   tag: string = '';
 
-  @Property({
-    through: 'we://text_block_text',
-    required: true,
-  })
+  @Property({ through: 'we://text' })
   text: string = '';
 
-  @Property({
-    through: 'we://text_block_version',
-    required: true,
-  })
+  @Property({ through: 'we://version' })
   version: number = 0;
 }

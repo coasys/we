@@ -3,7 +3,7 @@ import { ListItemNode, ListNode } from '@lexical/list';
 import { CHECK_LIST, HEADING, ORDERED_LIST, QUOTE, UNORDERED_LIST } from '@lexical/markdown';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import type { BlockComposerProps, SerializedBlockNode } from '@we/block-shared';
-import { createBlocks } from '@we/block-shared';
+import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { Column, Row } from '@we/components/solid';
 import {
   ContentEditable,
@@ -23,6 +23,8 @@ import ImagePlugin from '../plugins/ImageBlockPlugin';
 import IndentationPlugin from '../plugins/IndentationPlugin';
 import PlaceholdersPlugin from '../plugins/PlaceholdersPlugin';
 import SlashCommandPlugin from '../plugins/SlashCommandPlugin';
+
+registerCoreBlocks();
 
 function SaveButton({ perspective }: { perspective: PerspectiveProxy }) {
   const [editor] = useLexicalComposerContext();
