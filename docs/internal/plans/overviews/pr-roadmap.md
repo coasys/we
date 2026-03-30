@@ -75,7 +75,7 @@
          ▼
 ┌────────────────────┐
 │5d. Block Persist.  │
-│    & Rendering     │
+│    & Rendering   ✅│
 └────────────────────┘
                                                       │
                                                       ▼
@@ -232,13 +232,14 @@ Moved TextBlock, ImageBlock, CollectionBlock from `@we/block-system/shared/src/m
 
 Expanded block model set from 3 to 15. Added 12 new models: AudioBlock, VideoBlock, FileBlock, EventBlock, TaskBlock, LocationBlock, LinkBlock, CodeBlock, TagBlock, EmbedBlock, CalloutBlock, DividerBlock. Created block type registry (`registerBlock`/`getBlockModel`) with idempotent `registerCoreBlocks()`. Refactored serialization from hardcoded if-branches to registry-based using `getPropertiesMetadata()` + `ModelClass.create()`. Added `createBlockNodeClass` factory for generic Lexical DecoratorNode creation. Migrated existing models to simplified URI convention (`we://field_name`), removed blanket `required: true`, removed `type` field from ImageBlock/CollectionBlock, added `columns`/`gap` to CollectionBlock. Renamed CSS class `we-block-composer-block` → `we-block`.
 
-### 5d. Block Persistence & Rendering
+### 5d. Block Persistence & Rendering ✅
 
 **Plan:** [block-persistence-rendering](../prs/block-persistence-rendering.md)
+**Status:** Complete (branch `feat/block-persistence-rendering`, 1 commit, 11 code files)
 **Depends on:** Core Block Types (#5b) — models, registry, and factory must exist
 **Unblocks:** round-trip block editing (create → save → load → display), `$query` + block display in schema templates
 
-Parent-child linking via polymorphic `@HasMany(() => WeNode, { through: 'we://children' })`, refactored `createBlocks()` with relationship linking, `loadBlocks()` for reconstruction, and display components for all block types. Investigates Ad4mModel polymorphic hydration. Aligns with the CRDT ordering strategy for future ordered collections.
+Implements parent-child linking via `@HasMany({ through: 'we://children' })` on CollectionBlock (string-only, manual hydration — Ad4mModel doesn't support polymorphic `@HasMany`). Refactored `createBlocks()` with `Ad4mModel.transaction()` and recursive parent-child linking. Added `loadBlocks()` for tree reconstruction via block registry type resolution. Extended `BlockRegistration` with `display`/`input` component fields. Extended `createBlockNodeClass` factory with `BlockBridge` component (Lexical coupling, display/input switching, `onChange`/`isSelected` props). Added `BlockDisplayOverrides` context for consumer display overrides. Split ImageBlock into `ImageDisplay` (pure) + `ImageInput` (with `onChange`). Created `registerCoreBlockComponents()` entry point. Filed AD4M feature request for `polymorphic: true` on `@HasMany`.
 
 ### 5c. `$query` Reactive Query Service
 
@@ -346,7 +347,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
 | ✅   | 10  | Component Library Expansion    | Sch   | —          | Large  | Low  |
 | ✅   | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
-| 2    | 5d  | Block Persistence & Rendering  | Data  | 5b         | Medium | Med  |
+| ✅   | 5d  | Block Persistence & Rendering  | Data  | 5b         | Medium | Med  |
 | 2    | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
 | 2    | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
 | 2    | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
