@@ -4,39 +4,18 @@ import { WeNode } from '../WeNode';
 
 @Model({ name: 'ImageBlock' })
 export class ImageBlock extends WeNode {
-  @Property({
-    through: 'we://image_block_node_type',
-    required: true,
-  })
-  type: string = '';
-
-  @Property({
-    through: 'we://image_block_src',
-    required: true,
-  })
+  @Property({ through: 'we://src', required: true })
   src: string = '';
 
-  @Property({
-    through: 'we://image_block_alt_text',
-    required: true,
-  })
+  @Property({ through: 'we://altText' })
   altText: string = '';
 
-  @Property({
-    through: 'we://image_block_width',
-    required: true,
-  })
+  @Property({ through: 'we://width' })
   width: number = 0;
 
-  @Property({
-    through: 'we://image_block_height',
-    required: true,
-  })
+  @Property({ through: 'we://height' })
   height: number = 0;
 
-  @Property({
-    through: 'we://image_block_version',
-    required: true,
-  })
+  @Property({ through: 'we://version' })
   version: number = 0;
 }

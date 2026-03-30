@@ -4,39 +4,24 @@ import { WeNode } from '../WeNode';
 
 @Model({ name: 'CollectionBlock' })
 export class CollectionBlock extends WeNode {
-  @Property({
-    through: 'we://collection_block_node_type',
-    required: true,
-  })
-  type: string = '';
-
-  @Property({
-    through: 'we://collection_block_display',
-    required: true,
-  })
+  @Property({ through: 'we://display' })
   display: string = '';
 
-  @Property({
-    through: 'we://collection_block_direction',
-    required: true,
-  })
+  @Property({ through: 'we://direction' })
   direction: string = '';
 
-  @Property({
-    through: 'we://collection_block_format',
-    required: true,
-  })
+  @Property({ through: 'we://format' })
   format: string = '';
 
-  @Property({
-    through: 'we://collection_block_indent',
-    required: true,
-  })
+  @Property({ through: 'we://indent' })
   indent: number = 0;
 
-  @Property({
-    through: 'we://collection_block_version',
-    required: true,
-  })
+  @Property({ through: 'we://columns' })
+  columns: number = 0;
+
+  @Property({ through: 'we://gap' })
+  gap: string = '';
+
+  @Property({ through: 'we://version' })
   version: number = 0;
 }

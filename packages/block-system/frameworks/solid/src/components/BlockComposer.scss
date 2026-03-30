@@ -9,7 +9,7 @@
     outline: none;
     position: relative;
 
-    .we-block-composer-block {
+    .we-block {
       padding: 10px;
       border-radius: 10px;
       margin: 0;
@@ -28,7 +28,7 @@
     h3,
     blockquote,
     li {
-      @extend .we-block-composer-block;
+      @extend .we-block;
     }
 
     blockquote {
