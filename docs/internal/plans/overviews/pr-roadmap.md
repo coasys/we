@@ -346,8 +346,8 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 8b† | Schema Validation (structural) | Sch   | —          | Small  | Low  |
 | ✅   | 10  | Component Library Expansion    | Sch   | —          | Large  | Low  |
 | ✅   | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
-| 2    | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
 | 2    | 5d  | Block Persistence & Rendering  | Data  | 5b         | Medium | Med  |
+| 2    | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
 | 2    | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
 | 2    | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
 | 2    | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |

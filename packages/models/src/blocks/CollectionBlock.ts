@@ -1,9 +1,12 @@
-import { Model, Property } from '@coasys/ad4m';
+import { HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'CollectionBlock' })
 export class CollectionBlock extends WeNode {
+  @HasMany({ through: 'we://children' })
+  children: string[] = [];
+
   @Property({ through: 'we://display' })
   display: string = '';
 
@@ -25,3 +28,5 @@ export class CollectionBlock extends WeNode {
   @Property({ through: 'we://version' })
   version: number = 0;
 }
+
+export interface CollectionBlock extends HasManyMethods<'children'> {}

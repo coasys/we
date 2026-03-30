@@ -6,9 +6,9 @@
 
 ## Context
 
-PR #5b (Core Block Types) delivered 15 block models, a block type registry, generic serialization via `getPropertiesMetadata()`, and a `createBlockNodeClass` factory for Lexical editor nodes. But the persistence layer (`createBlocks`) currently creates flat, unlinked model instances — no parent→child relationships. And there are no display components for blocks outside the editor context.
+PR #5b (Core Block Types) delivered 15 block models, a block type registry, generic serialization via `getPropertiesMetadata()`, and a `createBlockNodeClass` factory for Lexical editor nodes. But the persistence layer (`createBlocks`) currently creates flat, unlinked model instances — no parent→child relationships. And the block component architecture needs to be extended so contributors can provide display + input components without touching Lexical.
 
-This PR addresses both gaps: proper AD4M relationship-based persistence and a dual-mode rendering story (edit + display).
+This PR addresses both gaps: proper AD4M relationship-based persistence and a component registration architecture that keeps Lexical coupling inside the factory.
 
 **Prerequisite:** [core-block-types](core-block-types.md) (PR #5b — models, registry, factory)
 **Related:** [CRDT Ordering Strategy](../../../notes/ad4m/CRDT-ORDERING-STRATEGY-V3.md) (future AD4M work), [query-service](query-service.md) (PR #5c — `$query` token)
@@ -28,186 +28,242 @@ All block models extend `WeNode` (which extends `Ad4mModel`). A single `@HasMany
 ```typescript
 @Model({ name: 'CollectionBlock' })
 class CollectionBlock extends WeNode {
-  @HasMany(() => WeNode, { through: 'we://children' })
-  children: WeNode[] = [];
+  @HasMany({ through: 'we://children' })
+  children: string[] = [];
 
   // ... existing properties
 }
 ```
 
-### Open Question: Polymorphic Hydration
+### Polymorphic Hydration Strategy (Resolved)
 
-**Does Ad4mModel resolve the correct subclass on hydration?** When `CollectionBlock.find(perspective, id, { include: { children: true } })` returns children, does it check each child's `@Model` flag/type link and instantiate `TextBlock`, `ImageBlock`, etc. — or does it return plain `WeNode` instances?
+**Finding:** Ad4mModel does **not** support polymorphic hydration. The hydration code in `ad4m/core/src/model/hydration.ts` always instantiates children as the declared target class — `@HasMany(() => WeNode)` returns plain `WeNode` instances, losing concrete type info and properties.
 
-**Investigation needed:**
+**Alternatives considered:**
 
-1. Check Ad4mModel's `@HasMany` hydration path — does it look up the target's `@Model` name link?
-2. If not, is there a `discriminator` or `polymorphic` option on `@HasMany`?
-3. If neither, is this a feature request for AD4M?
+1. **Separate `@HasMany` per block type** (Flux pattern) — `@HasMany(() => TextBlock)`, `@HasMany(() => ImageBlock)`, etc. Rejected: 15+ declarations, ordering across types is lost, every new block type requires updating every container model. Works for Flux's Channel (genuinely separate concerns) but wrong for a single heterogeneous ordered collection.
+2. **Array of allowed types** — `@HasMany(() => [TextBlock, ImageBlock, ...])`. Viable interim but still requires explicit enumeration that must be updated per new block type.
+3. **Intermediate `Block` base class with stored `type` field** — Rejected: redundant with `@Model({ name })` which already writes SHACL type links. Adds unnecessary hierarchy complexity.
+4. **`polymorphic: true` flag on `@HasMany`** — Optimal long-term. Tells hydration to check each child's `@Model` type flag and resolve the concrete class from a registry. Matches Rails polymorphic associations / Hibernate `@Any`. **Proposed as AD4M feature request.** See [polymorphic-has-many](../ad4m/polymorphic-has-many.md).
+5. **String-only `@HasMany` (no target model)** — `@HasMany({ through: 'we://children' })` stores child URIs as `string[]`. Avoids wasted hydration as plain `WeNode` instances. `loadBlocks()` takes the URIs, resolves each child's `@Model` type, and hydrates with the correct class from the block registry. Consistent with existing WeNode pattern (`comments`, `reactions`). **Chosen as the current approach.**
 
-**Fallback if no polymorphic hydration:** Use `perspective.get({ source: parentId, predicate: 'we://children' })` to get child URIs, then use the block registry to determine each child's type from its `@Model` flag and hydrate with the correct class. Less elegant but functional.
+**Decided approach (two-phase):**
+
+- **Now (WE-side):** `@HasMany({ through: 'we://children' })` on CollectionBlock — stores child IDs as `string[]`. `loadBlocks()` takes those URIs, determines each child's `@Model` type from its SHACL type flag, looks up the concrete class from the block registry (`getBlockModel()`), and hydrates with the correct class. No wasted intermediate `WeNode` hydration. Consistent with existing WeNode pattern (`comments`, `reactions`).
+- **Later (AD4M-side):** Propose `polymorphic: true` option on `@HasMany`. See [polymorphic-has-many](../ad4m/polymorphic-has-many.md). Once landed, the declaration changes to `@HasMany(() => WeNode, { through: 'we://children', polymorphic: true })` and WE's manual hydration collapses to `include: { children: true }`.
+- **Optional (AD4M-side):** Default `children` relation on `Ad4mModel` base class using `ad4m://has_child` predicate for convention-over-configuration.
 
 ### Refactored createBlocks
 
-Once parent-child linking works:
+Uses `Ad4mModel.transaction()` for atomic persistence with implicit rollback on error. A closure over `tx` and `perspective` keeps the recursive helper clean:
 
 ```typescript
 export async function createBlocks(
   perspective: PerspectiveProxy,
   node: SerializedBlockNode,
-  parent?: Ad4mModel,
-  existingBatchId?: string,
 ): Promise<Ad4mModel | undefined> {
-  const ModelClass = getBlockModel(node.type);
-  const batchId = existingBatchId || (await perspective.createBatch());
+  return Ad4mModel.transaction(perspective, async (tx) => {
+    async function persist(
+      node: SerializedBlockNode,
+      parent?: Ad4mModel,
+    ): Promise<Ad4mModel | undefined> {
+      const ModelClass = getBlockModel(node.type);
+      let block: Ad4mModel | undefined;
 
-  let block: Ad4mModel | undefined;
+      if (ModelClass) {
+        const data = extractBlockData(ModelClass, node);
+        block = await ModelClass.create(perspective, data, { batchId: tx.batchId });
 
-  if (ModelClass) {
-    const data = extractBlockData(ModelClass, node);
-    block = await ModelClass.create(perspective, data, { batchId });
+        if (parent && block) {
+          await parent.addChildren(block.id, { batchId: tx.batchId });
+        }
+      }
 
-    // Link child to parent
-    if (parent && block) {
-      await parent.addChildren(block, { batchId }); // Uses @HasMany setter
+      if (node.children) {
+        for (const child of node.children) {
+          await persist(child, block ?? parent);
+        }
+      }
+
+      return block;
     }
-  }
 
-  // Recurse into children
-  if (node.children) {
-    for (const child of node.children) {
-      await createBlocks(perspective, child, block ?? parent, batchId);
-    }
-  }
-
-  if (!existingBatchId) {
-    await perspective.commitBatch(batchId);
-  }
-
-  return block;
+    return persist(node);
+  });
 }
 ```
+
+If any block creation or linking fails, the transaction aborts — `commitBatch()` is never called, so no partial data is persisted.
 
 ### Ordering
 
-The [CRDT Ordering Strategy](../../../notes/ad4m/CRDT-ORDERING-STRATEGY-V3.md) maps directly to this:
+**This PR:** Timestamp-based ordering (link creation time). Sufficient for initial creation — blocks written sequentially in a transaction preserve document order. Reordering is out of scope for this PR.
+
+**When reordering is needed:** CRDT ordering via [CRDT Ordering Strategy](../../../notes/ad4m/CRDT-ORDERING-STRATEGY-V3.md) as the single ordering solution — no intermediate position-based approach. CRDT works equally well for single-user and multi-user compositions (a linked list CRDT with one writer produces the same result as a simple position list, with minimal overhead). One implementation, no branching logic, and multi-user collaboration becomes free. Reordering and arbitrary-position insertion are first-class operations.
+
+When CRDT ordering lands in AD4M, the only WE-side change is adding `ordering` to the existing `@HasMany`:
 
 ```typescript
-@HasMany(() => WeNode, {
+@HasMany({
   through: 'we://children',
   ordering: 'linkedList',
 })
-children: WeNode[] = [];
+children: string[] = [];
 ```
-
-This is **future work on the AD4M side** — the ordering strategy doc is pre-implementation. For now, creation order (timestamp-based sorting) provides correct ordering for new documents. When CRDT ordering lands in AD4M, adding the `ordering` option to the existing `@HasMany` is a one-line change.
 
 ---
 
-## 2. Display vs. Edit Components
+## 2. Block Component Architecture
 
-### Two rendering contexts
+### Three-part registration
 
-| Context     | Framework coupling         | Where it lives                   | How it's used                                             |
-| ----------- | -------------------------- | -------------------------------- | --------------------------------------------------------- |
-| **Edit**    | Lexical + SolidJS          | `@we/block-solid`                | `createBlockNodeClass()` → DecoratorNode in BlockComposer |
-| **Display** | Framework-agnostic SolidJS | `@we/components` / `@we/widgets` | Schema templates via `$query`, feed views, previews       |
+A block type is registered with three pieces: a **model**, a **display component**, and an **input component**. The display and input components are both pure SolidJS — neither imports from Lexical. The factory (`createBlockNodeClass`) is the only thing that touches Lexical.
 
-### Why separate components
+```typescript
+registerBlock({
+  nodeTypes: ['image'],
+  model: ImageBlock,
+  display: ImageDisplay,   // (props) => JSX — pure, no onChange
+  input: ImageInput,       // (props + onChange) => JSX — pure, no Lexical
+});
+```
 
-Edit components need:
+| Piece | Coupling | Props contract | Reusable in |
+|---|---|---|---|
+| **model** | AD4M decorators | N/A | Persistence, queries, everywhere |
+| **display** | Pure SolidJS | Block properties as props | Read-only editor, schema views, feeds, overrides |
+| **input** | Pure SolidJS | Block properties + `onChange(prop, value)` + `isSelected` | Editor only (via factory) |
 
-- Lexical context (`useLexicalComposerContext`, `$getNodeByKey`)
-- Selection/focus state
-- Input affordances (URL entry, file upload, drag handles)
-- Bidirectional data flow (user types → node updates → model saves)
+### Factory bridges Lexical
 
-Display components need:
+`createBlockNodeClass` manages Lexical coupling so components don't have to. In its `decorate()` method:
 
-- Just props in, rendered output out
-- No editor dependencies
-- Reusable in feeds, cards, previews, mobile views, schema-rendered apps
+```typescript
+const reg = getBlockRegistration(this.getType());
+const readOnly = !editor.isEditable();
+const nodeProps = this.__props;
 
-A single component with an `editable` prop would force Lexical as a dependency for all rendering — defeating the purpose of the design-system separation.
+return readOnly
+  ? <reg.display {...nodeProps} />
+  : <reg.input
+      {...nodeProps}
+      onChange={(prop, value) => {
+        editor.update(() => {
+          const node = $getNodeByKey(this.__key);
+          node?.setProperty(prop, value);
+        });
+      }}
+      isSelected={isSelected()}
+    />;
+```
 
-### Component mapping
+The factory handles:
+- Choosing display vs. input based on `editor.isEditable()`
+- Providing `onChange` that wraps `editor.update()` + `$getNodeByKey()`
+- Managing selection state via `useLexicalNodeSelection`
+- Passing current node properties as reactive props
 
-| Block type      | Edit component (block-system)                             | Display component (design-system)                              |
-| --------------- | --------------------------------------------------------- | -------------------------------------------------------------- |
-| TextBlock       | Built-in Lexical nodes (ParagraphNode, HeadingNode, etc.) | `we-text`, `we-blockquote`, `we-heading` (existing primitives) |
-| ImageBlock      | ImageBlock (existing, migrate to factory)                 | `we-image` or simple `<img>` wrapper                           |
-| AudioBlock      | AudioEditor (upload, waveform)                            | `AudioPlayer` widget                                           |
-| VideoBlock      | VideoEditor (URL/upload)                                  | `VideoPlayer` widget                                           |
-| FileBlock       | FileUploader                                              | `FileAttachment` component                                     |
-| EventBlock      | EventEditor (date pickers)                                | `EventCard` widget                                             |
-| TaskBlock       | TaskEditor (status, assignee)                             | `TaskItem` component                                           |
-| LocationBlock   | LocationEditor (map picker)                               | `LocationCard` widget                                          |
-| LinkBlock       | LinkEditor (URL with OG fetch)                            | `LinkPreview` component                                        |
-| CodeBlock       | CodeEditor (syntax highlight)                             | `Code` component (existing primitive)                          |
-| TagBlock        | N/A (not an editor block)                                 | `Tag` component (existing primitive)                           |
-| EmbedBlock      | EmbedEditor (entity picker)                               | `EmbedRenderer` widget                                         |
-| CalloutBlock    | CalloutEditor (variant picker)                            | `Alert` component (existing primitive, maps well)              |
-| DividerBlock    | HorizontalRuleEditor (style picker)                       | `Divider` component (existing primitive)                       |
-| CollectionBlock | Built-in Lexical root node                                | Layout component (`Grid`, `List`, etc.)                        |
+### Composition display = Lexical read-only
 
-### $query integration
+When viewing a saved composition, the same Lexical editor renders in read-only mode (`editor.setEditable(false)`). The factory switches to display components automatically. This preserves the author's intended layout — same structure, same ordering, no re-rendering through a different system.
 
-Display components are consumed via `$query` in schema templates:
+### Display overrides
 
-```json
-{
-  "type": "$each",
-  "source": { "$query": { "model": "AudioBlock", "parent": { "id": "...", "predicate": "we://children" } } },
-  "children": [
-    {
-      "type": "AudioPlayer",
-      "props": {
-        "title": "$item.title",
-        "artist": "$item.artist",
-        "src": "$item.audioUrl"
-      }
-    }
-  ]
+Consumers can override display components per block type without affecting the registered defaults:
+
+```typescript
+<BlockDisplayOverrides overrides={{ image: MyCustomImageCard }}>
+  <ReadOnlyComposition content={...} />
+</BlockDisplayOverrides>
+```
+
+The factory checks the override context before falling back to the registered display component. This works because display components are pure props-in/JSX-out — any component with the same props contract is a valid replacement.
+
+### What a block contributor ships
+
+1. **A model** (required) — `@Model` class extending WeNode
+2. **A display component** (required) — pure SolidJS, just props. Can compose existing primitives: `(props) => <we-image src={props.src} />`
+3. **An input component** (required for editor blocks) — pure SolidJS with `onChange` prop. Can compose existing primitives: `<we-file-input onFile={(f) => props.onChange('src', f)} />`
+
+No Lexical imports. No framework lock-in beyond SolidJS.
+
+### Input component patterns
+
+The input component handles all editing states internally — the factory only provides `onChange`, `isSelected`, and block properties as props. Two patterns emerge depending on block type:
+
+**Media blocks** (image, video, audio, link) have two internal states — *empty* and *populated*. When empty, they show a creation UI (drop zone, URL field). When populated, they **compose the display component** and layer edit affordances on top:
+
+```tsx
+import { ImageDisplay } from './ImageDisplay';
+
+function ImageInput(props) {
+  return (
+    <div class="image-block-editor">
+      <Show when={props.src} fallback={
+        <DropZone onDrop={(file) => props.onChange('src', file)} />
+      }>
+        <ImageDisplay src={props.src} width={props.width} height={props.height} />
+        <Show when={props.isSelected}>
+          <button class="delete-overlay" onClick={() => props.onChange('src', undefined)}>×</button>
+          <ResizeHandle onChange={(w, h) => { props.onChange('width', w); props.onChange('height', h); }} />
+        </Show>
+      </Show>
+    </div>
+  );
 }
 ```
 
-This closes the loop: blocks are created in the editor, persisted to AD4M with parent-child relationships, queried via `$query`, and rendered by display components.
+This avoids duplicating rendering logic — the populated editing view and the read-only display are the same `ImageDisplay` component, with edit controls overlaid. Recommended for any block where the "populated editing" state looks like the display plus controls.
+
+**Form blocks** (event, task, callout) look the same empty or populated — always a form with fields. The display is a completely different rendered view (e.g., an event card vs. date picker inputs). No composition of display inside input for these.
+
+| Block type | Empty (input) | Populated (input) | Read-only (display) |
+|---|---|---|---|
+| Image | Drop zone + upload button | `ImageDisplay` + delete/resize | Just the image |
+| Video | URL field + upload button | `VideoDisplay` (player) + replace/delete | Just the player |
+| Audio | File picker | `AudioDisplay` (player) + replace/delete | Just the player |
+| Link | URL text input | `LinkDisplay` (preview card) + edit/delete | Just the preview |
+| Code | Empty editor + language picker | Editable code + language picker | Syntax-highlighted, static |
+| Event | Date pickers + title field | Same form, populated | Rendered event card |
+| Task | Status dropdown + title field | Same form, populated | Rendered task item |
+
+### Schema rendering (future, separate PR)
+
+Display components are also consumable outside Lexical — via `$query` in schema templates or direct use in app views. This is a post-`$query` concern (see [query-service](query-service.md)) and is not in scope for this PR. The architecture supports it because display components have zero editor coupling.
 
 ---
 
 ## 3. Implementation Plan
 
-### Phase 1: Investigate Ad4mModel polymorphic @HasMany
+### Phase 1: Investigate Ad4mModel polymorphic @HasMany ✅
 
-- [ ] Test whether `@HasMany(() => WeNode)` hydrates correct subclasses
-- [ ] If not, investigate discriminator options or manual hydration fallback
-- [ ] Document findings
+- [x] Test whether `@HasMany(() => WeNode)` hydrates correct subclasses — **no**, returns plain `WeNode`
+- [x] Investigate discriminator options or manual hydration fallback — no discriminator support; manual fallback via block registry
+- [x] Document findings — see §1 "Polymorphic Hydration Strategy" above
+- [x] File AD4M feature request for `polymorphic: true` on `@HasMany`
 
 ### Phase 2: Parent-child persistence
 
-- [ ] Add `@HasMany(() => WeNode, { through: 'we://children' })` to CollectionBlock
+- [ ] Add `@HasMany({ through: 'we://children' })` to CollectionBlock (string-only, no target model)
 - [ ] Refactor `createBlocks()` to link children to parents
 - [ ] Add `loadBlocks()` function to reconstruct block tree from AD4M
 - [ ] Verify round-trip: create in editor → save → load → display in editor
 
-### Phase 3: Display components (incremental)
+### Phase 3: Factory + component registration
 
-- [ ] Identify which existing design-system components map directly to block types
-- [ ] Create display components for block types that need new components
-- [ ] Place in `@we/components` (simple) or `@we/widgets` (complex/interactive)
-- [ ] Each component is a standalone deliverable — no big-bang required
-
-### Phase 4: Schema integration
-
-- [ ] Wire display components into component registry for schema rendering
-- [ ] Create example schema templates that use `$query` + block display components
-- [ ] Document the block→schema rendering pattern
+- [ ] Extend `BlockRegistration` interface with `display` and `input` component fields
+- [ ] Extend `createBlockNodeClass` factory to provide `onChange`, `isSelected` props and switch between display/input based on `editor.isEditable()`
+- [ ] Add `BlockDisplayOverrides` context provider for consumer-side display overrides
+- [ ] Migrate existing ImageBlock to the new pattern (split into ImageDisplay + ImageInput, remove direct Lexical imports from component)
+- [ ] Verify round-trip: edit mode uses input component, read-only mode uses display component
 
 ### Not in scope
 
+- Schema integration / `$query` rendering of blocks (post-`$query` PR)
 - CRDT ordering implementation (AD4M-side work, see ordering strategy doc)
 - TableBlock (complex Lexical integration)
 - Custom store for drag-and-drop block reordering in the editor
+- Building all 15 block display/input components (incremental, per-block-type PRs)
 
 ---
 
@@ -215,6 +271,7 @@ This closes the loop: blocks are created in the editor, persisted to AD4M with p
 
 | Risk                                                      | Mitigation                                                                 |
 | --------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Ad4mModel doesn't support polymorphic @HasMany            | Manual hydration fallback using registry + perspective.get()               |
+| Ad4mModel doesn't support polymorphic @HasMany            | Manual hydration via block registry now; `polymorphic: true` AD4M feature request filed for future |
 | Ordering breaks without CRDT strategy                     | Timestamp-based creation order is sufficient for initial implementation    |
-| Display component explosion (15 block types × components) | Most map to existing design-system primitives; only ~5 need new components |
+| Factory `onChange` contract doesn't cover all input patterns | Start with ImageBlock migration as proof; extend contract if needed for complex blocks (e.g., multi-field forms) |
+| Display override context adds rendering indirection       | Single context lookup per block render — negligible cost; fallback is the registered default |
