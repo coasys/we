@@ -1,21 +1,30 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
-import { CollectionBlock, ImageBlock, TextBlock } from '@we/models';
+import { Ad4mModel, getPropertiesMetadata } from '@coasys/ad4m';
 
+import { getBlockModel } from './registry';
 import type { SerializedBlockNode } from './types';
 
 /**
- * Determines the block type string from a serialized node's type field.
+ * Extract property values from a serialized node for a given model class.
+ * Only includes properties that exist on both the node and the model.
  */
-export function resolveBlockType(nodeType: string): string {
-  if (nodeType === 'root') return 'collection';
-  if (['text', 'paragraph', 'heading', 'quote', 'list', 'listitem'].includes(nodeType)) return 'text';
-  if (nodeType === 'image') return 'image';
-  return '';
+function extractBlockData(ModelClass: typeof Ad4mModel, node: SerializedBlockNode): Record<string, unknown> {
+  const propsMeta = getPropertiesMetadata(ModelClass);
+  const data: Record<string, unknown> = {};
+
+  for (const propName of Object.keys(propsMeta)) {
+    if (propName in node && node[propName] !== undefined) {
+      data[propName] = node[propName];
+    }
+  }
+
+  return data;
 }
 
 /**
- * Recursively creates AD4M block models from a serialized block tree (e.g., Lexical editor state).
- * Handles batching — creates a new batch if none is provided, commits when done.
+ * Recursively creates AD4M block models from a serialized block tree.
+ * Uses the block registry to resolve node types to model classes
+ * and AD4M property metadata for generic serialization.
  */
 export async function createBlocks(
   perspective: PerspectiveProxy,
@@ -23,52 +32,19 @@ export async function createBlocks(
   _parent?: SerializedBlockNode,
   existingBatchId?: string,
 ): Promise<void> {
-  const blockType = resolveBlockType(node.type);
+  const ModelClass = getBlockModel(node.type);
 
   const batchId = existingBatchId || (await perspective.createBatch());
 
-  let block: CollectionBlock | TextBlock | ImageBlock | undefined;
+  let block: Ad4mModel | undefined;
 
-  if (blockType === 'collection') {
-    block = new CollectionBlock(perspective, undefined);
-    block.type = node.type || '';
-    block.display = node.display || '';
-    block.direction = node.direction || '';
-    block.format = node.format || '';
-    block.indent = node.indent || 0;
-    block.version = node.version || 0;
-    await block.save(batchId);
-  }
-
-  if (blockType === 'text') {
-    block = new TextBlock(perspective, undefined);
-    block.type = node.type || '';
-    block.direction = node.direction || '';
-    block.format = node.format || '';
-    block.indent = node.indent || 0;
-    block.textFormat = node.textFormat || 0;
-    block.textStyle = node.textStyle || '';
-    block.listType = node.listType || '';
-    block.start = node.start || 0;
-    block.tag = node.tag || '';
-    block.text = node.text || '';
-    block.version = node.version || 0;
-    await block.save(batchId);
-  }
-
-  if (blockType === 'image') {
-    block = new ImageBlock(perspective, undefined);
-    block.type = node.type || '';
-    block.src = node.src || '';
-    block.altText = node.altText || '';
-    block.width = node.width || 0;
-    block.height = node.height || 0;
-    block.version = node.version || 0;
-    await block.save(batchId);
+  if (ModelClass) {
+    const data = extractBlockData(ModelClass, node);
+    block = await ModelClass.create(perspective, data, { batchId });
   }
 
   if (block && node.children) {
-    node.baseExpression = block.baseExpression;
+    node.id = block.id;
     for (const child of node.children) {
       await createBlocks(perspective, child, node, batchId);
     }
