@@ -68,7 +68,7 @@
          ┌────────────┘        │        └─────────────┐
          ▼                     ▼                      ▼
 ┌────────────────┐  ┌────────────────────┐  ┌─────────────────────┐
-│5b. Core Blocks │  │5c. $query Service  │  │ 6. Schema           │
+│5b. Core Blocks │  │5c. $query        ✅│  │ 6. Schema           │
 │             ✅ │  └────────────────────┘  │    Customization    │
 └────────────────┘                          └─────────────────────┘
          │
@@ -241,13 +241,14 @@ Expanded block model set from 3 to 15. Added 12 new models: AudioBlock, VideoBlo
 
 Implements parent-child linking via `@HasMany({ through: 'we://children' })` on CollectionBlock (string-only, manual hydration — Ad4mModel doesn't support polymorphic `@HasMany`). Refactored `createBlocks()` with `Ad4mModel.transaction()` and recursive parent-child linking. Added `loadBlocks()` for tree reconstruction via block registry type resolution. Extended `BlockRegistration` with `display`/`input` component fields. Extended `createBlockNodeClass` factory with `BlockBridge` component (Lexical coupling, display/input switching, `onChange`/`isSelected` props). Added `BlockDisplayOverrides` context for consumer display overrides. Split ImageBlock into `ImageDisplay` (pure) + `ImageInput` (with `onChange`). Created `registerCoreBlockComponents()` entry point. Filed AD4M feature request for `polymorphic: true` on `@HasMany`.
 
-### 5c. `$query` Reactive Query Service
+### 5c. `$query` Reactive Query Service ✅
 
 **Plan:** [query-service](../prs/query-service.md)
+**Status:** Complete (branch `feat/query-service`, 4 commits, 17 files)
 **Depends on:** Block Model Migration (#5) — model registry imports from `@we/models`
-**Unblocks:** declarative data binding in schemas, `$action: "query.*"` mutations, reactive shared data across templates
+**Unblocks:** declarative data binding in schemas, `$action: "model.*"` mutations, reactive shared data across templates
 
-The keystone of the apps ecosystem. Implements `$query` as a prop-level schema token bound to Ad4mModel subscriptions via SolidJS signals. Includes model registry, query service, `$query` resolver, and `$action` query mutations. ~220 lines of new code.
+Implements `$query` as a prop-level schema token with descriptor pattern (shared resolver returns pure `QueryDescriptor`, framework layer handles subscription lifecycle). Read side: `QueryToken` type + `zQueryToken` Zod schema, `resolveQueryProp` shared resolver, SchemaRenderer `$query` handling with `createSignal` + `createEffect` + `onCleanup`. Write side: `modelRegistry` (`registerModel`/`getModel`), `modelStore` in TemplateProvider (create/update/delete), `$getModel` passed to SchemaRenderer stores. Also refactored `processArgTokens` to recursive for nested `$arg` tokens. 8 integration tests covering subscribe lifecycle, perspective reactivity, cleanup, one-shot mode, params forwarding, and graceful fallback. Fixed pre-existing ImageBlock barrel import in block-system.
 
 ---
 
@@ -348,7 +349,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 10  | Component Library Expansion    | Sch   | —          | Large  | Low  |
 | ✅   | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
 | ✅   | 5d  | Block Persistence & Rendering  | Data  | 5b         | Medium | Med  |
-| 2    | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
+| ✅   | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
 | 2    | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
 | 2    | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
 | 2    | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
@@ -378,7 +379,7 @@ Track 1:  [1. Buttons ✅] [1b. Primitives ✅] [1c. Tokens] [3. Themes] [8b-Ph1
 Track 2:  [2. Unwrap ✅] [2b. Fine-Grained ✅] [2c. WC Props] ────────────
 Track 2b: [4b. $concat] ────────────────────────────────────────────────
 Track 2c: [10. Components Ph1] ─────────────────────────────────────────
-Track 3:  [5. Models]  [5c. $query] ────────────────────────────────────
+Track 3:  [5. Models]  [5c. $query ✅] ──────────────────────────────────
 Track 4:  ──────────── [5b. Blocks ✅] [5d. Block Persist. & Rendering] ─
 Track 5:  ──────────── [6. Schema Customization] ────── [4. $local] ────
 Track 6:  [7a. types]  ──────────── [8. ai-context] ─ [8b-Ph2] ─ [9. MCP]

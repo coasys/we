@@ -24,25 +24,40 @@ export function resolveRelativePath(rawPath: string, baseDepth: number, pathname
   return finalPath.replace(/\/{2,}/g, '/');
 }
 
-// Helper function to process $arg tokens with access to callback arguments
+// Helper function to process $arg tokens with access to callback arguments.
+// Recurses into nested objects and arrays so $arg tokens work at any depth.
 function processArgTokens(resolvedArgs: unknown[], callArgs: unknown[]): unknown[] {
-  return resolvedArgs.map((arg) => {
-    if (typeof arg === 'string' && arg.startsWith('$arg')) {
-      // Handle $arg without property - return the entire first argument
-      if (arg === '$arg') {
-        return callArgs[0];
-      }
-      // Handle $arg.property.path syntax to extract nested properties
-      if (arg.startsWith('$arg.')) {
-        const path = arg.slice(5).split('.');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let result: any = callArgs[0]; // Get first callback argument
-        for (const prop of path) result = result?.[prop];
-        return result;
-      }
+  return resolvedArgs.map((arg) => processArgValue(arg, callArgs));
+}
+
+function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
+  if (typeof arg === 'string' && arg.startsWith('$arg')) {
+    // Handle $arg without property - return the entire first argument
+    if (arg === '$arg') {
+      return callArgs[0];
     }
-    return arg;
-  });
+    // Handle $arg.property.path syntax to extract nested properties
+    if (arg.startsWith('$arg.')) {
+      const path = arg.slice(5).split('.');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let result: any = callArgs[0]; // Get first callback argument
+      for (const prop of path) result = result?.[prop];
+      return result;
+    }
+  }
+  // Recurse into arrays
+  if (Array.isArray(arg)) {
+    return arg.map((item) => processArgValue(item, callArgs));
+  }
+  // Recurse into plain objects
+  if (arg && typeof arg === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(arg)) {
+      result[k] = processArgValue(v, callArgs);
+    }
+    return result;
+  }
+  return arg;
 }
 
 // Resolves $action props: { $action: 'routeStore.navigate', args: ['/home'] }

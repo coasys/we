@@ -19,11 +19,12 @@ const parent = await CollectionBlock.findOne(perspective, {
   include: { children: true },
 });
 
-parent.children[0] instanceof TextBlock;  // ❌ false — always WeNode
+parent.children[0] instanceof TextBlock; // ❌ false — always WeNode
 parent.children[0] instanceof ImageBlock; // ❌ false — always WeNode
 ```
 
 This forces consumers to either:
+
 1. Declare separate `@HasMany` per concrete type (loses ordering, doesn't scale)
 2. Use string-only `@HasMany({ through })` and manually resolve types (current WE approach)
 
@@ -39,6 +40,7 @@ children: WeNode[] = [];
 ```
 
 When `polymorphic: true`:
+
 1. Hydration queries child links as normal (via predicate)
 2. For each child URI, resolves the concrete `@Model` name from its SHACL type flag (`subject_class`)
 3. Looks up the concrete class from Ad4m's model registry
@@ -57,7 +59,7 @@ if (meta.polymorphic) {
   // 2. Batch-resolve each child's @Model type name
   const typeMap = await resolveModelTypes(perspective, childUris);
   // 3. Group URIs by type name
-  const grouped = groupBy(childUris, uri => typeMap.get(uri));
+  const grouped = groupBy(childUris, (uri) => typeMap.get(uri));
   // 4. Hydrate each group with its concrete class from the model registry
   for (const [typeName, uris] of grouped) {
     const ConcreteClass = modelRegistry.get(typeName) ?? TargetClass;
@@ -109,8 +111,8 @@ Option 1 (SurrealDB) is preferred for performance.
 
 ## Files to modify
 
-| File | Change |
-|------|--------|
+| File                           | Change                                                             |
+| ------------------------------ | ------------------------------------------------------------------ |
 | `core/src/model/decorators.ts` | Add `polymorphic` to `RelationMetadataEntry` and `RelationOptions` |
-| `core/src/model/hydration.ts` | Polymorphic resolution branch in `hydrateRelations()` |
-| `core/src/model/Ad4mModel.ts` | Ensure model registry is accessible for type→class lookup |
+| `core/src/model/hydration.ts`  | Polymorphic resolution branch in `hydrateRelations()`              |
+| `core/src/model/Ad4mModel.ts`  | Ensure model registry is accessible for type→class lookup          |

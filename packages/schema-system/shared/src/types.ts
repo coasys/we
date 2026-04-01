@@ -67,6 +67,25 @@ export type NeToken = { $ne: [unknown, unknown] };
 export type NotToken = { $not: unknown };
 export type AndToken = { $and: unknown[] };
 export type OrToken = { $or: unknown[] };
+export type QueryToken = {
+  $query: {
+    model: string;
+    where?: Record<string, unknown>;
+    order?: Record<string, unknown>;
+    limit?: number;
+    offset?: number;
+    include?: Record<string, unknown>;
+    parent?: Record<string, unknown>;
+    subscribe?: boolean;
+  };
+};
+
+/** Descriptor returned by the shared resolver — pure data, no framework effects */
+export type QueryDescriptor = {
+  model: string;
+  params: Record<string, unknown>;
+  subscribe: boolean;
+};
 
 /** Union of all prop-level operator tokens */
 export type OperatorToken =
@@ -80,4 +99,5 @@ export type OperatorToken =
   | NeToken
   | NotToken
   | AndToken
-  | OrToken;
+  | OrToken
+  | QueryToken;
