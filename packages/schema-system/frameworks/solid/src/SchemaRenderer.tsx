@@ -1,5 +1,6 @@
-import { REACTIVE_ACCESSOR, resolveProp, themeToStyle } from '@we/schema-shared';
-import { batch, createEffect, createMemo, For, JSX } from 'solid-js';
+import { hasToken, REACTIVE_ACCESSOR, resolveProp, resolveQueryProp, themeToStyle } from '@we/schema-shared';
+import type { QueryDescriptor } from '@we/schema-shared';
+import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
@@ -169,6 +170,41 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     if (isStaticValue(rawValue)) {
       const value = rawValue;
       propMemos[key] = () => value;
+    } else if (hasToken(rawValue, '$query', 'object')) {
+      // $query: set up reactive subscription via createSignal + createEffect
+      // instead of createMemo — subscriptions are side effects, not derivations.
+      const descriptor: QueryDescriptor = resolveQueryProp(rawValue);
+      const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      if (!getModel) {
+        console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
+        propMemos[key] = () => [];
+      } else {
+        const [items, setItems] = createSignal<unknown[]>([]);
+        const ModelClass = getModel(descriptor.model) as Record<string, (...args: unknown[]) => unknown>;
+
+        createEffect(() => {
+          const perspective = ((stores as Record<string, unknown>).spaceStore as Record<string, unknown> | undefined)
+            ?.perspective;
+          const p = typeof perspective === 'function' ? (perspective as () => unknown)() : null;
+          if (!p) {
+            setItems([]);
+            return;
+          }
+
+          if (descriptor.subscribe) {
+            const builder = ModelClass.query(p, descriptor.params) as {
+              subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
+              dispose: () => void;
+            };
+            builder.subscribe((results) => setItems(results));
+            onCleanup(() => builder.dispose());
+          } else {
+            (ModelClass.findAll(p, descriptor.params) as Promise<unknown[]>).then(setItems);
+          }
+        });
+
+        propMemos[key] = items;
+      }
     } else {
       const raw = rawValue;
       propMemos[key] = createMemo(() => {

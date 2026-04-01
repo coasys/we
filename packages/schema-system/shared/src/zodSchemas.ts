@@ -64,6 +64,20 @@ const zNeToken = z.object({ $ne: z.array(z.unknown()).length(2) }).strict();
 const zNotToken = z.object({ $not: zDefined }).strict();
 const zAndToken = z.object({ $and: z.array(z.unknown()) }).strict();
 const zOrToken = z.object({ $or: z.array(z.unknown()) }).strict();
+const zQueryToken = z
+  .object({
+    $query: z.object({
+      model: z.string().min(1),
+      where: z.record(z.string(), z.unknown()).optional(),
+      order: z.record(z.string(), z.unknown()).optional(),
+      limit: z.number().int().positive().optional(),
+      offset: z.number().int().nonnegative().optional(),
+      include: z.record(z.string(), z.unknown()).optional(),
+      parent: z.record(z.string(), z.unknown()).optional(),
+      subscribe: z.boolean().optional(),
+    }),
+  })
+  .strict();
 
 /** Known node-level operator types */
 export const NODE_OPERATORS = new Set(['$each', '$if', '$routes']);
@@ -122,6 +136,7 @@ export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
   zNotToken,
   zAndToken,
   zOrToken,
+  zQueryToken,
   // Fallback: plain objects/arrays that aren't tokens.
   // Rejects objects with $-prefixed keys at the parse level (not via superRefine)
   // so that the union properly rejects malformed tokens.

@@ -1,4 +1,5 @@
 import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
+import { getModel } from '@shared/registries/modelRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAdamStore,
@@ -84,7 +85,34 @@ export default function TemplateProvider() {
     info: (...args: unknown[]) => console.info(...args),
   };
 
-  const stores = { adamStore, spaceStore, modalStore, themeStore, templateStore, routeStore, consoleStore };
+  // Model store for $action: "model.create" / "model.update" / "model.delete"
+  // Wraps Ad4m static model methods with automatic perspective injection
+  const modelStore = {
+    create: (modelName: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
+      const Model = getModel(modelName);
+      return Model.create(spaceStore.perspective()!, data, options);
+    },
+    update: (modelName: string, id: string, data: Record<string, unknown>) => {
+      const Model = getModel(modelName);
+      return Model.update(spaceStore.perspective()!, id, data);
+    },
+    delete: (modelName: string, id: string) => {
+      const Model = getModel(modelName);
+      return Model.delete(spaceStore.perspective()!, id);
+    },
+  };
+
+  const stores = {
+    adamStore,
+    spaceStore,
+    modalStore,
+    themeStore,
+    templateStore,
+    routeStore,
+    consoleStore,
+    model: modelStore,
+    $getModel: getModel, // Used by SchemaRenderer for $query descriptor → model class lookup
+  };
 
   // Get the current template schema and build its routes
   const templateSchema = templateStore.currentTemplate;

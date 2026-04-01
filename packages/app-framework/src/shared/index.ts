@@ -2,6 +2,7 @@
 export * from './platform';
 
 // Registries
+export * from './registries/modelRegistry';
 export * from './registries/templateRegistry';
 export * from './registries/themeRegistry';
 

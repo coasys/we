@@ -1,7 +1,7 @@
 import { DecoratorNode, LexicalNode } from 'lexical';
 import { render } from 'solid-js/web';
 
-import ImageBlock from '../../components/ImageBlock';
+import ImageBlock from '../../components/ImageBlock/ImageBlock';
 
 export class ImageNode extends DecoratorNode<HTMLElement> {
   __src: string | undefined;
