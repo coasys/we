@@ -1,9 +1,8 @@
 import { HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
+import { FILE_STORAGE_LANGUAGE } from '../constants';
 import type { FileData } from '../utils/imageHelpers';
 import { WeNode } from '../WeNode';
-
-const FILE_STORAGE_LANGUAGE = 'QmzSYwdjqeP9D13Sfmyc5HcabM9jL3DtPyhadnF6dQXu4FjVSbQ';
 
 @Model({ name: 'Space' })
 export class Space extends WeNode {
