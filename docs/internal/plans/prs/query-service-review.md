@@ -33,12 +33,12 @@ This follows the established pattern: `app-framework/registries/` is where all a
 
 The schema token system has a clean taxonomy:
 
-| Category         | Tokens                                                     | Purpose               |
-| ---------------- | ---------------------------------------------------------- | --------------------- |
-| **Data sources** | `$store`, context refs (`$item.name`)                      | Read reactive data    |
-| **Transforms**   | `$concat`, `$map`, `$pick`, `$if`, `$eq`, `$ne`, `$not`, `$and`, `$or` | Shape values          |
-| **Control flow** | `$each`, `$if` (node), `$routes`                           | Decide what renders   |
-| **Side effects** | `$action`                                                  | Call store methods    |
+| Category         | Tokens                                                                 | Purpose             |
+| ---------------- | ---------------------------------------------------------------------- | ------------------- |
+| **Data sources** | `$store`, context refs (`$item.name`)                                  | Read reactive data  |
+| **Transforms**   | `$concat`, `$map`, `$pick`, `$if`, `$eq`, `$ne`, `$not`, `$and`, `$or` | Shape values        |
+| **Control flow** | `$each`, `$if` (node), `$routes`                                       | Decide what renders |
+| **Side effects** | `$action`                                                              | Call store methods  |
 
 `$query` is a **data source** — it reads model data from Ad4m, just as `$store` reads framework state. It belongs at the prop level, alongside `$store`. One new token, zero new architectural concepts.
 
@@ -71,13 +71,15 @@ No node annotation form. No dual-use. `$query` sources data. `$each` handles ren
     "items": { "$query": { "model": "Task", "where": { "id": "abc-123" } } },
     "as": "task"
   },
-  "children": [{
-    "type": "Column",
-    "children": [
-      { "type": "Badge", "props": { "label": "$task.status" } },
-      { "type": "Card", "props": { "title": "$task.title", "description": "$task.description" } }
-    ]
-  }]
+  "children": [
+    {
+      "type": "Column",
+      "children": [
+        { "type": "Badge", "props": { "label": "$task.status" } },
+        { "type": "Card", "props": { "title": "$task.title", "description": "$task.description" } }
+      ]
+    }
+  ]
 }
 ```
 
@@ -180,13 +182,13 @@ Both accept the same `Query` object. Future upstream AD4M work may unify these (
 
 **Decision:** Descriptor pattern. Shared layer has a `resolveQueryProp()` that does token parsing, validation, and model registry lookup — returns a `QueryDescriptor` (pure data, no effects). Each framework's renderer detects `$query`, calls the shared resolver to get the descriptor, then implements the subscription lifecycle using its native primitives. Model registry stays in `app-framework/src/shared/registries/modelRegistry.ts` per Point 1.
 
-| Piece | Layer | Responsibility |
-| --- | --- | --- |
-| `resolveQueryProp()` | shared | Parse token, validate params, lookup model class → return `QueryDescriptor` |
-| `QueryDescriptor` type | shared | `{ modelClass, params, subscribe }` — pure data |
-| `QueryToken` type + Zod | shared | Type-checking and schema validation |
+| Piece                             | Layer                  | Responsibility                                                              |
+| --------------------------------- | ---------------------- | --------------------------------------------------------------------------- |
+| `resolveQueryProp()`              | shared                 | Parse token, validate params, lookup model class → return `QueryDescriptor` |
+| `QueryDescriptor` type            | shared                 | `{ modelClass, params, subscribe }` — pure data                             |
+| `QueryToken` type + Zod           | shared                 | Type-checking and schema validation                                         |
 | `$query` detection + subscription | solid (SchemaRenderer) | `createSignal` + `createEffect` + `onCleanup` + `builder.subscribe/dispose` |
-| Model registry | app-framework (shared) | Model name → class map |
+| Model registry                    | app-framework (shared) | Model name → class map                                                      |
 
 ---
 
@@ -228,6 +230,7 @@ The shared-layer resolver returns a `{ __query: params }` marker. SchemaRenderer
 **Decision:** Option **(C revised)** — Descriptor pattern. The shared-layer `resolveQueryProp()` is purely functional: parses the token, validates params, looks up the model class from the registry, and returns a `QueryDescriptor` (pure data object — no effects, no framework imports). SchemaRenderer detects `$query` in a prop value, calls `resolveQueryProp()` for the descriptor, then sets up the subscription lifecycle using native Solid primitives (`createSignal`, `createEffect`, `onCleanup`). No injection of framework hooks. No `$onCleanup` in context. Perspective comes from `stores.spaceStore.perspective` which SchemaRenderer already has access to.
 
 This generalizes cleanly to other frameworks:
+
 - The shared resolver is written once (parsing + validation + model lookup)
 - Each framework's renderer implements subscription lifecycle with its native primitives
 - No hidden assumptions about hook calling conventions (React hooks can't be called dynamically — injection approach breaks for React)
@@ -285,25 +288,25 @@ This is ~10 lines of code, benefits all `$action` usage (not just model mutation
 
 Based on decisions above, the expected changeset:
 
-| File | Change |
-| --- | --- |
-| `app-framework/src/shared/registries/modelRegistry.ts` | **New** — model name → Ad4mModel class map (Point 1) |
-| `schema-system/shared/src/propResolvers/query.ts` | **New** — `resolveQueryProp()` → returns `QueryDescriptor` (Point 5/6) |
-| `schema-system/shared/src/types.ts` | Add `QueryToken` + `QueryDescriptor` types (Point 2/5) |
-| `schema-system/shared/src/zodSchemas.ts` | Add `zQueryToken` Zod schema (Point 2) |
-| `schema-system/shared/src/propResolvers/action.ts` | Make `processArgTokens` recursive for nested `$arg` (Point 7) |
-| `schema-system/frameworks/solid/src/SchemaRenderer.tsx` | Detect `$query` in props, set up subscription lifecycle (Point 6) |
-| `app-framework/src/frameworks/solid/providers/TemplateProvider.tsx` | Wire `model` pseudo-store into stores (Point 7) |
-| `app-framework/src/frameworks/solid/types.ts` | Add `ModelStore` to `Stores` type (Point 7) |
+| File                                                                | Change                                                                 |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `app-framework/src/shared/registries/modelRegistry.ts`              | **New** — model name → Ad4mModel class map (Point 1)                   |
+| `schema-system/shared/src/propResolvers/query.ts`                   | **New** — `resolveQueryProp()` → returns `QueryDescriptor` (Point 5/6) |
+| `schema-system/shared/src/types.ts`                                 | Add `QueryToken` + `QueryDescriptor` types (Point 2/5)                 |
+| `schema-system/shared/src/zodSchemas.ts`                            | Add `zQueryToken` Zod schema (Point 2)                                 |
+| `schema-system/shared/src/propResolvers/action.ts`                  | Make `processArgTokens` recursive for nested `$arg` (Point 7)          |
+| `schema-system/frameworks/solid/src/SchemaRenderer.tsx`             | Detect `$query` in props, set up subscription lifecycle (Point 6)      |
+| `app-framework/src/frameworks/solid/providers/TemplateProvider.tsx` | Wire `model` pseudo-store into stores (Point 7)                        |
+| `app-framework/src/frameworks/solid/types.ts`                       | Add `ModelStore` to `Stores` type (Point 7)                            |
 
 **Removed from original plan** (not needed per decisions):
 
-| File | Why removed |
-| --- | --- |
-| `schema-system/frameworks/solid/src/queryService.ts` | No standalone service — subscription logic lives in SchemaRenderer (Point 6) |
-| `schema-system/frameworks/solid/src/QueryProvider.tsx` | No context provider needed — no node annotation form (Point 2) |
+| File                                                   | Why removed                                                                  |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `schema-system/frameworks/solid/src/queryService.ts`   | No standalone service — subscription logic lives in SchemaRenderer (Point 6) |
+| `schema-system/frameworks/solid/src/QueryProvider.tsx` | No context provider needed — no node annotation form (Point 2)               |
 | `schema-system/shared/src/propResolvers/dispatcher.ts` | `$query` not routed through dispatcher — handled in SchemaRenderer (Point 6) |
-| `packages/models/src/registry.ts` | Model registry lives in app-framework, not models package (Point 1) |
+| `packages/models/src/registry.ts`                      | Model registry lives in app-framework, not models package (Point 1)          |
 
 **Decision:** Agreed. 8 files touched (4 new, 4 modified). Clean, focused changeset.
 

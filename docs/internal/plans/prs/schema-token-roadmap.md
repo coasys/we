@@ -8,12 +8,12 @@ For current token inventory and architecture, see the [schema system shared laye
 
 ## Current Token Taxonomy
 
-| Category         | Tokens                                                                       |
-| ---------------- | ---------------------------------------------------------------------------- |
-| **Data sources** | `$store`, `$query` (PR #5c), context refs (`$item.name`)                    |
+| Category         | Tokens                                                                        |
+| ---------------- | ----------------------------------------------------------------------------- |
+| **Data sources** | `$store`, `$query` (PR #5c), context refs (`$item.name`)                      |
 | **Transforms**   | `$concat`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$not`, `$and`, `$or` |
-| **Control flow** | `$each`, `$if` (node), `$routes`                                            |
-| **Side effects** | `$action`                                                                    |
+| **Control flow** | `$each`, `$if` (node), `$routes`                                              |
+| **Side effects** | `$action`                                                                     |
 
 ---
 
@@ -37,14 +37,14 @@ For current token inventory and architecture, see the [schema system shared laye
 
 **Format types (initial set):**
 
-| `as`           | Output example          | Uses                |
-| -------------- | ----------------------- | ------------------- |
-| `relativeTime` | "3 hours ago"           | `Intl.RelativeTimeFormat` |
-| `date`         | "March 31, 2026"        | `Intl.DateTimeFormat` |
-| `number`       | "1,234.56"              | `Intl.NumberFormat` |
-| `currency`     | "$1,234.56"             | `Intl.NumberFormat` |
-| `percent`      | "85%"                   | `Intl.NumberFormat` |
-| `bytes`        | "1.2 MB"                | Custom              |
+| `as`           | Output example   | Uses                      |
+| -------------- | ---------------- | ------------------------- |
+| `relativeTime` | "3 hours ago"    | `Intl.RelativeTimeFormat` |
+| `date`         | "March 31, 2026" | `Intl.DateTimeFormat`     |
+| `number`       | "1,234.56"       | `Intl.NumberFormat`       |
+| `currency`     | "$1,234.56"      | `Intl.NumberFormat`       |
+| `percent`      | "85%"            | `Intl.NumberFormat`       |
+| `bytes`        | "1.2 MB"         | Custom                    |
 
 **Implementation:** Pure transform, ~40 lines. Delegates to `Intl` APIs. `options` maps directly to `Intl` options objects.
 
