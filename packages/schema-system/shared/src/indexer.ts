@@ -1,0 +1,259 @@
+/**
+ * Template Section Indexer
+ *
+ * Computes a section index by tree-walking a TemplateSchema.
+ * Sections are a read-time concept — the template is stored as a single blob,
+ * and this indexer identifies navigable regions by structural cues.
+ *
+ * Section types:
+ * - "route"      — nodes inside a $routes array (keyed by path)
+ * - "navigation" — landmark components like CollapsibleSidebar (keyed by side prop)
+ * - "panel"      — large child subtrees within a route (keyed by qualifier)
+ */
+
+import type { RouteSchema, SchemaNode } from './types';
+
+/** A navigable region in the template tree */
+export interface SectionEntry {
+  /** Human-readable key, e.g. "route:/", "navigation:left", "panel:/:stats-cards" */
+  key: string;
+  /** Section classification */
+  type: 'route' | 'navigation' | 'panel' | 'root';
+  /** Tree path for extraction — array of child indices from root */
+  path: number[];
+  /** Estimated serialized JSON size in characters */
+  sizeEstimate: number;
+}
+
+/** Landmark component types that are indexed as navigation sections */
+const NAVIGATION_TYPES = new Set(['CollapsibleSidebar']);
+
+/** Approximate size threshold (in serialized chars) above which a subtree gets sub-indexed as panels */
+const PANEL_THRESHOLD = 4000; // ~200 lines of JSON ≈ 4000 chars
+
+/** Estimate the serialized size of a node */
+function estimateSize(node: SchemaNode | string): number {
+  return JSON.stringify(node).length;
+}
+
+/** Infer a qualifier for a panel section from the node's structure */
+function inferQualifier(node: SchemaNode, index: number): string {
+  // Prefer a distinguishing prop: component type
+  if (node.type) {
+    // Convert PascalCase to kebab-case
+    const kebab = node.type.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+    return kebab;
+  }
+  // Fallback to index
+  return `child-${index}`;
+}
+
+/**
+ * Compute a section index for a template schema.
+ * Returns a flat list of SectionEntry objects identifying the navigable regions.
+ */
+export function computeSectionIndex(schema: SchemaNode): SectionEntry[] {
+  const sections: SectionEntry[] = [];
+
+  // Root section
+  sections.push({
+    key: 'root',
+    type: 'root',
+    path: [],
+    sizeEstimate: estimateSize(schema),
+  });
+
+  // Walk top-level children for navigation landmarks
+  if (schema.children) {
+    for (let i = 0; i < schema.children.length; i++) {
+      const child = schema.children[i];
+      if (typeof child === 'string') continue;
+
+      if (child.type && NAVIGATION_TYPES.has(child.type)) {
+        const side = (child.props?.side as string) || `nav-${i}`;
+        sections.push({
+          key: `navigation:${side}`,
+          type: 'navigation',
+          path: [i],
+          sizeEstimate: estimateSize(child),
+        });
+      }
+    }
+  }
+
+  // Find and index routes at any depth
+  indexRoutes(schema, [], sections);
+
+  return sections;
+}
+
+/** Recursively find $routes arrays and index each route */
+function indexRoutes(node: SchemaNode, currentPath: number[], sections: SectionEntry[]): void {
+  // Check this node's routes
+  if (node.routes && node.routes.length > 0) {
+    for (let i = 0; i < node.routes.length; i++) {
+      const route = node.routes[i] as RouteSchema;
+      const routePath = [...currentPath, -1, i]; // -1 signals "routes" array vs "children"
+      const routeKey = `route:${route.path}`;
+      const size = estimateSize(route);
+
+      sections.push({
+        key: routeKey,
+        type: 'route',
+        path: routePath,
+        sizeEstimate: size,
+      });
+
+      // Sub-index large routes into panels
+      if (size > PANEL_THRESHOLD) {
+        indexPanels(route, routePath, route.path, sections);
+      }
+    }
+  }
+
+  // Recurse into children
+  if (node.children) {
+    for (let i = 0; i < node.children.length; i++) {
+      const child = node.children[i];
+      if (typeof child !== 'string') {
+        indexRoutes(child, [...currentPath, i], sections);
+      }
+    }
+  }
+}
+
+/**
+ * Index large children of a route (or nested container) as panel sections.
+ * Recurses through single-child wrappers to find meaningful split points.
+ */
+function indexPanels(node: SchemaNode, nodePath: number[], routePath: string, sections: SectionEntry[]): void {
+  const children = node.children;
+  if (!children || children.length === 0) return;
+
+  // Filter to SchemaNode children (skip strings)
+  const nodeChildren: { node: SchemaNode; index: number }[] = [];
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (typeof child !== 'string') {
+      nodeChildren.push({ node: child, index: i });
+    }
+  }
+
+  // Single child — skip wrapper, recurse into it
+  if (nodeChildren.length === 1) {
+    const only = nodeChildren[0];
+    indexPanels(only.node, [...nodePath, only.index], routePath, sections);
+    return;
+  }
+
+  // Multiple children — index those exceeding or near the threshold
+  const usedQualifiers = new Set<string>();
+  for (const { node: child, index } of nodeChildren) {
+    const size = estimateSize(child);
+    if (size < PANEL_THRESHOLD / 4) continue; // Skip tiny children (< ~50 lines)
+
+    let qualifier = inferQualifier(child, index);
+    // Deduplicate qualifiers within the same route
+    if (usedQualifiers.has(qualifier)) {
+      qualifier = `${qualifier}-${index}`;
+    }
+    usedQualifiers.add(qualifier);
+
+    const panelPath = [...nodePath, index];
+    sections.push({
+      key: `panel:${routePath}:${qualifier}`,
+      type: 'panel',
+      path: panelPath,
+      sizeEstimate: size,
+    });
+
+    // Recurse into large panels
+    if (size > PANEL_THRESHOLD) {
+      indexPanels(child, panelPath, routePath, sections);
+    }
+  }
+}
+
+/**
+ * Extract a subtree from a schema by path.
+ * Returns the node at the given path, or null if the path is invalid.
+ */
+export function extractByPath(schema: SchemaNode, path: number[]): SchemaNode | null {
+  let current: SchemaNode = schema;
+
+  for (let i = 0; i < path.length; i++) {
+    const idx = path[i];
+
+    if (idx === -1) {
+      // Next index is into routes array
+      const routeIdx = path[++i];
+      if (!current.routes || routeIdx >= current.routes.length) return null;
+      current = current.routes[routeIdx] as SchemaNode;
+    } else {
+      // Index into children array
+      if (!current.children || idx >= current.children.length) return null;
+      const child = current.children[idx];
+      if (typeof child === 'string') return null;
+      current = child;
+    }
+  }
+
+  return current;
+}
+
+/**
+ * Patch a subtree into a schema at the given path.
+ * Returns a new schema with the subtree replaced (does not mutate the original).
+ */
+export function patchByPath(schema: SchemaNode, path: number[], replacement: SchemaNode): SchemaNode {
+  if (path.length === 0) return replacement;
+
+  const clone = structuredClone(schema);
+
+  // Parse raw path into segments: each segment is either a children index or a route index
+  const segments: { isRoute: boolean; index: number }[] = [];
+  for (let i = 0; i < path.length; i++) {
+    if (path[i] === -1) {
+      segments.push({ isRoute: true, index: path[++i] });
+    } else {
+      segments.push({ isRoute: false, index: path[i] });
+    }
+  }
+
+  // Navigate to the parent of the target (all segments except last)
+  let parent: SchemaNode = clone;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const seg = segments[i];
+    if (seg.isRoute) {
+      if (!parent.routes || seg.index >= parent.routes.length) {
+        throw new Error(`Invalid path: routes[${seg.index}] does not exist`);
+      }
+      parent = parent.routes[seg.index] as SchemaNode;
+    } else {
+      if (!parent.children || seg.index >= parent.children.length) {
+        throw new Error(`Invalid path: children[${seg.index}] does not exist`);
+      }
+      const child = parent.children[seg.index];
+      if (typeof child === 'string') {
+        throw new Error(`Invalid path: children[${seg.index}] is a string node`);
+      }
+      parent = child;
+    }
+  }
+
+  // Apply the last segment
+  const last = segments[segments.length - 1];
+  if (last.isRoute) {
+    if (!parent.routes || last.index >= parent.routes.length) {
+      throw new Error(`Invalid path: routes[${last.index}] does not exist`);
+    }
+    parent.routes[last.index] = replacement as RouteSchema;
+  } else {
+    if (!parent.children || last.index >= parent.children.length) {
+      throw new Error(`Invalid path: children[${last.index}] does not exist`);
+    }
+    parent.children[last.index] = replacement;
+  }
+
+  return clone;
+}
