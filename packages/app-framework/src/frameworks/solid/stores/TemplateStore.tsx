@@ -1,6 +1,6 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
 import { templateRegistry } from '@shared/registries/templateRegistry';
-import { testMutations } from '@shared/schemas/TestTemplate.schema';
+import { testMutations } from '@shared/schemas/test/TestTemplate.schema';
 import { deepClone } from '@shared/utils';
 import type { FileData } from '@we/models';
 import { Template } from '@we/models';

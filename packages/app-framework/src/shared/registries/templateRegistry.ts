@@ -16,13 +16,7 @@
  * 6. TemplateStoreProvider reads registry (gets final launcher)
  */
 
-import {
-  aiSampleTemplateSchema,
-  defaultTemplateSchema,
-  testTemplateSchema,
-  twitterTemplateSchema,
-  weNativeAppTemplateSchema,
-} from '@shared/schemas';
+import { testTemplate, twitterTemplate, weTemplate } from '@shared/schemas';
 import type { TemplateSchema } from '@we/schema-shared';
 
 /**
@@ -50,11 +44,9 @@ const placeholderLauncher: TemplateSchema = {
  * The 'launcher' template is generated from we-seed.json.
  */
 export const templateRegistry = {
-  default: defaultTemplateSchema,
-  twitter: twitterTemplateSchema,
-  test: testTemplateSchema,
-  aiSample: aiSampleTemplateSchema,
-  weNative: weNativeAppTemplateSchema,
+  twitter: twitterTemplate,
+  test: testTemplate,
+  we: weTemplate,
   launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
 };
 

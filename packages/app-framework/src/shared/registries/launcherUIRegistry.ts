@@ -13,8 +13,8 @@
  * 4. TemplateProvider reads registry → builds app layout
  */
 
-import { getAppSettingsSchema } from '@shared/schemas/defaults/AppSettings.schema';
-import { bootScreenSchema } from '@shared/schemas/defaults/BootScreen.schema';
+import { getAppSettingsSchema } from '@shared/schemas/shell/AppSettings.schema';
+import { bootScreenSchema } from '@shared/schemas/shell/BootScreen.schema';
 import type { SchemaNode } from '@we/schema-shared';
 
 /**

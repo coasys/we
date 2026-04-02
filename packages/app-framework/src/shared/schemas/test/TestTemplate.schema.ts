@@ -3,7 +3,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import { SetStoreFunction } from 'solid-js/store';
 
-import { deepClone } from '../utils';
+import { deepClone } from '../../utils';
 
 // Schema fragments
 const testButtons = {
@@ -261,7 +261,7 @@ const spacePageHeader = {
 };
 
 // Full test template schema
-export const testTemplateSchema: TemplateSchema = {
+export const testTemplate: TemplateSchema = {
   meta: {
     name: 'Testing',
     description: 'A simple template used for testing',

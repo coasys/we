@@ -7,7 +7,7 @@
 
 import type { TemplateSchema } from '@we/schema-shared';
 
-export const weNativeAppTemplateSchema: TemplateSchema = {
+export const weTemplate: TemplateSchema = {
   meta: {
     name: 'WE Native App',
     description: 'Native WE application with sidebar navigation',
