@@ -175,10 +175,8 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         viewer.scene.moon.show = false;
       }
 
-      // Hide Cesium's default skybox and sun (we'll use our custom ones via backgroundLayers)
-      if (viewer.scene.skyBox) {
-        viewer.scene.skyBox.show = false;
-      }
+      // Remove Cesium's default skybox and sun (we'll use our custom ones via backgroundLayers)
+      viewer.scene.skyBox = undefined;
       if (viewer.scene.sun) {
         viewer.scene.sun.show = false;
       }
