@@ -32,5 +32,6 @@ export { findMutations } from './mutations';
 export { resolveProp, resolveProps, resolveQueryProp, splitProps, REACTIVE_ACCESSOR } from './propResolvers';
 export { hasToken } from './predicates';
 export { themeToStyle } from './themeStyles';
-export { computeSectionIndex, extractByPath, patchByPath } from './indexer';
-export type { SectionEntry } from './indexer';
+export { computeSectionIndex, extractByPath, patchByPath, ensureSections } from './indexer';
+export type { SectionEntry, StoredTemplate } from './indexer';
+export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
