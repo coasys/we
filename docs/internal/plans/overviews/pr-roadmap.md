@@ -254,15 +254,17 @@ Implements `$query` as a prop-level schema token with descriptor pattern (shared
 
 ## Phase C: Customization & Storage
 
-### 6. Schema Customization Architecture
+### 6. Schema Customization Architecture ✅
 
-**Plan:** [schema-customization-architecture](../prs/schema-customization-architecture.md)
-**Depends on:** Block Model Migration (#5) — `SchemaSection` and `TemplateInstall` models go in `@we/models`
+**Plan:** [schema-customization-architecture](../prs/schema-customization-architecture.md) | [review](../prs/schema-customization-review.md)
+**Decision:** [template-storage-architecture](../../../decisions/template-storage-architecture.md)
+**Status:** Complete (branch `feat/schema-customization`, 5 commits, 12 files)
+**Depends on:** Block Model Migration (#5) — `Template` model goes in `@we/models`
 **Unblocks:** template gallery, per-section AI editing, section sharing, SHACL auto-generated section tools
 
-The big one. Sectioned storage in AD4M (`SchemaSection` + `TemplateInstall` models), `$section` token, sectionizing algorithm, template gallery, copy-on-activate, section sharing. This is the storage and sharing layer for the entire apps ecosystem.
+**Architecture pivot:** Original plan called for physically split `SchemaSection` models with `$section` tokens. Review identified section drift, naming fragility, and structural rigidity issues. Pivoted to **monolith + stored index** — single `StoredTemplate` blob (schema + pre-computed section index) stored in AD4M via file-storage language. Index is generated at creation and structural edits, travels with shared copies for cross-client consistency.
 
-Also unlocks free SHACL MCP tools for section CRUD — once these AD4M models exist, `schemasection_get`, `schemasection_set_schemajson`, etc. are automatically available.
+`Template` AD4M model with file-storage backed schema property. Tree-walk section indexer (`computeSectionIndex`, `extractByPath`, `patchByPath`). Section API (`createStoredTemplate`, `getSection`, `updateSection`). TemplateStore rewritten to use AD4M perspective instead of localStorage. 30 tests. Decision document comparing three approaches.
 
 ### 4. Local Schema State (`$localState`)
 
@@ -350,7 +352,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 5b  | Core Block Types               | Data  | 5          | Medium | Low  |
 | ✅   | 5d  | Block Persistence & Rendering  | Data  | 5b         | Medium | Med  |
 | ✅   | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
-| 2    | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
+| ✅   | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
 | 2    | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
 | 2    | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
 | 2    | 8   | @we/ai-context                 | AI    | 7a         | Large  | Med  |
@@ -381,7 +383,7 @@ Track 2b: [4b. $concat] ──────────────────�
 Track 2c: [10. Components Ph1] ─────────────────────────────────────────
 Track 3:  [5. Models]  [5c. $query ✅] ──────────────────────────────────
 Track 4:  ──────────── [5b. Blocks ✅] [5d. Block Persist. & Rendering] ─
-Track 5:  ──────────── [6. Schema Customization] ────── [4. $local] ────
+Track 5:  ──────────── [6. Schema Customization ✅] ──── [4. $local] ────
 Track 6:  [7a. types]  ──────────── [8. ai-context] ─ [8b-Ph2] ─ [9. MCP]
 Track 7:  ────────────────────────── [7b. Showcase] ────────────────────
 Track 8:  ──────────── [7c. Root Storybook] ────────────────────────────

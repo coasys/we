@@ -1,5 +1,7 @@
 export { WeNode } from './WeNode';
 export { Space } from './entities/Space';
+export { Template } from './entities/Template';
+export { FILE_STORAGE_LANGUAGE } from './constants';
 export {
   AudioBlock,
   CalloutBlock,
