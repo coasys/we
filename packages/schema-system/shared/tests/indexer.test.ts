@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeSectionIndex, extractByPath, patchByPath } from '../src/indexer';
-import type { RouteSchema, SchemaNode } from '../src/types';
+import { computeSectionIndex, ensureSections, extractByPath, patchByPath } from '../src/indexer';
+import type { RouteSchema, SchemaNode, TemplateSchema } from '../src/types';
 
 // Minimal template resembling weNativeApp structure
 const mockTemplate: SchemaNode = {
@@ -193,5 +193,30 @@ describe('patchByPath', () => {
 
   it('throws on invalid path', () => {
     expect(() => patchByPath(mockTemplate, [99], { type: 'X' })).toThrow();
+  });
+});
+
+describe('ensureSections', () => {
+  it('returns StoredTemplate as-is when sections already present', () => {
+    const stored = {
+      schema: mockTemplate as TemplateSchema,
+      sections: [{ key: 'root', type: 'root' as const, path: [], sizeEstimate: 100 }],
+    };
+    const result = ensureSections(stored);
+    expect(result).toBe(stored); // same reference, not recomputed
+  });
+
+  it('bootstraps sections for a legacy TemplateSchema without sections', () => {
+    const legacy = mockTemplate as TemplateSchema;
+    const result = ensureSections(legacy);
+    expect(result.schema).toBe(legacy);
+    expect(result.sections.length).toBeGreaterThan(0);
+    expect(result.sections.find((s) => s.key === 'root')).toBeDefined();
+  });
+
+  it('bootstraps sections when blob has schema but missing sections array', () => {
+    const malformed = { schema: mockTemplate as TemplateSchema } as any;
+    const result = ensureSections(malformed);
+    expect(result.sections.length).toBeGreaterThan(0);
   });
 });

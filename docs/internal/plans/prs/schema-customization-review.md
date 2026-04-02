@@ -2,13 +2,13 @@
 
 > Review of [schema-customization-architecture.md](schema-customization-architecture.md) against current codebase state.
 
-## Architecture pivot: Monolith + computed index
+## Architecture pivot: Monolith + stored index
 
-**Key change from original plan:** Instead of splitting templates into stored `SchemaSection` entities with a `$section` token and assembly step, we store the **full template as a single JSON blob** (via file-storage language) and compute section indexes at read time by tree-walking.
+**Key change from original plan:** Instead of splitting templates into stored `SchemaSection` entities with a `$section` token and assembly step, we store the **full template as a single JSON blob** (via file-storage language) with the **section index stored alongside** in the blob. The indexer runs at creation time and after structural edits — not on every read — ensuring all clients and shared copies use identical section keys.
 
-This eliminates: `SchemaSection` model, `$section` token, sectionizing algorithm, `resolveSection`, assembly step, section key naming/stability concerns.
+This eliminates: `SchemaSection` model, `$section` token, sectionizing algorithm, `resolveSection`, assembly step.
 
-This keeps: `Template` model (simplified, renamed from `TemplateInstall`), file-storage pattern, gallery, sharing, theme, section taxonomy (computed, not stored).
+This keeps: `Template` model (simplified, renamed from `TemplateInstall`), file-storage pattern, gallery, sharing, theme, section taxonomy (stored in blob alongside schema).
 
 See [point 5](#5-sectionizing-algorithm-revised--monolith--computed-index) for full rationale.
 
@@ -77,7 +77,7 @@ If we later want **reactive section swapping** (hot-swap one section without re-
 
 ---
 
-## 5. ~~Sectionizing algorithm~~ REVISED — Monolith + computed index
+## 5. ~~Sectionizing algorithm~~ REVISED — Monolith + stored index
 
 ### Original plan: stored sections
 
@@ -88,16 +88,18 @@ The original architecture proposed splitting templates into stored `SchemaSectio
 - Section drift: edits that reorganize the tree (moving nodes between sections, merging panels) require updating both section content AND the skeleton's `$section` references — a parallel tree maintenance burden
 - Structural rigidity: reorganization (moving a panel from one route to another, adding a new route with content from existing sections) fights the section boundaries
 
-### Revised recommendation: Monolith + computed index
+### Revised recommendation: Monolith + stored index
 
-Store the **full template as a single JSON blob** in file-storage. Sections become a **read-time computed concept**, not a storage concept.
+Store the **full template as a single JSON blob** in file-storage, with the **section index stored alongside** the schema in the blob. The indexer runs at specific points (creation, structural edits), not on every read — ensuring all clients and shared copies use identical section keys.
 
 #### How it works
 
-1. **Storage:** One blob per template, stored via file-storage language (content-addressed URI)
-2. **Index:** A tree-walk function computes a section index on read — identifying navigable regions by tree structure (routes, sidebars, large child groups)
+1. **Storage:** One blob per template (`StoredTemplate = { schema, sections }`), stored via file-storage language (content-addressed URI)
+2. **Index:** A tree-walk function generates the section index at creation time and after structural edits. The index is saved inside the blob — not recomputed on every read.
 3. **Section access:** `loadSection(key)` extracts a subtree by path from the blob. `saveSection(key, json)` patches it back in. No stored section entities.
 4. **Full access:** `loadTemplate()` / `saveTemplate(schema)` for operations that need the whole tree (reorganization, structural changes, full export)
+5. **Re-indexing:** Only triggered by structural changes (add/remove/move children). Targeted edits (changing props within a section) leave the index unchanged.
+6. **Fallback:** `ensureSections()` bootstraps the index for legacy templates or manual JSON imports that lack one.
 
 #### Data model
 
@@ -119,23 +121,34 @@ class Template extends WeNode {
   @Property({
     through: 'we://has_template_schema',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: (data) => /* decode base64 → JSON */
+    transform: (data) => /* decode base64 → JSON (StoredTemplate) */
   })
-  schema: TemplateSchema = {} as TemplateSchema;
+  schema: StoredTemplate = { schema: {} as TemplateSchema, sections: [] };
 }
 
-// Computed at read time, NOT stored
-interface TemplateIndex {
-  sections: SectionEntry[];
+// Stored alongside the schema in the blob — NOT recomputed on every read
+interface StoredTemplate {
+  schema: TemplateSchema;       // the tree
+  sections: SectionEntry[];     // pre-computed, stable across clients
 }
 
 interface SectionEntry {
-  key: string;        // e.g. "route:/", "navigation:left", "route:/:stats-cards"
+  key: string;        // e.g. "route:/", "navigation:left", "panel:/:stats-cards"
   type: string;       // "route" | "navigation" | "panel"
   path: number[];     // tree path for extraction: [2, 0, 1, 3]
-  lineEstimate: number;
+  sizeEstimate: number;
 }
 ```
+
+#### When re-indexing happens
+
+| Operation | Re-index? | Why |
+|-----------|-----------|-----|
+| Edit props within a section | No | Tree structure unchanged — paths and keys still valid |
+| Add/remove/move child nodes | **Yes** | Paths shift — index must be regenerated |
+| Add a new route | **Yes** | New section discovered |
+| Share template | No | Index travels with the blob — recipient gets identical keys |
+| Import template (no index) | **Yes** | `ensureSections()` bootstraps it |
 
 #### API surface
 
@@ -156,12 +169,13 @@ undo(templateId): void                         // apply inverse patch
 
 #### Why this is better
 
-| Concern                  | Stored sections                                                                       | Monolith + computed index                                   |
+| Concern                  | Stored sections                                                                       | Monolith + stored index                                     |
 | ------------------------ | ------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| **Reorganization**       | Move nodes between sections → update content + skeleton refs + possibly rename keys   | Just edit the tree — sections recompute                     |
-| **Adding routes**        | Create new section + add `$section` ref to skeleton                                   | Add route node to tree — index auto-discovers it            |
-| **Naming stability**     | Keys must survive re-sectionization; comment-based naming is fragile                  | Keys are computed fresh each read — renaming is free        |
+| **Reorganization**       | Move nodes between sections → update content + skeleton refs + possibly rename keys   | Edit the tree, re-index → sections update                   |
+| **Adding routes**        | Create new section + add `$section` ref to skeleton                                   | Add route node to tree, re-index → auto-discovered          |
+| **Naming stability**     | Keys must survive re-sectionization; comment-based naming is fragile                  | Keys are generated deterministically and stored in the blob |
 | **Section drift**        | Content can desync from skeleton refs                                                 | No refs to desync — single source of truth                  |
+| **Co-editing / sharing** | Both clients must independently agree on section naming                               | Index stored in blob → identical keys on all clients        |
 | **AI editing**           | AI loads one section, edits, saves section                                            | Same — `loadSection` / `saveSection` scoped read/write      |
 | **Full template export** | Must assemble all sections                                                            | Already a blob — just read it                               |
 | **Storage overhead**     | N section blobs + skeleton                                                            | 1 blob (simpler, same total size)                           |
@@ -171,9 +185,9 @@ undo(templateId): void                         // apply inverse patch
 
 - `SchemaSection` model — gone
 - `$section` token — gone
-- `sectionizeTemplate` algorithm — gone (replaced by computed index)
+- `sectionizeTemplate` algorithm — gone (replaced by stored index generated at creation / structural edit)
 - `resolveSection` / `assembleTemplate` — gone (no assembly needed)
-- Section key naming/stability concerns — gone
+- Section key naming/stability concerns — gone (keys stored in blob, identical across clients)
 
 #### What stays
 
@@ -181,9 +195,9 @@ undo(templateId): void                         // apply inverse patch
 - File-storage language pattern (now for whole template, not per-section)
 - Gallery, sharing, activation — unchanged
 - Theme system — unchanged
-- Section _taxonomy_ (route, navigation, panel) — used for computed index classification, not storage
+- Section _taxonomy_ (route, navigation, panel) — used for index classification, stored in blob
 
-#### Section index computation
+#### Section index generation
 
 The tree-walk indexer identifies sections by structural cues:
 
@@ -192,7 +206,7 @@ The tree-walk indexer identifies sections by structural cues:
 3. **Panels:** within a route, children exceeding ~200 lines get recursively indexed as `panel:<route>:<qualifier>`
 4. **Qualifier inference:** component type, distinguishing prop value, or child index as fallback
 
-This is the same taxonomy as the original plan — it's just computed on read instead of baked into storage.
+This is the same taxonomy as the original plan — it's generated by a tree-walk and stored alongside the schema in the blob.
 
 #### Section sharing
 
@@ -209,7 +223,7 @@ No stored section entities needed — the subtree IS the shareable unit. AD4M pr
 
 The original plan distinguished gallery listings from installed copies. Since we don't have a separate gallery-listing entity — `origin` (`'built-in' | 'shared' | 'custom'`) captures provenance — the simpler name `Template` is sufficient. If a gallery-listing model is needed later, it can be named specifically (`TemplateListing`, `SharedTemplate`, etc).
 
-**Action:** Rewrite the architecture plan around monolith + computed index. Remove SchemaSection, $section, sectionize, and assembly. Add tree-walk indexer and path-based extract/patch.
+**Action:** Rewrite the architecture plan around monolith + stored index. Remove SchemaSection, $section, sectionize, and assembly. Add tree-walk indexer and path-based extract/patch.
 
 ---
 
@@ -233,7 +247,7 @@ All in one PR with separate commits for logical groupings:
 
 The original plan used `sections: string[]` with `@HasMany({ through: 'we://has_section' })` to link `TemplateInstall` → `SchemaSection` entities.
 
-With the monolith + computed index approach, there are no stored `SchemaSection` entities. `Template.schema` is a single file-storage blob containing the full template. No `@HasMany`, no section UUIDs, no hydration queries.
+With the monolith + stored index approach, there are no stored `SchemaSection` entities. `Template.schema` is a single file-storage blob containing the full template and its section index. No `@HasMany`, no section UUIDs, no hydration queries.
 
 **Action:** None — this concern is eliminated by the architecture change.
 
