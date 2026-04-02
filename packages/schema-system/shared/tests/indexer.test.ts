@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { StoredTemplate } from '../src/indexer';
 import { computeSectionIndex, ensureSections, extractByPath, patchByPath } from '../src/indexer';
 import type { RouteSchema, SchemaNode, TemplateSchema } from '../src/types';
 
@@ -215,7 +216,7 @@ describe('ensureSections', () => {
   });
 
   it('bootstraps sections when blob has schema but missing sections array', () => {
-    const malformed = { schema: mockTemplate as TemplateSchema } as any;
+    const malformed = { schema: mockTemplate as TemplateSchema } as unknown as StoredTemplate;
     const result = ensureSections(malformed);
     expect(result.sections.length).toBeGreaterThan(0);
   });

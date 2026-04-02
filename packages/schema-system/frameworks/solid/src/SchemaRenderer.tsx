@@ -1,5 +1,5 @@
-import { hasToken, REACTIVE_ACCESSOR, resolveProp, resolveQueryProp, themeToStyle } from '@we/schema-shared';
 import type { QueryDescriptor } from '@we/schema-shared';
+import { hasToken, REACTIVE_ACCESSOR, resolveProp, resolveQueryProp, themeToStyle } from '@we/schema-shared';
 import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';

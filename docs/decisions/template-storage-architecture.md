@@ -97,26 +97,26 @@ Template
 
 ### vs. Stored Sections (Approach 1)
 
-| Concern | Stored Sections | Monolith + Stored Index |
-|---------|----------------|------------------------|
-| Reorganization | Multi-entity transaction (content + skeleton + key renames) | Edit tree, re-index — done |
-| Adding routes | Create section entity + add skeleton ref | Add route node, re-index — auto-discovered |
-| Section drift | Skeleton and sections can desync | Single source of truth |
-| Sharing | Must package/reassemble sections | Subtree extraction — JSON in, JSON out |
-| Storage | N blobs + skeleton | 1 blob |
-| New models/tokens | `SchemaSection`, `$section`, assembly | None |
-| Complexity | High (5 new concepts) | Low (indexer + path utilities) |
+| Concern           | Stored Sections                                             | Monolith + Stored Index                    |
+| ----------------- | ----------------------------------------------------------- | ------------------------------------------ |
+| Reorganization    | Multi-entity transaction (content + skeleton + key renames) | Edit tree, re-index — done                 |
+| Adding routes     | Create section entity + add skeleton ref                    | Add route node, re-index — auto-discovered |
+| Section drift     | Skeleton and sections can desync                            | Single source of truth                     |
+| Sharing           | Must package/reassemble sections                            | Subtree extraction — JSON in, JSON out     |
+| Storage           | N blobs + skeleton                                          | 1 blob                                     |
+| New models/tokens | `SchemaSection`, `$section`, assembly                       | None                                       |
+| Complexity        | High (5 new concepts)                                       | Low (indexer + path utilities)             |
 
 ### vs. Computed Index (Approach 2)
 
-| Concern | Computed (read-time) | Stored (creation-time) |
-|---------|---------------------|----------------------|
-| Key stability | Depends on algorithm version | Stored — identical across all clients |
-| Shared references | "edit panel:/:stats" might resolve differently | Same key = same path, always |
-| Performance | Tree-walk on every read | Lookup in stored array |
-| Algorithm updates | Silently changes existing templates' sections | Only affects new templates (or explicit re-index) |
-| Inspectability | Must run algorithm to see sections | Sections are data — queryable, displayable |
-| Offline/async | Both clients must agree on algorithm | Index travels with the blob |
+| Concern           | Computed (read-time)                           | Stored (creation-time)                            |
+| ----------------- | ---------------------------------------------- | ------------------------------------------------- |
+| Key stability     | Depends on algorithm version                   | Stored — identical across all clients             |
+| Shared references | "edit panel:/:stats" might resolve differently | Same key = same path, always                      |
+| Performance       | Tree-walk on every read                        | Lookup in stored array                            |
+| Algorithm updates | Silently changes existing templates' sections  | Only affects new templates (or explicit re-index) |
+| Inspectability    | Must run algorithm to see sections             | Sections are data — queryable, displayable        |
+| Offline/async     | Both clients must agree on algorithm           | Index travels with the blob                       |
 
 ### Summary
 
