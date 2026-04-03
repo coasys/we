@@ -9,7 +9,9 @@ import {
   ImageBlock,
   resizeImage,
   Space,
+  Template,
   TextBlock,
+  Theme,
   WeNode,
 } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
@@ -191,7 +193,11 @@ export function AdamStoreProvider(props: ParentProps) {
       // No root perspective exists — create one
       console.log('AdamStore: Creating root perspective');
       const perspective = await client.perspective.add('__we_root__');
-      await perspective.ensureSDNASubjectClass(AgentConfig);
+      await Promise.all([
+        perspective.ensureSDNASubjectClass(AgentConfig),
+        perspective.ensureSDNASubjectClass(Template),
+        perspective.ensureSDNASubjectClass(Theme),
+      ]);
       // AD4M's ensureSDNASubjectClass resolves before SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 

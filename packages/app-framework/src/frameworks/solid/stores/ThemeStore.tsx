@@ -52,7 +52,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (isValidThemeKey(themeId)) {
       setCurrentThemeKey(themeId);
       document.documentElement.setAttribute('data-we-theme', themeId);
-      // Keep localStorage as fast fallback for initial render
+      // Keep localStorage as fast fallback for initial render and bootscreen before AgentConfig is loaded
       localStorage.setItem(THEME_KEY, themeId);
       // Persist to Ad4m
       adamStore.updatePreferences({ currentThemeId: themeId });
