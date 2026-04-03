@@ -8,7 +8,7 @@ import type { StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-sh
 import { createStoredTemplate } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
 
 import { useAdamStore } from './AdamStore';
 
@@ -117,14 +117,16 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   });
 
-  // Apply persisted template choice once both templates and preferences are loaded
+  // Restore persisted template choice on boot (runs once, then stops)
+  let initialRestoreDone = false;
   createEffect(() => {
     const prefs = adamStore.userPreferences();
-    if (loading()) return; // wait for templates to load
+    if (loading() || initialRestoreDone) return;
     if (prefs?.currentTemplateId && prefs.currentTemplateId !== currentTemplate.id) {
       const persisted = templates().find((t) => t.id === prefs.currentTemplateId);
       if (persisted) {
-        setCurrentTemplate(deepClone(persisted));
+        setCurrentTemplate(reconcile(deepClone(persisted)));
+        initialRestoreDone = true;
       }
     }
   });
@@ -137,7 +139,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   function switchTemplate(newTemplateId: string) {
     const newTemplate = templates().find((t) => t.id === newTemplateId);
     if (newTemplate) {
-      setCurrentTemplate(deepClone(newTemplate));
+      setCurrentTemplate(reconcile(deepClone(newTemplate)));
       // Persist choice to Ad4m
       adamStore.updatePreferences({ currentTemplateId: newTemplateId });
     } else {
@@ -157,7 +159,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       model.delete?.().catch((err: unknown) => console.error('TemplateStore: delete error', err));
     }
 
-    setCurrentTemplate(deepClone(emptyTemplate));
+    setCurrentTemplate(reconcile(deepClone(emptyTemplate)));
   }
 
   async function saveTemplate(name: string): Promise<void> {

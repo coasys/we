@@ -14,13 +14,13 @@ import { Route, Router, useLocation, useNavigate } from '@solidjs/router';
 import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
-import { createEffect, createMemo } from 'solid-js';
+import { createEffect, createMemo, Show } from 'solid-js';
 
 type FlattenedRoute = { path: string; component: () => JSX.Element };
 type ParentStackItem = { node: RouteSchema; fullPath: string; baseDepth: number };
 
 // Creates the root layout component for the router
-function createLayout(stores: Stores, schema: TemplateSchema) {
+function createLayout(stores: Stores, shellSchema: TemplateSchema) {
   return function Layout(props: ParentProps): JSX.Element {
     // Access the router hooks now we're inside the router context
     const navigate = useNavigate();
@@ -32,7 +32,26 @@ function createLayout(stores: Stores, schema: TemplateSchema) {
     // React to route changes and update relevant stores
     createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
 
-    return <RenderSchema node={schema} stores={stores} registry={registry} children={props.children} />;
+    const templateStore = stores.templateStore as { currentTemplate: TemplateSchema };
+
+    return (
+      <>
+        {/* Shell chrome (boot screen, sidebar) — always rendered */}
+        <RenderSchema node={shellSchema} stores={stores} registry={registry} />
+
+        {/* Active template — keyed on ID so it fully remounts on template switch */}
+        <Show when={templateStore.currentTemplate.id} keyed>
+          <div style={{ 'margin-left': '66px', width: 'calc(100% - 66px)' }}>
+            <RenderSchema
+              node={templateStore.currentTemplate}
+              stores={stores}
+              registry={registry}
+              children={props.children}
+            />
+          </div>
+        </Show>
+      </>
+    );
   };
 }
 
@@ -116,36 +135,21 @@ export default function TemplateProvider() {
 
   // Get the current template schema and build its routes
   const templateSchema = templateStore.currentTemplate;
-  const routes = createMemo(() => flattenRoutes(stores, templateSchema.routes ?? []));
+  const routes = createMemo(() => {
+    // Read template ID to track it as a reactive dependency — routes rebuild on template switch
+    void templateSchema.id;
+    return flattenRoutes(stores, templateSchema.routes ?? []);
+  });
 
-  // Build the full app schema - only include template when user is logged in
-  const appSchema: TemplateSchema = {
-    meta: { name: 'App Layout', description: 'Root application layout', icon: '' },
-    // theme: {
-    //   primaryHue: 210, // 350, //  teal/cyan instead of the default purple
-    //   neutralSaturation: '10%', // desaturate UI colors for a more muted look, to let the content pop - feels more "app-like" and less "webpage-like"
-    //   saturation: '70%', // bump saturation so it pops
-    // },
-    children: [
-      launcherUIRegistry.bootScreen,
-      launcherUIRegistry.shell,
-      {
-        type: '$if',
-        props: {
-          condition: { $eq: [{ $store: 'adamStore.bootState' }, 'ready'] },
-          then: {
-            type: 'Column',
-            props: { ml: '66px', width: 'calc(100% - 66px)' },
-            children: [templateSchema],
-          },
-        },
-      },
-    ],
+  // Shell schema — boot screen + sidebar chrome (no template content)
+  const shellSchema: TemplateSchema = {
+    meta: { name: 'Shell', description: 'App shell chrome', icon: '' },
+    children: [launcherUIRegistry.bootScreen, launcherUIRegistry.shell],
   };
 
   // Return the router with the root layout and routes
   return (
-    <Router root={createLayout(stores, appSchema)}>
+    <Router root={createLayout(stores, shellSchema)}>
       {routes().map((route) => (
         <Route path={route.path} component={route.component} />
       ))}

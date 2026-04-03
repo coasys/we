@@ -71,7 +71,7 @@ export function AdamStoreProvider(props: ParentProps) {
   const [ad4mPort, setAd4mPort] = createSignal<number | undefined>(undefined);
   const [ad4mToken, setAd4mToken] = createSignal<string | undefined>(undefined);
   const [rootPerspective, setRootPerspective] = createSignal<PerspectiveProxy | null>(null);
-  const [userPreferences, setUserPreferences] = createSignal<AgentConfig | null>(null);
+  const [userPreferences, setUserPreferences] = createSignal<AgentConfig | null>(null, { equals: false });
 
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
