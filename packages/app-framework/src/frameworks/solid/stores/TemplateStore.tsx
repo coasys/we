@@ -117,6 +117,18 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   });
 
+  // Apply persisted template choice once both templates and preferences are loaded
+  createEffect(() => {
+    const prefs = adamStore.userPreferences();
+    if (loading()) return; // wait for templates to load
+    if (prefs?.currentTemplateId && prefs.currentTemplateId !== currentTemplate.id) {
+      const persisted = templates().find((t) => t.id === prefs.currentTemplateId);
+      if (persisted) {
+        setCurrentTemplate(deepClone(persisted));
+      }
+    }
+  });
+
   // Actions
   function updateTemplate(newTemplate: TemplateSchema) {
     updateSchema(currentTemplate, newTemplate, setCurrentTemplate);
@@ -126,6 +138,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     const newTemplate = templates().find((t) => t.id === newTemplateId);
     if (newTemplate) {
       setCurrentTemplate(deepClone(newTemplate));
+      // Persist choice to Ad4m
+      adamStore.updatePreferences({ currentTemplateId: newTemplateId });
     } else {
       console.error(`TemplateStore: switchTemplate - Invalid templateId "${newTemplateId}"`);
     }
@@ -179,7 +193,6 @@ export function TemplateStoreProvider(props: ParentProps) {
         const model = new Template(perspective);
         model.name = name;
         model.origin = 'custom';
-        model.active = true;
         model.version = 1;
         model.schema = schemaBlob as unknown as Record<string, unknown>;
         await model.save();

@@ -14,7 +14,7 @@ export const weTemplate: TemplateSchema = {
     icon: 'cube',
   },
   type: 'Row',
-  props: { width: '100%', height: '100%' },
+  props: { width: '100%', height: '100%', position: 'relative' },
   // theme: {
   //   primaryHue: 180, // teal/cyan instead of the default purple
   //   saturation: '70%', // bump saturation so it pops
@@ -25,7 +25,7 @@ export const weTemplate: TemplateSchema = {
       type: 'CollapsibleSidebar',
       props: {
         side: 'left',
-        position: 'fixed',
+        position: 'absolute',
         zIndex: 2,
         border: 'none',
         itemPadding: '12px',
@@ -227,7 +227,7 @@ export const weTemplate: TemplateSchema = {
     // Main panel
     {
       type: 'Column',
-      props: { zIndex: 1, width: '100%', height: '100%', bg: 'neutral-50', px: '66px' },
+      props: { zIndex: 1, width: '100%', height: '100%', bg: 'neutral-50', ml: '66px', mr: '66px' },
       // theme: {
       //   // themeName: 'cyberpunk',
       //   primaryHue: 180, // teal/cyan instead of the default purple
@@ -241,7 +241,7 @@ export const weTemplate: TemplateSchema = {
       type: 'CollapsibleSidebar',
       props: {
         side: 'right',
-        position: 'fixed',
+        position: 'absolute',
         zIndex: 2,
         border: 'none',
         itemPadding: '12px',

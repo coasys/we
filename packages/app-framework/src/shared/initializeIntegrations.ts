@@ -67,7 +67,7 @@ export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
       // Apply custom app settings if provided (overrides auto-generation)
       if (appSettings) {
         // Store the custom schema directly - it will be used instead of auto-generated one
-        launcherUIRegistry._customAppSettings = appSettings;
+        launcherUIRegistry._customShell = appSettings;
         console.log('  ✓ Custom app settings loaded from seed');
       }
     } else {

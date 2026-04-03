@@ -132,7 +132,7 @@ export const sidebar: SchemaNode = {
             id: 'logout',
             icon: 'sign-out',
             label: 'Logout',
-            // onClick: { $action: 'adamStore.logout' },
+            onClick: { $action: 'adamStore.logout' },
           },
         ],
       },

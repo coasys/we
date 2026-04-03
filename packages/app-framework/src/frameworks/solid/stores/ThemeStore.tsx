@@ -1,6 +1,8 @@
 import type { Theme, ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
-import { Accessor, createContext, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
+
+import { useAdamStore } from './AdamStore';
 
 const THEME_KEY = 'we.theme';
 
@@ -31,12 +33,13 @@ function getMappedThemes(): ThemeWithId[] {
 // Get initial theme key from localStorage if available otherwise fall back to the first key in the registry
 function getInitialThemeKey(): ThemeKey {
   const saved = typeof window !== 'undefined' ? localStorage.getItem(THEME_KEY) : null;
-  console.log('Saved theme key:', saved);
   const fallback = Object.keys(themeRegistry)[0] as ThemeKey;
   return isValidThemeKey(saved) ? saved : fallback;
 }
 
 export function ThemeStoreProvider(props: ParentProps) {
+  const adamStore = useAdamStore();
+
   const [themes, setThemes] = createSignal<ThemeWithId[]>(getMappedThemes());
   const [currentThemeKey, setCurrentThemeKey] = createSignal<ThemeKey>(getInitialThemeKey());
 
@@ -44,14 +47,27 @@ export function ThemeStoreProvider(props: ParentProps) {
   const currentTheme: Accessor<ThemeWithId> = () =>
     themes().find((t) => t.id === currentThemeKey()) ?? mapTheme('light', themeRegistry.light);
 
-  // Update the current theme and persist the choice in localStorage
+  // Update the current theme, persist to Ad4m and apply to DOM
   function setCurrentTheme(themeId: ThemeKey) {
     if (isValidThemeKey(themeId)) {
       setCurrentThemeKey(themeId);
       document.documentElement.setAttribute('data-we-theme', themeId);
+      // Keep localStorage as fast fallback for initial render
       localStorage.setItem(THEME_KEY, themeId);
+      // Persist to Ad4m
+      adamStore.updatePreferences({ currentThemeId: themeId });
     }
   }
+
+  // Apply persisted theme from AgentConfig when available
+  createEffect(() => {
+    const prefs = adamStore.userPreferences();
+    if (prefs?.currentThemeId && isValidThemeKey(prefs.currentThemeId)) {
+      setCurrentThemeKey(prefs.currentThemeId as ThemeKey);
+      document.documentElement.setAttribute('data-we-theme', prefs.currentThemeId);
+      localStorage.setItem(THEME_KEY, prefs.currentThemeId);
+    }
+  });
 
   setCurrentTheme(currentTheme().id);
 

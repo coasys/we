@@ -1,6 +1,8 @@
 export { WeNode } from './WeNode';
 export { Space } from './entities/Space';
 export { Template } from './entities/Template';
+export { Theme } from './entities/Theme';
+export { AgentConfig } from './entities/AgentConfig';
 export { FILE_STORAGE_LANGUAGE } from './constants';
 export {
   AudioBlock,

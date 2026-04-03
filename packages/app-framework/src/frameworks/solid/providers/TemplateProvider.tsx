@@ -128,12 +128,16 @@ export default function TemplateProvider() {
     // },
     children: [
       launcherUIRegistry.bootScreen,
-      launcherUIRegistry.appSettings,
+      launcherUIRegistry.shell,
       {
         type: '$if',
         props: {
           condition: { $eq: [{ $store: 'adamStore.bootState' }, 'ready'] },
-          then: templateSchema,
+          then: {
+            type: 'Column',
+            props: { ml: '66px', width: 'calc(100% - 66px)' },
+            children: [templateSchema],
+          },
         },
       },
     ],
