@@ -8,27 +8,27 @@
 
 The two existing templates (`weNativeAppTemplateSchema` and `defaultTemplateSchema`) only exercise a narrow slice of the schema system:
 
-| Token | weNativeApp | DefaultTemplate |
-| --- | --- | --- |
-| `$store` | ✓ | ✓ |
-| `$action` | ✓ | ✓ |
-| `$concat` | ✓ | ✓ |
-| `$if` (prop) | ✓ | — |
-| `$if` (node) | — | ✓ |
-| `$each` | — | ✓ |
-| `$map` | ✓ | — |
-| `$eq` | ✓ | — |
-| `$routes` | ✓ | ✓ |
-| `$pick` | — | — |
-| `$ne` | — | — |
-| `$not` | — | — |
-| `$and` | — | — |
-| `$or` | — | — |
-| `$query` | — | — |
-| `$arg` | — | — |
-| Nested `$each` | — | — |
-| Theme overrides | — | — |
-| Web components | — | — |
+| Token           | weNativeApp | DefaultTemplate |
+| --------------- | ----------- | --------------- |
+| `$store`        | ✓           | ✓               |
+| `$action`       | ✓           | ✓               |
+| `$concat`       | ✓           | ✓               |
+| `$if` (prop)    | ✓           | —               |
+| `$if` (node)    | —           | ✓               |
+| `$each`         | —           | ✓               |
+| `$map`          | ✓           | —               |
+| `$eq`           | ✓           | —               |
+| `$routes`       | ✓           | ✓               |
+| `$pick`         | —           | —               |
+| `$ne`           | —           | —               |
+| `$not`          | —           | —               |
+| `$and`          | —           | —               |
+| `$or`           | —           | —               |
+| `$query`        | —           | —               |
+| `$arg`          | —           | —               |
+| Nested `$each`  | —           | —               |
+| Theme overrides | —           | —               |
+| Web components  | —           | —               |
 
 Meanwhile, the following shipped PRs have zero template-level integration:
 
@@ -56,6 +56,7 @@ Three new templates, each targeting a different archetype and exercising differe
 **Exercises:** `$query`, `$each`, `$if` (node + prop), `$and`/`$or`, `$not`, `$map`, `$pick`, `$concat`, theme overrides
 
 **Structure:**
+
 ```
 Column (root, themeOverrides for dashboard styling)
 ├── Row (header)
@@ -78,6 +79,7 @@ Column (root, themeOverrides for dashboard styling)
 ```
 
 **Key patterns:**
+
 - `$query` for reactive data subscription with `where` filter params
 - `$each` iterating query results with `$item.*` context
 - `$and` combining multiple filter conditions
@@ -93,6 +95,7 @@ Column (root, themeOverrides for dashboard styling)
 **Exercises:** `$store`, `$action`, `$if` (prop + node), `$eq`, `$ne`, `$or`, `$concat`, `$arg`, web components
 
 **Structure:**
+
 ```
 Column (root)
 ├── Row (step indicator)
@@ -121,6 +124,7 @@ Column (root)
 ```
 
 **Key patterns:**
+
 - `$routes` for multi-step wizard navigation
 - `$eq` / `$ne` for step-dependent conditional rendering
 - `$or` combining multiple error conditions
@@ -135,6 +139,7 @@ Column (root)
 **Exercises:** Nested `$each`, `$map` with complex `select`, `$pick`, `$concat`, `$if` (nested), `$eq`, `$action`
 
 **Structure:**
+
 ```
 Row (root)
 ├── CollapsibleSidebar
@@ -167,6 +172,7 @@ Row (root)
 ```
 
 **Key patterns:**
+
 - Nested `$each` (categories → items within each category) with `as` bindings
 - `$map` with multi-field `select` for table row transformation
 - `$pick` for extracting display fields
@@ -177,27 +183,27 @@ Row (root)
 
 ## Token Coverage Matrix (After)
 
-| Token | weNativeApp | Default | Dashboard | Form | Browser |
-| --- | --- | --- | --- | --- | --- |
-| `$store` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `$action` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `$concat` | ✓ | ✓ | ✓ | ✓ | ✓ |
-| `$if` (prop) | ✓ | — | ✓ | ✓ | ✓ |
-| `$if` (node) | — | ✓ | ✓ | ✓ | ✓ |
-| `$each` | — | ✓ | ✓ | — | ✓ |
-| `$map` | ✓ | — | ✓ | — | ✓ |
-| `$eq` | ✓ | — | ✓ | ✓ | ✓ |
-| `$routes` | ✓ | ✓ | — | ✓ | — |
-| `$pick` | — | — | ✓ | — | ✓ |
-| `$ne` | — | — | — | ✓ | — |
-| `$not` | — | — | ✓ | — | ✓ |
-| `$and` | — | — | ✓ | — | ✓ |
-| `$or` | — | — | — | ✓ | — |
-| `$query` | — | — | ✓ | — | — |
-| `$arg` | — | — | — | ✓ | ✓ |
-| Nested `$each` | — | — | — | — | ✓ |
-| Theme overrides | — | — | ✓ | — | — |
-| Web components | — | — | ✓ | ✓ | ✓ |
+| Token           | weNativeApp | Default | Dashboard | Form | Browser |
+| --------------- | ----------- | ------- | --------- | ---- | ------- |
+| `$store`        | ✓           | ✓       | ✓         | ✓    | ✓       |
+| `$action`       | ✓           | ✓       | ✓         | ✓    | ✓       |
+| `$concat`       | ✓           | ✓       | ✓         | ✓    | ✓       |
+| `$if` (prop)    | ✓           | —       | ✓         | ✓    | ✓       |
+| `$if` (node)    | —           | ✓       | ✓         | ✓    | ✓       |
+| `$each`         | —           | ✓       | ✓         | —    | ✓       |
+| `$map`          | ✓           | —       | ✓         | —    | ✓       |
+| `$eq`           | ✓           | —       | ✓         | ✓    | ✓       |
+| `$routes`       | ✓           | ✓       | —         | ✓    | —       |
+| `$pick`         | —           | —       | ✓         | —    | ✓       |
+| `$ne`           | —           | —       | —         | ✓    | —       |
+| `$not`          | —           | —       | ✓         | —    | ✓       |
+| `$and`          | —           | —       | ✓         | —    | ✓       |
+| `$or`           | —           | —       | —         | ✓    | —       |
+| `$query`        | —           | —       | ✓         | —    | —       |
+| `$arg`          | —           | —       | —         | ✓    | ✓       |
+| Nested `$each`  | —           | —       | —         | —    | ✓       |
+| Theme overrides | —           | —       | ✓         | —    | —       |
+| Web components  | —           | —       | ✓         | ✓    | ✓       |
 
 **100% token coverage** across the 5 templates (every implemented token exercised in at least one).
 
@@ -205,17 +211,17 @@ Row (root)
 
 ### New files
 
-| File | Description |
-| --- | --- |
-| `packages/app-framework/src/shared/schemas/DataDashboard.schema.ts` | Data dashboard template |
-| `packages/app-framework/src/shared/schemas/Form.schema.ts` | Interactive form template |
-| `packages/app-framework/src/shared/schemas/DataBrowser.schema.ts` | Nested data browser template |
+| File                                                                | Description                  |
+| ------------------------------------------------------------------- | ---------------------------- |
+| `packages/app-framework/src/shared/schemas/DataDashboard.schema.ts` | Data dashboard template      |
+| `packages/app-framework/src/shared/schemas/Form.schema.ts`          | Interactive form template    |
+| `packages/app-framework/src/shared/schemas/DataBrowser.schema.ts`   | Nested data browser template |
 
 ### Modified files
 
-| File | Change |
-| --- | --- |
-| `packages/app-framework/src/shared/schemas/index.ts` | Re-export new templates |
+| File                                                     | Change                                      |
+| -------------------------------------------------------- | ------------------------------------------- |
+| `packages/app-framework/src/shared/schemas/index.ts`     | Re-export new templates                     |
 | Template store or provider (if templates are registered) | Register new templates as available options |
 
 ### Not in scope

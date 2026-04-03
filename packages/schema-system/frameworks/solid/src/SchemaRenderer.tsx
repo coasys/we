@@ -62,13 +62,44 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     );
   }
 
-  function renderChildren(nodes: (SchemaNode | string)[] | undefined): RendererOutput {
+  function renderChildren(nodes: SchemaNode['children']): RendererOutput {
     if (!nodes) return undefined;
     return (
       <For each={nodes} fallback={null}>
         {(child) => {
-          // If the child is a string (i.e when passing text to <we-text>), return it directly
-          if (typeof child === 'string') return child;
+          // If the child is a string, check for $-prefixed context references
+          if (typeof child === 'string') {
+            if (child.startsWith('$') && child.length > 1) {
+              const resolved = resolveProp(child, stores, context, createMemo);
+              return (
+                <>
+                  {() => {
+                    const v =
+                      typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved
+                        ? (resolved as unknown as () => unknown)()
+                        : resolved;
+                    return v != null ? String(v) : '';
+                  }}
+                </>
+              );
+            }
+            return child;
+          }
+          // Resolve operator tokens ($concat, $store, etc.) placed directly in children
+          if (child && typeof child === 'object' && Object.keys(child).some((k) => k.startsWith('$'))) {
+            const resolved = resolveProp(child as unknown, stores, context, createMemo);
+            return (
+              <>
+                {() => {
+                  const v =
+                    typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved
+                      ? (resolved as unknown as () => unknown)()
+                      : resolved;
+                  return v != null ? String(v) : '';
+                }}
+              </>
+            );
+          }
           // Otherwise render the child node
           return renderNode(child as SchemaNode);
         }}
@@ -183,9 +214,19 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         const ModelClass = getModel(descriptor.model) as Record<string, (...args: unknown[]) => unknown>;
 
         createEffect(() => {
-          const perspective = ((stores as Record<string, unknown>).spaceStore as Record<string, unknown> | undefined)
-            ?.perspective;
-          const p = typeof perspective === 'function' ? (perspective as () => unknown)() : null;
+          let p: unknown = null;
+          if (descriptor.perspectiveStore) {
+            // Resolve custom perspective from store path (e.g. 'testStore.perspective')
+            const parts = descriptor.perspectiveStore.split('.');
+            let target: unknown = stores;
+            for (const part of parts) target = (target as Record<string, unknown>)?.[part];
+            p = typeof target === 'function' ? (target as () => unknown)() : target;
+          } else {
+            // Default: spaceStore.perspective
+            const perspective = ((stores as Record<string, unknown>).spaceStore as Record<string, unknown> | undefined)
+              ?.perspective;
+            p = typeof perspective === 'function' ? (perspective as () => unknown)() : null;
+          }
           if (!p) {
             setItems([]);
             return;

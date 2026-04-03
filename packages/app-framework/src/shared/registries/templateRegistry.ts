@@ -16,7 +16,13 @@
  * 6. TemplateStoreProvider reads registry (gets final launcher)
  */
 
-import { testTemplate, twitterTemplate, weTemplate } from '@shared/schemas';
+import {
+  dataBrowserTemplate,
+  schemaMutationsTemplate,
+  tokenShowcaseTemplate,
+  twitterTemplate,
+  weTemplate,
+} from '@shared/schemas';
 // import type { TemplateSchema } from '@we/schema-shared';
 
 /**
@@ -46,7 +52,9 @@ import { testTemplate, twitterTemplate, weTemplate } from '@shared/schemas';
 export const templateRegistry = {
   we: weTemplate,
   twitter: twitterTemplate,
-  test: testTemplate,
+  'token-showcase': tokenShowcaseTemplate,
+  'data-browser': dataBrowserTemplate,
+  'schema-mutations': schemaMutationsTemplate,
   // launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
 };
 

@@ -33,7 +33,7 @@ export type SchemaNode = {
   slots?: Record<string, SchemaNode>; // Named slots for components that support them
   slot?: string; // The name of the slot this node should be rendered into
   routes?: RouteSchema[]; // Routes for routing components
-  children?: (SchemaNode | string)[]; // Child nodes (or strings for text nodes like <we-text>)
+  children?: (SchemaNode | string | OperatorToken)[]; // Child nodes, text strings, or operator tokens ($concat, $store, etc.)
   theme?: ThemeOverrides; // Scoped theme overrides — applied as CSS custom properties on a display:contents wrapper
 };
 
@@ -77,6 +77,8 @@ export type QueryToken = {
     include?: Record<string, unknown>;
     parent?: Record<string, unknown>;
     subscribe?: boolean;
+    /** Store path to resolve perspective from (e.g. 'testStore.perspective'). Defaults to spaceStore.perspective. */
+    perspectiveStore?: string;
   };
 };
 
@@ -85,6 +87,7 @@ export type QueryDescriptor = {
   model: string;
   params: Record<string, unknown>;
   subscribe: boolean;
+  perspectiveStore?: string;
 };
 
 /** Union of all prop-level operator tokens */

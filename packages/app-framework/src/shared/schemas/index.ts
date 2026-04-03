@@ -1,7 +1,15 @@
 // Templates
 export { twitterTemplate } from './TwitterTemplate.schema';
-export { testTemplate } from './test/TestTemplate.schema';
 export { weTemplate } from './WeTemplate.schema';
+
+// Test templates
+export {
+  createTestStore,
+  dataBrowserTemplate,
+  schemaMutationsTemplate,
+  schemaMutationActions,
+  tokenShowcaseTemplate,
+} from './test';
 
 // Shell fragments
 // export { appSettingsSchema, getAppSettingsSchema } from './shell/AppSettings.schema';

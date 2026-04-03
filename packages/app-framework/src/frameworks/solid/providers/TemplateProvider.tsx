@@ -1,5 +1,6 @@
 import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { getModel } from '@shared/registries/modelRegistry';
+import { createTestStore } from '@shared/schemas/test/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAdamStore,
@@ -96,6 +97,9 @@ export default function TemplateProvider() {
   const templateStore = useTemplateStore();
   const routeStore = useRouteStore();
 
+  // Test store — isolated mock data + test perspective for test templates
+  const testStore = createTestStore(adamStore.adamClient);
+
   // Console store for debugging actions in schema
   const consoleStore = {
     log: (...args: unknown[]) => console.log(...args),
@@ -129,6 +133,7 @@ export default function TemplateProvider() {
     templateStore,
     routeStore,
     consoleStore,
+    testStore,
     model: modelStore,
     $getModel: getModel, // Used by SchemaRenderer for $query descriptor → model class lookup
   };

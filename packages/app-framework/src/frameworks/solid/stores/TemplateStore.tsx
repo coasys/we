@@ -1,5 +1,5 @@
 import { templateRegistry } from '@shared/registries/templateRegistry';
-import { testMutations } from '@shared/schemas/test/TestTemplate.schema';
+import { schemaMutationActions } from '@shared/schemas/test/SchemaMutations.schema';
 import { deepClone } from '@shared/utils';
 import type { FileData } from '@we/models';
 import { Template } from '@we/models';
@@ -28,7 +28,7 @@ export interface TemplateStoreBase {
 }
 
 // TODO: Comment out test mutations before deploying
-export type TemplateStore = TemplateStoreBase & ReturnType<typeof testMutations>;
+export type TemplateStore = TemplateStoreBase & ReturnType<typeof schemaMutationActions>;
 
 const TemplateContext = createContext<TemplateStore>();
 
@@ -204,7 +204,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     saveTemplate,
 
     // Testing
-    ...testMutations(currentTemplate, setCurrentTemplate),
+    ...schemaMutationActions(currentTemplate, setCurrentTemplate),
   };
 
   return <TemplateContext.Provider value={store}>{props.children}</TemplateContext.Provider>;
