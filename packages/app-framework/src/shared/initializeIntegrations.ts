@@ -18,7 +18,7 @@ import type { WeSeedFile } from '../types/seed';
 import { generateLauncherFromSeed, validateSeedForLauncher } from './integrationComposer';
 import type { PlatformAdapter } from './platform/types';
 import { launcherUIRegistry } from './registries/launcherUIRegistry';
-import { templateRegistry } from './registries/templateRegistry';
+// import { templateRegistry } from './registries/templateRegistry';
 
 /**
  * Initialize integrations from seed file
@@ -76,10 +76,11 @@ export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
     }
 
     // Generate launcher template with platform-aware URL resolution
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const launcher = generateLauncherFromSeed(seed, platformAdapter);
 
     // Replace placeholder launcher in template registry
-    templateRegistry.launcher = launcher;
+    // templateRegistry.launcher = launcher;
 
     const mode = seed.apps.length > 0 ? 'Embedded Apps' : 'Native WE App';
     const templateSwitching = launcherUIRegistry.enableTemplateSwitching ? 'enabled' : 'disabled';

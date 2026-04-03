@@ -13,8 +13,8 @@
  * 4. TemplateProvider reads registry → builds app layout
  */
 
-import { getAppSettingsSchema } from '@shared/schemas/shell/AppSettings.schema';
-import { bootScreenSchema } from '@shared/schemas/shell/BootScreen.schema';
+import { bootScreen } from '@shared/schemas/shell/BootScreen.schema';
+import { sidebar } from '@shared/schemas/shell/Sidebar.schema';
 import type { SchemaNode } from '@we/schema-shared';
 
 /**
@@ -25,7 +25,7 @@ import type { SchemaNode } from '@we/schema-shared';
  */
 export const launcherUIRegistry = {
   /** Boot/login screen shown before AD4M is ready */
-  bootScreen: bootScreenSchema as SchemaNode,
+  bootScreen,
 
   /** Custom app settings schema (set via seed) */
   _customAppSettings: undefined as SchemaNode | undefined,
@@ -37,7 +37,8 @@ export const launcherUIRegistry = {
       return this._customAppSettings;
     }
     // Otherwise generate based on template switching mode
-    return getAppSettingsSchema(this.enableTemplateSwitching);
+    return sidebar;
+    // return getAppSettingsSchema(this.enableTemplateSwitching);
   },
 
   /** Whether template switching is enabled (disabled for embedded apps mode) */

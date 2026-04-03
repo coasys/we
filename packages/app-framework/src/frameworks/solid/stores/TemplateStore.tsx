@@ -48,12 +48,18 @@ export function TemplateStoreProvider(props: ParentProps) {
     id,
   }));
 
-  // State
-  const [templates, setTemplates] = createSignal<TemplateSchema[]>(builtInTemplates);
-  const [loading, setLoading] = createSignal(true);
   const initialTemplate = deepClone(
     builtInTemplates.find((t) => t.id === 'launcher') || builtInTemplates[0] || emptyTemplate,
   );
+
+  console.log(
+    'TemplateStore: Initializing with built-in templates:',
+    builtInTemplates.map((t) => t.id),
+  );
+
+  // State
+  const [templates, setTemplates] = createSignal<TemplateSchema[]>(builtInTemplates);
+  const [loading, setLoading] = createSignal(true);
   const [currentTemplate, setCurrentTemplate] = createStore<TemplateSchema>(initialTemplate);
 
   /** Find or create the dedicated templates perspective in AD4M */

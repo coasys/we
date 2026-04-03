@@ -1,5 +1,5 @@
 import type { resolveProp } from './dispatcher';
-import { markReactive } from './reactive';
+import { markReactive, REACTIVE_ACCESSOR } from './reactive';
 import type { MapProp, Memo, Props } from './types';
 
 /**
@@ -67,8 +67,9 @@ export function resolveMapProp(
         const result: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(map.select)) {
           const resolved = resolveSelectValue(value, item, stores, context, memo, resolvePropFn);
-          // Unwrap reactive accessors (from $if, $eq, etc.) since the outer $map memo already tracks reactivity
-          result[key] = typeof resolved === 'function' ? resolved() : resolved;
+          // Unwrap reactive accessors (signals/memos from $if, $eq, etc.) but leave
+          // plain functions (e.g. $action handlers) intact so they remain callable.
+          result[key] = typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved ? resolved() : resolved;
         }
         return result;
       };

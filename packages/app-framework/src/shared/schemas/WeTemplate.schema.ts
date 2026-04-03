@@ -9,7 +9,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 
 export const weTemplate: TemplateSchema = {
   meta: {
-    name: 'WE Native App',
+    name: 'WE',
     description: 'Native WE application with sidebar navigation',
     icon: 'cube',
   },
