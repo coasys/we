@@ -17,9 +17,8 @@
  */
 
 import {
-  dataBrowserTemplate,
+  integrationTestsTemplate,
   schemaMutationsTemplate,
-  tokenShowcaseTemplate,
   twitterTemplate,
   weTemplate,
 } from '@shared/schemas';
@@ -52,8 +51,7 @@ import {
 export const templateRegistry = {
   we: weTemplate,
   twitter: twitterTemplate,
-  'token-showcase': tokenShowcaseTemplate,
-  'data-browser': dataBrowserTemplate,
+  'integration-tests': integrationTestsTemplate,
   'schema-mutations': schemaMutationsTemplate,
   // launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
 };

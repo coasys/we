@@ -38,6 +38,50 @@ function deepUnwrap(value: unknown, depth = 0): unknown {
   return value;
 }
 
+/**
+ * Create a reactive signal that subscribes to a $query and updates with results.
+ * Must be called within a Solid reactive owner (component or createRoot).
+ */
+function createQuerySignal(
+  descriptor: QueryDescriptor,
+  stores: unknown,
+  getModel: (name: string) => unknown,
+): () => unknown[] {
+  const [items, setItems] = createSignal<unknown[]>([]);
+  const ModelClass = getModel(descriptor.model) as Record<string, (...args: unknown[]) => unknown>;
+
+  createEffect(() => {
+    let p: unknown = null;
+    if (descriptor.perspectiveStore) {
+      const parts = descriptor.perspectiveStore.split('.');
+      let target: unknown = stores;
+      for (const part of parts) target = (target as Record<string, unknown>)?.[part];
+      p = typeof target === 'function' ? (target as () => unknown)() : target;
+    } else {
+      const perspective = ((stores as Record<string, unknown>).spaceStore as Record<string, unknown> | undefined)
+        ?.perspective;
+      p = typeof perspective === 'function' ? (perspective as () => unknown)() : null;
+    }
+    if (!p) {
+      setItems([]);
+      return;
+    }
+
+    if (descriptor.subscribe) {
+      const builder = ModelClass.query(p, descriptor.params) as {
+        subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
+        dispose: () => void;
+      };
+      builder.subscribe((results) => setItems(results));
+      onCleanup(() => builder.dispose());
+    } else {
+      (ModelClass.findAll(p, descriptor.params) as Promise<unknown[]>).then(setItems);
+    }
+  });
+
+  return items;
+}
+
 /** Detect values with no schema tokens — can be passed through without reactive tracking. */
 function isStaticValue(value: unknown): boolean {
   if (value === null || value === undefined) return true;
@@ -134,12 +178,27 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     // Get the schema used to render each item
     const itemSchema = node.children?.[0] as SchemaNode | undefined;
 
-    // Resolve the items used for iteration
-    const resolvedItems = resolveProp(node.props?.items, stores, context, createMemo);
-    const itemsArray = createMemo(() => {
-      const items = typeof resolvedItems === 'function' ? resolvedItems() : resolvedItems;
-      return Array.isArray(items) ? items : [];
-    });
+    // Resolve the items used for iteration — $query needs a reactive subscription,
+    // everything else goes through the standard resolveProp path.
+    let itemsArray: () => unknown[];
+
+    const rawItems = node.props?.items;
+    if (hasToken(rawItems, '$query', 'object')) {
+      const descriptor = resolveQueryProp(rawItems);
+      const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      if (!getModel) {
+        console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
+        itemsArray = () => [];
+      } else {
+        itemsArray = createQuerySignal(descriptor, stores, getModel);
+      }
+    } else {
+      const resolvedItems = resolveProp(rawItems, stores, context, createMemo);
+      itemsArray = createMemo(() => {
+        const items = typeof resolvedItems === 'function' ? resolvedItems() : resolvedItems;
+        return Array.isArray(items) ? items : [];
+      });
+    }
 
     // Return a list of the rendered items
     return (
@@ -204,47 +263,13 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     } else if (hasToken(rawValue, '$query', 'object')) {
       // $query: set up reactive subscription via createSignal + createEffect
       // instead of createMemo — subscriptions are side effects, not derivations.
-      const descriptor: QueryDescriptor = resolveQueryProp(rawValue);
+      const descriptor = resolveQueryProp(rawValue);
       const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
       if (!getModel) {
         console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
         propMemos[key] = () => [];
       } else {
-        const [items, setItems] = createSignal<unknown[]>([]);
-        const ModelClass = getModel(descriptor.model) as Record<string, (...args: unknown[]) => unknown>;
-
-        createEffect(() => {
-          let p: unknown = null;
-          if (descriptor.perspectiveStore) {
-            // Resolve custom perspective from store path (e.g. 'testStore.perspective')
-            const parts = descriptor.perspectiveStore.split('.');
-            let target: unknown = stores;
-            for (const part of parts) target = (target as Record<string, unknown>)?.[part];
-            p = typeof target === 'function' ? (target as () => unknown)() : target;
-          } else {
-            // Default: spaceStore.perspective
-            const perspective = ((stores as Record<string, unknown>).spaceStore as Record<string, unknown> | undefined)
-              ?.perspective;
-            p = typeof perspective === 'function' ? (perspective as () => unknown)() : null;
-          }
-          if (!p) {
-            setItems([]);
-            return;
-          }
-
-          if (descriptor.subscribe) {
-            const builder = ModelClass.query(p, descriptor.params) as {
-              subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
-              dispose: () => void;
-            };
-            builder.subscribe((results) => setItems(results));
-            onCleanup(() => builder.dispose());
-          } else {
-            (ModelClass.findAll(p, descriptor.params) as Promise<unknown[]>).then(setItems);
-          }
-        });
-
-        propMemos[key] = items;
+        propMemos[key] = createQuerySignal(descriptor, stores, getModel);
       }
     } else {
       const raw = rawValue;

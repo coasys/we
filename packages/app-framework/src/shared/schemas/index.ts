@@ -5,10 +5,9 @@ export { weTemplate } from './WeTemplate.schema';
 // Test templates
 export {
   createTestStore,
-  dataBrowserTemplate,
+  integrationTestsTemplate,
   schemaMutationsTemplate,
   schemaMutationActions,
-  tokenShowcaseTemplate,
 } from './test';
 
 // Shell fragments

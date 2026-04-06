@@ -19,7 +19,7 @@ export const sidebar: SchemaNode = {
         side: 'left',
         position: 'fixed',
         zIndex: 10,
-        border: 'none',
+        border: '0',
         itemPadding: '12px',
         centerItems: false,
 
