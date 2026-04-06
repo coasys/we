@@ -28,7 +28,7 @@ export type {
 export { validateSchema, validateNode } from './validators';
 export type { ValidationError, ValidationResult } from './validators';
 export { NODE_OPERATORS } from './zodSchemas';
-export { findMutations } from './mutations';
+export { findMutations, isLengthMutation } from './mutations';
 export { resolveProp, resolveProps, resolveQueryProp, splitProps, REACTIVE_ACCESSOR } from './propResolvers';
 export { hasToken } from './predicates';
 export { themeToStyle } from './themeStyles';

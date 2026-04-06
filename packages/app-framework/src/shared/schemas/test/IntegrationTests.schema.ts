@@ -13,7 +13,6 @@
  * Data source: testStore (SolidJS signals + lazy AD4M perspective)
  */
 import type { SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
-
 // ---------------------------------------------------------------------------
 // Helpers — reusable test section building blocks
 // ---------------------------------------------------------------------------
@@ -137,7 +136,7 @@ const actionTest = section('$action', 'Trigger store mutations', [
     children: [
       {
         type: 'we-button',
-        props: { variant: 'outline', onClick: { $action: 'testStore.increment' } },
+        props: { onClick: { $action: 'testStore.increment' } },
         children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Increment'],
       },
       { type: 'we-text', children: ['Counter:'] },
@@ -376,7 +375,7 @@ const mapTest = section('$map', 'Transform list items via select', [
   {
     type: 'we-text',
     props: { color: 'neutral-600' },
-    children: ['Expect 3 rows: Language: TypeScript, Framework: SolidJS, Version: 2.0'],
+    children: ['Expect 3 rows: Language (TypeScript), Framework (SolidJS), Version (2.0)'],
   },
   {
     type: 'Column',
@@ -453,6 +452,11 @@ const queryTest = section('$query', 'Reactive AD4M perspective subscription', [
     type: 'we-text',
     props: { color: 'neutral-400' },
     children: ['Subscribes to TestItem models in __we_test__ perspective (requires AD4M):'],
+  },
+  {
+    type: 'we-text',
+    props: { color: 'neutral-600' },
+    children: ['Expect 3 rows: Alpha (active), Beta (draft), Gamma (active)'],
   },
   {
     type: '$if',
@@ -542,7 +546,7 @@ const childrenTokenTest = section('Children tokens', 'Operator tokens resolved d
 
 const themeTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', r: '400', border: '2px solid var(--we-color-neutral-200)' },
+  props: { gap: '300', p: '400', r: '400', bg: 'neutral-100', border: '1px solid var(--we-color-primary-200)' },
   // Apply theme overrides to this section
   theme: { primaryHue: 320, saturation: '90%' },
   children: [
@@ -552,7 +556,7 @@ const themeTest: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { color: 'primary-600' },
+          props: { color: 'primary-500', fontWeight: '600' },
           children: ['Theme'],
         },
         { type: 'we-text', props: { color: 'neutral-500' }, children: ['—'] },
@@ -583,7 +587,7 @@ const themeTest: SchemaNode = {
 // Header
 // ---------------------------------------------------------------------------
 
-const testHeader: SchemaNode = {
+const header: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
   children: [
@@ -614,7 +618,7 @@ export const integrationTestsTemplate: TemplateSchema = {
   type: 'Column',
   props: { minHeight: '100%', width: '100%', p: '500', bg: 'neutral-50' },
   children: [
-    testHeader,
+    header,
     {
       type: 'Column',
       props: { gap: '400' },

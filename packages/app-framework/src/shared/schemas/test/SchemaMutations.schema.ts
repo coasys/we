@@ -11,7 +11,8 @@
  * This replaces the old TestTemplate.schema.ts with a clean, focused design.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { TemplateSchema } from '@we/schema-shared';
+import { toastService } from '@we/components/solid';
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import type { SetStoreFunction } from 'solid-js/store';
 
@@ -23,38 +24,31 @@ import { deepClone } from '../../utils';
 
 const mutationButtons = {
   type: 'Row',
-  props: {
-    p: '400',
-    gap: '300',
-    ay: 'center',
-    bg: 'neutral-100',
-    style: { 'border-bottom': '1px solid var(--we-color-neutral-200)', 'flex-wrap': 'wrap' },
-  },
+  props: { gap: '300', ay: 'center' },
   children: [
-    { type: 'we-text', props: { fontSize: '400', fontWeight: '700', color: 'neutral-600' }, children: ['Mutations:'] },
     {
       type: 'we-button',
-      props: { variant: 'ghost', onClick: { $action: 'templateStore.addChild' } },
+      props: { onClick: { $action: 'templateStore.addChild' } },
       children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add child'],
     },
     {
       type: 'we-button',
-      props: { variant: 'ghost', onClick: { $action: 'templateStore.removeChild' } },
+      props: { onClick: { $action: 'templateStore.removeChild' } },
       children: [{ type: 'we-icon', props: { name: 'minus' } }, 'Remove child'],
     },
     {
       type: 'we-button',
-      props: { variant: 'ghost', onClick: { $action: 'templateStore.changeProp' } },
+      props: { onClick: { $action: 'templateStore.changeProp' } },
       children: [{ type: 'we-icon', props: { name: 'pencil' } }, 'Change prop'],
     },
     {
       type: 'we-button',
-      props: { variant: 'ghost', onClick: { $action: 'templateStore.changeType' } },
+      props: { onClick: { $action: 'templateStore.changeType' } },
       children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Change type'],
     },
     {
       type: 'we-button',
-      props: { variant: 'ghost', onClick: { $action: 'templateStore.addRouteChild' } },
+      props: { onClick: { $action: 'templateStore.addRouteChild' } },
       children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add route child'],
     },
   ],
@@ -62,20 +56,40 @@ const mutationButtons = {
 
 const dynamicArea = {
   type: 'Column',
-  props: { id: 'dynamic-area', p: '400', gap: '300', bg: 'neutral-0' },
+  props: { id: 'dynamic-area', p: '400', bg: 'neutral-0', r: '400' },
   children: [
     {
       type: 'we-text',
-      props: { fontSize: '300', color: 'neutral-400' },
+      props: { color: 'neutral-400' },
       children: ['Dynamic children appear here. Click "Add child" above.'],
     },
+    { type: 'Column', props: { mt: '300', gap: '300' }, children: [] },
+  ],
+};
+
+const header: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    {
+      type: 'we-text',
+      props: { fontSize: '700', fontWeight: '700', color: 'primary-700' },
+      children: ['Schema Mutation Tests'],
+    },
+    {
+      type: 'we-text',
+      props: { color: 'neutral-600' },
+      children: ['Tests the updateSchema diffing engine — use buttons to add, remove, and change nodes'],
+    },
+    { type: 'we-divider' },
   ],
 };
 
 const mainContent = {
   type: 'Column',
-  props: { style: { flex: '1', overflow: 'auto' } },
+  props: { minHeight: '100%', width: '100%', p: '500', bg: 'neutral-50', gap: '400' },
   children: [
+    header,
     mutationButtons,
     dynamicArea,
     // $routes: routed content appears here
@@ -111,12 +125,12 @@ export const schemaMutationsTemplate: TemplateSchema = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'ghost', onClick: { $action: 'routeStore.navigate', args: ['/sub'] } },
+              props: { variant: 'secondary', onClick: { $action: 'routeStore.navigate', args: ['/sub'] } },
               children: ['Go to /sub'],
             },
             {
               type: 'we-button',
-              props: { variant: 'ghost', onClick: { $action: 'routeStore.navigate', args: ['/sub/nested'] } },
+              props: { variant: 'secondary', onClick: { $action: 'routeStore.navigate', args: ['/sub/nested'] } },
               children: ['Go to /sub/nested'],
             },
           ],
@@ -155,53 +169,63 @@ export const schemaMutationsTemplate: TemplateSchema = {
 //
 // Path reference:
 //   children[0] = mainContent Column
-//     children[0] = mutation buttons Row
-//     children[1] = dynamic area Column (id: 'dynamic-area')
-//     children[2] = main (with $routes)
+//     children[0] = header
+//     children[1] = mutation buttons Row
+//     children[2] = dynamic area Column (id: 'dynamic-area')
+//       children[0] = placeholder text
+//       children[1] = inner Column (dynamic children go here)
+//     children[3] = main (with $routes)
 // ---------------------------------------------------------------------------
 
 export function schemaMutationActions(
   currentSchema: TemplateSchema,
   setCurrentSchema: SetStoreFunction<TemplateSchema>,
 ) {
+  function applyUpdate(newSchema: TemplateSchema) {
+    const result = updateSchema(currentSchema, newSchema, setCurrentSchema);
+    if (!result.applied && result.errors?.length) {
+      toastService.error(`Schema validation failed: ${result.errors[0].message}`);
+    }
+  }
+
   function addChild() {
     const newSchema = deepClone(currentSchema) as any;
-    const dynamicArea = newSchema.children[0].children[1];
+    const dynamicArea = newSchema.children[0].children[2].children[1];
     const count = dynamicArea.children.length;
     dynamicArea.children.push({
       type: 'Row',
-      props: { p: '300', gap: '200', bg: 'primary-50', r: '200', ay: 'center' },
+      props: { p: '300', gap: '200', bg: 'neutral-100', r: '200', ay: 'center' },
       children: [
-        { type: 'we-icon', props: { name: 'check', color: 'primary-500' } },
-        { type: 'we-text', props: { fontSize: '300' }, children: [`Dynamic child #${count}`] },
+        { type: 'we-icon', props: { name: 'check', color: 'success-500' } },
+        { type: 'we-text', children: [`Dynamic child #${count}`] },
       ],
     });
-    updateSchema(currentSchema, newSchema, setCurrentSchema);
+    applyUpdate(newSchema);
   }
 
   function removeChild() {
     const newSchema = deepClone(currentSchema) as any;
-    const dynamicArea = newSchema.children[0].children[1];
-    if (dynamicArea.children.length > 1) {
+    const dynamicArea = newSchema.children[0].children[2].children[1];
+    if (dynamicArea.children.length > 0) {
       dynamicArea.children.pop();
     }
-    updateSchema(currentSchema, newSchema, setCurrentSchema);
+    applyUpdate(newSchema);
   }
 
   function changeProp() {
     const newSchema = deepClone(currentSchema) as any;
-    const dynamicArea = newSchema.children[0].children[1];
+    const dynamicArea = newSchema.children[0].children[2];
     // Toggle background between neutral-0 and neutral-900
     dynamicArea.props.bg = dynamicArea.props.bg === 'neutral-0' ? 'neutral-900' : 'neutral-0';
-    updateSchema(currentSchema, newSchema, setCurrentSchema);
+    applyUpdate(newSchema);
   }
 
   function changeType() {
     const newSchema = deepClone(currentSchema) as any;
-    const dynamicArea = newSchema.children[0].children[1];
+    const dynamicArea = newSchema.children[0].children[2].children[1];
     // Toggle between Column and Row
     dynamicArea.type = dynamicArea.type === 'Column' ? 'Row' : 'Column';
-    updateSchema(currentSchema, newSchema, setCurrentSchema);
+    applyUpdate(newSchema);
   }
 
   function addRouteChild() {
@@ -215,7 +239,7 @@ export function schemaMutationActions(
         children: [`Route child #${count}`],
       });
     }
-    updateSchema(currentSchema, newSchema, setCurrentSchema);
+    applyUpdate(newSchema);
   }
 
   return { addChild, removeChild, changeProp, changeType, addRouteChild };

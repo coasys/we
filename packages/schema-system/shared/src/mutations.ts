@@ -9,17 +9,19 @@ function accumulateMutations(mutations: Mutation[] = [], path: (string | number)
 
   // Handle arrays
   if (Array.isArray(a) && Array.isArray(b)) {
+    // Diff shared indices, then emit length mutation if the array shrank
+    const minLen = Math.min(a.length, b.length);
     const maxLen = Math.max(a.length, b.length);
     for (let i = 0; i < maxLen; i++) {
       const oldItem = a[i];
       const newItem = b[i];
       const itemPath = [...path, i];
-      if (oldItem === undefined && newItem !== undefined) {
-        mutations.push({ path: itemPath, value: newItem });
+      if (i >= b.length) {
+        // Element removed — handled by the length mutation below
         continue;
       }
-      if (newItem === undefined && oldItem !== undefined) {
-        mutations.push({ path: itemPath, value: undefined });
+      if (oldItem === undefined && newItem !== undefined) {
+        mutations.push({ path: itemPath, value: newItem });
         continue;
       }
       if (isPrimitive(oldItem) || isPrimitive(newItem)) {
@@ -35,6 +37,10 @@ function accumulateMutations(mutations: Mutation[] = [], path: (string | number)
         continue;
       }
       if (oldItem !== newItem) mutations.push({ path: itemPath, value: newItem });
+    }
+    // Emit a length mutation so the consumer can truncate the array
+    if (b.length < a.length) {
+      mutations.push({ path: [...path, 'length'], value: b.length });
     }
     return;
   }
@@ -89,4 +95,9 @@ export function findMutations<T extends Record<string, unknown>>(oldNode: T, new
   const mutations: Mutation[] = [];
   accumulateMutations(mutations, [], oldNode, newNode);
   return mutations;
+}
+
+/** Check whether a mutation is an array-length truncation (path ends with 'length'). */
+export function isLengthMutation(m: Mutation): boolean {
+  return m.path.length > 0 && m.path[m.path.length - 1] === 'length' && typeof m.value === 'number';
 }

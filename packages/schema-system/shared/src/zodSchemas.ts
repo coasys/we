@@ -114,10 +114,8 @@ export const zSchemaNode: z.ZodType<SchemaNode> = z
       if (!node.props?.then)
         ctx.addIssue({ code: 'custom', path: ['props', 'then'], message: '$if requires a "then" prop' });
     }
-    if (node.type === '$routes') {
-      if (!node.routes?.length)
-        ctx.addIssue({ code: 'custom', path: ['routes'], message: '$routes requires at least one route' });
-    }
+    // Note: $routes is a render slot — it marks where routed content appears.
+    // The actual routes array lives on the parent template or route node, not on the $routes node itself.
   });
 
 export const zSchemaProp: z.ZodType<SchemaProp> = z.union([

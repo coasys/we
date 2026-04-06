@@ -252,14 +252,16 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   // --- Per-prop resolution (fine-grained reactivity) ---
   // Create per-prop memos — each prop resolves independently,
-  // isolating its reactive dependencies. Static props bypass resolution entirely.
+  // isolating its reactive dependencies. Static props still read from
+  // the store reactively so that updateSchema mutations are tracked.
   // resolveProp is called INSIDE the memo so that plain-value resolvers
   // ($not, $eq, $ne, $and, $or) correctly track signal dependencies.
   const propMemos: Record<string, () => unknown> = {};
   for (const [key, rawValue] of Object.entries(node.props ?? {})) {
     if (isStaticValue(rawValue)) {
-      const value = rawValue;
-      propMemos[key] = () => value;
+      // Read from the store node so Solid tracks changes from updateSchema.
+      const k = key;
+      propMemos[key] = createMemo(() => (node.props as Record<string, unknown>)?.[k]);
     } else if (hasToken(rawValue, '$query', 'object')) {
       // $query: set up reactive subscription via createSignal + createEffect
       // instead of createMemo — subscriptions are side effects, not derivations.

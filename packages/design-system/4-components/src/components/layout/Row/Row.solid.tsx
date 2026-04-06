@@ -10,13 +10,15 @@ const rowKeys = [...designSystemKeys.filter((key) => key !== 'direction'), 'reve
 
 export function Row(allProps: RowProps) {
   const [designSystemProps, rest] = splitProps(allProps, rowKeys as (keyof RowProps)[]);
-  const usedProps = filterProps(designSystemProps, rowKeys);
-  const props = mergeProps(usedProps, DEFAULTS) as RowProps;
-  const reactiveStyles = createMemo(() => buildLayoutStyles(props, 'row'));
+  const reactiveStyles = createMemo(() => {
+    const usedProps = filterProps(designSystemProps, rowKeys);
+    const props = mergeProps(usedProps, DEFAULTS) as RowProps;
+    return buildLayoutStyles(props, 'row');
+  });
 
   return (
     <div style={reactiveStyles()} {...rest}>
-      {props.children}
+      {designSystemProps.children}
     </div>
   );
 }

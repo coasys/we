@@ -24,11 +24,11 @@ describe('mutations.findMutations (combined)', () => {
     expect(muts).toEqual([{ path: ['list', 2], value: 3 }]);
   });
 
-  it('detects array removal (undefined)', () => {
+  it('detects array removal (emits length mutation)', () => {
     const a = { list: [1, 2, 3] };
     const b = { list: [1, 2] };
     const muts = findMutations(a, b);
-    expect(muts).toEqual([{ path: ['list', 2], value: undefined }]);
+    expect(muts).toEqual([{ path: ['list', 'length'], value: 2 }]);
   });
 
   it('detects nested array element change', () => {
