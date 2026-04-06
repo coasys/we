@@ -29,9 +29,10 @@ All files are re-exported through `src/index.ts`.
 
 ### Scale Types
 
-- **Numbered scales** (`'100'`–`'1000'`) — for continuous/metric values where relative ordering matters: spacing, font-size, transition duration.
-- **Named scales** (`'sm'`, `'md'`, `'lg'`) — for semantic/categorical values: component sizes, radius, shadow presets.
+- **Numbered scales** (`'100'`–`'1000'`) — for continuous/metric values where relative ordering matters: spacing, font-size, radius, transition duration.
+- **Named scales** (`'sm'`, `'md'`, `'lg'`) — for semantic/categorical values: component sizes, shadow presets.
 - **Keyword scales** (`'tight'`, `'normal'`, `'loose'`) — for named presets with descriptive meaning: line-height, letter-spacing.
+- **Special named tokens** (`'pill'`, `'full'`) — non-linear values that don't fit a numeric scale, used alongside numeric scales (e.g. radius).
 
 ### Type Naming
 
@@ -102,7 +103,7 @@ The `scripts/generate-css.ts` script runs as a post-build hook (via tsup). It:
 - `--we-space-300`
 - `--we-color-primary-500`
 - `--we-font-size-400`
-- `--we-radius-md`
+- `--we-radius-400`
 
 ## Runtime Consumption
 

@@ -9,7 +9,7 @@ import sharedStyles from '../shared/styles';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   direction: 'column',
   bg: 'white',
-  r: 'md',
+  r: '400',
 };
 
 const styles = css`

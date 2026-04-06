@@ -28,20 +28,26 @@ export const size = {
 
 /**
  * Border radius size scale.
+ *
+ * Uses a numeric scale (like spacing) for dimensional values,
+ * with named tokens reserved for special non-linear values.
  */
-export type RadiusToken = 'none' | 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'pill' | 'full';
+export type RadiusToken = '0' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | 'pill' | 'full';
 
 // Branded type to allow both tokens and raw radius values (px, rem, %, etc.) while preserving autocomplete
 export type RadiusValue = RadiusToken | (string & {});
 
 export const radius = {
-  none: '0',
-  xxs: '0.125rem', // 2px
-  xs: '0.25rem', // 4px
-  sm: '0.375rem', // 6px
-  md: '0.5rem', // 8px
-  lg: '0.75rem', // 12px
-  xl: '1rem', // 16px
+  '0': '0', // 0px
+  '100': '0.125rem', // 2px
+  '200': '0.25rem', // 4px
+  '300': '0.375rem', // 6px
+  '400': '0.5rem', // 8px
+  '500': '0.75rem', // 12px
+  '600': '1rem', // 16px
+  '700': '1.25rem', // 20px
+  '800': '1.5rem', // 24px
+  '900': '2rem', // 32px
   pill: '9999px',
   full: '50%',
 } satisfies Record<RadiusToken, string>;

@@ -12,7 +12,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
   direction: 'column',
   bg: 'neutral-0',
-  r: 'md',
+  r: '400',
   border: '1px solid var(--we-color-neutral-200)',
   overflow: 'hidden',
 };

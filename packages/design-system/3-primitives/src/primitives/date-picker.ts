@@ -32,7 +32,7 @@ const styles = css`
     display: flex;
     align-items: center;
     border: 1px solid var(--we-color-neutral-300);
-    border-radius: var(--we-radius-md);
+    border-radius: var(--we-radius-400);
     background: var(--we-color-neutral-0);
     padding: 0 var(--we-space-300);
     cursor: pointer;
@@ -58,7 +58,7 @@ const styles = css`
     z-index: 10;
     background: var(--we-color-neutral-0);
     border: 1px solid var(--we-color-neutral-200);
-    border-radius: var(--we-radius-md);
+    border-radius: var(--we-radius-400);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     padding: var(--we-space-300);
     margin-top: var(--we-space-100);
@@ -79,7 +79,7 @@ const styles = css`
     justify-content: center;
     width: 28px;
     height: 28px;
-    border-radius: var(--we-radius-md);
+    border-radius: var(--we-radius-400);
   }
 
   [part='month-nav']:hover {
@@ -107,7 +107,7 @@ const styles = css`
     cursor: pointer;
     width: 32px;
     height: 32px;
-    border-radius: var(--we-radius-md);
+    border-radius: var(--we-radius-400);
     transition: background 0.1s ease;
   }
 

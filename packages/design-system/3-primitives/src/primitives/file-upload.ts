@@ -13,7 +13,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ax: 'center',
   gap: '300',
   p: '800',
-  r: 'lg',
+  r: '500',
   border: '2px dashed var(--we-color-neutral-300)',
   color: 'neutral-500',
   fontSize: '400',
@@ -50,7 +50,7 @@ const styles = css`
     gap: var(--we-space-200);
     padding: var(--we-space-100) var(--we-space-200);
     background: var(--we-color-neutral-50);
-    border-radius: var(--we-radius-md);
+    border-radius: var(--we-radius-400);
     font-size: 0.875em;
     color: var(--we-color-neutral-700);
   }

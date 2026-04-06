@@ -14,7 +14,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   gap: '300',
   px: '400',
   py: '300',
-  r: 'md',
+  r: '400',
   fontSize: '400',
 };
 

@@ -14,7 +14,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   py: '200',
   fontSize: '400',
   bg: 'neutral-75',
-  r: 'sm',
+  r: '300',
   color: 'neutral-1000',
   hoverProps: { bg: 'neutral-100' },
   focusProps: { bg: 'neutral-100', shadow: '0 0 0 2px var(--we-color-primary-500)' },

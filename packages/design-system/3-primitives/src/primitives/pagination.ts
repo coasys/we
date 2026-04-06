@@ -34,7 +34,7 @@ const styles = css`
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    border-radius: var(--we-radius-md);
+    border-radius: var(--we-radius-400);
     transition: background 0.15s ease;
     user-select: none;
   }

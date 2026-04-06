@@ -27,7 +27,7 @@ export const weTemplate: TemplateSchema = {
         side: 'left',
         position: 'absolute',
         zIndex: 2,
-        border: 'none',
+        border: '0',
         itemPadding: '12px',
         centerItems: true,
         // Navigation items
@@ -243,7 +243,7 @@ export const weTemplate: TemplateSchema = {
         side: 'right',
         position: 'absolute',
         zIndex: 2,
-        border: 'none',
+        border: '0',
         itemPadding: '12px',
         centerItems: true,
         // Navigation items
@@ -459,7 +459,7 @@ export const weTemplate: TemplateSchema = {
                     p: '1.5rem',
                     gap: '0.5rem',
                     bg: 'neutral-0',
-                    r: 'md',
+                    r: '400',
                     borderLeft: '4px solid',
                     borderColor: 'primary-500',
                   },
@@ -501,7 +501,7 @@ export const weTemplate: TemplateSchema = {
                     p: '1.5rem',
                     gap: '0.5rem',
                     bg: 'neutral-0',
-                    r: 'md',
+                    r: '400',
                     borderLeft: '4px solid',
                     borderColor: 'blue-500',
                   },
@@ -543,7 +543,7 @@ export const weTemplate: TemplateSchema = {
                     p: '1.5rem',
                     gap: '0.5rem',
                     bg: 'neutral-0',
-                    r: 'md',
+                    r: '400',
                     borderLeft: '4px solid',
                     borderColor: 'green-500',
                   },
@@ -585,7 +585,7 @@ export const weTemplate: TemplateSchema = {
                     p: '1.5rem',
                     gap: '0.5rem',
                     bg: 'neutral-0',
-                    r: 'md',
+                    r: '400',
                     borderLeft: '4px solid',
                     borderColor: 'orange-500',
                   },
@@ -662,7 +662,7 @@ export const weTemplate: TemplateSchema = {
                             p: '1rem',
                             gap: '1rem',
                             bg: 'neutral-0',
-                            r: 'md',
+                            r: '400',
                             ay: 'center',
                           },
                           children: [
@@ -708,7 +708,7 @@ export const weTemplate: TemplateSchema = {
                             p: '1rem',
                             gap: '1rem',
                             bg: 'neutral-0',
-                            r: 'md',
+                            r: '400',
                             ay: 'center',
                           },
                           children: [
@@ -754,7 +754,7 @@ export const weTemplate: TemplateSchema = {
                             p: '1rem',
                             gap: '1rem',
                             bg: 'neutral-0',
-                            r: 'md',
+                            r: '400',
                             ay: 'center',
                           },
                           children: [
@@ -800,7 +800,7 @@ export const weTemplate: TemplateSchema = {
                             p: '1rem',
                             gap: '1rem',
                             bg: 'neutral-0',
-                            r: 'md',
+                            r: '400',
                             ay: 'center',
                           },
                           children: [
@@ -942,7 +942,7 @@ export const weTemplate: TemplateSchema = {
                                 p: '1rem',
                                 gap: '0.5rem',
                                 bg: 'neutral-0',
-                                r: 'md',
+                                r: '400',
                               },
                               children: [
                                 {
@@ -971,7 +971,7 @@ export const weTemplate: TemplateSchema = {
                                 p: '1rem',
                                 gap: '0.5rem',
                                 bg: 'neutral-0',
-                                r: 'md',
+                                r: '400',
                               },
                               children: [
                                 {
@@ -1000,7 +1000,7 @@ export const weTemplate: TemplateSchema = {
                                 p: '1rem',
                                 gap: '0.5rem',
                                 bg: 'neutral-0',
-                                r: 'md',
+                                r: '400',
                               },
                               children: [
                                 {

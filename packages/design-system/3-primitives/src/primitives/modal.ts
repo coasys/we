@@ -7,7 +7,7 @@ import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'neutral-0',
-  r: 'xl',
+  r: '600',
   p: '900',
   ax: 'center',
   ay: 'center',

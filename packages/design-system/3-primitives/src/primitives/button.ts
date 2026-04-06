@@ -10,7 +10,7 @@ import type { ButtonSize, ButtonVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   cursor: 'pointer',
-  r: 'md',
+  r: '400',
   px: '400',
   py: '200',
   ax: 'center',
