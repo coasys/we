@@ -1,6 +1,6 @@
 import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { getModel } from '@shared/registries/modelRegistry';
-import { createTestStore } from '@shared/schemas/test/testStore';
+import { createTestStore } from '@shared/schemas/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAdamStore,

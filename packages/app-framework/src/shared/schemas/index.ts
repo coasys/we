@@ -9,7 +9,7 @@ export {
   schemaMutationsTemplate,
   schemaMutationActions,
   schemaRoutingTemplate,
-} from './test';
+} from './tests';
 
 // Shell fragments
 // export { appSettingsSchema, getAppSettingsSchema } from './shell/AppSettings.schema';
