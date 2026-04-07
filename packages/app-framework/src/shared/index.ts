@@ -19,5 +19,5 @@ export * from './seedLoader';
 export * from './utils';
 
 // Prompts
-export * from './prompts/schemaContext';
+// schemaContext is now provided by @we/ai-context
 export * from './prompts/schemaExamples';

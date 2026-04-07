@@ -1,6 +1,6 @@
-# Plan: `@we/ai-context` — Auto-Extracted Context + MCP Evolution
+# Plan: `@we/ai-context` — Auto-Extracted Context for Local AI Agents
 
-> Replaces the previous hand-written fragment approach. This plan establishes auto-extraction from source as the primary strategy, with MCP tools as the designed-for long-term evolution.
+> Replaces the hand-written `schemaContext.ts` with auto-extraction from source. Primary output: committed instruction files for local AI agents (Copilot, Cursor, etc.) + runtime constant for in-app AI.
 
 ---
 
@@ -9,22 +9,20 @@
 `schemaContext.ts` is a hand-written ~400-line string in `app-framework` that documents components, tokens, stores, and operators for AI schema generation. Problems:
 
 1. **Wrong home** — runtime and tooling concerns are mixed
-2. **Drifts from source** — no enforcement mechanism; manually maintained
-3. **Doesn't scale** — as WE grows, a static dump injected upfront consumes ever more of a model's context window
-4. **Single consumer assumed** — any future tooling must depend on `app-framework`
-5. **No upgrade path** — hand-written fragments have no clear route to on-demand MCP tooling
+2. **Drifts from source** — no enforcement mechanism; manually maintained. Currently lists 6 primitives when 42 exist, references removed tokens (`$expr`, `$forEach`), and is missing `$concat`, `$not`, `$ne`, `$and`, `$or`, variants, theme overrides, all 34 components from PR #10, and all 15 block models from `@we/models`.
+3. **Single consumer assumed** — any future tooling must depend on `app-framework`
+4. **No local agent support** — no `.instructions.md` or skill files in the repo; developers cloning the repo get zero AI context automatically
 
 ---
 
-## Strategy: Three Layers
+## Strategy: Two Layers
 
 ```
 Layer 1 (Now):    Auto-extract from source + JSDoc conventions
-Layer 2 (Soon):   Assemble into structured context object + generated prompt
-Layer 3 (Later):  Expose as MCP tools for on-demand, targeted lookups
+Layer 2 (Now):    Assemble into instruction files + runtime constant
 ```
 
-Each layer builds on the previous. The data model is designed once; it serves all three.
+Both layers ship in one PR. The data model (`ComponentEntry`, `StoreEntry`, `TokenSet`) is structured enough that if MCP is ever needed in the future, it's a straightforward extension — but MCP is not a design target.
 
 ---
 
@@ -37,9 +35,11 @@ Each layer builds on the previous. The data model is designed once; it serves al
 | `@we/primitives` web components  | Props + types                  | Custom Elements Manifest (CEM) — already configured                  |
 | `@we/components` + `@we/widgets` | Props + types                  | Parse `*.types.ts` files (framework-agnostic shared prop interfaces) |
 | `@we/design-system/1-tokens`     | All token values               | Read token objects directly (they're typed TS exports)               |
-| `@we/app-framework` stores       | State keys + action signatures | Parse store TypeScript interfaces                                    |
+| `@we/models` block + entity types | Model names, fields, types, relations | Parse `@Model`/`@Property`/`@HasMany`/`@HasOne` decorators with ts-morph |
 
-This covers everything that _can_ be kept in sync mechanically.
+**Block/entity models are auto-extracted.** `@we/models` contains 15 block types (TextBlock, ImageBlock, AudioBlock, CollectionBlock, etc.) and 4 entity models (Space, Template, Theme, AgentConfig), all decorated with `@Model`/`@Property`/`@HasMany`. The extractor reads decorator metadata to produce model name + field name/type/required/default pairs, plus relation declarations (`@HasMany`/`@HasOne` with their `through` predicate and target model). Relations are critical for `$query` — they define the `include` and `parent` parameters (e.g. CollectionBlock `@HasMany({ through: 'we://children' })`, WeNode `@HasMany({ through: 'we://has_comments' })`). Models change frequently as the block ecosystem grows (3 → 15 already, targeting 20+), making auto-extraction essential.
+
+**Stores are hand-maintained in fragments**, not auto-extracted. There are only 7 stores, they change infrequently, and they're Solid.js-specific (`Accessor<T>`, `createSignal`) — parsing them requires unwrapping framework wrappers for minimal benefit. The store section in `fragments/stores.ts` documents state keys and action signatures in plain text.
 
 ### JSDoc convention — only where needed
 
@@ -76,12 +76,17 @@ The extraction script reads `@ai` tags and includes them as the component's desc
 
 Cross-cutting concerns that don't live in any single component file, and change rarely:
 
-- **Schema operators** (`$store`, `$if`, `$map`, `$forEach`, etc.) — these are system-level, not per-component
+- **Schema operators** (`$store`, `$if`, `$map`, `$each`, `$query`, etc.) — these are system-level, not per-component
 - **Routing patterns** — route arrays, path syntax, `$routes` outlet
+- **Store state & actions** — 7 stores with their state keys and action signatures (AdamStore, RouteStore, ThemeStore, TemplateStore, SpaceStore, ModalStore, AiStore)
 - **Store usage patterns** — how to wire components to stores idiomatically
-- **Rules + constraints** — "don't put `$expr` directly in children", "meta is required at root", etc.
+- **Rules + constraints** — "never use null in children arrays", "meta is required at root", etc.
 
 These live in `packages/ai-context/src/fragments/` as before. They're architectural documentation that changes infrequently and earns its maintenance cost.
+
+### Principle: only document implemented features
+
+Fragments and extractors document what **currently works in the codebase**, not what's planned. When `$localState` lands, the schema-operators fragment gets updated. When `$validate` lands, same. If an AI generates a schema using a token that doesn't exist yet, the schema won't render — that's worse than the AI not knowing about it. The instruction files are a snapshot of current capabilities, not a roadmap.
 
 ---
 
@@ -99,175 +104,124 @@ packages/ai-context/
 ├── README.md
 └── src/
     ├── index.ts
-    ├── types.ts              # Shared types: ComponentEntry, StoreEntry, TokenSet, etc.
+    ├── types.ts              # Shared types: ComponentEntry, ModelEntry, StoreEntry, TokenSet, etc.
     ├── assembler.ts          # Composes all sources into AssembledContext
+    ├── generate.ts           # CLI script: assembles context → writes output files
     ├── extractors/
     │   ├── cem.ts            # Reads CEM output for @we/primitives
     │   ├── typescript.ts     # Parses *.types.ts interfaces for components + widgets
     │   ├── tokens.ts         # Reads @we/design-tokens token objects
-    │   └── stores.ts         # Parses store type definitions
+    │   └── models.ts         # Parses @Model/@Property/@HasMany/@HasOne from @we/models
     └── fragments/            # Hand-maintained (cross-cutting concerns only)
         ├── schema-operators.ts
         ├── routing.ts
+        ├── stores.ts         # All 7 stores: state keys + action signatures
         ├── store-patterns.ts
         └── rules.ts
 ```
 
-**No per-package `ai-context.ts` files.** The extractors read the actual source directly.
+**No per-package `ai-context.ts` files.** The extractors read the actual source directly. Block/entity models are auto-extracted from `@we/models` (they use standard `@Model`/`@Property`/`@HasMany`/`@HasOne` decorators that ts-morph handles cleanly). Stores are hand-maintained in fragments (not extracted) because there are only 7, they change rarely, and parsing Solid.js-specific type wrappers isn't worth the complexity.
 
-### Two kinds of output
+### Three kinds of output
 
-`@we/ai-context` serves two audiences with different needs:
+`@we/ai-context` serves three audiences:
 
-**Build-time functions** (for tooling, testing, MCP):
+**1. Committed instruction files** (for local AI agents — primary output):
 
-```typescript
-// Run extractors → return structured object
-assembleContext(): AssembledContext
+The `generate.ts` script writes assembled context to instruction files that are **committed to source control**:
 
-// Run extractors → return LLM-ready string
-assemblePrompt(): string
+```
+we/.github/copilot-instructions.md     # GitHub Copilot custom instructions
+we/.instructions.md                    # VS Code Copilot instructions (workspace-level)
 ```
 
-These call extractors, parse source files, and do real work. They require access to the source tree and are **not suitable for runtime use** in production.
+These files are version-controlled so that anyone cloning the repo immediately gets full AI context. They are regenerated by running `pnpm run generate-context` from the `@we/ai-context` package.
 
-**Pre-built constant** (for runtime consumers like `app-framework`):
+**2. Pre-built runtime constant** (for in-app AI like `AiStore.handleSchemaPrompt()`):
 
 ```typescript
 // Pre-computed string, baked into dist/ at build time
 export const schemaContext: string;
 ```
 
-During `@we/ai-context`'s build step, the build script calls `assemblePrompt()` and writes the result as a string constant into the package's built output. Runtime consumers import this constant — they never run extractors themselves.
+During `@we/ai-context`'s build step, the build script calls `assembleReference()` and writes the result as a string constant into the package's built output. Runtime consumers import this constant — they never run extractors themselves.
+
+**3. Build-time functions** (for tooling and testing):
+
+```typescript
+// Run extractors → return structured object
+assembleContext(): AssembledContext
+
+// Run extractors → return LLM-ready reference string (facts only, no framing)
+assembleReference(): string
+```
+
+These call extractors, parse source files, and do real work. They require access to the source tree.
+
+### Design principle: content vs. framing
+
+`assembleReference()` returns the **factual reference content only** — component catalogue, token reference, operator docs, model fields, store signatures, rules. No preamble, no instructions for how to use the information.
+
+Each **output target adds its own framing** appropriate to its audience:
+
+- **Instruction files** (`generate.ts`): wraps the reference with a codebase-orientation header — "This workspace uses a schema-driven UI system. Here are the available components, tokens, and conventions..."
+- **Runtime prompt** (`AiStore.handleSchemaPrompt()`): wraps the imported `schemaContext` constant with a task-specific system prompt — "Generate a valid WE schema using only these components. Output well-formed JSON..."
+
+This separation keeps prompt-engineering decisions out of the extraction layer. The extraction layer produces facts; consumers add intent. If a third consumer appears (e.g. a validation error message generator), it wraps the same reference with its own framing.
 
 ### How it works end-to-end
 
 ```
-@we/ai-context build step:
-  1. extractors parse source files
-  2. assemblePrompt() produces the LLM-ready string
-  3. string is written as `export const schemaContext = "..."` in dist/
+pnpm run generate-context (from @we/ai-context):
+  1. extractors parse source files (CEM JSON, *.types.ts, token objects, @Model decorators)
+  2. assembler merges extracted data + hand-maintained fragments
+  3. assembleReference() produces the factual reference string
+  4. generate.ts wraps with instruction-file framing and writes to:
+     a. .github/copilot-instructions.md  (committed, for local agents)
+     b. .instructions.md                 (committed, for VS Code)
+
+@we/ai-context build step (turbo):
+  1. same extraction + assembly
+  2. reference string written as `export const schemaContext = "..."` in dist/
+     (consumers wrap with their own framing at runtime)
 
 Runtime (app-framework):
   import { schemaContext } from '@we/ai-context';   // just a string
-
-Tooling / MCP (future):
-  import { assembleContext } from '@we/ai-context';  // runs extractors live
 ```
 
-The assembled context is a normal build artifact in `dist/`, gitignored like any other built package output. **No generated files are committed to source control.**
+The instruction files are committed to source control and should be regenerated whenever components, tokens, stores, or operators change. The runtime constant in `dist/` is gitignored like any other build artifact.
 
-`@we/ai-context` is declared as a dependency in `app-framework`'s `package.json`. pnpm/turbo handles build ordering automatically — `@we/ai-context` builds before its dependents, just like any other package in the graph.
+### Regeneration workflow
+
+```bash
+# After modifying components, tokens, stores, or operators:
+cd packages/ai-context
+pnpm run generate-context
+
+# Review the diff, then commit:
+git add ../../.github/copilot-instructions.md ../../.instructions.md
+git commit -m "chore: regenerate AI context"
+```
+
+CI can optionally verify that instruction files are up-to-date by running `generate-context` and checking for uncommitted diffs. This is a guard rail, not a blocker — add it when drift becomes a problem.
 
 If extraction turns out to be slow, a lightweight cache (hash input files, skip re-extraction if unchanged) can be added. Wait to see if this is actually needed.
 
 ---
 
-## Layer 3 — MCP Tools (Future, Designed For Now)
+## Future Possibility: MCP Tools
 
-As WE grows, front-loading all context upfront doesn't scale. MCP (Model Context Protocol) allows AI agents to call tools on-demand — "look up the PopoverMenu component", "validate this schema", "list available widgets" — rather than receiving a static dump.
+If MCP is ever needed (e.g. for agents with smaller context windows, or for a cloud-hosted WE editing experience), the `AssembledContext` object is already structured data that can feed tool handlers directly. Building an MCP server on top of `assembleContext()` would be straightforward — the hard part (extraction + assembly) is done. This is noted here for context but is **not a design target** for this PR.
 
-### The data model works for both
-
-The `AssembledContext` object produced by Layer 2 is the same data that feeds MCP tool handlers. Build once, serve both:
-
-```
-assembleContext()
-    │
-    ├── → assemblePrompt()           (Layer 2: static dump for today's AI interface)
-    └── → MCP tool registry          (Layer 3: on-demand lookup for future agents)
-```
-
-### Planned MCP tools
-
-| Tool              | Input                           | Returns                                       |
-| ----------------- | ------------------------------- | --------------------------------------------- |
-| `list_components` | optional category filter        | All schema-renderable components              |
-| `get_component`   | component type name             | Full props + description + schema usage notes |
-| `validate_schema` | schema JSON                     | Valid / errors with explanations              |
-| `list_tokens`     | category (spacing, color, etc.) | Available token values                        |
-| `get_store_api`   | store name                      | State keys + action signatures                |
-| `list_stores`     | —                               | All available stores                          |
-
-### Where it lives
-
-AD4M ships an MCP server with two kinds of tools: 57 static tools (hardcoded in Rust, no plugin API) and SHACL-generated dynamic tools (auto-created from `@Model` definitions in perspectives).
-
-Investigation of AD4M's codebase reveals WE's MCP tools fall into two categories:
-
-**Category 1 — Schema section operations:** The `SchemaSection` and `TemplateInstall` models (from the schema-customization plan) are standard AD4M models. Once added to a perspective, AD4M **automatically generates** CRUD tools (`schemasection_get`, `schemasection_set_schemajson`, etc.). These cover section editing for free — no custom tool code needed.
-
-**Category 2 — Knowledge tools:** Component lookup, token discovery, store API inspection, schema validation. These read from `AssembledContext`, not AD4M perspectives. AD4M has **no plugin API** for custom static tools, so these need either a separate WE MCP server or a custom tool registration API in AD4M.
-
-**Recommended path:** Use SHACL tools for section CRUD immediately. Stand up a lightweight WE MCP server for knowledge tools (unblocked, ships independently). Later, propose a custom tool registration API in AD4M to unify both under one endpoint.
-
-See [mcp-tools.md](mcp-tools.md) for full integration analysis and phased PR scope.
-
-### Why design for this now
-
-- The `types.ts` schema (ComponentEntry, StoreEntry, etc.) should be designed to serve tool responses, not just string interpolation
-- Extractors should produce live, re-queryable data — not just a one-shot string builder
-- Avoids a refactor later when we want MCP; instead it's a natural extension
-
-MCP implementation is **not in PR 1 or PR 2** — but the data model and package structure are designed with it in mind.
-
-### MCP transition: prompt evolution
-
-When MCP lands, `schemaContext` doesn't disappear — it shrinks. Most component/token/store detail moves to on-demand tool lookups, but agents still need a slim orientation prompt upfront covering:
-
-- That WE's schema system exists and what it does
-- That MCP tools are available and when to call them
-- High-level categories (primitives, components, widgets, stores)
-- The operator system (`$store`, `$if`, `$map`, etc.) — behavioural rules agents should internalise, not look up per-query
-
-`assemblePrompt()` supports this via a mode parameter:
-
-```typescript
-assemblePrompt({ mode: 'full' }); // PR 2: everything in one string (~400+ lines)
-assemblePrompt({ mode: 'slim' }); // PR 3: orientation + "use tools for details" (~50-80 lines)
-```
-
-The `AssembledContext` object is the single data source for both paths. Only the string output changes shape.
-
-| Phase      | What gets sent upfront                             |
-| ---------- | -------------------------------------------------- |
-| PR 2 (now) | Full `schemaContext` — everything in one string    |
-| PR 3 (MCP) | Slim orientation prompt + MCP tools for deep dives |
+See [mcp-tools.md](mcp-tools.md) for the deferred MCP plan.
 
 ---
 
-## Prerequisite: Shared `*.types.ts` Files
+## Prerequisite: Shared `*.types.ts` Files ✅
 
-Before the TypeScript extractor can work reliably, component packages (`@we/components`, `@we/widgets`) need framework-agnostic shared types files. This is a prerequisite refactor.
+> **Status:** Complete (PR #7a — branch `feat/shared-types-refactor`, 1 commit, 84 files).
 
-### Current structure
-
-```
-PostCard/
-├── PostCard.solid.tsx      # Solid implementation, props defined inline
-└── (PostCard.react.tsx)    # Future React implementation
-```
-
-### Target structure
-
-```
-PostCard/
-├── PostCard.types.ts       # Canonical props — framework-agnostic, @ai JSDoc lives here
-├── PostCard.solid.tsx      # Solid implementation, imports from PostCard.types.ts
-└── (PostCard.react.tsx)    # Future React implementation, imports from PostCard.types.ts
-```
-
-### Rules for `*.types.ts` files
-
-1. **Framework-agnostic** — no `Accessor<T>`, `Signal<T>`, `JSX.Element`, `React.ReactNode`, etc.
-2. **Plain TypeScript interfaces** — `export interface PostCardProps { ... }`
-3. **`@ai` JSDoc lives here** — describes the component contract, not framework-specific rendering
-4. **Each framework adapts** — Solid wraps props in `Accessor`, React uses as-is, etc.
-
-This has two benefits:
-
-- **For extraction:** the TypeScript extractor globs for `**/*.types.ts` and parses plain interfaces — no need to understand framework-specific type wrappers
-- **For multi-framework support:** prop contracts are defined once and shared, preventing divergence between implementations
+Extracted shared prop interfaces from 13 `.solid.tsx` files into co-located `*.types.ts` files. 20+ shared type files now exist across `4-components` and `5-widgets`. 5 components have `@ai` JSDoc tags (PopoverMenu, PopoverToggleMenu, CesiumGlobe, GraphWidget, CollapsibleSidebar). All follow the framework-agnostic pattern (no `Accessor<T>`, `Signal<T>`, `JSX.Element`).
 
 ---
 
@@ -285,75 +239,58 @@ The hand-written file is the reference for quality. Steps:
 
 ## PR Scope
 
-Three PRs forming a dependency chain. Each delivers standalone value and validates assumptions the next one depends on.
+Two PRs. PR 1 is already complete. PR 2 is the implementation.
 
-### PR 1: Shared `*.types.ts` refactor
+### PR 1: Shared `*.types.ts` refactor ✅
 
-Pure mechanical refactor — no new packages. Lands and stabilises before extraction builds on top of it.
+Complete — see PR #7a in the [roadmap](../overviews/pr-roadmap.md).
 
-- [ ] Extract shared prop interfaces from framework-specific files into `*.types.ts`
-- [ ] Add `@ai` JSDoc to shared types files for components with non-obvious contracts
-- [ ] Verify all framework implementations import from `*.types.ts`
-- [ ] Confirm existing tests pass (no behavioural changes)
+### PR 2: `@we/ai-context` package + instruction files + migration
 
-### PR 2: `@we/ai-context` package + migration
+Depends on PR 1 (complete). Creates the extraction + assembly package, generates instruction files, and replaces the hand-written `schemaContext.ts`.
 
-Depends on PR 1. Creates the extraction + assembly package and replaces the hand-written `schemaContext.ts`.
-
-- [ ] Create `packages/ai-context/` with types, extractors, assembler, fragments
-- [ ] Implement CEM extractor for `@we/primitives`
+- [ ] Create `packages/ai-context/` with types, extractors, assembler, fragments, generate script
+- [ ] Implement CEM extractor for `@we/primitives` (reads `custom-elements.json`)
 - [ ] Implement TypeScript extractor for `*.types.ts` in `@we/components` + `@we/widgets`
-- [ ] Implement token extractor for `@we/design-tokens`
-- [ ] Implement store extractor for `app-framework` stores
-- [ ] Write hand-maintained fragments (operators, routing, store patterns, rules)
+- [ ] Implement token extractor for `@we/design-system/1-tokens`
+- [ ] Implement model extractor for `@we/models` (parses `@Model`/`@Property`/`@HasMany`/`@HasOne` decorators)
+- [ ] Write hand-maintained fragments (operators, routing, stores, store patterns, rules)
+- [ ] Write `generate.ts` script that outputs:
+  - `.github/copilot-instructions.md` (committed)
+  - `.instructions.md` (committed)
+  - `dist/schemaContext` constant (build artifact)
 - [ ] Wire `@we/ai-context` build into turbo dependency graph
 - [ ] Replace `schemaContext.ts` import with `import { schemaContext } from '@we/ai-context'`
-- [ ] Validate extracted output against hand-written reference
+- [ ] Validate extracted output against hand-written reference (snapshot test for section presence)
+- [ ] Add `@ai` JSDoc to additional components where extracted docs are thin
+- [ ] Run `generate-context`, commit instruction files
 - [ ] Update `docs/architecture/overview.md`
-
-### PR 3: MCP tools (phased)
-
-Depends on PR 2 being in production long enough to validate the `AssembledContext` data model. Covered in detail in [mcp-tools.md](mcp-tools.md).
-
-**Phase 1** ships with the schema-customization PR — SHACL auto-generated tools for section CRUD are free once the models exist. No custom tool code needed.
-
-**Phase 2** is the WE knowledge MCP server:
-
-- [ ] Stand up lightweight MCP server in WE for knowledge tools
-- [ ] Implement handlers backed by `AssembledContext`
-- [ ] Wire schema validation tool to existing validators
-- [ ] Add `assemblePrompt({ mode: 'slim' })` for MCP-aware orientation prompt
-- [ ] Add tests for tool outputs
-- [ ] Add docs and examples for agent usage
-
-**Phase 3** (future) unifies endpoints:
-
-- [ ] Propose custom tool registration API for AD4M MCP server
-- [ ] Migrate WE knowledge tools to AD4M's unified endpoint
 
 ---
 
 ## Open Questions
 
-1. **TypeScript parser choice** — use `ts-morph` (easier API, higher-level) or raw `typescript` compiler API (no extra dep)? `ts-morph` is probably right here. With the `*.types.ts` convention the parsing surface is much simpler, so raw TS API may now be viable too.
-2. **CEM runtime vs. build-time** — CEM is already run at build time for primitives. The extractor just reads the output JSON, so this is straightforward.
-3. **Storybook alignment** — stories are effectively usage documentation. Worth keeping in mind that stories and `@ai` JSDoc shouldn't diverge. Not blocking this PR, but worth noting.
-4. **Snapshot testing** — should the assembled prompt output be snapshot-tested so regressions in extraction are caught? Probably yes, at least a character count / section presence check.
-5. **`*.types.ts` refactor scope** — how many components currently define props inline vs. already having shared types? This determines the size of the prerequisite refactor.
+1. **TypeScript parser choice** — **decided: `ts-morph`.** Even "simple" interface parsing is verbose with the raw TS compiler API (manual AST walking, `SyntaxKind` checks, JSDoc tag extraction). ts-morph makes property/type/JSDoc extraction concise and debuggable. It's a dev-only dependency (never shipped to users), and having it available lowers the threshold for future extraction (e.g. stores, enums, type aliases) if the hand-maintained approach ever becomes a bottleneck.
+2. **CEM runtime vs. build-time** — **decided: build-time.** CEM is already run at build time for primitives. The extractor just reads the output `custom-elements.json` — no runtime CEM invocation needed.
+3. **Snapshot testing** — **decided: section-presence check only.** Assert that the assembled output contains expected section headers and a minimum count of components/tokens. Exact string snapshots would break on every component addition, defeating the purpose.
+4. **Instruction file format** — **decided: single file.** Total context is ~600-800 lines (~3-4K tokens), well within any modern model's context window. Splitting adds `applyTo` routing complexity for no gain — schema generation needs ALL context (primitives + tokens + operators + stores) simultaneously. If ever split, split by audience (schema generation vs component development) not by topic. Revisit only if the file exceeds ~2K tokens or a specific smaller-model use case emerges.
 
 ---
 
 ## Relationship to Previous Plan
 
-This plan supersedes `ai-context-package.md` (the hand-written fragment approach). Key differences:
+This plan supersedes the original `ai-context-package.md` (hand-written fragment approach) and incorporates the MCP pivot decision (MCP deferred indefinitely in favour of local agent instruction files).
 
-| Previous                                 | This plan                                       |
-| ---------------------------------------- | ----------------------------------------------- |
-| Per-package `ai-context.ts` hand-written | Auto-extracted from source                      |
-| Fragments for all packages               | Fragments only for cross-cutting concerns       |
-| Static assembled prompt only             | Structured object designed for MCP evolution    |
-| No extraction tooling                    | Extractors for CEM, TypeScript, tokens, stores  |
-| Props defined inline per framework       | Shared `*.types.ts` files, framework-agnostic   |
-| Generated file committed to source       | Build artifact only, imported as package export |
-
-The package structure (`@we/ai-context`) and the fragment types (`AiContextFragment`, `ComponentEntry`, etc.) are largely the same.
+| Previous                                 | This plan                                               |
+| ---------------------------------------- | ------------------------------------------------------- |
+| Per-package `ai-context.ts` hand-written | Auto-extracted from source                              |
+| Fragments for all packages               | Fragments only for cross-cutting concerns + stores      |
+| Store extractor (parse Solid.js types)   | Hand-maintained `stores.ts` fragment (7 stores, stable) |
+| MCP as designed-for Layer 3              | MCP deferred; instruction files as primary output       |
+| `mode: 'slim'` for MCP orientation       | Single mode — full context in instruction files         |
+| No generated files committed             | Instruction files committed to source control           |
+| No extraction tooling                    | Extractors for CEM, TypeScript, tokens, models          |
+| No model/block awareness                 | Auto-extracted from `@we/models` (15 blocks, 4 entities)|
+| Single prompt string for all consumers   | Reference content + per-consumer framing                |
+| Props defined inline per framework       | Shared `*.types.ts` files ✅ (PR #7a complete)          |
+| Generated file committed to source       | Build artifact in dist/ + committed instruction files   |
