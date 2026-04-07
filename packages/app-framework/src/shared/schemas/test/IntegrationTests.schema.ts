@@ -6,13 +6,19 @@
  * or a visual confirmation area for interactive/structural tests.
  *
  * Tokens covered:
- *   $store, $concat, $action, $arg, $eq, $ne, $not, $and, $or,
- *   $if (prop + node), $each, nested $each, $map, $pick, $query,
- *   theme overrides, web components, children token resolution
+ *   $store (basic + deep nested), $concat (string + number + boolean coercion),
+ *   $action, $arg (dot-path + bare), $eq, $ne, $not, $and, $or (2 + 3 operands),
+ *   $if (prop + node + transitions), $each (flat + nested + empty),
+ *   $map (array + single object), $pick (standalone + chained),
+ *   $query (subscribe + one-shot), fragment nodes (with + without theme),
+ *   theme overrides (parametric + named), web component reactive props,
+ *   token composition (deeply nested chains), children token resolution
  *
  * Data source: testStore (SolidJS signals + lazy AD4M perspective)
  */
+
 import type { SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
+
 // ---------------------------------------------------------------------------
 // Helpers — reusable test section building blocks
 // ---------------------------------------------------------------------------
@@ -21,7 +27,7 @@ import type { SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
 function section(token: string, title: string, children: (SchemaNode | string)[]): SchemaNode {
   return {
     type: 'Column',
-    props: { gap: '300', p: '400', bg: 'neutral-0', r: '400' },
+    props: { gap: '300', p: '400', bg: 'neutral-0', r: '400', ax: 'start' },
     children: [
       {
         type: 'Row',
@@ -46,11 +52,11 @@ function check(label: string, expected: string, actual: SchemaProp, condition: S
         type: '$if',
         props: {
           condition,
-          then: { type: 'we-text', props: { color: 'success-600' }, children: ['✓'] },
-          else: { type: 'we-text', props: { color: 'danger-600' }, children: ['✗'] },
+          then: { type: 'we-icon', props: { name: 'check', size: 'xs', color: 'success-600' } },
+          else: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'danger-600' } },
         },
       },
-      { type: 'we-text', props: { style: { 'min-width': '140px' } }, children: [label] },
+      { type: 'we-text', children: [label] },
       { type: 'we-text', props: { color: 'neutral-400' }, children: [`expected "${expected}"`] },
       { type: 'we-text', props: { color: 'neutral-400' }, children: ['→'] },
       { type: 'we-text', children: [actual as string] },
@@ -68,8 +74,8 @@ function boolCheck(label: string, condition: SchemaProp): SchemaNode {
         type: '$if',
         props: {
           condition,
-          then: { type: 'we-text', props: { color: 'success-600' }, children: ['✓'] },
-          else: { type: 'we-text', props: { color: 'danger-600' }, children: ['✗'] },
+          then: { type: 'we-icon', props: { name: 'check', size: 'xs', color: 'success-600' } },
+          else: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'danger-600' } },
         },
       },
       { type: 'we-text', children: [label] },
@@ -83,7 +89,7 @@ function interactiveLabel(label: string): SchemaNode {
     type: 'Row',
     props: { gap: '200', ay: 'center', py: '50' },
     children: [
-      { type: 'we-text', props: { color: 'primary-500' }, children: ['⟳'] },
+      { type: 'we-icon', props: { name: 'arrow-clockwise', size: 'xs', color: 'primary-600' } },
       { type: 'we-text', children: [label] },
     ],
   };
@@ -95,6 +101,66 @@ function groupHeading(title: string): SchemaNode {
     type: 'we-text',
     props: { fontSize: '600', fontWeight: '600', color: 'neutral-500', mt: '300' },
     children: [title],
+  };
+}
+
+/** Helper: filter mode button */
+function filterModeButton(mode: string, label: string, icon: string): SchemaNode {
+  return {
+    type: 'we-button',
+    props: {
+      variant: {
+        $if: {
+          condition: { $eq: [{ $store: 'testStore.queryFilterMode' }, mode] },
+          then: 'primary',
+          else: 'secondary',
+        },
+      },
+      onClick: { $action: 'testStore.setQueryFilterMode', args: [mode] },
+    },
+    children: [{ type: 'we-icon', props: { name: icon } }, label],
+  };
+}
+
+/** Helper: a query mode panel — only visible when queryFilterMode matches */
+function queryModePanel(mode: string, description: string, queryConfig: Record<string, unknown>): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $eq: [{ $store: 'testStore.queryFilterMode' }, mode] },
+      then: {
+        type: 'Column',
+        props: { gap: '300', ax: 'start' },
+        children: [
+          { type: 'we-text', props: { color: 'neutral-600' }, children: [description] },
+          {
+            type: '$each',
+            props: {
+              items: {
+                $query: {
+                  model: 'TestItem',
+                  perspectiveStore: 'testStore.perspective',
+                  subscribe: false,
+                  ...queryConfig,
+                },
+              },
+              as: 'q',
+            },
+            children: [
+              {
+                type: 'Row',
+                props: { gap: '200', p: '200', bg: 'neutral-50', r: '300', ay: 'center' },
+                children: [
+                  { type: 'we-icon', props: { name: 'check', color: 'success-500', size: 'xs' } },
+                  { type: 'we-text', props: { flex: '1' }, children: [`$q.name`] },
+                  { type: 'we-text', props: { color: 'neutral-400' }, children: [`$q.status`] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
   };
 }
 
@@ -111,6 +177,12 @@ const storeTest = section('$store', 'Read values from the store', [
   ),
   check('Number value', '42', { $store: 'testStore.numberValue' }, { $eq: [{ $store: 'testStore.numberValue' }, 42] }),
   check('Boolean true', 'true', { $store: 'testStore.boolTrue' }, { $store: 'testStore.boolTrue' }),
+  check(
+    'Deep nested (3+ levels)',
+    'deep-value',
+    { $store: 'testStore.nested.level1.level2.value' },
+    { $eq: [{ $store: 'testStore.nested.level1.level2.value' }, 'deep-value'] },
+  ),
 ]);
 
 const concatTest = section('$concat', 'Concatenate strings and store values', [
@@ -125,6 +197,12 @@ const concatTest = section('$concat', 'Concatenate strings and store values', [
     'Count: 42',
     { $concat: ['Count: ', { $store: 'testStore.numberValue' }] },
     { $eq: [{ $concat: ['Count: ', { $store: 'testStore.numberValue' }] }, 'Count: 42'] },
+  ),
+  check(
+    'Boolean coercion',
+    'Active: true',
+    { $concat: ['Active: ', { $store: 'testStore.boolTrue' }] },
+    { $eq: [{ $concat: ['Active: ', { $store: 'testStore.boolTrue' }] }, 'Active: true'] },
   ),
 ]);
 
@@ -198,12 +276,28 @@ const andTest = section('$and', 'Logical AND', [
   boolCheck('$and(true, false) → false (inverted)', {
     $not: { $and: [{ $store: 'testStore.boolTrue' }, { $store: 'testStore.boolFalse' }] },
   }),
+  boolCheck('$and(true, true, true) → true (3 operands)', {
+    $and: [{ $store: 'testStore.boolTrue' }, { $store: 'testStore.boolTrue' }, { $store: 'testStore.boolTrue' }],
+  }),
+  boolCheck('$and(true, true, false) → false (3 operands, inverted)', {
+    $not: {
+      $and: [{ $store: 'testStore.boolTrue' }, { $store: 'testStore.boolTrue' }, { $store: 'testStore.boolFalse' }],
+    },
+  }),
 ]);
 
 const orTest = section('$or', 'Logical OR', [
   boolCheck('$or(false, true) → true', { $or: [{ $store: 'testStore.boolFalse' }, { $store: 'testStore.boolTrue' }] }),
   boolCheck('$or(false, false) → false (inverted)', {
     $not: { $or: [{ $store: 'testStore.boolFalse' }, { $store: 'testStore.boolFalse' }] },
+  }),
+  boolCheck('$or(false, false, true) → true (3 operands)', {
+    $or: [{ $store: 'testStore.boolFalse' }, { $store: 'testStore.boolFalse' }, { $store: 'testStore.boolTrue' }],
+  }),
+  boolCheck('$or(false, false, false) → false (3 operands, inverted)', {
+    $not: {
+      $or: [{ $store: 'testStore.boolFalse' }, { $store: 'testStore.boolFalse' }, { $store: 'testStore.boolFalse' }],
+    },
   }),
 ]);
 
@@ -279,6 +373,28 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
       },
     },
   },
+  // $if with enter/exit transitions (fade animation)
+  interactiveLabel('With transitions — content fades in/out on toggle'),
+  {
+    type: '$if',
+    props: {
+      condition: { $store: 'testStore.toggleValue' },
+      enterTransition: { type: 'fade', duration: 1000, easing: 'ease-in-out' },
+      exitTransition: { type: 'fade', duration: 1000, easing: 'ease-in-out' },
+      then: {
+        type: 'Row',
+        props: { gap: '200', ay: 'center', p: '200', bg: 'primary-50', r: '300' },
+        children: [
+          { type: 'we-icon', props: { name: 'sparkle', color: 'primary-500' } },
+          {
+            type: 'we-text',
+            props: { color: 'primary-600' },
+            children: ['Animated content (fade in 1000ms / out 1000ms)'],
+          },
+        ],
+      },
+    },
+  },
 ]);
 
 // ---------------------------------------------------------------------------
@@ -318,6 +434,36 @@ const eachTest = section('$each', 'Iterate a list', [
     ],
   },
   boolCheck('Item count is 4', { $eq: [{ $store: 'testStore.fruitCount' }, 4] }),
+]);
+
+const eachEmptyTest = section('$each (empty)', 'Iterate an empty list — should render nothing', [
+  {
+    type: 'we-text',
+    props: { color: 'neutral-400' },
+    children: ['Rendering testStore.emptyList — no items should appear below:'],
+  },
+  {
+    type: 'Column',
+    props: { gap: '200', p: '200', bg: 'neutral-50', r: '300' },
+    children: [
+      {
+        type: '$each',
+        props: { items: { $store: 'testStore.emptyList' } },
+        children: [
+          {
+            type: 'we-text',
+            props: { color: 'danger-600' },
+            children: ['BUG: This should not render!'],
+          },
+        ],
+      },
+      {
+        type: 'we-text',
+        props: { color: 'neutral-400' },
+        children: ['(If nothing else appears above this line, the test passes)'],
+      },
+    ],
+  },
 ]);
 
 const nestedEachTest = section('Nested $each', 'Iterate nested lists (groups → items)', [
@@ -379,7 +525,7 @@ const mapTest = section('$map', 'Transform list items via select', [
   },
   {
     type: 'Column',
-    props: { gap: '200' },
+    props: { gap: '200', ax: 'start' },
     children: [
       {
         type: '$each',
@@ -403,6 +549,50 @@ const mapTest = section('$map', 'Transform list items via select', [
                 children: ['$row.label'],
               },
               { type: 'we-text', children: ['$row.detail'] },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+]);
+
+const mapSingleObjectTest = section('$map (single object)', 'Transform a single object via select', [
+  {
+    type: 'we-text',
+    props: { color: 'neutral-400' },
+    children: ['$map on single object {title,version,debug} → {label,detail}'],
+  },
+  {
+    type: 'we-text',
+    props: { color: 'neutral-600' },
+    children: ['Expect "title=My App, version=2.0" below'],
+  },
+  {
+    type: 'Row',
+    props: {
+      gap: '200',
+      p: '200',
+      bg: 'neutral-50',
+      r: '300',
+      _mapped: {
+        $map: {
+          items: { $store: 'testStore.singleConfig' },
+          select: { label: '$item.title', detail: '$item.version' },
+        },
+      },
+    },
+    children: [
+      { type: 'we-text', props: { color: 'neutral-400' }, children: ['Mapped:'] },
+      {
+        type: 'we-text',
+        children: [
+          {
+            $concat: [
+              'title=',
+              { $store: 'testStore.singleConfig.title' },
+              ', version=',
+              { $store: 'testStore.singleConfig.version' },
             ],
           },
         ],
@@ -447,7 +637,80 @@ const pickTest = section('$pick', 'Extract property subset from object', [
   },
 ]);
 
-const queryTest = section('$query', 'Reactive AD4M perspective subscription', [
+const pickChainingTest = section('$pick + $concat', 'Chain $pick output into $concat', [
+  {
+    type: 'we-text',
+    props: { color: 'neutral-400' },
+    children: ['$concat reading from $pick-extracted properties:'],
+  },
+  check(
+    'Picked name + status',
+    'Test Item is active',
+    {
+      $concat: [{ $store: 'testStore.fullObject.name' }, ' is ', { $store: 'testStore.fullObject.status' }],
+    },
+    {
+      $eq: [
+        {
+          $concat: [{ $store: 'testStore.fullObject.name' }, ' is ', { $store: 'testStore.fullObject.status' }],
+        },
+        'Test Item is active',
+      ],
+    },
+  ),
+]);
+
+const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without subscription', [
+  {
+    type: 'we-text',
+    props: { color: 'neutral-400' },
+    children: ['$query with subscribe: false — fetches once, no live updates:'],
+  },
+  {
+    type: '$if',
+    props: {
+      condition: { $store: 'testStore.perspective' },
+      then: {
+        type: 'Column',
+        props: { gap: '200', ax: 'start' },
+        children: [
+          {
+            type: '$each',
+            props: {
+              items: { $query: { model: 'TestItem', perspectiveStore: 'testStore.perspective', subscribe: false } },
+              as: 'q',
+            },
+            children: [
+              {
+                type: 'Row',
+                props: { gap: '200', p: '200', bg: 'neutral-50', r: '300' },
+                children: [
+                  { type: 'we-icon', props: { name: 'check', color: 'success-500', size: 'xs' } },
+                  { type: 'we-text', children: ['$q.name'] },
+                  { type: 'we-text', props: { color: 'neutral-400' }, children: ['(one-shot)'] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      else: {
+        type: 'Row',
+        props: { gap: '200', p: '200', bg: 'warning-50', r: '300', ay: 'center' },
+        children: [
+          { type: 'we-icon', props: { name: 'clock', color: 'warning-500' } },
+          {
+            type: 'we-text',
+            props: { color: 'warning-600' },
+            children: ['Waiting for AD4M perspective...'],
+          },
+        ],
+      },
+    },
+  },
+]);
+
+const querySubscriptionTest = section('$query (subscription)', 'FindAll $query with subscription', [
   {
     type: 'we-text',
     props: { color: 'neutral-400' },
@@ -456,7 +719,7 @@ const queryTest = section('$query', 'Reactive AD4M perspective subscription', [
   {
     type: 'we-text',
     props: { color: 'neutral-600' },
-    children: ['Expect 3 rows: Alpha (active), Beta (draft), Gamma (active)'],
+    children: ['Expect 3 seed rows + any dynamically created items. Click "Add item" and verify it appears.'],
   },
   {
     type: '$if',
@@ -464,8 +727,24 @@ const queryTest = section('$query', 'Reactive AD4M perspective subscription', [
       condition: { $store: 'testStore.perspective' },
       then: {
         type: 'Column',
-        props: { gap: '200' },
+        props: { gap: '300', ax: 'start' },
         children: [
+          {
+            type: 'Row',
+            props: { gap: '200', ay: 'center' },
+            children: [
+              {
+                type: 'we-button',
+                props: { variant: 'primary', onClick: { $action: 'testStore.createTestItem' } },
+                children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add item'],
+              },
+              {
+                type: 'we-text',
+                props: { color: 'neutral-400' },
+                children: ['New item should appear below if subscription is working'],
+              },
+            ],
+          },
           {
             type: '$each',
             props: {
@@ -475,14 +754,83 @@ const queryTest = section('$query', 'Reactive AD4M perspective subscription', [
             children: [
               {
                 type: 'Row',
-                props: { gap: '200', p: '200', bg: 'neutral-50', r: '300' },
+                props: { gap: '200', p: '200', bg: 'neutral-50', r: '300', ay: 'center' },
                 children: [
-                  { type: 'we-text', children: ['$q.name'] },
+                  { type: 'we-icon', props: { name: 'check', color: 'success-500', size: 'xs' } },
+                  { type: 'we-text', props: { flex: '1' }, children: ['$q.name'] },
                   { type: 'we-text', props: { color: 'neutral-400' }, children: ['$q.status'] },
+                  {
+                    type: 'we-button',
+                    props: {
+                      variant: 'secondary',
+                      size: 'xs', // TODO: not having any effect
+                      onClick: { $action: 'testStore.deleteTestItem', args: ['$q.id'] },
+                    },
+                    children: [{ type: 'we-icon', props: { name: 'x', color: 'neutral-500', size: 'xs' } }],
+                  },
                 ],
               },
             ],
           },
+        ],
+      },
+      else: {
+        type: 'Row',
+        props: { gap: '200', p: '200', bg: 'warning-50', r: '300', ay: 'center' },
+        children: [
+          { type: 'we-icon', props: { name: 'clock', color: 'warning-500' } },
+          {
+            type: 'we-text',
+            props: { color: 'warning-600' },
+            children: ['Waiting for AD4M perspective...'],
+          },
+        ],
+      },
+    },
+  },
+]);
+
+const queryFilteringTest = section('$query (filtering)', 'Query with where, order, limit, offset', [
+  {
+    type: 'we-text',
+    props: { color: 'neutral-400' },
+    children: ['Toggle between query filter modes — each applies different $query params:'],
+  },
+  {
+    type: '$if',
+    props: {
+      condition: { $store: 'testStore.perspective' },
+      then: {
+        type: 'Column',
+        props: { gap: '300' },
+        children: [
+          {
+            type: 'Row',
+            props: { gap: '200', wrap: 'wrap' },
+            children: [
+              filterModeButton('all', 'All', 'list'),
+              filterModeButton('active', 'Active only', 'funnel'),
+              filterModeButton('asc', 'ASC', 'sort-ascending'),
+              filterModeButton('desc', 'DESC', 'sort-descending'),
+              filterModeButton('limit', 'Limit', 'scissors'),
+              filterModeButton('paginated', 'Paginate', 'cards-three'),
+            ],
+          },
+          queryModePanel('all', 'No filters — showing all items:', {}),
+          queryModePanel('active', 'where: { status: "active" } — only active items:', {
+            where: { status: 'active' },
+          }),
+          queryModePanel('asc', 'order: { createdAt: "ASC" } — oldest first:', {
+            order: { createdAt: 'ASC' },
+          }),
+          queryModePanel('desc', 'order: { createdAt: "DESC" } — newest first:', {
+            order: { createdAt: 'DESC' },
+          }),
+          queryModePanel('limit', 'limit: 2 — at most 2 items:', { limit: 2 }),
+          queryModePanel('paginated', 'limit: 2, offset: 1 — skip first, take next 2:', {
+            limit: 2,
+            offset: 1,
+          }),
         ],
       },
       else: {
@@ -544,7 +892,148 @@ const childrenTokenTest = section('Children tokens', 'Operator tokens resolved d
   },
 ]);
 
-const themeTest: SchemaNode = {
+const wcReactivePropsTest = section('WC reactive props', 'Web component props update reactively', [
+  {
+    type: 'we-text',
+    props: { color: 'neutral-400' },
+    children: ['Web component with reactive $store prop — color should change on toggle:'],
+  },
+  interactiveLabel('Toggle to switch text color between success-600 and danger-600'),
+  {
+    type: 'we-button',
+    props: { variant: 'secondary', onClick: { $action: 'testStore.toggle' } },
+    children: ['Toggle'],
+  },
+  {
+    type: 'we-text',
+    props: {
+      fontWeight: '600',
+      fontSize: '500',
+      color: {
+        $if: { condition: { $store: 'testStore.toggleValue' }, then: 'success-600', else: 'danger-600' },
+      },
+    },
+    children: [
+      {
+        $if: {
+          condition: { $store: 'testStore.toggleValue' },
+          then: 'Green text (toggled ON)',
+          else: 'Red text (toggled OFF)',
+        },
+      },
+    ],
+  },
+  {
+    type: 'we-text',
+    props: { color: 'neutral-400' },
+    children: ['Web component with reactive $store prop — button variant reacts to toggle:'],
+  },
+  {
+    type: 'we-button',
+    props: {
+      variant: {
+        $if: {
+          condition: { $store: 'testStore.toggleValue' },
+          then: 'primary',
+          else: 'outline',
+        },
+      },
+    },
+    children: [
+      {
+        $concat: [
+          'Variant: ',
+          {
+            $if: {
+              condition: { $store: 'testStore.toggleValue' },
+              then: 'primary',
+              else: 'outline',
+            },
+          },
+        ],
+      },
+    ],
+  },
+]);
+
+const tokenCompositionTest = section('Token composition', 'Deeply nested token chains', [
+  {
+    type: 'we-text',
+    props: { color: 'neutral-400' },
+    children: ['Tests that tokens compose correctly when nested 3-4 levels deep:'],
+  },
+  // $if condition is $and of $eq of $store values, then is $concat of $store results
+  boolCheck('$if($and($eq($store, "hello"), $not(false))) → true', {
+    $and: [{ $eq: [{ $store: 'testStore.stringValue' }, 'hello'] }, { $not: { $store: 'testStore.boolFalse' } }],
+  }),
+  check(
+    '$concat with nested $if',
+    'Status: active',
+    {
+      $concat: [
+        'Status: ',
+        {
+          $if: {
+            condition: { $store: 'testStore.boolTrue' },
+            then: { $store: 'testStore.fullObject.status' },
+            else: 'unknown',
+          },
+        },
+      ],
+    },
+    {
+      $eq: [
+        {
+          $concat: [
+            'Status: ',
+            {
+              $if: {
+                condition: { $store: 'testStore.boolTrue' },
+                then: { $store: 'testStore.fullObject.status' },
+                else: 'unknown',
+              },
+            },
+          ],
+        },
+        'Status: active',
+      ],
+    },
+  ),
+  // $or wrapping $eq checks
+  boolCheck('$or($eq($store, "wrong"), $eq($store, 42)) → true', {
+    $or: [{ $eq: [{ $store: 'testStore.stringValue' }, 'wrong'] }, { $eq: [{ $store: 'testStore.numberValue' }, 42] }],
+  }),
+]);
+
+const fragmentTest = section('Fragment (no type)', 'Node without type renders as fragment', [
+  {
+    type: 'we-text',
+    props: { color: 'neutral-400' },
+    children: ['A node with no type renders its children inline (fragment). Expect two texts below:'],
+  },
+  {
+    children: [
+      { type: 'we-text', props: { color: 'primary-600' }, children: ['Fragment child 1 (Primary)'] },
+      { type: 'we-text', props: { color: 'success-600' }, children: ['Fragment child 2 (Green)'] },
+    ],
+  } as SchemaNode,
+]);
+
+const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps children in theme div', [
+  {
+    type: 'we-text',
+    props: { color: 'neutral-400' },
+    children: ['A fragment with theme overrides wraps children in a themed div:'],
+  },
+  {
+    theme: { primaryHue: 200, saturation: '80%' },
+    children: [
+      { type: 'we-text', props: { color: 'primary-500' }, children: ['Fragment themed child (should be blue-ish)'] },
+    ],
+  } as SchemaNode,
+]);
+
+const tokenThemeTest: SchemaNode = {
   type: 'Column',
   props: { gap: '300', p: '400', r: '400', bg: 'neutral-100', border: '1px solid var(--we-color-primary-200)' },
   // Apply theme overrides to this section
@@ -557,7 +1046,7 @@ const themeTest: SchemaNode = {
         {
           type: 'we-text',
           props: { color: 'primary-500', fontWeight: '600' },
-          children: ['Theme'],
+          children: ['Theme (parametric)'],
         },
         { type: 'we-text', props: { color: 'neutral-500' }, children: ['—'] },
         {
@@ -583,25 +1072,41 @@ const themeTest: SchemaNode = {
   ],
 };
 
-// ---------------------------------------------------------------------------
-// Header
-// ---------------------------------------------------------------------------
-
-const header: SchemaNode = {
+const namedThemeTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300' },
+  props: { gap: '300', p: '400', r: '400', bg: 'neutral-100', border: '1px solid var(--we-color-primary-200)' },
+  theme: { themeName: 'cyberpunk' },
   children: [
     {
-      type: 'we-text',
-      props: { fontSize: '700', fontWeight: '700', color: 'primary-700' },
-      children: ['Schema Token Integration Tests'],
+      type: 'Row',
+      props: { gap: '200', ay: 'center' },
+      children: [
+        {
+          type: 'we-text',
+          props: { color: 'primary-500', fontWeight: '600' },
+          children: ['Theme (named)'],
+        },
+        { type: 'we-text', props: { color: 'neutral-500' }, children: ['—'] },
+        {
+          type: 'we-text',
+          props: { color: 'neutral-500' },
+          children: ['Named theme via data-we-theme attribute'],
+        },
+      ],
     },
     {
       type: 'we-text',
-      props: { color: 'neutral-600' },
-      children: ['Visual test suite — each section exercises a specific token'],
+      props: { color: 'neutral-400' },
+      children: ['This section has themeName: "cyberpunk" — sets data-we-theme="cyberpunk" on the wrapper:'],
     },
-    { type: 'we-divider', props: { mb: '400' } },
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center' },
+      children: [
+        { type: 'we-button', props: { variant: 'primary' }, children: ['Cyberpunk Theme Button'] },
+        { type: 'we-text', props: { color: 'primary-500' }, children: ['Cyberpunk Theme Text'] },
+      ],
+    },
   ],
 };
 
@@ -618,7 +1123,23 @@ export const integrationTestsTemplate: TemplateSchema = {
   type: 'Column',
   props: { minHeight: '100%', width: '100%', p: '500', bg: 'neutral-50' },
   children: [
-    header,
+    {
+      type: 'Column',
+      props: { gap: '300' },
+      children: [
+        {
+          type: 'we-text',
+          props: { fontSize: '700', fontWeight: '700', color: 'primary-700' },
+          children: ['Schema Token Integration Tests'],
+        },
+        {
+          type: 'we-text',
+          props: { color: 'neutral-600' },
+          children: ['Visual test suite — each section exercises a specific token'],
+        },
+        { type: 'we-divider', props: { mb: '400' } },
+      ],
+    },
     {
       type: 'Column',
       props: { gap: '400' },
@@ -643,14 +1164,24 @@ export const integrationTestsTemplate: TemplateSchema = {
 
         groupHeading('Iteration'),
         eachTest,
+        eachEmptyTest,
         nestedEachTest,
         mapTest,
+        mapSingleObjectTest,
 
         groupHeading('Advanced'),
         pickTest,
-        queryTest,
+        pickChainingTest,
+        queryOneShotTest,
+        querySubscriptionTest,
+        queryFilteringTest,
         childrenTokenTest,
-        themeTest,
+        wcReactivePropsTest,
+        tokenCompositionTest,
+        fragmentTest,
+        fragmentThemeTest,
+        tokenThemeTest,
+        namedThemeTest,
       ],
     },
   ],

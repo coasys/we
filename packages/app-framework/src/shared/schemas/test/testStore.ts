@@ -2,7 +2,7 @@
 import type { Ad4mClient, PerspectiveProxy } from '@coasys/ad4m';
 import { Ad4mModel, Model, Property } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
-import { type Accessor, createEffect, createMemo, createSignal } from 'solid-js';
+import { type Accessor, createEffect, createSignal } from 'solid-js';
 
 // ---------------------------------------------------------------------------
 // Test model — lightweight AD4M model for $query testing
@@ -10,7 +10,7 @@ import { type Accessor, createEffect, createMemo, createSignal } from 'solid-js'
 
 @Model({ name: 'TestItem' })
 export class TestItem extends Ad4mModel {
-  @Property({ through: 'we://test_name' }) name: string = '';
+  @Property({ through: 'we://test_name', required: true }) name: string = '';
   @Property({ through: 'we://test_status' }) status: string = '';
   @Property({ through: 'we://test_category' }) category: string = '';
 }
@@ -23,45 +23,55 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
   registerModel('TestItem', TestItem as any);
 
   // ---- Known values (for $store / assertion tests) ----
-  const stringValue = createMemo(() => 'hello');
-  const numberValue = createMemo(() => 42);
-  const boolTrue = createMemo(() => true);
-  const boolFalse = createMemo(() => false);
+  const stringValue = 'hello';
+  const numberValue = 42;
+  const boolTrue = true;
+  const boolFalse = false;
 
   // ---- Interactive signals ----
   const [counter, setCounter] = createSignal(0);
   const [typedText, setTypedText] = createSignal('');
   const [toggleValue, setToggleValue] = createSignal(false);
+  const [queryFilterMode, setQueryFilterMode] = createSignal('all');
 
   // ---- List data (for $each) ----
-  const fruits = createMemo(() => [
+  const fruits = [
     { name: 'Apple', color: 'red', emoji: '🍎' },
     { name: 'Banana', color: 'yellow', emoji: '🍌' },
     { name: 'Cherry', color: 'red', emoji: '🍒' },
     { name: 'Grape', color: 'purple', emoji: '🍇' },
-  ]);
-  const fruitCount = createMemo(() => fruits().length);
+  ];
+  const fruitCount = fruits.length;
 
   // Nested groups (for nested $each)
-  const groups = createMemo(() => [
+  const groups = [
     { name: 'Fruits', items: [{ label: 'Apple' }, { label: 'Banana' }] },
     { name: 'Veggies', items: [{ label: 'Carrot' }, { label: 'Broccoli' }] },
-  ]);
+  ];
 
   // Key-value pairs (for $map)
-  const properties = createMemo(() => [
+  const properties = [
     { key: 'Language', value: 'TypeScript' },
     { key: 'Framework', value: 'SolidJS' },
     { key: 'Version', value: '2.0' },
-  ]);
+  ];
 
   // Object with extra fields (for $pick)
-  const fullObject = createMemo(() => ({
+  const fullObject = {
     name: 'Test Item',
     status: 'active',
     category: 'Frontend',
     secret: 'hidden-value',
-  }));
+  };
+
+  // Empty list (for $each empty-array edge case)
+  const emptyList: any[] = [];
+
+  // Deep nested object (for $store 3+ depth traversal)
+  const nested = { level1: { level2: { value: 'deep-value' } } };
+
+  // Single config object (for $map on single object path)
+  const singleConfig = { title: 'My App', version: '2.0', debug: false };
 
   // ---- Actions ----
   function increment() {
@@ -74,9 +84,43 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     setToggleValue((v) => !v);
   }
 
+  // Track how many items we've created for unique naming
+  let createdCount = 0;
+
+  async function createTestItem() {
+    const p = perspective();
+    if (!p) return;
+    createdCount++;
+    try {
+      await TestItem.create(p, {
+        name: `Item-${createdCount}`,
+        status: createdCount % 2 === 0 ? 'draft' : 'active',
+        category: 'dynamic',
+      });
+    } catch (err) {
+      console.error('TestStore: failed to create TestItem', err);
+    }
+  }
+
+  async function deleteTestItem(id: string) {
+    const p = perspective();
+    if (!p || !id) return;
+    try {
+      await TestItem.delete(p, id);
+    } catch (err) {
+      console.error('TestStore: failed to delete TestItem', err);
+    }
+  }
+
   // ---- AD4M perspective (lazy init for $query testing) ----
   const [perspective, setPerspective] = createSignal<PerspectiveProxy | null>(null);
   let perspectiveInitStarted = false;
+
+  const seedItems = [
+    { name: 'Alpha', status: 'active', category: 'A' },
+    { name: 'Beta', status: 'draft', category: 'B' },
+    { name: 'Gamma', status: 'active', category: 'A' },
+  ];
 
   createEffect(() => {
     const client = adamClient();
@@ -93,11 +137,7 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
           await testPerspective.ensureSDNASubjectClass(TestItem);
           await new Promise((r) => setTimeout(r, 500));
 
-          for (const item of [
-            { name: 'Alpha', status: 'active', category: 'A' },
-            { name: 'Beta', status: 'draft', category: 'B' },
-            { name: 'Gamma', status: 'active', category: 'A' },
-          ]) {
+          for (const item of seedItems) {
             await TestItem.create(testPerspective, item);
           }
         } else {
@@ -107,11 +147,7 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
           const existing = await TestItem.findAll(testPerspective);
           if (!existing || existing.length === 0) {
             await new Promise((r) => setTimeout(r, 500));
-            for (const item of [
-              { name: 'Alpha', status: 'active', category: 'A' },
-              { name: 'Beta', status: 'draft', category: 'B' },
-              { name: 'Gamma', status: 'active', category: 'A' },
-            ]) {
+            for (const item of seedItems) {
               await TestItem.create(testPerspective, item);
             }
           }
@@ -136,6 +172,7 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     counter,
     typedText,
     toggleValue,
+    queryFilterMode,
 
     // Lists
     fruits,
@@ -143,11 +180,17 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     groups,
     properties,
     fullObject,
+    emptyList,
+    nested,
+    singleConfig,
 
     // Actions
     increment,
     setTypedText: setTypedTextFromArg,
     toggle,
+    setQueryFilterMode: (mode: string) => setQueryFilterMode(mode),
+    createTestItem,
+    deleteTestItem,
 
     // AD4M
     perspective,
