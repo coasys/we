@@ -34,6 +34,7 @@
     }
   },
   "dependencies": {
+    "@we/ai-context": "workspace:*",
     "@we/cesium-layers": "workspace:*",
     "@we/components": "workspace:*",
     "@we/design-types": "workspace:*",

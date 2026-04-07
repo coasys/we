@@ -1,8 +1,8 @@
 import { Ad4mClient, AITask } from '@coasys/ad4m';
 import { Model } from '@coasys/ad4m/lib/src/ai/AIResolver';
-import { schemaPromptContext } from '@shared/prompts/schemaContext';
 import { schemaPromptExamples } from '@shared/prompts/schemaExamples';
 import { useAdamStore, useTemplateStore } from '@solid/stores';
+import { schemaContext } from '@we/ai-context';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 export interface AiStore {
@@ -20,7 +20,7 @@ const schemaTask: AITask = {
   taskId: 'we-schema-generation',
   name: 'WE Schema Generation',
   modelId: 'gpt-4',
-  systemPrompt: schemaPromptContext,
+  systemPrompt: schemaContext,
   promptExamples: schemaPromptExamples,
   metaData: 'Generates UI JSON schema based on user requirements',
   createdAt: new Date().toISOString(),
