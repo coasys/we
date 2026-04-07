@@ -97,7 +97,7 @@
                               ▼
                     ┌─────────────────────┐
                     │ 8. @we/ai-context   │
-                    │    → Skills Output  │
+                    │    → Skills Output ✅│
                     └─────────────────────┘
                               │
                               ▼
@@ -305,18 +305,19 @@ Standalone dev tool (`@we/component-showcase`) for previewing multi-framework co
 
 Moves Storybook from `3-primitives/.storybook/` to the monorepo root (`we/.storybook/`). Switches framework to `@storybook/html-vite` so both Lit primitives and SolidJS components render in one instance. Co-locates stories next to their components. Adds `renderSolid()` helper for SolidJS stories. Serves a different audience from #7b (internal team vs. external developers). Deferred because it doesn't block any remaining work.
 
-### 8. @we/ai-context Package
+### 8. @we/ai-context Package ✅
 
-**Plan:** [ai-context-package](../prs/ai-context-package.md) (PR 2 section)
-**Depends on:** Shared `*.types.ts` (#7a)
-**Unblocks:** auto-extracted AI context, replacement of hand-written `schemaContext.ts`, VS Code skill/instruction files for local AI agents
+**Plan:** [ai-context-package](../prs/ai-context-package.md) | [PR summary](../prs/ai-context-pr-summary.md)
+**Status:** Complete (branch `feat/ai-context-package`, 5 commits, 27 files)
+**Depends on:** Shared `*.types.ts` (#7a) ✅
+**Unblocks:** auto-extracted AI context, replacement of hand-written `schemaContext.ts`, instruction files for local AI agents
 
-Creates `@we/ai-context` with extractors (CEM, TypeScript, tokens, stores), assembler, and hand-maintained fragments for cross-cutting concerns. Exports `schemaContext` constant for runtime and `assembleContext()` for tooling.
+Creates `@we/ai-context` with 4 extractors (CEM, TypeScript, tokens, models), 6 hand-maintained fragments (schema-operators, design-system-props, routing, stores, store-patterns, rules), assembler, and generate script. Exports lightweight `schemaContext` constant for runtime (~25KB bundle). Generates instruction files for Copilot (`.github/copilot-instructions.md`), Claude Code (`CLAUDE.md`), and Cursor (`.cursor/rules/we-schema.mdc`). Migrates `@we/app-framework` to import from `@we/ai-context`. 9 tests passing.
 
-**Output target pivot:** Original plan targeted MCP tool responses. Now targets VS Code skill files (`.instructions.md`) and Copilot custom instructions (`copilot-instructions.md`). The assembled context is written to instruction files that are version-controlled with the repo, so any local AI agent (Copilot, Cursor, etc.) automatically has full component/token/convention knowledge without requiring an MCP server. The `assembleContext()` function and extractors are unchanged — only the delivery mechanism is different.
+**Output targets:** Copilot custom instructions, Claude Code project instructions, Cursor rules, and runtime `schemaContext` constant. All version-controlled with the repo — any local AI agent automatically has full component/token/convention knowledge without requiring an MCP server.
 
 **AI integration strategy (progressive):**
-1. **Phase 1 (now):** Local agents — users clone the repo, Copilot/Cursor builds schemas with skill files providing context. Zero infrastructure.
+1. **Phase 1 (done):** Local agents — users clone the repo, Copilot/Cursor/Claude Code builds schemas with instruction files providing context. Zero infrastructure.
 2. **Phase 2 (later):** Cloud API from within WE app — users provide their own API key, section API + assembled context become the system prompt for in-app "AI edits this section" UI.
 3. **Phase 3 (aspirational):** AD4M built-in AI — deferred until local models have sufficient context windows (20K+ effective context needed for schema context alone).
 
@@ -365,7 +366,7 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 5d  | Block Persistence & Rendering  | Data  | 5b         | Medium | Med  |
 | ✅   | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
 | ✅   | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
-| 2    | 8   | @we/ai-context → Skills        | AI    | 7a         | Large  | Med  |
+| ✅   | 8   | @we/ai-context → Skills        | AI    | 7a         | Large  | Med  |
 | 2    | 4   | Local Schema State             | Cust  | 6          | Medium | Med  |
 | 3    | 8b‡ | Schema Validation (semantic)   | AI    | 8          | Small  | Low  |
 | ⏸️   | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
@@ -382,9 +383,9 @@ Phase A PRs (1–3, 4b, 10) are fully independent — all five can run in parall
 
 Within Phase B, #5b (Core Block Types), #5c ($query Service), and #6 (Schema Customization) are all independent of each other — they can run in parallel once #5 lands.
 
-**Remaining work:** #8 (ai-context → skills) and #4 ($localState) are fully independent and can run in parallel. #8b‡ (semantic validation) follows #8. #7b, #7c, and #9 are deferred.
+**Remaining work:** #4 ($localState) is the only non-deferred item without a dependency on an incomplete PR. #8b‡ (semantic validation) follows #8 (now complete). #7b, #7c, and #9 are deferred.
 
-The critical path for the complete schema-first app-building workflow is: **#8 (ai-context → skills) + #4 ($localState)** in parallel, then **#8b‡ (semantic validation)** as an optional follow-up. This gives local AI agents full component/token context via instruction files, and unlocks schema-only forms.
+The critical path for the complete schema-first app-building workflow is: **#4 ($localState)**, then **#8b‡ (semantic validation)** as an optional follow-up. #4 unlocks schema-only forms; #8b‡ adds semantic checks using the now-complete ai-context extractors.
 
 ```
 Time →
@@ -393,9 +394,10 @@ Track 1:  [1–3, 4b, 10 ✅] ────────────────�
           [5 → 5b/5c/5d/6 ✅] ───────────────────────────────────────────────
           [7a ✅] ────────────────────────────────────────────────────────────
           [8b-Ph1 ✅] ────────────────────────────────────────────────────────
+          [8. ai-context → skills ✅] ────────────────────────────────────────
 
-Track 2:  [8. ai-context → skills] ── [8b-Ph2. semantic]              ← next wave
-Track 3:  [4. $localState] ────────────────────────────────            ← next wave (parallel with #8)
+Track 2:  [8b-Ph2. semantic]                                          ← next wave
+Track 3:  [4. $localState] ────────────────────────────────            ← next wave (parallel with #8b‡)
 
 Deferred: [7b. Showcase ⏸️] [7c. Storybook ⏸️] [9. MCP Tools ⏸️]
 ```
