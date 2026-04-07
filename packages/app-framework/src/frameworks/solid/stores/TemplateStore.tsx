@@ -1,12 +1,12 @@
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { schemaMutationActions } from '@shared/schemas/test/SchemaMutations.schema';
 import { deepClone } from '@shared/utils';
+import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
 import { Template } from '@we/models';
 import type { StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
-import { toastService } from '@we/components/solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 

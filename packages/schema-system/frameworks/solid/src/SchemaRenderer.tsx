@@ -283,8 +283,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   }
 
   const slotProp = node.slot ? { slot: node.slot } : {};
-  const themeStyle = node.theme ? { display: 'contents', ...themeToStyle(node.theme) } : undefined;
-  const themeAttr = node.theme?.themeName;
+  const themeStyle = createMemo(() => (node.theme ? { display: 'contents', ...themeToStyle(node.theme) } : undefined));
+  const themeAttr = createMemo(() => node.theme?.themeName);
 
   // Render: web components use per-prop property effects, Solid/HTML use reactive spread
   if (isWebComponent) {
@@ -298,6 +298,17 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         if (hostRef) hostRef[key] = memo();
       });
     }
+
+    // Track dynamically added props for web components
+    createEffect(() => {
+      const currentProps = node.props as Record<string, unknown> | undefined;
+      if (!currentProps || !hostRef) return;
+      for (const key of Object.keys(currentProps)) {
+        if (!(key in propMemos) && !(key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase())) {
+          hostRef[key] = currentProps[key];
+        }
+      }
+    });
 
     const eventAttrs = createMemo(() => {
       const attrs: Record<string, unknown> = {};
@@ -315,12 +326,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       </Dynamic>
     );
 
-    return themeStyle ? (
-      <div style={themeStyle} data-we-theme={themeAttr}>
+    return (
+      <div style={themeStyle() ?? { display: 'contents' }} data-we-theme={themeAttr()}>
         {wcElement}
       </div>
-    ) : (
-      wcElement
     );
   }
 
@@ -329,6 +338,15 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const attrs: Record<string, unknown> = {};
     for (const [key, memo] of Object.entries(propMemos)) {
       attrs[key] = memo();
+    }
+    // Pick up props added dynamically via updateSchema that had no memo at mount time
+    const currentProps = node.props as Record<string, unknown> | undefined;
+    if (currentProps) {
+      for (const key of Object.keys(currentProps)) {
+        if (!(key in propMemos)) {
+          attrs[key] = currentProps[key];
+        }
+      }
     }
     return attrs;
   });
@@ -339,11 +357,9 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     </Dynamic>
   );
 
-  return themeStyle ? (
-    <div style={themeStyle} data-we-theme={themeAttr}>
+  return (
+    <div style={themeStyle() ?? { display: 'contents' }} data-we-theme={themeAttr()}>
       {solidElement}
     </div>
-  ) : (
-    solidElement
   );
 }

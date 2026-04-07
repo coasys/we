@@ -31,105 +31,49 @@ import { deepClone } from '../../utils';
 // Schema definition
 // ---------------------------------------------------------------------------
 
-const mutationButtons = {
-  type: 'Row',
-  props: { gap: '300', ay: 'center' },
-  children: [
-    {
-      type: 'we-button',
-      props: { onClick: { $action: 'templateStore.addChild' } },
-      children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add child'],
-    },
-    {
-      type: 'we-button',
-      props: { onClick: { $action: 'templateStore.removeChild' } },
-      children: [{ type: 'we-icon', props: { name: 'minus' } }, 'Remove child'],
-    },
-    {
-      type: 'we-button',
-      props: { onClick: { $action: 'templateStore.changeProp' } },
-      children: [{ type: 'we-icon', props: { name: 'pencil' } }, 'Change prop'],
-    },
-    {
-      type: 'we-button',
-      props: { onClick: { $action: 'templateStore.changeType' } },
-      children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }, 'Change type'],
-    },
-    {
-      type: 'we-button',
-      props: { onClick: { $action: 'templateStore.addRouteChild' } },
-      children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add route child'],
-    },
-  ],
-};
+function button(action: string, icon: string, label: string, variant?: string): SchemaNode {
+  return {
+    type: 'we-button',
+    props: { ...(variant && { variant }), onClick: { $action: `templateStore.${action}` } },
+    children: [{ type: 'we-icon', props: { name: icon } }, label],
+  };
+}
 
-const mutationButtons2 = {
-  type: 'Row',
-  props: { gap: '300', ay: 'center' },
-  children: [
-    {
-      type: 'we-button',
-      props: { variant: 'secondary', onClick: { $action: 'templateStore.removeFromMiddle' } },
-      children: [{ type: 'we-icon', props: { name: 'arrows-in-line-vertical' } }, 'Remove middle'],
-    },
-    {
-      type: 'we-button',
-      props: { variant: 'secondary', onClick: { $action: 'templateStore.reorderChildren' } },
-      children: [{ type: 'we-icon', props: { name: 'arrows-down-up' } }, 'Reorder'],
-    },
-    {
-      type: 'we-button',
-      props: { variant: 'secondary', onClick: { $action: 'templateStore.deepNestedProp' } },
-      children: [{ type: 'we-icon', props: { name: 'tree-structure' } }, 'Deep prop'],
-    },
-    {
-      type: 'we-button',
-      props: { variant: 'secondary', onClick: { $action: 'templateStore.multiMutate' } },
-      children: [{ type: 'we-icon', props: { name: 'stack' } }, 'Multi-mutate'],
-    },
-    {
-      type: 'we-button',
-      props: { variant: 'secondary', onClick: { $action: 'templateStore.noopMutate' } },
-      children: [{ type: 'we-icon', props: { name: 'equals' } }, 'No-op'],
-    },
-  ],
-};
+function buttonRow(variant: string | undefined, buttons: [string, string, string][]): SchemaNode {
+  return {
+    type: 'Row',
+    props: { gap: '300', ay: 'center' },
+    children: buttons.map(([action, icon, label]) => button(action, icon, label, variant)),
+  };
+}
 
-const mutationButtons3 = {
-  type: 'Row',
-  props: { gap: '300', ay: 'center' },
-  children: [
-    {
-      type: 'we-button',
-      props: { variant: 'outline', onClick: { $action: 'templateStore.changeText' } },
-      children: [{ type: 'we-icon', props: { name: 'text-aa' } }, 'Change text'],
-    },
-    {
-      type: 'we-button',
-      props: { variant: 'outline', onClick: { $action: 'templateStore.addProp' } },
-      children: [{ type: 'we-icon', props: { name: 'plus-circle' } }, 'Add prop'],
-    },
-    {
-      type: 'we-button',
-      props: { variant: 'outline', onClick: { $action: 'templateStore.removeProp' } },
-      children: [{ type: 'we-icon', props: { name: 'minus-circle' } }, 'Remove prop'],
-    },
-    {
-      type: 'we-button',
-      props: { variant: 'outline', onClick: { $action: 'templateStore.toggleTheme' } },
-      children: [{ type: 'we-icon', props: { name: 'palette' } }, 'Toggle theme'],
-    },
-    {
-      type: 'we-button',
-      props: { variant: 'outline', onClick: { $action: 'templateStore.invalidMutate' } },
-      children: [{ type: 'we-icon', props: { name: 'warning' } }, 'Invalid'],
-    },
-  ],
-};
+const mutationButtons = buttonRow(undefined, [
+  ['addChild', 'plus', 'Add child'],
+  ['removeChild', 'minus', 'Remove child'],
+  ['changeProp', 'pencil', 'Change prop'],
+  ['changeType', 'arrows-clockwise', 'Change type'],
+  ['addRouteChild', 'plus', 'Add route child'],
+]);
 
-const dynamicArea = {
+const mutationButtons2 = buttonRow('secondary', [
+  ['removeFromMiddle', 'arrows-in-line-vertical', 'Remove middle'],
+  ['reorderChildren', 'arrows-down-up', 'Reorder'],
+  ['deepNestedProp', 'tree-structure', 'Deep prop'],
+  ['multiMutate', 'stack', 'Multi-mutate'],
+  ['noopMutate', 'equals', 'No-op'],
+]);
+
+const mutationButtons3 = buttonRow('outline', [
+  ['changeText', 'text-aa', 'Change text'],
+  ['addProp', 'plus-circle', 'Add prop'],
+  ['removeProp', 'minus-circle', 'Remove prop'],
+  ['toggleTheme', 'palette', 'Toggle theme'],
+  ['invalidMutate', 'warning', 'Invalid'],
+]);
+
+const dynamicArea: SchemaNode = {
   type: 'Column',
-  props: { id: 'dynamic-area', p: '400', bg: 'neutral-0', r: '400' },
+  props: { p: '400', bg: 'neutral-0', r: '400' },
   children: [
     {
       type: 'we-text',
@@ -158,7 +102,7 @@ const header: SchemaNode = {
   ],
 };
 
-const mainContent = {
+const mainContent: SchemaNode = {
   type: 'Column',
   props: { minHeight: '100%', width: '100%', p: '500', bg: 'neutral-50', gap: '400' },
   children: [
@@ -168,7 +112,7 @@ const mainContent = {
     mutationButtons3,
     dynamicArea,
     // $routes: routed content appears here
-    { type: 'main', props: { p: '400' }, children: [{ type: '$routes' }] },
+    { type: 'Column', children: [{ type: 'we-text', children: ['Routes:'] }, { type: '$routes' }] },
   ],
 };
 
@@ -180,7 +124,7 @@ export const schemaMutationsTemplate: TemplateSchema = {
   },
   type: 'Column',
   props: { height: '100%', width: '100%' },
-  children: [mainContent],
+  children: [mainContent, { type: 'ToastContainer' }],
   routes: [
     {
       path: '*',
@@ -248,7 +192,7 @@ export const schemaMutationsTemplate: TemplateSchema = {
 //     children[1] = mutation buttons Row (primary)
 //     children[2] = mutation buttons Row 2 (secondary)
 //     children[3] = mutation buttons Row 3 (outline)
-//     children[4] = dynamic area Column (id: 'dynamic-area')
+//     children[4] = dynamic area Column
 //       children[0] = placeholder text
 //       children[1] = inner Column (dynamic children go here)
 //     children[5] = main (with $routes)
