@@ -19,6 +19,7 @@
 import {
   integrationTestsTemplate,
   schemaMutationsTemplate,
+  schemaRoutingTemplate,
   twitterTemplate,
   weTemplate,
 } from '@shared/schemas';
@@ -53,6 +54,7 @@ export const templateRegistry = {
   twitter: twitterTemplate,
   'integration-tests': integrationTestsTemplate,
   'schema-mutations': schemaMutationsTemplate,
+  'schema-routing': schemaRoutingTemplate,
   // launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
 };
 

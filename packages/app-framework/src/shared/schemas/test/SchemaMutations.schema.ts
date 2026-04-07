@@ -15,7 +15,7 @@
  *   addRouteChild (mutate inside route definition)
  *
  * Tokens exercised:
- *   $store, $action, $routes (multi-level routing), $concat, $if (prop-level)
+ *   $store, $action, $routes, $concat, $if (prop-level)
  *
  * This replaces the old TestTemplate.schema.ts with a clean, focused design.
  */
@@ -71,18 +71,23 @@ const mutationButtons3 = buttonRow('outline', [
   ['invalidMutate', 'warning', 'Invalid'],
 ]);
 
-const dynamicArea: SchemaNode = {
-  type: 'Column',
-  props: { p: '400', bg: 'neutral-0', r: '400' },
-  children: [
-    {
-      type: 'we-text',
-      props: { color: 'neutral-400' },
-      children: ['Dynamic children appear here. Click "Add child" above.'],
-    },
-    { type: 'Column', props: { mt: '300', gap: '300' }, children: [] },
-  ],
-};
+function mutationArea(placeholder: string, innerChildren: SchemaNode[] = []): SchemaNode {
+  return {
+    type: 'Column',
+    props: { p: '400', bg: 'neutral-0', r: '400' },
+    children: [
+      {
+        type: 'we-text',
+        props: { color: 'neutral-400' },
+        children: [placeholder],
+      },
+      { type: 'Column', props: { mt: '300', gap: '300' }, children: innerChildren },
+    ],
+  };
+}
+
+const dynamicArea = mutationArea('Root template children appear here. Click "Add child" above.');
+const routeArea = mutationArea('Route children appear here. Click "Add route child" above.', [{ type: '$routes' }]);
 
 const header: SchemaNode = {
   type: 'Column',
@@ -105,15 +110,7 @@ const header: SchemaNode = {
 const mainContent: SchemaNode = {
   type: 'Column',
   props: { minHeight: '100%', width: '100%', p: '500', bg: 'neutral-50', gap: '400' },
-  children: [
-    header,
-    mutationButtons,
-    mutationButtons2,
-    mutationButtons3,
-    dynamicArea,
-    // $routes: routed content appears here
-    { type: 'Column', children: [{ type: 'we-text', children: ['Routes:'] }, { type: '$routes' }] },
-  ],
+  children: [header, mutationButtons, mutationButtons2, mutationButtons3, dynamicArea, routeArea],
 };
 
 export const schemaMutationsTemplate: TemplateSchema = {
@@ -127,58 +124,10 @@ export const schemaMutationsTemplate: TemplateSchema = {
   children: [mainContent, { type: 'ToastContainer' }],
   routes: [
     {
-      path: '*',
-      type: 'Column',
-      props: { p: '400' },
-      children: [{ type: 'we-text', props: { fontSize: '400', color: 'neutral-400' }, children: ['Page not found'] }],
-    },
-    {
       path: '/',
       type: 'Column',
       props: { gap: '300' },
-      children: [
-        { type: 'we-text', props: { fontSize: '500', fontWeight: '600' }, children: ['Home'] },
-        {
-          type: 'Row',
-          props: { gap: '200' },
-          children: [
-            {
-              type: 'we-button',
-              props: { variant: 'secondary', onClick: { $action: 'routeStore.navigate', args: ['/sub'] } },
-              children: ['Go to /sub'],
-            },
-            {
-              type: 'we-button',
-              props: { variant: 'secondary', onClick: { $action: 'routeStore.navigate', args: ['/sub/nested'] } },
-              children: ['Go to /sub/nested'],
-            },
-          ],
-        },
-      ],
-    },
-    {
-      path: '/sub',
-      type: 'Column',
-      props: { gap: '300' },
-      children: [
-        { type: 'we-text', props: { fontSize: '500', fontWeight: '600' }, children: ['Sub-route'] },
-        {
-          type: 'we-button',
-          props: { variant: 'ghost', onClick: { $action: 'routeStore.navigate', args: ['/'] } },
-          children: ['Back to home'],
-        },
-        { type: 'main', children: [{ type: '$routes' }] },
-      ],
-      routes: [
-        { path: '/', type: 'we-text', props: { fontSize: '400', color: 'neutral-500' }, children: ['Sub-route index'] },
-        {
-          path: '/nested',
-          type: 'we-text',
-          props: { fontSize: '400', color: 'primary-500', fontWeight: '600' },
-          children: ['Nested sub-route!'],
-        },
-        { path: '/*', type: 'we-text', children: ['Sub-route not found'] },
-      ],
+      children: [],
     },
   ],
 };
@@ -195,7 +144,7 @@ export const schemaMutationsTemplate: TemplateSchema = {
 //     children[4] = dynamic area Column
 //       children[0] = placeholder text
 //       children[1] = inner Column (dynamic children go here)
-//     children[5] = main (with $routes)
+//     children[5] = route area Column (with $routes)
 // ---------------------------------------------------------------------------
 
 export function schemaMutationActions(
@@ -218,7 +167,7 @@ export function schemaMutationActions(
       props: { p: '300', gap: '200', bg: 'neutral-100', r: '200', ay: 'center' },
       children: [
         { type: 'we-icon', props: { name: 'check', color: 'success-500' } },
-        { type: 'we-text', children: [`Dynamic child #${count}`] },
+        { type: 'we-text', children: [`Template child #${count}`] },
       ],
     });
     applyUpdate(newSchema);
@@ -255,9 +204,12 @@ export function schemaMutationActions(
     if (homeRoute) {
       const count = homeRoute.children.length;
       homeRoute.children.push({
-        type: 'we-text',
-        props: { fontSize: '300', color: 'success-500' },
-        children: [`Route child #${count}`],
+        type: 'Row',
+        props: { p: '300', gap: '200', bg: 'neutral-100', r: '200', ay: 'center' },
+        children: [
+          { type: 'we-icon', props: { name: 'check', color: 'primary-500' } },
+          { type: 'we-text', children: [`Route child #${count}`] },
+        ],
       });
     }
     applyUpdate(newSchema);

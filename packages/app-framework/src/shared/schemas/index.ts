@@ -8,6 +8,7 @@ export {
   integrationTestsTemplate,
   schemaMutationsTemplate,
   schemaMutationActions,
+  schemaRoutingTemplate,
 } from './test';
 
 // Shell fragments
