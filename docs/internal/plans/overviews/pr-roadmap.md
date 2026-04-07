@@ -69,7 +69,7 @@
          ▼                     ▼                      ▼
 ┌────────────────┐  ┌────────────────────┐  ┌─────────────────────┐
 │5b. Core Blocks │  │5c. $query        ✅│  │ 6. Schema           │
-│             ✅ │  └────────────────────┘  │    Customization    │
+│             ✅ │  └────────────────────┘  │    Customization  ✅│
 └────────────────┘                          └─────────────────────┘
          │
          ▼
@@ -86,18 +86,18 @@
 
                     ┌──────────────────────┐  ┌─────────────────────┐
                     │ 7a. Shared *.types.ts│  │ 7b. Component       │
-                    │     Refactor       ✅│  │     Showcase        │
+                    │     Refactor       ✅│  │     Showcase     ⏸️ │
                     └──────────────────────┘  └─────────────────────┘
 
                     ┌─────────────────────┐
                     │7c. Root Storybook   │
-                    │    Migration        │
+                    │    Migration     ⏸️ │
                     └─────────────────────┘
                               │
                               ▼
                     ┌─────────────────────┐
                     │ 8. @we/ai-context   │
-                    │    Package          │
+                    │    → Skills Output  │
                     └─────────────────────┘
                               │
                               ▼
@@ -105,14 +105,14 @@
                     │8b. Schema Validation│
                     │    (Phase 2)        │
                     └─────────────────────┘
-                              │
-                              ▼
+
                     ┌─────────────────────┐
-                    │ 9. MCP Tools        │
+                    │ 9. MCP Tools     ⏸️ │
+                    │    (deferred)       │
                     └─────────────────────┘
 ```
 
-> **Note:** #5 → #7b dependency (showcase needs clean model imports) is noted in #7b's description but not drawn to avoid crossing arrows. #5b, #5c, and #6 all depend on #5 independently — they can run in parallel. #5d depends on #5b. #6 → #9 dependency is noted in #9's description but not drawn to avoid crossing arrows. #8b has two phases: Phase 1 (token shape checks) has no dependencies; Phase 2 (semantic checks) depends on #8.
+> **Note:** #5b, #5c, and #6 all depend on #5 independently — they can run in parallel. #5d depends on #5b. #8b has two phases: Phase 1 (token shape checks) has no dependencies; Phase 2 (semantic checks) depends on #8. #9 is deferred indefinitely — skills/instruction files achieve the same AI context delivery without MCP infrastructure. #7b and #7c are deferred as developer tooling that doesn't advance the core vision.
 
 ---
 
@@ -287,46 +287,58 @@ Adds `$localState` / `$local` / `$setLocal` tokens for ephemeral form state scop
 
 Extracted shared prop interfaces from 13 `.solid.tsx` files into co-located `*.types.ts` files across 4-components and 5-widgets. Moved `solid/` → `frameworks/solid/` in all four packages (4-components, 5-widgets, block-system, schema-system). Refactored 3 components from `Accessor<T>` to plain props and simplified SchemaRenderer by removing the accessor passthrough branch. Added `@ai` JSDoc to 5 non-obvious components. Established `export type *` (TS 5.0+) re-export pattern and `extends` for Solid-specific slot props. Created design-system `CONVENTIONS.md`.
 
-### 7b. Component Showcase
+### 7b. Component Showcase ⏸️
 
 **Plan:** [component-showcase](../prs/component-showcase.md)
+**Status:** Deferred — developer tooling, not vision-critical. Revisit when external contributor onboarding becomes a priority.
 **Depends on:** Block Model Migration (#5) — showcase needs clean model imports for block-related components
 **Unblocks:** external developer onboarding, component development workflow, visual regression testing
 
-Standalone dev tool (`@we/component-showcase`) for previewing multi-framework components. Can be implemented in parallel with the AI tooling track.
+Standalone dev tool (`@we/component-showcase`) for previewing multi-framework components. Deferred because it doesn't advance the core app-building workflow.
 
-### 7c. Root Storybook Migration
+### 7c. Root Storybook Migration ⏸️
 
 **Plan:** [storybook-migration](../prs/storybook-migration.md)
+**Status:** Deferred — internal developer tooling, not vision-critical.
 **Depends on:** nothing (benefits from #10 landing first for more components to verify)
 **Unblocks:** cross-package story discovery, SolidJS component stories, unified theme preview
 
-Moves Storybook from `3-primitives/.storybook/` to the monorepo root (`we/.storybook/`). Switches framework to `@storybook/html-vite` so both Lit primitives and SolidJS components render in one instance. Co-locates stories next to their components. Adds `renderSolid()` helper for SolidJS stories. Serves a different audience from #7b (internal team vs. external developers).
+Moves Storybook from `3-primitives/.storybook/` to the monorepo root (`we/.storybook/`). Switches framework to `@storybook/html-vite` so both Lit primitives and SolidJS components render in one instance. Co-locates stories next to their components. Adds `renderSolid()` helper for SolidJS stories. Serves a different audience from #7b (internal team vs. external developers). Deferred because it doesn't block any remaining work.
 
 ### 8. @we/ai-context Package
 
 **Plan:** [ai-context-package](../prs/ai-context-package.md) (PR 2 section)
 **Depends on:** Shared `*.types.ts` (#7a)
-**Unblocks:** auto-extracted AI context, replacement of hand-written `schemaContext.ts`, MCP tools
+**Unblocks:** auto-extracted AI context, replacement of hand-written `schemaContext.ts`, VS Code skill/instruction files for local AI agents
 
 Creates `@we/ai-context` with extractors (CEM, TypeScript, tokens, stores), assembler, and hand-maintained fragments for cross-cutting concerns. Exports `schemaContext` constant for runtime and `assembleContext()` for tooling.
+
+**Output target pivot:** Original plan targeted MCP tool responses. Now targets VS Code skill files (`.instructions.md`) and Copilot custom instructions (`copilot-instructions.md`). The assembled context is written to instruction files that are version-controlled with the repo, so any local AI agent (Copilot, Cursor, etc.) automatically has full component/token/convention knowledge without requiring an MCP server. The `assembleContext()` function and extractors are unchanged — only the delivery mechanism is different.
+
+**AI integration strategy (progressive):**
+1. **Phase 1 (now):** Local agents — users clone the repo, Copilot/Cursor builds schemas with skill files providing context. Zero infrastructure.
+2. **Phase 2 (later):** Cloud API from within WE app — users provide their own API key, section API + assembled context become the system prompt for in-app "AI edits this section" UI.
+3. **Phase 3 (aspirational):** AD4M built-in AI — deferred until local models have sufficient context windows (20K+ effective context needed for schema context alone).
 
 ### 8b. Schema Validation (Structural → Semantic)
 
 **Plan:** [schema-validation](../prs/schema-validation.md)
 **Status:** Phase 1 complete (branch `feat/schema-validation`, 1 commit, 7 files). Phase 2 not started.
 **Depends on:** Token shape checks (#8b Phase 1): none. Semantic checks (#8b Phase 2): @we/ai-context (#8) for `ValidationContext`.
-**Unblocks:** AI feedback loop — prevents broken schema generation, MCP `validate_schema` tool
+**Unblocks:** AI feedback loop — prevents broken schema generation, local `validate` function callable from terminal or test scripts
 
-Extends existing Zod validation in `packages/schema-system/shared/src/`. Phase 1 adds 11 token shape Zod schemas with structural enforcement, refines `zSchemaProp` union to reject malformed/unknown `$`-operators, adds `superRefine` node-level checks for `$each`/`$if`/`$routes`, adds `severity` field to `ValidationError`, and includes 49 new tests. Also removes stale `schemaUpdater.test.ts` and legacy `solid/src/SchemaRenderer.tsx`. Phase 2 adds a semantic walker that accepts component/store metadata from ai-context to check component existence, prop validity, and store references.
+Extends existing Zod validation in `packages/schema-system/shared/src/`. Phase 1 adds 11 token shape Zod schemas with structural enforcement, refines `zSchemaProp` union to reject malformed/unknown `$`-operators, adds `superRefine` node-level checks for `$each`/`$if`/`$routes`, adds `severity` field to `ValidationError`, and includes 49 new tests. Also removes stale `schemaUpdater.test.ts` and legacy `solid/src/SchemaRenderer.tsx`. Phase 2 adds a semantic walker that accepts component/store metadata from ai-context to check component existence, prop validity, and store references. Local agents can invoke validation via terminal (`npx vitest` or direct function call) — no MCP wrapper needed.
 
-### 9. MCP Tools
+### 9. MCP Tools ⏸️
 
 **Plan:** [mcp-tools](../prs/mcp-tools.md)
+**Status:** Deferred indefinitely — VS Code skills/instruction files achieve equivalent AI context delivery without MCP infrastructure.
 **Depends on:** @we/ai-context (#8) + Schema Validation (#8b) + Schema Customization (#6)
 **Unblocks:** on-demand AI component/token/store lookup, schema validation tool, slim orientation prompt
 
 Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6. Phase 2 (knowledge tools: `list_components`, `get_component`, `validate_schema`, etc.) needs a lightweight WE MCP server backed by `AssembledContext`. The `validate_schema` tool is a thin wrapper around the validation function from #8b.
+
+**Why deferred:** With 200K+ context windows on modern models, the component/token/convention reference fits comfortably in skill files — no on-demand lookup needed. Schema validation can be invoked locally via terminal. The only genuinely dynamic tool (SHACL section tools) is free with #6 and doesn't need the full MCP server. If MCP is ever needed, the hard part (assembling context via #8) is done — building the server is straightforward.
 
 ---
 
@@ -353,14 +365,14 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 5d  | Block Persistence & Rendering  | Data  | 5b         | Medium | Med  |
 | ✅   | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
 | ✅   | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
-| 2    | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
-| 2    | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
-| 2    | 8   | @we/ai-context                 | AI    | 7a         | Large  | Med  |
-| 3    | 4   | Local Schema State             | Cust  | 6          | Medium | Med  |
+| 2    | 8   | @we/ai-context → Skills        | AI    | 7a         | Large  | Med  |
+| 2    | 4   | Local Schema State             | Cust  | 6          | Medium | Med  |
 | 3    | 8b‡ | Schema Validation (semantic)   | AI    | 8          | Small  | Low  |
-| 4    | 9   | MCP Tools                      | AI    | 6, 8, 8b   | Large  | Med  |
+| ⏸️   | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
+| ⏸️   | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
+| ⏸️   | 9   | MCP Tools                      | AI    | 6, 8, 8b   | Large  | Med  |
 
-> **†** 8b structural = token shape Zod schemas (no deps). **‡** 8b semantic = component/store validation (needs ai-context).
+> **†** 8b structural = token shape Zod schemas (no deps). **‡** 8b semantic = component/store validation (needs ai-context). **⏸️** = deferred indefinitely (developer tooling or superseded by skills approach).
 
 ---
 
@@ -370,21 +382,20 @@ Phase A PRs (1–3, 4b, 10) are fully independent — all five can run in parall
 
 Within Phase B, #5b (Core Block Types), #5c ($query Service), and #6 (Schema Customization) are all independent of each other — they can run in parallel once #5 lands.
 
-Within Phase D, the showcase (#7b) is independent of the AI context track (#7a → #8 → #9) and can run in parallel.
+**Remaining work:** #8 (ai-context → skills) and #4 ($localState) are fully independent and can run in parallel. #8b‡ (semantic validation) follows #8. #7b, #7c, and #9 are deferred.
 
-The critical path is: **5 → 6 → 9** (block migration → schema customization → MCP tools), with **7a → 8** feeding into #9 from the AI side. #5c ($query) is the highest-priority ecosystem feature but is off the critical path for tooling PRs — it can be built in parallel with #6. #5b (Core Block Types) and #4 ($localState) are also off the critical path.
+The critical path for the complete schema-first app-building workflow is: **#8 (ai-context → skills) + #4 ($localState)** in parallel, then **#8b‡ (semantic validation)** as an optional follow-up. This gives local AI agents full component/token context via instruction files, and unlocks schema-only forms.
 
 ```
 Time →
 
-Track 1:  [1. Buttons ✅] [1b. Primitives ✅] [1c. Tokens] [3. Themes] [8b-Ph1. Token Validation] ──
-Track 2:  [2. Unwrap ✅] [2b. Fine-Grained ✅] [2c. WC Props] ────────────
-Track 2b: [4b. $concat] ────────────────────────────────────────────────
-Track 2c: [10. Components Ph1] ─────────────────────────────────────────
-Track 3:  [5. Models]  [5c. $query ✅] ──────────────────────────────────
-Track 4:  ──────────── [5b. Blocks ✅] [5d. Block Persist. & Rendering] ─
-Track 5:  ──────────── [6. Schema Customization ✅] ──── [4. $local] ────
-Track 6:  [7a. types]  ──────────── [8. ai-context] ─ [8b-Ph2] ─ [9. MCP]
-Track 7:  ────────────────────────── [7b. Showcase] ────────────────────
-Track 8:  ──────────── [7c. Root Storybook] ────────────────────────────
+Track 1:  [1–3, 4b, 10 ✅] ──────────────────────────────────────────────────
+          [5 → 5b/5c/5d/6 ✅] ───────────────────────────────────────────────
+          [7a ✅] ────────────────────────────────────────────────────────────
+          [8b-Ph1 ✅] ────────────────────────────────────────────────────────
+
+Track 2:  [8. ai-context → skills] ── [8b-Ph2. semantic]              ← next wave
+Track 3:  [4. $localState] ────────────────────────────────            ← next wave (parallel with #8)
+
+Deferred: [7b. Showcase ⏸️] [7c. Storybook ⏸️] [9. MCP Tools ⏸️]
 ```
