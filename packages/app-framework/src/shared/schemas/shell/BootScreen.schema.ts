@@ -1,6 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
 
-export const bootScreenSchema: SchemaNode = {
+export const bootScreen: SchemaNode = {
   type: '$if',
   props: {
     condition: { $ne: [{ $store: 'adamStore.bootState' }, 'ready'] },

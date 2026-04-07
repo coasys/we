@@ -11,59 +11,20 @@ import {
 
 describe('IntegrationLoader', () => {
   describe('loadIntegrations', () => {
-    it('should load Flux integration for supported platform', async () => {
+    it('should return empty array when no integrations are generated', async () => {
       const integrations = await loadIntegrations('web');
 
-      expect(integrations).toBeDefined();
-      expect(Array.isArray(integrations)).toBe(true);
-
-      const flux = integrations.find((i) => i.id === 'flux');
-      if (flux) {
-        expect(flux.manifest.name).toBe('Flux');
-        expect(flux.manifest.version).toBe('0.11.0');
-        expect(flux.manifest.platforms).toContain('web');
-        expect(flux.schemas).toBeDefined();
-        expect(flux.routes).toBeDefined();
-      }
+      expect(integrations).toEqual([]);
     });
 
-    it('should load Flux integration for electron platform', async () => {
-      const integrations = await loadIntegrations('electron');
-
-      const flux = integrations.find((i) => i.id === 'flux');
-      if (flux) {
-        expect(flux.manifest.platforms).toContain('electron');
-      }
-    });
-
-    it('should load Flux integration for tauri platform', async () => {
-      const integrations = await loadIntegrations('tauri');
-
-      const flux = integrations.find((i) => i.id === 'flux');
-      if (flux) {
-        expect(flux.manifest.platforms).toContain('tauri');
-      }
-    });
-
-    it('should return empty array if no integrations available', async () => {
-      // This test verifies graceful handling when integrations fail to load
-      const integrations = await loadIntegrations('web');
-      expect(Array.isArray(integrations)).toBe(true);
+    it('should return empty array for all platforms', async () => {
+      expect(await loadIntegrations('electron')).toEqual([]);
+      expect(await loadIntegrations('tauri')).toEqual([]);
+      expect(await loadIntegrations('web')).toEqual([]);
     });
   });
 
   describe('getIntegration', () => {
-    it('should get Flux integration by id', async () => {
-      const flux = await getIntegration('flux', 'web');
-
-      if (flux) {
-        expect(flux.id).toBe('flux');
-        expect(flux.manifest.name).toBe('Flux');
-        expect(flux.schemas).toBeDefined();
-        expect(flux.routes).toBeDefined();
-      }
-    });
-
     it('should return null for non-existent integration', async () => {
       const result = await getIntegration('non-existent', 'web');
       expect(result).toBeNull();
@@ -71,26 +32,9 @@ describe('IntegrationLoader', () => {
   });
 
   describe('getIntegrationManifests', () => {
-    it('should get all integration manifests', async () => {
+    it('should return empty array when no integrations exist', async () => {
       const manifests = await getIntegrationManifests('web');
-
-      expect(Array.isArray(manifests)).toBe(true);
-
-      const flux = manifests.find((m) => m.id === 'flux');
-      if (flux) {
-        expect(flux.name).toBe('Flux');
-        expect(flux.version).toBe('0.11.0');
-        expect(flux.mount).toBe('flux');
-        expect(flux.capabilities).toContain('perspectives');
-      }
-    });
-
-    it('should only include manifests for specified platform', async () => {
-      const manifests = await getIntegrationManifests('web');
-
-      manifests.forEach((manifest) => {
-        expect(manifest.platforms).toContain('web');
-      });
+      expect(manifests).toEqual([]);
     });
   });
 
@@ -157,61 +101,6 @@ describe('IntegrationLoader', () => {
       });
 
       expect(url).toBe('app/dist');
-    });
-  });
-
-  describe('Flux Integration Validation', () => {
-    it('should have valid Flux schemas', async () => {
-      const flux = await getIntegration('flux', 'web');
-
-      if (flux) {
-        expect(flux.schemas).toBeDefined();
-        expect(flux.schemas.main).toBeDefined();
-        expect(flux.schemas.main.type).toBe('container');
-      }
-    });
-
-    it('should have valid Flux routes', async () => {
-      const flux = await getIntegration('flux', 'web');
-
-      if (flux) {
-        expect(flux.routes).toBeDefined();
-        expect(Array.isArray(flux.routes)).toBe(true);
-
-        const mainRoute = flux.routes.find((r) => r.path === '/flux');
-        expect(mainRoute).toBeDefined();
-        expect(mainRoute?.component).toBe('main');
-      }
-    });
-
-    it('should have all required Flux capabilities', async () => {
-      const flux = await getIntegration('flux', 'web');
-
-      if (flux) {
-        expect(hasCapability(flux.manifest, 'perspectives')).toBe(true);
-        expect(hasCapability(flux.manifest, 'languages')).toBe(true);
-        expect(hasCapability(flux.manifest, 'agents')).toBe(true);
-      }
-    });
-
-    it('should support all platforms', async () => {
-      const flux = await getIntegration('flux', 'web');
-
-      if (flux) {
-        expect(flux.manifest.platforms).toContain('electron');
-        expect(flux.manifest.platforms).toContain('tauri');
-        expect(flux.manifest.platforms).toContain('web');
-      }
-    });
-
-    it('should have metadata from seed file', async () => {
-      const flux = await getIntegration('flux', 'web');
-
-      if (flux && flux.metadata) {
-        expect(flux.metadata.seed).toBeDefined();
-        expect(flux.metadata.processedAt).toBeDefined();
-        expect(flux.metadata.integrationId).toBe('flux');
-      }
     });
   });
 });

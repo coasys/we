@@ -10,7 +10,7 @@ import sharedStyles from '../shared/styles';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   fontFamily: 'monospace',
   fontSize: '300',
-  r: 'sm',
+  r: '300',
 };
 
 const MODE_DEFAULTS: Record<'inline' | 'block', Partial<DesignSystemProps>> = {

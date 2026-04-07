@@ -13,12 +13,19 @@ const VARIANT_ICONS: Record<string, string> = {
   error: 'x-circle',
 };
 
+const VARIANT_COLORS: Record<string, string> = {
+  info: 'neutral-500',
+  success: 'success-500',
+  warning: 'warning-500',
+  error: 'danger-500',
+};
+
 function ToastItem(props: { toast: ToastItem }) {
   const variant = () => props.toast.variant || 'info';
 
   return (
     <div role="alert" class={`we-toast we-toast--${variant()}`}>
-      <we-icon name={VARIANT_ICONS[variant()]} size="20px" />
+      <we-icon name={VARIANT_ICONS[variant()]} color={VARIANT_COLORS[variant()]} size="20px" />
       <span class="we-toast__message">{props.toast.message}</span>
       <button onClick={() => toastService.remove(props.toast.id)} aria-label="Dismiss" class="we-toast__dismiss">
         <we-icon name="x" size="16px" />

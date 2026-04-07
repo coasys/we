@@ -11,7 +11,7 @@ import type { NumberInputSize } from '../types';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
   ay: 'center',
-  r: 'md',
+  r: '400',
   border: '1px solid var(--we-color-neutral-300)',
   bg: 'white',
   fontSize: '400',

@@ -26,7 +26,7 @@ export const scrollbar = {
   background: 'transparent',
   cornerBackground: '#dfdfdf',
   thumbBoxShadow: 'none',
-  thumbBorderRadius: radius.md,
+  thumbBorderRadius: radius['400'],
   thumbBackground: `hsl(${colorHues.neutral}, 5%, ${colorLightness['100']})`,
 } satisfies Record<ScrollbarToken, string>;
 

@@ -278,7 +278,7 @@ describe('node-level operator validation', () => {
 
   // --- $routes ---
   describe('$routes', () => {
-    it('accepts valid $routes node', () => {
+    it('accepts valid $routes node with routes', () => {
       const node = {
         type: '$routes',
         routes: [{ type: 'Page', path: '/home' }],
@@ -286,14 +286,14 @@ describe('node-level operator validation', () => {
       expect(() => zSchemaNode.parse(node)).not.toThrow();
     });
 
-    it('rejects $routes without routes array', () => {
+    it('accepts $routes as a render slot marker (no routes)', () => {
       const node = { type: '$routes' };
-      expect(() => zSchemaNode.parse(node)).toThrow();
+      expect(() => zSchemaNode.parse(node)).not.toThrow();
     });
 
-    it('rejects $routes with empty routes array', () => {
+    it('accepts $routes with empty routes array', () => {
       const node = { type: '$routes', routes: [] };
-      expect(() => zSchemaNode.parse(node)).toThrow();
+      expect(() => zSchemaNode.parse(node)).not.toThrow();
     });
   });
 

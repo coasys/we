@@ -1,11 +1,17 @@
 // Templates
-export { defaultTemplateSchema } from './DefaultTemplate.schema';
-export { twitterTemplateSchema } from './TwitterTemplate.schema';
-export { aiSampleTemplateSchema } from './BaseTemplate.schema';
-export { testTemplateSchema } from './TestTemplate.schema';
-export { weNativeAppTemplateSchema } from './weNativeApp';
-// Note: launcherTemplate is now generated from we-seed.json (see initializeIntegrations.ts)
+export { twitterTemplate } from './TwitterTemplate.schema';
+export { weTemplate } from './WeTemplate.schema';
 
-// Default launcher UI fragments
-export { appSettingsSchema, getAppSettingsSchema } from './defaults/AppSettings.schema';
-export { bootScreenSchema } from './defaults/BootScreen.schema';
+// Test templates
+export {
+  createTestStore,
+  schemaTokensTemplate,
+  schemaMutationsTemplate,
+  schemaMutationActions,
+  schemaRoutingTemplate,
+} from './tests';
+
+// Shell fragments
+// export { appSettingsSchema, getAppSettingsSchema } from './shell/AppSettings.schema';
+export { bootScreen } from './shell/BootScreen.schema';
+export { sidebar } from './shell/Sidebar.schema';

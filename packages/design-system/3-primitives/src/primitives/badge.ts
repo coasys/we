@@ -13,7 +13,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   color: 'neutral-500',
   fontSize: '400',
   fontWeight: '400',
-  r: 'sm',
+  r: '300',
   px: '300',
   py: '200',
   ax: 'center',

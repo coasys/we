@@ -1,18 +1,17 @@
-import type { PerspectiveProxy } from '@coasys/ad4m';
 import { templateRegistry } from '@shared/registries/templateRegistry';
-import { testMutations } from '@shared/schemas/TestTemplate.schema';
+import { schemaMutationActions } from '@shared/schemas/tests/SchemaMutations.schema';
 import { deepClone } from '@shared/utils';
+import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
 import { Template } from '@we/models';
 import type { StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
 
 import { useAdamStore } from './AdamStore';
 
-const TEMPLATES_PERSPECTIVE_NAME = 'we-templates';
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
 const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', children: [], slots: {}, routes: [] };
 
@@ -25,22 +24,20 @@ export interface TemplateStoreBase {
   // Actions
   updateTemplate: (newTemplate: TemplateSchema) => void;
   switchTemplate: (newTemplateId: string) => void;
-  removeTemplate: () => void;
+  removeTemplate: () => Promise<void>;
   saveTemplate: (name: string) => Promise<void>;
 }
 
 // TODO: Comment out test mutations before deploying
-export type TemplateStore = TemplateStoreBase & ReturnType<typeof testMutations>;
+export type TemplateStore = TemplateStoreBase & ReturnType<typeof schemaMutationActions>;
 
 const TemplateContext = createContext<TemplateStore>();
 
 export function TemplateStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
 
-  // Internal: AD4M perspective for template storage
-  const [templatesPerspective, setTemplatesPerspective] = createSignal<PerspectiveProxy | null>(null);
   // Map template ID → AD4M model instance (for updates/deletes)
-  const savedModelMap = new Map<string, Template>();
+  const savedTemplateMap = new Map<string, Template>();
 
   // Built-in templates from registry (always available)
   const builtInTemplates: TemplateSchema[] = Object.entries(templateRegistry).map(([id, template]) => ({
@@ -48,54 +45,41 @@ export function TemplateStoreProvider(props: ParentProps) {
     id,
   }));
 
-  // State
-  const [templates, setTemplates] = createSignal<TemplateSchema[]>(builtInTemplates);
-  const [loading, setLoading] = createSignal(true);
   const initialTemplate = deepClone(
     builtInTemplates.find((t) => t.id === 'launcher') || builtInTemplates[0] || emptyTemplate,
   );
+
+  console.log(
+    'TemplateStore: Initializing with built-in templates:',
+    builtInTemplates.map((t) => t.id),
+  );
+
+  // State
+  const [templates, setTemplates] = createSignal<TemplateSchema[]>(builtInTemplates);
+  const [loading, setLoading] = createSignal(true);
   const [currentTemplate, setCurrentTemplate] = createStore<TemplateSchema>(initialTemplate);
 
-  /** Find or create the dedicated templates perspective in AD4M */
-  async function getOrCreatePerspective(): Promise<PerspectiveProxy | null> {
-    const client = adamStore.adamClient();
-    if (!client) return null;
-
-    const perspectives = await client.perspective.all();
-    let perspective = perspectives.find((p) => p.name === TEMPLATES_PERSPECTIVE_NAME) || null;
-
-    if (!perspective) {
-      perspective = await client.perspective.add(TEMPLATES_PERSPECTIVE_NAME);
-      await perspective.ensureSDNASubjectClass(Template);
-      // AD4M's ensureSDNASubjectClass resolves before SDNA is actually ready
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
-    return perspective;
-  }
-
-  /** Load saved templates from AD4M and merge with built-in */
+  /** Load saved templates from root perspective and merge with built-in */
   async function loadSavedTemplates(): Promise<void> {
     try {
-      const perspective = await getOrCreatePerspective();
+      const perspective = adamStore.rootPerspective();
       if (!perspective) return;
 
-      setTemplatesPerspective(perspective);
-      const models = await Template.findAll(perspective);
+      const templates = await Template.findAll(perspective);
 
-      savedModelMap.clear();
+      savedTemplateMap.clear();
       const savedTemplates: TemplateSchema[] = [];
 
-      for (const model of models) {
-        if (!model.schema || typeof model.schema !== 'object') continue;
+      for (const template of templates) {
+        if (!template.schema || typeof template.schema !== 'object') continue;
 
         // The schema field stores a StoredTemplate { schema, sections }
-        const stored = model.schema as unknown as StoredTemplate;
+        const stored = template.schema as unknown as StoredTemplate;
         const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
-        const templateId = model.name?.toLowerCase().replace(/\s+/g, '-') || model.baseExpression;
+        const templateId = template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
 
         savedTemplates.push({ ...schema, id: templateId });
-        savedModelMap.set(templateId, model);
+        savedTemplateMap.set(templateId, template);
       }
 
       setTemplates([...builtInTemplates, ...savedTemplates]);
@@ -104,46 +88,67 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   }
 
-  // Load saved templates when AD4M client becomes available
+  // Load saved templates when root perspective becomes available
   createEffect(() => {
-    if (adamStore.adamClient()) {
+    if (adamStore.rootPerspective()) {
       loadSavedTemplates().finally(() => setLoading(false));
+    }
+  });
+
+  // Restore persisted template choice on boot (runs once, then stops)
+  let initialRestoreDone = false;
+  createEffect(() => {
+    const prefs = adamStore.userPreferences();
+    if (loading() || initialRestoreDone) return;
+    if (prefs?.currentTemplateId && prefs.currentTemplateId !== currentTemplate.id) {
+      const persisted = templates().find((t) => t.id === prefs.currentTemplateId);
+      if (persisted) {
+        setCurrentTemplate(reconcile(deepClone(persisted)));
+        initialRestoreDone = true;
+      }
     }
   });
 
   // Actions
   function updateTemplate(newTemplate: TemplateSchema) {
-    updateSchema(currentTemplate, newTemplate, setCurrentTemplate);
+    const result = updateSchema(currentTemplate, newTemplate, setCurrentTemplate);
+    if (!result.applied && result.errors?.length) {
+      toastService.error(`Schema validation failed: ${result.errors[0].message}`);
+    }
   }
 
   function switchTemplate(newTemplateId: string) {
     const newTemplate = templates().find((t) => t.id === newTemplateId);
     if (newTemplate) {
-      setCurrentTemplate(deepClone(newTemplate));
+      setCurrentTemplate(reconcile(deepClone(newTemplate)));
+      // Persist choice to Ad4m
+      adamStore.updatePreferences({ currentTemplateId: newTemplateId });
     } else {
       console.error(`TemplateStore: switchTemplate - Invalid templateId "${newTemplateId}"`);
     }
   }
 
-  function removeTemplate() {
+  async function removeTemplate() {
     const templateId = currentTemplate.id;
 
     // If it's a saved (AD4M) template, delete from AD4M
-    if (templateId && savedModelMap.has(templateId)) {
-      const model = savedModelMap.get(templateId)!;
-      savedModelMap.delete(templateId);
+    if (templateId && savedTemplateMap.has(templateId)) {
+      const template = savedTemplateMap.get(templateId)!;
+      savedTemplateMap.delete(templateId);
       setTemplates(templates().filter((t) => t.id !== templateId));
-      // Fire-and-forget AD4M deletion
-      model.delete?.().catch((err: unknown) => console.error('TemplateStore: delete error', err));
+      // Unlink from AgentConfig and delete template
+      const prefs = adamStore.userPreferences();
+      if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
+      template.delete?.().catch((err: unknown) => console.error('TemplateStore: delete error', err));
     }
 
-    setCurrentTemplate(deepClone(emptyTemplate));
+    setCurrentTemplate(reconcile(deepClone(emptyTemplate)));
   }
 
   async function saveTemplate(name: string): Promise<void> {
-    const perspective = templatesPerspective();
+    const perspective = adamStore.rootPerspective();
     if (!perspective) {
-      console.error('TemplateStore: No templates perspective available');
+      console.error('TemplateStore: No root perspective available');
       return;
     }
 
@@ -163,21 +168,24 @@ export function TemplateStoreProvider(props: ParentProps) {
     } as FileData;
 
     try {
-      const existing = savedModelMap.get(templateId);
-      if (existing) {
-        existing.schema = schemaBlob as unknown as Record<string, unknown>;
-        existing.name = name;
-        existing.version = (existing.version || 1) + 1;
-        await existing.save();
+      const existingTemplate = savedTemplateMap.get(templateId);
+      if (existingTemplate) {
+        existingTemplate.schema = schemaBlob as unknown as Record<string, unknown>;
+        existingTemplate.name = name;
+        existingTemplate.version = (existingTemplate.version || 1) + 1;
+        await existingTemplate.save();
       } else {
-        const model = new Template(perspective);
-        model.name = name;
-        model.origin = 'custom';
-        model.active = true;
-        model.version = 1;
-        model.schema = schemaBlob as unknown as Record<string, unknown>;
-        await model.save();
-        savedModelMap.set(templateId, model);
+        const newTemplate = await Template.create(perspective, {
+          name,
+          origin: 'custom',
+          version: 1,
+          schema: schemaBlob as unknown as Record<string, unknown>,
+        });
+        savedTemplateMap.set(templateId, newTemplate);
+
+        // Link to AgentConfig via @HasMany relation
+        const prefs = adamStore.userPreferences();
+        if (prefs) await prefs.addInstalledTemplates(newTemplate);
       }
 
       // Refresh templates list from AD4M
@@ -200,7 +208,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     saveTemplate,
 
     // Testing
-    ...testMutations(currentTemplate, setCurrentTemplate),
+    ...schemaMutationActions(currentTemplate, setCurrentTemplate),
   };
 
   return <TemplateContext.Provider value={store}>{props.children}</TemplateContext.Provider>;

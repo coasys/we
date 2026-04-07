@@ -123,7 +123,7 @@ import {
   type ColorLightnessToken, // '0' | '25' | '50' | ... | '1000'
   type SpaceToken, // '0' | '100' | '200' | '300' | ... | '1000'
   type FontSizeToken, // 'base' | '100' | '200' | ... | '1000'
-  type RadiusToken, // 'none' | 'xxs' | ... | 'xl' | 'pill' | 'full'
+  type RadiusToken, // '0' | '100' | '200' | ... | '900' | 'pill' | 'full'
 
   // Value types (token + raw CSS escape hatch)
   type ColorValue, // ColorToken | (string & {}) — allows '#ff0000', 'rgb(...)'

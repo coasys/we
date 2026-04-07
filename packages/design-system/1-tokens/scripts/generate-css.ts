@@ -72,7 +72,7 @@ function generateBorderCSS(border: typeof borderTokens, outputDir: string) {
   --we-border-width: ${border.width};
 
   /* Semantic border radius alias (override in themes) */
-  --we-border-radius: var(--we-radius-md);
+  --we-border-radius: var(--we-radius-400);
 
   /* Border Colors */
   --we-border-color: var(--we-color-neutral-100);

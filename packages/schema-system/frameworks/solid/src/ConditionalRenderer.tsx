@@ -87,11 +87,13 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
     return `opacity ${duration}ms ${easing}`;
   };
 
-  const transitionCSS = exitTransition
-    ? getTransitionCSS(exitTransition)
-    : enterTransition
-      ? getTransitionCSS(enterTransition)
-      : '';
+  const transitionCSS = createMemo(() => {
+    const current = isVisible();
+    if (current && enterTransition) return getTransitionCSS(enterTransition);
+    if (!current && exitTransition) return getTransitionCSS(exitTransition);
+    // Fallback: use whichever config exists
+    return getTransitionCSS(exitTransition ?? enterTransition);
+  });
 
   // Helper to check if a web component extends OverlayElement
   // Uses static property marker since class names get minified in production
@@ -121,7 +123,7 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
   const wrapperStyle = createMemo(() => {
     const style: Record<string, string | number> = {
       opacity: opacity(),
-      transition: transitionCSS,
+      transition: transitionCSS(),
     };
 
     // If content is an overlay component, don't interfere with its positioning
@@ -154,8 +156,9 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
       return style;
     }
 
-    // For everything else (non-overlay, non-positioned), use layout-neutral wrapper
-    style.display = 'contents';
+    // For everything else (non-overlay, non-positioned), use layout-neutral wrapper.
+    // Note: display:contents removes the box from the tree and breaks CSS transitions.
+    // A plain div participates in flex/grid layouts as an item and supports opacity transitions.
     return style;
   });
 

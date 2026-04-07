@@ -31,85 +31,85 @@ export interface LoadedIntegration {
   metadata?: unknown; // Generated metadata from seed processor
 }
 
-/**
- * Load all integrations from the integrations directory
- */
-export async function loadIntegrations(platform: 'electron' | 'tauri' | 'web'): Promise<LoadedIntegration[]> {
-  const integrations: LoadedIntegration[] = [];
+// /**
+//  * Load all integrations from the integrations directory
+//  */
+// export async function loadIntegrations(platform: 'electron' | 'tauri' | 'web'): Promise<LoadedIntegration[]> {
+//   const integrations: LoadedIntegration[] = [];
 
-  try {
-    // Try to load Flux integration
-    const flux = await loadFluxIntegration(platform);
-    if (flux) {
-      integrations.push(flux);
-    }
-  } catch (error) {
-    console.warn('Failed to load Flux integration:', error);
-  }
+//   try {
+//     // Try to load Flux integration
+//     const flux = await loadFluxIntegration(platform);
+//     if (flux) {
+//       integrations.push(flux);
+//     }
+//   } catch (error) {
+//     console.warn('Failed to load Flux integration:', error);
+//   }
 
-  return integrations;
-}
+//   return integrations;
+// }
 
-/**
- * Load Flux integration if available for the platform
- */
-async function loadFluxIntegration(platform: 'electron' | 'tauri' | 'web'): Promise<LoadedIntegration | null> {
-  try {
-    // Dynamic imports to avoid bundling if not needed
-    const [schemasModule, routesModule, manifestModule] = await Promise.all([
-      import('./schemas/integrations/flux/schemas'),
-      import('./schemas/integrations/flux/routes'),
-      import('./schemas/integrations/flux/manifest'),
-    ]);
+// /**
+//  * Load Flux integration if available for the platform
+//  */
+// async function loadFluxIntegration(platform: 'electron' | 'tauri' | 'web'): Promise<LoadedIntegration | null> {
+//   try {
+//     // Dynamic imports to avoid bundling if not needed
+//     const [schemasModule, routesModule, manifestModule] = await Promise.all([
+//       import('./schemas/integrations/flux/schemas'),
+//       import('./schemas/integrations/flux/routes'),
+//       import('./schemas/integrations/flux/manifest'),
+//     ]);
 
-    const manifest = manifestModule.fluxManifest as IntegrationManifest;
+//     const manifest = manifestModule.fluxManifest as IntegrationManifest;
 
-    // Check if this integration supports the current platform
-    if (!manifest.platforms.includes(platform)) {
-      console.log(`Flux integration not available for platform: ${platform}`);
-      return null;
-    }
+//     // Check if this integration supports the current platform
+//     if (!manifest.platforms.includes(platform)) {
+//       console.log(`Flux integration not available for platform: ${platform}`);
+//       return null;
+//     }
 
-    // Load optional metadata
-    let metadata;
-    try {
-      const metadataModule = await import('./schemas/integrations/flux/metadata.json');
-      metadata = metadataModule.default || metadataModule;
-    } catch {
-      // Metadata is optional
-    }
+//     // Load optional metadata
+//     let metadata;
+//     try {
+//       const metadataModule = await import('./schemas/integrations/flux/metadata.json');
+//       metadata = metadataModule.default || metadataModule;
+//     } catch {
+//       // Metadata is optional
+//     }
 
-    return {
-      id: manifest.id,
-      manifest,
-      schemas: schemasModule.fluxSchemas,
-      routes: routesModule.fluxRoutes,
-      metadata,
-    };
-  } catch (error) {
-    console.error('Error loading Flux integration:', error);
-    return null;
-  }
-}
+//     return {
+//       id: manifest.id,
+//       manifest,
+//       schemas: schemasModule.fluxSchemas,
+//       routes: routesModule.fluxRoutes,
+//       metadata,
+//     };
+//   } catch (error) {
+//     console.error('Error loading Flux integration:', error);
+//     return null;
+//   }
+// }
 
-/**
- * Get integration by ID
- */
-export async function getIntegration(
-  id: string,
-  platform: 'electron' | 'tauri' | 'web',
-): Promise<LoadedIntegration | null> {
-  const integrations = await loadIntegrations(platform);
-  return integrations.find((i) => i.id === id) || null;
-}
+// /**
+//  * Get integration by ID
+//  */
+// export async function getIntegration(
+//   id: string,
+//   platform: 'electron' | 'tauri' | 'web',
+// ): Promise<LoadedIntegration | null> {
+//   const integrations = await loadIntegrations(platform);
+//   return integrations.find((i) => i.id === id) || null;
+// }
 
-/**
- * Get all integration manifests (lightweight)
- */
-export async function getIntegrationManifests(platform: 'electron' | 'tauri' | 'web'): Promise<IntegrationManifest[]> {
-  const integrations = await loadIntegrations(platform);
-  return integrations.map((i) => i.manifest);
-}
+// /**
+//  * Get all integration manifests (lightweight)
+//  */
+// export async function getIntegrationManifests(platform: 'electron' | 'tauri' | 'web'): Promise<IntegrationManifest[]> {
+//   const integrations = await loadIntegrations(platform);
+//   return integrations.map((i) => i.manifest);
+// }
 
 /**
  * Check if an integration has a specific capability

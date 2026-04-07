@@ -7,14 +7,14 @@
 
 import type { TemplateSchema } from '@we/schema-shared';
 
-export const weNativeAppTemplateSchema: TemplateSchema = {
+export const weTemplate: TemplateSchema = {
   meta: {
-    name: 'WE Native App',
+    name: 'WE',
     description: 'Native WE application with sidebar navigation',
     icon: 'cube',
   },
   type: 'Row',
-  props: { width: '100%', height: '100%' },
+  props: { width: '100%', height: '100%', position: 'relative' },
   // theme: {
   //   primaryHue: 180, // teal/cyan instead of the default purple
   //   saturation: '70%', // bump saturation so it pops
@@ -25,9 +25,9 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
       type: 'CollapsibleSidebar',
       props: {
         side: 'left',
-        position: 'fixed',
+        position: 'absolute',
         zIndex: 2,
-        border: 'none',
+        border: '0',
         itemPadding: '12px',
         centerItems: true,
         // Navigation items
@@ -227,7 +227,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
     // Main panel
     {
       type: 'Column',
-      props: { zIndex: 1, width: '100%', height: '100%', bg: 'neutral-50', px: '66px' },
+      props: { zIndex: 1, width: '100%', height: '100%', bg: 'neutral-50', ml: '66px', mr: '66px' },
       // theme: {
       //   // themeName: 'cyberpunk',
       //   primaryHue: 180, // teal/cyan instead of the default purple
@@ -241,9 +241,9 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
       type: 'CollapsibleSidebar',
       props: {
         side: 'right',
-        position: 'fixed',
+        position: 'absolute',
         zIndex: 2,
-        border: 'none',
+        border: '0',
         itemPadding: '12px',
         centerItems: true,
         // Navigation items
@@ -459,7 +459,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                     p: '1.5rem',
                     gap: '0.5rem',
                     bg: 'neutral-0',
-                    r: 'md',
+                    r: '400',
                     borderLeft: '4px solid',
                     borderColor: 'primary-500',
                   },
@@ -501,7 +501,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                     p: '1.5rem',
                     gap: '0.5rem',
                     bg: 'neutral-0',
-                    r: 'md',
+                    r: '400',
                     borderLeft: '4px solid',
                     borderColor: 'blue-500',
                   },
@@ -543,7 +543,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                     p: '1.5rem',
                     gap: '0.5rem',
                     bg: 'neutral-0',
-                    r: 'md',
+                    r: '400',
                     borderLeft: '4px solid',
                     borderColor: 'green-500',
                   },
@@ -585,7 +585,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                     p: '1.5rem',
                     gap: '0.5rem',
                     bg: 'neutral-0',
-                    r: 'md',
+                    r: '400',
                     borderLeft: '4px solid',
                     borderColor: 'orange-500',
                   },
@@ -662,7 +662,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                             p: '1rem',
                             gap: '1rem',
                             bg: 'neutral-0',
-                            r: 'md',
+                            r: '400',
                             ay: 'center',
                           },
                           children: [
@@ -708,7 +708,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                             p: '1rem',
                             gap: '1rem',
                             bg: 'neutral-0',
-                            r: 'md',
+                            r: '400',
                             ay: 'center',
                           },
                           children: [
@@ -754,7 +754,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                             p: '1rem',
                             gap: '1rem',
                             bg: 'neutral-0',
-                            r: 'md',
+                            r: '400',
                             ay: 'center',
                           },
                           children: [
@@ -800,7 +800,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                             p: '1rem',
                             gap: '1rem',
                             bg: 'neutral-0',
-                            r: 'md',
+                            r: '400',
                             ay: 'center',
                           },
                           children: [
@@ -942,7 +942,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                 p: '1rem',
                                 gap: '0.5rem',
                                 bg: 'neutral-0',
-                                r: 'md',
+                                r: '400',
                               },
                               children: [
                                 {
@@ -971,7 +971,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                 p: '1rem',
                                 gap: '0.5rem',
                                 bg: 'neutral-0',
-                                r: 'md',
+                                r: '400',
                               },
                               children: [
                                 {
@@ -1000,7 +1000,7 @@ export const weNativeAppTemplateSchema: TemplateSchema = {
                                 p: '1rem',
                                 gap: '0.5rem',
                                 bg: 'neutral-0',
-                                r: 'md',
+                                r: '400',
                               },
                               children: [
                                 {

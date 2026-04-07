@@ -13,8 +13,8 @@
  * 4. TemplateProvider reads registry → builds app layout
  */
 
-import { getAppSettingsSchema } from '@shared/schemas/defaults/AppSettings.schema';
-import { bootScreenSchema } from '@shared/schemas/defaults/BootScreen.schema';
+import { bootScreen } from '@shared/schemas/shell/BootScreen.schema';
+import { sidebar } from '@shared/schemas/shell/Sidebar.schema';
 import type { SchemaNode } from '@we/schema-shared';
 
 /**
@@ -25,19 +25,20 @@ import type { SchemaNode } from '@we/schema-shared';
  */
 export const launcherUIRegistry = {
   /** Boot/login screen shown before AD4M is ready */
-  bootScreen: bootScreenSchema as SchemaNode,
+  bootScreen,
 
-  /** Custom app settings schema (set via seed) */
-  _customAppSettings: undefined as SchemaNode | undefined,
+  /** Custom app shell schema (set via seed) */
+  _customShell: undefined as SchemaNode | undefined,
 
-  /** App settings panel (generated based on enableTemplateSwitching or custom from seed) */
-  get appSettings(): SchemaNode {
+  /** App shell (generated based on enableTemplateSwitching or custom from seed) */
+  get shell(): SchemaNode {
     // If custom schema provided via seed, use that
-    if (this._customAppSettings) {
-      return this._customAppSettings;
+    if (this._customShell) {
+      return this._customShell;
     }
     // Otherwise generate based on template switching mode
-    return getAppSettingsSchema(this.enableTemplateSwitching);
+    return sidebar;
+    // return getAppSettingsSchema(this.enableTemplateSwitching);
   },
 
   /** Whether template switching is enabled (disabled for embedded apps mode) */

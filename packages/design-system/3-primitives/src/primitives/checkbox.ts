@@ -28,7 +28,7 @@ const styles = css`
     width: 18px;
     height: 18px;
     border: 2px solid var(--we-color-neutral-400);
-    border-radius: var(--we-radius-xs);
+    border-radius: var(--we-radius-200);
     background: transparent;
     display: flex;
     align-items: center;

@@ -10,13 +10,15 @@ const columnKeys = [...designSystemKeys.filter((key) => key !== 'direction'), 'r
 
 export function Column(allProps: ColumnProps) {
   const [designSystemProps, rest] = splitProps(allProps, columnKeys as (keyof ColumnProps)[]);
-  const usedProps = filterProps(designSystemProps, columnKeys);
-  const props = mergeProps(usedProps, DEFAULTS) as ColumnProps;
-  const reactiveStyles = createMemo(() => buildLayoutStyles(props, 'column'));
+  const reactiveStyles = createMemo(() => {
+    const usedProps = filterProps(designSystemProps, columnKeys);
+    const props = mergeProps(usedProps, DEFAULTS) as ColumnProps;
+    return buildLayoutStyles(props, 'column');
+  });
 
   return (
     <div style={reactiveStyles()} {...rest}>
-      {props.children}
+      {designSystemProps.children}
     </div>
   );
 }

@@ -16,7 +16,7 @@ const styles = css`
   [part='preview'] {
     width: 48px;
     height: 48px;
-    border-radius: var(--we-radius-md);
+    border-radius: var(--we-radius-400);
     border: 2px solid var(--we-color-neutral-200);
     cursor: pointer;
     transition: border-color 0.15s ease;
@@ -31,7 +31,7 @@ const styles = css`
     z-index: 10;
     background: var(--we-color-neutral-0);
     border: 1px solid var(--we-color-neutral-200);
-    border-radius: var(--we-radius-lg);
+    border-radius: var(--we-radius-500);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     padding: var(--we-space-400);
     display: flex;
@@ -49,7 +49,7 @@ const styles = css`
     all: unset;
     width: 24px;
     height: 24px;
-    border-radius: var(--we-radius-sm);
+    border-radius: var(--we-radius-300);
     cursor: pointer;
     border: 2px solid transparent;
     transition: border-color 0.15s ease;
@@ -72,7 +72,7 @@ const styles = css`
   [part='hex-input'] input {
     all: unset;
     border: 1px solid var(--we-color-neutral-300);
-    border-radius: var(--we-radius-md);
+    border-radius: var(--we-radius-400);
     padding: var(--we-space-100) var(--we-space-200);
     font-family: monospace;
     font-size: 0.875em;

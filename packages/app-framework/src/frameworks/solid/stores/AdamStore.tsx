@@ -1,11 +1,22 @@
-import { Ad4mClient, Agent, Perspective } from '@coasys/ad4m';
+import { Ad4mClient, Agent, Literal, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
 import { usePlatform } from '@shared/platform';
 import { useNavigate } from '@solidjs/router';
 import type { FileData } from '@we/models';
-import { blobToDataURL, CollectionBlock, ImageBlock, resizeImage, Space, TextBlock, WeNode } from '@we/models';
+import {
+  AgentConfig,
+  blobToDataURL,
+  CollectionBlock,
+  ImageBlock,
+  resizeImage,
+  Space,
+  Template,
+  TextBlock,
+  Theme,
+  WeNode,
+} from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
-export { type Ad4mClient, PerspectiveProxy } from '@coasys/ad4m';
+export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 
 // TODO:
 // + move ai to separate stores
@@ -26,6 +37,8 @@ export interface AdamStore {
   ad4mPort: Accessor<number | undefined>;
   ad4mToken: Accessor<string | undefined>;
   isDevelopment: Accessor<boolean>;
+  rootPerspective: Accessor<PerspectiveProxy | null>;
+  userPreferences: Accessor<AgentConfig | null>;
 
   // Setters
   setPassword: (password: string) => void;
@@ -34,9 +47,11 @@ export interface AdamStore {
 
   // Actions
   unlockAgent: () => Promise<void>;
+  logout: () => Promise<void>;
   navigate: (to: string, options?: Record<string, unknown>) => void;
   addNewSpace: (space: Space) => void;
   createSpace: (name: string, description: string, shared: boolean, imageFile?: File) => Promise<void>;
+  updatePreferences: (updates: Partial<Pick<AgentConfig, 'currentTemplateId' | 'currentThemeId'>>) => Promise<void>;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -57,6 +72,8 @@ export function AdamStoreProvider(props: ParentProps) {
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [ad4mPort, setAd4mPort] = createSignal<number | undefined>(undefined);
   const [ad4mToken, setAd4mToken] = createSignal<string | undefined>(undefined);
+  const [rootPerspective, setRootPerspective] = createSignal<PerspectiveProxy | null>(null);
+  const [userPreferences, setUserPreferences] = createSignal<AgentConfig | null>(null, { equals: false });
 
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
@@ -118,8 +135,8 @@ export function AdamStoreProvider(props: ParentProps) {
       }
 
       // Agent is ready - load user data
+      await Promise.all([getMe(client), getMySpaces(client), getOrCreateRootPerspective(client)]);
       setBootState('ready');
-      await Promise.all([getMe(client), getMySpaces(client)]);
 
       // Navigate to root route when ready
       navigate('/');
@@ -157,8 +174,66 @@ export function AdamStoreProvider(props: ParentProps) {
     return () => window.removeEventListener('message', handleMessage);
   }
 
+  /** Find or create the root perspective containing AgentConfig */
+  async function getOrCreateRootPerspective(client: Ad4mClient): Promise<void> {
+    try {
+      const perspectives = await client.perspective.all();
+
+      // Try to find the root perspective by checking for an AgentConfig instance
+      for (const p of perspectives) {
+        const results = await AgentConfig.findAll(p);
+        if (results.length > 0) {
+          setRootPerspective(p);
+          setUserPreferences(results[0]);
+          console.log('AdamStore: Found root perspective', p.uuid);
+          return;
+        }
+      }
+
+      // No root perspective exists — create one
+      console.log('AdamStore: Creating root perspective');
+      const perspective = await client.perspective.add('__we_root__');
+      await Promise.all([
+        perspective.ensureSDNASubjectClass(AgentConfig),
+        perspective.ensureSDNASubjectClass(Template),
+        perspective.ensureSDNASubjectClass(Theme),
+      ]);
+      // AD4M's ensureSDNASubjectClass resolves before SDNA is actually ready
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const root = Literal.from('we-user-preferences').toUrl();
+      const prefs = new AgentConfig(perspective, root);
+      prefs.currentTemplateId = 'we';
+      prefs.currentThemeId = 'default';
+      await prefs.save();
+
+      setRootPerspective(perspective);
+      setUserPreferences(prefs);
+      console.log('AdamStore: Created root perspective', perspective.uuid);
+    } catch (error) {
+      console.error('AdamStore: getOrCreateRootPerspective error', error);
+    }
+  }
+
+  /** Update persisted user preferences */
+  async function updatePreferences(
+    updates: Partial<Pick<AgentConfig, 'currentTemplateId' | 'currentThemeId'>>,
+  ): Promise<void> {
+    const prefs = userPreferences();
+    if (!prefs) return;
+
+    if (updates.currentTemplateId !== undefined) prefs.currentTemplateId = updates.currentTemplateId;
+    if (updates.currentThemeId !== undefined) prefs.currentThemeId = updates.currentThemeId;
+    await prefs.save();
+    setUserPreferences(prefs);
+  }
+
   async function unlockAgent() {
     const client = adamClient();
+    console.log('AdamStore: Attempting to unlock agent with provided password', {
+      password: password(),
+      clientExists: !!client,
+    });
     if (!client) {
       console.error('No AD4M client available');
       return;
@@ -169,10 +244,10 @@ export function AdamStoreProvider(props: ParentProps) {
 
     try {
       await client.agent.unlock(password(), true);
-      setBootState('ready');
 
       // Load user data after unlock
-      await Promise.all([getMe(client), getMySpaces(client)]);
+      await Promise.all([getMe(client), getMySpaces(client), getOrCreateRootPerspective(client)]);
+      setBootState('ready');
 
       // Navigate to root route after successful login
       navigate('/');
@@ -181,6 +256,25 @@ export function AdamStoreProvider(props: ParentProps) {
       setPasswordError(true);
     } finally {
       setLoginLoading(false);
+    }
+  }
+
+  async function logout(): Promise<void> {
+    const client = adamClient();
+    if (!client) {
+      console.error('AdamStore: No AD4M client available for logout');
+      return;
+    }
+
+    try {
+      await client.agent.lock(password());
+    } catch (err) {
+      console.error('AdamStore: Agent lock failed during logout', err);
+    } finally {
+      setMe(undefined);
+      setMySpaces([]);
+      setPassword('');
+      setBootState('login');
     }
   }
 
@@ -274,6 +368,8 @@ export function AdamStoreProvider(props: ParentProps) {
     ad4mPort,
     ad4mToken,
     isDevelopment,
+    rootPerspective,
+    userPreferences,
 
     // Setters
     setPassword,
@@ -282,9 +378,11 @@ export function AdamStoreProvider(props: ParentProps) {
 
     // Actions
     unlockAgent,
+    logout,
     navigate,
     addNewSpace,
     createSpace,
+    updatePreferences,
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;

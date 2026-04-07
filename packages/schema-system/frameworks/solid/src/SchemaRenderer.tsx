@@ -38,6 +38,50 @@ function deepUnwrap(value: unknown, depth = 0): unknown {
   return value;
 }
 
+/**
+ * Create a reactive signal that subscribes to a $query and updates with results.
+ * Must be called within a Solid reactive owner (component or createRoot).
+ */
+function createQuerySignal(
+  descriptor: QueryDescriptor,
+  stores: unknown,
+  getModel: (name: string) => unknown,
+): () => unknown[] {
+  const [items, setItems] = createSignal<unknown[]>([]);
+  const ModelClass = getModel(descriptor.model) as Record<string, (...args: unknown[]) => unknown>;
+
+  createEffect(() => {
+    let p: unknown = null;
+    if (descriptor.perspectiveStore) {
+      const parts = descriptor.perspectiveStore.split('.');
+      let target: unknown = stores;
+      for (const part of parts) target = (target as Record<string, unknown>)?.[part];
+      p = typeof target === 'function' ? (target as () => unknown)() : target;
+    } else {
+      const perspective = ((stores as Record<string, unknown>).spaceStore as Record<string, unknown> | undefined)
+        ?.perspective;
+      p = typeof perspective === 'function' ? (perspective as () => unknown)() : null;
+    }
+    if (!p) {
+      setItems([]);
+      return;
+    }
+
+    if (descriptor.subscribe) {
+      const builder = ModelClass.query(p, descriptor.params) as {
+        subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
+        dispose: () => void;
+      };
+      builder.subscribe((results) => setItems(results));
+      onCleanup(() => builder.dispose());
+    } else {
+      (ModelClass.findAll(p, descriptor.params) as Promise<unknown[]>).then(setItems);
+    }
+  });
+
+  return items;
+}
+
 /** Detect values with no schema tokens — can be passed through without reactive tracking. */
 function isStaticValue(value: unknown): boolean {
   if (value === null || value === undefined) return true;
@@ -62,13 +106,44 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     );
   }
 
-  function renderChildren(nodes: (SchemaNode | string)[] | undefined): RendererOutput {
+  function renderChildren(nodes: SchemaNode['children']): RendererOutput {
     if (!nodes) return undefined;
     return (
       <For each={nodes} fallback={null}>
         {(child) => {
-          // If the child is a string (i.e when passing text to <we-text>), return it directly
-          if (typeof child === 'string') return child;
+          // If the child is a string, check for $-prefixed context references
+          if (typeof child === 'string') {
+            if (child.startsWith('$') && child.length > 1) {
+              const resolved = resolveProp(child, stores, context, createMemo);
+              return (
+                <>
+                  {() => {
+                    const v =
+                      typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved
+                        ? (resolved as unknown as () => unknown)()
+                        : resolved;
+                    return v != null ? String(v) : '';
+                  }}
+                </>
+              );
+            }
+            return child;
+          }
+          // Resolve operator tokens ($concat, $store, etc.) placed directly in children
+          if (child && typeof child === 'object' && Object.keys(child).some((k) => k.startsWith('$'))) {
+            const resolved = resolveProp(child as unknown, stores, context, createMemo);
+            return (
+              <>
+                {() => {
+                  const v =
+                    typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved
+                      ? (resolved as unknown as () => unknown)()
+                      : resolved;
+                  return v != null ? String(v) : '';
+                }}
+              </>
+            );
+          }
           // Otherwise render the child node
           return renderNode(child as SchemaNode);
         }}
@@ -103,12 +178,27 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     // Get the schema used to render each item
     const itemSchema = node.children?.[0] as SchemaNode | undefined;
 
-    // Resolve the items used for iteration
-    const resolvedItems = resolveProp(node.props?.items, stores, context, createMemo);
-    const itemsArray = createMemo(() => {
-      const items = typeof resolvedItems === 'function' ? resolvedItems() : resolvedItems;
-      return Array.isArray(items) ? items : [];
-    });
+    // Resolve the items used for iteration — $query needs a reactive subscription,
+    // everything else goes through the standard resolveProp path.
+    let itemsArray: () => unknown[];
+
+    const rawItems = node.props?.items;
+    if (hasToken(rawItems, '$query', 'object')) {
+      const descriptor = resolveQueryProp(rawItems);
+      const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      if (!getModel) {
+        console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
+        itemsArray = () => [];
+      } else {
+        itemsArray = createQuerySignal(descriptor, stores, getModel);
+      }
+    } else {
+      const resolvedItems = resolveProp(rawItems, stores, context, createMemo);
+      itemsArray = createMemo(() => {
+        const items = typeof resolvedItems === 'function' ? resolvedItems() : resolvedItems;
+        return Array.isArray(items) ? items : [];
+      });
+    }
 
     // Return a list of the rendered items
     return (
@@ -162,48 +252,26 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   // --- Per-prop resolution (fine-grained reactivity) ---
   // Create per-prop memos — each prop resolves independently,
-  // isolating its reactive dependencies. Static props bypass resolution entirely.
+  // isolating its reactive dependencies. Static props still read from
+  // the store reactively so that updateSchema mutations are tracked.
   // resolveProp is called INSIDE the memo so that plain-value resolvers
   // ($not, $eq, $ne, $and, $or) correctly track signal dependencies.
   const propMemos: Record<string, () => unknown> = {};
   for (const [key, rawValue] of Object.entries(node.props ?? {})) {
     if (isStaticValue(rawValue)) {
-      const value = rawValue;
-      propMemos[key] = () => value;
+      // Read from the store node so Solid tracks changes from updateSchema.
+      const k = key;
+      propMemos[key] = createMemo(() => (node.props as Record<string, unknown>)?.[k]);
     } else if (hasToken(rawValue, '$query', 'object')) {
       // $query: set up reactive subscription via createSignal + createEffect
       // instead of createMemo — subscriptions are side effects, not derivations.
-      const descriptor: QueryDescriptor = resolveQueryProp(rawValue);
+      const descriptor = resolveQueryProp(rawValue);
       const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
       if (!getModel) {
         console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
         propMemos[key] = () => [];
       } else {
-        const [items, setItems] = createSignal<unknown[]>([]);
-        const ModelClass = getModel(descriptor.model) as Record<string, (...args: unknown[]) => unknown>;
-
-        createEffect(() => {
-          const perspective = ((stores as Record<string, unknown>).spaceStore as Record<string, unknown> | undefined)
-            ?.perspective;
-          const p = typeof perspective === 'function' ? (perspective as () => unknown)() : null;
-          if (!p) {
-            setItems([]);
-            return;
-          }
-
-          if (descriptor.subscribe) {
-            const builder = ModelClass.query(p, descriptor.params) as {
-              subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
-              dispose: () => void;
-            };
-            builder.subscribe((results) => setItems(results));
-            onCleanup(() => builder.dispose());
-          } else {
-            (ModelClass.findAll(p, descriptor.params) as Promise<unknown[]>).then(setItems);
-          }
-        });
-
-        propMemos[key] = items;
+        propMemos[key] = createQuerySignal(descriptor, stores, getModel);
       }
     } else {
       const raw = rawValue;
@@ -215,8 +283,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   }
 
   const slotProp = node.slot ? { slot: node.slot } : {};
-  const themeStyle = node.theme ? { display: 'contents', ...themeToStyle(node.theme) } : undefined;
-  const themeAttr = node.theme?.themeName;
+  const themeStyle = createMemo(() => (node.theme ? { display: 'contents', ...themeToStyle(node.theme) } : undefined));
+  const themeAttr = createMemo(() => node.theme?.themeName);
 
   // Render: web components use per-prop property effects, Solid/HTML use reactive spread
   if (isWebComponent) {
@@ -230,6 +298,17 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         if (hostRef) hostRef[key] = memo();
       });
     }
+
+    // Track dynamically added props for web components
+    createEffect(() => {
+      const currentProps = node.props as Record<string, unknown> | undefined;
+      if (!currentProps || !hostRef) return;
+      for (const key of Object.keys(currentProps)) {
+        if (!(key in propMemos) && !(key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase())) {
+          hostRef[key] = currentProps[key];
+        }
+      }
+    });
 
     const eventAttrs = createMemo(() => {
       const attrs: Record<string, unknown> = {};
@@ -247,12 +326,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       </Dynamic>
     );
 
-    return themeStyle ? (
-      <div style={themeStyle} data-we-theme={themeAttr}>
+    return (
+      <div style={themeStyle() ?? { display: 'contents' }} data-we-theme={themeAttr()}>
         {wcElement}
       </div>
-    ) : (
-      wcElement
     );
   }
 
@@ -261,6 +338,15 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const attrs: Record<string, unknown> = {};
     for (const [key, memo] of Object.entries(propMemos)) {
       attrs[key] = memo();
+    }
+    // Pick up props added dynamically via updateSchema that had no memo at mount time
+    const currentProps = node.props as Record<string, unknown> | undefined;
+    if (currentProps) {
+      for (const key of Object.keys(currentProps)) {
+        if (!(key in propMemos)) {
+          attrs[key] = currentProps[key];
+        }
+      }
     }
     return attrs;
   });
@@ -271,11 +357,9 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     </Dynamic>
   );
 
-  return themeStyle ? (
-    <div style={themeStyle} data-we-theme={themeAttr}>
+  return (
+    <div style={themeStyle() ?? { display: 'contents' }} data-we-theme={themeAttr()}>
       {solidElement}
     </div>
-  ) : (
-    solidElement
   );
 }

@@ -4,7 +4,7 @@
   gap: var(--we-space-200);
   background: var(--we-color-neutral-0);
   border: 1px solid var(--we-color-neutral-200);
-  border-radius: var(--we-radius-lg);
+  border-radius: var(--we-radius-500);
   padding: var(--we-space-400);
 
   &__header {
@@ -23,7 +23,7 @@
     justify-content: center;
     width: 28px;
     height: 28px;
-    border-radius: var(--we-radius-md);
+    border-radius: var(--we-radius-400);
     transition: background 0.15s ease;
 
     &:hover {
@@ -53,7 +53,7 @@
     justify-content: center;
     min-height: 36px;
     cursor: pointer;
-    border-radius: var(--we-radius-md);
+    border-radius: var(--we-radius-400);
     font-size: 0.875rem;
     transition: background 0.1s ease;
     position: relative;

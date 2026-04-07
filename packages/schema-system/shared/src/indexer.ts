@@ -19,7 +19,12 @@
  * - "panel"      — large child subtrees within a route (keyed by qualifier)
  */
 
-import type { RouteSchema, SchemaNode, TemplateSchema } from './types';
+import type { OperatorToken, RouteSchema, SchemaNode, TemplateSchema } from './types';
+
+/** Type guard: a child is a SchemaNode (not a string or operator token) */
+function isSchemaChild(child: string | SchemaNode | OperatorToken): child is SchemaNode {
+  return typeof child === 'object' && child !== null && !Object.keys(child).some((k) => k.startsWith('$'));
+}
 
 /** A navigable region in the template tree */
 export interface SectionEntry {
@@ -100,7 +105,7 @@ export function computeSectionIndex(schema: SchemaNode): SectionEntry[] {
   if (schema.children) {
     for (let i = 0; i < schema.children.length; i++) {
       const child = schema.children[i];
-      if (typeof child === 'string') continue;
+      if (!isSchemaChild(child)) continue;
 
       if (child.type && NAVIGATION_TYPES.has(child.type)) {
         const side = (child.props?.side as string) || `nav-${i}`;
@@ -148,7 +153,7 @@ function indexRoutes(node: SchemaNode, currentPath: number[], sections: SectionE
   if (node.children) {
     for (let i = 0; i < node.children.length; i++) {
       const child = node.children[i];
-      if (typeof child !== 'string') {
+      if (isSchemaChild(child)) {
         indexRoutes(child, [...currentPath, i], sections);
       }
     }
@@ -167,7 +172,7 @@ function indexPanels(node: SchemaNode, nodePath: number[], routePath: string, se
   const nodeChildren: { node: SchemaNode; index: number }[] = [];
   for (let i = 0; i < children.length; i++) {
     const child = children[i];
-    if (typeof child !== 'string') {
+    if (isSchemaChild(child)) {
       nodeChildren.push({ node: child, index: i });
     }
   }
@@ -226,7 +231,7 @@ export function extractByPath(schema: SchemaNode, path: number[]): SchemaNode | 
       // Index into children array
       if (!current.children || idx >= current.children.length) return null;
       const child = current.children[idx];
-      if (typeof child === 'string') return null;
+      if (!isSchemaChild(child)) return null;
       current = child;
     }
   }
@@ -267,8 +272,8 @@ export function patchByPath(schema: SchemaNode, path: number[], replacement: Sch
         throw new Error(`Invalid path: children[${seg.index}] does not exist`);
       }
       const child = parent.children[seg.index];
-      if (typeof child === 'string') {
-        throw new Error(`Invalid path: children[${seg.index}] is a string node`);
+      if (!isSchemaChild(child)) {
+        throw new Error(`Invalid path: children[${seg.index}] is not a schema node`);
       }
       parent = child;
     }

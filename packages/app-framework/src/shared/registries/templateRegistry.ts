@@ -17,13 +17,13 @@
  */
 
 import {
-  aiSampleTemplateSchema,
-  defaultTemplateSchema,
-  testTemplateSchema,
-  twitterTemplateSchema,
-  weNativeAppTemplateSchema,
+  schemaMutationsTemplate,
+  schemaRoutingTemplate,
+  schemaTokensTemplate,
+  twitterTemplate,
+  weTemplate,
 } from '@shared/schemas';
-import type { TemplateSchema } from '@we/schema-shared';
+// import type { TemplateSchema } from '@we/schema-shared';
 
 /**
  * Placeholder launcher shown during initialization
@@ -31,17 +31,17 @@ import type { TemplateSchema } from '@we/schema-shared';
  * This is replaced by the seed-generated launcher when PlatformProvider
  * calls initializeIntegrations(). Users may briefly see this on first load.
  */
-const placeholderLauncher: TemplateSchema = {
-  meta: { name: 'Loading...', description: 'Initializing launcher', icon: 'rocket-launch' },
-  type: 'Column',
-  props: { width: '100%', height: '100%' },
-  children: [
-    {
-      type: 'we-text',
-      props: { text: 'Initializing...', size: 'xl' },
-    },
-  ],
-};
+// const placeholderLauncher: TemplateSchema = {
+//   meta: { name: 'Loading...', description: 'Initializing launcher', icon: 'rocket-launch' },
+//   type: 'Column',
+//   props: { width: '100%', height: '100%' },
+//   children: [
+//     {
+//       type: 'we-text',
+//       props: { text: 'Initializing...', size: 'xl' },
+//     },
+//   ],
+// };
 
 /**
  * Template Registry
@@ -50,12 +50,12 @@ const placeholderLauncher: TemplateSchema = {
  * The 'launcher' template is generated from we-seed.json.
  */
 export const templateRegistry = {
-  default: defaultTemplateSchema,
-  twitter: twitterTemplateSchema,
-  test: testTemplateSchema,
-  aiSample: aiSampleTemplateSchema,
-  weNative: weNativeAppTemplateSchema,
-  launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
+  we: weTemplate,
+  twitter: twitterTemplate,
+  'schema-tokens': schemaTokensTemplate,
+  'schema-mutations': schemaMutationsTemplate,
+  'schema-routing': schemaRoutingTemplate,
+  // launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
 };
 
 export type TemplateId = keyof typeof templateRegistry;

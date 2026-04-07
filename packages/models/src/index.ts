@@ -1,7 +1,5 @@
 export { WeNode } from './WeNode';
-export { Space } from './entities/Space';
-export { Template } from './entities/Template';
-export { FILE_STORAGE_LANGUAGE } from './constants';
+export { AgentConfig, Space, Template, Theme } from './entities';
 export {
   AudioBlock,
   CalloutBlock,
@@ -19,5 +17,6 @@ export {
   TextBlock,
   VideoBlock,
 } from './blocks';
+export { FILE_STORAGE_LANGUAGE } from './constants';
 export { dataURItoBlob, blobToDataURL, resizeImage } from './utils/imageHelpers';
 export type { FileData } from './utils/imageHelpers';
