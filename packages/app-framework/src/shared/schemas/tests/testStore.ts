@@ -34,6 +34,10 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
   const [toggleValue, setToggleValue] = createSignal(false);
   const [queryFilterMode, setQueryFilterMode] = createSignal('all');
 
+  // ---- Benchmark timing ----
+  const [benchLastRender, setBenchLastRender] = createSignal<number | null>(null);
+  const [benchResults, setBenchResults] = createSignal<Record<string, number[]>>({});
+
   // ---- List data (for $each) ----
   const fruits = [
     { name: 'Apple', color: 'red', emoji: '🍎' },
@@ -73,6 +77,20 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
   // Single config object (for $map on single object path)
   const singleConfig = { title: 'My App', version: '2.0', debug: false };
 
+  // ---- Benchmark data ----
+  const benchList100 = Array.from({ length: 100 }, (_, i) => ({
+    name: `Item ${i + 1}`,
+    category: `Category ${String.fromCharCode(65 + (i % 5))}`,
+  }));
+
+  const benchGroups = Array.from({ length: 10 }, (_, g) => ({
+    name: `Group ${g + 1}`,
+    items: Array.from({ length: 10 }, (_, i) => ({
+      label: `Item ${g * 10 + i + 1}`,
+      detail: `detail-${g}-${i}`,
+    })),
+  }));
+
   // ---- Actions ----
   function increment() {
     setCounter((c) => c + 1);
@@ -86,6 +104,25 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
 
   // Track how many items we've created for unique naming
   let createdCount = 0;
+
+  // ---- Benchmark actions ----
+  function benchRecordRender(duration: number) {
+    setBenchLastRender(duration);
+  }
+
+  function benchRecordResult(routeName: string) {
+    const duration = benchLastRender();
+    if (duration === null) return;
+    setBenchResults((prev) => {
+      const existing = prev[routeName] ?? [];
+      return { ...prev, [routeName]: [...existing, duration] };
+    });
+  }
+
+  function benchClearResults() {
+    setBenchResults({});
+    setBenchLastRender(null);
+  }
 
   async function createTestItem() {
     const p = perspective();
@@ -183,6 +220,8 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     emptyList,
     nested,
     singleConfig,
+    benchList100,
+    benchGroups,
 
     // Actions
     increment,
@@ -191,6 +230,13 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     setQueryFilterMode: (mode: string) => setQueryFilterMode(mode),
     createTestItem,
     deleteTestItem,
+
+    // Benchmark
+    benchLastRender,
+    benchResults,
+    benchRecordRender,
+    benchRecordResult,
+    benchClearResults,
 
     // AD4M
     perspective,

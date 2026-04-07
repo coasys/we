@@ -17,6 +17,7 @@
  */
 
 import {
+  schemaBenchmarkTemplate,
   schemaMutationsTemplate,
   schemaRoutingTemplate,
   schemaTokensTemplate,
@@ -52,6 +53,7 @@ import {
 export const templateRegistry = {
   we: weTemplate,
   twitter: twitterTemplate,
+  'schema-benchmark': schemaBenchmarkTemplate,
   'schema-tokens': schemaTokensTemplate,
   'schema-mutations': schemaMutationsTemplate,
   'schema-routing': schemaRoutingTemplate,

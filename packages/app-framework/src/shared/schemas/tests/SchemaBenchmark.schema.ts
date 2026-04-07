@@ -1,0 +1,887 @@
+/**
+ * Schema Benchmark Template
+ *
+ * Performance benchmark suite for measuring schema renderer speed.
+ * Each route stress-tests a different aspect of the rendering pipeline
+ * and displays the measured render time.
+ *
+ * Routes:
+ *   /                  — dashboard with results summary
+ *   /static-small      — 50 static nodes (baseline)
+ *   /static-large      — 200+ static nodes (scaling test)
+ *   /tokens-light      — 50 nodes with 1-2 $store reads each
+ *   /tokens-heavy      — 50 nodes with deeply composed tokens
+ *   /each-flat         — $each with 100 items
+ *   /each-nested       — nested $each (10 groups × 10 items)
+ *   /web-components    — 100 web component nodes (we-text, we-button)
+ *   /solid-components  — 100 Solid component nodes (Column, Row)
+ *   /deep-nesting      — 30-level deep nesting
+ *   /mixed-realistic   — ~70-node dashboard with representative token mix
+ *
+ * Timing: BenchmarkTimer component at end of each route captures
+ * mount time via requestAnimationFrame after onMount.
+ */
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+
+// ---------------------------------------------------------------------------
+// Helpers — generate benchmark content programmatically
+// ---------------------------------------------------------------------------
+
+/** Timer placed at the bottom of each benchmark route.
+ *  Self-contained: records performance.now() at creation, measures to paint-complete. */
+function timer(label: string): SchemaNode {
+  return {
+    type: 'BenchmarkTimer',
+    props: {
+      label,
+      onComplete: { $action: 'testStore.benchRecordRender' },
+    },
+  };
+}
+
+/** A static card with N text props — no tokens */
+function staticCard(id: number): SchemaNode {
+  return {
+    type: 'Column',
+    props: {
+      p: '300',
+      gap: '200',
+      bg: 'neutral-0',
+      r: '300',
+      border: '1px solid',
+      borderColor: 'neutral-200',
+    },
+    children: [
+      { type: 'we-text', props: { text: `Card ${id}`, fontSize: '400', fontWeight: '600', color: 'neutral-800' } },
+      { type: 'we-text', props: { text: `Description for card number ${id}`, fontSize: '300', color: 'neutral-600' } },
+      { type: 'we-text', props: { text: `Detail line ${id}`, fontSize: '200', color: 'neutral-400' } },
+    ],
+  };
+}
+
+/** A card that reads from $store for its values */
+function tokenCard(id: number): SchemaNode {
+  return {
+    type: 'Column',
+    props: {
+      p: '300',
+      gap: '200',
+      bg: 'neutral-0',
+      r: '300',
+    },
+    children: [
+      {
+        type: 'we-text',
+        props: {
+          fontSize: '400',
+          fontWeight: '600',
+          color: 'neutral-800',
+        },
+        children: [{ $concat: ['Card ', { $store: 'testStore.stringValue' }, ` #${id}`] }],
+      },
+      {
+        type: 'we-text',
+        props: {
+          fontSize: '300',
+          color: {
+            $if: {
+              condition: { $store: 'testStore.boolTrue' },
+              then: 'neutral-600',
+              else: 'danger-600',
+            },
+          },
+        },
+        children: [{ $concat: ['Count: ', { $store: 'testStore.numberValue' }] }],
+      },
+    ],
+  };
+}
+
+/** A card with deeply composed tokens — $if($and($eq($store,…), $not(…))) */
+function heavyTokenCard(id: number): SchemaNode {
+  return {
+    type: 'Column',
+    props: {
+      p: '300',
+      gap: '200',
+      bg: {
+        $if: {
+          condition: {
+            $and: [
+              { $eq: [{ $store: 'testStore.stringValue' }, 'hello'] },
+              { $not: { $store: 'testStore.boolFalse' } },
+            ],
+          },
+          then: 'neutral-0',
+          else: 'danger-50',
+        },
+      },
+      r: '300',
+    },
+    children: [
+      {
+        type: 'we-text',
+        props: {
+          fontSize: '400',
+          fontWeight: '600',
+          color: {
+            $if: {
+              condition: {
+                $or: [
+                  { $eq: [{ $store: 'testStore.numberValue' }, 42] },
+                  { $ne: [{ $store: 'testStore.stringValue' }, 'goodbye'] },
+                ],
+              },
+              then: 'primary-700',
+              else: 'danger-700',
+            },
+          },
+        },
+        children: [
+          {
+            $concat: [
+              'Heavy #',
+              `${id}`,
+              ' — ',
+              {
+                $if: {
+                  condition: { $store: 'testStore.boolTrue' },
+                  then: { $store: 'testStore.stringValue' },
+                  else: 'fallback',
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        type: 'we-text',
+        props: {
+          fontSize: '300',
+          color: 'neutral-500',
+        },
+        children: [
+          {
+            $concat: [
+              'Status: ',
+              {
+                $if: {
+                  condition: { $and: [{ $store: 'testStore.boolTrue' }, { $not: { $store: 'testStore.boolFalse' } }] },
+                  then: 'active',
+                  else: 'inactive',
+                },
+              },
+              ' | Count: ',
+              { $store: 'testStore.numberValue' },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** Build N levels of nesting: Column → Row → Column → Row → ... */
+function deepNest(depth: number, current: number = 0): SchemaNode {
+  const isColumn = current % 2 === 0;
+  const child: SchemaNode =
+    current >= depth
+      ? { type: 'we-text', props: { text: `Depth ${current}`, fontSize: '200', color: 'primary-600' } }
+      : deepNest(depth, current + 1);
+
+  return {
+    type: isColumn ? 'Column' : 'Row',
+    props: { p: '100', gap: '100', ...(current === 0 ? { bg: 'neutral-0', r: '300' } : {}) },
+    children: [{ type: 'we-text', props: { text: `Level ${current}`, fontSize: '200', color: 'neutral-400' } }, child],
+  };
+}
+
+/** A static web component card (we-text, we-button) */
+function wcCard(id: number): SchemaNode {
+  return {
+    type: 'Column',
+    props: { p: '200', gap: '200', bg: 'neutral-0', r: '200' },
+    children: [
+      { type: 'we-text', props: { text: `WC ${id}`, fontSize: '300', fontWeight: '500', color: 'neutral-700' } },
+      { type: 'we-button', props: { text: `Action ${id}`, variant: 'outline', size: 'sm' } },
+    ],
+  };
+}
+
+/** A static Solid component card (Column, Row — no web components) */
+function solidCard(id: number): SchemaNode {
+  return {
+    type: 'Column',
+    props: {
+      p: '200',
+      gap: '100',
+      bg: 'neutral-0',
+      r: '200',
+      border: '1px solid',
+      borderColor: 'neutral-100',
+    },
+    children: [
+      {
+        type: 'Row',
+        props: { gap: '200', ay: 'center' },
+        children: [
+          { type: 'Column', props: { width: '8px', height: '8px', r: 'full', bg: 'primary-400' }, children: [] },
+          {
+            type: 'Column',
+            children: [{ type: 'we-text', props: { text: `Solid ${id}`, fontSize: '300', color: 'neutral-700' } }],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Generate route content
+// ---------------------------------------------------------------------------
+
+function generateCards(count: number, factory: (id: number) => SchemaNode): SchemaNode[] {
+  return Array.from({ length: count }, (_, i) => factory(i + 1));
+}
+
+/** Route wrapper: title + navButton back + content + timer */
+function benchRoute(title: string, timerLabel: string, children: SchemaNode[]): SchemaNode[] {
+  return [
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', pb: '300' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            onClick: { $action: 'routeStore.navigate', args: ['/'] },
+          },
+          children: [{ type: 'we-icon', props: { name: 'arrow-left', size: 'sm' } }],
+        },
+        { type: 'we-text', props: { text: title, fontSize: '600', fontWeight: '600', color: 'neutral-800' } },
+      ],
+    },
+    // Last render time display
+    {
+      type: '$if',
+      props: {
+        condition: { $store: 'testStore.benchLastRender' },
+        then: {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', p: '200', bg: 'success-50', r: '300', mb: '300' },
+          children: [
+            {
+              type: 'we-text',
+              props: { color: 'success-700', fontWeight: '600', fontSize: '300' },
+              children: ['✓ Render time:'],
+            },
+            {
+              type: 'we-text',
+              props: { color: 'success-600', fontSize: '400', fontWeight: '700' },
+              children: [{ $concat: [{ $store: 'testStore.benchLastRender' }, 'ms'] }],
+            },
+          ],
+        },
+      },
+    },
+    ...children,
+    timer(timerLabel),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Route: Static Small (50 cards)
+// ---------------------------------------------------------------------------
+const staticSmallRoute = {
+  path: '/static-small',
+  type: 'Column' as const,
+  props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
+  children: benchRoute('Static Small — 50 nodes', 'static-small', [
+    {
+      type: 'we-text',
+      props: { text: '50 static cards, all string props, zero tokens', fontSize: '300', color: 'neutral-500' },
+    },
+    {
+      type: 'Column',
+      props: {
+        gap: '200',
+        styles: { display: 'grid', 'grid-template-columns': 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' },
+      },
+      children: generateCards(50, staticCard),
+    },
+  ]),
+};
+
+// ---------------------------------------------------------------------------
+// Route: Static Large (200 cards)
+// ---------------------------------------------------------------------------
+const staticLargeRoute = {
+  path: '/static-large',
+  type: 'Column' as const,
+  props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
+  children: benchRoute('Static Large — 200 nodes', 'static-large', [
+    {
+      type: 'we-text',
+      props: {
+        text: '200 static cards — tests scaling of static prop overhead',
+        fontSize: '300',
+        color: 'neutral-500',
+      },
+    },
+    {
+      type: 'Column',
+      props: {
+        gap: '200',
+        styles: { display: 'grid', 'grid-template-columns': 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px' },
+      },
+      children: generateCards(200, staticCard),
+    },
+  ]),
+};
+
+// ---------------------------------------------------------------------------
+// Route: Tokens Light (50 cards with $store reads)
+// ---------------------------------------------------------------------------
+const tokensLightRoute = {
+  path: '/tokens-light',
+  type: 'Column' as const,
+  props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
+  children: benchRoute('Tokens Light — $store reads', 'tokens-light', [
+    {
+      type: 'we-text',
+      props: { text: '50 cards each with 1-2 $store and $concat tokens', fontSize: '300', color: 'neutral-500' },
+    },
+    {
+      type: 'Column',
+      props: {
+        gap: '200',
+        styles: { display: 'grid', 'grid-template-columns': 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' },
+      },
+      children: generateCards(50, tokenCard),
+    },
+  ]),
+};
+
+// ---------------------------------------------------------------------------
+// Route: Tokens Heavy (50 cards with deeply composed tokens)
+// ---------------------------------------------------------------------------
+const tokensHeavyRoute = {
+  path: '/tokens-heavy',
+  type: 'Column' as const,
+  props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
+  children: benchRoute('Tokens Heavy — deep composition', 'tokens-heavy', [
+    {
+      type: 'we-text',
+      props: {
+        text: '50 cards each with $if($and($eq($store,…), $not(…))) chains',
+        fontSize: '300',
+        color: 'neutral-500',
+      },
+    },
+    {
+      type: 'Column',
+      props: {
+        gap: '200',
+        styles: { display: 'grid', 'grid-template-columns': 'repeat(auto-fill, minmax(220px, 1fr))', gap: '8px' },
+      },
+      children: generateCards(50, heavyTokenCard),
+    },
+  ]),
+};
+
+// ---------------------------------------------------------------------------
+// Route: $each Flat (100 items)
+// ---------------------------------------------------------------------------
+const eachFlatRoute = {
+  path: '/each-flat',
+  type: 'Column' as const,
+  props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
+  children: benchRoute('$each Flat — 100 items', 'each-flat', [
+    {
+      type: 'we-text',
+      props: { text: 'Single $each loop rendering 100 simple cards', fontSize: '300', color: 'neutral-500' },
+    },
+    {
+      type: 'Column',
+      props: {
+        gap: '200',
+        styles: { display: 'grid', 'grid-template-columns': 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' },
+      },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $store: 'testStore.benchList100' } },
+          children: [
+            {
+              type: 'Column',
+              props: { p: '300', gap: '100', bg: 'neutral-0', r: '300' },
+              children: [
+                { type: 'we-text', props: { fontWeight: '500', color: 'neutral-700' }, children: ['$item.name'] },
+                { type: 'we-text', props: { fontSize: '200', color: 'neutral-400' }, children: ['$item.category'] },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]),
+};
+
+// ---------------------------------------------------------------------------
+// Route: $each Nested (10 groups × 10 items)
+// ---------------------------------------------------------------------------
+const eachNestedRoute = {
+  path: '/each-nested',
+  type: 'Column' as const,
+  props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
+  children: benchRoute('Nested $each — 10×10', 'each-nested', [
+    {
+      type: 'we-text',
+      props: { text: '10 groups with 10 items each — tests context spreading', fontSize: '300', color: 'neutral-500' },
+    },
+    {
+      type: 'Column',
+      props: { gap: '300' },
+      children: [
+        {
+          type: '$each',
+          props: { items: { $store: 'testStore.benchGroups' }, as: 'group' },
+          children: [
+            {
+              type: 'Column',
+              props: { p: '300', gap: '200', bg: 'neutral-0', r: '300' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { fontWeight: '600', color: 'neutral-700', fontSize: '400' },
+                  children: ['$group.name'],
+                },
+                {
+                  type: '$each',
+                  props: { items: '$group.items', as: 'sub' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', pl: '300', ay: 'center' },
+                      children: [
+                        { type: 'we-text', props: { color: 'neutral-400' }, children: ['•'] },
+                        { type: 'we-text', props: { fontSize: '300' }, children: ['$sub.label'] },
+                        {
+                          type: 'we-text',
+                          props: { fontSize: '200', color: 'neutral-400' },
+                          children: ['$sub.detail'],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]),
+};
+
+// ---------------------------------------------------------------------------
+// Route: Web Components (100 we-text + we-button)
+// ---------------------------------------------------------------------------
+const wcRoute = {
+  path: '/web-components',
+  type: 'Column' as const,
+  props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
+  children: benchRoute('Web Components — 100 nodes', 'web-components', [
+    {
+      type: 'we-text',
+      props: {
+        text: '100 we-text + we-button pairs — isolates per-prop createEffect overhead',
+        fontSize: '300',
+        color: 'neutral-500',
+      },
+    },
+    {
+      type: 'Column',
+      props: {
+        gap: '200',
+        styles: { display: 'grid', 'grid-template-columns': 'repeat(auto-fill, minmax(150px, 1fr))', gap: '6px' },
+      },
+      children: generateCards(100, wcCard),
+    },
+  ]),
+};
+
+// ---------------------------------------------------------------------------
+// Route: Solid Components (100 Column + Row)
+// ---------------------------------------------------------------------------
+const solidRoute = {
+  path: '/solid-components',
+  type: 'Column' as const,
+  props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
+  children: benchRoute('Solid Components — 100 nodes', 'solid-components', [
+    {
+      type: 'we-text',
+      props: {
+        text: '100 Column + Row nodes — same layout, reactive spread path',
+        fontSize: '300',
+        color: 'neutral-500',
+      },
+    },
+    {
+      type: 'Column',
+      props: {
+        gap: '200',
+        styles: { display: 'grid', 'grid-template-columns': 'repeat(auto-fill, minmax(150px, 1fr))', gap: '6px' },
+      },
+      children: generateCards(100, solidCard),
+    },
+  ]),
+};
+
+// ---------------------------------------------------------------------------
+// Route: Deep Nesting (30 levels)
+// ---------------------------------------------------------------------------
+const deepNestRoute = {
+  path: '/deep-nesting',
+  type: 'Column' as const,
+  props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
+  children: benchRoute('Deep Nesting — 30 levels', 'deep-nesting', [
+    {
+      type: 'we-text',
+      props: { text: 'Column → Row → Column chain, 30 levels deep', fontSize: '300', color: 'neutral-500' },
+    },
+    deepNest(30),
+  ]),
+};
+
+// ---------------------------------------------------------------------------
+// Route: Mixed Realistic (~70 nodes, representative token mix)
+// ---------------------------------------------------------------------------
+const mixedRealisticRoute = {
+  path: '/mixed-realistic',
+  type: 'Column' as const,
+  props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
+  children: benchRoute('Mixed Realistic — ~70 nodes', 'mixed-realistic', [
+    {
+      type: 'we-text',
+      props: { text: 'Dashboard-like layout with representative token mix', fontSize: '300', color: 'neutral-500' },
+    },
+    // Welcome header with $store
+    {
+      type: 'Column',
+      props: { width: '100%', p: '400', gap: '200', bg: 'neutral-0', r: '400' },
+      children: [
+        {
+          type: 'we-text',
+          props: { fontSize: '700', fontWeight: '600', color: 'neutral-900' },
+          children: [{ $concat: ['Welcome, ', { $store: 'testStore.stringValue' }] }],
+        },
+        {
+          type: 'we-text',
+          props: { fontSize: '400', color: 'neutral-600' },
+          children: [{ $concat: ['Counter: ', { $store: 'testStore.counter' }] }],
+        },
+      ],
+    },
+    // Stat cards — 4 static cards
+    {
+      type: 'Row',
+      props: { width: '100%', gap: '300', wrap: true },
+      children: [
+        ...[
+          { label: 'Active Spaces', value: '12', change: '+2 this week', color: 'primary-500' },
+          { label: 'Messages', value: '24', change: '5 unread', color: 'blue-500' },
+          { label: 'Quests', value: '7', change: '3 due', color: 'green-500' },
+          { label: 'Notifications', value: '18', change: 'New today', color: 'orange-500' },
+        ].map((stat) => ({
+          type: 'Column' as const,
+          props: {
+            flex: '1',
+            minWidth: '160px',
+            p: '400',
+            gap: '200',
+            bg: 'neutral-0',
+            r: '400',
+            borderLeft: '4px solid',
+            borderColor: stat.color,
+          },
+          children: [
+            { type: 'we-text', props: { text: stat.label, fontSize: '300', fontWeight: '500', color: 'neutral-600' } },
+            { type: 'we-text', props: { text: stat.value, fontSize: '800', fontWeight: '700', color: 'neutral-900' } },
+            { type: 'we-text', props: { text: stat.change, fontSize: '300', color: stat.color } },
+          ],
+        })),
+      ],
+    },
+    // Two column layout
+    {
+      type: 'Row',
+      props: { width: '100%', gap: '400', ax: 'start' },
+      children: [
+        // Left — activity list with $each
+        {
+          type: 'Column',
+          props: { flex: '2', gap: '300' },
+          children: [
+            {
+              type: 'we-text',
+              props: { text: 'Recent Activity', fontSize: '500', fontWeight: '600', color: 'neutral-800' },
+            },
+            {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: '$each',
+                  props: { items: { $store: 'testStore.fruits' } },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { p: '300', gap: '300', bg: 'neutral-0', r: '300', ay: 'center' },
+                      children: [
+                        { type: 'we-text', props: { fontSize: '500' }, children: ['$item.emoji'] },
+                        {
+                          type: 'Column',
+                          props: { flex: '1', gap: '100' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { fontWeight: '500', color: 'neutral-800' },
+                              children: ['$item.name'],
+                            },
+                            {
+                              type: 'we-text',
+                              props: { fontSize: '200', color: 'neutral-500' },
+                              children: ['$item.color'],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        // Right — quick actions + conditional content
+        {
+          type: 'Column',
+          props: { flex: '1', gap: '300' },
+          children: [
+            {
+              type: 'we-text',
+              props: { text: 'Quick Actions', fontSize: '500', fontWeight: '600', color: 'neutral-800' },
+            },
+            {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Toggle State',
+                    variant: 'primary',
+                    width: '100%',
+                    onClick: { $action: 'testStore.toggle' },
+                  },
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Increment Counter',
+                    variant: 'secondary',
+                    width: '100%',
+                    onClick: { $action: 'testStore.increment' },
+                  },
+                },
+                { type: 'we-button', props: { text: 'Action Three', variant: 'outline', width: '100%' } },
+                { type: 'we-button', props: { text: 'Action Four', variant: 'ghost', width: '100%' } },
+              ],
+            },
+            // Conditional section
+            {
+              type: '$if',
+              props: {
+                condition: { $store: 'testStore.toggleValue' },
+                then: {
+                  type: 'Column',
+                  props: { p: '300', gap: '200', bg: 'success-50', r: '300' },
+                  children: [
+                    { type: 'we-text', props: { fontWeight: '600', color: 'success-700' }, children: ['Toggle is ON'] },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '300', color: 'success-600' },
+                      children: ['This section appears conditionally'],
+                    },
+                  ],
+                },
+                else: {
+                  type: 'Column',
+                  props: { p: '300', gap: '200', bg: 'neutral-100', r: '300' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { fontWeight: '600', color: 'neutral-600' },
+                      children: ['Toggle is OFF'],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '300', color: 'neutral-500' },
+                      children: ['Toggle the state to show content'],
+                    },
+                  ],
+                },
+              },
+            },
+            // Events list — static
+            {
+              type: 'Column',
+              props: { gap: '300', pt: '200' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { text: 'Upcoming', fontSize: '500', fontWeight: '600', color: 'neutral-800' },
+                },
+                ...['Team Standup — 10:00 AM', 'Design Review — 2:00 PM', 'Sprint Planning — Friday'].map((event) => ({
+                  type: 'Column' as const,
+                  props: { p: '300', bg: 'neutral-0', r: '300' },
+                  children: [{ type: 'we-text', props: { text: event, fontSize: '300', color: 'neutral-700' } }],
+                })),
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]),
+};
+
+// ---------------------------------------------------------------------------
+// Dashboard route — results summary + navigation
+// ---------------------------------------------------------------------------
+const benchmarkRoutes = [
+  { path: '/static-small', label: 'Static Small (50)' },
+  { path: '/static-large', label: 'Static Large (200)' },
+  { path: '/tokens-light', label: 'Tokens Light' },
+  { path: '/tokens-heavy', label: 'Tokens Heavy' },
+  { path: '/each-flat', label: '$each Flat (100)' },
+  { path: '/each-nested', label: 'Nested $each (10×10)' },
+  { path: '/web-components', label: 'Web Components (100)' },
+  { path: '/solid-components', label: 'Solid Components (100)' },
+  { path: '/deep-nesting', label: 'Deep Nesting (30)' },
+  { path: '/mixed-realistic', label: 'Mixed Realistic' },
+];
+
+const dashboardRoute = {
+  path: '/',
+  type: 'Column' as const,
+  props: { width: '100%', height: '100%', p: '500', gap: '400', bg: 'neutral-50', overflow: 'auto' },
+  children: [
+    // Header
+    {
+      type: 'Column',
+      props: { gap: '200' },
+      children: [
+        {
+          type: 'we-text',
+          props: { text: 'Schema Renderer Benchmarks', fontSize: '800', fontWeight: '700', color: 'neutral-900' },
+        },
+        {
+          type: 'we-text',
+          props: {
+            text: 'Click a benchmark to run it. Times are measured from navigation to paint-complete.',
+            fontSize: '400',
+            color: 'neutral-600',
+          },
+        },
+      ],
+    },
+    // Clear results button
+    {
+      type: 'we-button',
+      props: {
+        text: 'Clear All Results',
+        variant: 'outline',
+        size: 'sm',
+        onClick: { $action: 'testStore.benchClearResults' },
+      },
+    },
+    // Benchmark navigation grid
+    {
+      type: 'Column',
+      props: {
+        gap: '200',
+        styles: { display: 'grid', 'grid-template-columns': 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' },
+      },
+      children: benchmarkRoutes.map((route) => ({
+        type: 'Column' as const,
+        props: {
+          p: '400',
+          gap: '200',
+          bg: 'neutral-0',
+          r: '400',
+          cursor: 'pointer',
+          border: '1px solid',
+          borderColor: 'neutral-200',
+          hoverProps: { borderColor: 'primary-300', bg: 'primary-25' },
+          onClick: { $action: 'routeStore.navigate', args: [route.path] },
+        },
+        children: [
+          {
+            type: 'Row',
+            props: { gap: '200', ay: 'center', ax: 'between', width: '100%' },
+            children: [
+              { type: 'we-text', props: { text: route.label, fontWeight: '600', color: 'neutral-800' } },
+              {
+                type: 'we-button',
+                props: {
+                  text: 'Run',
+                  variant: 'primary',
+                  size: 'sm',
+                  onClick: { $action: 'routeStore.navigate', args: [route.path] },
+                },
+              },
+            ],
+          },
+          { type: 'we-text', props: { text: route.path, fontSize: '200', color: 'neutral-400' } },
+        ],
+      })),
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Full template export
+// ---------------------------------------------------------------------------
+export const schemaBenchmarkTemplate: TemplateSchema = {
+  meta: {
+    name: 'Schema Benchmark',
+    description: 'Performance benchmark suite for schema renderer',
+    icon: 'timer',
+  },
+  type: 'Column',
+  props: { width: '100%', height: '100%' },
+  children: [{ type: '$routes' }],
+  routes: [
+    dashboardRoute,
+    staticSmallRoute,
+    staticLargeRoute,
+    tokensLightRoute,
+    tokensHeavyRoute,
+    eachFlatRoute,
+    eachNestedRoute,
+    wcRoute,
+    solidRoute,
+    deepNestRoute,
+    mixedRealisticRoute,
+    {
+      path: '*',
+      type: 'Column',
+      props: { p: '500' },
+      children: [{ type: 'we-text', props: { text: 'Benchmark route not found' } }],
+    },
+  ],
+};
