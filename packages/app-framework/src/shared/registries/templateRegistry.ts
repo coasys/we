@@ -17,9 +17,9 @@
  */
 
 import {
-  integrationTestsTemplate,
   schemaMutationsTemplate,
   schemaRoutingTemplate,
+  schemaTokensTemplate,
   twitterTemplate,
   weTemplate,
 } from '@shared/schemas';
@@ -52,7 +52,7 @@ import {
 export const templateRegistry = {
   we: weTemplate,
   twitter: twitterTemplate,
-  'integration-tests': integrationTestsTemplate,
+  'schema-tokens': schemaTokensTemplate,
   'schema-mutations': schemaMutationsTemplate,
   'schema-routing': schemaRoutingTemplate,
   // launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes

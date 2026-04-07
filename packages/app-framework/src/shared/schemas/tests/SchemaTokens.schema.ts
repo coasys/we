@@ -1114,9 +1114,9 @@ const namedThemeTest: SchemaNode = {
 // Full template
 // ---------------------------------------------------------------------------
 
-export const integrationTestsTemplate: TemplateSchema = {
+export const schemaTokensTemplate: TemplateSchema = {
   meta: {
-    name: 'Integration Tests',
+    name: 'Schema Tokens',
     description: 'Visual test suite for all schema tokens',
     icon: 'test-tube',
   },
