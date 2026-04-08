@@ -1,8 +1,8 @@
-import { DesignSystemProps } from '@we/design-types';
+import type { DesignSystemProps } from '@we/design-types';
 import type { Accessor } from 'solid-js';
-import { JSX } from 'solid-js';
+import { createSignal, JSX } from 'solid-js';
 
-import { getMarginValues, getPaddingValues, getRadiusValues, mapFlexAxes, tokenVar } from '../index';
+import { getMarginValues, getPaddingValues, getRadiusValues, mapFlexAxes, parseBorder, tokenVar } from '../index';
 
 export type MaybeAccessor<T> = T | Accessor<T>;
 
@@ -30,7 +30,13 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
 
   // Visual Effects
   if (props.opacity !== undefined) style.opacity = props.opacity;
-  if (props.border) style.border = props.border;
+  if (props.border) style.border = parseBorder(props.border);
+  if (props.borderColor) style['border-color'] = tokenVar('color', props.borderColor);
+  if (props.borderTop) style['border-top'] = parseBorder(props.borderTop);
+  if (props.borderRight) style['border-right'] = parseBorder(props.borderRight);
+  if (props.borderBottom) style['border-bottom'] = parseBorder(props.borderBottom);
+  if (props.borderLeft) style['border-left'] = parseBorder(props.borderLeft);
+  if (props.borderWidth) style['border-width'] = props.borderWidth;
   if (props.shadow) style['box-shadow'] = props.shadow;
   if (props.transform) style.transform = props.transform;
   if (props.transition) style.transition = props.transition;
@@ -81,4 +87,90 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
   if (radius !== '0 0 0 0') style['border-radius'] = radius;
 
   return style;
+}
+
+// ────────────────────────────────────────────
+// State props (hover, active, focus) for Solid layout components
+// ────────────────────────────────────────────
+
+export interface StatePropsResult {
+  style: () => JSX.CSSProperties;
+  handlers: JSX.HTMLAttributes<HTMLDivElement>;
+}
+
+export function useStateProps(
+  baseStyle: Accessor<JSX.CSSProperties>,
+  props: LayoutProps,
+  direction: 'row' | 'column',
+): StatePropsResult {
+  const hasHover = () => props.hoverProps && Object.keys(props.hoverProps).length > 0;
+  const hasActive = () => props.activeProps && Object.keys(props.activeProps).length > 0;
+  const hasFocus = () => props.focusProps && Object.keys(props.focusProps).length > 0;
+
+  const [hovered, setHovered] = createSignal(false);
+  const [active, setActive] = createSignal(false);
+  const [focused, setFocused] = createSignal(false);
+
+  const handlers: JSX.HTMLAttributes<HTMLDivElement> = {};
+
+  // Only attach listeners when state props are provided.
+  // We use getters so they react to prop changes.
+  Object.defineProperties(handlers, {
+    onMouseEnter: {
+      get: () => (hasHover() ? () => setHovered(true) : undefined),
+      enumerable: true,
+    },
+    onMouseLeave: {
+      get: () => (hasHover() ? () => setHovered(false) : undefined),
+      enumerable: true,
+    },
+    onMouseDown: {
+      get: () => (hasActive() ? () => setActive(true) : undefined),
+      enumerable: true,
+    },
+    onMouseUp: {
+      get: () => (hasActive() ? () => setActive(false) : undefined),
+      enumerable: true,
+    },
+    onFocus: {
+      get: () => (hasFocus() ? () => setFocused(true) : undefined),
+      enumerable: true,
+    },
+    onBlur: {
+      get: () => (hasFocus() ? () => setFocused(false) : undefined),
+      enumerable: true,
+    },
+  });
+
+  const style = () => {
+    const base = baseStyle();
+
+    // Fast path: no state active
+    if (!hovered() && !active() && !focused()) return base;
+
+    // Build override styles and merge over base
+    let merged = base;
+    if (focused() && props.focusProps) {
+      merged = {
+        ...merged,
+        ...buildLayoutStyles({ ...props.focusProps, styles: undefined } as LayoutProps, direction),
+      };
+    }
+    if (hovered() && props.hoverProps) {
+      merged = {
+        ...merged,
+        ...buildLayoutStyles({ ...props.hoverProps, styles: undefined } as LayoutProps, direction),
+      };
+    }
+    if (active() && props.activeProps) {
+      merged = {
+        ...merged,
+        ...buildLayoutStyles({ ...props.activeProps, styles: undefined } as LayoutProps, direction),
+      };
+    }
+
+    return merged;
+  };
+
+  return { style, handlers };
 }

@@ -1,5 +1,5 @@
 import { designSystemKeys, filterProps, mergeProps } from '@we/design-utils';
-import { buildLayoutStyles } from '@we/design-utils/solid';
+import { buildLayoutStyles, useStateProps } from '@we/design-utils/solid';
 import { createMemo, splitProps } from 'solid-js';
 
 export type * from './Row.types';
@@ -10,14 +10,19 @@ const rowKeys = [...designSystemKeys.filter((key) => key !== 'direction'), 'reve
 
 export function Row(allProps: RowProps) {
   const [designSystemProps, rest] = splitProps(allProps, rowKeys as (keyof RowProps)[]);
-  const reactiveStyles = createMemo(() => {
+  const baseStyle = createMemo(() => {
     const usedProps = filterProps(designSystemProps, rowKeys);
     const props = mergeProps(usedProps, DEFAULTS) as RowProps;
     return buildLayoutStyles(props, 'row');
   });
 
+  const hasStateProps = () =>
+    designSystemProps.hoverProps || designSystemProps.activeProps || designSystemProps.focusProps;
+
+  const { style, handlers } = useStateProps(baseStyle, designSystemProps as RowProps, 'row');
+
   return (
-    <div style={reactiveStyles()} {...rest}>
+    <div style={hasStateProps() ? style() : baseStyle()} {...rest} {...(hasStateProps() ? handlers : {})}>
       {designSystemProps.children}
     </div>
   );
