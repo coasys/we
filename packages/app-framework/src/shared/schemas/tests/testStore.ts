@@ -37,6 +37,9 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
   // ---- Benchmark timing ----
   const [benchLastRender, setBenchLastRender] = createSignal<number | null>(null);
   const [benchResults, setBenchResults] = createSignal<Record<string, number>>({});
+  let benchQueue: string[] = [];
+  let benchNavigate: ((to: string) => void) | null = null;
+  let benchRunning = false;
 
   // ---- List data (for $each) ----
   const fruits = [
@@ -111,11 +114,49 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     if (routeName) {
       setBenchResults((prev) => ({ ...prev, [routeName]: Math.round(duration * 10) / 10 }));
     }
+    // Auto-advance only during a Run All session
+    if (!benchRunning) return;
+    if (benchQueue.length > 0 && benchNavigate) {
+      const next = benchQueue.shift()!;
+      setTimeout(() => benchNavigate!(next), 50);
+    } else {
+      // All done — return to dashboard
+      benchRunning = false;
+      setTimeout(() => benchNavigate!('/'), 50);
+    }
   }
 
   function benchClearResults() {
     setBenchResults({});
     setBenchLastRender(null);
+    benchQueue = [];
+    benchRunning = false;
+  }
+
+  function benchSetNavigate(navigate: (to: string) => void) {
+    benchNavigate = navigate;
+  }
+
+  const benchAllRoutes = [
+    '/static-small',
+    '/static-large',
+    '/tokens-light',
+    '/tokens-heavy',
+    '/each-flat',
+    '/each-nested',
+    '/web-components',
+    '/solid-components',
+    '/deep-nesting',
+    '/mixed-realistic',
+  ];
+
+  function benchRunAll() {
+    if (!benchNavigate) return;
+    setBenchResults({});
+    setBenchLastRender(null);
+    benchRunning = true;
+    benchQueue = benchAllRoutes.slice(1);
+    benchNavigate(benchAllRoutes[0]);
   }
 
   async function createTestItem() {
@@ -230,6 +271,8 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     benchResults,
     benchRecordRender,
     benchClearResults,
+    benchSetNavigate,
+    benchRunAll,
 
     // AD4M
     perspective,

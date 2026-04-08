@@ -808,31 +808,40 @@ const dashboardRoute = {
     // Header
     {
       type: 'Column',
-      props: { gap: '200' },
+      props: { gap: '300' },
       children: [
         {
           type: 'we-text',
-          props: { text: 'Schema Renderer Benchmarks', fontSize: '800', fontWeight: '700', color: 'neutral-900' },
+          props: { fontSize: '700', fontWeight: '700', color: 'primary-800' },
+          children: ['Schema Renderer Benchmarks'],
         },
         {
           type: 'we-text',
-          props: {
-            text: 'Click a benchmark to run it. Times are measured from navigation to paint-complete.',
-            fontSize: '400',
-            color: 'neutral-600',
-          },
+          props: { color: 'neutral-600' },
+          children: ['Click a benchmark to run it. Times are measured from navigation to paint-complete.'],
         },
+        { type: 'we-divider', props: { mb: '400' } },
       ],
     },
-    // Clear results button
+    // Action buttons
     {
       type: 'Row',
+      props: { gap: '200' },
       children: [
         {
           type: 'we-button',
           props: {
-            text: 'Clear All Results',
+            text: 'Run All',
             variant: 'primary',
+            gradient: true,
+            onClick: { $action: 'testStore.benchRunAll' },
+          },
+        },
+        {
+          type: 'we-button',
+          props: {
+            text: 'Clear All Results',
+            variant: 'secondary',
             onClick: { $action: 'testStore.benchClearResults' },
           },
         },

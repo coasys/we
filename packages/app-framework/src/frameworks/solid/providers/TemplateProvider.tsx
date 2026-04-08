@@ -99,6 +99,7 @@ export default function TemplateProvider() {
 
   // Test store — isolated mock data + test perspective for test templates
   const testStore = createTestStore(adamStore.adamClient);
+  testStore.benchSetNavigate((to: string) => routeStore.navigate(to));
 
   // Console store for debugging actions in schema
   const consoleStore = {
