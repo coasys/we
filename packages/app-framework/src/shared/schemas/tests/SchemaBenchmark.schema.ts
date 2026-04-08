@@ -578,7 +578,7 @@ const deepNestRoute = {
       type: 'we-text',
       props: { text: 'Column → Row → Column chain, 30 levels deep', fontSize: '300', color: 'neutral-500' },
     },
-    deepNest(8),
+    deepNest(30),
   ]),
 };
 

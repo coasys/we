@@ -7,11 +7,12 @@ import type { ColumnProps } from './Column.types';
 
 const DEFAULTS: Partial<ColumnProps> = {};
 const columnKeys = [...designSystemKeys.filter((key) => key !== 'direction'), 'reverse', 'children'];
+const columnStyleKeys = columnKeys.filter((key) => key !== 'children');
 
 export function Column(allProps: ColumnProps) {
   const [designSystemProps, rest] = splitProps(allProps, columnKeys as (keyof ColumnProps)[]);
   const baseStyle = createMemo(() => {
-    const usedProps = filterProps(designSystemProps, columnKeys);
+    const usedProps = filterProps(designSystemProps, columnStyleKeys);
     const props = mergeProps(usedProps, DEFAULTS) as ColumnProps;
     return buildLayoutStyles(props, 'column');
   });
