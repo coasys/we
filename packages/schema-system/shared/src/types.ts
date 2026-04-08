@@ -64,6 +64,8 @@ export type MapToken = { $map: { items: unknown; select: Record<string, unknown>
 export type PickToken = { $pick: { from: unknown; props: string[] } };
 export type EqToken = { $eq: [unknown, unknown] };
 export type NeToken = { $ne: [unknown, unknown] };
+export type LtToken = { $lt: [unknown, unknown] };
+export type GtToken = { $gt: [unknown, unknown] };
 export type NotToken = { $not: unknown };
 export type AndToken = { $and: unknown[] };
 export type OrToken = { $or: unknown[] };
@@ -100,6 +102,8 @@ export type OperatorToken =
   | PickToken
   | EqToken
   | NeToken
+  | LtToken
+  | GtToken
   | NotToken
   | AndToken
   | OrToken

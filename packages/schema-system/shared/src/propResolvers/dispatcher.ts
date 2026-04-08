@@ -1,6 +1,14 @@
 import { hasToken } from '../predicates';
 import { resolveActionProp } from './action';
-import { resolveAndProp, resolveEqProp, resolveNeProp, resolveNotProp, resolveOrProp } from './comparisons';
+import {
+  resolveAndProp,
+  resolveEqProp,
+  resolveGtProp,
+  resolveLtProp,
+  resolveNeProp,
+  resolveNotProp,
+  resolveOrProp,
+} from './comparisons';
 import { resolveConcatProp } from './concat';
 import { resolveIfProp } from './conditional';
 import { resolveMapProp } from './map';
@@ -46,6 +54,8 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$not', 'object')) return resolveNotProp(value, stores, context, memo, resolveProp);
     if (hasToken(value, '$eq', 'array')) return resolveEqProp(value, stores, context, memo, resolveProp);
     if (hasToken(value, '$ne', 'array')) return resolveNeProp(value, stores, context, memo, resolveProp);
+    if (hasToken(value, '$lt', 'array')) return resolveLtProp(value, stores, context, memo, resolveProp);
+    if (hasToken(value, '$gt', 'array')) return resolveGtProp(value, stores, context, memo, resolveProp);
     if (hasToken(value, '$and', 'array')) return resolveAndProp(value, stores, context, memo, resolveProp);
     if (hasToken(value, '$or', 'array')) return resolveOrProp(value, stores, context, memo, resolveProp);
   }
