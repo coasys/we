@@ -61,6 +61,8 @@ const zPickToken = z
   .strict();
 const zEqToken = z.object({ $eq: z.array(z.unknown()).length(2) }).strict();
 const zNeToken = z.object({ $ne: z.array(z.unknown()).length(2) }).strict();
+const zLtToken = z.object({ $lt: z.array(z.unknown()).length(2) }).strict();
+const zGtToken = z.object({ $gt: z.array(z.unknown()).length(2) }).strict();
 const zNotToken = z.object({ $not: zDefined }).strict();
 const zAndToken = z.object({ $and: z.array(z.unknown()) }).strict();
 const zOrToken = z.object({ $or: z.array(z.unknown()) }).strict();
@@ -131,6 +133,8 @@ export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
   zPickToken,
   zEqToken,
   zNeToken,
+  zLtToken,
+  zGtToken,
   zNotToken,
   zAndToken,
   zOrToken,

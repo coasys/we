@@ -45,7 +45,13 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 | bg | ColorValue | Background color (token) |
 | color | ColorValue | Text/foreground color (token) |
 | opacity | number | Opacity (0–1) |
-| border | string | Border shorthand (e.g. "1px solid ui-200") |
+| border | string | Border shorthand (e.g. "1px solid neutral-200" — color tokens are resolved) |
+| borderColor | ColorValue | Border color (token, e.g. "neutral-200", "primary-500") |
+| borderTop | string | Top border shorthand (color tokens resolved) |
+| borderRight | string | Right border shorthand (color tokens resolved) |
+| borderBottom | string | Bottom border shorthand (color tokens resolved) |
+| borderLeft | string | Left border shorthand (color tokens resolved) |
+| borderWidth | string | Border width (raw CSS, e.g. "1px", "2px 0") |
 | shadow | ShadowValue | Shadow token |
 | cursor | "pointer" \\| "default" \\| "text" \\| "not-allowed" | Cursor style |
 | pointerEvents | "none" \\| "auto" | Pointer events |
@@ -90,6 +96,11 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 | letterSpacing | LetterSpacingValue | Letter spacing token |
 | textDecoration | "underline" \\| "line-through" \\| "overline" \\| "none" | Text decoration |
 | textTransform | "uppercase" \\| "lowercase" \\| "capitalize" \\| "none" | Text transform |
+
+**Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, \`fontSize: '500'\` (16px) and \`fontWeight: '500'\` (normal) are the inherited defaults — omit them.
+
+\`we-text\` variants (set via the \`variant\` prop) bundle typography presets:
+body (400), label (300 + medium), footnote (200 + neutral-400), subheading (500 + medium), ingress (500 + lineHeight 1.6), heading-sm (600 + bold), heading (800 + bold), heading-lg (1000 + bold).
 
 ### State
 

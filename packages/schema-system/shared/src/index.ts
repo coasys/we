@@ -17,6 +17,8 @@ export type {
   PickToken,
   EqToken,
   NeToken,
+  LtToken,
+  GtToken,
   NotToken,
   AndToken,
   OrToken,

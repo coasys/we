@@ -5,6 +5,7 @@ export { weTemplate } from './WeTemplate.schema';
 // Test templates
 export {
   createTestStore,
+  schemaBenchmarkTemplate,
   schemaTokensTemplate,
   schemaMutationsTemplate,
   schemaMutationActions,

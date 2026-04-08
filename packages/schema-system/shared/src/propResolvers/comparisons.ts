@@ -89,3 +89,39 @@ export function resolveOrProp(
   }
   return false;
 }
+
+// Resolves $lt (less than) props: { $lt: [a, b] } → a < b
+export function resolveLtProp(
+  value: unknown,
+  stores: Props,
+  context: Props,
+  memo: Memo,
+  resolvePropFn: typeof resolveProp,
+): unknown {
+  const [a, b] = (value as { $lt: [unknown, unknown] }).$lt;
+  let resolvedA = resolvePropFn(a, stores, context, memo);
+  let resolvedB = resolvePropFn(b, stores, context, memo);
+
+  if (typeof resolvedA === 'function') resolvedA = resolvedA();
+  if (typeof resolvedB === 'function') resolvedB = resolvedB();
+
+  return Number(resolvedA) < Number(resolvedB);
+}
+
+// Resolves $gt (greater than) props: { $gt: [a, b] } → a > b
+export function resolveGtProp(
+  value: unknown,
+  stores: Props,
+  context: Props,
+  memo: Memo,
+  resolvePropFn: typeof resolveProp,
+): unknown {
+  const [a, b] = (value as { $gt: [unknown, unknown] }).$gt;
+  let resolvedA = resolvePropFn(a, stores, context, memo);
+  let resolvedB = resolvePropFn(b, stores, context, memo);
+
+  if (typeof resolvedA === 'function') resolvedA = resolvedA();
+  if (typeof resolvedB === 'function') resolvedB = resolvedB();
+
+  return Number(resolvedA) > Number(resolvedB);
+}

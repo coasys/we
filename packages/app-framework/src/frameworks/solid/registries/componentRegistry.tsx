@@ -37,6 +37,7 @@ import {
   SpaceSidebarWidget,
 } from '@we/widgets/solid';
 
+import { BenchmarkTimer } from '../components/BenchmarkTimer';
 import { CreateSpacePage } from '../pages/CreateSpacePage';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,6 +87,7 @@ export const componentRegistry: ComponentRegistry = {
   CreateSpacePage,
 
   // Testing
+  BenchmarkTimer,
   RerenderLog,
 };
 

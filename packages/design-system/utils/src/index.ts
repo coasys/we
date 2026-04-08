@@ -6,6 +6,15 @@ export * from './iconSize';
 export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;
 export const marginKeys = ['m', 'mx', 'my', 'mt', 'mr', 'mb', 'ml'] as const;
 export const radiusKeys = ['r', 'rr', 'rt', 'rb', 'rl', 'rtl', 'rtr', 'rbr', 'rbl'] as const;
+export const borderKeys = [
+  'border',
+  'borderColor',
+  'borderTop',
+  'borderRight',
+  'borderBottom',
+  'borderLeft',
+  'borderWidth',
+] as const;
 export const stateKeys = ['hoverProps', 'activeProps', 'focusProps', 'disabledProps'] as const;
 
 // --- DS Layer key arrays ---
@@ -34,12 +43,12 @@ export const visualKeys = [
   'bg',
   'color',
   'opacity',
-  'border',
   'shadow',
   'cursor',
   'pointerEvents',
   'transform',
   'transition',
+  ...borderKeys,
   ...radiusKeys,
 ] as const;
 
@@ -129,7 +138,7 @@ export function parseBorder(value: string | undefined, defaultValue = ''): strin
     return val;
   }
 
-  // Try to parse border shorthand: "1px solid ui-200"
+  // Parse border shorthand: "1px solid ui-200" — all 3 parts required
   const parts = val.split(' ');
   if (parts.length >= 3) {
     const [width, style, ...colorParts] = parts;

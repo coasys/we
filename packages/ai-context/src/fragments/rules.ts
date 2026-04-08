@@ -11,11 +11,14 @@ export const rules = `
 - Each item in a children array must be either a valid schema node object or a string.
 - Use design tokens for spacing, color, radius, etc. (do not use raw CSS except in styles).
 - Use the styles prop for custom inline CSS (e.g., { "width": "100px" }).
-- Use the hover prop for hover state overrides (can include any design system prop and/or styles).
+- Use hoverProps for hover state overrides, activeProps for pressed state, focusProps for focus state. Supported on @we/primitives (we-text, we-button, etc.) and layout components (Column, Row).
 - Use dynamic logic tokens ($store, $if, $action, etc.) for reactivity and conditional behavior.
 - Nest components using children or slots as needed.
 - For routes, use the routes array with path and child nodes.
 - Do not invent new components or props — use only those listed in the component registry.
+- Do not set props to their default/inherited values — omit them. fontSize and fontWeight inherit from parents (~16px / normal), so only set them when you need a different value.
+- Omit empty \`props\` and \`children\` — both are optional. Do not write \`props: {}\` or \`children: []\`.
+- Do not use \`as const\` on schema node \`type\` fields — \`SchemaNode.type\` is \`string\`, so it is never needed.
 - All schemas must be valid JSON with property names and string values in double quotes.
 - The meta property at the root is required: { "meta": { "name": "...", "description": "...", "icon": "..." } }
 

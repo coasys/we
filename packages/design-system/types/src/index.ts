@@ -44,6 +44,12 @@ export interface DesignSystemProps {
   // Visual Effects
   opacity?: number;
   border?: string;
+  borderColor?: ColorValue;
+  borderTop?: string;
+  borderRight?: string;
+  borderBottom?: string;
+  borderLeft?: string;
+  borderWidth?: string;
   shadow?: ShadowValue;
   transform?: string;
   transition?: string;

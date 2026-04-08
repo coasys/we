@@ -34,6 +34,13 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
   const [toggleValue, setToggleValue] = createSignal(false);
   const [queryFilterMode, setQueryFilterMode] = createSignal('all');
 
+  // ---- Benchmark timing ----
+  const [benchLastRender, setBenchLastRender] = createSignal<number | null>(null);
+  const [benchResults, setBenchResults] = createSignal<Record<string, number>>({});
+  let benchQueue: string[] = [];
+  let benchNavigate: ((to: string) => void) | null = null;
+  let benchRunning = false;
+
   // ---- List data (for $each) ----
   const fruits = [
     { name: 'Apple', color: 'red', emoji: '🍎' },
@@ -73,6 +80,20 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
   // Single config object (for $map on single object path)
   const singleConfig = { title: 'My App', version: '2.0', debug: false };
 
+  // ---- Benchmark data ----
+  const benchList100 = Array.from({ length: 100 }, (_, i) => ({
+    name: `Item ${i + 1}`,
+    category: `Category ${String.fromCharCode(65 + (i % 5))}`,
+  }));
+
+  const benchGroups = Array.from({ length: 10 }, (_, g) => ({
+    name: `Group ${g + 1}`,
+    items: Array.from({ length: 10 }, (_, i) => ({
+      label: `Item ${g * 10 + i + 1}`,
+      detail: `detail-${g}-${i}`,
+    })),
+  }));
+
   // ---- Actions ----
   function increment() {
     setCounter((c) => c + 1);
@@ -86,6 +107,57 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
 
   // Track how many items we've created for unique naming
   let createdCount = 0;
+
+  // ---- Benchmark actions ----
+  function benchRecordRender(duration: number, routeName?: string) {
+    setBenchLastRender(Math.round(duration * 10) / 10);
+    if (routeName) {
+      setBenchResults((prev) => ({ ...prev, [routeName]: Math.round(duration * 10) / 10 }));
+    }
+    // Auto-advance only during a Run All session
+    if (!benchRunning) return;
+    if (benchQueue.length > 0 && benchNavigate) {
+      const next = benchQueue.shift()!;
+      setTimeout(() => benchNavigate!(next), 50);
+    } else {
+      // All done — return to dashboard
+      benchRunning = false;
+      setTimeout(() => benchNavigate!('/'), 50);
+    }
+  }
+
+  function benchClearResults() {
+    setBenchResults({});
+    setBenchLastRender(null);
+    benchQueue = [];
+    benchRunning = false;
+  }
+
+  function benchSetNavigate(navigate: (to: string) => void) {
+    benchNavigate = navigate;
+  }
+
+  const benchAllRoutes = [
+    '/static-small',
+    '/static-large',
+    '/tokens-light',
+    '/tokens-heavy',
+    '/each-flat',
+    '/each-nested',
+    '/web-components',
+    '/solid-components',
+    '/deep-nesting',
+    '/mixed-realistic',
+  ];
+
+  function benchRunAll() {
+    if (!benchNavigate) return;
+    setBenchResults({});
+    setBenchLastRender(null);
+    benchRunning = true;
+    benchQueue = benchAllRoutes.slice(1);
+    benchNavigate(benchAllRoutes[0]);
+  }
 
   async function createTestItem() {
     const p = perspective();
@@ -183,6 +255,8 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     emptyList,
     nested,
     singleConfig,
+    benchList100,
+    benchGroups,
 
     // Actions
     increment,
@@ -191,6 +265,14 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     setQueryFilterMode: (mode: string) => setQueryFilterMode(mode),
     createTestItem,
     deleteTestItem,
+
+    // Benchmark
+    benchLastRender,
+    benchResults,
+    benchRecordRender,
+    benchClearResults,
+    benchSetNavigate,
+    benchRunAll,
 
     // AD4M
     perspective,

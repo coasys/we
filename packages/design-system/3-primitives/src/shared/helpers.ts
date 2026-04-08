@@ -7,6 +7,7 @@ import {
   mapFlexAxes,
   marginKeys,
   paddingKeys,
+  parseBorder,
   radiusKeys,
   tokenVar,
 } from '@we/design-utils';
@@ -29,6 +30,43 @@ const DEFAULT_TRANSITION = '0.2s';
 function setProperty(el: HTMLElement, name: string, value?: string) {
   if (value !== undefined && value !== null && value !== '') el.style.setProperty(name, value);
   else el.style.removeProperty(name);
+}
+
+/**
+ * Sync border CSS custom properties. When the `border` shorthand is set, its
+ * components (width, color, per-side values) are extracted and written as
+ * sub-property vars so that static CSS declarations like
+ * `border-color: var(--we-button-border-color)` resolve to the shorthand's
+ * own values instead of becoming guaranteed-invalid. Explicit sub-property
+ * overrides (e.g. borderColor) take priority over extracted values.
+ */
+function syncBorderVars(el: HTMLElement, prefix: string, props: Partial<DesignSystemProps>) {
+  setProperty(el, `${prefix}border`, props.border ? parseBorder(props.border) : undefined);
+
+  if (props.border) {
+    const parsed = parseBorder(props.border);
+    const parts = parsed.split(' ');
+    if (parts.length >= 3) {
+      const [width, , ...colorParts] = parts;
+      const color = colorParts.join(' ');
+      if (!props.borderColor) setProperty(el, `${prefix}border-color`, color);
+      if (!props.borderWidth) setProperty(el, `${prefix}border-width`, width);
+    }
+    if (!props.borderTop) setProperty(el, `${prefix}border-top`, parsed);
+    if (!props.borderRight) setProperty(el, `${prefix}border-right`, parsed);
+    if (!props.borderBottom) setProperty(el, `${prefix}border-bottom`, parsed);
+    if (!props.borderLeft) setProperty(el, `${prefix}border-left`, parsed);
+  } else {
+    setProperty(el, `${prefix}border-color`, props.borderColor ? tokenVar('color', props.borderColor, '') : undefined);
+    setProperty(el, `${prefix}border-top`, props.borderTop ? parseBorder(props.borderTop) : undefined);
+    setProperty(el, `${prefix}border-right`, props.borderRight ? parseBorder(props.borderRight) : undefined);
+    setProperty(el, `${prefix}border-bottom`, props.borderBottom ? parseBorder(props.borderBottom) : undefined);
+    setProperty(el, `${prefix}border-left`, props.borderLeft ? parseBorder(props.borderLeft) : undefined);
+    setProperty(el, `${prefix}border-width`, props.borderWidth);
+  }
+  if (props.border && props.borderColor)
+    setProperty(el, `${prefix}border-color`, tokenVar('color', props.borderColor, ''));
+  if (props.border && props.borderWidth) setProperty(el, `${prefix}border-width`, props.borderWidth);
 }
 
 function updateCustomVars(
@@ -59,7 +97,8 @@ function updateCustomVars(
   setProperty(el, `${prefix}bg`, props.bg ? tokenVar('color', props.bg, '') : undefined);
   setProperty(el, `${prefix}color`, props.color ? tokenVar('color', props.color, '') : undefined);
   setProperty(el, `${prefix}opacity`, props.opacity?.toString());
-  setProperty(el, `${prefix}border`, props.border);
+  syncBorderVars(el, prefix, props);
+
   setProperty(el, `${prefix}shadow`, props.shadow ? tokenVar('shadow', props.shadow) : undefined);
   setProperty(el, `${prefix}transform`, props.transform);
   setProperty(el, `${prefix}transition`, props.transition);
@@ -135,6 +174,12 @@ const BASE_VISUAL: PropSpec[] = [
   ['color', 'color'],
   ['opacity', 'opacity'],
   ['border', 'border'],
+  ['border-color', 'border-color'],
+  ['border-top', 'border-top'],
+  ['border-right', 'border-right'],
+  ['border-bottom', 'border-bottom'],
+  ['border-left', 'border-left'],
+  ['border-width', 'border-width'],
   ['box-shadow', 'shadow'],
   ['transform', 'transform'],
   ['cursor', 'cursor'],
