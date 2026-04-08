@@ -5,15 +5,16 @@
  * what it tests and shows a pass/fail indicator where self-verifiable,
  * or a visual confirmation area for interactive/structural tests.
  *
- * Tokens covered:
- *   $store (basic + deep nested), $concat (string + number + boolean coercion),
- *   $action, $arg (dot-path + bare), $eq, $ne, $not, $and, $or (2 + 3 operands),
- *   $if (prop + node + transitions), $each (flat + nested + empty),
- *   $map (array + single object), $pick (standalone + chained),
- *   $query (subscribe + one-shot), fragment nodes (with + without theme),
- *   theme overrides (parametric + named), web component reactive props,
- *   token composition (deeply nested chains), children token resolution,
- *   $localState/$local/$setLocal (ephemeral scoped state)
+ * Groups:
+ *   1. Data Access     — $store, $concat
+ *   2. Actions         — $action, $arg
+ *   3. Operators       — $eq, $ne, $not, $and, $or
+ *   4. Control Flow    — $if, $each (flat, nested, empty)
+ *   5. Data Transforms — $map (array, object), $pick (standalone, chained)
+ *   6. Queries         — $query (one-shot, subscription, filtering)
+ *   7. Local State     — $localState, $local, $setLocal
+ *   8. Rendering       — children tokens, WC reactive props, composition, fragments
+ *   9. Theming         — parametric overrides, named themes
  *
  * Data source: testStore (SolidJS signals + lazy AD4M perspective)
  */
@@ -166,7 +167,7 @@ function queryModePanel(mode: string, description: string, queryConfig: Record<s
 }
 
 // ---------------------------------------------------------------------------
-// 1. Basic tokens — $store, $concat, $action, $arg
+// 1. Data Access — $store, $concat
 // ---------------------------------------------------------------------------
 
 const storeTest = section('$store', 'Read values from the store', [
@@ -206,6 +207,10 @@ const concatTest = section('$concat', 'Concatenate strings and store values', [
     { $eq: [{ $concat: ['Active: ', { $store: 'testStore.boolTrue' }] }, 'Active: true'] },
   ),
 ]);
+
+// ---------------------------------------------------------------------------
+// 2. Actions — $action, $arg
+// ---------------------------------------------------------------------------
 
 const actionTest = section('$action', 'Trigger store mutations', [
   interactiveLabel('Click button — counter should increment'),
@@ -248,39 +253,35 @@ const argTest = section('$arg', 'Extract native event values', [
 ]);
 
 // ---------------------------------------------------------------------------
-// 2. Comparison tokens — $eq, $ne, $not
+// 3. Operators — $eq, $ne, $not, $and, $or
 // ---------------------------------------------------------------------------
 
 const eqTest = section('$eq', 'Equality comparison', [
   boolCheck('$eq("same", "same") → true', { $eq: ['same', 'same'] }),
-  boolCheck('$eq("same", "different") → false (inverted)', { $not: { $eq: ['same', 'different'] } }),
+  boolCheck('$eq("same", "different") → false', { $not: { $eq: ['same', 'different'] } }),
   boolCheck('$eq($store, "hello") → true', { $eq: [{ $store: 'testStore.stringValue' }, 'hello'] }),
   boolCheck('$eq($store, 42) → true', { $eq: [{ $store: 'testStore.numberValue' }, 42] }),
 ]);
 
 const neTest = section('$ne', 'Not-equal comparison', [
   boolCheck('$ne("a", "b") → true', { $ne: ['a', 'b'] }),
-  boolCheck('$ne("same", "same") → false (inverted)', { $not: { $ne: ['same', 'same'] } }),
+  boolCheck('$ne("same", "same") → false', { $not: { $ne: ['same', 'same'] } }),
 ]);
 
 const notTest = section('$not', 'Boolean negation', [
   boolCheck('$not(false) → true', { $not: { $store: 'testStore.boolFalse' } }),
-  boolCheck('$not(true) → false (inverted)', { $not: { $not: { $store: 'testStore.boolTrue' } } }),
+  boolCheck('$not(true) → false', { $not: { $not: { $store: 'testStore.boolTrue' } } }),
 ]);
-
-// ---------------------------------------------------------------------------
-// 3. Logic tokens — $and, $or
-// ---------------------------------------------------------------------------
 
 const andTest = section('$and', 'Logical AND', [
   boolCheck('$and(true, true) → true', { $and: [{ $store: 'testStore.boolTrue' }, { $store: 'testStore.boolTrue' }] }),
-  boolCheck('$and(true, false) → false (inverted)', {
+  boolCheck('$and(true, false) → false', {
     $not: { $and: [{ $store: 'testStore.boolTrue' }, { $store: 'testStore.boolFalse' }] },
   }),
-  boolCheck('$and(true, true, true) → true (3 operands)', {
+  boolCheck('$and(true, true, true) → true', {
     $and: [{ $store: 'testStore.boolTrue' }, { $store: 'testStore.boolTrue' }, { $store: 'testStore.boolTrue' }],
   }),
-  boolCheck('$and(true, true, false) → false (3 operands, inverted)', {
+  boolCheck('$and(true, true, false) → false', {
     $not: {
       $and: [{ $store: 'testStore.boolTrue' }, { $store: 'testStore.boolTrue' }, { $store: 'testStore.boolFalse' }],
     },
@@ -289,13 +290,13 @@ const andTest = section('$and', 'Logical AND', [
 
 const orTest = section('$or', 'Logical OR', [
   boolCheck('$or(false, true) → true', { $or: [{ $store: 'testStore.boolFalse' }, { $store: 'testStore.boolTrue' }] }),
-  boolCheck('$or(false, false) → false (inverted)', {
+  boolCheck('$or(false, false) → false', {
     $not: { $or: [{ $store: 'testStore.boolFalse' }, { $store: 'testStore.boolFalse' }] },
   }),
-  boolCheck('$or(false, false, true) → true (3 operands)', {
+  boolCheck('$or(false, false, true) → true', {
     $or: [{ $store: 'testStore.boolFalse' }, { $store: 'testStore.boolFalse' }, { $store: 'testStore.boolTrue' }],
   }),
-  boolCheck('$or(false, false, false) → false (3 operands, inverted)', {
+  boolCheck('$or(false, false, false) → false', {
     $not: {
       $or: [{ $store: 'testStore.boolFalse' }, { $store: 'testStore.boolFalse' }, { $store: 'testStore.boolFalse' }],
     },
@@ -303,7 +304,7 @@ const orTest = section('$or', 'Logical OR', [
 ]);
 
 // ---------------------------------------------------------------------------
-// 4. Conditional — $if (prop-level + node-level)
+// 4. Control Flow — $if, $each
 // ---------------------------------------------------------------------------
 
 const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
@@ -397,10 +398,6 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
     },
   },
 ]);
-
-// ---------------------------------------------------------------------------
-// 5. Iteration — $each, nested $each, $map
-// ---------------------------------------------------------------------------
 
 const eachTest = section('$each', 'Iterate a list', [
   {
@@ -513,6 +510,10 @@ const nestedEachTest = section('Nested $each', 'Iterate nested lists (groups →
   },
 ]);
 
+// ---------------------------------------------------------------------------
+// 5. Data Transforms — $map, $pick
+// ---------------------------------------------------------------------------
+
 const mapTest = section('$map', 'Transform list items via select', [
   {
     type: 'we-text',
@@ -602,10 +603,6 @@ const mapSingleObjectTest = section('$map (single object)', 'Transform a single 
   },
 ]);
 
-// ---------------------------------------------------------------------------
-// 6. Advanced — $pick, $query, children tokens, theme, web components
-// ---------------------------------------------------------------------------
-
 const pickTest = section('$pick', 'Extract property subset from object', [
   {
     type: 'we-text',
@@ -660,6 +657,10 @@ const pickChainingTest = section('$pick + $concat', 'Chain $pick output into $co
     },
   ),
 ]);
+
+// ---------------------------------------------------------------------------
+// 6. Queries — $query
+// ---------------------------------------------------------------------------
 
 const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without subscription', [
   {
@@ -850,6 +851,135 @@ const queryFilteringTest = section('$query (filtering)', 'Query with where, orde
   },
 ]);
 
+// ---------------------------------------------------------------------------
+// 7. Local State — $localState, $local, $setLocal
+// ---------------------------------------------------------------------------
+
+const localStateBasicTest: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', p: '400', bg: 'neutral-0', r: '400', ax: 'start' },
+  $localState: {
+    name: { type: 'string', initial: '' },
+    count: { type: 'number', initial: 0 },
+    enabled: { type: 'boolean', initial: false },
+  },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', pb: '200' },
+      children: [
+        { type: 'we-text', props: { fontWeight: '600', color: 'primary-700' }, children: ['$localState'] },
+        { type: 'we-text', props: { color: 'neutral-500' }, children: ['- Scoped ephemeral state'] },
+      ],
+    },
+    // --- $local read + $setLocal write ---
+    interactiveLabel('Type text — it should echo below via $local (no store)'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            placeholder: 'Type here...',
+            value: { $local: 'name' },
+            onInput: { $setLocal: 'name', from: '$event.detail' },
+          },
+        },
+        { type: 'we-text', props: { color: 'neutral-400' }, children: ['Echo:'] },
+        { type: 'we-text', props: { fontWeight: '600' }, children: [{ $local: 'name' }] },
+      ],
+    },
+    // --- $local in $action args ---
+    interactiveLabel('Click increment then "Log name" — testStore.setTypedText receives $local value'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            onClick: { $action: 'testStore.setTypedText', args: [{ $local: 'name' }] },
+          },
+          children: ['Log name'],
+        },
+        { type: 'we-text', props: { color: 'neutral-400' }, children: ['testStore.typedText:'] },
+        { type: 'we-text', props: { fontWeight: '600' }, children: [{ $store: 'testStore.typedText' }] },
+      ],
+    },
+    // --- $local with toggle ($setLocal boolean) ---
+    interactiveLabel('Toggle switch — text should appear/disappear via $local boolean'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-switch',
+          props: {
+            checked: { $local: 'enabled' },
+            onChange: { $setLocal: 'enabled', from: '$event.detail' },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $local: 'enabled' },
+            then: {
+              type: 'we-text',
+              props: { color: 'success-600', fontWeight: '600' },
+              children: ['Enabled!'],
+            },
+            else: {
+              type: 'we-text',
+              props: { color: 'neutral-400' },
+              children: ['Disabled'],
+            },
+          },
+        },
+      ],
+    },
+    // --- $local composed with $not, $concat, $if ---
+    interactiveLabel('Composition: button disabled when name is empty, label built with $concat'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            disabled: { $not: { $local: 'name' } },
+          },
+          children: [
+            {
+              $concat: [
+                'Submit: ',
+                {
+                  $if: {
+                    condition: { $local: 'name' },
+                    then: { $local: 'name' },
+                    else: '(empty)',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-text',
+          props: { color: 'neutral-400' },
+          children: ['(disabled when name is empty, label shows $local value)'],
+        },
+      ],
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// 8. Rendering — children tokens, WC props, composition, fragments
+// ---------------------------------------------------------------------------
+
 const childrenTokenTest = section('Children tokens', 'Operator tokens resolved directly in children arrays', [
   {
     type: 'we-text',
@@ -1034,6 +1164,10 @@ const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps 
   } as SchemaNode,
 ]);
 
+// ---------------------------------------------------------------------------
+// 9. Theming — parametric, named
+// ---------------------------------------------------------------------------
+
 const tokenThemeTest: SchemaNode = {
   type: 'Column',
   props: { gap: '300', p: '400', r: '400', bg: 'neutral-100', border: '1px solid var(--we-color-primary-200)' },
@@ -1112,132 +1246,7 @@ const namedThemeTest: SchemaNode = {
 };
 
 // ---------------------------------------------------------------------------
-// 8. Local state — $localState, $local, $setLocal
-// ---------------------------------------------------------------------------
-
-const localStateBasicTest: SchemaNode = {
-  type: 'Column',
-  props: { gap: '300', p: '400', bg: 'neutral-0', r: '400', ax: 'start' },
-  $localState: {
-    name: { type: 'string', initial: '' },
-    count: { type: 'number', initial: 0 },
-    enabled: { type: 'boolean', initial: false },
-  },
-  children: [
-    {
-      type: 'Row',
-      props: { gap: '200', ay: 'center', pb: '200' },
-      children: [
-        { type: 'we-text', props: { fontWeight: '600', color: 'primary-700' }, children: ['$localState'] },
-        { type: 'we-text', props: { color: 'neutral-500' }, children: ['- Scoped ephemeral state'] },
-      ],
-    },
-    // --- $local read + $setLocal write ---
-    interactiveLabel('Type text — it should echo below via $local (no store)'),
-    {
-      type: 'Row',
-      props: { gap: '300', ay: 'center' },
-      children: [
-        {
-          type: 'we-input',
-          props: {
-            placeholder: 'Type here...',
-            value: { $local: 'name' },
-            onInput: { $setLocal: 'name', from: '$event.detail' },
-          },
-        },
-        { type: 'we-text', props: { color: 'neutral-400' }, children: ['Echo:'] },
-        { type: 'we-text', props: { fontWeight: '600' }, children: [{ $local: 'name' }] },
-      ],
-    },
-    // --- $local in $action args ---
-    interactiveLabel('Click increment then "Log name" — testStore.setTypedText receives $local value'),
-    {
-      type: 'Row',
-      props: { gap: '300', ay: 'center' },
-      children: [
-        {
-          type: 'we-button',
-          props: {
-            variant: 'primary',
-            onClick: { $action: 'testStore.setTypedText', args: [{ $local: 'name' }] },
-          },
-          children: ['Log name'],
-        },
-        { type: 'we-text', props: { color: 'neutral-400' }, children: ['testStore.typedText:'] },
-        { type: 'we-text', props: { fontWeight: '600' }, children: [{ $store: 'testStore.typedText' }] },
-      ],
-    },
-    // --- $local with toggle ($setLocal boolean) ---
-    interactiveLabel('Toggle switch — text should appear/disappear via $local boolean'),
-    {
-      type: 'Row',
-      props: { gap: '300', ay: 'center' },
-      children: [
-        {
-          type: 'we-switch',
-          props: {
-            checked: { $local: 'enabled' },
-            onChange: { $setLocal: 'enabled', from: '$event.detail' },
-          },
-        },
-        {
-          type: '$if',
-          props: {
-            condition: { $local: 'enabled' },
-            then: {
-              type: 'we-text',
-              props: { color: 'success-600', fontWeight: '600' },
-              children: ['Enabled!'],
-            },
-            else: {
-              type: 'we-text',
-              props: { color: 'neutral-400' },
-              children: ['Disabled'],
-            },
-          },
-        },
-      ],
-    },
-    // --- $local composed with $not, $concat, $if ---
-    interactiveLabel('Composition: button disabled when name is empty, label built with $concat'),
-    {
-      type: 'Row',
-      props: { gap: '300', ay: 'center' },
-      children: [
-        {
-          type: 'we-button',
-          props: {
-            variant: 'primary',
-            disabled: { $not: { $local: 'name' } },
-          },
-          children: [
-            {
-              $concat: [
-                'Submit: ',
-                {
-                  $if: {
-                    condition: { $local: 'name' },
-                    then: { $local: 'name' },
-                    else: '(empty)',
-                  },
-                },
-              ],
-            },
-          ],
-        },
-        {
-          type: 'we-text',
-          props: { color: 'neutral-400' },
-          children: ['(disabled when name is empty, label shows $local value)'],
-        },
-      ],
-    },
-  ],
-};
-
-// ---------------------------------------------------------------------------
-// Full template
+// Template
 // ---------------------------------------------------------------------------
 
 export const schemaTokensTemplate: TemplateSchema = {
@@ -1270,52 +1279,52 @@ export const schemaTokensTemplate: TemplateSchema = {
       type: 'Column',
       props: { gap: '400' },
       children: [
-        groupHeading('Basic'),
+        groupHeading('Data Access'),
         storeTest,
         concatTest,
+
+        groupHeading('Actions'),
         actionTest,
         argTest,
 
-        groupHeading('Comparison'),
+        groupHeading('Operators'),
         eqTest,
         neTest,
         notTest,
-
-        groupHeading('Logic'),
         andTest,
         orTest,
 
-        groupHeading('Conditional'),
+        groupHeading('Control Flow'),
         ifTest,
-
-        groupHeading('Iteration'),
         eachTest,
         eachEmptyTest,
         nestedEachTest,
+
+        groupHeading('Data Transforms'),
         mapTest,
         mapSingleObjectTest,
-
-        groupHeading('Advanced'),
         pickTest,
         pickChainingTest,
+
+        groupHeading('Queries'),
         queryOneShotTest,
         querySubscriptionTest,
         queryFilteringTest,
+
+        groupHeading('Local State'),
+        localStateBasicTest,
+
+        groupHeading('Rendering'),
         childrenTokenTest,
         wcReactivePropsTest,
         tokenCompositionTest,
         fragmentTest,
         fragmentThemeTest,
+
+        groupHeading('Theming'),
         tokenThemeTest,
         namedThemeTest,
-
-        groupHeading('Local State'),
-        localStateBasicTest,
       ],
     },
-  ],
-  routes: [
-    { path: '/', type: 'Column' },
-    { path: '*', type: 'Column' },
   ],
 };
