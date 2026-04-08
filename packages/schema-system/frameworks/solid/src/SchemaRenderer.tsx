@@ -146,8 +146,16 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             }
             return child;
           }
-          // Resolve operator tokens ($concat, $store, etc.) placed directly in children
-          if (child && typeof child === 'object' && Object.keys(child).some((k) => k.startsWith('$'))) {
+          // Resolve operator tokens ($concat, $store, etc.) placed directly in children.
+          // Schema nodes (have `type` or `children`) are NOT operator tokens even when
+          // they carry $-prefixed keys like $localState.
+          if (
+            child &&
+            typeof child === 'object' &&
+            !('type' in child) &&
+            !('children' in child) &&
+            Object.keys(child).some((k) => k.startsWith('$'))
+          ) {
             const resolved = resolveProp(child as unknown, stores, effectiveContext, createMemo);
             return (
               <>
