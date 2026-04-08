@@ -77,6 +77,13 @@ Query (data retrieval):
 Queries the local perspective for model instances. Always returns an array.
 Options: model (required), where, order, limit, offset, include, parent, subscribe (default true).
 
+Local state (scoped ephemeral state):
+Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
+Read:  { "$local": "name" } — returns the signal value (reactive).
+Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
+State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
+$local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
+
 ## Block-level Dynamic Structures
 
 Block-level structures use "type" starting with "$" for dynamic rendering of schema nodes.
@@ -571,6 +578,7 @@ WeNode extends Ad4mModel:
 
 Stores provide state (readable values) and actions (methods) for dynamic logic in schemas.
 Access state with $store and call actions with $action.
+For ephemeral/form state, use $localState/$local/$setLocal instead of stores (see Dynamic Logic).
 
 AdamStore:
 - State:
@@ -680,6 +688,33 @@ Deriving options from store:
 Querying model data:
 {
   "$query": { "model": "TaskBlock", "where": { "status": "todo" } }
+}
+
+Local state (form input binding):
+{
+  "type": "Column",
+  "$localState": {
+    "name": { "type": "string", "initial": "" },
+    "loading": { "type": "boolean", "initial": false }
+  },
+  "children": [
+    {
+      "type": "we-input",
+      "props": {
+        "value": { "$local": "name" },
+        "onInput": { "$setLocal": "name", "from": "$event.target.value" }
+      }
+    },
+    {
+      "type": "we-button",
+      "props": {
+        "text": "Submit",
+        "loading": { "$local": "loading" },
+        "disabled": { "$not": { "$local": "name" } },
+        "onClick": { "$action": "myStore.submit", "args": [{ "$local": "name" }] }
+      }
+    }
+  ]
 }
 
 ---

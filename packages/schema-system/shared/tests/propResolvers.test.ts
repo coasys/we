@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { resolveProp, resolveProps, splitProps } from '../src/propResolvers';
+import { REACTIVE_ACCESSOR, resolveProp, resolveProps, splitProps } from '../src/propResolvers';
+import { extractFromPath, resolveLocalProp, resolveSetLocalProp } from '../src/propResolvers/local';
+import { markReactive } from '../src/propResolvers/reactive';
 
 describe('propResolvers (combined)', () => {
   it('resolves $store single and nested paths', () => {
@@ -418,5 +420,132 @@ describe('propResolvers (combined)', () => {
   it('returns undefined for missing nested path in context', () => {
     const ctx = { item: { name: 'Test' } };
     expect(resolveProp('$item.nonexistent.deep', {}, ctx)).toBeUndefined();
+  });
+});
+
+// --- $local / $setLocal ---
+
+describe('$local resolver', () => {
+  it('returns a reactive accessor for a declared field', () => {
+    const accessor = () => 'hello';
+    const context = { $local: { name: accessor } };
+    const result = resolveLocalProp({ $local: 'name' }, context);
+    expect(typeof result).toBe('function');
+    expect((result as () => unknown)()).toBe('hello');
+    expect(REACTIVE_ACCESSOR in (result as object)).toBe(true);
+  });
+
+  it('returns undefined and warns when no $local in context', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = resolveLocalProp({ $local: 'name' }, {});
+    expect(result).toBeUndefined();
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('no $localState'));
+    spy.mockRestore();
+  });
+
+  it('returns undefined and warns for undeclared field', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const context = { $local: { name: () => '' } };
+    const result = resolveLocalProp({ $local: 'missing' }, context);
+    expect(result).toBeUndefined();
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('not declared'));
+    spy.mockRestore();
+  });
+});
+
+describe('$setLocal resolver', () => {
+  it('creates an event handler that calls the setter with extracted value', () => {
+    const setter = vi.fn();
+    const context = { $localSetters: { name: setter } };
+    const handler = resolveSetLocalProp({ $setLocal: 'name', from: '$event.target.value' }, context);
+    expect(typeof handler).toBe('function');
+    handler({ target: { value: 'hello' } });
+    expect(setter).toHaveBeenCalledWith('hello');
+  });
+
+  it('returns noop and warns when no $localSetters in context', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const handler = resolveSetLocalProp({ $setLocal: 'name', from: '$event' }, {});
+    expect(typeof handler).toBe('function');
+    handler('anything'); // should not throw
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('no $localState'));
+    spy.mockRestore();
+  });
+
+  it('returns noop and warns for undeclared setter', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const context = { $localSetters: { name: vi.fn() } };
+    const handler = resolveSetLocalProp({ $setLocal: 'missing', from: '$event' }, context);
+    handler('anything');
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('not declared'));
+    spy.mockRestore();
+  });
+});
+
+describe('extractFromPath', () => {
+  it('returns raw event for "$event"', () => {
+    const event = { target: { value: 'x' } };
+    expect(extractFromPath(event, '$event')).toBe(event);
+  });
+
+  it('extracts nested path from event', () => {
+    const event = { target: { value: 'hello' } };
+    expect(extractFromPath(event, '$event.target.value')).toBe('hello');
+  });
+
+  it('extracts single-level path', () => {
+    const event = { detail: 42 };
+    expect(extractFromPath(event, '$event.detail')).toBe(42);
+  });
+
+  it('returns undefined for missing path', () => {
+    expect(extractFromPath({}, '$event.missing.deep')).toBeUndefined();
+  });
+});
+
+describe('$local/$setLocal via dispatcher', () => {
+  it('resolveProp dispatches $local tokens', () => {
+    const accessor = () => 'test';
+    const context = { $local: { field: accessor } };
+    const result = resolveProp({ $local: 'field' }, {}, context);
+    expect(typeof result).toBe('function');
+    expect((result as () => unknown)()).toBe('test');
+  });
+
+  it('resolveProp dispatches $setLocal tokens', () => {
+    const setter = vi.fn();
+    const context = { $localSetters: { field: setter } };
+    const handler = resolveProp({ $setLocal: 'field', from: '$event.detail' }, {}, context) as (e: unknown) => void;
+    handler({ detail: 'value' });
+    expect(setter).toHaveBeenCalledWith('value');
+  });
+});
+
+describe('$action arg unwrapping', () => {
+  it('unwraps REACTIVE_ACCESSOR args at execution time', () => {
+    const method = vi.fn();
+    const stores = { myStore: { method } };
+
+    // Simulate a $local accessor (marked reactive)
+    let value = 'initial';
+    const accessor = markReactive(() => value);
+
+    const context = { $local: { name: accessor } };
+    const action = { $action: 'myStore.method', args: [{ $local: 'name' }] };
+    const fn = resolveProp(action, stores, context) as () => void;
+
+    // Change the value before calling — unwrap should read current value
+    value = 'updated';
+    fn();
+    expect(method).toHaveBeenCalledWith('updated');
+  });
+
+  it('leaves non-reactive function args untouched', () => {
+    const method = vi.fn();
+    const stores = { myStore: { method } };
+    const action = { $action: 'myStore.method', args: [42, 'static'] };
+    const fn = resolveProp(action, stores, {}) as () => void;
+    fn();
+    expect(method).toHaveBeenCalledWith(42, 'static');
   });
 });

@@ -79,21 +79,23 @@ export default class Textarea extends DesignSystemElement {
   }
 
   handleInput(e: InputEvent) {
+    e.stopPropagation();
     this.value = (e.target as HTMLTextAreaElement)?.value;
-    this.dispatchEvent(new CustomEvent('we-input', { detail: this.value, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('input', { detail: this.value, bubbles: true, composed: true }));
   }
 
   handleChange(e: Event) {
+    e.stopPropagation();
     this.value = (e.target as HTMLTextAreaElement)?.value;
-    this.dispatchEvent(new CustomEvent('we-change', { detail: this.value, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true, composed: true }));
   }
 
   handleFocus() {
-    this.dispatchEvent(new CustomEvent('we-focus', { bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('focus', { bubbles: true, composed: true }));
   }
 
   handleBlur() {
-    this.dispatchEvent(new CustomEvent('we-blur', { bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('blur', { bubbles: true, composed: true }));
   }
 
   render() {

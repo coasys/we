@@ -243,6 +243,14 @@ Compares two values for strict equality.
 Example: { "$eq": [ { "$store": "routeStore.currentPath" }, "/" ] } returns true if the current path is /.
 Context: Both a and b can be tokens or values.
 
+Local state (scoped ephemeral state):
+Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
+Read:  { "$local": "name" } — returns the signal value (reactive).
+Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
+State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
+$local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
+Use $localState for form inputs, toggles, loading flags, and any ephemeral UI state that doesn't belong in a global store.
+
 ---
 
 7. Block-level Dynamic Logic & Structures

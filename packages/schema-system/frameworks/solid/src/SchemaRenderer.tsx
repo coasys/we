@@ -1,4 +1,4 @@
-import type { QueryDescriptor } from '@we/schema-shared';
+import type { LocalStateField, QueryDescriptor } from '@we/schema-shared';
 import { hasToken, REACTIVE_ACCESSOR, resolveProp, resolveQueryProp, themeToStyle } from '@we/schema-shared';
 import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
@@ -94,13 +94,30 @@ function isStaticValue(value: unknown): boolean {
 export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
   if (!node) return null;
 
+  // Create local state signals when $localState is declared on this node
+  let effectiveContext = context;
+  if (node.$localState) {
+    const accessors: Record<string, () => unknown> = {};
+    const setters: Record<string, (v: unknown) => void> = {};
+    for (const [name, field] of Object.entries(node.$localState as Record<string, LocalStateField>)) {
+      const [get, set] = createSignal(field.initial);
+      accessors[name] = get;
+      setters[name] = set;
+    }
+    effectiveContext = {
+      ...context,
+      $local: { ...((context.$local as Record<string, unknown>) ?? {}), ...accessors },
+      $localSetters: { ...((context.$localSetters as Record<string, unknown>) ?? {}), ...setters },
+    };
+  }
+
   function renderNode(node?: SchemaNode, nodeContext?: Record<string, unknown>) {
     return (
       <RenderSchema
         node={node ?? null}
         stores={stores}
         registry={registry}
-        context={nodeContext ?? context}
+        context={nodeContext ?? effectiveContext}
         children={children}
       />
     );
@@ -114,7 +131,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           // If the child is a string, check for $-prefixed context references
           if (typeof child === 'string') {
             if (child.startsWith('$') && child.length > 1) {
-              const resolved = resolveProp(child, stores, context, createMemo);
+              const resolved = resolveProp(child, stores, effectiveContext, createMemo);
               return (
                 <>
                   {() => {
@@ -129,9 +146,17 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             }
             return child;
           }
-          // Resolve operator tokens ($concat, $store, etc.) placed directly in children
-          if (child && typeof child === 'object' && Object.keys(child).some((k) => k.startsWith('$'))) {
-            const resolved = resolveProp(child as unknown, stores, context, createMemo);
+          // Resolve operator tokens ($concat, $store, etc.) placed directly in children.
+          // Schema nodes (have `type` or `children`) are NOT operator tokens even when
+          // they carry $-prefixed keys like $localState.
+          if (
+            child &&
+            typeof child === 'object' &&
+            !('type' in child) &&
+            !('children' in child) &&
+            Object.keys(child).some((k) => k.startsWith('$'))
+          ) {
+            const resolved = resolveProp(child as unknown, stores, effectiveContext, createMemo);
             return (
               <>
                 {() => {
@@ -170,7 +195,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   // Handle conditional rendering
   if (node.type === '$if') {
-    return <ConditionalRenderer node={node} stores={stores} context={context} renderNode={renderNode} />;
+    return <ConditionalRenderer node={node} stores={stores} context={effectiveContext} renderNode={renderNode} />;
   }
 
   // Handle each loops
@@ -193,7 +218,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         itemsArray = createQuerySignal(descriptor, stores, getModel);
       }
     } else {
-      const resolvedItems = resolveProp(rawItems, stores, context, createMemo);
+      const resolvedItems = resolveProp(rawItems, stores, effectiveContext, createMemo);
       itemsArray = createMemo(() => {
         const items = typeof resolvedItems === 'function' ? resolvedItems() : resolvedItems;
         return Array.isArray(items) ? items : [];
@@ -203,7 +228,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     // Return a list of the rendered items
     return (
       <For each={itemsArray()}>
-        {(item) => renderNode(itemSchema, { ...context, [String(node.props?.as ?? 'item')]: item })}
+        {(item) => renderNode(itemSchema, { ...effectiveContext, [String(node.props?.as ?? 'item')]: item })}
       </For>
     );
   }
@@ -276,7 +301,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     } else {
       const raw = rawValue;
       propMemos[key] = createMemo(() => {
-        const resolved = resolveProp(raw, stores, context, createMemo);
+        const resolved = resolveProp(raw, stores, effectiveContext, createMemo);
         return deepUnwrap(resolved);
       });
     }

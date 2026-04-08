@@ -96,7 +96,7 @@ export default class Radio extends DesignSystemElement {
   private _select() {
     if (this.disabled || this.checked) return;
     this.checked = true;
-    this.dispatchEvent(new CustomEvent('we-change', { detail: this.value, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true, composed: true }));
   }
 
   private _handleKeyDown(e: KeyboardEvent) {

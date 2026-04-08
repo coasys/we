@@ -103,12 +103,12 @@ export default class FileUpload extends DesignSystemElement {
 
   private _addFiles(files: File[]) {
     this._files = this.multiple ? [...this._files, ...files] : files.slice(0, 1);
-    this.dispatchEvent(new CustomEvent('we-change', { detail: this._files, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: this._files, bubbles: true, composed: true }));
   }
 
   private _removeFile(index: number) {
     this._files = this._files.filter((_, i) => i !== index);
-    this.dispatchEvent(new CustomEvent('we-change', { detail: this._files, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: this._files, bubbles: true, composed: true }));
   }
 
   private _onDragOver(e: DragEvent) {

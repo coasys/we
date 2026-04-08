@@ -88,7 +88,7 @@ export default class Pagination extends DesignSystemElement {
   private _goTo(p: number) {
     if (p < 1 || p > this.total || p === this.page) return;
     this.page = p;
-    this.dispatchEvent(new CustomEvent('we-change', { detail: p, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: p, bubbles: true, composed: true }));
   }
 
   private _getRange(): (number | '...')[] {

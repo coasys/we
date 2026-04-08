@@ -96,7 +96,7 @@ export default class Checkbox extends DesignSystemElement {
   private _toggle() {
     if (this.disabled) return;
     this.checked = !this.checked;
-    this.dispatchEvent(new CustomEvent('we-change', { detail: this.checked, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: this.checked, bubbles: true, composed: true }));
   }
 
   private _handleKeyDown(e: KeyboardEvent) {

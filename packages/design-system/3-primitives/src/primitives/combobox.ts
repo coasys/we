@@ -164,6 +164,7 @@ export default class Combobox extends DesignSystemElement {
   }
 
   private _onInput(e: Event) {
+    e.stopPropagation();
     this._filter = (e.target as HTMLInputElement).value;
     this._open = true;
   }
@@ -173,7 +174,7 @@ export default class Combobox extends DesignSystemElement {
     this.value = opt.value;
     this._filter = '';
     this._open = false;
-    this.dispatchEvent(new CustomEvent('we-change', { detail: opt.value, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: opt.value, bubbles: true, composed: true }));
   }
 
   private _toggle() {

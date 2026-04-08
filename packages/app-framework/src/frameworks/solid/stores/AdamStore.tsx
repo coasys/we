@@ -27,7 +27,6 @@ type NavigateFunction = ReturnType<typeof useNavigate>;
 export interface AdamStore {
   // State
   bootState: Accessor<BootState>;
-  password: Accessor<string>;
   showPassword: Accessor<boolean>;
   passwordError?: Accessor<boolean>;
   loginLoading?: Accessor<boolean>;
@@ -41,12 +40,11 @@ export interface AdamStore {
   userPreferences: Accessor<AgentConfig | null>;
 
   // Setters
-  setPassword: (password: string) => void;
   setShowPassword: (showPassword: boolean) => void;
   setNavigateFunction: (navigate: NavigateFunction) => void;
 
   // Actions
-  unlockAgent: () => Promise<void>;
+  unlockAgent: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   navigate: (to: string, options?: Record<string, unknown>) => void;
   addNewSpace: (space: Space) => void;
@@ -62,7 +60,7 @@ export function AdamStoreProvider(props: ParentProps) {
   const platform = usePlatform();
 
   const [bootState, setBootState] = createSignal<BootState>('initialising');
-  const [password, setPassword] = createSignal('');
+  let lastPassword = '';
   const [showPassword, setShowPassword] = createSignal(false);
   const [passwordError, setPasswordError] = createSignal(false);
   const [loginLoading, setLoginLoading] = createSignal(false);
@@ -228,22 +226,19 @@ export function AdamStoreProvider(props: ParentProps) {
     setUserPreferences(prefs);
   }
 
-  async function unlockAgent() {
+  async function unlockAgent(password: string) {
     const client = adamClient();
-    console.log('AdamStore: Attempting to unlock agent with provided password', {
-      password: password(),
-      clientExists: !!client,
-    });
     if (!client) {
       console.error('No AD4M client available');
       return;
     }
 
+    lastPassword = password;
     setLoginLoading(true);
     setPasswordError(false);
 
     try {
-      await client.agent.unlock(password(), true);
+      await client.agent.unlock(password, true);
 
       // Load user data after unlock
       await Promise.all([getMe(client), getMySpaces(client), getOrCreateRootPerspective(client)]);
@@ -267,13 +262,13 @@ export function AdamStoreProvider(props: ParentProps) {
     }
 
     try {
-      await client.agent.lock(password());
+      await client.agent.lock(lastPassword);
     } catch (err) {
       console.error('AdamStore: Agent lock failed during logout', err);
     } finally {
       setMe(undefined);
       setMySpaces([]);
-      setPassword('');
+      lastPassword = '';
       setBootState('login');
     }
   }
@@ -358,7 +353,6 @@ export function AdamStoreProvider(props: ParentProps) {
   const store: AdamStore = {
     // State
     bootState,
-    password,
     showPassword,
     passwordError,
     loginLoading,
@@ -372,7 +366,6 @@ export function AdamStoreProvider(props: ParentProps) {
     userPreferences,
 
     // Setters
-    setPassword,
     setShowPassword,
     setNavigateFunction,
 

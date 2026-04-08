@@ -8,6 +8,7 @@ export const stores = `
 
 Stores provide state (readable values) and actions (methods) for dynamic logic in schemas.
 Access state with $store and call actions with $action.
+For ephemeral/form state, use $localState/$local/$setLocal instead of stores (see Dynamic Logic).
 
 AdamStore:
 - State:

@@ -114,4 +114,58 @@ describe('zodSchemas', () => {
   it('rejects route schema with extra fields (strict)', () => {
     expect(() => zRouteSchema.parse({ type: 'Page', path: '/', extra: 1 })).toThrow();
   });
+
+  // --- $local / $setLocal tokens ---
+  it('accepts $local token as SchemaProp', () => {
+    expect(() => zSchemaProp.parse({ $local: 'name' })).not.toThrow();
+  });
+
+  it('rejects $local with empty string', () => {
+    expect(() => zSchemaProp.parse({ $local: '' })).toThrow();
+  });
+
+  it('rejects $local with extra keys (strict)', () => {
+    expect(() => zSchemaProp.parse({ $local: 'name', extra: true })).toThrow();
+  });
+
+  it('accepts $setLocal token as SchemaProp', () => {
+    expect(() => zSchemaProp.parse({ $setLocal: 'name', from: '$event.target.value' })).not.toThrow();
+  });
+
+  it('rejects $setLocal without from', () => {
+    expect(() => zSchemaProp.parse({ $setLocal: 'name' })).toThrow();
+  });
+
+  it('rejects $setLocal with empty from', () => {
+    expect(() => zSchemaProp.parse({ $setLocal: 'name', from: '' })).toThrow();
+  });
+
+  // --- $localState on SchemaNode ---
+  it('accepts SchemaNode with $localState declaration', () => {
+    const node = {
+      type: 'Column',
+      $localState: {
+        name: { type: 'string', initial: '' },
+        loading: { type: 'boolean', initial: false },
+        count: { type: 'number', initial: 0 },
+      },
+    };
+    expect(() => zSchemaNode.parse(node)).not.toThrow();
+  });
+
+  it('rejects $localState with invalid field type', () => {
+    const node = {
+      type: 'Column',
+      $localState: { name: { type: 'object', initial: {} } },
+    };
+    expect(() => zSchemaNode.parse(node)).toThrow();
+  });
+
+  it('rejects $localState with missing initial', () => {
+    const node = {
+      type: 'Column',
+      $localState: { name: { type: 'string' } },
+    };
+    expect(() => zSchemaNode.parse(node)).toThrow();
+  });
 });

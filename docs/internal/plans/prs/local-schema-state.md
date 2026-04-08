@@ -82,48 +82,179 @@ Local state values can be passed as args to `$action`:
 
 **File:** `packages/schema-system/shared/src/types.ts`
 
-Extend `SchemaNode` with an optional `$localState` field:
+Add token types and extend `SchemaNode`:
 
 ```ts
-interface LocalStateField {
+export type LocalStateField = {
   type: 'string' | 'boolean' | 'number';
   initial: string | boolean | number;
-}
+};
 
-interface SchemaNode {
-  // ... existing fields
-  $localState?: Record<string, LocalStateField>;
-}
+export type LocalToken = { $local: string };
+export type SetLocalToken = { $setLocal: string; from: string };
 ```
 
-### 2. Local state resolver
+Add `LocalToken | SetLocalToken` to the `OperatorToken` union. Add `$localState?: Record<string, LocalStateField>` to `SchemaNode`.
+
+### 2. Zod validation schemas
+
+**File:** `packages/schema-system/shared/src/zodSchemas.ts`
+
+Add token schemas and register in the `zSchemaProp` union (before the generic record fallback):
+
+```ts
+const zLocalToken = z.object({ $local: z.string().min(1) }).strict();
+const zSetLocalToken = z
+  .object({
+    $setLocal: z.string().min(1),
+    from: z.string().min(1),
+  })
+  .strict();
+
+const zLocalStateField = z.object({
+  type: z.enum(['string', 'boolean', 'number']),
+  initial: z.union([z.string(), z.boolean(), z.number()]),
+});
+const zLocalStateDeclaration = z.record(z.string(), zLocalStateField);
+```
+
+Add `zLocalToken` and `zSetLocalToken` to the `zSchemaProp` union alongside other tokens. Add `$localState: zLocalStateDeclaration.optional()` to the `SchemaNode` Zod schema.
+
+### 3. Local state resolver
 
 **File:** `packages/schema-system/shared/src/propResolvers/local.ts` (new)
 
+`resolveLocalProp` mirrors the `resolveStoreProp` pattern — reads from `context.$local` instead of `stores`:
+
 ```ts
-// resolveLocalProp: { $local: "name" } → signal accessor from local state context
-// resolveSetLocalProp: { $setLocal: "name", from: "..." } → event handler that calls setter
+import { markReactive } from './reactive';
+import type { Props } from './types';
+
+export function resolveLocalProp(value: { $local: string }, context: Props): unknown {
+  const localState = context.$local as Record<string, () => unknown> | undefined;
+  if (!localState) {
+    console.warn(`Schema $local: no $localState in scope for "${value.$local}"`);
+    return undefined;
+  }
+  const accessor = localState[value.$local];
+  if (!accessor) {
+    console.warn(`Schema $local: field "${value.$local}" not declared in $localState`);
+    return undefined;
+  }
+  return markReactive(accessor);
+}
 ```
 
-### 3. Wire into prop dispatcher
+`resolveSetLocalProp` creates an event handler that calls the signal setter with a value extracted via `from`:
+
+```ts
+export function resolveSetLocalProp(
+  value: { $setLocal: string; from: string },
+  context: Props,
+): (event: unknown) => void {
+  const localSetters = context.$localSetters as Record<string, (v: unknown) => void> | undefined;
+  if (!localSetters) {
+    console.warn(`Schema $setLocal: no $localState in scope for "${value.$setLocal}"`);
+    return () => {};
+  }
+  const setter = localSetters[value.$setLocal];
+  if (!setter) {
+    console.warn(`Schema $setLocal: field "${value.$setLocal}" not declared in $localState`);
+    return () => {};
+  }
+  return (event: unknown) => {
+    setter(extractFromPath(event, value.from));
+  };
+}
+```
+
+#### `from` path extraction rules
+
+The `from` field is a dot-path expression walked against the event object:
+
+| `from` value            | Extraction           |
+| ----------------------- | -------------------- |
+| `"$event.target.value"` | `event.target.value` |
+| `"$event.detail"`       | `event.detail`       |
+| `"$event"`              | the raw event object |
+
+Implementation: strip the `$event` prefix, split remaining path on `.`, walk the object. No arbitrary expressions — just property access.
+
+### 4. Wire into prop dispatcher
 
 **File:** `packages/schema-system/shared/src/propResolvers/dispatcher.ts`
 
-Add `$local` and `$setLocal` cases alongside existing `$store` / `$action` handling.
+Add `$local` and `$setLocal` cases. They use distinct keys so ordering relative to `$store` doesn't matter — no shadowing conflict is possible:
 
-### 4. Schema renderer creates local context
+```ts
+if (hasToken(value, '$local', 'string')) return resolveLocalProp(value, context);
+if (hasToken(value, '$setLocal', 'string')) return resolveSetLocalProp(value, context);
+```
 
-**File:** `packages/schema-renderer/solid/src/RenderSchema.tsx` (or equivalent)
+### 4b. Fix `$action` arg unwrapping (prerequisite)
 
-When a node has `$localState`:
+**File:** `packages/schema-system/shared/src/propResolvers/action.ts`
 
-1. Create `createSignal()` for each field
-2. Wrap children in a context provider (or pass via the existing context/stores mechanism)
-3. Make signals available to `$local` / `$setLocal` resolvers
+When `{ "$local": "name" }` appears inside `$action.args`, it resolves at render time to a `REACTIVE_ACCESSOR`-marked signal accessor. But the existing action handler passes resolved args through to `method.apply()` without unwrapping — the store method receives accessor functions instead of values.
 
-### 5. Register in resolver pipeline
+This is a latent bug that also affects `$store` tokens in `$action.args` (previously untested because existing schemas use `$item.*` strings in args, which resolve eagerly to values).
 
-Ensure the resolver order is: `$local` → `$store` → `$action` → `$setLocal` → other tokens.
+Fix: unwrap reactive accessors at execution time, just before calling the store method:
+
+```ts
+// In the returned event handler, after processArgTokens:
+const unwrappedArgs = argsToUse.map((a) => (typeof a === 'function' && REACTIVE_ACCESSOR in a ? a() : a));
+return method.apply(store, unwrappedArgs);
+```
+
+This ensures `$local` (and `$store`) args in `$action` read the **current** signal value when the event fires, not a stale render-time snapshot.
+
+### 5. Schema renderer creates local context
+
+**File:** `packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx`
+
+Local state flows through the **`context`** object (not `stores`), matching how `$each` adds `item` to context.
+
+**Placement:** Signal creation must happen at the **top** of `RenderSchema`, before `renderNode` is defined and before prop resolution — both consume `context` via closures:
+
+```tsx
+export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps) {
+  if (!node) return null;
+
+  // ← HERE: before renderNode and prop resolution
+  let effectiveContext = context;
+  if (node.$localState) {
+    const accessors: Record<string, () => unknown> = {};
+    const setters: Record<string, (v: unknown) => void> = {};
+    for (const [name, field] of Object.entries(node.$localState)) {
+      const [get, set] = createSignal(field.initial);
+      accessors[name] = get;
+      setters[name] = set;
+    }
+    effectiveContext = {
+      ...context,
+      $local: { ...(context.$local ?? {}), ...accessors },
+      $localSetters: { ...(context.$localSetters ?? {}), ...setters },
+    };
+  }
+
+  // Then use effectiveContext everywhere context was previously used:
+  // - renderNode() closure
+  // - renderChildren()
+  // - prop resolution loop (resolveProp calls)
+  // - $each context extension
+  // - ConditionalRenderer context prop
+```
+
+Step by step:
+
+1. Create `createSignal()` for each declared field
+2. Build `$local` map (field name → signal accessor) and `$localSetters` map (field name → signal setter)
+3. Extend the context: `{ ...context, $local: { ...context.$local, ...newAccessors }, $localSetters: { ...context.$localSetters, ...newSetters } }`
+4. Replace all `context` references in the function body with `effectiveContext`
+5. Child nodes inherit the extended context — nested `$localState` declarations merge, with inner scopes shadowing outer fields of the same name
+
+This approach gives automatic cleanup (Solid disposes signals when the component scope unmounts) and natural nesting without a separate context provider.
 
 ## Example: Create Space Form (schema-only)
 
@@ -183,110 +314,30 @@ Ensure the resolver order is: `$local` → `$store` → `$action` → `$setLocal
 }
 ```
 
-## Open Questions
+## Design Decisions
 
-- **Nested access:** Should `$local` support dot paths for object-typed state (e.g. `{ "$local": "form.name" }`)?
-- **Cross-node sharing:** Should child components be able to declare their own `$localState` independent of parents? (Probably yes — each `$localState` scope nests.)
-- **Derived local state:** Should there be a `$derived` or `$computed` local field (e.g. `"isValid": { "$derived": { "$and": [{ "$local": "name" }, ...] } }`)?
+- **Nested dot paths** (`{ "$local": "form.name" }`): **No** for v1. Fields are flat, top-level keys only. Avoids introducing nested signal structures and keeps the resolver trivial.
+- **Child `$localState` scoping:** **Yes** — each `$localState` declaration creates a new scope merged into context, shadowing parent fields of the same name. Natural nesting via context propagation, same pattern as `$each` adding `item`.
+- **Derived local state** (`$derived` / `$computed`): **Deferred** — achievable with existing `$if` / `$and` / `$not` / `$concat` in prop expressions. No new mechanism needed yet.
+- **Direct value setting** (e.g. `{ "$setLocal": "loading", "value": true }`): **No** for v1. `$setLocal` always requires `from` (event extraction). Setting flags like `loading = true` in response to actions stays in stores, or can be composed via `$action` that sets the flag as a side effect. This keeps `$setLocal` single-purpose and avoids a second code path.
 
-## Form Validation: `$validate`
+## Deferred: `$validate`
 
-Form validation is the single most common reason developers reach for a custom store. Since validation rules are inherently declarative, they fit naturally into the schema system as a companion to `$localState`.
+Form validation (`$validate`, `$errors`, touched/dirty tracking, action-level `"validate": true` gating) is the natural companion to `$localState` but adds significant complexity. It will be a **follow-up PR** after `$localState` lands. The core local state system is self-contained and useful on its own — every form that currently requires a SolidJS component can move to schema-only with just `$local` / `$setLocal`.
 
-### Declaration
-
-Add a `$validate` object alongside any `$local`-bound prop:
-
-```json
-{
-  "type": "we-input",
-  "props": {
-    "value": { "$local": "email" },
-    "onInput": { "$setLocal": "email", "from": "$event.target.value" },
-    "$validate": {
-      "required": true,
-      "pattern": "^[^@]+@[^@]+$",
-      "message": "Valid email required"
-    }
-  }
-}
-```
-
-### Available rules
-
-| Rule                      | Type             | Description                    |
-| ------------------------- | ---------------- | ------------------------------ |
-| `required`                | `boolean`        | Field must be non-empty        |
-| `pattern`                 | `string` (regex) | Value must match regex         |
-| `minLength` / `maxLength` | `number`         | String length constraints      |
-| `min` / `max`             | `number`         | Numeric range constraints      |
-| `message`                 | `string`         | Error message shown on failure |
-
-### Renderer behavior
-
-When a node has `$validate`:
-
-1. The renderer tracks `touched` and `dirty` state per field automatically
-2. Validation runs on blur (not on every keystroke) and on form submission
-3. Error state is exposed as `$errors.fieldName` (readable via `$local`)
-4. Components receive an `error` prop with the message string (or `null`)
-5. A parent `$action` with `"validate": true` checks all child validations before executing — if any fail, the action is blocked
-
-### Example: validated form
-
-```json
-{
-  "type": "Column",
-  "$localState": {
-    "name": { "type": "string", "initial": "" },
-    "email": { "type": "string", "initial": "" }
-  },
-  "children": [
-    {
-      "type": "we-input",
-      "props": {
-        "label": "Name",
-        "value": { "$local": "name" },
-        "onInput": { "$setLocal": "name", "from": "$event.target.value" },
-        "$validate": { "required": true, "message": "Name is required" }
-      }
-    },
-    {
-      "type": "we-input",
-      "props": {
-        "label": "Email",
-        "value": { "$local": "email" },
-        "onInput": { "$setLocal": "email", "from": "$event.target.value" },
-        "$validate": {
-          "required": true,
-          "pattern": "^[^@]+@[^@]+$",
-          "message": "Valid email required"
-        }
-      }
-    },
-    {
-      "type": "we-button",
-      "props": {
-        "text": "Submit",
-        "disabled": { "$not": { "$and": [{ "$local": "name" }, { "$local": "email" }] } },
-        "onClick": {
-          "$action": "someStore.submit",
-          "validate": true,
-          "args": [{ "$local": "name" }, { "$local": "email" }]
-        }
-      }
-    }
-  ]
-}
-```
-
-### Implementation
-
-- Validation resolver lives alongside `$local` / `$setLocal` in `propResolvers/local.ts`
-- Each `$validate` creates a validation signal (error string or null) derived from the bound local state + touched flag
-- Components that support validation should accept an `error?: string` prop
-- The `$action` `"validate": true` flag collects all descendant validation signals and aborts if any are non-null
+See [schema-token-roadmap.md](schema-token-roadmap.md) for the `$validate` design notes.
 
 ## Scope
 
-This PR adds the core `$localState` / `$local` / `$setLocal` system **and** the `$validate` companion. Together they eliminate the two most common reasons to reach for a custom store: form state and form validation. Derived state and nested scopes can follow incrementally.
+This PR adds the core `$localState` / `$local` / `$setLocal` system. Specifically:
+
+1. **Types** — `LocalStateField`, `LocalToken`, `SetLocalToken` in `types.ts`; `$localState` on `SchemaNode`; add to `OperatorToken` union
+2. **Zod** — `zLocalToken`, `zSetLocalToken`, `zLocalStateDeclaration` in `zodSchemas.ts`; register in `zSchemaProp` union
+3. **Resolver** — new `propResolvers/local.ts` with `resolveLocalProp`, `resolveSetLocalProp`, and `extractFromPath`
+4. **Dispatcher** — add `$local` and `$setLocal` cases in `dispatcher.ts`
+5. **Action arg unwrap** — fix `REACTIVE_ACCESSOR` unwrapping in `action.ts` so `$local` / `$store` tokens in `$action.args` resolve to current values at execution time (prerequisite, not new feature)
+6. **SchemaRenderer** — detect `$localState` on nodes, create Solid signals at the top of `RenderSchema` (before `renderNode`), replace `context` with `effectiveContext` throughout
+7. **Tests** — unit tests for resolver functions, action arg unwrapping, and integration tests for SchemaRenderer local state lifecycle (mount/unmount/reset, nesting, `$setLocal` event handling, `$local` inside `$action.args`)
+8. **AI context** — update `@we/ai-context` fragments so AI agents know about the new tokens
+
+Derived state, nested dot paths, direct value setting, and `$validate` follow incrementally.

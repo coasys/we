@@ -25,7 +25,7 @@ export class Tabs extends DesignSystemElement {
 
   private onTabSelect(e: CustomEvent) {
     this.activeKey = e.detail.value;
-    this.dispatchEvent(new CustomEvent('tab-change', { detail: { value: this.activeKey } }));
+    this.dispatchEvent(new CustomEvent('change', { detail: { value: this.activeKey }, bubbles: true, composed: true }));
   }
 
   render() {

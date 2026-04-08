@@ -58,6 +58,7 @@ export const bootScreen: SchemaNode = {
             then: {
               type: 'Column',
               props: { mt: '200', gap: '400', ax: 'center' },
+              $localState: { password: { type: 'string', initial: '' } },
               children: [
                 {
                   type: 'Row',
@@ -91,12 +92,12 @@ export const bootScreen: SchemaNode = {
                             height: '36px',
                             width: '200px',
                             placeholder: 'Password...',
-                            value: { $store: 'adamStore.password' },
-                            onInput: { $action: 'adamStore.setPassword', args: ['$arg.target.value'] },
+                            value: { $local: 'password' },
+                            onInput: { $setLocal: 'password', from: '$event.detail' },
                             onKeyDown: {
                               $if: {
-                                condition: { $eq: ['$arg.key', 'Enter'] },
-                                then: { $action: 'adamStore.unlockAgent' },
+                                condition: { $eq: ['$arg.detail.key', 'Enter'] },
+                                then: { $action: 'adamStore.unlockAgent', args: [{ $local: 'password' }] },
                               },
                             },
                             type: {
@@ -149,7 +150,7 @@ export const bootScreen: SchemaNode = {
                     color: 'neutral-0',
                     bg: 'primary-500',
                     loading: { $store: 'adamStore.loginLoading' },
-                    onClick: { $action: 'adamStore.unlockAgent' },
+                    onClick: { $action: 'adamStore.unlockAgent', args: [{ $local: 'password' }] },
                   },
                 },
               ],

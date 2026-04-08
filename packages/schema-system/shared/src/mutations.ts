@@ -10,7 +10,6 @@ function accumulateMutations(mutations: Mutation[] = [], path: (string | number)
   // Handle arrays
   if (Array.isArray(a) && Array.isArray(b)) {
     // Diff shared indices, then emit length mutation if the array shrank
-    const minLen = Math.min(a.length, b.length);
     const maxLen = Math.max(a.length, b.length);
     for (let i = 0; i < maxLen; i++) {
       const oldItem = a[i];

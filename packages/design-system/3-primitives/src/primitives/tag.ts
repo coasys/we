@@ -66,7 +66,7 @@ export default class Tag extends DesignSystemElement {
   }
 
   private _dismiss() {
-    this.dispatchEvent(new CustomEvent('we-dismiss', { bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('close', { bubbles: true, composed: true }));
   }
 
   render() {

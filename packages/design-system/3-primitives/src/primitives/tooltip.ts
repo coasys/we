@@ -97,7 +97,7 @@ export default class Tooltip extends LayoutElement {
     if (changed.has('open')) {
       if (this.open) this.openTooltip();
       else this.closeTooltip();
-      this.dispatchEvent(new CustomEvent('toggle', { bubbles: true }));
+      this.dispatchEvent(new CustomEvent('toggle', { bubbles: true, composed: true }));
     }
   }
 
