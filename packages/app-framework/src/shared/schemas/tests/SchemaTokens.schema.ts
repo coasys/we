@@ -12,7 +12,8 @@
  *   $map (array + single object), $pick (standalone + chained),
  *   $query (subscribe + one-shot), fragment nodes (with + without theme),
  *   theme overrides (parametric + named), web component reactive props,
- *   token composition (deeply nested chains), children token resolution
+ *   token composition (deeply nested chains), children token resolution,
+ *   $localState/$local/$setLocal (ephemeral scoped state)
  *
  * Data source: testStore (SolidJS signals + lazy AD4M perspective)
  */
@@ -237,7 +238,7 @@ const argTest = section('$arg', 'Extract native event values', [
         type: 'we-input',
         props: {
           placeholder: 'Type here...',
-          onInput: { $action: 'testStore.setTypedText', args: ['$arg.target.value'] },
+          onInput: { $action: 'testStore.setTypedText', args: ['$arg.detail'] },
         },
       },
       { type: 'we-text', props: { color: 'neutral-400' }, children: ['Echo:'] },
@@ -1111,6 +1112,131 @@ const namedThemeTest: SchemaNode = {
 };
 
 // ---------------------------------------------------------------------------
+// 8. Local state — $localState, $local, $setLocal
+// ---------------------------------------------------------------------------
+
+const localStateBasicTest: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', p: '400', bg: 'neutral-0', r: '400', ax: 'start' },
+  $localState: {
+    name: { type: 'string', initial: '' },
+    count: { type: 'number', initial: 0 },
+    enabled: { type: 'boolean', initial: false },
+  },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', pb: '200' },
+      children: [
+        { type: 'we-text', props: { fontWeight: '600', color: 'primary-700' }, children: ['$localState'] },
+        { type: 'we-text', props: { color: 'neutral-500' }, children: ['- Scoped ephemeral state'] },
+      ],
+    },
+    // --- $local read + $setLocal write ---
+    interactiveLabel('Type text — it should echo below via $local (no store)'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            placeholder: 'Type here...',
+            value: { $local: 'name' },
+            onInput: { $setLocal: 'name', from: '$event.detail' },
+          },
+        },
+        { type: 'we-text', props: { color: 'neutral-400' }, children: ['Echo:'] },
+        { type: 'we-text', props: { fontWeight: '600' }, children: [{ $local: 'name' }] },
+      ],
+    },
+    // --- $local in $action args ---
+    interactiveLabel('Click increment then "Log name" — testStore.setTypedText receives $local value'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            onClick: { $action: 'testStore.setTypedText', args: [{ $local: 'name' }] },
+          },
+          children: ['Log name'],
+        },
+        { type: 'we-text', props: { color: 'neutral-400' }, children: ['testStore.typedText:'] },
+        { type: 'we-text', props: { fontWeight: '600' }, children: [{ $store: 'testStore.typedText' }] },
+      ],
+    },
+    // --- $local with toggle ($setLocal boolean) ---
+    interactiveLabel('Toggle switch — text should appear/disappear via $local boolean'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-switch',
+          props: {
+            checked: { $local: 'enabled' },
+            onChange: { $setLocal: 'enabled', from: '$event.detail' },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $local: 'enabled' },
+            then: {
+              type: 'we-text',
+              props: { color: 'success-600', fontWeight: '600' },
+              children: ['Enabled!'],
+            },
+            else: {
+              type: 'we-text',
+              props: { color: 'neutral-400' },
+              children: ['Disabled'],
+            },
+          },
+        },
+      ],
+    },
+    // --- $local composed with $not, $concat, $if ---
+    interactiveLabel('Composition: button disabled when name is empty, label built with $concat'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            disabled: { $not: { $local: 'name' } },
+          },
+          children: [
+            {
+              $concat: [
+                'Submit: ',
+                {
+                  $if: {
+                    condition: { $local: 'name' },
+                    then: { $local: 'name' },
+                    else: '(empty)',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-text',
+          props: { color: 'neutral-400' },
+          children: ['(disabled when name is empty, label shows $local value)'],
+        },
+      ],
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
 // Full template
 // ---------------------------------------------------------------------------
 
@@ -1182,6 +1308,9 @@ export const schemaTokensTemplate: TemplateSchema = {
         fragmentThemeTest,
         tokenThemeTest,
         namedThemeTest,
+
+        groupHeading('Local State'),
+        localStateBasicTest,
       ],
     },
   ],

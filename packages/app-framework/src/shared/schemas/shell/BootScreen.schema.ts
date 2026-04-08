@@ -92,10 +92,10 @@ export const bootScreen: SchemaNode = {
                             width: '200px',
                             placeholder: 'Password...',
                             value: { $store: 'adamStore.password' },
-                            onInput: { $action: 'adamStore.setPassword', args: ['$arg.target.value'] },
+                            onInput: { $action: 'adamStore.setPassword', args: ['$arg.detail'] },
                             onKeyDown: {
                               $if: {
-                                condition: { $eq: ['$arg.key', 'Enter'] },
+                                condition: { $eq: ['$arg.detail.key', 'Enter'] },
                                 then: { $action: 'adamStore.unlockAgent' },
                               },
                             },

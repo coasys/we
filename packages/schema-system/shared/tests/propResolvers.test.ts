@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { resolveProp, resolveProps, REACTIVE_ACCESSOR, splitProps } from '../src/propResolvers';
+import { REACTIVE_ACCESSOR, resolveProp, resolveProps, splitProps } from '../src/propResolvers';
 import { extractFromPath, resolveLocalProp, resolveSetLocalProp } from '../src/propResolvers/local';
 import { markReactive } from '../src/propResolvers/reactive';
 
