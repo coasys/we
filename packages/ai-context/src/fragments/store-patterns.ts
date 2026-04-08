@@ -52,28 +52,40 @@ Querying model data:
   "$query": { "model": "TaskBlock", "where": { "status": "todo" } }
 }
 
-Local state (form input binding):
+Local state (form with validation):
 {
   "type": "Column",
   "$localState": {
-    "name": { "type": "string", "initial": "" },
+    "name": {
+      "type": "string",
+      "initial": "",
+      "validate": [{ "rule": "required" }, { "rule": "minLength", "value": 2 }]
+    },
     "loading": { "type": "boolean", "initial": false }
   },
   "children": [
     {
-      "type": "we-input",
-      "props": {
-        "value": { "$local": "name" },
-        "onInput": { "$setLocal": "name", "from": "$event.target.value" }
-      }
+      "type": "we-form-field",
+      "props": { "label": "Name", "error": { "$error": "name" } },
+      "children": [{
+        "type": "we-input",
+        "props": {
+          "value": { "$local": "name" },
+          "onInput": { "$setLocal": "name", "from": "$event.detail" },
+          "onBlur": { "$touch": "name" }
+        }
+      }]
     },
     {
       "type": "we-button",
       "props": {
         "text": "Submit",
         "loading": { "$local": "loading" },
-        "disabled": { "$not": { "$local": "name" } },
-        "onClick": { "$action": "myStore.submit", "args": [{ "$local": "name" }] }
+        "disabled": { "$not": { "$formValid": "$scope" } },
+        "onClick": [
+          { "$touch": "$all" },
+          { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "myStore.submit", "args": [{ "$local": "name" }] } } }
+        ]
       }
     }
   ]

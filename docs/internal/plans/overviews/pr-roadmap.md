@@ -80,8 +80,14 @@
                                                       │
                                                       ▼
                                             ┌─────────────────────┐
-                                            │ 4. Local Schema     │
+                                            │ 4. Local Schema   ✅│
                                             │    State ($local)   │
+                                            └─────────────────────┘
+                                                      │
+                                                      ▼
+                                            ┌─────────────────────┐
+                                            │4c. Form           ✅│
+                                            │    Validation       │
                                             └─────────────────────┘
 
                     ┌──────────────────────┐  ┌─────────────────────┐
@@ -95,10 +101,10 @@
                     └─────────────────────┘
                               │
                               ▼
-                    ┌─────────────────────┐
-                    │ 8. @we/ai-context   │
+                    ┌──────────────────────┐
+                    │ 8. @we/ai-context    │
                     │    → Skills Output ✅│
-                    └─────────────────────┘
+                    └──────────────────────┘
                               │
                               ▼
                     ┌─────────────────────┐
@@ -266,13 +272,23 @@ Implements `$query` as a prop-level schema token with descriptor pattern (shared
 
 `Template` AD4M model with file-storage backed schema property. Tree-walk section indexer (`computeSectionIndex`, `extractByPath`, `patchByPath`). Section API (`createStoredTemplate`, `getSection`, `updateSection`). TemplateStore rewritten to use AD4M perspective instead of localStorage. 30 tests. Decision document comparing three approaches.
 
-### 4. Local Schema State (`$localState`)
+### 4. Local Schema State (`$localState`) ✅
 
 **Plan:** [local-schema-state](../prs/local-schema-state.md)
+**Status:** Complete (branch `feat/local-schema-state`)
 **Depends on:** Schema Customization (#6) — `$localState` is most valuable when AI can generate schema-only forms within sections
-**Unblocks:** schema-only forms (Create Space, settings pages), reduces need for one-off SolidJS components
+**Unblocks:** schema-only forms (Create Space, settings pages), form validation (#4c)
 
 Adds `$localState` / `$local` / `$setLocal` tokens for ephemeral form state scoped to a schema node's lifecycle. Deferred from Phase A as a Tier 2 token — most forms can remain SolidJS components until sections exist.
+
+### 4c. Form Validation ✅
+
+**Plan:** [form-validation](../prs/form-validation.md) | [PR summary](../prs/form-validation-pr-summary.md)
+**Status:** Complete (branch `feat/form-validation`, 8 commits, 19 files)
+**Depends on:** Local Schema State (#4) — extends `$localState` field descriptors with validation rules
+**Unblocks:** declarative form validation without imperative store code, BootScreen migration
+
+Extends `$localState` field descriptors with declarative validation rules. Adds 6 new tokens: `$error`, `$valid`, `$touched` (read), `$formValid` (read), `$touch` (action), `$resetLocal` (action). Validation engine supports 7 built-in rules (required, minLength, maxLength, min, max, pattern, match). Handler array composition (`onClick: [$touch, $if]`) enables touch-all-then-guard-submit patterns. Also fixes critical bug where `$if` standard path eagerly invoked `$action` handlers by using `REACTIVE_ACCESSOR` symbol to distinguish signal accessors from plain handler functions. Migrated BootScreen login to use `$error`/`$formValid`/`$touch`. 259 tests, 4 visual integration test sections.
 
 ---
 
@@ -368,7 +384,8 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 5c  | $query Service                 | Data  | 5          | Medium | Med  |
 | ✅   | 6   | Schema Customization           | Cust  | 5          | Large  | Med  |
 | ✅   | 8   | @we/ai-context → Skills        | AI    | 7a         | Large  | Med  |
-| 2    | 4   | Local Schema State             | Cust  | 6          | Medium | Med  |
+| ✅   | 4   | Local Schema State             | Cust  | 6          | Medium | Med  |
+| ✅   | 4c  | Form Validation                | Cust  | 4          | Medium | Med  |
 | 3    | 8b‡ | Schema Validation (semantic)   | AI    | 8          | Small  | Low  |
 | ⏸️   | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
 | ⏸️   | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
@@ -384,9 +401,9 @@ Phase A PRs (1–3, 4b, 10) are fully independent — all five can run in parall
 
 Within Phase B, #5b (Core Block Types), #5c ($query Service), and #6 (Schema Customization) are all independent of each other — they can run in parallel once #5 lands.
 
-**Remaining work:** #4 ($localState) is the only non-deferred item without a dependency on an incomplete PR. #8b‡ (semantic validation) follows #8 (now complete). #7b, #7c, and #9 are deferred.
+**Remaining work:** #8b‡ (semantic validation) is the only non-deferred item without a dependency on an incomplete PR. #7b, #7c, and #9 are deferred.
 
-The critical path for the complete schema-first app-building workflow is: **#4 ($localState)**, then **#8b‡ (semantic validation)** as an optional follow-up. #4 unlocks schema-only forms; #8b‡ adds semantic checks using the now-complete ai-context extractors.
+The critical path for the complete schema-first app-building workflow is now clear: all core schema, data, customization, and form validation PRs are complete. **#8b‡ (semantic validation)** is the only remaining item — it adds semantic checks using the now-complete ai-context extractors.
 
 ```
 Time →
@@ -396,9 +413,9 @@ Track 1:  [1–3, 4b, 10 ✅] ────────────────�
           [7a ✅] ────────────────────────────────────────────────────────────
           [8b-Ph1 ✅] ────────────────────────────────────────────────────────
           [8. ai-context → skills ✅] ────────────────────────────────────────
+          [4. $localState ✅] → [4c. Form Validation ✅] ────────────────────
 
 Track 2:  [8b-Ph2. semantic]                                          ← next wave
-Track 3:  [4. $localState] ────────────────────────────────            ← next wave (parallel with #8b‡)
 
 Deferred: [7b. Showcase ⏸️] [7c. Storybook ⏸️] [9. MCP Tools ⏸️]
 ```

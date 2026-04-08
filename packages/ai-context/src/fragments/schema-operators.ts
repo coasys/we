@@ -81,6 +81,66 @@ Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler 
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
 $local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
 
+Form validation (extends $localState):
+Declare validation rules on fields:
+"$localState": {
+  "email": {
+    "type": "string",
+    "initial": "",
+    "validate": [
+      { "rule": "required", "message": "Email is required" },
+      { "rule": "pattern", "value": "^[^@]+@[^@]+$", "message": "Invalid email" }
+    ]
+  }
+}
+
+Built-in rules: required, minLength (value: N), maxLength (value: N), min (value: N), max (value: N), pattern (value: regex string), match (field: otherFieldName). All accept optional "message" override.
+
+Read tokens:
+{ "$error": "fieldName" } — first validation error message (only shown after field is touched), or "".
+{ "$valid": "fieldName" } — true if all rules pass (regardless of touched state).
+{ "$touched": "fieldName" } — true after the field has been blurred/touched.
+{ "$formValid": "$scope" } — true if ALL validated fields in the current $localState scope pass.
+
+Action tokens:
+{ "$touch": "fieldName" } — marks a single field as touched (use in onBlur).
+{ "$touch": "$all" } — marks all fields in scope as touched (use before submit guard).
+{ "$resetLocal": "$scope" } — resets all fields to initial values and clears touched state.
+
+Handler arrays (compose multiple actions on one event):
+{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.submit" } } }] }
+Array entries execute sequentially. Non-function entries (e.g. $if with false condition) are skipped.
+
+Typical form pattern:
+{
+  "$localState": { "name": { "type": "string", "initial": "", "validate": [{ "rule": "required" }] } },
+  "children": [
+    {
+      "type": "we-form-field",
+      "props": { "label": "Name", "error": { "$error": "name" } },
+      "children": [{
+        "type": "we-input",
+        "props": {
+          "value": { "$local": "name" },
+          "onInput": { "$setLocal": "name", "from": "$event.detail" },
+          "onBlur": { "$touch": "name" }
+        }
+      }]
+    },
+    {
+      "type": "we-button",
+      "props": {
+        "disabled": { "$not": { "$formValid": "$scope" } },
+        "onClick": [
+          { "$touch": "$all" },
+          { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.save", "args": [{ "$local": "name" }] } } }
+        ]
+      },
+      "children": ["Submit"]
+    }
+  ]
+}
+
 ## Block-level Dynamic Structures
 
 Block-level structures use "type" starting with "$" for dynamic rendering of schema nodes.
