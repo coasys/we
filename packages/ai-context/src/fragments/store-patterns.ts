@@ -51,4 +51,31 @@ Querying model data:
 {
   "$query": { "model": "TaskBlock", "where": { "status": "todo" } }
 }
+
+Local state (form input binding):
+{
+  "type": "Column",
+  "$localState": {
+    "name": { "type": "string", "initial": "" },
+    "loading": { "type": "boolean", "initial": false }
+  },
+  "children": [
+    {
+      "type": "we-input",
+      "props": {
+        "value": { "$local": "name" },
+        "onInput": { "$setLocal": "name", "from": "$event.target.value" }
+      }
+    },
+    {
+      "type": "we-button",
+      "props": {
+        "text": "Submit",
+        "loading": { "$local": "loading" },
+        "disabled": { "$not": { "$local": "name" } },
+        "onClick": { "$action": "myStore.submit", "args": [{ "$local": "name" }] }
+      }
+    }
+  ]
+}
 `;

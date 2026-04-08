@@ -74,6 +74,13 @@ Query (data retrieval):
 Queries the local perspective for model instances. Always returns an array.
 Options: model (required), where, order, limit, offset, include, parent, subscribe (default true).
 
+Local state (scoped ephemeral state):
+Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
+Read:  { "$local": "name" } — returns the signal value (reactive).
+Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
+State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
+$local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
+
 ## Block-level Dynamic Structures
 
 Block-level structures use "type" starting with "$" for dynamic rendering of schema nodes.
