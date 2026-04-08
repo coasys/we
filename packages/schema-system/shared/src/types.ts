@@ -35,6 +35,7 @@ export type SchemaNode = {
   routes?: RouteSchema[]; // Routes for routing components
   children?: (SchemaNode | string | OperatorToken)[]; // Child nodes, text strings, or operator tokens ($concat, $store, etc.)
   theme?: ThemeOverrides; // Scoped theme overrides — applied as CSS custom properties on a display:contents wrapper
+  $localState?: Record<string, LocalStateField>; // Scoped local state — creates signals on mount, discarded on unmount
 };
 
 // Types that need to be passed a framework specific NodeType (e.g. JSX.Element for Solid, React.ReactNode for React)
@@ -84,6 +85,14 @@ export type QueryToken = {
   };
 };
 
+export type LocalStateField = {
+  type: 'string' | 'boolean' | 'number';
+  initial: string | boolean | number;
+};
+
+export type LocalToken = { $local: string };
+export type SetLocalToken = { $setLocal: string; from: string };
+
 /** Descriptor returned by the shared resolver — pure data, no framework effects */
 export type QueryDescriptor = {
   model: string;
@@ -107,4 +116,6 @@ export type OperatorToken =
   | NotToken
   | AndToken
   | OrToken
-  | QueryToken;
+  | QueryToken
+  | LocalToken
+  | SetLocalToken;

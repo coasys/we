@@ -25,6 +25,9 @@ export type {
   QueryToken,
   QueryDescriptor,
   OperatorToken,
+  LocalStateField,
+  LocalToken,
+  SetLocalToken,
 } from './types';
 
 export { validateSchema, validateNode } from './validators';

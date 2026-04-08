@@ -81,6 +81,15 @@ const zQueryToken = z
   })
   .strict();
 
+const zLocalToken = z.object({ $local: z.string().min(1) }).strict();
+const zSetLocalToken = z.object({ $setLocal: z.string().min(1), from: z.string().min(1) }).strict();
+
+const zLocalStateField = z.object({
+  type: z.enum(['string', 'boolean', 'number']),
+  initial: z.union([z.string(), z.boolean(), z.number()]),
+});
+const zLocalStateDeclaration = z.record(z.string(), zLocalStateField);
+
 /** Known node-level operator types */
 export const NODE_OPERATORS = new Set(['$each', '$if', '$routes']);
 
@@ -93,6 +102,7 @@ function schemaNodeShape() {
     routes: z.array(lazyRouteSchema).optional(),
     children: z.array(z.union([lazySchemaNode, z.string()])).optional(),
     theme: zThemeOverrides.optional(),
+    $localState: zLocalStateDeclaration.optional(),
   };
 }
 
@@ -139,6 +149,8 @@ export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
   zAndToken,
   zOrToken,
   zQueryToken,
+  zLocalToken,
+  zSetLocalToken,
   // Fallback: plain objects/arrays that aren't tokens.
   // Rejects objects with $-prefixed keys at the parse level (not via superRefine)
   // so that the union properly rejects malformed tokens.
