@@ -2,6 +2,47 @@
 
 Rules and patterns for building and maintaining `@we/primitives` components.
 
+## Event Naming
+
+Components use **standard DOM event names** and put the new value in the event's `detail` property.
+
+| Event Name | Use For                                     | `detail` Payload          |
+| ---------- | ------------------------------------------- | ------------------------- |
+| `change`   | Value committed (blur, selection, toggle)    | New value                 |
+| `input`    | Value updating while typing                 | Current value             |
+| `focus`    | Element received focus                      | _(none)_                  |
+| `blur`     | Element lost focus                          | _(none)_                  |
+| `keydown`  | Key pressed                                 | `{ key, code }`           |
+| `close`    | Dismissible element closed/dismissed        | _(none)_                  |
+| `click`    | Element clicked                             | _(contextual)_            |
+
+**Rules:**
+
+1. **Use standard DOM event names** when the semantics match a native event (`change`, `input`, `focus`, `blur`, `click`, `close`, `keydown`, `toggle`).
+2. **Internal coordination events** (parent ↔ child within the same component family) use kebab-case descriptive names (e.g. `tab-select` for tab → tabs). These are not part of the public API and never reach the schema system.
+3. **Always set `bubbles: true, composed: true`** so events cross shadow DOM boundaries.
+4. **Put the new value in `detail`**, not just on `event.target`. This ensures framework wrappers (Solid, React, Vue, etc.) can read values via `event.detail` without direct DOM access.
+5. **Prevent internal element events from leaking.** If a component contains a native `<input>` or `<select>`, either stop propagation on its native events or ensure they don't conflict with the component's own dispatched events.
+
+### Framework Interop
+
+Standard event names are critical for framework compatibility. All major frameworks map handler props to DOM event listeners:
+
+| Handler prop  | DOM event | Value access    |
+| ------------- | --------- | --------------- |
+| `onChange`    | `change`  | `event.detail`  |
+| `onInput`     | `input`   | `event.detail`  |
+| `onFocus`     | `focus`   | —               |
+| `onBlur`      | `blur`    | —               |
+| `onClick`     | `click`   | `event.detail`  |
+| `onClose`     | `close`   | —               |
+| `onKeyDown`   | `keydown` | `event.detail`  |
+
+```ts
+// Dispatch with standard name + detail payload
+this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true, composed: true }));
+```
+
 ## Base Class Selection
 
 | Base Class                      | Layers                                  | Use When                                                                                  |
