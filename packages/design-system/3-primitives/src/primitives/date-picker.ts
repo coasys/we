@@ -200,7 +200,7 @@ export default class DatePicker extends DesignSystemElement {
     const d = String(day).padStart(2, '0');
     this.value = `${year}-${m}-${d}`;
     this._open = false;
-    this.dispatchEvent(new CustomEvent('we-change', { detail: this.value, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true, composed: true }));
   }
 
   private _getDays() {

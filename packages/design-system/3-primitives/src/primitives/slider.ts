@@ -111,9 +111,10 @@ export default class Slider extends DesignSystemElement {
   }
 
   private _onInput(e: Event) {
+    e.stopPropagation();
     const val = Number((e.target as HTMLInputElement).value);
     this.value = val;
-    this.dispatchEvent(new CustomEvent('we-change', { detail: val, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: val, bubbles: true, composed: true }));
   }
 
   render() {

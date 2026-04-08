@@ -89,16 +89,17 @@ export default class Select extends DesignSystemElement {
   }
 
   private _handleChange(e: Event) {
+    e.stopPropagation();
     this.value = (e.target as HTMLSelectElement)?.value;
-    this.dispatchEvent(new CustomEvent('we-change', { detail: this.value, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true, composed: true }));
   }
 
   private _handleFocus() {
-    this.dispatchEvent(new CustomEvent('we-focus', { bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('focus', { bubbles: true, composed: true }));
   }
 
   private _handleBlur() {
-    this.dispatchEvent(new CustomEvent('we-blur', { bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('blur', { bubbles: true, composed: true }));
   }
 
   private _normalizeOption(opt: string | { label: string; value: string }) {

@@ -149,7 +149,7 @@ export default class ColorPicker extends DesignSystemElement {
 
   private _selectColor(color: string) {
     this.value = color;
-    this.dispatchEvent(new CustomEvent('we-change', { detail: color, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: color, bubbles: true, composed: true }));
   }
 
   private _onHexInput(e: Event) {

@@ -132,9 +132,7 @@ export default class Button extends DesignSystemElement {
     if (this.disabled || this.loading) {
       e.preventDefault();
       e.stopPropagation();
-      return;
     }
-    this.dispatchEvent(new CustomEvent('button-click', { detail: e }));
   };
 
   private _content() {

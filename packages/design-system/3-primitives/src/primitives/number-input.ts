@@ -95,7 +95,7 @@ export default class NumberInput extends DesignSystemElement {
   private _emit(val: number) {
     const clamped = this._clamp(val);
     this.value = clamped;
-    this.dispatchEvent(new CustomEvent('we-change', { detail: clamped, bubbles: true, composed: true }));
+    this.dispatchEvent(new CustomEvent('change', { detail: clamped, bubbles: true, composed: true }));
   }
 
   private _decrement() {
@@ -107,6 +107,7 @@ export default class NumberInput extends DesignSystemElement {
   }
 
   private _onInput(e: Event) {
+    e.stopPropagation();
     const val = Number((e.target as HTMLInputElement).value);
     if (!Number.isNaN(val)) this._emit(val);
   }

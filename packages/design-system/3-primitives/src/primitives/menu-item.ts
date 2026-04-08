@@ -90,7 +90,7 @@ export default class MenuItem extends DesignSystemElement {
 
   private _handleClick() {
     this.dispatchEvent(
-      new CustomEvent('we-select', { detail: { value: this.value, label: this.label }, bubbles: true, composed: true }),
+      new CustomEvent('select', { detail: { value: this.value, label: this.label }, bubbles: true, composed: true }),
     );
   }
 
