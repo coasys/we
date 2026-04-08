@@ -104,10 +104,12 @@ Add token schemas and register in the `zSchemaProp` union (before the generic re
 
 ```ts
 const zLocalToken = z.object({ $local: z.string().min(1) }).strict();
-const zSetLocalToken = z.object({
-  $setLocal: z.string().min(1),
-  from: z.string().min(1),
-}).strict();
+const zSetLocalToken = z
+  .object({
+    $setLocal: z.string().min(1),
+    from: z.string().min(1),
+  })
+  .strict();
 
 const zLocalStateField = z.object({
   type: z.enum(['string', 'boolean', 'number']),
@@ -128,10 +130,7 @@ Add `zLocalToken` and `zSetLocalToken` to the `zSchemaProp` union alongside othe
 import { markReactive } from './reactive';
 import type { Props } from './types';
 
-export function resolveLocalProp(
-  value: { $local: string },
-  context: Props,
-): unknown {
+export function resolveLocalProp(value: { $local: string }, context: Props): unknown {
   const localState = context.$local as Record<string, () => unknown> | undefined;
   if (!localState) {
     console.warn(`Schema $local: no $localState in scope for "${value.$local}"`);
@@ -173,11 +172,11 @@ export function resolveSetLocalProp(
 
 The `from` field is a dot-path expression walked against the event object:
 
-| `from` value             | Extraction                    |
-| ------------------------ | ----------------------------- |
-| `"$event.target.value"` | `event.target.value`          |
-| `"$event.detail"`       | `event.detail`                |
-| `"$event"`              | the raw event object          |
+| `from` value            | Extraction           |
+| ----------------------- | -------------------- |
+| `"$event.target.value"` | `event.target.value` |
+| `"$event.detail"`       | `event.detail`       |
+| `"$event"`              | the raw event object |
 
 Implementation: strip the `$event` prefix, split remaining path on `.`, walk the object. No arbitrary expressions — just property access.
 
@@ -204,9 +203,7 @@ Fix: unwrap reactive accessors at execution time, just before calling the store 
 
 ```ts
 // In the returned event handler, after processArgTokens:
-const unwrappedArgs = argsToUse.map(a =>
-  typeof a === 'function' && REACTIVE_ACCESSOR in a ? a() : a
-);
+const unwrappedArgs = argsToUse.map((a) => (typeof a === 'function' && REACTIVE_ACCESSOR in a ? a() : a));
 return method.apply(store, unwrappedArgs);
 ```
 

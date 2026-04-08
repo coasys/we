@@ -49,9 +49,7 @@ function stripTypename(obj: any): any {
   if (Array.isArray(obj)) return obj.map(stripTypename);
   if (obj && typeof obj === 'object') {
     const { __typename, ...rest } = obj;
-    return Object.fromEntries(
-      Object.entries(rest).map(([k, v]) => [k, stripTypename(v)])
-    );
+    return Object.fromEntries(Object.entries(rest).map(([k, v]) => [k, stripTypename(v)]));
   }
   return obj;
 }

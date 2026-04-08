@@ -317,6 +317,7 @@ Creates `@we/ai-context` with 4 extractors (CEM, TypeScript, tokens, models), 6 
 **Output targets:** Copilot custom instructions, Claude Code project instructions, Cursor rules, and runtime `schemaContext` constant. All version-controlled with the repo — any local AI agent automatically has full component/token/convention knowledge without requiring an MCP server.
 
 **AI integration strategy (progressive):**
+
 1. **Phase 1 (done):** Local agents — users clone the repo, Copilot/Cursor/Claude Code builds schemas with instruction files providing context. Zero infrastructure.
 2. **Phase 2 (later):** Cloud API from within WE app — users provide their own API key, section API + assembled context become the system prompt for in-app "AI edits this section" UI.
 3. **Phase 3 (aspirational):** AD4M built-in AI — deferred until local models have sufficient context windows (20K+ effective context needed for schema context alone).

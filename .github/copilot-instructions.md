@@ -11,6 +11,7 @@ All schemas must be valid JSON. Only use components, props, tokens, and patterns
 ## Schema Structure
 
 A schema is a tree of nodes. Each node can have:
+
 - type: The component to render (string, e.g. "we-button", "Column")
 - props: An object of props for the component
 - children: An array of child nodes (or strings for text). Do not use objects like { "$expr": ... } directly in children; use a prop (e.g. "text") for dynamic content.
@@ -20,14 +21,14 @@ A schema is a tree of nodes. Each node can have:
 
 Example node:
 {
-  "type": "we-button",
-  "props": {
-    "onClick": { "$action": "routeStore.navigate", "args": ["/home"] }
-  },
-  "children": [
-    { "type": "we-icon", "props": { "name": "house" } },
-    { "type": "we-text", "props": { "size": "600" }, "children": ["Home"] }
-  ]
+"type": "we-button",
+"props": {
+"onClick": { "$action": "routeStore.navigate", "args": ["/home"] }
+},
+"children": [
+{ "type": "we-icon", "props": { "name": "house" } },
+{ "type": "we-text", "props": { "size": "600" }, "children": ["Home"] }
+]
 }
 
 ## Prop-level Dynamic Logic & Expressions
@@ -107,6 +108,7 @@ Indicates where nested routes should render within a layout.
 Most @we/primitives also accept Design System Props (see next section for details and exceptions).
 
 @we/primitives:
+
 - we-alert
   Props: variant: AlertVariant = 'info', dismissible: boolean = false
 - we-avatar
@@ -191,6 +193,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: open: boolean = false, title: string = '', placement: Placement = 'top', tooltipEl: HTMLElement, triggerEl: HTMLElement, arrowEl: HTMLElement
 
 @we/components:
+
 - Accordion
   Props: items?: AccordionItem[], multiple?: boolean, styles?: Record<string, string | number>
 - Breadcrumbs
@@ -206,12 +209,12 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - List
   Props: items?: ListItem[], ordered?: boolean, gap?: string, styles?: Record<string, string | number>
 - PopoverMenu — Dropdown menu that shows a list of selectable options in a popover.
-Each option has an id, name, and icon. The selected option is highlighted.
-Generic over option type — consumers can extend `{ id, name, icon }`.
+  Each option has an id, name, and icon. The selected option is highlighted.
+  Generic over option type — consumers can extend `{ id, name, icon }`.
   Props: options: T[], selectedOption: T, onSelect: (option: T) => void, class?: string, styles?: Record<string, string | number>
 - PopoverToggleMenu — Popover menu with checkbox-style toggle items for multi-select scenarios.
-Items can be flat or nested in collapsible groups. Each item has a checked state
-and onToggle callback. Ideal for layer controls, feature toggles, or filter panels.
+  Items can be flat or nested in collapsible groups. Each item has a checked state
+  and onToggle callback. Ideal for layer controls, feature toggles, or filter panels.
   Props: items: PopoverToggleMenuEntry[], placement?: Placement, triggerLabel?: string, triggerIcon?: string, class?: string, styles?: Record<string, string | number>
 - PostCard
   Props: creator?: { name: string; avatar: string; }, title: string, text: string, class?: string, styles?: Record<string, string | number>
@@ -227,12 +230,13 @@ and onToggle callback. Ideal for layer controls, feature toggles, or filter pane
   Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center", styles?: Record<string, string | number>
 
 @we/widgets:
+
 - Avatar
   Props: src: string, name: string, status?: "online" | "offline" | "away"
 - CollapsibleSidebar — Collapsible sidebar navigation with expand/collapse behavior.
-Items can be flat nav items (with icon, avatar, badge) or nested groups
-with collapsible headers. Supports header/footer slots, expand-on-hover,
-and extensive styling customization for items, badges, and icons.
+  Items can be flat nav items (with icon, avatar, badge) or nested groups
+  with collapsible headers. Supports header/footer slots, expand-on-hover,
+  and extensive styling customization for items, badges, and icons.
   Props: items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "static" | "absolute" | "fixed", zIndex?: string | number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: (item: CollapsibleSidebarItem) => void, onExpandedChange?: (expanded: boolean) => void
 - CreateSpaceModalWidget
   Props: adamClient: Ad4mClient, addNewSpace: (space: Space) => void, close: () => void, class?: string, style?: Record<string, string | number>
@@ -250,88 +254,88 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 
 ### Layout
 
-| Prop | Type | Description |
-|------|------|-------------|
-| width | string | Element width |
-| height | string | Element height |
-| minWidth | string | Minimum width |
-| minHeight | string | Minimum height |
-| maxWidth | string | Maximum width |
-| maxHeight | string | Maximum height |
-| position | "relative" \| "absolute" \| "fixed" \| "sticky" | CSS position |
-| top | string | Top offset |
-| right | string | Right offset |
-| bottom | string | Bottom offset |
-| left | string | Left offset |
-| zIndex | number | Stack order |
-| display | "flex" \| "block" \| "inline" \| "inline-block" \| "grid" \| "inline-flex" | Display mode |
-| overflow | "hidden" \| "auto" | Overflow behavior |
-| m | SpaceValue | Margin (all sides) |
-| mx | SpaceValue | Margin left + right |
-| my | SpaceValue | Margin top + bottom |
-| mt | SpaceValue | Margin top |
-| mr | SpaceValue | Margin right |
-| mb | SpaceValue | Margin bottom |
-| ml | SpaceValue | Margin left |
+| Prop      | Type                                                                       | Description         |
+| --------- | -------------------------------------------------------------------------- | ------------------- |
+| width     | string                                                                     | Element width       |
+| height    | string                                                                     | Element height      |
+| minWidth  | string                                                                     | Minimum width       |
+| minHeight | string                                                                     | Minimum height      |
+| maxWidth  | string                                                                     | Maximum width       |
+| maxHeight | string                                                                     | Maximum height      |
+| position  | "relative" \| "absolute" \| "fixed" \| "sticky"                            | CSS position        |
+| top       | string                                                                     | Top offset          |
+| right     | string                                                                     | Right offset        |
+| bottom    | string                                                                     | Bottom offset       |
+| left      | string                                                                     | Left offset         |
+| zIndex    | number                                                                     | Stack order         |
+| display   | "flex" \| "block" \| "inline" \| "inline-block" \| "grid" \| "inline-flex" | Display mode        |
+| overflow  | "hidden" \| "auto"                                                         | Overflow behavior   |
+| m         | SpaceValue                                                                 | Margin (all sides)  |
+| mx        | SpaceValue                                                                 | Margin left + right |
+| my        | SpaceValue                                                                 | Margin top + bottom |
+| mt        | SpaceValue                                                                 | Margin top          |
+| mr        | SpaceValue                                                                 | Margin right        |
+| mb        | SpaceValue                                                                 | Margin bottom       |
+| ml        | SpaceValue                                                                 | Margin left         |
 
 ### Visual
 
-| Prop | Type | Description |
-|------|------|-------------|
-| bg | ColorValue | Background color (token) |
-| color | ColorValue | Text/foreground color (token) |
-| opacity | number | Opacity (0–1) |
-| border | string | Border shorthand (e.g. "1px solid neutral-200" — color tokens are resolved) |
-| borderColor | ColorValue | Border color (token, e.g. "neutral-200", "primary-500") |
-| borderTop | string | Top border shorthand (color tokens resolved) |
-| borderRight | string | Right border shorthand (color tokens resolved) |
-| borderBottom | string | Bottom border shorthand (color tokens resolved) |
-| borderLeft | string | Left border shorthand (color tokens resolved) |
-| borderWidth | string | Border width (raw CSS, e.g. "1px", "2px 0") |
-| shadow | ShadowValue | Shadow token |
-| cursor | "pointer" \| "default" \| "text" \| "not-allowed" | Cursor style |
-| pointerEvents | "none" \| "auto" | Pointer events |
-| transform | string | CSS transform |
-| transition | string | CSS transition |
-| r | RadiusValue | Border radius (all corners) |
-| rt | RadiusValue | Border radius top |
-| rb | RadiusValue | Border radius bottom |
-| rl | RadiusValue | Border radius left |
-| rr | RadiusValue | Border radius right |
-| rtl | RadiusValue | Border radius top-left |
-| rtr | RadiusValue | Border radius top-right |
-| rbr | RadiusValue | Border radius bottom-right |
-| rbl | RadiusValue | Border radius bottom-left |
+| Prop          | Type                                              | Description                                                                 |
+| ------------- | ------------------------------------------------- | --------------------------------------------------------------------------- |
+| bg            | ColorValue                                        | Background color (token)                                                    |
+| color         | ColorValue                                        | Text/foreground color (token)                                               |
+| opacity       | number                                            | Opacity (0–1)                                                               |
+| border        | string                                            | Border shorthand (e.g. "1px solid neutral-200" — color tokens are resolved) |
+| borderColor   | ColorValue                                        | Border color (token, e.g. "neutral-200", "primary-500")                     |
+| borderTop     | string                                            | Top border shorthand (color tokens resolved)                                |
+| borderRight   | string                                            | Right border shorthand (color tokens resolved)                              |
+| borderBottom  | string                                            | Bottom border shorthand (color tokens resolved)                             |
+| borderLeft    | string                                            | Left border shorthand (color tokens resolved)                               |
+| borderWidth   | string                                            | Border width (raw CSS, e.g. "1px", "2px 0")                                 |
+| shadow        | ShadowValue                                       | Shadow token                                                                |
+| cursor        | "pointer" \| "default" \| "text" \| "not-allowed" | Cursor style                                                                |
+| pointerEvents | "none" \| "auto"                                  | Pointer events                                                              |
+| transform     | string                                            | CSS transform                                                               |
+| transition    | string                                            | CSS transition                                                              |
+| r             | RadiusValue                                       | Border radius (all corners)                                                 |
+| rt            | RadiusValue                                       | Border radius top                                                           |
+| rb            | RadiusValue                                       | Border radius bottom                                                        |
+| rl            | RadiusValue                                       | Border radius left                                                          |
+| rr            | RadiusValue                                       | Border radius right                                                         |
+| rtl           | RadiusValue                                       | Border radius top-left                                                      |
+| rtr           | RadiusValue                                       | Border radius top-right                                                     |
+| rbr           | RadiusValue                                       | Border radius bottom-right                                                  |
+| rbl           | RadiusValue                                       | Border radius bottom-left                                                   |
 
 ### Flex (Container)
 
-| Prop | Type | Description |
-|------|------|-------------|
-| direction | "row" \| "row-reverse" \| "column" \| "column-reverse" | Flex direction |
-| ax | "start" \| "center" \| "end" \| "between" \| "around" \| "even" \| "stretch" | Main-axis alignment |
-| ay | "start" \| "center" \| "end" \| "between" \| "around" \| "even" \| "stretch" | Cross-axis alignment |
-| wrap | boolean | Enable flex wrap |
-| gap | SpaceValue | Gap between children (token) |
-| p | SpaceValue | Padding (all sides) |
-| px | SpaceValue | Padding left + right |
-| py | SpaceValue | Padding top + bottom |
-| pt | SpaceValue | Padding top |
-| pr | SpaceValue | Padding right |
-| pb | SpaceValue | Padding bottom |
-| pl | SpaceValue | Padding left |
+| Prop      | Type                                                                         | Description                  |
+| --------- | ---------------------------------------------------------------------------- | ---------------------------- |
+| direction | "row" \| "row-reverse" \| "column" \| "column-reverse"                       | Flex direction               |
+| ax        | "start" \| "center" \| "end" \| "between" \| "around" \| "even" \| "stretch" | Main-axis alignment          |
+| ay        | "start" \| "center" \| "end" \| "between" \| "around" \| "even" \| "stretch" | Cross-axis alignment         |
+| wrap      | boolean                                                                      | Enable flex wrap             |
+| gap       | SpaceValue                                                                   | Gap between children (token) |
+| p         | SpaceValue                                                                   | Padding (all sides)          |
+| px        | SpaceValue                                                                   | Padding left + right         |
+| py        | SpaceValue                                                                   | Padding top + bottom         |
+| pt        | SpaceValue                                                                   | Padding top                  |
+| pr        | SpaceValue                                                                   | Padding right                |
+| pb        | SpaceValue                                                                   | Padding bottom               |
+| pl        | SpaceValue                                                                   | Padding left                 |
 
 ### Typography
 
-| Prop | Type | Description |
-|------|------|-------------|
-| textAlign | "left" \| "center" \| "right" \| "justify" | Text alignment |
-| fontFamily | FontFamilyValue | Font family token |
-| fontWeight | FontWeightValue \| "light" \| "normal" \| "medium" \| "bold" \| "bolder" | Font weight |
-| fontSize | FontSizeValue | Font size token |
-| lineHeight | LineHeightValue | Line height token |
-| letterSpacing | LetterSpacingValue | Letter spacing token |
-| textDecoration | "underline" \| "line-through" \| "overline" \| "none" | Text decoration |
-| textTransform | "uppercase" \| "lowercase" \| "capitalize" \| "none" | Text transform |
+| Prop           | Type                                                                     | Description          |
+| -------------- | ------------------------------------------------------------------------ | -------------------- |
+| textAlign      | "left" \| "center" \| "right" \| "justify"                               | Text alignment       |
+| fontFamily     | FontFamilyValue                                                          | Font family token    |
+| fontWeight     | FontWeightValue \| "light" \| "normal" \| "medium" \| "bold" \| "bolder" | Font weight          |
+| fontSize       | FontSizeValue                                                            | Font size token      |
+| lineHeight     | LineHeightValue                                                          | Line height token    |
+| letterSpacing  | LetterSpacingValue                                                       | Letter spacing token |
+| textDecoration | "underline" \| "line-through" \| "overline" \| "none"                    | Text decoration      |
+| textTransform  | "uppercase" \| "lowercase" \| "capitalize" \| "none"                     | Text transform       |
 
 **Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, `fontSize: '500'` (16px) and `fontWeight: '500'` (normal) are the inherited defaults — omit them.
 
@@ -340,19 +344,19 @@ body (400), label (300 + medium), footnote (200 + neutral-400), subheading (500 
 
 ### State
 
-| Prop | Type | Description |
-|------|------|-------------|
-| hoverProps | Partial\<DesignSystemProps\> | Styles on :hover |
-| activeProps | Partial\<DesignSystemProps\> | Styles on :active |
-| focusProps | Partial\<DesignSystemProps\> | Styles on :focus |
+| Prop          | Type                         | Description          |
+| ------------- | ---------------------------- | -------------------- |
+| hoverProps    | Partial\<DesignSystemProps\> | Styles on :hover     |
+| activeProps   | Partial\<DesignSystemProps\> | Styles on :active    |
+| focusProps    | Partial\<DesignSystemProps\> | Styles on :focus     |
 | disabledProps | Partial\<DesignSystemProps\> | Styles when disabled |
 
 ### Additional
 
-| Prop | Type | Description |
-|------|------|-------------|
-| styles | Record\<string, string \| number\> | Inline CSS overrides (raw values allowed here) |
-| onClick | ActionToken | Event handler (see dynamic logic) |
+| Prop    | Type                               | Description                                    |
+| ------- | ---------------------------------- | ---------------------------------------------- |
+| styles  | Record\<string, string \| number\> | Inline CSS overrides (raw values allowed here) |
+| onClick | ActionToken                        | Event handler (see dynamic logic)              |
 
 ---
 
@@ -403,174 +407,194 @@ space: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000
 Available data models for $query and store data:
 
 AgentConfig extends Ad4mModel:
-  Fields:
-  - currentTemplateId: string = 'we' [we://current_template]
-  - currentThemeId: string = 'default' [we://current_theme]
+Fields:
+
+- currentTemplateId: string = 'we' [we://current_template]
+- currentThemeId: string = 'default' [we://current_theme]
   Relations:
-  - installedTemplates: HasMany → Template [we://installed_template]
-  - installedThemes: HasMany → Theme [we://installed_theme]
+- installedTemplates: HasMany → Template [we://installed_template]
+- installedThemes: HasMany → Theme [we://installed_theme]
 
 AudioBlock extends WeNode:
-  Fields:
-  - title: string (required) [we://title]
-  - artist: string [we://artist]
-  - audioUrl: string (required) [we://audio_url]
-  - duration: number [we://duration]
-  - albumArt: string [we://album_art]
-  - version: number [we://version]
+Fields:
+
+- title: string (required) [we://title]
+- artist: string [we://artist]
+- audioUrl: string (required) [we://audio_url]
+- duration: number [we://duration]
+- albumArt: string [we://album_art]
+- version: number [we://version]
 
 CalloutBlock extends WeNode:
-  Fields:
-  - text: string [we://text]
-  - variant: string = info [we://variant]
-  - icon: string [we://icon]
-  - version: number [we://version]
+Fields:
+
+- text: string [we://text]
+- variant: string = info [we://variant]
+- icon: string [we://icon]
+- version: number [we://version]
 
 CodeBlock extends WeNode:
-  Fields:
-  - code: string (required) [we://code]
-  - language: string [we://language]
-  - title: string [we://title]
-  - version: number [we://version]
+Fields:
+
+- code: string (required) [we://code]
+- language: string [we://language]
+- title: string [we://title]
+- version: number [we://version]
 
 CollectionBlock extends WeNode:
-  Fields:
-  - display: string [we://display]
-  - direction: string [we://direction]
-  - format: string [we://format]
-  - indent: number [we://indent]
-  - columns: number [we://columns]
-  - gap: string [we://gap]
-  - version: number [we://version]
+Fields:
+
+- display: string [we://display]
+- direction: string [we://direction]
+- format: string [we://format]
+- indent: number [we://indent]
+- columns: number [we://columns]
+- gap: string [we://gap]
+- version: number [we://version]
   Relations:
-  - children: HasMany [we://children]
+- children: HasMany [we://children]
 
 DividerBlock extends WeNode:
-  Fields:
-  - style: string = solid [we://style]
-  - version: number [we://version]
+Fields:
+
+- style: string = solid [we://style]
+- version: number [we://version]
 
 EmbedBlock extends WeNode:
-  Fields:
-  - url: string [we://url]
-  - target: string [we://target]
-  - targetType: string [we://target_type]
-  - displayMode: string = card [we://display_mode]
-  - version: number [we://version]
+Fields:
+
+- url: string [we://url]
+- target: string [we://target]
+- targetType: string [we://target_type]
+- displayMode: string = card [we://display_mode]
+- version: number [we://version]
 
 EventBlock extends WeNode:
-  Fields:
-  - title: string (required) [we://title]
-  - description: string [we://description]
-  - startDate: string (required) [we://start_date]
-  - endDate: string [we://end_date]
-  - location: string [we://location]
-  - allDay: boolean = false [we://all_day]
-  - version: number [we://version]
+Fields:
+
+- title: string (required) [we://title]
+- description: string [we://description]
+- startDate: string (required) [we://start_date]
+- endDate: string [we://end_date]
+- location: string [we://location]
+- allDay: boolean = false [we://all_day]
+- version: number [we://version]
 
 FileBlock extends WeNode:
-  Fields:
-  - name: string (required) [we://name]
-  - url: string (required) [we://url]
-  - mimeType: string [we://mime_type]
-  - size: number [we://size]
-  - version: number [we://version]
+Fields:
+
+- name: string (required) [we://name]
+- url: string (required) [we://url]
+- mimeType: string [we://mime_type]
+- size: number [we://size]
+- version: number [we://version]
 
 ImageBlock extends WeNode:
-  Fields:
-  - src: string (required) [we://src]
-  - altText: string [we://altText]
-  - width: number [we://width]
-  - height: number [we://height]
-  - version: number [we://version]
+Fields:
+
+- src: string (required) [we://src]
+- altText: string [we://altText]
+- width: number [we://width]
+- height: number [we://height]
+- version: number [we://version]
 
 LinkBlock extends WeNode:
-  Fields:
-  - url: string (required) [we://url]
-  - title: string [we://title]
-  - description: string [we://description]
-  - thumbnail: string [we://thumbnail]
-  - version: number [we://version]
+Fields:
+
+- url: string (required) [we://url]
+- title: string [we://title]
+- description: string [we://description]
+- thumbnail: string [we://thumbnail]
+- version: number [we://version]
 
 LocationBlock extends WeNode:
-  Fields:
-  - name: string [we://name]
-  - latitude: number (required) [we://latitude]
-  - longitude: number (required) [we://longitude]
-  - address: string [we://address]
-  - version: number [we://version]
+Fields:
+
+- name: string [we://name]
+- latitude: number (required) [we://latitude]
+- longitude: number (required) [we://longitude]
+- address: string [we://address]
+- version: number [we://version]
 
 Space extends WeNode:
-  Fields:
-  - uuid: string [we://has_uuid]
-  - url: string [we://has_url]
-  - name: string (required) [we://has_name]
-  - description: string (required) [we://has_description]
-  - visibility: string [we://has_visibility]
-  - image: string | FileData [we://has_image]
-  - thumbnail: string | FileData [we://has_thumbnail]
+Fields:
+
+- uuid: string [we://has_uuid]
+- url: string [we://has_url]
+- name: string (required) [we://has_name]
+- description: string (required) [we://has_description]
+- visibility: string [we://has_visibility]
+- image: string | FileData [we://has_image]
+- thumbnail: string | FileData [we://has_thumbnail]
   Relations:
-  - locations: HasMany [we://has_location]
+- locations: HasMany [we://has_location]
 
 TagBlock extends WeNode:
-  Fields:
-  - name: string (required) [we://name]
-  - color: string [we://color]
-  - version: number [we://version]
+Fields:
+
+- name: string (required) [we://name]
+- color: string [we://color]
+- version: number [we://version]
 
 TaskBlock extends WeNode:
-  Fields:
-  - title: string (required) [we://title]
-  - description: string [we://description]
-  - status: string = todo [we://status]
-  - priority: string = medium [we://priority]
-  - dueDate: string [we://due_date]
-  - assignee: string [we://assignee]
-  - version: number [we://version]
+Fields:
+
+- title: string (required) [we://title]
+- description: string [we://description]
+- status: string = todo [we://status]
+- priority: string = medium [we://priority]
+- dueDate: string [we://due_date]
+- assignee: string [we://assignee]
+- version: number [we://version]
 
 Template extends WeNode:
-  Fields:
-  - name: string [we://name]
-  - origin: string [we://origin]
-  - version: number = 1 [we://version]
-  - schema: Record<string, unknown> [we://template_schema]
+Fields:
+
+- name: string [we://name]
+- origin: string [we://origin]
+- version: number = 1 [we://version]
+- schema: Record<string, unknown> [we://template_schema]
 
 TextBlock extends WeNode:
-  Fields:
-  - type: string [we://type]
-  - direction: string [we://direction]
-  - format: string [we://format]
-  - indent: number [we://indent]
-  - textFormat: number [we://textFormat]
-  - textStyle: string [we://textStyle]
-  - listType: string [we://listType]
-  - start: number [we://start]
-  - tag: string [we://tag]
-  - text: string [we://text]
-  - version: number [we://version]
+Fields:
+
+- type: string [we://type]
+- direction: string [we://direction]
+- format: string [we://format]
+- indent: number [we://indent]
+- textFormat: number [we://textFormat]
+- textStyle: string [we://textStyle]
+- listType: string [we://listType]
+- start: number [we://start]
+- tag: string [we://tag]
+- text: string [we://text]
+- version: number [we://version]
 
 Theme extends WeNode:
-  Fields:
-  - name: string [we://name]
-  - icon: string [we://icon]
-  - origin: string [we://origin]
-  - version: number = 1 [we://version]
-  - css: string [we://stylesheet]
-  - overrides: Record<string, unknown> [we://token_overrides]
+Fields:
+
+- name: string [we://name]
+- icon: string [we://icon]
+- origin: string [we://origin]
+- version: number = 1 [we://version]
+- css: string [we://stylesheet]
+- overrides: Record<string, unknown> [we://token_overrides]
 
 VideoBlock extends WeNode:
-  Fields:
-  - title: string [we://title]
-  - url: string (required) [we://url]
-  - duration: number [we://duration]
-  - thumbnail: string [we://thumbnail]
-  - provider: string [we://provider]
-  - version: number [we://version]
+Fields:
+
+- title: string [we://title]
+- url: string (required) [we://url]
+- duration: number [we://duration]
+- thumbnail: string [we://thumbnail]
+- provider: string [we://provider]
+- version: number [we://version]
 
 WeNode extends Ad4mModel:
-  Relations:
-  - comments: HasMany [we://has_comments]
-  - reactions: HasMany [we://has_reactions]
+Relations:
+
+- comments: HasMany [we://has_comments]
+- reactions: HasMany [we://has_reactions]
 
 ---
 
@@ -581,6 +605,7 @@ Access state with $store and call actions with $action.
 For ephemeral/form state, use $localState/$local/$setLocal instead of stores (see Dynamic Logic).
 
 AdamStore:
+
 - State:
   - loading: boolean
   - adamClient: Ad4mClient | undefined
@@ -591,12 +616,14 @@ AdamStore:
   - addNewSpace(space: Space): adds a new space
 
 RouteStore:
+
 - State:
   - currentPath: string (the current route path)
 - Actions:
   - navigate(to: string, options?): navigates to a route
 
 ThemeStore:
+
 - State:
   - themes: array of ThemeWithId objects
   - currentTheme: ThemeWithId (the active theme)
@@ -605,6 +632,7 @@ ThemeStore:
   - setCurrentTheme(theme: ThemeWithId): sets the active theme
 
 TemplateStore:
+
 - State:
   - templates: array of TemplateSchema objects
   - currentTemplate: TemplateSchema (the active template)
@@ -615,6 +643,7 @@ TemplateStore:
   - saveTemplate(name: string): saves the current template
 
 SpaceStore:
+
 - State:
   - spaceId: string (current space id)
   - perspective: PerspectiveProxy | null
@@ -627,6 +656,7 @@ SpaceStore:
   - getPosts(perspective: PerspectiveProxy): loads posts for a space
 
 ModalStore:
+
 - State:
   - createSpaceModalOpen: boolean (whether the create space modal is open)
 - Actions:
@@ -634,6 +664,7 @@ ModalStore:
   - closeModal(modal: ModalName): closes a modal
 
 AiStore:
+
 - State:
   - models: array of Model objects
   - tasks: array of AITask objects
@@ -654,46 +685,46 @@ Example: { "$action": "routeStore.navigate", "args": ["/home"] }
 
 Iterating over store data:
 {
-  "type": "$each",
+"type": "$each",
   "props": { "items": { "$store": "adamStore.mySpaces" }, "as": "space" },
-  "children": [
-    {
-      "type": "CircleButton",
-      "props": {
-        "label": "$space.name",
+"children": [
+{
+"type": "CircleButton",
+"props": {
+"label": "$space.name",
         "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$space.uuid"] }] }
-      }
-    }
-  ]
+}
+}
+]
 }
 
 Conditional rendering from store:
 {
-  "type": "$if",
+"type": "$if",
   "props": {
     "condition": { "$eq": [{ "$store": "routeStore.currentPath" }, "/"] },
-    "then": { "type": "we-text", "children": ["Home"] },
-    "else": { "type": "we-text", "children": ["Not home"] }
-  }
+"then": { "type": "we-text", "children": ["Home"] },
+"else": { "type": "we-text", "children": ["Not home"] }
+}
 }
 
 Deriving options from store:
 {
-  "$map": {
+"$map": {
     "items": { "$store": "templateStore.templates" },
-    "select": { "name": "$item.meta.name", "icon": "$item.meta.icon" }
-  }
+"select": { "name": "$item.meta.name", "icon": "$item.meta.icon" }
+}
 }
 
 Querying model data:
 {
-  "$query": { "model": "TaskBlock", "where": { "status": "todo" } }
+"$query": { "model": "TaskBlock", "where": { "status": "todo" } }
 }
 
 Local state (form input binding):
 {
-  "type": "Column",
-  "$localState": {
+"type": "Column",
+"$localState": {
     "name": { "type": "string", "initial": "" },
     "loading": { "type": "boolean", "initial": false }
   },
@@ -702,19 +733,19 @@ Local state (form input binding):
       "type": "we-input",
       "props": {
         "value": { "$local": "name" },
-        "onInput": { "$setLocal": "name", "from": "$event.target.value" }
-      }
-    },
-    {
-      "type": "we-button",
-      "props": {
-        "text": "Submit",
-        "loading": { "$local": "loading" },
+"onInput": { "$setLocal": "name", "from": "$event.target.value" }
+}
+},
+{
+"type": "we-button",
+"props": {
+"text": "Submit",
+"loading": { "$local": "loading" },
         "disabled": { "$not": { "$local": "name" } },
         "onClick": { "$action": "myStore.submit", "args": [{ "$local": "name" }] }
-      }
-    }
-  ]
+}
+}
+]
 }
 
 ---
@@ -727,33 +758,33 @@ Routes can be nested to support sub-pages and layouts.
 
 Route objects follow the same structure as schema nodes, with an additional "path" property.
 
-- Use "path: '*'" or "path: '/*'" for catch-all/not-found routes.
+- Use "path: '_'" or "path: '/_'" for catch-all/not-found routes.
 - Use ":paramName" for dynamic route parameters (e.g. "/space/:spaceId").
 - Use nested "routes" arrays for sub-pages and layouts.
 - Use { "type": "$routes" } in children to indicate where nested routes should render.
 
 Example:
 {
-  "routes": [
-    { "path": "*", "type": "Column", "props": { "ax": "center", "p": "500" }, "children": [{ "type": "we-text", "children": ["Page not found"] }] },
-    { "path": "/", "type": "Column", "props": { "ax": "center", "p": "500" }, "children": [{ "type": "we-text", "children": ["Home page"] }] },
-    {
-      "path": "/space/:spaceId",
-      "type": "Row",
-      "children": [{ "type": "$routes" }],
-      "routes": [
-        { "path": "/*", "type": "we-text", "children": ["Space page not found"] },
-        { "path": "/", "type": "we-text", "children": ["About sub-page"] },
-        { "path": "/posts", "type": "Column", "children": [{ "type": "$routes" }],
-          "routes": [
-            { "path": "/*", "type": "we-text", "children": ["Post not found"] },
-            { "path": "/", "type": "we-text", "children": ["No posts selected"] },
-            { "path": "/1", "type": "we-text", "children": ["Post 1 page"] }
-          ]
-        }
-      ]
-    }
-  ]
+"routes": [
+{ "path": "_", "type": "Column", "props": { "ax": "center", "p": "500" }, "children": [{ "type": "we-text", "children": ["Page not found"] }] },
+{ "path": "/", "type": "Column", "props": { "ax": "center", "p": "500" }, "children": [{ "type": "we-text", "children": ["Home page"] }] },
+{
+"path": "/space/:spaceId",
+"type": "Row",
+"children": [{ "type": "$routes" }],
+"routes": [
+{ "path": "/_", "type": "we-text", "children": ["Space page not found"] },
+{ "path": "/", "type": "we-text", "children": ["About sub-page"] },
+{ "path": "/posts", "type": "Column", "children": [{ "type": "$routes" }],
+"routes": [
+{ "path": "/\*", "type": "we-text", "children": ["Post not found"] },
+{ "path": "/", "type": "we-text", "children": ["No posts selected"] },
+{ "path": "/1", "type": "we-text", "children": ["Post 1 page"] }
+]
+}
+]
+}
+]
 }
 
 ---
@@ -780,6 +811,7 @@ Most @we/primitives inherit all Design System Props documented above (layout, vi
 Some layout-only primitives (we-avatar, we-icon, we-image, we-spinner, etc.) only accept Layout props — see the Design System Props section for the full list.
 
 Native HTML elements (lowercase tags render directly without registry entries):
+
 - Layout: div, section, article, aside, main, nav, header, footer
 - Text: p, span, h1-h6, pre, code, blockquote
 - Lists: ul, ol, li

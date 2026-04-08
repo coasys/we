@@ -6,15 +6,15 @@ Rules and patterns for building and maintaining `@we/primitives` components.
 
 Components use **standard DOM event names** and put the new value in the event's `detail` property.
 
-| Event Name | Use For                                     | `detail` Payload          |
-| ---------- | ------------------------------------------- | ------------------------- |
-| `change`   | Value committed (blur, selection, toggle)    | New value                 |
-| `input`    | Value updating while typing                 | Current value             |
-| `focus`    | Element received focus                      | _(none)_                  |
-| `blur`     | Element lost focus                          | _(none)_                  |
-| `keydown`  | Key pressed                                 | `{ key, code }`           |
-| `close`    | Dismissible element closed/dismissed        | _(none)_                  |
-| `click`    | Element clicked                             | _(contextual)_            |
+| Event Name | Use For                                   | `detail` Payload |
+| ---------- | ----------------------------------------- | ---------------- |
+| `change`   | Value committed (blur, selection, toggle) | New value        |
+| `input`    | Value updating while typing               | Current value    |
+| `focus`    | Element received focus                    | _(none)_         |
+| `blur`     | Element lost focus                        | _(none)_         |
+| `keydown`  | Key pressed                               | `{ key, code }`  |
+| `close`    | Dismissible element closed/dismissed      | _(none)_         |
+| `click`    | Element clicked                           | _(contextual)_   |
 
 **Rules:**
 
@@ -28,15 +28,15 @@ Components use **standard DOM event names** and put the new value in the event's
 
 Standard event names are critical for framework compatibility. All major frameworks map handler props to DOM event listeners:
 
-| Handler prop  | DOM event | Value access    |
-| ------------- | --------- | --------------- |
-| `onChange`    | `change`  | `event.detail`  |
-| `onInput`     | `input`   | `event.detail`  |
-| `onFocus`     | `focus`   | —               |
-| `onBlur`      | `blur`    | —               |
-| `onClick`     | `click`   | `event.detail`  |
-| `onClose`     | `close`   | —               |
-| `onKeyDown`   | `keydown` | `event.detail`  |
+| Handler prop | DOM event | Value access   |
+| ------------ | --------- | -------------- |
+| `onChange`   | `change`  | `event.detail` |
+| `onInput`    | `input`   | `event.detail` |
+| `onFocus`    | `focus`   | —              |
+| `onBlur`     | `blur`    | —              |
+| `onClick`    | `click`   | `event.detail` |
+| `onClose`    | `close`   | —              |
+| `onKeyDown`  | `keydown` | `event.detail` |
 
 ```ts
 // Dispatch with standard name + detail payload
