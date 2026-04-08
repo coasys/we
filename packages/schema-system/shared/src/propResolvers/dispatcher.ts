@@ -11,6 +11,7 @@ import {
 } from './comparisons';
 import { resolveConcatProp } from './concat';
 import { resolveIfProp } from './conditional';
+import { resolveLocalProp, resolveSetLocalProp } from './local';
 import { resolveMapProp } from './map';
 import { resolvePickProp } from './pick';
 import { resolveStoreProp } from './store';
@@ -43,6 +44,9 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
   // Handle token objects (objects with $ keys)
   if (hasAnyToken(value)) {
     if (hasToken(value, '$store', 'string')) return resolveStoreProp(value, stores, memo);
+    if (hasToken(value, '$local', 'string')) return resolveLocalProp(value as { $local: string }, context);
+    if (hasToken(value, '$setLocal', 'string'))
+      return resolveSetLocalProp(value as { $setLocal: string; from: string }, context);
     if (hasToken(value, '$action', 'string')) return resolveActionProp(value, context, stores, memo, resolveProp);
     if (hasToken(value, '$concat', 'array'))
       return resolveConcatProp((value as { $concat: unknown[] })['$concat'], stores, context, memo, resolveProp);
