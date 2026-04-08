@@ -227,6 +227,7 @@ export function AdamStoreProvider(props: ParentProps) {
   }
 
   async function unlockAgent(password: string) {
+    console.log('AdamStore: Unlocking agent', password);
     const client = adamClient();
     if (!client) {
       console.error('No AD4M client available');
