@@ -83,10 +83,43 @@ const zQueryToken = z
 
 const zLocalToken = z.object({ $local: z.string().min(1) }).strict();
 const zSetLocalToken = z.object({ $setLocal: z.string().min(1), from: z.string().min(1) }).strict();
+const zErrorToken = z.object({ $error: z.string().min(1) }).strict();
+const zValidToken = z.object({ $valid: z.string().min(1) }).strict();
+const zTouchedToken = z.object({ $touched: z.string().min(1) }).strict();
+const zFormValidToken = z.object({ $formValid: z.string().min(1) }).strict();
+const zTouchToken = z.object({ $touch: z.string().min(1) }).strict();
+const zResetLocalToken = z.object({ $resetLocal: z.string().min(1) }).strict();
+
+// --- Validation rule Zod schemas ---
+const zRequiredRule = z.object({ rule: z.literal('required'), message: z.string().optional() }).strict();
+const zMinLengthRule = z
+  .object({ rule: z.literal('minLength'), value: z.number().int().positive(), message: z.string().optional() })
+  .strict();
+const zMaxLengthRule = z
+  .object({ rule: z.literal('maxLength'), value: z.number().int().positive(), message: z.string().optional() })
+  .strict();
+const zMinRule = z.object({ rule: z.literal('min'), value: z.number(), message: z.string().optional() }).strict();
+const zMaxRule = z.object({ rule: z.literal('max'), value: z.number(), message: z.string().optional() }).strict();
+const zPatternRule = z
+  .object({ rule: z.literal('pattern'), value: z.string().min(1), message: z.string().optional() })
+  .strict();
+const zMatchRule = z
+  .object({ rule: z.literal('match'), field: z.string().min(1), message: z.string().optional() })
+  .strict();
+const zValidationRule = z.union([
+  zRequiredRule,
+  zMinLengthRule,
+  zMaxLengthRule,
+  zMinRule,
+  zMaxRule,
+  zPatternRule,
+  zMatchRule,
+]);
 
 const zLocalStateField = z.object({
   type: z.enum(['string', 'boolean', 'number']),
   initial: z.union([z.string(), z.boolean(), z.number()]),
+  validate: z.array(zValidationRule).optional(),
 });
 const zLocalStateDeclaration = z.record(z.string(), zLocalStateField);
 
@@ -151,6 +184,12 @@ export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
   zQueryToken,
   zLocalToken,
   zSetLocalToken,
+  zErrorToken,
+  zValidToken,
+  zTouchedToken,
+  zFormValidToken,
+  zTouchToken,
+  zResetLocalToken,
   // Fallback: plain objects/arrays that aren't tokens.
   // Rejects objects with $-prefixed keys at the parse level (not via superRefine)
   // so that the union properly rejects malformed tokens.
