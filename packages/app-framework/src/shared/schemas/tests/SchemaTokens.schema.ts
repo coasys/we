@@ -12,9 +12,10 @@
  *   4. Control Flow    — $if, $each (flat, nested, empty)
  *   5. Data Transforms — $map (array, object), $pick (standalone, chained)
  *   6. Queries         — $query (one-shot, subscription, filtering)
- *   7. Local State     — $localState, $local, $setLocal
- *   8. Rendering       — children tokens, WC reactive props, composition, fragments
- *   9. Theming         — parametric overrides, named themes
+ *   7. Local State      — $localState, $local, $setLocal
+ *   8. Form Validation  — $error, $valid, $touched, $formValid, $touch, $resetLocal
+ *   9. Rendering        — children tokens, WC reactive props, composition, fragments
+ *  10. Theming          — parametric overrides, named themes
  *
  * Data source: testStore (SolidJS signals + lazy AD4M perspective)
  */
@@ -977,7 +978,496 @@ const localStateBasicTest: SchemaNode = {
 };
 
 // ---------------------------------------------------------------------------
-// 8. Rendering — children tokens, WC props, composition, fragments
+// 8. Form Validation — $error, $valid, $touched, $formValid, $touch, $resetLocal
+// ---------------------------------------------------------------------------
+
+/** Form validation: basic field errors, touch gating, $valid, $formValid */
+const formValidationBasicTest: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', p: '400', bg: 'neutral-0', r: '400', ax: 'start' },
+  $localState: {
+    username: {
+      type: 'string',
+      initial: '',
+      validate: [
+        { rule: 'required', message: 'Username is required' },
+        { rule: 'minLength', value: 3, message: 'At least 3 characters' },
+      ],
+    },
+    email: {
+      type: 'string',
+      initial: '',
+      validate: [{ rule: 'required' }, { rule: 'pattern', value: '^[^@]+@[^@]+$', message: 'Invalid email format' }],
+    },
+  },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', pb: '200' },
+      children: [
+        { type: 'we-text', props: { fontWeight: '600', color: 'primary-700' }, children: ['$error / $valid'] },
+        { type: 'we-text', props: { color: 'neutral-500' }, children: ['- Field validation with touch gating'] },
+      ],
+    },
+    // --- Username field with $error ---
+    interactiveLabel(
+      'Type < 3 chars and blur (click or tab outside input) — error appears. Type 3+ chars — error clears.',
+    ),
+    {
+      type: 'we-form-field',
+      props: {
+        label: 'Username',
+        error: { $error: 'username' },
+      },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            placeholder: 'Enter username...',
+            value: { $local: 'username' },
+            onInput: { $setLocal: 'username', from: '$event.detail' },
+            onBlur: { $touch: 'username' },
+          },
+        },
+      ],
+    },
+    // --- Email field with $error ---
+    interactiveLabel('Enter invalid email and blur — pattern error. Fix it — clears.'),
+    {
+      type: 'we-form-field',
+      props: {
+        label: 'Email',
+        error: { $error: 'email' },
+      },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            placeholder: 'Enter email...',
+            value: { $local: 'email' },
+            onInput: { $setLocal: 'email', from: '$event.detail' },
+            onBlur: { $touch: 'email' },
+          },
+        },
+      ],
+    },
+    // --- $valid indicators ---
+    interactiveLabel('$valid reflects real-time state (even before touch)'),
+    {
+      type: 'Row',
+      props: { gap: '400', ay: 'center' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-text', props: { color: 'neutral-400' }, children: ['username $valid:'] },
+            {
+              type: '$if',
+              props: {
+                condition: { $valid: 'username' },
+                then: { type: 'we-icon', props: { name: 'check-circle', color: 'success-600', size: 'xs' } },
+                else: { type: 'we-icon', props: { name: 'x-circle', color: 'danger-600', size: 'xs' } },
+              },
+            },
+          ],
+        },
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-text', props: { color: 'neutral-400' }, children: ['email $valid:'] },
+            {
+              type: '$if',
+              props: {
+                condition: { $valid: 'email' },
+                then: { type: 'we-icon', props: { name: 'check-circle', color: 'success-600', size: 'xs' } },
+                else: { type: 'we-icon', props: { name: 'x-circle', color: 'danger-600', size: 'xs' } },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    // --- $touched indicators ---
+    interactiveLabel('$touched turns true after blur'),
+    {
+      type: 'Row',
+      props: { gap: '400', ay: 'center' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-text', props: { color: 'neutral-400' }, children: ['username $touched:'] },
+            {
+              type: '$if',
+              props: {
+                condition: { $touched: 'username' },
+                then: { type: 'we-text', props: { color: 'success-600', fontWeight: '600' }, children: ['true'] },
+                else: { type: 'we-text', props: { color: 'neutral-400' }, children: ['false'] },
+              },
+            },
+          ],
+        },
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-text', props: { color: 'neutral-400' }, children: ['email $touched:'] },
+            {
+              type: '$if',
+              props: {
+                condition: { $touched: 'email' },
+                then: { type: 'we-text', props: { color: 'success-600', fontWeight: '600' }, children: ['true'] },
+                else: { type: 'we-text', props: { color: 'neutral-400' }, children: ['false'] },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    // --- $formValid: submit button ---
+    interactiveLabel('Button enables only when both fields pass validation'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            disabled: { $not: { $formValid: '$scope' } },
+            onClick: {
+              $action: 'testStore.setTypedText',
+              args: [{ $concat: [{ $local: 'username' }, ' / ', { $local: 'email' }] }],
+            },
+          },
+          children: ['Submit (disabled until valid)'],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $formValid: '$scope' },
+            then: { type: 'we-text', props: { color: 'success-600' }, children: ['Form valid ✓'] },
+            else: { type: 'we-text', props: { color: 'danger-600' }, children: ['Form invalid ✗'] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/** Form validation: $touch "$all", handler arrays, $resetLocal */
+const formValidationActionsTest: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', p: '400', bg: 'neutral-0', r: '400', ax: 'start' },
+  $localState: {
+    firstName: {
+      type: 'string',
+      initial: '',
+      validate: [{ rule: 'required' }],
+    },
+    lastName: {
+      type: 'string',
+      initial: '',
+      validate: [{ rule: 'required' }],
+    },
+  },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', pb: '200' },
+      children: [
+        { type: 'we-text', props: { fontWeight: '600', color: 'primary-700' }, children: ['$touch / $resetLocal'] },
+        { type: 'we-text', props: { color: 'neutral-500' }, children: ['- Touch all, reset, and handler arrays'] },
+      ],
+    },
+    // --- Two fields ---
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'start' },
+      children: [
+        {
+          type: 'we-form-field',
+          props: { label: 'First name', error: { $error: 'firstName' } },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                placeholder: 'First...',
+                value: { $local: 'firstName' },
+                onInput: { $setLocal: 'firstName', from: '$event.detail' },
+                onBlur: { $touch: 'firstName' },
+              },
+            },
+          ],
+        },
+        {
+          type: 'we-form-field',
+          props: { label: 'Last name', error: { $error: 'lastName' } },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                placeholder: 'Last...',
+                value: { $local: 'lastName' },
+                onInput: { $setLocal: 'lastName', from: '$event.detail' },
+                onBlur: { $touch: 'lastName' },
+              },
+            },
+          ],
+        },
+      ],
+    },
+    // --- $touch "$all" button ---
+    interactiveLabel('Click "Touch All" — both fields show errors (without blurring)'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'secondary',
+            onClick: { $touch: '$all' },
+          },
+          children: ['Touch All'],
+        },
+      ],
+    },
+    // --- Handler array: touch-all-then-submit pattern ---
+    interactiveLabel('Click "Submit" — touches all fields, then fires action only if valid'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            onClick: [
+              { $touch: '$all' },
+              {
+                $if: {
+                  condition: { $formValid: '$scope' },
+                  then: {
+                    $action: 'testStore.setTypedText',
+                    args: [{ $concat: [{ $local: 'firstName' }, ' ', { $local: 'lastName' }] }],
+                  },
+                },
+              },
+            ],
+          },
+          children: ['Submit (touch + guard)'],
+        },
+        { type: 'we-text', props: { color: 'neutral-400' }, children: ['typedText:'] },
+        { type: 'we-text', props: { fontWeight: '600' }, children: [{ $store: 'testStore.typedText' }] },
+      ],
+    },
+    // --- $resetLocal ---
+    interactiveLabel('Click "Reset" — clears values and touched state'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'secondary',
+            onClick: { $resetLocal: '$scope' },
+          },
+          children: ['Reset'],
+        },
+        // --- Handler array: submit then reset ---
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            disabled: { $not: { $formValid: '$scope' } },
+            onClick: [
+              {
+                $action: 'testStore.setTypedText',
+                args: [{ $concat: [{ $local: 'firstName' }, ' ', { $local: 'lastName' }] }],
+              },
+              { $resetLocal: '$scope' },
+            ],
+          },
+          children: ['Submit + Reset'],
+        },
+      ],
+    },
+  ],
+};
+
+/** Form validation: cross-field match rule (password confirmation) */
+const formValidationMatchTest: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', p: '400', bg: 'neutral-0', r: '400', ax: 'start' },
+  $localState: {
+    password: {
+      type: 'string',
+      initial: '',
+      validate: [
+        { rule: 'required' },
+        { rule: 'minLength', value: 8, message: 'Password must be at least 8 characters' },
+      ],
+    },
+    confirmPassword: {
+      type: 'string',
+      initial: '',
+      validate: [{ rule: 'required' }, { rule: 'match', field: 'password', message: 'Passwords must match' }],
+    },
+  },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', pb: '200' },
+      children: [
+        { type: 'we-text', props: { fontWeight: '600', color: 'primary-700' }, children: ['match rule'] },
+        { type: 'we-text', props: { color: 'neutral-500' }, children: ['- Cross-field password confirmation'] },
+      ],
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'Password', error: { $error: 'password' } },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            type: 'password',
+            placeholder: 'Enter password...',
+            value: { $local: 'password' },
+            onInput: { $setLocal: 'password', from: '$event.detail' },
+            onBlur: { $touch: 'password' },
+          },
+        },
+      ],
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'Confirm password', error: { $error: 'confirmPassword' } },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            type: 'password',
+            placeholder: 'Confirm password...',
+            value: { $local: 'confirmPassword' },
+            onInput: { $setLocal: 'confirmPassword', from: '$event.detail' },
+            onBlur: { $touch: 'confirmPassword' },
+          },
+        },
+      ],
+    },
+    interactiveLabel('Type different passwords, blur both — "Passwords must match" appears on confirm'),
+    interactiveLabel('Make them match — error clears reactively'),
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            disabled: { $not: { $formValid: '$scope' } },
+            onClick: [
+              { $touch: '$all' },
+              {
+                $if: {
+                  condition: { $formValid: '$scope' },
+                  then: { $action: 'testStore.setTypedText', args: ['Password set!'] },
+                },
+              },
+            ],
+          },
+          children: ['Set Password'],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $formValid: '$scope' },
+            then: { type: 'we-text', props: { color: 'success-600' }, children: ['Passwords match ✓'] },
+            else: { type: 'we-text', props: { color: 'danger-600' }, children: ['Form invalid ✗'] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/** Form validation: conditional styling based on touched + valid state */
+const formValidationStylingTest: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', p: '400', bg: 'neutral-0', r: '400', ax: 'start' },
+  $localState: {
+    age: {
+      type: 'number',
+      initial: 0,
+      validate: [
+        { rule: 'required' },
+        { rule: 'min', value: 18, message: 'Must be at least 18' },
+        { rule: 'max', value: 120, message: 'Must be at most 120' },
+      ],
+    },
+  },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', pb: '200' },
+      children: [
+        { type: 'we-text', props: { fontWeight: '600', color: 'primary-700' }, children: ['Conditional styling'] },
+        {
+          type: 'we-text',
+          props: { color: 'neutral-500' },
+          children: ['- min/max rules + $touched + $valid composition'],
+        },
+      ],
+    },
+    interactiveLabel('Background changes when touched + invalid: red; touched + valid: green'),
+    {
+      type: 'Column',
+      props: {
+        p: '300',
+        r: '300',
+        bg: {
+          $if: {
+            condition: { $touched: 'age' },
+            then: {
+              $if: {
+                condition: { $valid: 'age' },
+                then: 'success-50',
+                else: 'danger-50',
+              },
+            },
+            else: 'neutral-50',
+          },
+        },
+      },
+      children: [
+        {
+          type: 'we-form-field',
+          props: { label: 'Age (18–120)', error: { $error: 'age' } },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                type: 'number',
+                placeholder: 'Enter age...',
+                value: { $local: 'age' },
+                onInput: { $setLocal: 'age', from: '$event.detail' },
+                onBlur: { $touch: 'age' },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// 9. Rendering — children tokens, WC props, composition, fragments
 // ---------------------------------------------------------------------------
 
 const childrenTokenTest = section('Children tokens', 'Operator tokens resolved directly in children arrays', [
@@ -1165,7 +1655,7 @@ const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps 
 ]);
 
 // ---------------------------------------------------------------------------
-// 9. Theming — parametric, named
+// 10. Theming — parametric, named
 // ---------------------------------------------------------------------------
 
 const tokenThemeTest: SchemaNode = {
@@ -1313,6 +1803,12 @@ export const schemaTokensTemplate: TemplateSchema = {
 
         groupHeading('Local State'),
         localStateBasicTest,
+
+        groupHeading('Form Validation'),
+        formValidationBasicTest,
+        formValidationActionsTest,
+        formValidationMatchTest,
+        formValidationStylingTest,
 
         groupHeading('Rendering'),
         childrenTokenTest,

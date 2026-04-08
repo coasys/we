@@ -1,7 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { REACTIVE_ACCESSOR, resolveProp, resolveProps, splitProps } from '../src/propResolvers';
-import { extractFromPath, resolveLocalProp, resolveSetLocalProp } from '../src/propResolvers/local';
+import type { LocalFieldMeta } from '../src/propResolvers/local';
+import {
+  extractFromPath,
+  resolveErrorProp,
+  resolveFormValidProp,
+  resolveLocalProp,
+  resolveResetLocalProp,
+  resolveSetLocalProp,
+  resolveTouchedProp,
+  resolveTouchProp,
+  resolveValidProp,
+} from '../src/propResolvers/local';
 import { markReactive } from '../src/propResolvers/reactive';
 
 describe('propResolvers (combined)', () => {
@@ -106,6 +117,23 @@ describe('propResolvers (combined)', () => {
     const ctx = { val: false };
     const val = resolveProp({ $if: { condition: '$val', then: 'A', else: 'B' } }, stores, ctx);
     expect(val).toBe('B');
+  });
+
+  it('resolveIfProp standard path does not eagerly invoke $action handler', () => {
+    const handler = vi.fn();
+    const stores = { myStore: { submit: handler } };
+    const ctx = { isValid: true };
+    const schema = {
+      $if: {
+        condition: '$isValid',
+        then: { $action: 'myStore.submit', args: ['data'] },
+      },
+    };
+    // Resolving the $if should NOT call the action — it should return the handler function
+    const result = resolveProp(schema, stores, ctx);
+    expect(handler).not.toHaveBeenCalled();
+    // The result should be a reactive accessor wrapping the handler function
+    expect(typeof result).toBe('function');
   });
 
   it('routeStore.navigate with absolute path does not normalize', () => {
@@ -547,5 +575,251 @@ describe('$action arg unwrapping', () => {
     const fn = resolveProp(action, stores, {}) as () => void;
     fn();
     expect(method).toHaveBeenCalledWith(42, 'static');
+  });
+});
+
+// --- Validation token resolver tests ---
+
+function createMockMeta(overrides: Partial<LocalFieldMeta> = {}): LocalFieldMeta {
+  return {
+    initial: '',
+    rules: [],
+    touched: () => false,
+    setTouched: vi.fn(),
+    errors: () => [],
+    reset: vi.fn(),
+    ...overrides,
+  };
+}
+
+describe('$error resolver', () => {
+  it('returns empty string when not touched', () => {
+    const meta = createMockMeta({ errors: () => ['Required'], touched: () => false });
+    const context = { $localMeta: { name: meta } };
+    const result = resolveErrorProp({ $error: 'name' }, context);
+    expect(typeof result).toBe('function');
+    expect((result as () => unknown)()).toBe('');
+  });
+
+  it('returns first error when touched', () => {
+    const meta = createMockMeta({ errors: () => ['Required', 'Too short'], touched: () => true });
+    const context = { $localMeta: { name: meta } };
+    const result = resolveErrorProp({ $error: 'name' }, context);
+    expect((result as () => unknown)()).toBe('Required');
+  });
+
+  it('returns empty string when touched but no errors', () => {
+    const meta = createMockMeta({ errors: () => [], touched: () => true });
+    const context = { $localMeta: { name: meta } };
+    const result = resolveErrorProp({ $error: 'name' }, context);
+    expect((result as () => unknown)()).toBe('');
+  });
+
+  it('returns empty string and warns for unknown field', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const context = { $localMeta: {} };
+    const result = resolveErrorProp({ $error: 'missing' }, context);
+    expect(result).toBe('');
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('not found'));
+    spy.mockRestore();
+  });
+});
+
+describe('$valid resolver', () => {
+  it('returns true when no errors', () => {
+    const meta = createMockMeta({ errors: () => [] });
+    const context = { $localMeta: { name: meta } };
+    const result = resolveValidProp({ $valid: 'name' }, context);
+    expect((result as () => unknown)()).toBe(true);
+  });
+
+  it('returns false when there are errors (ignores touched)', () => {
+    const meta = createMockMeta({ errors: () => ['Required'], touched: () => false });
+    const context = { $localMeta: { name: meta } };
+    const result = resolveValidProp({ $valid: 'name' }, context);
+    expect((result as () => unknown)()).toBe(false);
+  });
+
+  it('returns true and warns for unknown field', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = resolveValidProp({ $valid: 'missing' }, { $localMeta: {} });
+    expect(result).toBe(true);
+    spy.mockRestore();
+  });
+});
+
+describe('$touched resolver', () => {
+  it('returns false when not touched', () => {
+    const meta = createMockMeta({ touched: () => false });
+    const context = { $localMeta: { name: meta } };
+    const result = resolveTouchedProp({ $touched: 'name' }, context);
+    expect((result as () => unknown)()).toBe(false);
+  });
+
+  it('returns true when touched', () => {
+    const meta = createMockMeta({ touched: () => true });
+    const context = { $localMeta: { name: meta } };
+    const result = resolveTouchedProp({ $touched: 'name' }, context);
+    expect((result as () => unknown)()).toBe(true);
+  });
+});
+
+describe('$formValid resolver', () => {
+  it('returns true when all scoped fields are valid', () => {
+    const meta1 = createMockMeta({ errors: () => [] });
+    const meta2 = createMockMeta({ errors: () => [] });
+    const context = {
+      $localMeta: { name: meta1, email: meta2 },
+      $localScopeFields: ['name', 'email'],
+    };
+    const result = resolveFormValidProp(context);
+    expect((result as () => unknown)()).toBe(true);
+  });
+
+  it('returns false when any scoped field has errors', () => {
+    const meta1 = createMockMeta({ errors: () => [] });
+    const meta2 = createMockMeta({ errors: () => ['Required'] });
+    const context = {
+      $localMeta: { name: meta1, email: meta2 },
+      $localScopeFields: ['name', 'email'],
+    };
+    const result = resolveFormValidProp(context);
+    expect((result as () => unknown)()).toBe(false);
+  });
+
+  it('ignores fields not in scope', () => {
+    const meta1 = createMockMeta({ errors: () => [] });
+    const meta2 = createMockMeta({ errors: () => ['Required'] });
+    const context = {
+      $localMeta: { name: meta1, email: meta2 },
+      $localScopeFields: ['name'], // email not in scope
+    };
+    const result = resolveFormValidProp(context);
+    expect((result as () => unknown)()).toBe(true);
+  });
+});
+
+describe('$touch resolver', () => {
+  it('creates a handler that marks a single field as touched', () => {
+    const setTouched = vi.fn();
+    const meta = createMockMeta({ setTouched });
+    const context = { $localMeta: { name: meta }, $localScopeFields: ['name'] };
+    const handler = resolveTouchProp({ $touch: 'name' }, context);
+    handler();
+    expect(setTouched).toHaveBeenCalledWith(true);
+  });
+
+  it('creates a handler that touches all scoped fields', () => {
+    const setTouched1 = vi.fn();
+    const setTouched2 = vi.fn();
+    const meta1 = createMockMeta({ setTouched: setTouched1 });
+    const meta2 = createMockMeta({ setTouched: setTouched2 });
+    const context = {
+      $localMeta: { name: meta1, email: meta2 },
+      $localScopeFields: ['name', 'email'],
+    };
+    const handler = resolveTouchProp({ $touch: '$all' }, context);
+    handler();
+    expect(setTouched1).toHaveBeenCalledWith(true);
+    expect(setTouched2).toHaveBeenCalledWith(true);
+  });
+
+  it('$all only touches scoped fields, not inherited', () => {
+    const parentTouch = vi.fn();
+    const childTouch = vi.fn();
+    const parentMeta = createMockMeta({ setTouched: parentTouch });
+    const childMeta = createMockMeta({ setTouched: childTouch });
+    const context = {
+      $localMeta: { parentField: parentMeta, childField: childMeta },
+      $localScopeFields: ['childField'], // only child in scope
+    };
+    const handler = resolveTouchProp({ $touch: '$all' }, context);
+    handler();
+    expect(childTouch).toHaveBeenCalledWith(true);
+    expect(parentTouch).not.toHaveBeenCalled();
+  });
+});
+
+describe('$resetLocal resolver', () => {
+  it('creates a handler that resets all scoped fields', () => {
+    const reset1 = vi.fn();
+    const reset2 = vi.fn();
+    const meta1 = createMockMeta({ reset: reset1 });
+    const meta2 = createMockMeta({ reset: reset2 });
+    const context = {
+      $localMeta: { name: meta1, email: meta2 },
+      $localScopeFields: ['name', 'email'],
+    };
+    const handler = resolveResetLocalProp(context);
+    handler();
+    expect(reset1).toHaveBeenCalled();
+    expect(reset2).toHaveBeenCalled();
+  });
+
+  it('only resets scoped fields, not inherited', () => {
+    const parentReset = vi.fn();
+    const childReset = vi.fn();
+    const parentMeta = createMockMeta({ reset: parentReset });
+    const childMeta = createMockMeta({ reset: childReset });
+    const context = {
+      $localMeta: { parentField: parentMeta, childField: childMeta },
+      $localScopeFields: ['childField'],
+    };
+    const handler = resolveResetLocalProp(context);
+    handler();
+    expect(childReset).toHaveBeenCalled();
+    expect(parentReset).not.toHaveBeenCalled();
+  });
+});
+
+describe('dispatcher integration — validation tokens', () => {
+  it('resolves $error through dispatcher', () => {
+    const meta = createMockMeta({ errors: () => ['Required'], touched: () => true });
+    const context = { $localMeta: { name: meta } };
+    const result = resolveProp({ $error: 'name' }, {}, context);
+    expect(typeof result).toBe('function');
+    expect((result as () => unknown)()).toBe('Required');
+  });
+
+  it('resolves $valid through dispatcher', () => {
+    const meta = createMockMeta({ errors: () => [] });
+    const context = { $localMeta: { name: meta } };
+    const result = resolveProp({ $valid: 'name' }, {}, context);
+    expect(typeof result).toBe('function');
+    expect((result as () => unknown)()).toBe(true);
+  });
+
+  it('resolves $touched through dispatcher', () => {
+    const meta = createMockMeta({ touched: () => true });
+    const context = { $localMeta: { name: meta } };
+    const result = resolveProp({ $touched: 'name' }, {}, context);
+    expect(typeof result).toBe('function');
+    expect((result as () => unknown)()).toBe(true);
+  });
+
+  it('resolves $formValid through dispatcher', () => {
+    const meta = createMockMeta({ errors: () => [] });
+    const context = { $localMeta: { name: meta }, $localScopeFields: ['name'] };
+    const result = resolveProp({ $formValid: '$scope' }, {}, context);
+    expect(typeof result).toBe('function');
+    expect((result as () => unknown)()).toBe(true);
+  });
+
+  it('resolves $touch through dispatcher', () => {
+    const setTouched = vi.fn();
+    const meta = createMockMeta({ setTouched });
+    const context = { $localMeta: { name: meta }, $localScopeFields: ['name'] };
+    const handler = resolveProp({ $touch: 'name' }, {}, context) as () => void;
+    handler();
+    expect(setTouched).toHaveBeenCalledWith(true);
+  });
+
+  it('resolves $resetLocal through dispatcher', () => {
+    const reset = vi.fn();
+    const meta = createMockMeta({ reset });
+    const context = { $localMeta: { name: meta }, $localScopeFields: ['name'] };
+    const handler = resolveProp({ $resetLocal: '$scope' }, {}, context) as () => void;
+    handler();
+    expect(reset).toHaveBeenCalled();
   });
 });

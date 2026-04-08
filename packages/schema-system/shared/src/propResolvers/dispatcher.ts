@@ -11,7 +11,16 @@ import {
 } from './comparisons';
 import { resolveConcatProp } from './concat';
 import { resolveIfProp } from './conditional';
-import { resolveLocalProp, resolveSetLocalProp } from './local';
+import {
+  resolveLocalProp,
+  resolveSetLocalProp,
+  resolveErrorProp,
+  resolveValidProp,
+  resolveTouchedProp,
+  resolveFormValidProp,
+  resolveTouchProp,
+  resolveResetLocalProp,
+} from './local';
 import { resolveMapProp } from './map';
 import { resolvePickProp } from './pick';
 import { resolveStoreProp } from './store';
@@ -47,6 +56,12 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$local', 'string')) return resolveLocalProp(value as { $local: string }, context);
     if (hasToken(value, '$setLocal', 'string'))
       return resolveSetLocalProp(value as { $setLocal: string; from: string }, context);
+    if (hasToken(value, '$error', 'string')) return resolveErrorProp(value as { $error: string }, context);
+    if (hasToken(value, '$valid', 'string')) return resolveValidProp(value as { $valid: string }, context);
+    if (hasToken(value, '$touched', 'string')) return resolveTouchedProp(value as { $touched: string }, context);
+    if (hasToken(value, '$formValid', 'string')) return resolveFormValidProp(context);
+    if (hasToken(value, '$touch', 'string')) return resolveTouchProp(value as { $touch: string }, context);
+    if (hasToken(value, '$resetLocal', 'string')) return resolveResetLocalProp(context);
     if (hasToken(value, '$action', 'string')) return resolveActionProp(value, context, stores, memo, resolveProp);
     if (hasToken(value, '$concat', 'array'))
       return resolveConcatProp((value as { $concat: unknown[] })['$concat'], stores, context, memo, resolveProp);

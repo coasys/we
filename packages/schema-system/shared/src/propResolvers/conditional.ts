@@ -1,6 +1,11 @@
 import type { resolveProp } from './dispatcher';
-import { markReactive } from './reactive';
+import { markReactive, REACTIVE_ACCESSOR } from './reactive';
 import type { IfProp, Memo, Props } from './types';
+
+/** Check if a value is a reactive accessor (signal/memo) rather than a plain handler function */
+function isReactiveAccessor(value: unknown): value is () => unknown {
+  return typeof value === 'function' && REACTIVE_ACCESSOR in value;
+}
 
 // Resolves $if props: { $if: { condition, then, else } }
 export function resolveIfProp(
@@ -48,7 +53,7 @@ export function resolveIfProp(
       // Resolve condition with $arg tokens replaced
       const resolvedCondition = resolveWithArg(condition);
       const conditionResult = resolvePropFn(resolvedCondition, stores, context, memo);
-      const conditionMet = typeof conditionResult === 'function' ? conditionResult() : conditionResult;
+      const conditionMet = isReactiveAccessor(conditionResult) ? conditionResult() : conditionResult;
 
       // Resolve the appropriate branch
       const branchResult = resolvePropFn(conditionMet ? thenValue : elseValue, stores, context, memo);
@@ -58,7 +63,7 @@ export function resolveIfProp(
         return branchResult(...callArgs);
       }
 
-      return typeof branchResult === 'function' ? branchResult() : branchResult;
+      return branchResult;
     };
   }
 
@@ -66,11 +71,12 @@ export function resolveIfProp(
   return markReactive(
     memo(() => {
       const conditionResult = resolvePropFn(condition, stores, context, memo);
-      // Unwrap signal accessor if condition resolved to one
-      const conditionMet = typeof conditionResult === 'function' ? conditionResult() : conditionResult;
+      // Unwrap reactive accessor if condition resolved to one (e.g. signal from $store)
+      const conditionMet = isReactiveAccessor(conditionResult) ? conditionResult() : conditionResult;
       const branchResult = resolvePropFn(conditionMet ? thenValue : elseValue, stores, context, memo);
-      // Unwrap signal accessor if branch result is one
-      return typeof branchResult === 'function' ? branchResult() : branchResult;
+      // Only unwrap reactive accessors — plain handler functions (from $action, $touch, etc.)
+      // must pass through as values so they aren't eagerly invoked
+      return isReactiveAccessor(branchResult) ? branchResult() : branchResult;
     }),
   );
 }

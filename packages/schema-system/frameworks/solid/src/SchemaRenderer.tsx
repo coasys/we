@@ -1,5 +1,12 @@
-import type { LocalStateField, QueryDescriptor } from '@we/schema-shared';
-import { hasToken, REACTIVE_ACCESSOR, resolveProp, resolveQueryProp, themeToStyle } from '@we/schema-shared';
+import type { LocalFieldMeta, LocalStateField, QueryDescriptor, ValidationRule } from '@we/schema-shared';
+import {
+  hasToken,
+  REACTIVE_ACCESSOR,
+  resolveProp,
+  resolveQueryProp,
+  themeToStyle,
+  validateField,
+} from '@we/schema-shared';
 import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup } from 'solid-js';
 import { createStore, produce } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
@@ -12,7 +19,7 @@ const MAX_UNWRAP_DEPTH = 10;
 /**
  * Recursively unwrap reactive accessors (marked with REACTIVE_ACCESSOR) inside
  * complex prop values so that components receive plain data instead of leaked
- * signal functions.  Event handlers and other plain functions pass through
+ * signal functions. Event handlers and other plain functions pass through
  * untouched.
  *
  * Called inside tracked computations (createMemo / createEffect), so calling
@@ -36,6 +43,23 @@ function deepUnwrap(value: unknown, depth = 0): unknown {
     return result;
   }
   return value;
+}
+
+/** Check if a prop key is an event handler name (e.g. onClick, onInput, onKeyDown) */
+function isEventProp(key: string): boolean {
+  return key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase();
+}
+
+/**
+ * Compose an array of handler values into a single sequential handler.
+ * Non-function entries (e.g. undefined from $if without else) are skipped.
+ */
+function composeHandlers(handlers: unknown[]): (...args: unknown[]) => void {
+  return (...args: unknown[]) => {
+    for (const fn of handlers) {
+      if (typeof fn === 'function') fn(...args);
+    }
+  };
 }
 
 /**
@@ -99,15 +123,50 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   if (node.$localState) {
     const accessors: Record<string, () => unknown> = {};
     const setters: Record<string, (v: unknown) => void> = {};
+    const metaEntries: Record<string, LocalFieldMeta> = {};
+    const scopeFields: string[] = [];
+
     for (const [name, field] of Object.entries(node.$localState as Record<string, LocalStateField>)) {
       const [get, set] = createSignal(field.initial);
       accessors[name] = get;
       setters[name] = set;
+      scopeFields.push(name);
+
+      const [touched, setTouched] = createSignal(false);
+      const rules: ValidationRule[] = field.validate ?? [];
+
+      // Derived memo: evaluate validation rules against current value.
+      // For cross-field rules (match), reads other field accessors — Solid tracks these automatically.
+      const errors = createMemo(() => {
+        const val = get();
+        return validateField(val, rules, (otherField) => {
+          // Look up in merged accessors (parent + current scope)
+          const parentLocal = (context.$local as Record<string, () => unknown>) ?? {};
+          const accessor = accessors[otherField] ?? parentLocal[otherField];
+          return accessor ? accessor() : undefined;
+        });
+      });
+
+      const initial = field.initial;
+      metaEntries[name] = {
+        initial,
+        rules,
+        touched,
+        setTouched,
+        errors,
+        reset: () => {
+          set(initial as never);
+          setTouched(false);
+        },
+      };
     }
+
     effectiveContext = {
       ...context,
       $local: { ...((context.$local as Record<string, unknown>) ?? {}), ...accessors },
       $localSetters: { ...((context.$localSetters as Record<string, unknown>) ?? {}), ...setters },
+      $localMeta: { ...((context.$localMeta as Record<string, unknown>) ?? {}), ...metaEntries },
+      $localScopeFields: scopeFields,
     };
   }
 
@@ -318,7 +377,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     let hostRef: (HTMLElement & Record<string, unknown>) | undefined;
 
     for (const [key, memo] of Object.entries(propMemos)) {
-      if (key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase()) continue;
+      if (isEventProp(key)) continue;
       createEffect(() => {
         if (hostRef) hostRef[key] = memo();
       });
@@ -329,7 +388,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       const currentProps = node.props as Record<string, unknown> | undefined;
       if (!currentProps || !hostRef) return;
       for (const key of Object.keys(currentProps)) {
-        if (!(key in propMemos) && !(key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase())) {
+        if (!(key in propMemos) && !isEventProp(key)) {
           hostRef[key] = currentProps[key];
         }
       }
@@ -338,8 +397,9 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const eventAttrs = createMemo(() => {
       const attrs: Record<string, unknown> = {};
       for (const [key, memo] of Object.entries(propMemos)) {
-        if (key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase()) {
-          attrs[key] = memo();
+        if (isEventProp(key)) {
+          const val = memo();
+          attrs[key] = Array.isArray(val) ? composeHandlers(val) : val;
         }
       }
       return attrs;
@@ -362,7 +422,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   const reactiveAttrs = createMemo(() => {
     const attrs: Record<string, unknown> = {};
     for (const [key, memo] of Object.entries(propMemos)) {
-      attrs[key] = memo();
+      const val = memo();
+      attrs[key] = isEventProp(key) && Array.isArray(val) ? composeHandlers(val) : val;
     }
     // Pick up props added dynamically via updateSchema that had no memo at mount time
     const currentProps = node.props as Record<string, unknown> | undefined;

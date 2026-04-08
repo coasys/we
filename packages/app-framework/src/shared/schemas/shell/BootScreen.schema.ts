@@ -58,7 +58,13 @@ export const bootScreen: SchemaNode = {
             then: {
               type: 'Column',
               props: { mt: '200', gap: '400', ax: 'center' },
-              $localState: { password: { type: 'string', initial: '' } },
+              $localState: {
+                password: {
+                  type: 'string',
+                  initial: '',
+                  validate: [{ rule: 'required', message: 'Password is required' }],
+                },
+              },
               children: [
                 {
                   type: 'Row',
@@ -73,9 +79,15 @@ export const bootScreen: SchemaNode = {
                   props: {
                     error: {
                       $if: {
-                        condition: { $store: 'adamStore.passwordError' },
-                        then: 'Incorrect password',
-                        else: '',
+                        condition: { $error: 'password' },
+                        then: { $error: 'password' },
+                        else: {
+                          $if: {
+                            condition: { $store: 'adamStore.passwordError' },
+                            then: 'Incorrect password',
+                            else: '',
+                          },
+                        },
                       },
                     },
                   },
@@ -88,12 +100,12 @@ export const bootScreen: SchemaNode = {
                         {
                           type: 'we-input',
                           props: {
-                            // height: '60px',
                             height: '36px',
                             width: '200px',
                             placeholder: 'Password...',
                             value: { $local: 'password' },
                             onInput: { $setLocal: 'password', from: '$event.detail' },
+                            onBlur: { $touch: 'password' },
                             onKeyDown: {
                               $if: {
                                 condition: { $eq: ['$arg.detail.key', 'Enter'] },
@@ -149,8 +161,17 @@ export const bootScreen: SchemaNode = {
                     text: 'Login',
                     color: 'neutral-0',
                     bg: 'primary-500',
+                    disabled: { $not: { $formValid: '$scope' } },
                     loading: { $store: 'adamStore.loginLoading' },
-                    onClick: { $action: 'adamStore.unlockAgent', args: [{ $local: 'password' }] },
+                    onClick: [
+                      { $touch: '$all' },
+                      {
+                        $if: {
+                          condition: { $formValid: '$scope' },
+                          then: { $action: 'adamStore.unlockAgent', args: [{ $local: 'password' }] },
+                        },
+                      },
+                    ],
                   },
                 },
               ],

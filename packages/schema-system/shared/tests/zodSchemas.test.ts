@@ -168,4 +168,161 @@ describe('zodSchemas', () => {
     };
     expect(() => zSchemaNode.parse(node)).toThrow();
   });
+
+  // --- Validation tokens ---
+
+  it('accepts $error token', () => {
+    expect(() => zSchemaProp.parse({ $error: 'name' })).not.toThrow();
+  });
+
+  it('rejects $error with empty string', () => {
+    expect(() => zSchemaProp.parse({ $error: '' })).toThrow();
+  });
+
+  it('rejects $error with extra keys', () => {
+    expect(() => zSchemaProp.parse({ $error: 'name', extra: true })).toThrow();
+  });
+
+  it('accepts $valid token', () => {
+    expect(() => zSchemaProp.parse({ $valid: 'name' })).not.toThrow();
+  });
+
+  it('rejects $valid with empty string', () => {
+    expect(() => zSchemaProp.parse({ $valid: '' })).toThrow();
+  });
+
+  it('accepts $touched token', () => {
+    expect(() => zSchemaProp.parse({ $touched: 'name' })).not.toThrow();
+  });
+
+  it('accepts $formValid token', () => {
+    expect(() => zSchemaProp.parse({ $formValid: '$scope' })).not.toThrow();
+  });
+
+  it('rejects $formValid with empty string', () => {
+    expect(() => zSchemaProp.parse({ $formValid: '' })).toThrow();
+  });
+
+  it('accepts $touch token with field name', () => {
+    expect(() => zSchemaProp.parse({ $touch: 'name' })).not.toThrow();
+  });
+
+  it('accepts $touch token with $all', () => {
+    expect(() => zSchemaProp.parse({ $touch: '$all' })).not.toThrow();
+  });
+
+  it('accepts $resetLocal token', () => {
+    expect(() => zSchemaProp.parse({ $resetLocal: '$scope' })).not.toThrow();
+  });
+
+  it('rejects $resetLocal with extra keys', () => {
+    expect(() => zSchemaProp.parse({ $resetLocal: '$scope', extra: true })).toThrow();
+  });
+
+  // --- Validation rules in $localState ---
+
+  it('accepts $localState with validate rules', () => {
+    const node = {
+      type: 'Column',
+      $localState: {
+        name: {
+          type: 'string',
+          initial: '',
+          validate: [{ rule: 'required' }, { rule: 'minLength', value: 3 }],
+        },
+      },
+    };
+    expect(() => zSchemaNode.parse(node)).not.toThrow();
+  });
+
+  it('accepts $localState with custom messages', () => {
+    const node = {
+      type: 'Column',
+      $localState: {
+        email: {
+          type: 'string',
+          initial: '',
+          validate: [
+            { rule: 'required', message: 'Email is required' },
+            { rule: 'pattern', value: '^[^@]+@[^@]+$', message: 'Invalid email' },
+          ],
+        },
+      },
+    };
+    expect(() => zSchemaNode.parse(node)).not.toThrow();
+  });
+
+  it('accepts $localState with match rule', () => {
+    const node = {
+      type: 'Column',
+      $localState: {
+        confirmPassword: {
+          type: 'string',
+          initial: '',
+          validate: [{ rule: 'match', field: 'password', message: 'Passwords must match' }],
+        },
+      },
+    };
+    expect(() => zSchemaNode.parse(node)).not.toThrow();
+  });
+
+  it('accepts $localState with all rule types', () => {
+    const node = {
+      type: 'Column',
+      $localState: {
+        field: {
+          type: 'string',
+          initial: '',
+          validate: [
+            { rule: 'required' },
+            { rule: 'minLength', value: 1 },
+            { rule: 'maxLength', value: 100 },
+            { rule: 'min', value: 0 },
+            { rule: 'max', value: 999 },
+            { rule: 'pattern', value: '.*' },
+            { rule: 'match', field: 'other' },
+          ],
+        },
+      },
+    };
+    expect(() => zSchemaNode.parse(node)).not.toThrow();
+  });
+
+  it('rejects invalid rule name', () => {
+    const node = {
+      type: 'Column',
+      $localState: {
+        name: {
+          type: 'string',
+          initial: '',
+          validate: [{ rule: 'invalid' }],
+        },
+      },
+    };
+    expect(() => zSchemaNode.parse(node)).toThrow();
+  });
+
+  it('rejects minLength without value', () => {
+    const node = {
+      type: 'Column',
+      $localState: {
+        name: {
+          type: 'string',
+          initial: '',
+          validate: [{ rule: 'minLength' }],
+        },
+      },
+    };
+    expect(() => zSchemaNode.parse(node)).toThrow();
+  });
+
+  it('accepts $localState without validate (backwards compatible)', () => {
+    const node = {
+      type: 'Column',
+      $localState: {
+        name: { type: 'string', initial: '' },
+      },
+    };
+    expect(() => zSchemaNode.parse(node)).not.toThrow();
+  });
 });

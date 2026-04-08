@@ -88,10 +88,29 @@ export type QueryToken = {
 export type LocalStateField = {
   type: 'string' | 'boolean' | 'number';
   initial: string | boolean | number;
+  validate?: ValidationRule[];
 };
+
+// --- Validation Rule Types ---
+
+export type RequiredRule = { rule: 'required'; message?: string };
+export type MinLengthRule = { rule: 'minLength'; value: number; message?: string };
+export type MaxLengthRule = { rule: 'maxLength'; value: number; message?: string };
+export type MinRule = { rule: 'min'; value: number; message?: string };
+export type MaxRule = { rule: 'max'; value: number; message?: string };
+export type PatternRule = { rule: 'pattern'; value: string; message?: string };
+export type MatchRule = { rule: 'match'; field: string; message?: string };
+
+export type ValidationRule = RequiredRule | MinLengthRule | MaxLengthRule | MinRule | MaxRule | PatternRule | MatchRule;
 
 export type LocalToken = { $local: string };
 export type SetLocalToken = { $setLocal: string; from: string };
+export type ErrorToken = { $error: string };
+export type ValidToken = { $valid: string };
+export type TouchedToken = { $touched: string };
+export type FormValidToken = { $formValid: string };
+export type TouchToken = { $touch: string };
+export type ResetLocalToken = { $resetLocal: string };
 
 /** Descriptor returned by the shared resolver — pure data, no framework effects */
 export type QueryDescriptor = {
@@ -118,4 +137,10 @@ export type OperatorToken =
   | OrToken
   | QueryToken
   | LocalToken
-  | SetLocalToken;
+  | SetLocalToken
+  | ErrorToken
+  | ValidToken
+  | TouchedToken
+  | FormValidToken
+  | TouchToken
+  | ResetLocalToken;

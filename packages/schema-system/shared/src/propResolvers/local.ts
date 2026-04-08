@@ -1,6 +1,19 @@
 import { markReactive } from './reactive';
 import type { Props } from './types';
 
+// --- Types for $localMeta context ---
+
+export type LocalFieldMeta = {
+  initial: unknown;
+  rules: import('../types').ValidationRule[];
+  touched: () => boolean;
+  setTouched: (v: boolean) => void;
+  errors: () => string[];
+  reset: () => void;
+};
+
+export type LocalMetaMap = Record<string, LocalFieldMeta>;
+
 /**
  * Extract a value from an event object using a dot-path expression.
  * Supports "$event", "$event.target.value", "$event.detail", etc.
@@ -50,5 +63,93 @@ export function resolveSetLocalProp(
   }
   return (event: unknown) => {
     setter(extractFromPath(event, value.from));
+  };
+}
+
+// --- Validation token resolvers ---
+
+function getMeta(context: Props): LocalMetaMap | undefined {
+  return context.$localMeta as LocalMetaMap | undefined;
+}
+
+function getScopeFields(context: Props): string[] | undefined {
+  return context.$localScopeFields as string[] | undefined;
+}
+
+/** Resolves $error tokens: { $error: "name" } → first error message (only if touched) or "" */
+export function resolveErrorProp(value: { $error: string }, context: Props): unknown {
+  const meta = getMeta(context)?.[value.$error];
+  if (!meta) {
+    console.warn(`Schema $error: field "${value.$error}" not found in $localMeta`);
+    return '';
+  }
+  return markReactive(() => (meta.touched() ? (meta.errors()[0] ?? '') : ''));
+}
+
+/** Resolves $valid tokens: { $valid: "name" } → true if all rules pass (ignores touched) */
+export function resolveValidProp(value: { $valid: string }, context: Props): unknown {
+  const meta = getMeta(context)?.[value.$valid];
+  if (!meta) {
+    console.warn(`Schema $valid: field "${value.$valid}" not found in $localMeta`);
+    return true;
+  }
+  return markReactive(() => meta.errors().length === 0);
+}
+
+/** Resolves $touched tokens: { $touched: "name" } → true if field has been touched */
+export function resolveTouchedProp(value: { $touched: string }, context: Props): unknown {
+  const meta = getMeta(context)?.[value.$touched];
+  if (!meta) {
+    console.warn(`Schema $touched: field "${value.$touched}" not found in $localMeta`);
+    return false;
+  }
+  return markReactive(() => meta.touched());
+}
+
+/** Resolves $formValid tokens: { $formValid: "$scope" } → true if all scoped fields are valid */
+export function resolveFormValidProp(context: Props): unknown {
+  const metaMap = getMeta(context);
+  const scopeFields = getScopeFields(context);
+  if (!metaMap || !scopeFields) {
+    console.warn('Schema $formValid: no $localMeta or $localScopeFields in scope');
+    return true;
+  }
+  return markReactive(() => scopeFields.every((f) => (metaMap[f]?.errors().length ?? 0) === 0));
+}
+
+/** Resolves $touch tokens: { $touch: "name" } or { $touch: "$all" } → handler that marks touched */
+export function resolveTouchProp(value: { $touch: string }, context: Props): () => void {
+  const metaMap = getMeta(context);
+  if (!metaMap) {
+    console.warn(`Schema $touch: no $localMeta in scope`);
+    return () => {};
+  }
+
+  if (value.$touch === '$all') {
+    const scopeFields = getScopeFields(context);
+    if (!scopeFields) return () => {};
+    return () => {
+      for (const f of scopeFields) metaMap[f]?.setTouched(true);
+    };
+  }
+
+  const meta = metaMap[value.$touch];
+  if (!meta) {
+    console.warn(`Schema $touch: field "${value.$touch}" not found in $localMeta`);
+    return () => {};
+  }
+  return () => meta.setTouched(true);
+}
+
+/** Resolves $resetLocal tokens: { $resetLocal: "$scope" } → handler that resets all scoped fields */
+export function resolveResetLocalProp(context: Props): () => void {
+  const metaMap = getMeta(context);
+  const scopeFields = getScopeFields(context);
+  if (!metaMap || !scopeFields) {
+    console.warn('Schema $resetLocal: no $localMeta or $localScopeFields in scope');
+    return () => {};
+  }
+  return () => {
+    for (const f of scopeFields) metaMap[f]?.reset();
   };
 }
