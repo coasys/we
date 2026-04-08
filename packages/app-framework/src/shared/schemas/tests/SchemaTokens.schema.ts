@@ -20,7 +20,7 @@
  * Data source: testStore (SolidJS signals + lazy AD4M perspective)
  */
 
-import type { SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
+import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
 
 // ---------------------------------------------------------------------------
 // Helpers — reusable test section building blocks
@@ -221,7 +221,7 @@ const actionTest = section('$action', 'Trigger store mutations', [
     children: [
       {
         type: 'we-button',
-        props: { onClick: { $action: 'testStore.increment' } },
+        props: { size: 'sm', onClick: { $action: 'testStore.increment' } },
         children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Increment'],
       },
       { type: 'we-text', children: ['Counter:'] },
@@ -1736,6 +1736,72 @@ const namedThemeTest: SchemaNode = {
 };
 
 // ---------------------------------------------------------------------------
+// Route groups — each group becomes a sub-route page
+// ---------------------------------------------------------------------------
+
+const groups: { key: string; label: string; path: string; children: SchemaNode[] }[] = [
+  { key: 'data-access', label: 'Data Access', path: '/', children: [storeTest, concatTest] },
+  { key: 'actions', label: 'Actions', path: '/actions', children: [actionTest, argTest] },
+  { key: 'operators', label: 'Operators', path: '/operators', children: [eqTest, neTest, notTest, andTest, orTest] },
+  {
+    key: 'control-flow',
+    label: 'Control Flow',
+    path: '/control-flow',
+    children: [ifTest, eachTest, eachEmptyTest, nestedEachTest],
+  },
+  {
+    key: 'data-transforms',
+    label: 'Data Transforms',
+    path: '/data-transforms',
+    children: [mapTest, mapSingleObjectTest, pickTest, pickChainingTest],
+  },
+  {
+    key: 'queries',
+    label: 'Queries',
+    path: '/queries',
+    children: [queryOneShotTest, querySubscriptionTest, queryFilteringTest],
+  },
+  { key: 'local-state', label: 'Local State', path: '/local-state', children: [localStateBasicTest] },
+  {
+    key: 'form-validation',
+    label: 'Form Validation',
+    path: '/form-validation',
+    children: [formValidationBasicTest, formValidationActionsTest, formValidationMatchTest, formValidationStylingTest],
+  },
+  {
+    key: 'rendering',
+    label: 'Rendering',
+    path: '/rendering',
+    children: [childrenTokenTest, wcReactivePropsTest, tokenCompositionTest, fragmentTest, fragmentThemeTest],
+  },
+  { key: 'theming', label: 'Theming', path: '/theming', children: [tokenThemeTest, namedThemeTest] },
+];
+
+/** Build a route node for a group */
+function groupRoute(group: (typeof groups)[number]): RouteSchema {
+  return {
+    path: group.path,
+    type: 'Column',
+    props: { gap: '400' },
+    children: [groupHeading(group.label), ...group.children],
+  };
+}
+
+/** Build a nav tab for a group */
+function navTab(group: (typeof groups)[number]): SchemaNode {
+  const isActive = { $eq: [{ $store: 'routeStore.currentPath' }, group.path] };
+
+  return {
+    type: 'we-button',
+    props: {
+      variant: { $if: { condition: isActive, then: 'primary', else: 'secondary' } },
+      onClick: { $action: 'routeStore.navigate', args: [group.path] },
+    },
+    children: [group.label],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Template
 // ---------------------------------------------------------------------------
 
@@ -1762,65 +1828,15 @@ export const schemaTokensTemplate: TemplateSchema = {
           props: { color: 'neutral-600' },
           children: ['Visual test suite — each section exercises a specific token'],
         },
-        { type: 'we-divider', props: { mb: '400' } },
+        {
+          type: 'Row',
+          props: { gap: '200', wrap: true, py: '200' },
+          children: groups.map(navTab),
+        },
+        { type: 'we-divider' },
       ],
     },
-    {
-      type: 'Column',
-      props: { gap: '400' },
-      children: [
-        groupHeading('Data Access'),
-        storeTest,
-        concatTest,
-
-        groupHeading('Actions'),
-        actionTest,
-        argTest,
-
-        groupHeading('Operators'),
-        eqTest,
-        neTest,
-        notTest,
-        andTest,
-        orTest,
-
-        groupHeading('Control Flow'),
-        ifTest,
-        eachTest,
-        eachEmptyTest,
-        nestedEachTest,
-
-        groupHeading('Data Transforms'),
-        mapTest,
-        mapSingleObjectTest,
-        pickTest,
-        pickChainingTest,
-
-        groupHeading('Queries'),
-        queryOneShotTest,
-        querySubscriptionTest,
-        queryFilteringTest,
-
-        groupHeading('Local State'),
-        localStateBasicTest,
-
-        groupHeading('Form Validation'),
-        formValidationBasicTest,
-        formValidationActionsTest,
-        formValidationMatchTest,
-        formValidationStylingTest,
-
-        groupHeading('Rendering'),
-        childrenTokenTest,
-        wcReactivePropsTest,
-        tokenCompositionTest,
-        fragmentTest,
-        fragmentThemeTest,
-
-        groupHeading('Theming'),
-        tokenThemeTest,
-        namedThemeTest,
-      ],
-    },
+    { type: '$routes' },
   ],
+  routes: groups.map(groupRoute),
 };
