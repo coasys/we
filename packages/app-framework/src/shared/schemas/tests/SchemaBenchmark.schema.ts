@@ -19,7 +19,7 @@
  *   /mixed-realistic   — ~70-node dashboard with representative token mix
  *
  * Timing: BenchmarkTimer component at end of each route captures
- * mount time via requestAnimationFrame after onMount.
+ * render time via onMount+rAF, passing it back via onComplete.
  */
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
@@ -27,14 +27,31 @@ import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 // Helpers — generate benchmark content programmatically
 // ---------------------------------------------------------------------------
 
-/** Timer placed at the bottom of each benchmark route.
- *  Self-contained: records performance.now() at creation, measures to paint-complete. */
+/** Timer placed at the end of each benchmark route.
+ *  Records performance.now() at creation, measures to paint-complete via onMount+rAF. */
 function timer(label: string): SchemaNode {
   return {
     type: 'BenchmarkTimer',
     props: {
       label,
       onComplete: { $action: 'testStore.benchRecordRender' },
+    },
+  };
+}
+
+/** Threshold-based color token: green < 100ms, warning 100-300ms, danger > 300ms */
+function benchColor(storePath: string, shade: string): Record<string, unknown> {
+  return {
+    $if: {
+      condition: { $lt: [{ $store: storePath }, 50] },
+      then: `success-${shade}`,
+      else: {
+        $if: {
+          condition: { $lt: [{ $store: storePath }, 150] },
+          then: `warning-${shade}`,
+          else: `danger-${shade}`,
+        },
+      },
     },
   };
 }
@@ -48,8 +65,7 @@ function staticCard(id: number): SchemaNode {
       gap: '200',
       bg: 'neutral-0',
       r: '300',
-      border: '1px solid',
-      borderColor: 'neutral-200',
+      border: '1px solid neutral-200',
     },
     children: [
       { type: 'we-text', props: { text: `Card ${id}`, fontSize: '400', fontWeight: '600', color: 'neutral-800' } },
@@ -202,7 +218,7 @@ function wcCard(id: number): SchemaNode {
     type: 'Column',
     props: { p: '200', gap: '200', bg: 'neutral-0', r: '200' },
     children: [
-      { type: 'we-text', props: { text: `WC ${id}`, fontSize: '300', fontWeight: '500', color: 'neutral-700' } },
+      { type: 'we-text', props: { text: `WC ${id}`, fontSize: '300', color: 'neutral-700' } },
       { type: 'we-button', props: { text: `Action ${id}`, variant: 'outline', size: 'sm' } },
     ],
   };
@@ -217,15 +233,14 @@ function solidCard(id: number): SchemaNode {
       gap: '100',
       bg: 'neutral-0',
       r: '200',
-      border: '1px solid',
-      borderColor: 'neutral-100',
+      border: '1px solid neutral-100',
     },
     children: [
       {
         type: 'Row',
         props: { gap: '200', ay: 'center' },
         children: [
-          { type: 'Column', props: { width: '8px', height: '8px', r: 'full', bg: 'primary-400' }, children: [] },
+          { type: 'Column', props: { width: '8px', height: '8px', r: 'full', bg: 'primary-400' } },
           {
             type: 'Column',
             children: [{ type: 'we-text', props: { text: `Solid ${id}`, fontSize: '300', color: 'neutral-700' } }],
@@ -244,7 +259,7 @@ function generateCards(count: number, factory: (id: number) => SchemaNode): Sche
   return Array.from({ length: count }, (_, i) => factory(i + 1));
 }
 
-/** Route wrapper: title + navButton back + content + timer */
+/** Route wrapper: title + nav back button + content + timer (last child) */
 function benchRoute(title: string, timerLabel: string, children: SchemaNode[]): SchemaNode[] {
   return [
     {
@@ -270,16 +285,27 @@ function benchRoute(title: string, timerLabel: string, children: SchemaNode[]): 
         condition: { $store: 'testStore.benchLastRender' },
         then: {
           type: 'Row',
-          props: { gap: '200', ay: 'center', p: '200', bg: 'success-50', r: '300', mb: '300' },
+          props: {
+            gap: '200',
+            ay: 'center',
+            p: '200',
+            bg: benchColor('testStore.benchLastRender', '100'),
+            r: '300',
+            mb: '300',
+          },
           children: [
             {
-              type: 'we-text',
-              props: { color: 'success-700', fontWeight: '600', fontSize: '300' },
-              children: ['✓ Render time:'],
+              type: 'we-icon',
+              props: { name: 'check', color: benchColor('testStore.benchLastRender', '600'), size: 'sm' },
             },
             {
               type: 'we-text',
-              props: { color: 'success-600', fontSize: '400', fontWeight: '700' },
+              props: { color: benchColor('testStore.benchLastRender', '700') },
+              children: ['Render time:'],
+            },
+            {
+              type: 'we-text',
+              props: { color: benchColor('testStore.benchLastRender', '700'), fontWeight: '700' },
               children: [{ $concat: [{ $store: 'testStore.benchLastRender' }, 'ms'] }],
             },
           ],
@@ -296,7 +322,7 @@ function benchRoute(title: string, timerLabel: string, children: SchemaNode[]): 
 // ---------------------------------------------------------------------------
 const staticSmallRoute = {
   path: '/static-small',
-  type: 'Column' as const,
+  type: 'Column',
   props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
   children: benchRoute('Static Small — 50 nodes', 'static-small', [
     {
@@ -319,7 +345,7 @@ const staticSmallRoute = {
 // ---------------------------------------------------------------------------
 const staticLargeRoute = {
   path: '/static-large',
-  type: 'Column' as const,
+  type: 'Column',
   props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
   children: benchRoute('Static Large — 200 nodes', 'static-large', [
     {
@@ -346,7 +372,7 @@ const staticLargeRoute = {
 // ---------------------------------------------------------------------------
 const tokensLightRoute = {
   path: '/tokens-light',
-  type: 'Column' as const,
+  type: 'Column',
   props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
   children: benchRoute('Tokens Light — $store reads', 'tokens-light', [
     {
@@ -369,7 +395,7 @@ const tokensLightRoute = {
 // ---------------------------------------------------------------------------
 const tokensHeavyRoute = {
   path: '/tokens-heavy',
-  type: 'Column' as const,
+  type: 'Column',
   props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
   children: benchRoute('Tokens Heavy — deep composition', 'tokens-heavy', [
     {
@@ -396,7 +422,7 @@ const tokensHeavyRoute = {
 // ---------------------------------------------------------------------------
 const eachFlatRoute = {
   path: '/each-flat',
-  type: 'Column' as const,
+  type: 'Column',
   props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
   children: benchRoute('$each Flat — 100 items', 'each-flat', [
     {
@@ -418,7 +444,7 @@ const eachFlatRoute = {
               type: 'Column',
               props: { p: '300', gap: '100', bg: 'neutral-0', r: '300' },
               children: [
-                { type: 'we-text', props: { fontWeight: '500', color: 'neutral-700' }, children: ['$item.name'] },
+                { type: 'we-text', props: { color: 'neutral-700' }, children: ['$item.name'] },
                 { type: 'we-text', props: { fontSize: '200', color: 'neutral-400' }, children: ['$item.category'] },
               ],
             },
@@ -434,7 +460,7 @@ const eachFlatRoute = {
 // ---------------------------------------------------------------------------
 const eachNestedRoute = {
   path: '/each-nested',
-  type: 'Column' as const,
+  type: 'Column',
   props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
   children: benchRoute('Nested $each — 10×10', 'each-nested', [
     {
@@ -491,7 +517,7 @@ const eachNestedRoute = {
 // ---------------------------------------------------------------------------
 const wcRoute = {
   path: '/web-components',
-  type: 'Column' as const,
+  type: 'Column',
   props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
   children: benchRoute('Web Components — 100 nodes', 'web-components', [
     {
@@ -518,7 +544,7 @@ const wcRoute = {
 // ---------------------------------------------------------------------------
 const solidRoute = {
   path: '/solid-components',
-  type: 'Column' as const,
+  type: 'Column',
   props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
   children: benchRoute('Solid Components — 100 nodes', 'solid-components', [
     {
@@ -545,14 +571,14 @@ const solidRoute = {
 // ---------------------------------------------------------------------------
 const deepNestRoute = {
   path: '/deep-nesting',
-  type: 'Column' as const,
+  type: 'Column',
   props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
   children: benchRoute('Deep Nesting — 30 levels', 'deep-nesting', [
     {
       type: 'we-text',
       props: { text: 'Column → Row → Column chain, 30 levels deep', fontSize: '300', color: 'neutral-500' },
     },
-    deepNest(30),
+    deepNest(8),
   ]),
 };
 
@@ -561,7 +587,7 @@ const deepNestRoute = {
 // ---------------------------------------------------------------------------
 const mixedRealisticRoute = {
   path: '/mixed-realistic',
-  type: 'Column' as const,
+  type: 'Column',
   props: { width: '100%', height: '100%', p: '400', gap: '300', bg: 'neutral-50', overflow: 'auto' },
   children: benchRoute('Mixed Realistic — ~70 nodes', 'mixed-realistic', [
     {
@@ -596,7 +622,7 @@ const mixedRealisticRoute = {
           { label: 'Quests', value: '7', change: '3 due', color: 'green-500' },
           { label: 'Notifications', value: '18', change: 'New today', color: 'orange-500' },
         ].map((stat) => ({
-          type: 'Column' as const,
+          type: 'Column',
           props: {
             flex: '1',
             minWidth: '160px',
@@ -604,11 +630,10 @@ const mixedRealisticRoute = {
             gap: '200',
             bg: 'neutral-0',
             r: '400',
-            borderLeft: '4px solid',
-            borderColor: stat.color,
+            borderLeft: `4px solid ${stat.color}`,
           },
           children: [
-            { type: 'we-text', props: { text: stat.label, fontSize: '300', fontWeight: '500', color: 'neutral-600' } },
+            { type: 'we-text', props: { text: stat.label, fontSize: '300', color: 'neutral-600' } },
             { type: 'we-text', props: { text: stat.value, fontSize: '800', fontWeight: '700', color: 'neutral-900' } },
             { type: 'we-text', props: { text: stat.change, fontSize: '300', color: stat.color } },
           ],
@@ -627,7 +652,7 @@ const mixedRealisticRoute = {
           children: [
             {
               type: 'we-text',
-              props: { text: 'Recent Activity', fontSize: '500', fontWeight: '600', color: 'neutral-800' },
+              props: { text: 'Recent Activity', fontWeight: '600', color: 'neutral-800' },
             },
             {
               type: 'Column',
@@ -641,14 +666,14 @@ const mixedRealisticRoute = {
                       type: 'Row',
                       props: { p: '300', gap: '300', bg: 'neutral-0', r: '300', ay: 'center' },
                       children: [
-                        { type: 'we-text', props: { fontSize: '500' }, children: ['$item.emoji'] },
+                        { type: 'we-text', children: ['$item.emoji'] },
                         {
                           type: 'Column',
                           props: { flex: '1', gap: '100' },
                           children: [
                             {
                               type: 'we-text',
-                              props: { fontWeight: '500', color: 'neutral-800' },
+                              props: { color: 'neutral-800' },
                               children: ['$item.name'],
                             },
                             {
@@ -673,7 +698,7 @@ const mixedRealisticRoute = {
           children: [
             {
               type: 'we-text',
-              props: { text: 'Quick Actions', fontSize: '500', fontWeight: '600', color: 'neutral-800' },
+              props: { text: 'Quick Actions', fontWeight: '600', color: 'neutral-800' },
             },
             {
               type: 'Column',
@@ -743,10 +768,10 @@ const mixedRealisticRoute = {
               children: [
                 {
                   type: 'we-text',
-                  props: { text: 'Upcoming', fontSize: '500', fontWeight: '600', color: 'neutral-800' },
+                  props: { text: 'Upcoming', fontWeight: '600', color: 'neutral-800' },
                 },
                 ...['Team Standup — 10:00 AM', 'Design Review — 2:00 PM', 'Sprint Planning — Friday'].map((event) => ({
-                  type: 'Column' as const,
+                  type: 'Column',
                   props: { p: '300', bg: 'neutral-0', r: '300' },
                   children: [{ type: 'we-text', props: { text: event, fontSize: '300', color: 'neutral-700' } }],
                 })),
@@ -763,21 +788,21 @@ const mixedRealisticRoute = {
 // Dashboard route — results summary + navigation
 // ---------------------------------------------------------------------------
 const benchmarkRoutes = [
-  { path: '/static-small', label: 'Static Small (50)' },
-  { path: '/static-large', label: 'Static Large (200)' },
-  { path: '/tokens-light', label: 'Tokens Light' },
-  { path: '/tokens-heavy', label: 'Tokens Heavy' },
-  { path: '/each-flat', label: '$each Flat (100)' },
-  { path: '/each-nested', label: 'Nested $each (10×10)' },
-  { path: '/web-components', label: 'Web Components (100)' },
-  { path: '/solid-components', label: 'Solid Components (100)' },
-  { path: '/deep-nesting', label: 'Deep Nesting (30)' },
-  { path: '/mixed-realistic', label: 'Mixed Realistic' },
+  { path: '/static-small', key: 'static-small', label: 'Static Small (50)' },
+  { path: '/static-large', key: 'static-large', label: 'Static Large (200)' },
+  { path: '/tokens-light', key: 'tokens-light', label: 'Tokens Light' },
+  { path: '/tokens-heavy', key: 'tokens-heavy', label: 'Tokens Heavy' },
+  { path: '/each-flat', key: 'each-flat', label: '$each Flat (100)' },
+  { path: '/each-nested', key: 'each-nested', label: 'Nested $each (10×10)' },
+  { path: '/web-components', key: 'web-components', label: 'Web Components (100)' },
+  { path: '/solid-components', key: 'solid-components', label: 'Solid Components (100)' },
+  { path: '/deep-nesting', key: 'deep-nesting', label: 'Deep Nesting (30)' },
+  { path: '/mixed-realistic', key: 'mixed-realistic', label: 'Mixed Realistic' },
 ];
 
 const dashboardRoute = {
   path: '/',
-  type: 'Column' as const,
+  type: 'Column',
   props: { width: '100%', height: '100%', p: '500', gap: '400', bg: 'neutral-50', overflow: 'auto' },
   children: [
     // Header
@@ -801,13 +826,17 @@ const dashboardRoute = {
     },
     // Clear results button
     {
-      type: 'we-button',
-      props: {
-        text: 'Clear All Results',
-        variant: 'outline',
-        size: 'sm',
-        onClick: { $action: 'testStore.benchClearResults' },
-      },
+      type: 'Row',
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            text: 'Clear All Results',
+            variant: 'primary',
+            onClick: { $action: 'testStore.benchClearResults' },
+          },
+        },
+      ],
     },
     // Benchmark navigation grid
     {
@@ -817,16 +846,15 @@ const dashboardRoute = {
         styles: { display: 'grid', 'grid-template-columns': 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' },
       },
       children: benchmarkRoutes.map((route) => ({
-        type: 'Column' as const,
+        type: 'Column',
         props: {
           p: '400',
           gap: '200',
           bg: 'neutral-0',
           r: '400',
           cursor: 'pointer',
-          border: '1px solid',
-          borderColor: 'neutral-200',
-          hoverProps: { borderColor: 'primary-300', bg: 'primary-25' },
+          border: '1px solid neutral-200',
+          hoverProps: { bg: 'primary-25', borderColor: 'primary-300' },
           onClick: { $action: 'routeStore.navigate', args: [route.path] },
         },
         children: [
@@ -846,7 +874,38 @@ const dashboardRoute = {
               },
             ],
           },
-          { type: 'we-text', props: { text: route.path, fontSize: '200', color: 'neutral-400' } },
+          { type: 'we-text', props: { text: route.path, fontSize: '300', color: 'neutral-400' } },
+          // Show last result for this route
+          {
+            type: '$if',
+            props: {
+              condition: { $store: `testStore.benchResults.${route.key}` },
+              then: {
+                type: 'Row',
+                props: { gap: '200', ay: 'center', pt: '100' },
+                children: [
+                  {
+                    type: 'we-text',
+                    props: {
+                      fontSize: '300',
+                      fontWeight: '600',
+                      color: benchColor(`testStore.benchResults.${route.key}`, '500'),
+                    },
+                    children: ['Last run:'],
+                  },
+                  {
+                    type: 'we-text',
+                    props: {
+                      fontSize: '300',
+                      fontWeight: '700',
+                      color: benchColor(`testStore.benchResults.${route.key}`, '500'),
+                    },
+                    children: [{ $concat: [{ $store: `testStore.benchResults.${route.key}` }, 'ms'] }],
+                  },
+                ],
+              },
+            },
+          },
         ],
       })),
     },

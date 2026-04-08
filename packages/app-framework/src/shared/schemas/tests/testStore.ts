@@ -36,7 +36,7 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
 
   // ---- Benchmark timing ----
   const [benchLastRender, setBenchLastRender] = createSignal<number | null>(null);
-  const [benchResults, setBenchResults] = createSignal<Record<string, number[]>>({});
+  const [benchResults, setBenchResults] = createSignal<Record<string, number>>({});
 
   // ---- List data (for $each) ----
   const fruits = [
@@ -106,17 +106,11 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
   let createdCount = 0;
 
   // ---- Benchmark actions ----
-  function benchRecordRender(duration: number) {
-    setBenchLastRender(duration);
-  }
-
-  function benchRecordResult(routeName: string) {
-    const duration = benchLastRender();
-    if (duration === null) return;
-    setBenchResults((prev) => {
-      const existing = prev[routeName] ?? [];
-      return { ...prev, [routeName]: [...existing, duration] };
-    });
+  function benchRecordRender(duration: number, routeName?: string) {
+    setBenchLastRender(Math.round(duration * 10) / 10);
+    if (routeName) {
+      setBenchResults((prev) => ({ ...prev, [routeName]: Math.round(duration * 10) / 10 }));
+    }
   }
 
   function benchClearResults() {
@@ -235,7 +229,6 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     benchLastRender,
     benchResults,
     benchRecordRender,
-    benchRecordResult,
     benchClearResults,
 
     // AD4M
