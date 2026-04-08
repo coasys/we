@@ -1,4 +1,5 @@
 import type { resolveProp } from './dispatcher';
+import { REACTIVE_ACCESSOR } from './reactive';
 import type { Memo, Props } from './types';
 
 // Resolves relative paths used in router navigation (e.g. '.', './', '../')
@@ -104,7 +105,12 @@ export function resolveActionProp(
 
       // Use finalArgs if any were defined in schema, otherwise use callArgs
       const argsToUse = resolvedArgs.length > 0 ? finalArgs : callArgs;
-      return method.apply(store, argsToUse);
+
+      // Unwrap reactive accessors so store methods receive current values, not signal functions
+      const unwrappedArgs = argsToUse.map((a: unknown) =>
+        typeof a === 'function' && REACTIVE_ACCESSOR in a ? (a as unknown as () => unknown)() : a,
+      );
+      return method.apply(store, unwrappedArgs);
     };
   }
 
