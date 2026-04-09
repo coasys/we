@@ -1421,6 +1421,33 @@
       "source": "components"
     },
     {
+      "name": "CesiumGlobe",
+      "description": "3D globe widget using CesiumJS with a modular layer system.\nLayers are injected via factory functions (planet surface + background).\nRequires a layer factory registry mapping string names to factory functions.\nNot schema-renderable — used directly in application code.",
+      "props": [
+        {
+          "name": "ionAccessToken",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "planetLayers",
+          "type": "LayerConfig<unknown>[] | undefined",
+          "optional": true
+        },
+        {
+          "name": "backgroundLayers",
+          "type": "LayerConfig<unknown>[] | undefined",
+          "optional": true
+        },
+        {
+          "name": "layerFactoryRegistry",
+          "type": "Record<string, LayerFactory<any>>",
+          "optional": false
+        }
+      ],
+      "source": "widgets"
+    },
+    {
       "name": "CircleButton",
       "props": [
         {
@@ -2030,6 +2057,48 @@
         }
       ],
       "source": "components"
+    },
+    {
+      "name": "GraphWidget",
+      "description": "2D force-directed graph visualization using D3-force layout and Canvas rendering.\nDisplays typed nodes (user, space, post) and edges (follows, member-of, etc.)\nwith configurable styling, layout forces, and interaction handlers.",
+      "props": [
+        {
+          "name": "data",
+          "type": "GraphData",
+          "optional": false
+        },
+        {
+          "name": "width",
+          "type": "string | number | undefined",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "string | number | undefined",
+          "optional": true
+        },
+        {
+          "name": "nodeStyle",
+          "type": "NodeStyleConfig | undefined",
+          "optional": true
+        },
+        {
+          "name": "edgeStyle",
+          "type": "EdgeStyleConfig | undefined",
+          "optional": true
+        },
+        {
+          "name": "layout",
+          "type": "LayoutConfig | undefined",
+          "optional": true
+        },
+        {
+          "name": "interactions",
+          "type": "InteractionConfig | undefined",
+          "optional": true
+        }
+      ],
+      "source": "widgets"
     },
     {
       "name": "IconLabelButton",

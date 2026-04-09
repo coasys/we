@@ -2,7 +2,7 @@
  * Mock graph data for testing
  */
 
-import type { GraphData } from './types';
+import type { GraphData } from './GraphWidget.types';
 
 export const mockGraphData: GraphData = {
   nodes: [

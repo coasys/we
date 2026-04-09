@@ -293,6 +293,11 @@ and onToggle callback. Ideal for layer controls, feature toggles, or filter pane
 @we/widgets:
 - Avatar
   Props: src: string, name: string, status?: "online" | "offline" | "away" | undefined
+- CesiumGlobe — 3D globe widget using CesiumJS with a modular layer system.
+Layers are injected via factory functions (planet surface + background).
+Requires a layer factory registry mapping string names to factory functions.
+Not schema-renderable — used directly in application code.
+  Props: ionAccessToken?: string | undefined, planetLayers?: LayerConfig<unknown>[] | undefined, backgroundLayers?: LayerConfig<unknown>[] | undefined, layerFactoryRegistry: Record<string, LayerFactory<any>>
 - CollapsibleSidebar — Collapsible sidebar navigation with expand/collapse behavior.
 Items can be flat nav items (with icon, avatar, badge) or nested groups
 with collapsible headers. Supports header/footer slots, expand-on-hover,
@@ -300,6 +305,10 @@ and extensive styling customization for items, badges, and icons.
   Props: items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[] | undefined, side?: "left" | "right" | undefined, position?: "static" | "absolute" | "fixed" | undefined, zIndex?: number | undefined, collapsedWidth?: string | undefined, expandedWidth?: string | undefined, defaultExpanded?: boolean | undefined, expandOnHover?: boolean | undefined, transitionDuration?: number | undefined, bg?: string | undefined, border?: string | undefined, padding?: string | undefined, gap?: string | undefined, centerItems?: boolean | undefined, itemColor?: string | undefined, itemColorHover?: string | undefined, itemColorActive?: string | undefined, itemBg?: string | undefined, itemBgHover?: string | undefined, itemBgActive?: string | undefined, itemPadding?: string | undefined, itemGap?: string | undefined, badgeBg?: string | undefined, badgeColor?: string | undefined, iconSize?: IconSize | undefined, onItemClick?: ((item: CollapsibleSidebarItem) => void) | undefined, onExpandedChange?: ((expanded: boolean) => void) | undefined
 - CreateSpaceModalWidget
   Props: adamClient: Ad4mClient | undefined, addNewSpace: (space: Space) => void, close: () => void, class?: string | undefined, style?: Record<string, string | number> | undefined
+- GraphWidget — 2D force-directed graph visualization using D3-force layout and Canvas rendering.
+Displays typed nodes (user, space, post) and edges (follows, member-of, etc.)
+with configurable styling, layout forces, and interaction handlers.
+  Props: data: GraphData, width?: string | number | undefined, height?: string | number | undefined, nodeStyle?: NodeStyleConfig | undefined, edgeStyle?: EdgeStyleConfig | undefined, layout?: LayoutConfig | undefined, interactions?: InteractionConfig | undefined
 - SpaceSidebarWidget
   Props: name: string, description?: string | undefined, class?: string | undefined, style?: Record<string, string | number> | undefined
 

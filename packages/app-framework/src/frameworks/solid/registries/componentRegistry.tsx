@@ -38,7 +38,6 @@ import {
 } from '@we/widgets/solid';
 
 import { BenchmarkTimer } from '../components/BenchmarkTimer';
-import { CreateSpacePage } from '../pages/CreateSpacePage';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
@@ -82,9 +81,6 @@ export const componentRegistry: ComponentRegistry = {
 
   // @we/block-solid
   BlockComposer,
-
-  // Pages
-  CreateSpacePage,
 
   // Testing
   BenchmarkTimer,

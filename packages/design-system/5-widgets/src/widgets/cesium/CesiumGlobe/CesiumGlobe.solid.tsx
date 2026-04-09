@@ -8,8 +8,8 @@
 import { Cartesian3, Ion, Viewer } from 'cesium';
 import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 
-export type * from './types';
-import type { CesiumGlobeProps, CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from './types';
+export type * from './CesiumGlobe.types';
+import type { CesiumGlobeProps, CesiumLayer, LayerConfig, LayerEventBus, LayerFactory, LayerStore } from './CesiumGlobe.types';
 
 // Configure Cesium CDN
 (window as Window & { CESIUM_BASE_URL?: string }).CESIUM_BASE_URL =
