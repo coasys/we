@@ -16,7 +16,9 @@
       "import": "./dist/index.js"
     }
   },
-  "dependencies": {},
+  "dependencies": {
+    "@we/schema-shared": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@we/cli": "workspace:*",

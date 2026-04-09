@@ -1,6 +1,6 @@
-import type { AssembledContext, StoreEntry } from '@we/ai-context';
 import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap } from '@we/design-utils';
 
+import type { ContextData } from './contextTypes';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
 
@@ -166,7 +166,7 @@ function isTokenObject(value: unknown): boolean {
 
 // ── Build context ──────────────────────────────────────────────────
 
-export function buildValidationContext(assembled: AssembledContext, stores: StoreEntry[]): ValidationContext {
+export function buildValidationContext(data: ContextData): ValidationContext {
   const componentNames = new Set<string>();
   const componentProps = new Map<string, Set<string>>();
   const componentPropTypes = new Map<string, Map<string, string>>();
@@ -182,7 +182,7 @@ export function buildValidationContext(assembled: AssembledContext, stores: Stor
   }
 
   // Primitives
-  for (const prim of assembled.primitives) {
+  for (const prim of data.primitives) {
     componentNames.add(prim.tagName);
     const props = new Set<string>();
     const propTypes = new Map<string, string>();
@@ -208,7 +208,7 @@ export function buildValidationContext(assembled: AssembledContext, stores: Stor
   }
 
   // Components and widgets
-  for (const comp of assembled.components) {
+  for (const comp of data.components) {
     componentNames.add(comp.name);
     const props = new Set<string>();
     const propTypes = new Map<string, string>();
@@ -226,7 +226,7 @@ export function buildValidationContext(assembled: AssembledContext, stores: Stor
   // Stores
   const storeNames = new Set<string>();
   const storeMembers = new Map<string, Set<string>>();
-  for (const store of stores) {
+  for (const store of data.storeEntries) {
     storeNames.add(store.name);
     const members = new Set<string>();
     for (const s of store.state) members.add(s);
@@ -236,7 +236,7 @@ export function buildValidationContext(assembled: AssembledContext, stores: Stor
 
   // Models
   const modelNames = new Set<string>();
-  for (const model of assembled.models) {
+  for (const model of data.models) {
     modelNames.add(model.name);
   }
 

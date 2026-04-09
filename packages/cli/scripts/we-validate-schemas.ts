@@ -99,7 +99,7 @@ try {
   process.exit(1);
 }
 const contextData = JSON.parse(contextJson);
-const validationContext = buildValidationContext(contextData, contextData.storeEntries);
+const validationContext = buildValidationContext(contextData);
 
 // Validate each file
 let totalErrors = 0;

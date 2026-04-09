@@ -7,7 +7,7 @@ import { routing } from './fragments/routing.js';
 import { rules } from './fragments/rules.js';
 import { schemaOperators } from './fragments/schema-operators.js';
 import { storePatterns } from './fragments/store-patterns.js';
-import { stores } from './fragments/stores.js';
+import { storeEntries, stores } from './fragments/stores.js';
 import type { AssembledContext, ComponentEntry, ModelEntry, PrimitiveEntry, TokenCategory } from './types.js';
 
 /**
@@ -19,6 +19,7 @@ export function assembleContext(): AssembledContext {
     components: extractComponents(),
     models: extractModels(),
     tokens: extractTokens(),
+    storeEntries,
     fragments: {
       schemaOperators,
       designSystemProps,

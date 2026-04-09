@@ -304,6 +304,10 @@ importers:
         version: 2.11.12(solid-js@1.9.12)(vite@6.4.2(@types/node@24.12.2)(sass@1.99.0)(tsx@4.21.0)(yaml@2.8.3))
 
   packages/ai-context:
+    dependencies:
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../schema-system/shared
     devDependencies:
       '@types/node':
         specifier: ^22.10.2
@@ -766,9 +770,6 @@ importers:
 
   packages/schema-system/shared:
     dependencies:
-      '@we/ai-context':
-        specifier: workspace:*
-        version: link:../../ai-context
       '@we/design-utils':
         specifier: workspace:*
         version: link:../../design-system/utils

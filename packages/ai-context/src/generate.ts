@@ -13,6 +13,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { ContextData } from '@we/schema-shared';
+
 import { assembleReference } from './assembler.js';
 import { extractPrimitives } from './extractors/cem.js';
 import { extractModels } from './extractors/models.js';
@@ -45,6 +47,7 @@ function main() {
     }),
     tokens: extractTokens(resolve(designSystemRoot, '1-tokens/src')),
     models: extractModels(resolve(repoRoot, 'packages/models/src')),
+    storeEntries,
     fragments: { schemaOperators, designSystemProps, routing, stores, storePatterns, rules },
   };
 
@@ -81,15 +84,16 @@ function main() {
   console.log(`  Written: ${schemaContextPath}`);
 
   // 5. Write assembled context JSON (structured data for schema validation CLI)
+  // Only the ContextData fields — excludes fragments (AI prompt text, ~50KB)
   const contextJsonPath = resolve(packageRoot, 'context.json');
-  const structuredData = {
+  const contextData: ContextData = {
     primitives: context.primitives,
     components: context.components,
     models: context.models,
     tokens: context.tokens,
-    storeEntries,
+    storeEntries: context.storeEntries,
   };
-  writeFileSync(contextJsonPath, JSON.stringify(structuredData, null, 2), 'utf-8');
+  writeFileSync(contextJsonPath, JSON.stringify(contextData, null, 2), 'utf-8');
   console.log(`  Written: ${contextJsonPath}`);
 
   console.log('Done.');

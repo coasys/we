@@ -1,12 +1,12 @@
-import type { AssembledContext, StoreEntry } from '@we/ai-context';
 import { describe, expect, it } from 'vitest';
 
+import type { ContextData } from '../src/contextTypes';
 import type { ValidationContext } from '../src/semanticValidation';
 import { buildValidationContext, validateSchema, validateSemantic } from '../src/semanticValidation';
 
 // ── Test helpers ───────────────────────────────────────────────────
 
-function makeContext(overrides?: Partial<AssembledContext>): AssembledContext {
+function makeContext(overrides?: Partial<ContextData>): ContextData {
   return {
     primitives: [
       {
@@ -73,38 +73,29 @@ function makeContext(overrides?: Partial<AssembledContext>): AssembledContext {
       { name: 'PostBlock', className: 'PostBlock', fields: [], relations: [] },
     ],
     tokens: [],
-    fragments: {
-      schemaOperators: '',
-      designSystemProps: '',
-      routing: '',
-      stores: '',
-      storePatterns: '',
-      rules: '',
-    },
+    storeEntries: [
+      {
+        name: 'adamStore',
+        state: ['loading', 'bootState', 'me'],
+        actions: ['navigate', 'unlockAgent'],
+      },
+      {
+        name: 'routeStore',
+        state: ['currentPath'],
+        actions: ['navigate'],
+      },
+      {
+        name: 'themeStore',
+        state: ['themes', 'currentTheme'],
+        actions: ['setThemes', 'setCurrentTheme'],
+      },
+    ],
     ...overrides,
   };
 }
 
-const testStores: StoreEntry[] = [
-  {
-    name: 'adamStore',
-    state: ['loading', 'bootState', 'me'],
-    actions: ['navigate', 'unlockAgent'],
-  },
-  {
-    name: 'routeStore',
-    state: ['currentPath'],
-    actions: ['navigate'],
-  },
-  {
-    name: 'themeStore',
-    state: ['themes', 'currentTheme'],
-    actions: ['setThemes', 'setCurrentTheme'],
-  },
-];
-
-function ctx(overrides?: Partial<AssembledContext>): ValidationContext {
-  return buildValidationContext(makeContext(overrides), testStores);
+function ctx(overrides?: Partial<ContextData>): ValidationContext {
+  return buildValidationContext(makeContext(overrides));
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
