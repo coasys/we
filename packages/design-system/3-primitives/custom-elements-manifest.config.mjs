@@ -1,16 +1,6 @@
-import { designSystemKeys, getKeysForLayers } from '@we/design-utils';
+import { BASE_CLASS_LAYERS, designSystemKeys, getKeysForLayers } from '@we/design-utils';
 
 const DESIGN_SYSTEM_PROPS = Object.fromEntries(designSystemKeys.map((key) => [key, `DesignSystemProps['${key}']`]));
-
-// Map of base class names to their DS layer sets
-const BASE_CLASS_LAYERS = {
-  DesignSystemElement: ['layout', 'visual', 'flex', 'typography', 'state'],
-  OverlayElement: ['layout', 'visual', 'flex', 'typography', 'state'],
-  LayoutElement: ['layout'],
-  LayoutTypographyElement: ['layout', 'typography'],
-  LayoutVisualElement: ['layout', 'visual'],
-  LayoutVisualTypographyElement: ['layout', 'visual', 'typography'],
-};
 
 const DS_BASE_CLASSES = new Set(Object.keys(BASE_CLASS_LAYERS));
 
