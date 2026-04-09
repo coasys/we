@@ -252,52 +252,56 @@ Most @we/primitives also accept Design System Props (see next section for detail
 
 @we/components:
 - Accordion
-  Props: items?: AccordionItem[], multiple?: boolean, styles?: Record<string, string | number>
+  Props: items?: AccordionItem[] | undefined, multiple?: boolean | undefined, styles?: Record<string, string | number> | undefined
 - Breadcrumbs
-  Props: items?: BreadcrumbItem[], separator?: string, styles?: Record<string, string | number>
+  Props: items?: BreadcrumbItem[] | undefined, separator?: string | undefined, styles?: Record<string, string | number> | undefined
 - Calendar
-  Props: value?: string, events?: CalendarEvent[], styles?: Record<string, string | number>
+  Props: value?: string | undefined, events?: CalendarEvent[] | undefined, styles?: Record<string, string | number> | undefined
 - CircleButton
-  Props: label: string, icon?: string, image?: string, onClick?: () => void, class?: string, styles?: Record<string, string | number>
+  Props: label: string, icon?: string | undefined, image?: string | undefined, onClick?: (() => void) | undefined, class?: string | undefined, styles?: Record<string, string | number> | undefined
+- Column
+  Props: bg?: ColorValue | undefined, color?: ColorValue | undefined, opacity?: number | undefined, border?: string | undefined, borderColor?: ColorValue | undefined, borderTop?: string | undefined, borderRight?: string | undefined, borderBottom?: string | undefined, borderLeft?: string | undefined, borderWidth?: string | undefined, shadow?: ShadowValue | undefined, transform?: string | undefined, transition?: string | undefined, textAlign?: TextAlign | undefined, fontFamily?: FontFamilyValue | undefined, fontWeight?: FontWeight | undefined, fontSize?: FontSizeValue | undefined, lineHeight?: LineHeightValue | undefined, letterSpacing?: LetterSpacingValue | undefined, textDecoration?: TextDecoration | undefined, textTransform?: TextTransform | undefined, cursor?: Cursor | undefined, pointerEvents?: PointerEvents | undefined, width?: string | undefined, height?: string | undefined, minWidth?: string | undefined, minHeight?: string | undefined, maxWidth?: string | undefined, maxHeight?: string | undefined, display?: Display | undefined, wrap?: boolean | undefined, gap?: SpaceValue | undefined, overflow?: Overflow | undefined, zIndex?: number | undefined, position?: Position | undefined, top?: string | undefined, right?: string | undefined, bottom?: string | undefined, left?: string | undefined, m?: SpaceValue | undefined, ml?: SpaceValue | undefined, mr?: SpaceValue | undefined, mt?: SpaceValue | undefined, mb?: SpaceValue | undefined, mx?: SpaceValue | undefined, my?: SpaceValue | undefined, p?: SpaceValue | undefined, pl?: SpaceValue | undefined, pr?: SpaceValue | undefined, pt?: SpaceValue | undefined, pb?: SpaceValue | undefined, px?: SpaceValue | undefined, py?: SpaceValue | undefined, r?: RadiusValue | undefined, rt?: RadiusValue | undefined, rb?: RadiusValue | undefined, rl?: RadiusValue | undefined, rr?: RadiusValue | undefined, rtl?: RadiusValue | undefined, rtr?: RadiusValue | undefined, rbr?: RadiusValue | undefined, rbl?: RadiusValue | undefined, hoverProps?: Partial<DesignSystemProps> | undefined, activeProps?: Partial<DesignSystemProps> | undefined, focusProps?: Partial<DesignSystemProps> | undefined, disabledProps?: Partial<DesignSystemProps> | undefined, reverse?: boolean | undefined, styles?: JSX.CSSProperties | undefined, ax?: FlexCrossAxis | undefined, ay?: FlexMainAxis | undefined
 - Dialog
-  Props: open?: boolean, title?: string, description?: string, confirmLabel?: string, cancelLabel?: string, variant?: "default" | "danger", styles?: Record<string, string | number>
+  Props: open?: boolean | undefined, title?: string | undefined, description?: string | undefined, confirmLabel?: string | undefined, cancelLabel?: string | undefined, variant?: "default" | "danger" | undefined, styles?: Record<string, string | number> | undefined
 - IconLabelButton
-  Props: icon: string, label: string, selected?: boolean, iconWeight?: IconWeight, onClick?: () => void, class?: string, styles?: Record<string, string | number>
+  Props: icon: string, label: string, selected?: boolean | undefined, iconWeight?: IconWeight | undefined, onClick?: (() => void) | undefined, class?: string | undefined, styles?: Record<string, string | number> | undefined
 - List
-  Props: items?: ListItem[], ordered?: boolean, gap?: string, styles?: Record<string, string | number>
+  Props: items?: ListItem[] | undefined, ordered?: boolean | undefined, gap?: string | undefined, styles?: Record<string, string | number> | undefined
 - PopoverMenu — Dropdown menu that shows a list of selectable options in a popover.
 Each option has an id, name, and icon. The selected option is highlighted.
 Generic over option type — consumers can extend `{ id, name, icon }`.
-  Props: options: T[], selectedOption: T, onSelect: (option: T) => void, class?: string, styles?: Record<string, string | number>
+  Props: options: T[], selectedOption: T, onSelect: (option: T) => void, class?: string | undefined, styles?: Record<string, string | number> | undefined
 - PopoverToggleMenu — Popover menu with checkbox-style toggle items for multi-select scenarios.
 Items can be flat or nested in collapsible groups. Each item has a checked state
 and onToggle callback. Ideal for layer controls, feature toggles, or filter panels.
-  Props: items: PopoverToggleMenuEntry[], placement?: Placement, triggerLabel?: string, triggerIcon?: string, class?: string, styles?: Record<string, string | number>
+  Props: items: PopoverToggleMenuEntry[], placement?: Placement | undefined, triggerLabel?: string | undefined, triggerIcon?: string | undefined, class?: string | undefined, styles?: Record<string, string | number> | undefined
 - PostCard
-  Props: creator?: { name: string; avatar: string; }, title: string, text: string, class?: string, styles?: Record<string, string | number>
+  Props: creator?: { name: string; avatar: string; } | undefined, title: string, text: string, class?: string | undefined, styles?: Record<string, string | number> | undefined
 - RerenderLog
   Props: location: string
+- Row
+  Props: bg?: ColorValue | undefined, color?: ColorValue | undefined, opacity?: number | undefined, border?: string | undefined, borderColor?: ColorValue | undefined, borderTop?: string | undefined, borderRight?: string | undefined, borderBottom?: string | undefined, borderLeft?: string | undefined, borderWidth?: string | undefined, shadow?: ShadowValue | undefined, transform?: string | undefined, transition?: string | undefined, textAlign?: TextAlign | undefined, fontFamily?: FontFamilyValue | undefined, fontWeight?: FontWeight | undefined, fontSize?: FontSizeValue | undefined, lineHeight?: LineHeightValue | undefined, letterSpacing?: LetterSpacingValue | undefined, textDecoration?: TextDecoration | undefined, textTransform?: TextTransform | undefined, cursor?: Cursor | undefined, pointerEvents?: PointerEvents | undefined, width?: string | undefined, height?: string | undefined, minWidth?: string | undefined, minHeight?: string | undefined, maxWidth?: string | undefined, maxHeight?: string | undefined, display?: Display | undefined, wrap?: boolean | undefined, gap?: SpaceValue | undefined, overflow?: Overflow | undefined, zIndex?: number | undefined, position?: Position | undefined, top?: string | undefined, right?: string | undefined, bottom?: string | undefined, left?: string | undefined, m?: SpaceValue | undefined, ml?: SpaceValue | undefined, mr?: SpaceValue | undefined, mt?: SpaceValue | undefined, mb?: SpaceValue | undefined, mx?: SpaceValue | undefined, my?: SpaceValue | undefined, p?: SpaceValue | undefined, pl?: SpaceValue | undefined, pr?: SpaceValue | undefined, pt?: SpaceValue | undefined, pb?: SpaceValue | undefined, px?: SpaceValue | undefined, py?: SpaceValue | undefined, r?: RadiusValue | undefined, rt?: RadiusValue | undefined, rb?: RadiusValue | undefined, rl?: RadiusValue | undefined, rr?: RadiusValue | undefined, rtl?: RadiusValue | undefined, rtr?: RadiusValue | undefined, rbr?: RadiusValue | undefined, rbl?: RadiusValue | undefined, hoverProps?: Partial<DesignSystemProps> | undefined, activeProps?: Partial<DesignSystemProps> | undefined, focusProps?: Partial<DesignSystemProps> | undefined, disabledProps?: Partial<DesignSystemProps> | undefined, reverse?: boolean | undefined, styles?: JSX.CSSProperties | undefined, ax?: FlexMainAxis | undefined, ay?: FlexCrossAxis | undefined
 - Stepper
-  Props: steps?: StepperStep[], activeStep?: number, orientation?: "horizontal" | "vertical", styles?: Record<string, string | number>
+  Props: steps?: StepperStep[] | undefined, activeStep?: number | undefined, orientation?: "horizontal" | "vertical" | undefined, styles?: Record<string, string | number> | undefined
 - Table
-  Props: columns: TableColumn[], rows: Record<string, unknown>[], striped?: boolean, bordered?: boolean, styles?: Record<string, string | number>
+  Props: columns: TableColumn[], rows: Record<string, unknown>[], striped?: boolean | undefined, bordered?: boolean | undefined, styles?: Record<string, string | number> | undefined
 - Timeline
-  Props: items?: TimelineItem[], styles?: Record<string, string | number>
+  Props: items?: TimelineItem[] | undefined, styles?: Record<string, string | number> | undefined
 - ToastContainer
-  Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center", styles?: Record<string, string | number>
+  Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center" | undefined, styles?: Record<string, string | number> | undefined
 
 @we/widgets:
 - Avatar
-  Props: src: string, name: string, status?: "online" | "offline" | "away"
+  Props: src: string, name: string, status?: "online" | "offline" | "away" | undefined
 - CollapsibleSidebar — Collapsible sidebar navigation with expand/collapse behavior.
 Items can be flat nav items (with icon, avatar, badge) or nested groups
 with collapsible headers. Supports header/footer slots, expand-on-hover,
 and extensive styling customization for items, badges, and icons.
-  Props: items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "static" | "absolute" | "fixed", zIndex?: string | number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: (item: CollapsibleSidebarItem) => void, onExpandedChange?: (expanded: boolean) => void
+  Props: items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[] | undefined, side?: "left" | "right" | undefined, position?: "static" | "absolute" | "fixed" | undefined, zIndex?: string | number | undefined, collapsedWidth?: string | undefined, expandedWidth?: string | undefined, defaultExpanded?: boolean | undefined, expandOnHover?: boolean | undefined, transitionDuration?: number | undefined, bg?: string | undefined, border?: string | undefined, padding?: string | undefined, gap?: string | undefined, centerItems?: boolean | undefined, itemColor?: string | undefined, itemColorHover?: string | undefined, itemColorActive?: string | undefined, itemBg?: string | undefined, itemBgHover?: string | undefined, itemBgActive?: string | undefined, itemPadding?: string | undefined, itemGap?: string | undefined, badgeBg?: string | undefined, badgeColor?: string | undefined, iconSize?: IconSize | undefined, onItemClick?: ((item: CollapsibleSidebarItem) => void) | undefined, onExpandedChange?: ((expanded: boolean) => void) | undefined
 - CreateSpaceModalWidget
-  Props: adamClient: Ad4mClient, addNewSpace: (space: Space) => void, close: () => void, class?: string, style?: Record<string, string | number>
+  Props: adamClient: Ad4mClient | undefined, addNewSpace: (space: Space) => void, close: () => void, class?: string | undefined, style?: Record<string, string | number> | undefined
 - SpaceSidebarWidget
-  Props: name: string, description?: string, class?: string, style?: Record<string, string | number>
+  Props: name: string, description?: string | undefined, class?: string | undefined, style?: Record<string, string | number> | undefined
 
 ---
 

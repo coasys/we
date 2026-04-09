@@ -1341,17 +1341,17 @@
       "props": [
         {
           "name": "items",
-          "type": "AccordionItem[]",
+          "type": "AccordionItem[] | undefined",
           "optional": true
         },
         {
           "name": "multiple",
-          "type": "boolean",
+          "type": "boolean | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1372,7 +1372,7 @@
         },
         {
           "name": "status",
-          "type": "\"online\" | \"offline\" | \"away\"",
+          "type": "\"online\" | \"offline\" | \"away\" | undefined",
           "optional": true
         }
       ],
@@ -1383,17 +1383,17 @@
       "props": [
         {
           "name": "items",
-          "type": "BreadcrumbItem[]",
+          "type": "BreadcrumbItem[] | undefined",
           "optional": true
         },
         {
           "name": "separator",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1404,17 +1404,17 @@
       "props": [
         {
           "name": "value",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "events",
-          "type": "CalendarEvent[]",
+          "type": "CalendarEvent[] | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1430,27 +1430,27 @@
         },
         {
           "name": "icon",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "image",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "onClick",
-          "type": "() => void",
+          "type": "(() => void) | undefined",
           "optional": true
         },
         {
           "name": "class",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1467,148 +1467,504 @@
         },
         {
           "name": "footerItems",
-          "type": "CollapsibleSidebarItem[]",
+          "type": "CollapsibleSidebarItem[] | undefined",
           "optional": true
         },
         {
           "name": "side",
-          "type": "\"left\" | \"right\"",
+          "type": "\"left\" | \"right\" | undefined",
           "optional": true
         },
         {
           "name": "position",
-          "type": "\"static\" | \"absolute\" | \"fixed\"",
+          "type": "\"static\" | \"absolute\" | \"fixed\" | undefined",
           "optional": true
         },
         {
           "name": "zIndex",
-          "type": "string | number",
+          "type": "string | number | undefined",
           "optional": true
         },
         {
           "name": "collapsedWidth",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "expandedWidth",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "defaultExpanded",
-          "type": "boolean",
+          "type": "boolean | undefined",
           "optional": true
         },
         {
           "name": "expandOnHover",
-          "type": "boolean",
+          "type": "boolean | undefined",
           "optional": true
         },
         {
           "name": "transitionDuration",
-          "type": "number",
+          "type": "number | undefined",
           "optional": true
         },
         {
           "name": "bg",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "border",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "padding",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "gap",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "centerItems",
-          "type": "boolean",
+          "type": "boolean | undefined",
           "optional": true
         },
         {
           "name": "itemColor",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "itemColorHover",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "itemColorActive",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "itemBg",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "itemBgHover",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "itemBgActive",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "itemPadding",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "itemGap",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "badgeBg",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "badgeColor",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "iconSize",
-          "type": "IconSize",
+          "type": "IconSize | undefined",
           "optional": true
         },
         {
           "name": "onItemClick",
-          "type": "(item: CollapsibleSidebarItem) => void",
+          "type": "((item: CollapsibleSidebarItem) => void) | undefined",
           "optional": true
         },
         {
           "name": "onExpandedChange",
-          "type": "(expanded: boolean) => void",
+          "type": "((expanded: boolean) => void) | undefined",
           "optional": true
         }
       ],
       "source": "widgets"
     },
     {
+      "name": "Column",
+      "props": [
+        {
+          "name": "bg",
+          "type": "ColorValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "color",
+          "type": "ColorValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "opacity",
+          "type": "number | undefined",
+          "optional": true
+        },
+        {
+          "name": "border",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderColor",
+          "type": "ColorValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderTop",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderRight",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderBottom",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderLeft",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderWidth",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "shadow",
+          "type": "ShadowValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "transform",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "transition",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "textAlign",
+          "type": "TextAlign | undefined",
+          "optional": true
+        },
+        {
+          "name": "fontFamily",
+          "type": "FontFamilyValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "fontWeight",
+          "type": "FontWeight | undefined",
+          "optional": true
+        },
+        {
+          "name": "fontSize",
+          "type": "FontSizeValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "lineHeight",
+          "type": "LineHeightValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "letterSpacing",
+          "type": "LetterSpacingValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "textDecoration",
+          "type": "TextDecoration | undefined",
+          "optional": true
+        },
+        {
+          "name": "textTransform",
+          "type": "TextTransform | undefined",
+          "optional": true
+        },
+        {
+          "name": "cursor",
+          "type": "Cursor | undefined",
+          "optional": true
+        },
+        {
+          "name": "pointerEvents",
+          "type": "PointerEvents | undefined",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "minWidth",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "minHeight",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "maxWidth",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "maxHeight",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "display",
+          "type": "Display | undefined",
+          "optional": true
+        },
+        {
+          "name": "wrap",
+          "type": "boolean | undefined",
+          "optional": true
+        },
+        {
+          "name": "gap",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "overflow",
+          "type": "Overflow | undefined",
+          "optional": true
+        },
+        {
+          "name": "zIndex",
+          "type": "number | undefined",
+          "optional": true
+        },
+        {
+          "name": "position",
+          "type": "Position | undefined",
+          "optional": true
+        },
+        {
+          "name": "top",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "right",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "bottom",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "left",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "m",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "ml",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "mr",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "mt",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "mb",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "mx",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "my",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "p",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "pl",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "pr",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "pt",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "pb",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "px",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "py",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "r",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rt",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rb",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rl",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rr",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rtl",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rtr",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rbr",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rbl",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "hoverProps",
+          "type": "Partial<DesignSystemProps> | undefined",
+          "optional": true
+        },
+        {
+          "name": "activeProps",
+          "type": "Partial<DesignSystemProps> | undefined",
+          "optional": true
+        },
+        {
+          "name": "focusProps",
+          "type": "Partial<DesignSystemProps> | undefined",
+          "optional": true
+        },
+        {
+          "name": "disabledProps",
+          "type": "Partial<DesignSystemProps> | undefined",
+          "optional": true
+        },
+        {
+          "name": "reverse",
+          "type": "boolean | undefined",
+          "optional": true
+        },
+        {
+          "name": "styles",
+          "type": "JSX.CSSProperties | undefined",
+          "optional": true
+        },
+        {
+          "name": "ax",
+          "type": "FlexCrossAxis | undefined",
+          "optional": true
+        },
+        {
+          "name": "ay",
+          "type": "FlexMainAxis | undefined",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
       "name": "CreateSpaceModalWidget",
       "props": [
         {
           "name": "adamClient",
-          "type": "Ad4mClient",
+          "type": "Ad4mClient | undefined",
           "optional": false
         },
         {
@@ -1623,12 +1979,12 @@
         },
         {
           "name": "class",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "style",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1639,37 +1995,37 @@
       "props": [
         {
           "name": "open",
-          "type": "boolean",
+          "type": "boolean | undefined",
           "optional": true
         },
         {
           "name": "title",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "description",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "confirmLabel",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "cancelLabel",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "variant",
-          "type": "\"default\" | \"danger\"",
+          "type": "\"default\" | \"danger\" | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1690,27 +2046,27 @@
         },
         {
           "name": "selected",
-          "type": "boolean",
+          "type": "boolean | undefined",
           "optional": true
         },
         {
           "name": "iconWeight",
-          "type": "IconWeight",
+          "type": "IconWeight | undefined",
           "optional": true
         },
         {
           "name": "onClick",
-          "type": "() => void",
+          "type": "(() => void) | undefined",
           "optional": true
         },
         {
           "name": "class",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1721,22 +2077,22 @@
       "props": [
         {
           "name": "items",
-          "type": "ListItem[]",
+          "type": "ListItem[] | undefined",
           "optional": true
         },
         {
           "name": "ordered",
-          "type": "boolean",
+          "type": "boolean | undefined",
           "optional": true
         },
         {
           "name": "gap",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1763,12 +2119,12 @@
         },
         {
           "name": "class",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1785,27 +2141,27 @@
         },
         {
           "name": "placement",
-          "type": "Placement",
+          "type": "Placement | undefined",
           "optional": true
         },
         {
           "name": "triggerLabel",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "triggerIcon",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "class",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1816,7 +2172,7 @@
       "props": [
         {
           "name": "creator",
-          "type": "{ name: string; avatar: string; }",
+          "type": "{ name: string; avatar: string; } | undefined",
           "optional": true
         },
         {
@@ -1831,12 +2187,12 @@
         },
         {
           "name": "class",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1854,6 +2210,362 @@
       "source": "components"
     },
     {
+      "name": "Row",
+      "props": [
+        {
+          "name": "bg",
+          "type": "ColorValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "color",
+          "type": "ColorValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "opacity",
+          "type": "number | undefined",
+          "optional": true
+        },
+        {
+          "name": "border",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderColor",
+          "type": "ColorValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderTop",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderRight",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderBottom",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderLeft",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "borderWidth",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "shadow",
+          "type": "ShadowValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "transform",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "transition",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "textAlign",
+          "type": "TextAlign | undefined",
+          "optional": true
+        },
+        {
+          "name": "fontFamily",
+          "type": "FontFamilyValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "fontWeight",
+          "type": "FontWeight | undefined",
+          "optional": true
+        },
+        {
+          "name": "fontSize",
+          "type": "FontSizeValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "lineHeight",
+          "type": "LineHeightValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "letterSpacing",
+          "type": "LetterSpacingValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "textDecoration",
+          "type": "TextDecoration | undefined",
+          "optional": true
+        },
+        {
+          "name": "textTransform",
+          "type": "TextTransform | undefined",
+          "optional": true
+        },
+        {
+          "name": "cursor",
+          "type": "Cursor | undefined",
+          "optional": true
+        },
+        {
+          "name": "pointerEvents",
+          "type": "PointerEvents | undefined",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "minWidth",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "minHeight",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "maxWidth",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "maxHeight",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "display",
+          "type": "Display | undefined",
+          "optional": true
+        },
+        {
+          "name": "wrap",
+          "type": "boolean | undefined",
+          "optional": true
+        },
+        {
+          "name": "gap",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "overflow",
+          "type": "Overflow | undefined",
+          "optional": true
+        },
+        {
+          "name": "zIndex",
+          "type": "number | undefined",
+          "optional": true
+        },
+        {
+          "name": "position",
+          "type": "Position | undefined",
+          "optional": true
+        },
+        {
+          "name": "top",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "right",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "bottom",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "left",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "m",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "ml",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "mr",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "mt",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "mb",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "mx",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "my",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "p",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "pl",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "pr",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "pt",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "pb",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "px",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "py",
+          "type": "SpaceValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "r",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rt",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rb",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rl",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rr",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rtl",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rtr",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rbr",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "rbl",
+          "type": "RadiusValue | undefined",
+          "optional": true
+        },
+        {
+          "name": "hoverProps",
+          "type": "Partial<DesignSystemProps> | undefined",
+          "optional": true
+        },
+        {
+          "name": "activeProps",
+          "type": "Partial<DesignSystemProps> | undefined",
+          "optional": true
+        },
+        {
+          "name": "focusProps",
+          "type": "Partial<DesignSystemProps> | undefined",
+          "optional": true
+        },
+        {
+          "name": "disabledProps",
+          "type": "Partial<DesignSystemProps> | undefined",
+          "optional": true
+        },
+        {
+          "name": "reverse",
+          "type": "boolean | undefined",
+          "optional": true
+        },
+        {
+          "name": "styles",
+          "type": "JSX.CSSProperties | undefined",
+          "optional": true
+        },
+        {
+          "name": "ax",
+          "type": "FlexMainAxis | undefined",
+          "optional": true
+        },
+        {
+          "name": "ay",
+          "type": "FlexCrossAxis | undefined",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
       "name": "SpaceSidebarWidget",
       "props": [
         {
@@ -1863,17 +2575,17 @@
         },
         {
           "name": "description",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "class",
-          "type": "string",
+          "type": "string | undefined",
           "optional": true
         },
         {
           "name": "style",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1884,22 +2596,22 @@
       "props": [
         {
           "name": "steps",
-          "type": "StepperStep[]",
+          "type": "StepperStep[] | undefined",
           "optional": true
         },
         {
           "name": "activeStep",
-          "type": "number",
+          "type": "number | undefined",
           "optional": true
         },
         {
           "name": "orientation",
-          "type": "\"horizontal\" | \"vertical\"",
+          "type": "\"horizontal\" | \"vertical\" | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1920,17 +2632,17 @@
         },
         {
           "name": "striped",
-          "type": "boolean",
+          "type": "boolean | undefined",
           "optional": true
         },
         {
           "name": "bordered",
-          "type": "boolean",
+          "type": "boolean | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1941,12 +2653,12 @@
       "props": [
         {
           "name": "items",
-          "type": "TimelineItem[]",
+          "type": "TimelineItem[] | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
@@ -1957,12 +2669,12 @@
       "props": [
         {
           "name": "position",
-          "type": "\"top-right\" | \"top-left\" | \"bottom-right\" | \"bottom-left\" | \"top-center\" | \"bottom-center\"",
+          "type": "\"top-right\" | \"top-left\" | \"bottom-right\" | \"bottom-left\" | \"top-center\" | \"bottom-center\" | undefined",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
