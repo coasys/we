@@ -89,8 +89,9 @@ function formatComponentRegistry(primitives: PrimitiveEntry[], components: Compo
         const def = p.default ? ` = ${p.default}` : '';
         return `${p.name}${opt}: ${p.type}${def}`;
       });
+      const superHint = prim.superclass ? ` (${prim.superclass})` : '';
       const desc = prim.description ? ` — ${prim.description}` : '';
-      lines.push(`- ${prim.tagName}${desc}`);
+      lines.push(`- ${prim.tagName}${superHint}${desc}`);
       if (propList.length > 0) {
         lines.push(`  Props: ${propList.join(', ')}`);
       }

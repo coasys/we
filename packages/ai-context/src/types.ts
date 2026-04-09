@@ -3,6 +3,7 @@ export interface PrimitiveEntry {
   tagName: string;
   className: string;
   description?: string;
+  superclass?: string;
   ownProps: PropEntry[];
 }
 
@@ -43,6 +44,13 @@ export interface ModelRelationEntry {
   kind: 'HasMany' | 'HasOne';
   predicate: string;
   target?: string;
+}
+
+/** A store with its state properties and action methods */
+export interface StoreEntry {
+  name: string;
+  state: string[];
+  actions: string[];
 }
 
 /** A token category (e.g. space, color, size) */
