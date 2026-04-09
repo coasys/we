@@ -10,6 +10,9 @@
     "coverage": "vitest run --coverage"
   },
   "types": "dist/index.d.ts",
+  "bin": {
+    "we-validate-schemas": "./dist/cli/we-validate-schemas.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -22,6 +25,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@types/node": "^24.10.0",
     "@vitest/coverage-v8": "^4.0.15",
     "@we/cli": "workspace:*",
     "jsdom": "^27.2.0",

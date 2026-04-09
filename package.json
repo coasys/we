@@ -7,7 +7,7 @@
   "scripts": {
     "setup-workspace": "node scripts/setup-workspace.cjs",
     "validate": "node scripts/validate-seed.cjs",
-    "prepare": "pnpm --filter @we/cli... run build",
+    "prepare": "pnpm --filter @we/cli run bootstrap",
     "clean": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + && find . -name 'dist' -type d -prune -exec rm -rf '{}' + && rm -f pnpm-lock.yaml && pnpm store prune",
     "build": "pnpm -r --workspace-concurrency=1 run build",
     "build:web": "pnpm --filter @we/app-web build",

@@ -1,8 +1,10 @@
+#!/usr/bin/env node
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { buildValidationContext, validateSemantic, validateStructure } from '@we/schema-shared';
+import { buildValidationContext, validateSemantic } from '../semanticValidation.js';
+import { validateStructure } from '../validators.js';
 
 // ── ANSI codes ─────────────────────────────────────────────────────
 

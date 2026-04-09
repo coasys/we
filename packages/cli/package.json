@@ -6,26 +6,18 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "bootstrap": "tsup scripts/we-build.ts scripts/we-banner.ts --format esm --target es2022 --out-dir dist",
     "build:steps": "tsup",
     "build": "[ -f ./dist/we-build.js ] && node ./dist/we-build.js || pnpm run build:steps"
   },
   "bin": {
     "we-build": "./dist/we-build.js",
-    "we-banner": "./dist/we-banner.js",
-    "we-validate-schemas": "./dist/we-validate-schemas.js"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+    "we-banner": "./dist/we-banner.js"
   },
   "files": [
     "dist"
   ],
-  "dependencies": {
-    "@we/schema-shared": "workspace:*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^24.10.0",
     "tsup": "^8.5.1"
