@@ -11,7 +11,8 @@
   },
   "bin": {
     "we-build": "./dist/we-build.js",
-    "we-banner": "./dist/we-banner.js"
+    "we-banner": "./dist/we-banner.js",
+    "we-validate-schemas": "./dist/we-validate-schemas.js"
   },
   "exports": {
     ".": {
@@ -22,6 +23,9 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@we/schema-shared": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^24.10.0",
     "tsup": "^8.5.1"

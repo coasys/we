@@ -23,7 +23,7 @@ import { routing } from './fragments/routing.js';
 import { rules } from './fragments/rules.js';
 import { schemaOperators } from './fragments/schema-operators.js';
 import { storePatterns } from './fragments/store-patterns.js';
-import { stores } from './fragments/stores.js';
+import { storeEntries, stores } from './fragments/stores.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // From src/generate.ts: up to ai-context/, up to packages/, up to repo root
@@ -79,6 +79,18 @@ function main() {
   ].join('\n');
   writeFileSync(schemaContextPath, schemaContextContent, 'utf-8');
   console.log(`  Written: ${schemaContextPath}`);
+
+  // 5. Write assembled context JSON (structured data for schema validation CLI)
+  const contextJsonPath = resolve(packageRoot, 'context.json');
+  const structuredData = {
+    primitives: context.primitives,
+    components: context.components,
+    models: context.models,
+    tokens: context.tokens,
+    storeEntries,
+  };
+  writeFileSync(contextJsonPath, JSON.stringify(structuredData, null, 2), 'utf-8');
+  console.log(`  Written: ${contextJsonPath}`);
 
   console.log('Done.');
 }

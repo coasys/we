@@ -494,6 +494,10 @@ importers:
         version: 5.9.3
 
   packages/cli:
+    dependencies:
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../schema-system/shared
     devDependencies:
       '@types/node':
         specifier: ^24.10.0
