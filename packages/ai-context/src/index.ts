@@ -7,5 +7,7 @@ export type {
   ModelRelationEntry,
   TokenCategory,
   PropEntry,
+  StoreEntry,
 } from './types.js';
 export { schemaContext } from './schemaContext.js';
+export { storeEntries } from './fragments/stores.js';

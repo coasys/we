@@ -71,9 +71,9 @@ const sidebarLeft = {
               type: 'we-text',
               props: {
                 text: '$button.label',
-                size: '600',
+                fontSize: '600',
                 color: 'neutral-1000',
-                weight: {
+                fontWeight: {
                   $if: {
                     condition: { $eq: [{ $store: 'routeStore.currentPath' }, '$button.path'] },
                     then: '600',
@@ -100,7 +100,7 @@ const sidebarLeft = {
       children: [
         {
           type: 'we-text',
-          props: { color: 'neutral-0', size: '500', weight: '800' },
+          props: { color: 'neutral-0', fontSize: '500', fontWeight: '800' },
           children: ['Post'],
         },
       ],

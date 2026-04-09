@@ -44,7 +44,21 @@ export type {
   MatchRule,
 } from './types';
 
-export { validateSchema, validateNode } from './validators';
+export type {
+  ContextData,
+  PrimitiveEntry,
+  ComponentEntry,
+  PropEntry,
+  ModelEntry,
+  ModelFieldEntry,
+  ModelRelationEntry,
+  StoreEntry,
+  TokenCategory,
+} from './contextTypes';
+
+export { validateSchema, validateSemantic, buildValidationContext } from './semanticValidation';
+export type { ValidationContext } from './semanticValidation';
+export { validateStructure } from './validators';
 export type { ValidationError, ValidationResult } from './validators';
 export { NODE_OPERATORS } from './zodSchemas';
 export { findMutations, isLengthMutation } from './mutations';

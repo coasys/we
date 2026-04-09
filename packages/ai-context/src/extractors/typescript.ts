@@ -15,7 +15,10 @@ export function extractComponents(baseDirs?: { components?: string; widgets?: st
   const componentDir = baseDirs?.components ?? resolve(__dirname, '../../../../design-system/4-components/src');
   const widgetDir = baseDirs?.widgets ?? resolve(__dirname, '../../../../design-system/5-widgets/src');
 
-  const project = new Project({ skipAddingFilesFromTsConfig: true });
+  // Use the components tsconfig so ts-morph can resolve workspace imports
+  // (e.g. @we/design-types, @we/design-utils/solid) via bundler module resolution
+  const tsConfigFilePath = resolve(componentDir, '..', 'tsconfig.json');
+  const project = new Project({ tsConfigFilePath, skipAddingFilesFromTsConfig: true });
 
   const entries: ComponentEntry[] = [
     ...extractFromDir(project, componentDir, 'components'),
@@ -30,6 +33,7 @@ function extractFromDir(project: Project, dir: string, source: 'components' | 'w
   const entries: ComponentEntry[] = [];
 
   for (const sourceFile of sourceFiles) {
+    // Extract from interfaces (e.g. export interface DialogProps { ... })
     for (const iface of sourceFile.getInterfaces()) {
       const name = iface.getName();
       if (!name.endsWith('Props')) continue;
@@ -51,6 +55,39 @@ function extractFromDir(project: Project, dir: string, source: 'components' | 'w
         source,
       });
     }
+
+    // Extract from type aliases (e.g. export type ColumnProps = Omit<...> & { ... })
+    for (const typeAlias of sourceFile.getTypeAliases()) {
+      const name = typeAlias.getName();
+      if (!name.endsWith('Props')) continue;
+      // Skip if we already found an interface with the same name
+      const componentName = name.replace(/Props$/, '');
+      if (entries.some((e) => e.name === componentName)) continue;
+
+      const resolvedType = typeAlias.getType();
+      const props: PropEntry[] = [];
+      for (const sym of resolvedType.getProperties()) {
+        const decl = sym.getDeclarations()[0];
+        if (!decl) continue;
+        // Only include props declared in workspace source, not from
+        // framework types (e.g. JSX.HTMLAttributes from solid-js/react)
+        const declPath = decl.getSourceFile().getFilePath();
+        if (declPath.includes('/node_modules/')) continue;
+
+        const typeText = sym.getTypeAtLocation(decl).getText(decl);
+        const optional = !!(sym.getFlags() & 16777216); // ts.SymbolFlags.Optional
+        props.push({ name: sym.getName(), type: typeText, optional, default: undefined });
+      }
+
+      const aiTag = getAiTagFromTypeAlias(typeAlias);
+
+      entries.push({
+        name: componentName,
+        description: aiTag || undefined,
+        props,
+        source,
+      });
+    }
   }
 
   return entries;
@@ -58,6 +95,19 @@ function extractFromDir(project: Project, dir: string, source: 'components' | 'w
 
 function getAiTag(iface: ReturnType<import('ts-morph').SourceFile['getInterfaces']>[0]): string | undefined {
   for (const jsDoc of iface.getJsDocs()) {
+    for (const tag of jsDoc.getTags()) {
+      if (tag.getTagName() === 'ai') {
+        return tag.getCommentText()?.trim();
+      }
+    }
+  }
+  return undefined;
+}
+
+function getAiTagFromTypeAlias(
+  typeAlias: ReturnType<import('ts-morph').SourceFile['getTypeAliases']>[0],
+): string | undefined {
+  for (const jsDoc of typeAlias.getJsDocs()) {
     for (const tag of jsDoc.getTags()) {
       if (tag.getTagName() === 'ai') {
         return tag.getCommentText()?.trim();

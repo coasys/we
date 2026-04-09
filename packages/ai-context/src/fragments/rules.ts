@@ -32,4 +32,18 @@ Native HTML elements (lowercase tags render directly without registry entries):
 - Forms: form, input, button, label, select, textarea
 - Media: img, video, audio, canvas, figure, figcaption
 - Other: a, table, tr, td, th, details, summary, dialog
+
+## Schema Validation
+
+Run \`we-validate-schemas\` (or \`node packages/cli/dist/we-validate-schemas.js\`) from the monorepo root to validate all \`.schema.ts\` files.
+For a specific file: \`we-validate-schemas packages/app-framework/src/shared/schemas/MyTemplate.schema.ts\`
+
+After creating or modifying a \`.schema.ts\` file, always run validation to catch:
+- Unknown component types (typos, missing registry entries)
+- Invalid or misspelled props (with "did you mean?" suggestions)
+- Prop type mismatches (e.g., number where string expected)
+- Missing required \`meta\` field on root TemplateSchema nodes
+- \`$routes\` outlet without a \`routes\` array on an ancestor
+- Orphan \`$local\` / \`$setLocal\` references without a \`$localState\` ancestor
+- DS layer consistency (mixing props from layers the component doesn't support)
 `;

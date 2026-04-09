@@ -109,7 +109,17 @@
                               ▼
                     ┌─────────────────────┐
                     │8b. Schema Validation│
-                    │    (Phase 2)        │
+                    │    (Phase 2)      ✅│
+                    └─────────────────────┘
+                              │
+                    ┌─────────────────────┐
+                    │11. Context          │
+                    │    Fragments        │
+                    └─────────────────────┘
+
+                    ┌─────────────────────┐
+                    │12. File Upload      │
+                    │    Local State      │
                     └─────────────────────┘
 
                     ┌─────────────────────┐
@@ -118,7 +128,7 @@
                     └─────────────────────┘
 ```
 
-> **Note:** #5b, #5c, and #6 all depend on #5 independently — they can run in parallel. #5d depends on #5b. #8b has two phases: Phase 1 (token shape checks) has no dependencies; Phase 2 (semantic checks) depends on #8. #9 is deferred indefinitely — skills/instruction files achieve the same AI context delivery without MCP infrastructure. #7b and #7c are deferred as developer tooling that doesn't advance the core vision.
+> **Note:** #5b, #5c, and #6 all depend on #5 independently — they can run in parallel. #5d depends on #5b. #8b has two phases: Phase 1 (token shape checks) has no dependencies; Phase 2 (semantic checks) depends on #8. #11 (Context Fragments) depends on #8b. #12 (File Upload Local State) depends on #4c. #9 is deferred indefinitely — skills/instruction files achieve the same AI context delivery without MCP infrastructure. #7b and #7c are deferred as developer tooling that doesn't advance the core vision.
 
 ---
 
@@ -338,14 +348,18 @@ Creates `@we/ai-context` with 4 extractors (CEM, TypeScript, tokens, models), 6 
 2. **Phase 2 (later):** Cloud API from within WE app — users provide their own API key, section API + assembled context become the system prompt for in-app "AI edits this section" UI.
 3. **Phase 3 (aspirational):** AD4M built-in AI — deferred until local models have sufficient context windows (20K+ effective context needed for schema context alone).
 
-### 8b. Schema Validation (Structural → Semantic)
+### 8b. Schema Validation (Structural → Semantic) ✅
 
-**Plan:** [schema-validation](../prs/schema-validation.md)
-**Status:** Phase 1 complete (branch `feat/schema-validation`, 1 commit, 7 files). Phase 2 not started.
+**Plan:** [schema-validation](../prs/schema-validation-semantic.md)
+**Status:** Complete (branch `feat/schema-validation-semantic`, 12 commits, 47 files)
 **Depends on:** Token shape checks (#8b Phase 1): none. Semantic checks (#8b Phase 2): @we/ai-context (#8) for `ValidationContext`.
-**Unblocks:** AI feedback loop — prevents broken schema generation, local `validate` function callable from terminal or test scripts
+**Unblocks:** AI feedback loop — prevents broken schema generation, local `validate` function callable from terminal or test scripts, context fragment architecture (#11)
 
-Extends existing Zod validation in `packages/schema-system/shared/src/`. Phase 1 adds 11 token shape Zod schemas with structural enforcement, refines `zSchemaProp` union to reject malformed/unknown `$`-operators, adds `superRefine` node-level checks for `$each`/`$if`/`$routes`, adds `severity` field to `ValidationError`, and includes 49 new tests. Also removes stale `schemaUpdater.test.ts` and legacy `solid/src/SchemaRenderer.tsx`. Phase 2 adds a semantic walker that accepts component/store metadata from ai-context to check component existence, prop validity, and store references. Local agents can invoke validation via terminal (`npx vitest` or direct function call) — no MCP wrapper needed.
+**Phase 1** (structural): 11 token shape Zod schemas with structural enforcement, `zSchemaProp` union rejecting malformed `$`-operators, `superRefine` node-level checks for `$each`/`$if`/`$routes`, `severity` field on `ValidationError`. 49 tests.
+
+**Phase 2** (semantic): Semantic validation walker (`validateSemantic`) checking component existence, prop validity, store/action references, and model names against `ValidationContext` built from `context.json`. CLI tool `we-validate-schemas` for terminal validation. ts-morph extractor improvements: tsconfig resolution, type alias extraction, `node_modules` declaration filter, `*.types.ts` glob convention. Unified validation API: `validateStructure` (Zod, auto-detects SchemaNode vs TemplateSchema), `validateSemantic` (props/stores/components), `validateSchema` (full pipeline). 316 tests total.
+
+Also: renamed widget type files to `*.types.ts` convention (CesiumGlobe, GraphWidget), replaced `CreateSpacePage` component with declarative schema form using `$localState`, removed pages directory, regenerated `context.json` with full component extraction. Tightened `CollapsibleSidebar.zIndex` from `string | number` to `number`. Fixed `we-text` prop names (`size` → `fontSize`, `weight` → `fontWeight`) in TwitterTemplate.
 
 ### 9. MCP Tools ⏸️
 
@@ -357,6 +371,28 @@ Extends existing Zod validation in `packages/schema-system/shared/src/`. Phase 1
 Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6. Phase 2 (knowledge tools: `list_components`, `get_component`, `validate_schema`, etc.) needs a lightweight WE MCP server backed by `AssembledContext`. The `validate_schema` tool is a thin wrapper around the validation function from #8b.
 
 **Why deferred:** With 200K+ context windows on modern models, the component/token/convention reference fits comfortably in skill files — no on-demand lookup needed. Schema validation can be invoked locally via terminal. The only genuinely dynamic tool (SHACL section tools) is free with #6 and doesn't need the full MCP server. If MCP is ever needed, the hard part (assembling context via #8) is done — building the server is straightforward.
+
+---
+
+## Phase E: Build Pipeline & Form Extensions
+
+### 11. Context Fragments
+
+**Plan:** [PR-CONTEXT-FRAGMENTS](../prs/PR-CONTEXT-FRAGMENTS.md)
+**Status:** Not started
+**Depends on:** Schema Validation (#8b) — needs complete validation to verify fragment parity
+**Unblocks:** `@we/block-solid` and community packages shipping their own context without modifying the central extractor
+
+Decentralizes `@we/ai-context/src/generate.ts` from a monolith that hardcodes knowledge of every package's internals into a fragment-based architecture. Each package generates its own `context.json` fragment at build time. Aggregator in `@we/ai-context` merges fragments into unified `ContextData`. Three phases: (1) fragment infrastructure + `ContextFragment` type + aggregator, (2) migrate DS packages one at a time, (3) `@we/block-solid` as first non-DS consumer.
+
+### 12. File Upload Local State
+
+**Plan:** [PR-FILE-UPLOAD-LOCAL-STATE](../prs/PR-FILE-UPLOAD-LOCAL-STATE.md)
+**Status:** Not started
+**Depends on:** Form Validation (#4c) — extends `$localState` with `'file'` type
+**Unblocks:** image/file uploads in declarative schema forms, space thumbnail upload in `/new-space` route
+
+Adds `'file'` as a new `LocalStateField` type so schemas can declare file state, bind `we-file-upload` to it via `$setLocal`, preview selected images via new `$localPreview` token, and pass `File` objects through to store actions. `adamStore.createSpace` already accepts an optional `imageFile?: File` — this wires it up from the schema layer.
 
 ---
 
@@ -386,7 +422,9 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 | ✅   | 8   | @we/ai-context → Skills        | AI    | 7a         | Large  | Med  |
 | ✅   | 4   | Local Schema State             | Cust  | 6          | Medium | Med  |
 | ✅   | 4c  | Form Validation                | Cust  | 4          | Medium | Med  |
-| 3    | 8b‡ | Schema Validation (semantic)   | AI    | 8          | Small  | Low  |
+| ✅   | 8b‡ | Schema Validation (semantic)   | AI    | 8          | Medium | Low  |
+|      | 11  | Context Fragments              | AI    | 8b         | Medium | Med  |
+|      | 12  | File Upload Local State        | Cust  | 4c         | Small  | Low  |
 | ⏸️   | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
 | ⏸️   | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
 | ⏸️   | 9   | MCP Tools                      | AI    | 6, 8, 8b   | Large  | Med  |
@@ -401,9 +439,9 @@ Phase A PRs (1–3, 4b, 10) are fully independent — all five can run in parall
 
 Within Phase B, #5b (Core Block Types), #5c ($query Service), and #6 (Schema Customization) are all independent of each other — they can run in parallel once #5 lands.
 
-**Remaining work:** #8b‡ (semantic validation) is the only non-deferred item without a dependency on an incomplete PR. #7b, #7c, and #9 are deferred.
+**Remaining work:** #11 (Context Fragments) decentralizes the ai-context pipeline. #12 (File Upload Local State) extends `$localState` to support file/image uploads. #7b, #7c, and #9 are deferred.
 
-The critical path for the complete schema-first app-building workflow is now clear: all core schema, data, customization, and form validation PRs are complete. **#8b‡ (semantic validation)** is the only remaining item — it adds semantic checks using the now-complete ai-context extractors.
+All core schema, data, customization, form validation, and AI tooling PRs are complete. The next wave focuses on build pipeline decentralization (#11) and extending form capabilities (#12). These are independent and can run in parallel.
 
 ```
 Time →
@@ -414,8 +452,10 @@ Track 1:  [1–3, 4b, 10 ✅] ────────────────�
           [8b-Ph1 ✅] ────────────────────────────────────────────────────────
           [8. ai-context → skills ✅] ────────────────────────────────────────
           [4. $localState ✅] → [4c. Form Validation ✅] ────────────────────
+          [8b-Ph2. semantic ✅] ──────────────────────────────────────────────
 
-Track 2:  [8b-Ph2. semantic]                                          ← next wave
+Track 2:  [11. Context Fragments]                                     ← next wave
+          [12. File Upload Local State]                               ← next wave
 
 Deferred: [7b. Showcase ⏸️] [7c. Storybook ⏸️] [9. MCP Tools ⏸️]
 ```

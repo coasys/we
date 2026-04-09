@@ -63,7 +63,7 @@ export interface CollapsibleSidebarProps {
   // Positioning
   side?: 'left' | 'right';
   position?: 'static' | 'absolute' | 'fixed'; // Layout positioning
-  zIndex?: string | number; // Z-index for overlay mode
+  zIndex?: number; // Z-index for overlay mode
 
   // Sizing
   collapsedWidth?: string;

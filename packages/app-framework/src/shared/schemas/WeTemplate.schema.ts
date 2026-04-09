@@ -1494,8 +1494,141 @@ export const weTemplate: TemplateSchema = {
     {
       path: '/new-space',
       type: 'Column',
-      props: { width: '100%', height: '100%' },
-      children: [{ type: 'CreateSpacePage' }],
+      props: { p: '600', gap: '500', ax: 'center', ay: 'center', width: '100%', height: '100%' },
+      $localState: {
+        name: { type: 'string', initial: '', validate: [{ rule: 'required', message: 'Name is required' }] },
+        description: { type: 'string', initial: '' },
+        shared: { type: 'boolean', initial: false },
+      },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '400', width: '100%', maxWidth: '400px' },
+          children: [
+            // Title
+            {
+              type: 'we-text',
+              props: { fontSize: '700', fontWeight: '600', color: 'neutral-700' },
+              children: ['New space'],
+            },
+
+            // Name field
+            {
+              type: 'we-form-field',
+              props: {
+                label: 'Name',
+                error: { $if: { condition: { $error: 'name' }, then: { $error: 'name' }, else: '' } },
+              },
+              children: [
+                {
+                  type: 'we-input',
+                  props: {
+                    placeholder: 'Space name',
+                    value: { $local: 'name' },
+                    onInput: { $setLocal: 'name', from: '$event.detail' },
+                    onBlur: { $touch: 'name' },
+                  },
+                },
+              ],
+            },
+
+            // Description field
+            {
+              type: 'we-form-field',
+              props: { label: 'Description' },
+              children: [
+                {
+                  type: 'we-input',
+                  props: {
+                    placeholder: 'What is this space about?',
+                    value: { $local: 'description' },
+                    onInput: { $setLocal: 'description', from: '$event.detail' },
+                  },
+                },
+              ],
+            },
+
+            // Visibility toggle
+            {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { fontSize: '300', fontWeight: '500', color: 'neutral-600' },
+                  children: ['Visibility'],
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '200' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        px: '300',
+                        py: '100',
+                        bg: { $if: { condition: { $not: { $local: 'shared' } }, then: 'primary-500', else: '' } },
+                        color: {
+                          $if: { condition: { $not: { $local: 'shared' } }, then: 'neutral-0', else: 'neutral-700' },
+                        },
+                        onClick: { $setLocal: 'shared', value: false },
+                      },
+                      children: ['Personal'],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        px: '300',
+                        py: '100',
+                        bg: { $if: { condition: { $local: 'shared' }, then: 'primary-500', else: '' } },
+                        color: { $if: { condition: { $local: 'shared' }, then: 'neutral-0', else: 'neutral-700' } },
+                        onClick: { $setLocal: 'shared', value: true },
+                      },
+                      children: ['Shared'],
+                    },
+                  ],
+                },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '200', color: 'neutral-500' },
+                  children: [
+                    {
+                      $if: {
+                        condition: { $local: 'shared' },
+                        then: 'Shared spaces are published as neighbourhoods that others can join.',
+                        else: 'Personal spaces are private and stored locally.',
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+
+            // Create button
+            {
+              type: 'we-button',
+              props: {
+                bg: 'primary-500',
+                color: 'neutral-0',
+                disabled: { $not: { $formValid: '$scope' } },
+                onClick: [
+                  { $touch: '$all' },
+                  {
+                    $if: {
+                      condition: { $formValid: '$scope' },
+                      then: {
+                        $action: 'adamStore.createSpace',
+                        args: [{ $local: 'name' }, { $local: 'description' }, { $local: 'shared' }],
+                      },
+                    },
+                  },
+                ],
+              },
+              children: ['Create Space'],
+            },
+          ],
+        },
+      ],
     },
     // {
     //   type: 'Column',

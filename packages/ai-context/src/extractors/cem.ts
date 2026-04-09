@@ -17,6 +17,7 @@ interface CEMDeclaration {
   tagName?: string;
   description?: string;
   customElement?: boolean;
+  superclass?: { name: string; module: string };
   members?: CEMMember[];
 }
 
@@ -68,6 +69,7 @@ export function extractPrimitives(cemPath?: string): PrimitiveEntry[] {
         tagName: decl.tagName,
         className: decl.name,
         description: decl.description || undefined,
+        superclass: decl.superclass?.name,
         ownProps,
       });
     }

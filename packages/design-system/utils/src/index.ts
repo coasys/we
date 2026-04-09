@@ -71,6 +71,16 @@ export const typographyKeys = [
 
 export type DSLayer = 'layout' | 'visual' | 'flex' | 'typography' | 'state';
 
+/** Map of DS base class names to their layer sets. */
+export const BASE_CLASS_LAYERS: Record<string, DSLayer[]> = {
+  DesignSystemElement: ['layout', 'visual', 'flex', 'typography', 'state'],
+  OverlayElement: ['layout', 'visual', 'flex', 'typography', 'state'],
+  LayoutElement: ['layout'],
+  LayoutTypographyElement: ['layout', 'typography'],
+  LayoutVisualElement: ['layout', 'visual'],
+  LayoutVisualTypographyElement: ['layout', 'visual', 'typography'],
+};
+
 export const layerKeyMap: Record<DSLayer, readonly string[]> = {
   layout: layoutKeys,
   visual: visualKeys,
