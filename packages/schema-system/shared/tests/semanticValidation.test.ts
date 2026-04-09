@@ -643,10 +643,10 @@ describe('$each warning', () => {
 
 describe('composed validation', () => {
   it('validateSchema skips semantic on structural failure', () => {
-    // No meta — structural failure for template schema
-    const result = validateSchema({ type: 'root' }, ctx());
+    // Invalid meta type — structural failure for template schema
+    const result = validateSchema({ type: 'root', meta: { name: 123 } }, ctx());
     expect(result.valid).toBe(false);
-    // Should have structural errors, no semantic errors
+    // Should have structural errors only
     expect(result.errors.length).toBeGreaterThan(0);
   });
 

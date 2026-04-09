@@ -4,7 +4,7 @@ import { relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { buildValidationContext, validateSemantic } from '../semanticValidation.js';
-import { validateNodeStructure } from '../validators.js';
+import { validateStructure } from '../validators.js';
 
 // ── ANSI codes ─────────────────────────────────────────────────────
 
@@ -114,8 +114,8 @@ for (const filePath of files) {
 
   const relPath = relative(process.cwd(), filePath);
 
-  // Run structural validation (validates the SchemaNode tree shape)
-  const structural = validateNodeStructure(result.schema);
+  // Run structural validation (auto-detects TemplateSchema vs SchemaNode)
+  const structural = validateStructure(result.schema);
 
   // Run semantic validation (even if structural fails, to show all issues)
   const semantic = validateSemantic(result.schema, validationContext);

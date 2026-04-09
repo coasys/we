@@ -42,28 +42,17 @@ function zodErrorToValidationErrors(zodErrors: z.ZodError): ValidationError[] {
   return out;
 }
 
-// Validate a single SchemaNode using Zod
-export function validateNodeStructure(node: unknown): ValidationResult {
-  try {
-    zSchemaNode.parse(node); // Zod runtime validation
-    return { valid: true, errors: [] };
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return { valid: false, errors: zodErrorToValidationErrors(error) };
-    }
-    throw error; // Re-throw unexpected errors
-  }
-}
-
-// Validate the entire TemplateSchema using Zod
+// Auto-detect and validate: TemplateSchema (has meta) or SchemaNode fragment
 export function validateStructure(schema: unknown): ValidationResult {
+  const isTemplate = typeof schema === 'object' && schema !== null && 'meta' in schema;
+  const zod = isTemplate ? zTemplateSchema : zSchemaNode;
   try {
-    zTemplateSchema.parse(schema); // Zod runtime validation
+    zod.parse(schema);
     return { valid: true, errors: [] };
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { valid: false, errors: zodErrorToValidationErrors(error) };
     }
-    throw error; // Re-throw unexpected errors
+    throw error;
   }
 }

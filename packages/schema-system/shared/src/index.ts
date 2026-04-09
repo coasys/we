@@ -58,7 +58,7 @@ export type {
 
 export { validateSchema, validateSemantic, buildValidationContext } from './semanticValidation';
 export type { ValidationContext } from './semanticValidation';
-export { validateStructure, validateNodeStructure } from './validators';
+export { validateStructure } from './validators';
 export type { ValidationError, ValidationResult } from './validators';
 export { NODE_OPERATORS } from './zodSchemas';
 export { findMutations, isLengthMutation } from './mutations';

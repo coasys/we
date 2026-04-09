@@ -1482,7 +1482,7 @@
         },
         {
           "name": "zIndex",
-          "type": "string | number | undefined",
+          "type": "number | undefined",
           "optional": true
         },
         {

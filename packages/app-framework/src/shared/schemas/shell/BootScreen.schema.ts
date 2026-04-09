@@ -15,7 +15,7 @@ export const bootScreen: SchemaNode = {
         gap: '400',
         bg: 'neutral-0',
         position: 'absolute',
-        zIndex: '9999',
+        zIndex: 9999,
       },
       children: [
         // WE Logo
