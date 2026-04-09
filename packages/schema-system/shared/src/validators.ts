@@ -43,7 +43,7 @@ function zodErrorToValidationErrors(zodErrors: z.ZodError): ValidationError[] {
 }
 
 // Validate a single SchemaNode using Zod
-export function validateNode(node: unknown): ValidationResult {
+export function validateNodeStructure(node: unknown): ValidationResult {
   try {
     zSchemaNode.parse(node); // Zod runtime validation
     return { valid: true, errors: [] };
@@ -56,7 +56,7 @@ export function validateNode(node: unknown): ValidationResult {
 }
 
 // Validate the entire TemplateSchema using Zod
-export function validateSchema(schema: unknown): ValidationResult {
+export function validateStructure(schema: unknown): ValidationResult {
   try {
     zTemplateSchema.parse(schema); // Zod runtime validation
     return { valid: true, errors: [] };

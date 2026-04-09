@@ -1,6 +1,6 @@
 import type { SchemaNode, TemplateSchema, ValidationError } from '@we/schema-shared';
 import { findMutations, isLengthMutation } from '@we/schema-shared';
-import { validateSchema } from '@we/schema-shared';
+import { validateStructure } from '@we/schema-shared';
 import { batch } from 'solid-js';
 import { produce, SetStoreFunction } from 'solid-js/store';
 
@@ -33,7 +33,7 @@ export function updateSchema<T extends TemplateSchema | SchemaNode>(
   newNode = cleanSchemaNode(newNode);
 
   // Validate the schema node
-  const { valid, errors } = validateSchema(newNode);
+  const { valid, errors } = validateStructure(newNode);
   if (!valid) {
     console.error('Invalid schema node:', errors);
     return { applied: false, errors };

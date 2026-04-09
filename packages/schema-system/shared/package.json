@@ -17,6 +17,8 @@
     }
   },
   "dependencies": {
+    "@we/ai-context": "workspace:*",
+    "@we/design-utils": "workspace:*",
     "@we/tokens": "workspace:*",
     "zod": "^4.1.12"
   },

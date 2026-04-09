@@ -1,0 +1,817 @@
+import type { AssembledContext, StoreEntry } from '@we/ai-context';
+import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap } from '@we/design-utils';
+
+import type { ValidationError, ValidationResult } from './validators';
+import { validateStructure } from './validators';
+
+// ── Types ──────────────────────────────────────────────────────────
+
+export type ValidationContext = {
+  componentNames: Set<string>;
+  componentProps: Map<string, Set<string>>;
+  componentPropTypes: Map<string, Map<string, string>>;
+  universalProps: Set<string>;
+  storeNames: Set<string>;
+  storeMembers: Map<string, Set<string>>;
+  modelNames: Set<string>;
+  dsPropToLayer: Map<string, string>;
+};
+
+// ── Constants ──────────────────────────────────────────────────────
+
+const HTML_ELEMENTS = new Set([
+  'div',
+  'span',
+  'p',
+  'a',
+  'img',
+  'br',
+  'hr',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'ul',
+  'ol',
+  'li',
+  'dl',
+  'dt',
+  'dd',
+  'table',
+  'thead',
+  'tbody',
+  'tfoot',
+  'tr',
+  'td',
+  'th',
+  'caption',
+  'colgroup',
+  'col',
+  'form',
+  'input',
+  'button',
+  'select',
+  'option',
+  'optgroup',
+  'textarea',
+  'label',
+  'fieldset',
+  'legend',
+  'section',
+  'article',
+  'nav',
+  'header',
+  'footer',
+  'main',
+  'aside',
+  'figure',
+  'figcaption',
+  'blockquote',
+  'pre',
+  'code',
+  'em',
+  'strong',
+  'small',
+  'sub',
+  'sup',
+  'video',
+  'audio',
+  'source',
+  'canvas',
+  'svg',
+  'iframe',
+  'details',
+  'summary',
+  'dialog',
+  'menu',
+  'slot',
+  'template',
+  'abbr',
+  'address',
+  'b',
+  'bdi',
+  'bdo',
+  'cite',
+  'data',
+  'del',
+  'dfn',
+  'i',
+  'ins',
+  'kbd',
+  'mark',
+  'meter',
+  'output',
+  'progress',
+  'q',
+  'rp',
+  'rt',
+  'ruby',
+  's',
+  'samp',
+  'time',
+  'u',
+  'var',
+  'wbr',
+]);
+
+// ── Helpers ────────────────────────────────────────────────────────
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0) as number[]);
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function suggest(name: string, knownNames: Iterable<string>): string | undefined {
+  let best: string | undefined;
+  let bestDist = 4; // only suggest if distance ≤ 3
+  for (const known of knownNames) {
+    const d = levenshtein(name.toLowerCase(), known.toLowerCase());
+    if (d < bestDist) {
+      bestDist = d;
+      best = known;
+    }
+  }
+  return best;
+}
+
+function classifyPropType(typeText: string): string {
+  if (!typeText || typeText === 'unknown') return 'unknown';
+  const t = typeText.replace(/\s*\|\s*undefined/g, '').trim();
+  if (t === 'boolean') return 'boolean';
+  if (t === 'number') return 'number';
+  if (t === 'string') return 'string';
+  // Union containing 'string' → string
+  if (t.includes('|') && t.split('|').some((p) => p.trim() === 'string')) return 'string';
+  // Named types (e.g. ButtonVariant, SpaceValue) — all current enums are string-based
+  if (/^[A-Z]/.test(t)) return 'string';
+  return 'unknown';
+}
+
+function isTokenObject(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.some((k) => k.startsWith('$'));
+}
+
+// ── Build context ──────────────────────────────────────────────────
+
+export function buildValidationContext(assembled: AssembledContext, stores: StoreEntry[]): ValidationContext {
+  const componentNames = new Set<string>();
+  const componentProps = new Map<string, Set<string>>();
+  const componentPropTypes = new Map<string, Map<string, string>>();
+  const dsPropToLayer = new Map<string, string>();
+
+  // Build dsPropToLayer reverse map
+  for (const [layer, keys] of Object.entries(layerKeyMap) as [string, readonly string[]][]) {
+    for (const key of keys) {
+      if (!dsPropToLayer.has(key)) {
+        dsPropToLayer.set(key, layer);
+      }
+    }
+  }
+
+  // Primitives
+  for (const prim of assembled.primitives) {
+    componentNames.add(prim.tagName);
+    const props = new Set<string>();
+    const propTypes = new Map<string, string>();
+
+    for (const p of prim.ownProps) {
+      props.add(p.name);
+      propTypes.set(p.name, classifyPropType(p.type));
+    }
+
+    // Add DS props based on superclass
+    if (prim.superclass && BASE_CLASS_LAYERS[prim.superclass]) {
+      const layers = BASE_CLASS_LAYERS[prim.superclass];
+      const dsKeys = getKeysForLayers(layers);
+      for (const key of dsKeys) {
+        props.add(key);
+        // DS props are all string-typed (token values)
+        propTypes.set(key, 'string');
+      }
+    }
+
+    componentProps.set(prim.tagName, props);
+    componentPropTypes.set(prim.tagName, propTypes);
+  }
+
+  // Components and widgets
+  for (const comp of assembled.components) {
+    componentNames.add(comp.name);
+    const props = new Set<string>();
+    const propTypes = new Map<string, string>();
+    for (const p of comp.props) {
+      props.add(p.name);
+      propTypes.set(p.name, classifyPropType(p.type));
+    }
+    componentProps.set(comp.name, props);
+    componentPropTypes.set(comp.name, propTypes);
+  }
+
+  // Universal props
+  const universalProps = new Set(['styles', 'children', 'ref', 'key']);
+
+  // Stores
+  const storeNames = new Set<string>();
+  const storeMembers = new Map<string, Set<string>>();
+  for (const store of stores) {
+    storeNames.add(store.name);
+    const members = new Set<string>();
+    for (const s of store.state) members.add(s);
+    for (const a of store.actions) members.add(a);
+    storeMembers.set(store.name, members);
+  }
+
+  // Models
+  const modelNames = new Set<string>();
+  for (const model of assembled.models) {
+    modelNames.add(model.name);
+  }
+
+  return {
+    componentNames,
+    componentProps,
+    componentPropTypes,
+    universalProps,
+    storeNames,
+    storeMembers,
+    modelNames,
+    dsPropToLayer,
+  };
+}
+
+// ── Tree walker ────────────────────────────────────────────────────
+
+interface WalkState {
+  localScope: Set<string> | null; // null = no $localState in scope
+  hasRoutesAncestor: boolean;
+}
+
+function walkNode(
+  node: unknown,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  if (typeof node !== 'object' || node === null) return;
+  const n = node as Record<string, unknown>;
+
+  const type = n.type as string | undefined;
+  if (!type || typeof type !== 'string') return;
+
+  // Skip operator nodes
+  if (type.startsWith('$') && type !== '$routes') {
+    // Still walk into operator internals
+    walkOperatorNode(n, path, type, ctx, state, errors);
+    return;
+  }
+
+  // $routes outlet
+  if (type === '$routes') {
+    if (!state.hasRoutesAncestor) {
+      errors.push({
+        path: `${path}.type`,
+        message: '{ type: "$routes" } found but no "routes" array on any ancestor',
+        severity: 'warning',
+      });
+    }
+    return;
+  }
+
+  // Skip HTML elements
+  if (HTML_ELEMENTS.has(type)) {
+    walkChildren(n, path, ctx, state, errors);
+    return;
+  }
+
+  // Check component exists
+  if (!ctx.componentNames.has(type)) {
+    const suggestion = suggest(type, ctx.componentNames);
+    const didYouMean = suggestion ? ` Did you mean "${suggestion}"?` : '';
+    errors.push({
+      path: `${path}.type`,
+      message: `Unknown component "${type}".${didYouMean}`,
+      severity: 'error',
+    });
+    // Don't check props on unknown components
+    walkChildren(n, path, ctx, state, errors);
+    return;
+  }
+
+  // Check props
+  const props = n.props as Record<string, unknown> | undefined;
+  if (props && typeof props === 'object') {
+    checkProps(props, path, type, ctx, state, errors);
+  }
+
+  // Update local scope if $localState is present
+  const newState = updateLocalScope(n, state);
+
+  // Check routes
+  checkRoutes(n, path, ctx, newState, errors);
+
+  // If this node has routes, children need hasRoutesAncestor so $routes outlet is valid
+  const childState = Array.isArray(n.routes) ? { ...newState, hasRoutesAncestor: true } : newState;
+
+  // Walk children
+  walkChildren(n, path, ctx, childState, errors);
+}
+
+function walkOperatorNode(
+  n: Record<string, unknown>,
+  path: string,
+  type: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  const props = n.props as Record<string, unknown> | undefined;
+  if (!props) return;
+
+  if (type === '$each') {
+    // Check for missing 'as' prop
+    if (!props.as) {
+      errors.push({
+        path: `${path}.props`,
+        message: '$each without "as" prop — children can\'t reference item context',
+        severity: 'warning',
+      });
+    }
+    // Walk the item template
+    if (props.item && typeof props.item === 'object') {
+      walkNode(props.item, `${path}.props.item`, ctx, state, errors);
+    }
+  }
+
+  if (type === '$if') {
+    checkTokenValue(props.condition, `${path}.props.condition`, ctx, state, errors);
+    if (props.then && typeof props.then === 'object' && !isTokenObject(props.then)) {
+      walkNode(props.then, `${path}.props.then`, ctx, state, errors);
+    } else if (props.then) {
+      checkTokenValue(props.then, `${path}.props.then`, ctx, state, errors);
+    }
+    if (props.else && typeof props.else === 'object' && !isTokenObject(props.else)) {
+      walkNode(props.else, `${path}.props.else`, ctx, state, errors);
+    } else if (props.else) {
+      checkTokenValue(props.else, `${path}.props.else`, ctx, state, errors);
+    }
+  }
+
+  // Walk children of operator nodes
+  walkChildren(n, path, ctx, state, errors);
+}
+
+function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkState {
+  const props = n.props as Record<string, unknown> | undefined;
+  const localState = props?.$localState as Record<string, unknown> | undefined;
+  if (!localState || typeof localState !== 'object') return state;
+
+  const newFields = new Set(state.localScope ?? []);
+  for (const key of Object.keys(localState)) {
+    newFields.add(key);
+  }
+  return { ...state, localScope: newFields };
+}
+
+function checkProps(
+  props: Record<string, unknown>,
+  path: string,
+  componentType: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  const knownProps = ctx.componentProps.get(componentType);
+  const propTypes = ctx.componentPropTypes.get(componentType);
+
+  for (const [propName, propValue] of Object.entries(props)) {
+    // Skip internal schema props
+    if (propName === '$localState') continue;
+
+    const propPath = `${path}.props.${propName}`;
+
+    // Check for token values in props (regardless of whether prop is known)
+    checkTokenValue(propValue, propPath, ctx, state, errors);
+
+    // Universal props are always valid
+    if (ctx.universalProps.has(propName)) continue;
+    // Event handlers are always valid
+    if (propName.startsWith('on') && propName.length > 2 && propName[2] === propName[2].toUpperCase()) continue;
+
+    // Check if prop is known
+    if (knownProps && !knownProps.has(propName)) {
+      // Check if it's a DS prop from a layer this component doesn't support
+      const layer = ctx.dsPropToLayer.get(propName);
+      if (layer) {
+        errors.push({
+          path: propPath,
+          message: `Unknown prop "${propName}" on "${componentType}" — "${propName}" requires the ${layer} layer`,
+          severity: 'warning',
+        });
+      } else {
+        errors.push({
+          path: propPath,
+          message: `Unknown prop "${propName}" on "${componentType}"`,
+          severity: 'warning',
+        });
+      }
+      continue;
+    }
+
+    // Check prop type category (only for static values, not token objects)
+    if (propTypes && !isTokenObject(propValue) && typeof propValue !== 'object') {
+      const expectedCategory = propTypes.get(propName);
+      if (expectedCategory && expectedCategory !== 'unknown') {
+        const actualType = typeof propValue;
+        if (actualType === 'string' || actualType === 'boolean' || actualType === 'number') {
+          if (actualType !== expectedCategory) {
+            errors.push({
+              path: propPath,
+              message: `Prop "${propName}" on "${componentType}" expects ${expectedCategory}, got ${actualType}`,
+              severity: 'warning',
+            });
+          }
+        }
+      }
+    }
+  }
+}
+
+function checkTokenValue(
+  value: unknown,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  if (typeof value !== 'object' || value === null) return;
+
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      checkTokenValue(value[i], `${path}[${i}]`, ctx, state, errors);
+    }
+    return;
+  }
+
+  const obj = value as Record<string, unknown>;
+
+  // $store token
+  if ('$store' in obj && typeof obj.$store === 'string') {
+    checkStoreRef(obj.$store, `${path}.$store`, ctx, errors);
+  }
+
+  // $action token
+  if ('$action' in obj && typeof obj.$action === 'string') {
+    checkActionRef(obj.$action, `${path}.$action`, ctx, errors);
+  }
+
+  // $query token
+  if ('$query' in obj && typeof obj.$query === 'object' && obj.$query !== null) {
+    const query = obj.$query as Record<string, unknown>;
+    if (typeof query.model === 'string') {
+      checkModelRef(query.model, `${path}.$query.model`, ctx, errors);
+    }
+  }
+
+  // $local token
+  if ('$local' in obj && typeof obj.$local === 'string') {
+    checkLocalRef(obj.$local, `${path}.$local`, 'local', state, errors);
+  }
+
+  // $setLocal token
+  if ('$setLocal' in obj && typeof obj.$setLocal === 'string') {
+    checkLocalRef(obj.$setLocal, `${path}.$setLocal`, 'setLocal', state, errors);
+  }
+
+  // $error token
+  if ('$error' in obj && typeof obj.$error === 'string') {
+    checkLocalRef(obj.$error, `${path}.$error`, 'error', state, errors);
+  }
+
+  // $valid token
+  if ('$valid' in obj && typeof obj.$valid === 'string') {
+    checkLocalRef(obj.$valid, `${path}.$valid`, 'valid', state, errors);
+  }
+
+  // $touched token
+  if ('$touched' in obj && typeof obj.$touched === 'string') {
+    checkLocalRef(obj.$touched, `${path}.$touched`, 'touched', state, errors);
+  }
+
+  // $touch token
+  if ('$touch' in obj && typeof obj.$touch === 'string') {
+    if (obj.$touch !== '$all') {
+      checkLocalRef(obj.$touch, `${path}.$touch`, 'touch', state, errors);
+    }
+  }
+
+  // $formValid token — skip $scope
+  if ('$formValid' in obj && typeof obj.$formValid === 'string') {
+    // $formValid: "$scope" is always valid — skip
+  }
+
+  // $resetLocal token — skip $scope
+  if ('$resetLocal' in obj && typeof obj.$resetLocal === 'string') {
+    // $resetLocal: "$scope" is always valid — skip
+  }
+
+  // Recurse into nested token objects ($if, $concat, $map, $eq, $ne, etc.)
+  if ('$if' in obj && typeof obj.$if === 'object' && obj.$if !== null) {
+    const ifObj = obj.$if as Record<string, unknown>;
+    checkTokenValue(ifObj.condition, `${path}.$if.condition`, ctx, state, errors);
+    checkTokenValue(ifObj.then, `${path}.$if.then`, ctx, state, errors);
+    checkTokenValue(ifObj.else, `${path}.$if.else`, ctx, state, errors);
+  }
+
+  if ('$concat' in obj && Array.isArray(obj.$concat)) {
+    for (let i = 0; i < obj.$concat.length; i++) {
+      checkTokenValue(obj.$concat[i], `${path}.$concat[${i}]`, ctx, state, errors);
+    }
+  }
+
+  if ('$map' in obj && typeof obj.$map === 'object' && obj.$map !== null) {
+    const mapObj = obj.$map as Record<string, unknown>;
+    checkTokenValue(mapObj.source, `${path}.$map.source`, ctx, state, errors);
+    if (mapObj.select && typeof mapObj.select === 'object') {
+      for (const [k, v] of Object.entries(mapObj.select as Record<string, unknown>)) {
+        checkTokenValue(v, `${path}.$map.select.${k}`, ctx, state, errors);
+      }
+    }
+  }
+
+  if ('$not' in obj) {
+    checkTokenValue(obj.$not, `${path}.$not`, ctx, state, errors);
+  }
+
+  if ('$eq' in obj && Array.isArray(obj.$eq)) {
+    for (let i = 0; i < obj.$eq.length; i++) {
+      checkTokenValue(obj.$eq[i], `${path}.$eq[${i}]`, ctx, state, errors);
+    }
+  }
+
+  if ('$ne' in obj && Array.isArray(obj.$ne)) {
+    for (let i = 0; i < obj.$ne.length; i++) {
+      checkTokenValue(obj.$ne[i], `${path}.$ne[${i}]`, ctx, state, errors);
+    }
+  }
+
+  if ('$lt' in obj && Array.isArray(obj.$lt)) {
+    for (let i = 0; i < obj.$lt.length; i++) {
+      checkTokenValue(obj.$lt[i], `${path}.$lt[${i}]`, ctx, state, errors);
+    }
+  }
+
+  if ('$gt' in obj && Array.isArray(obj.$gt)) {
+    for (let i = 0; i < obj.$gt.length; i++) {
+      checkTokenValue(obj.$gt[i], `${path}.$gt[${i}]`, ctx, state, errors);
+    }
+  }
+
+  if ('$and' in obj && Array.isArray(obj.$and)) {
+    for (let i = 0; i < obj.$and.length; i++) {
+      checkTokenValue(obj.$and[i], `${path}.$and[${i}]`, ctx, state, errors);
+    }
+  }
+
+  if ('$or' in obj && Array.isArray(obj.$or)) {
+    for (let i = 0; i < obj.$or.length; i++) {
+      checkTokenValue(obj.$or[i], `${path}.$or[${i}]`, ctx, state, errors);
+    }
+  }
+}
+
+function checkStoreRef(ref: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
+  const dotIdx = ref.indexOf('.');
+  const storeName = dotIdx === -1 ? ref : ref.slice(0, dotIdx);
+
+  if (!ctx.storeNames.has(storeName)) {
+    const known = [...ctx.storeNames].join(', ');
+    errors.push({
+      path,
+      message: `Unknown store "${storeName}" in $store token. Known stores: ${known}`,
+      severity: 'error',
+    });
+    return;
+  }
+
+  if (dotIdx !== -1) {
+    const memberName = ref.slice(dotIdx + 1);
+    const members = ctx.storeMembers.get(storeName);
+    if (members && !members.has(memberName)) {
+      const known = [...members].join(', ');
+      errors.push({
+        path,
+        message: `Unknown member "${memberName}" on store "${storeName}". Known members: ${known}`,
+        severity: 'warning',
+      });
+    }
+  }
+}
+
+function checkActionRef(ref: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
+  const dotIdx = ref.indexOf('.');
+  if (dotIdx === -1) return; // malformed, structural validation handles this
+
+  const storeName = ref.slice(0, dotIdx);
+  const methodName = ref.slice(dotIdx + 1);
+
+  if (!ctx.storeNames.has(storeName)) {
+    const known = [...ctx.storeNames].join(', ');
+    errors.push({
+      path,
+      message: `Unknown store "${storeName}" in $action "${ref}". Known stores: ${known}`,
+      severity: 'error',
+    });
+    return;
+  }
+
+  const members = ctx.storeMembers.get(storeName);
+  if (members && !members.has(methodName)) {
+    // Filter to actions only (not state)
+    const known = [...members].join(', ');
+    errors.push({
+      path,
+      message: `Unknown method "${methodName}" on store "${storeName}". Known members: ${known}`,
+      severity: 'warning',
+    });
+  }
+}
+
+function checkModelRef(name: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
+  if (!ctx.modelNames.has(name)) {
+    const suggestion = suggest(name, ctx.modelNames);
+    const didYouMean = suggestion ? ` Did you mean "${suggestion}"?` : '';
+    errors.push({
+      path,
+      message: `Unknown model "${name}" in $query.${didYouMean}`,
+      severity: 'error',
+    });
+  }
+}
+
+function checkLocalRef(
+  fieldName: string,
+  path: string,
+  tokenType: string,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  // Skip special values
+  if (fieldName === '$all' || fieldName === '$scope') return;
+
+  if (state.localScope === null) {
+    errors.push({
+      path,
+      message: `$${tokenType} references "${fieldName}" but no $localState is declared in scope`,
+      severity: 'error',
+    });
+    return;
+  }
+
+  if (!state.localScope.has(fieldName)) {
+    const declared = [...state.localScope].join(', ');
+    errors.push({
+      path,
+      message: `$${tokenType} references "${fieldName}" but $localState only declares: ${declared}`,
+      severity: 'error',
+    });
+  }
+}
+
+function checkRoutes(
+  n: Record<string, unknown>,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  const routes = n.routes as unknown[] | undefined;
+  if (!Array.isArray(routes)) return;
+
+  // Check for duplicate route paths
+  const paths = new Map<string, number[]>();
+  for (let i = 0; i < routes.length; i++) {
+    const route = routes[i] as Record<string, unknown> | undefined;
+    if (!route || typeof route !== 'object') continue;
+    const routePath = route.path as string | undefined;
+    if (typeof routePath !== 'string') continue;
+    const indices = paths.get(routePath) ?? [];
+    indices.push(i);
+    paths.set(routePath, indices);
+  }
+
+  for (const [routePath, indices] of paths) {
+    if (indices.length > 1) {
+      const positions = indices.map((i) => `routes[${i}]`).join(' and ');
+      errors.push({
+        path: `${path}.routes`,
+        message: `Duplicate route path "${routePath}" at ${positions}`,
+        severity: 'warning',
+      });
+    }
+  }
+
+  // Check that children contain a $routes outlet
+  if (!hasRoutesOutlet(n)) {
+    errors.push({
+      path: `${path}.routes`,
+      message: 'Node has "routes" array but no { type: "$routes" } in children',
+      severity: 'warning',
+    });
+  }
+
+  // Walk route nodes with hasRoutesAncestor = true
+  const routeState = { ...state, hasRoutesAncestor: true };
+  for (let i = 0; i < routes.length; i++) {
+    walkNode(routes[i], `${path}.routes[${i}]`, ctx, routeState, errors);
+  }
+}
+
+function hasRoutesOutlet(node: unknown): boolean {
+  if (typeof node !== 'object' || node === null) return false;
+  const n = node as Record<string, unknown>;
+  if (n.type === '$routes') return true;
+  const children = n.children as unknown[] | undefined;
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      if (hasRoutesOutlet(child)) return true;
+    }
+  }
+  const slots = n.slots as Record<string, unknown> | undefined;
+  if (slots && typeof slots === 'object') {
+    for (const slotNode of Object.values(slots)) {
+      if (hasRoutesOutlet(slotNode)) return true;
+    }
+  }
+  return false;
+}
+
+function walkChildren(
+  n: Record<string, unknown>,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  // Update local scope before walking children
+  const childState = updateLocalScope(n, state);
+
+  // Children
+  const children = n.children as unknown[] | undefined;
+  if (Array.isArray(children)) {
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      if (typeof child === 'object' && child !== null) {
+        walkNode(child, `${path}.children[${i}]`, ctx, childState, errors);
+      }
+    }
+  }
+
+  // Slots
+  const slots = n.slots as Record<string, unknown> | undefined;
+  if (slots && typeof slots === 'object') {
+    for (const [slotName, slotNode] of Object.entries(slots)) {
+      if (typeof slotNode === 'object' && slotNode !== null) {
+        walkNode(slotNode, `${path}.slots.${slotName}`, ctx, childState, errors);
+      }
+    }
+  }
+}
+
+// ── Public API ─────────────────────────────────────────────────────
+
+export function validateSemantic(schema: unknown, context: ValidationContext): ValidationResult {
+  const errors: ValidationError[] = [];
+  const state: WalkState = { localScope: null, hasRoutesAncestor: false };
+
+  walkNode(schema, '', context, state, errors);
+
+  return {
+    valid: errors.filter((e) => e.severity === 'error').length === 0,
+    errors,
+  };
+}
+
+export function validateSchema(schema: unknown, context: ValidationContext): ValidationResult {
+  const structural = validateStructure(schema);
+  if (!structural.valid) return structural;
+
+  const semantic = validateSemantic(schema, context);
+  return {
+    valid: semantic.errors.filter((e) => e.severity === 'error').length === 0,
+    errors: [...structural.errors, ...semantic.errors],
+  };
+}

@@ -44,7 +44,9 @@ export type {
   MatchRule,
 } from './types';
 
-export { validateSchema, validateNode } from './validators';
+export { validateSchema, validateSemantic, buildValidationContext } from './semanticValidation';
+export type { ValidationContext } from './semanticValidation';
+export { validateStructure, validateNodeStructure } from './validators';
 export type { ValidationError, ValidationResult } from './validators';
 export { NODE_OPERATORS } from './zodSchemas';
 export { findMutations, isLengthMutation } from './mutations';
