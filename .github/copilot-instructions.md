@@ -251,42 +251,52 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: open: boolean = false, title: string = '', placement: Placement = 'top', tooltipEl: HTMLElement, triggerEl: HTMLElement, arrowEl: HTMLElement
 
 @we/components:
+- BlockComposer
+  Props: post?: any, perspective: PerspectiveProxy
+- BlockRenderer
+  Props: post?: any
+- ImageComponent
+  Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined, nodeKey: string
+- ImageDisplay
+  Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined
+- ImageInput
+  Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
 - Accordion
-  Props: items?: AccordionItem[], multiple?: boolean, styles?: Record<string, string | number>
+  Props: children?: JSX.Element, renderContent?: ((item: AccordionItem, index: number) => JSX.Element), onChange?: ((openItems: string[]) => void), items?: AccordionItem[], multiple?: boolean, styles?: Record<string, string | number>
 - Breadcrumbs
-  Props: items?: BreadcrumbItem[], separator?: string, styles?: Record<string, string | number>
+  Props: onNavigate?: ((item: BreadcrumbItem, index: number) => void), items?: BreadcrumbItem[], separator?: string, styles?: Record<string, string | number>
 - Calendar
-  Props: value?: string, events?: CalendarEvent[], styles?: Record<string, string | number>
+  Props: onSelect?: ((date: string) => void), value?: string, events?: CalendarEvent[], styles?: Record<string, string | number>
 - CircleButton
   Props: label: string, icon?: string, image?: string, onClick?: (() => void), class?: string, styles?: Record<string, string | number>
 - Column
-  Props: bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, styles?: JSX.CSSProperties, ax?: FlexCrossAxis, ay?: FlexMainAxis
+  Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexCrossAxis, ay?: FlexMainAxis
 - Dialog
-  Props: open?: boolean, title?: string, description?: string, confirmLabel?: string, cancelLabel?: string, variant?: "default" | "danger", styles?: Record<string, string | number>
+  Props: children?: JSX.Element, onConfirm?: (() => void), onCancel?: (() => void), open?: boolean, title?: string, description?: string, confirmLabel?: string, cancelLabel?: string, variant?: "default" | "danger", styles?: Record<string, string | number>
 - IconLabelButton
-  Props: icon: string, label: string, selected?: boolean, iconWeight?: IconWeight, onClick?: (() => void), class?: string, styles?: Record<string, string | number>
+  Props: icon: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
 - List
-  Props: items?: ListItem[], ordered?: boolean, gap?: string, styles?: Record<string, string | number>
+  Props: children?: JSX.Element, renderItem?: ((item: ListItem, index: number) => JSX.Element), items?: ListItem[], ordered?: boolean, gap?: string, styles?: Record<string, string | number>
 - PopoverMenu — Dropdown menu that shows a list of selectable options in a popover.
 Each option has an id, name, and icon. The selected option is highlighted.
 Generic over option type — consumers can extend `{ id, name, icon }`.
   Props: options: T[], selectedOption: T, onSelect: (option: T) => void, class?: string, styles?: Record<string, string | number>
-- PopoverToggleMenu — Popover menu with checkbox-style toggle items for multi-select scenarios.
-Items can be flat or nested in collapsible groups. Each item has a checked state
-and onToggle callback. Ideal for layer controls, feature toggles, or filter panels.
-  Props: items: PopoverToggleMenuEntry[], placement?: Placement, triggerLabel?: string, triggerIcon?: string, class?: string, styles?: Record<string, string | number>
+- PopoverToggleMenu
+  Props: class?: string, styles?: Record<string, string | number>, placement?: Placement, triggerLabel?: string, triggerIcon?: string, items: SolidToggleMenuEntry[]
 - PostCard
   Props: creator?: { name: string; avatar: string; }, title: string, text: string, class?: string, styles?: Record<string, string | number>
 - RerenderLog
   Props: location: string
 - Row
-  Props: bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, styles?: JSX.CSSProperties, ax?: FlexMainAxis, ay?: FlexCrossAxis
+  Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexMainAxis, ay?: FlexCrossAxis
 - Stepper
-  Props: steps?: StepperStep[], activeStep?: number, orientation?: "horizontal" | "vertical", styles?: Record<string, string | number>
+  Props: onStepClick?: ((index: number) => void), steps?: StepperStep[], activeStep?: number, orientation?: "horizontal" | "vertical", styles?: Record<string, string | number>
 - Table
-  Props: columns: TableColumn[], rows: Record<string, unknown>[], striped?: boolean, bordered?: boolean, styles?: Record<string, string | number>
+  Props: renderCell?: ((row: Record<string, unknown>, column: TableColumn, index: number) => JSX.Element), columns: TableColumn[], rows: Record<string, unknown>[], striped?: boolean, bordered?: boolean, styles?: Record<string, string | number>
 - Timeline
-  Props: items?: TimelineItem[], styles?: Record<string, string | number>
+  Props: children?: JSX.Element, renderItem?: ((item: TimelineItem, index: number) => JSX.Element), items?: TimelineItem[], styles?: Record<string, string | number>
+- ToastContainer
+  Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center", styles?: Record<string, string | number>
 
 @we/widgets:
 - CesiumGlobe — 3D globe widget using CesiumJS with a modular layer system.
@@ -294,11 +304,8 @@ Layers are injected via factory functions (planet surface + background).
 Requires a layer factory registry mapping string names to factory functions.
 Not schema-renderable — used directly in application code.
   Props: ionAccessToken?: string, planetLayers?: LayerConfig<unknown>[], backgroundLayers?: LayerConfig<unknown>[], layerFactoryRegistry: Record<string, LayerFactory<any>>
-- CollapsibleSidebar — Collapsible sidebar navigation with expand/collapse behavior.
-Items can be flat nav items (with icon, avatar, badge) or nested groups
-with collapsible headers. Supports header/footer slots, expand-on-hover,
-and extensive styling customization for items, badges, and icons.
-  Props: items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "static" | "absolute" | "fixed", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
+- CollapsibleSidebar
+  Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "static" | "absolute" | "fixed", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
 - CreateSpaceModalWidget
   Props: adamClient: Ad4mClient | undefined, addNewSpace: (space: Space) => void, close: () => void, class?: string, style?: Record<string, string | number>
 - GraphWidget — 2D force-directed graph visualization using D3-force layout and Canvas rendering.

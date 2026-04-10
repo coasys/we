@@ -1337,8 +1337,148 @@
   ],
   "components": [
     {
+      "name": "BlockComposer",
+      "props": [
+        {
+          "name": "post",
+          "type": "any",
+          "optional": true
+        },
+        {
+          "name": "perspective",
+          "type": "PerspectiveProxy",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "BlockRenderer",
+      "props": [
+        {
+          "name": "post",
+          "type": "any",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "ImageComponent",
+      "props": [
+        {
+          "name": "src",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "altText",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "width",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "height",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "nodeKey",
+          "type": "string",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "ImageDisplay",
+      "props": [
+        {
+          "name": "src",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "altText",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "width",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "height",
+          "type": "number | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "ImageInput",
+      "props": [
+        {
+          "name": "src",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "altText",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "width",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "height",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
       "name": "Accordion",
       "props": [
+        {
+          "name": "children",
+          "type": "JSX.Element",
+          "optional": true
+        },
+        {
+          "name": "renderContent",
+          "type": "((item: AccordionItem, index: number) => JSX.Element)",
+          "optional": true
+        },
+        {
+          "name": "onChange",
+          "type": "((openItems: string[]) => void)",
+          "optional": true
+        },
         {
           "name": "items",
           "type": "AccordionItem[]",
@@ -1361,6 +1501,11 @@
       "name": "Breadcrumbs",
       "props": [
         {
+          "name": "onNavigate",
+          "type": "((item: BreadcrumbItem, index: number) => void)",
+          "optional": true
+        },
+        {
           "name": "items",
           "type": "BreadcrumbItem[]",
           "optional": true
@@ -1381,6 +1526,11 @@
     {
       "name": "Calendar",
       "props": [
+        {
+          "name": "onSelect",
+          "type": "((date: string) => void)",
+          "optional": true
+        },
         {
           "name": "value",
           "type": "string",
@@ -1439,6 +1589,11 @@
       "name": "Column",
       "props": [
         {
+          "name": "styles",
+          "type": "JSX.CSSProperties",
+          "optional": true
+        },
+        {
           "name": "bg",
           "type": "ColorValue",
           "optional": true
@@ -1774,11 +1929,6 @@
           "optional": true
         },
         {
-          "name": "styles",
-          "type": "JSX.CSSProperties",
-          "optional": true
-        },
-        {
           "name": "ax",
           "type": "FlexCrossAxis",
           "optional": true
@@ -1794,6 +1944,21 @@
     {
       "name": "Dialog",
       "props": [
+        {
+          "name": "children",
+          "type": "JSX.Element",
+          "optional": true
+        },
+        {
+          "name": "onConfirm",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "onCancel",
+          "type": "(() => void)",
+          "optional": true
+        },
         {
           "name": "open",
           "type": "boolean",
@@ -1837,37 +2002,37 @@
       "props": [
         {
           "name": "icon",
-          "type": "string",
+          "type": "import(\"/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid\").MaybeAccessor<string>",
           "optional": false
         },
         {
           "name": "label",
-          "type": "string",
+          "type": "import(\"/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid\").MaybeAccessor<string>",
           "optional": false
         },
         {
           "name": "selected",
-          "type": "boolean",
+          "type": "import(\"/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid\").MaybeAccessor<boolean | undefined>",
           "optional": true
         },
         {
           "name": "iconWeight",
-          "type": "IconWeight",
+          "type": "import(\"/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid\").MaybeAccessor<IconWeight | undefined>",
           "optional": true
         },
         {
           "name": "onClick",
-          "type": "(() => void)",
+          "type": "import(\"/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid\").MaybeAccessor<(() => void) | undefined>",
           "optional": true
         },
         {
           "name": "class",
-          "type": "string",
+          "type": "import(\"/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid\").MaybeAccessor<string | undefined>",
           "optional": true
         },
         {
           "name": "styles",
-          "type": "Record<string, string | number>",
+          "type": "import(\"/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid\").MaybeAccessor<Record<string, string | number> | undefined>",
           "optional": true
         }
       ],
@@ -1876,6 +2041,16 @@
     {
       "name": "List",
       "props": [
+        {
+          "name": "children",
+          "type": "JSX.Element",
+          "optional": true
+        },
+        {
+          "name": "renderItem",
+          "type": "((item: ListItem, index: number) => JSX.Element)",
+          "optional": true
+        },
         {
           "name": "items",
           "type": "ListItem[]",
@@ -1933,12 +2108,16 @@
     },
     {
       "name": "PopoverToggleMenu",
-      "description": "Popover menu with checkbox-style toggle items for multi-select scenarios.\nItems can be flat or nested in collapsible groups. Each item has a checked state\nand onToggle callback. Ideal for layer controls, feature toggles, or filter panels.",
       "props": [
         {
-          "name": "items",
-          "type": "PopoverToggleMenuEntry[]",
-          "optional": false
+          "name": "class",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "styles",
+          "type": "Record<string, string | number>",
+          "optional": true
         },
         {
           "name": "placement",
@@ -1956,14 +2135,9 @@
           "optional": true
         },
         {
-          "name": "class",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "styles",
-          "type": "Record<string, string | number>",
-          "optional": true
+          "name": "items",
+          "type": "SolidToggleMenuEntry[]",
+          "optional": false
         }
       ],
       "source": "components"
@@ -2013,6 +2187,11 @@
     {
       "name": "Row",
       "props": [
+        {
+          "name": "styles",
+          "type": "JSX.CSSProperties",
+          "optional": true
+        },
         {
           "name": "bg",
           "type": "ColorValue",
@@ -2349,11 +2528,6 @@
           "optional": true
         },
         {
-          "name": "styles",
-          "type": "JSX.CSSProperties",
-          "optional": true
-        },
-        {
           "name": "ax",
           "type": "FlexMainAxis",
           "optional": true
@@ -2369,6 +2543,11 @@
     {
       "name": "Stepper",
       "props": [
+        {
+          "name": "onStepClick",
+          "type": "((index: number) => void)",
+          "optional": true
+        },
         {
           "name": "steps",
           "type": "StepperStep[]",
@@ -2395,6 +2574,11 @@
     {
       "name": "Table",
       "props": [
+        {
+          "name": "renderCell",
+          "type": "((row: Record<string, unknown>, column: TableColumn, index: number) => JSX.Element)",
+          "optional": true
+        },
         {
           "name": "columns",
           "type": "TableColumn[]",
@@ -2427,8 +2611,34 @@
       "name": "Timeline",
       "props": [
         {
+          "name": "children",
+          "type": "JSX.Element",
+          "optional": true
+        },
+        {
+          "name": "renderItem",
+          "type": "((item: TimelineItem, index: number) => JSX.Element)",
+          "optional": true
+        },
+        {
           "name": "items",
           "type": "TimelineItem[]",
+          "optional": true
+        },
+        {
+          "name": "styles",
+          "type": "Record<string, string | number>",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "ToastContainer",
+      "props": [
+        {
+          "name": "position",
+          "type": "\"top-right\" | \"top-left\" | \"bottom-right\" | \"bottom-left\" | \"top-center\" | \"bottom-center\"",
           "optional": true
         },
         {
@@ -2468,8 +2678,17 @@
     },
     {
       "name": "CollapsibleSidebar",
-      "description": "Collapsible sidebar navigation with expand/collapse behavior.\nItems can be flat nav items (with icon, avatar, badge) or nested groups\nwith collapsible headers. Supports header/footer slots, expand-on-hover,\nand extensive styling customization for items, badges, and icons.",
       "props": [
+        {
+          "name": "header",
+          "type": "JSX.Element",
+          "optional": true
+        },
+        {
+          "name": "footer",
+          "type": "JSX.Element",
+          "optional": true
+        },
         {
           "name": "items",
           "type": "CollapsibleSidebarItem[]",
@@ -3769,37 +3988,80 @@
         "showPassword",
         "loginLoading"
       ],
-      "actions": ["navigate", "addNewSpace", "unlockAgent", "setShowPassword"]
+      "actions": [
+        "navigate",
+        "addNewSpace",
+        "unlockAgent",
+        "setShowPassword"
+      ]
     },
     {
       "name": "routeStore",
-      "state": ["currentPath"],
-      "actions": ["navigate"]
+      "state": [
+        "currentPath"
+      ],
+      "actions": [
+        "navigate"
+      ]
     },
     {
       "name": "themeStore",
-      "state": ["themes", "currentTheme"],
-      "actions": ["setThemes", "setCurrentTheme"]
+      "state": [
+        "themes",
+        "currentTheme"
+      ],
+      "actions": [
+        "setThemes",
+        "setCurrentTheme"
+      ]
     },
     {
       "name": "templateStore",
-      "state": ["templates", "currentTemplate"],
-      "actions": ["updateTemplate", "switchTemplate", "removeTemplate", "saveTemplate"]
+      "state": [
+        "templates",
+        "currentTemplate"
+      ],
+      "actions": [
+        "updateTemplate",
+        "switchTemplate",
+        "removeTemplate",
+        "saveTemplate"
+      ]
     },
     {
       "name": "spaceStore",
-      "state": ["spaceId", "perspective", "space", "posts", "loading"],
-      "actions": ["setSpaceId", "getSpace", "getPosts"]
+      "state": [
+        "spaceId",
+        "perspective",
+        "space",
+        "posts",
+        "loading"
+      ],
+      "actions": [
+        "setSpaceId",
+        "getSpace",
+        "getPosts"
+      ]
     },
     {
       "name": "modalStore",
-      "state": ["createSpaceModalOpen"],
-      "actions": ["openModal", "closeModal"]
+      "state": [
+        "createSpaceModalOpen"
+      ],
+      "actions": [
+        "openModal",
+        "closeModal"
+      ]
     },
     {
       "name": "aiStore",
-      "state": ["models", "tasks"],
-      "actions": ["handleSchemaPrompt"]
+      "state": [
+        "models",
+        "tasks"
+      ],
+      "actions": [
+        "handleSchemaPrompt"
+      ]
     }
   ]
 }
