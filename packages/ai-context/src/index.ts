@@ -11,3 +11,4 @@ export type {
 } from './types.js';
 export { schemaContext } from './schemaContext.js';
 export { storeEntries } from './fragments/stores.js';
+export { aggregateFragments } from './aggregate.js';

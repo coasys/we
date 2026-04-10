@@ -10,22 +10,30 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /**
  * Extract component/widget interfaces from *.types.ts files using ts-morph.
  * Reads @ai JSDoc tags for descriptions.
+ *
+ * @param dir — absolute path to the source directory to scan
+ * @param source — label to stamp on each ComponentEntry ('components' | 'widgets')
+ */
+export function extractComponentProps(dir: string, source: 'components' | 'widgets'): ComponentEntry[] {
+  // Use the package's tsconfig so ts-morph can resolve workspace imports
+  // (e.g. @we/design-types, @we/design-utils/solid) via bundler module resolution
+  const tsConfigFilePath = resolve(dir, '..', 'tsconfig.json');
+  const project = new Project({ tsConfigFilePath, skipAddingFilesFromTsConfig: true });
+
+  return extractFromDir(project, dir, source).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * @deprecated Use extractComponentProps(dir, source) instead.
+ * Kept for backward compatibility with tests during migration.
  */
 export function extractComponents(baseDirs?: { components?: string; widgets?: string }): ComponentEntry[] {
   const componentDir = baseDirs?.components ?? resolve(__dirname, '../../../../design-system/4-components/src');
   const widgetDir = baseDirs?.widgets ?? resolve(__dirname, '../../../../design-system/5-widgets/src');
 
-  // Use the components tsconfig so ts-morph can resolve workspace imports
-  // (e.g. @we/design-types, @we/design-utils/solid) via bundler module resolution
-  const tsConfigFilePath = resolve(componentDir, '..', 'tsconfig.json');
-  const project = new Project({ tsConfigFilePath, skipAddingFilesFromTsConfig: true });
-
-  const entries: ComponentEntry[] = [
-    ...extractFromDir(project, componentDir, 'components'),
-    ...extractFromDir(project, widgetDir, 'widgets'),
-  ];
-
-  return entries.sort((a, b) => a.name.localeCompare(b.name));
+  return [...extractComponentProps(componentDir, 'components'), ...extractComponentProps(widgetDir, 'widgets')].sort(
+    (a, b) => a.name.localeCompare(b.name),
+  );
 }
 
 function extractFromDir(project: Project, dir: string, source: 'components' | 'widgets'): ComponentEntry[] {
@@ -33,12 +41,18 @@ function extractFromDir(project: Project, dir: string, source: 'components' | 'w
   const entries: ComponentEntry[] = [];
 
   for (const sourceFile of sourceFiles) {
+    // The file's base name determines which component it belongs to
+    // e.g. Dialog.types.ts → "Dialog", CollapsibleSidebar.types.ts → "CollapsibleSidebar"
+    const fileName = sourceFile.getBaseNameWithoutExtension().replace(/\.types$/, '');
+
     // Extract from interfaces (e.g. export interface DialogProps { ... })
     for (const iface of sourceFile.getInterfaces()) {
       const name = iface.getName();
       if (!name.endsWith('Props')) continue;
 
       const componentName = name.replace(/Props$/, '');
+      // Skip helper types that don't match the file name (e.g. AvatarProps in CollapsibleSidebar.types.ts)
+      if (componentName !== fileName) continue;
       const aiTag = getAiTag(iface);
 
       const props: PropEntry[] = iface.getProperties().map((prop) => ({
@@ -60,8 +74,10 @@ function extractFromDir(project: Project, dir: string, source: 'components' | 'w
     for (const typeAlias of sourceFile.getTypeAliases()) {
       const name = typeAlias.getName();
       if (!name.endsWith('Props')) continue;
-      // Skip if we already found an interface with the same name
       const componentName = name.replace(/Props$/, '');
+      // Skip helper types that don't match the file name
+      if (componentName !== fileName) continue;
+      // Skip if we already found an interface with the same name
       if (entries.some((e) => e.name === componentName)) continue;
 
       const resolvedType = typeAlias.getType();

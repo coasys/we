@@ -1,3 +1,5 @@
+import type { ContextData } from '@we/schema-shared';
+
 import { extractPrimitives } from './extractors/cem.js';
 import { extractModels } from './extractors/models.js';
 import { extractTokens } from './extractors/tokens.js';
@@ -11,15 +13,20 @@ import { storeEntries, stores } from './fragments/stores.js';
 import type { AssembledContext, ComponentEntry, ModelEntry, PrimitiveEntry, TokenCategory } from './types.js';
 
 /**
- * Assemble the full structured context from all extractors and fragments.
+ * Assemble the full structured context.
+ * If contextData is provided, uses it directly (from glob-based discovery).
+ * Otherwise falls back to calling extractors with defaults.
  */
-export function assembleContext(): AssembledContext {
-  return {
+export function assembleContext(contextData?: ContextData): AssembledContext {
+  const data = contextData ?? {
     primitives: extractPrimitives(),
     components: extractComponents(),
     models: extractModels(),
     tokens: extractTokens(),
     storeEntries,
+  };
+  return {
+    ...data,
     fragments: {
       schemaOperators,
       designSystemProps,
