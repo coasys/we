@@ -287,12 +287,8 @@ and onToggle callback. Ideal for layer controls, feature toggles, or filter pane
   Props: columns: TableColumn[], rows: Record<string, unknown>[], striped?: boolean | undefined, bordered?: boolean | undefined, styles?: Record<string, string | number> | undefined
 - Timeline
   Props: items?: TimelineItem[] | undefined, styles?: Record<string, string | number> | undefined
-- ToastContainer
-  Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center" | undefined, styles?: Record<string, string | number> | undefined
 
 @we/widgets:
-- Avatar
-  Props: src: string, name: string, status?: "online" | "offline" | "away" | undefined
 - CesiumGlobe — 3D globe widget using CesiumJS with a modular layer system.
 Layers are injected via factory functions (planet surface + background).
 Requires a layer factory registry mapping string names to factory functions.

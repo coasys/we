@@ -1358,27 +1358,6 @@
       "source": "components"
     },
     {
-      "name": "Avatar",
-      "props": [
-        {
-          "name": "src",
-          "type": "string",
-          "optional": false
-        },
-        {
-          "name": "name",
-          "type": "string",
-          "optional": false
-        },
-        {
-          "name": "status",
-          "type": "\"online\" | \"offline\" | \"away\" | undefined",
-          "optional": true
-        }
-      ],
-      "source": "widgets"
-    },
-    {
       "name": "Breadcrumbs",
       "props": [
         {
@@ -1421,33 +1400,6 @@
       "source": "components"
     },
     {
-      "name": "CesiumGlobe",
-      "description": "3D globe widget using CesiumJS with a modular layer system.\nLayers are injected via factory functions (planet surface + background).\nRequires a layer factory registry mapping string names to factory functions.\nNot schema-renderable — used directly in application code.",
-      "props": [
-        {
-          "name": "ionAccessToken",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "planetLayers",
-          "type": "LayerConfig<unknown>[] | undefined",
-          "optional": true
-        },
-        {
-          "name": "backgroundLayers",
-          "type": "LayerConfig<unknown>[] | undefined",
-          "optional": true
-        },
-        {
-          "name": "layerFactoryRegistry",
-          "type": "Record<string, LayerFactory<any>>",
-          "optional": false
-        }
-      ],
-      "source": "widgets"
-    },
-    {
       "name": "CircleButton",
       "props": [
         {
@@ -1482,153 +1434,6 @@
         }
       ],
       "source": "components"
-    },
-    {
-      "name": "CollapsibleSidebar",
-      "description": "Collapsible sidebar navigation with expand/collapse behavior.\nItems can be flat nav items (with icon, avatar, badge) or nested groups\nwith collapsible headers. Supports header/footer slots, expand-on-hover,\nand extensive styling customization for items, badges, and icons.",
-      "props": [
-        {
-          "name": "items",
-          "type": "CollapsibleSidebarItem[]",
-          "optional": false
-        },
-        {
-          "name": "footerItems",
-          "type": "CollapsibleSidebarItem[] | undefined",
-          "optional": true
-        },
-        {
-          "name": "side",
-          "type": "\"left\" | \"right\" | undefined",
-          "optional": true
-        },
-        {
-          "name": "position",
-          "type": "\"static\" | \"absolute\" | \"fixed\" | undefined",
-          "optional": true
-        },
-        {
-          "name": "zIndex",
-          "type": "number | undefined",
-          "optional": true
-        },
-        {
-          "name": "collapsedWidth",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "expandedWidth",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "defaultExpanded",
-          "type": "boolean | undefined",
-          "optional": true
-        },
-        {
-          "name": "expandOnHover",
-          "type": "boolean | undefined",
-          "optional": true
-        },
-        {
-          "name": "transitionDuration",
-          "type": "number | undefined",
-          "optional": true
-        },
-        {
-          "name": "bg",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "border",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "padding",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "gap",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "centerItems",
-          "type": "boolean | undefined",
-          "optional": true
-        },
-        {
-          "name": "itemColor",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "itemColorHover",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "itemColorActive",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "itemBg",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "itemBgHover",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "itemBgActive",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "itemPadding",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "itemGap",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "badgeBg",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "badgeColor",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "iconSize",
-          "type": "IconSize | undefined",
-          "optional": true
-        },
-        {
-          "name": "onItemClick",
-          "type": "((item: CollapsibleSidebarItem) => void) | undefined",
-          "optional": true
-        },
-        {
-          "name": "onExpandedChange",
-          "type": "((expanded: boolean) => void) | undefined",
-          "optional": true
-        }
-      ],
-      "source": "widgets"
     },
     {
       "name": "Column",
@@ -1987,37 +1792,6 @@
       "source": "components"
     },
     {
-      "name": "CreateSpaceModalWidget",
-      "props": [
-        {
-          "name": "adamClient",
-          "type": "Ad4mClient | undefined",
-          "optional": false
-        },
-        {
-          "name": "addNewSpace",
-          "type": "(space: Space) => void",
-          "optional": false
-        },
-        {
-          "name": "close",
-          "type": "() => void",
-          "optional": false
-        },
-        {
-          "name": "class",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "style",
-          "type": "Record<string, string | number> | undefined",
-          "optional": true
-        }
-      ],
-      "source": "widgets"
-    },
-    {
       "name": "Dialog",
       "props": [
         {
@@ -2057,48 +1831,6 @@
         }
       ],
       "source": "components"
-    },
-    {
-      "name": "GraphWidget",
-      "description": "2D force-directed graph visualization using D3-force layout and Canvas rendering.\nDisplays typed nodes (user, space, post) and edges (follows, member-of, etc.)\nwith configurable styling, layout forces, and interaction handlers.",
-      "props": [
-        {
-          "name": "data",
-          "type": "GraphData",
-          "optional": false
-        },
-        {
-          "name": "width",
-          "type": "string | number | undefined",
-          "optional": true
-        },
-        {
-          "name": "height",
-          "type": "string | number | undefined",
-          "optional": true
-        },
-        {
-          "name": "nodeStyle",
-          "type": "NodeStyleConfig | undefined",
-          "optional": true
-        },
-        {
-          "name": "edgeStyle",
-          "type": "EdgeStyleConfig | undefined",
-          "optional": true
-        },
-        {
-          "name": "layout",
-          "type": "LayoutConfig | undefined",
-          "optional": true
-        },
-        {
-          "name": "interactions",
-          "type": "InteractionConfig | undefined",
-          "optional": true
-        }
-      ],
-      "source": "widgets"
     },
     {
       "name": "IconLabelButton",
@@ -2635,32 +2367,6 @@
       "source": "components"
     },
     {
-      "name": "SpaceSidebarWidget",
-      "props": [
-        {
-          "name": "name",
-          "type": "string",
-          "optional": false
-        },
-        {
-          "name": "description",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "class",
-          "type": "string | undefined",
-          "optional": true
-        },
-        {
-          "name": "style",
-          "type": "Record<string, string | number> | undefined",
-          "optional": true
-        }
-      ],
-      "source": "widgets"
-    },
-    {
       "name": "Stepper",
       "props": [
         {
@@ -2734,20 +2440,277 @@
       "source": "components"
     },
     {
-      "name": "ToastContainer",
+      "name": "CesiumGlobe",
+      "description": "3D globe widget using CesiumJS with a modular layer system.\nLayers are injected via factory functions (planet surface + background).\nRequires a layer factory registry mapping string names to factory functions.\nNot schema-renderable — used directly in application code.",
       "props": [
         {
-          "name": "position",
-          "type": "\"top-right\" | \"top-left\" | \"bottom-right\" | \"bottom-left\" | \"top-center\" | \"bottom-center\" | undefined",
+          "name": "ionAccessToken",
+          "type": "string | undefined",
           "optional": true
         },
         {
-          "name": "styles",
+          "name": "planetLayers",
+          "type": "LayerConfig<unknown>[] | undefined",
+          "optional": true
+        },
+        {
+          "name": "backgroundLayers",
+          "type": "LayerConfig<unknown>[] | undefined",
+          "optional": true
+        },
+        {
+          "name": "layerFactoryRegistry",
+          "type": "Record<string, LayerFactory<any>>",
+          "optional": false
+        }
+      ],
+      "source": "widgets"
+    },
+    {
+      "name": "CollapsibleSidebar",
+      "description": "Collapsible sidebar navigation with expand/collapse behavior.\nItems can be flat nav items (with icon, avatar, badge) or nested groups\nwith collapsible headers. Supports header/footer slots, expand-on-hover,\nand extensive styling customization for items, badges, and icons.",
+      "props": [
+        {
+          "name": "items",
+          "type": "CollapsibleSidebarItem[]",
+          "optional": false
+        },
+        {
+          "name": "footerItems",
+          "type": "CollapsibleSidebarItem[] | undefined",
+          "optional": true
+        },
+        {
+          "name": "side",
+          "type": "\"left\" | \"right\" | undefined",
+          "optional": true
+        },
+        {
+          "name": "position",
+          "type": "\"static\" | \"absolute\" | \"fixed\" | undefined",
+          "optional": true
+        },
+        {
+          "name": "zIndex",
+          "type": "number | undefined",
+          "optional": true
+        },
+        {
+          "name": "collapsedWidth",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "expandedWidth",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "defaultExpanded",
+          "type": "boolean | undefined",
+          "optional": true
+        },
+        {
+          "name": "expandOnHover",
+          "type": "boolean | undefined",
+          "optional": true
+        },
+        {
+          "name": "transitionDuration",
+          "type": "number | undefined",
+          "optional": true
+        },
+        {
+          "name": "bg",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "border",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "padding",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "gap",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "centerItems",
+          "type": "boolean | undefined",
+          "optional": true
+        },
+        {
+          "name": "itemColor",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "itemColorHover",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "itemColorActive",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "itemBg",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "itemBgHover",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "itemBgActive",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "itemPadding",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "itemGap",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "badgeBg",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "badgeColor",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "iconSize",
+          "type": "IconSize | undefined",
+          "optional": true
+        },
+        {
+          "name": "onItemClick",
+          "type": "((item: CollapsibleSidebarItem) => void) | undefined",
+          "optional": true
+        },
+        {
+          "name": "onExpandedChange",
+          "type": "((expanded: boolean) => void) | undefined",
+          "optional": true
+        }
+      ],
+      "source": "widgets"
+    },
+    {
+      "name": "CreateSpaceModalWidget",
+      "props": [
+        {
+          "name": "adamClient",
+          "type": "Ad4mClient | undefined",
+          "optional": false
+        },
+        {
+          "name": "addNewSpace",
+          "type": "(space: Space) => void",
+          "optional": false
+        },
+        {
+          "name": "close",
+          "type": "() => void",
+          "optional": false
+        },
+        {
+          "name": "class",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "style",
           "type": "Record<string, string | number> | undefined",
           "optional": true
         }
       ],
-      "source": "components"
+      "source": "widgets"
+    },
+    {
+      "name": "GraphWidget",
+      "description": "2D force-directed graph visualization using D3-force layout and Canvas rendering.\nDisplays typed nodes (user, space, post) and edges (follows, member-of, etc.)\nwith configurable styling, layout forces, and interaction handlers.",
+      "props": [
+        {
+          "name": "data",
+          "type": "GraphData",
+          "optional": false
+        },
+        {
+          "name": "width",
+          "type": "string | number | undefined",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "string | number | undefined",
+          "optional": true
+        },
+        {
+          "name": "nodeStyle",
+          "type": "NodeStyleConfig | undefined",
+          "optional": true
+        },
+        {
+          "name": "edgeStyle",
+          "type": "EdgeStyleConfig | undefined",
+          "optional": true
+        },
+        {
+          "name": "layout",
+          "type": "LayoutConfig | undefined",
+          "optional": true
+        },
+        {
+          "name": "interactions",
+          "type": "InteractionConfig | undefined",
+          "optional": true
+        }
+      ],
+      "source": "widgets"
+    },
+    {
+      "name": "SpaceSidebarWidget",
+      "props": [
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false
+        },
+        {
+          "name": "description",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "class",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "style",
+          "type": "Record<string, string | number> | undefined",
+          "optional": true
+        }
+      ],
+      "source": "widgets"
     }
   ],
   "models": [
