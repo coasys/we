@@ -5,7 +5,6 @@
   "author": "James Weir",
   "license": "MIT",
   "type": "module",
-  "context": { "type": "tokens" },
   "scripts": {
     "build": "we-build",
     "build:steps": "tsup"
@@ -33,6 +32,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "context": {
+    "type": "tokens"
   },
   "sideEffects": [
     "*.css"

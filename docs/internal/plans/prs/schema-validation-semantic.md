@@ -51,10 +51,7 @@ export type ValidationContext = {
 };
 
 /** Build ValidationContext from AssembledContext + store entries */
-export function buildValidationContext(
-  assembled: AssembledContext,
-  stores: StoreEntry[],
-): ValidationContext;
+export function buildValidationContext(assembled: AssembledContext, stores: StoreEntry[]): ValidationContext;
 
 /** Structural validation only (Zod) — renamed from validateSchema */
 export function validateStructure(schema: unknown): ValidationResult;
@@ -63,33 +60,31 @@ export function validateStructure(schema: unknown): ValidationResult;
 export function validateSemantic(schema: unknown, context: ValidationContext): ValidationResult;
 
 /** Full validation: structural (Zod) + semantic — the default entry point */
-export function validateSchema(
-  schema: unknown,
-  context: ValidationContext,
-): ValidationResult;
+export function validateSchema(schema: unknown, context: ValidationContext): ValidationResult;
 ```
 
 ### What gets checked
 
-| Check | Severity | Example error |
-|-------|----------|---------------|
-| Unknown component type | error | `Unknown component "we-buttn". Did you mean "we-button"?` |
-| Unknown prop on known component | warning | `Unknown prop "colour" on "we-button"` (or, if it's a DS prop from a missing layer: `"bg" requires the visual layer`) |
-| Prop type category mismatch | warning | `Prop "disabled" on "we-button" expects boolean, got string` |
-| Unknown store reference | error | `Unknown store "userStore" in $store token. Known stores: adamStore, routeStore, ...` |
-| Unknown store member | warning | `Unknown member "goTo" on store "routeStore". Known members: navigate, currentPath, ...` |
-| Unknown model in $query | error | `Unknown model "Taks" in $query. Did you mean "TaskBlock"?` |
-| $each missing `as` prop | warning | `$each without "as" prop — children can't reference item context` |
-| $action on unknown store | error | `Unknown store "foo" in $action "foo.bar"` |
-| $action unknown method | warning | `Unknown method "bar" on store "foo". Known actions: ...` |
-| Unknown $local field | error | `$local references "nme" but $localState only declares: name, email` |
-| Unknown $error/$valid/$touched field | error | `$error references "nme" but $localState only declares: name, email` |
-| $local without $localState in scope | error | `$local references "name" but no $localState is declared in scope` |
-| Duplicate route paths | warning | `Duplicate route path "/settings" at routes[1] and routes[3]` |
-| Routes without $routes outlet | warning | `Node has "routes" array but no { type: "$routes" } in children` |
-| $routes without routes array | warning | `{ type: "$routes" } found but no "routes" array on any ancestor` |
+| Check                                | Severity | Example error                                                                                                         |
+| ------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| Unknown component type               | error    | `Unknown component "we-buttn". Did you mean "we-button"?`                                                             |
+| Unknown prop on known component      | warning  | `Unknown prop "colour" on "we-button"` (or, if it's a DS prop from a missing layer: `"bg" requires the visual layer`) |
+| Prop type category mismatch          | warning  | `Prop "disabled" on "we-button" expects boolean, got string`                                                          |
+| Unknown store reference              | error    | `Unknown store "userStore" in $store token. Known stores: adamStore, routeStore, ...`                                 |
+| Unknown store member                 | warning  | `Unknown member "goTo" on store "routeStore". Known members: navigate, currentPath, ...`                              |
+| Unknown model in $query              | error    | `Unknown model "Taks" in $query. Did you mean "TaskBlock"?`                                                           |
+| $each missing `as` prop              | warning  | `$each without "as" prop — children can't reference item context`                                                     |
+| $action on unknown store             | error    | `Unknown store "foo" in $action "foo.bar"`                                                                            |
+| $action unknown method               | warning  | `Unknown method "bar" on store "foo". Known actions: ...`                                                             |
+| Unknown $local field                 | error    | `$local references "nme" but $localState only declares: name, email`                                                  |
+| Unknown $error/$valid/$touched field | error    | `$error references "nme" but $localState only declares: name, email`                                                  |
+| $local without $localState in scope  | error    | `$local references "name" but no $localState is declared in scope`                                                    |
+| Duplicate route paths                | warning  | `Duplicate route path "/settings" at routes[1] and routes[3]`                                                         |
+| Routes without $routes outlet        | warning  | `Node has "routes" array but no { type: "$routes" } in children`                                                      |
+| $routes without routes array         | warning  | `{ type: "$routes" } found but no "routes" array on any ancestor`                                                     |
 
 **Severity rationale:**
+
 - **error** for references that will definitely break at runtime (unknown component, store, model, undefined $local field)
 - **warning** for references that _might_ work or are structural issues but not crashes (unknown prop, type mismatch, route structure)
 
@@ -103,12 +98,13 @@ export function validateSchema(
 ### Include data in `AssembledContext`, not just extend it
 
 The current `AssembledContext` is missing two things the validator needs:
+
 1. **Primitive superclass** — to compute DS prop layers
 2. **Structured store data** — to validate store/action references without parsing prose
 
 Rather than having the validator read raw sources or bolt on a parallel data path, we include this data properly in `AssembledContext`. The question for each piece is: does it also help the AI (consumer 1), or just the validator (consumer 2)?
 
-**Superclass: include on `PrimitiveEntry` AND in text output.** The AI currently has no way to know which DS props are valid on which primitive — it sees `ownProps` but not the layer classification. This means it generates `bg` on `we-icon` (a `LayoutElement`) and nothing happens at runtime. Adding superclass to the text output costs ~30 tokens total (one word per primitive) and lets the AI reason about prop validity *at generation time* — prevention rather than detection. So this goes on `PrimitiveEntry` and into the assembled text.
+**Superclass: include on `PrimitiveEntry` AND in text output.** The AI currently has no way to know which DS props are valid on which primitive — it sees `ownProps` but not the layer classification. This means it generates `bg` on `we-icon` (a `LayoutElement`) and nothing happens at runtime. Adding superclass to the text output costs ~30 tokens total (one word per primitive) and lets the AI reason about prop validity _at generation time_ — prevention rather than detection. So this goes on `PrimitiveEntry` and into the assembled text.
 
 **Stores: structured data exported separately, not a new field on `AssembledContext`.** The text fragment already works well for AI context — no reason to change it. But the validator needs structured data. Rather than adding `stores: StoreEntry[]` to `AssembledContext` (which changes the shape for all consumers), the stores fragment file exports a `storeEntries: StoreEntry[]` array alongside the text. The text is generated from the array (single source of truth). The validator imports `storeEntries` directly from `@we/ai-context`. `AssembledContext` stays unchanged for stores — `fragments.stores` remains a string.
 
@@ -140,6 +136,7 @@ export interface AssembledContext {
 ```
 
 **Benefits:**
+
 - `superclass` in `PrimitiveEntry` helps both AI context (prevention) and validation (detection)
 - Superclass in text output costs ~30 tokens but prevents an entire class of generation errors
 - `buildValidationContext()` stays a pure function — takes `AssembledContext` + `storeEntries`
@@ -151,6 +148,7 @@ export interface AssembledContext {
 ### Component name matching
 
 Schema `type` values map to components in several ways:
+
 - **Primitives:** hyphenated tag names like `we-button`, `we-text`
 - **SolidJS components:** PascalCase names like `Column`, `Row`, `Table`, `Dialog`
 - **Operator nodes:** `$each`, `$if`, `$routes` — skipped
@@ -168,14 +166,14 @@ For unknown component names and model names, Levenshtein distance against known 
 
 For primitives (from CEM), the DS prop set is computed from `superclass` → `BASE_CLASS_LAYERS` → `getKeysForLayers()`:
 
-| Base class | Layers |
-|---|---|
-| `DesignSystemElement` | layout, visual, flex, typography, state |
-| `OverlayElement` | layout, visual, flex, typography, state |
-| `LayoutElement` | layout |
-| `LayoutTypographyElement` | layout, typography |
-| `LayoutVisualElement` | layout, visual |
-| `LayoutVisualTypographyElement` | layout, visual, typography |
+| Base class                      | Layers                                  |
+| ------------------------------- | --------------------------------------- |
+| `DesignSystemElement`           | layout, visual, flex, typography, state |
+| `OverlayElement`                | layout, visual, flex, typography, state |
+| `LayoutElement`                 | layout                                  |
+| `LayoutTypographyElement`       | layout, typography                      |
+| `LayoutVisualElement`           | layout, visual                          |
+| `LayoutVisualTypographyElement` | layout, visual, typography              |
 
 For SolidJS components and widgets (from `*.types.ts`), the prop set is whatever the TypeScript interface declares — no DS inheritance.
 
@@ -208,6 +206,7 @@ The stores fragment is currently a hand-maintained template literal string. This
 ### $localState scope tracking
 
 The tree walker maintains a **scope stack** of declared `$localState` field names. At each node:
+
 1. If `$localState` is present, push its declared field names onto the scope (merged with parent, matching runtime behaviour)
 2. When encountering `$local`, `$setLocal`, `$error`, `$valid`, `$touched`, or `$touch` tokens, check the referenced field name against the current scope
 3. Skip special values: `$touch: "$all"`, `$formValid: "$scope"`, `$resetLocal: "$scope"`
@@ -234,7 +233,7 @@ export function validateSchema(schema: unknown, context: ValidationContext): Val
   if (!structural.valid) return structural;
   const semantic = validateSemantic(schema, context);
   return {
-    valid: semantic.errors.filter(e => e.severity === 'error').length === 0,
+    valid: semantic.errors.filter((e) => e.severity === 'error').length === 0,
     errors: [...structural.errors, ...semantic.errors],
   };
 }
@@ -277,37 +276,38 @@ if (!result.valid) {
 
 ### ai-context changes
 
-| File | Changes |
-|------|---------|
-| `ai-context/src/types.ts` | Add `superclass?: string` to `PrimitiveEntry`; add `StoreEntry` type (exported separately, not on `AssembledContext`) |
-| `ai-context/src/extractors/cem.ts` | Read `superclass.name` from CEM declarations into `PrimitiveEntry.superclass` |
-| `ai-context/src/fragments/stores.ts` | Restructure: export `storeEntries: StoreEntry[]` as structured data; derive text string from it; export both |
-| `ai-context/src/assembler.ts` | Use generated text for `fragments.stores` (no shape change to `AssembledContext`) |
-| `ai-context/src/schemaContext.ts` | Include `superclass` in per-primitive text output (e.g. `"we-button (DesignSystemElement)"`) |
-| `ai-context/src/__tests__/ai-context.test.ts` | Update tests for `superclass` field; test store text generation matches current output |
+| File                                          | Changes                                                                                                               |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `ai-context/src/types.ts`                     | Add `superclass?: string` to `PrimitiveEntry`; add `StoreEntry` type (exported separately, not on `AssembledContext`) |
+| `ai-context/src/extractors/cem.ts`            | Read `superclass.name` from CEM declarations into `PrimitiveEntry.superclass`                                         |
+| `ai-context/src/fragments/stores.ts`          | Restructure: export `storeEntries: StoreEntry[]` as structured data; derive text string from it; export both          |
+| `ai-context/src/assembler.ts`                 | Use generated text for `fragments.stores` (no shape change to `AssembledContext`)                                     |
+| `ai-context/src/schemaContext.ts`             | Include `superclass` in per-primitive text output (e.g. `"we-button (DesignSystemElement)"`)                          |
+| `ai-context/src/__tests__/ai-context.test.ts` | Update tests for `superclass` field; test store text generation matches current output                                |
 
 ### schema-system changes
 
-| File | Changes |
-|------|---------|
-| `schema-system/shared/src/semanticValidation.ts` | **New.** `ValidationContext` type, `buildValidationContext()`, `validateSemantic()`, `validateSchema()` (composed), tree walker, scope tracker, route checker, Levenshtein helper, HTML element set, `BASE_CLASS_LAYERS` + `LAYER_KEYS` constants |
-| `schema-system/shared/tests/semanticValidation.test.ts` | **New.** Unit tests for all semantic checks |
-| `schema-system/shared/src/index.ts` | Re-export `validateSchema` from `semanticValidation.ts` (replaces old export), export `validateStructure`, `validateSemantic`, `buildValidationContext`, `ValidationContext` |
-| `schema-system/shared/src/validators.ts` | Rename `validateSchema` → `validateStructure`, `validateNode` → `validateNodeStructure` |
-| `schema-system/shared/tests/validators.test.ts` | Update renamed function references |
-| `schema-system/frameworks/solid/src/schemaUpdater.ts` | Update import: `validateSchema` → `validateStructure` |
-| `schema-system/shared/package.json` | Add `@we/ai-context` as `devDependency` (for `AssembledContext` type + `storeEntries` import) |
+| File                                                    | Changes                                                                                                                                                                                                                                           |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema-system/shared/src/semanticValidation.ts`        | **New.** `ValidationContext` type, `buildValidationContext()`, `validateSemantic()`, `validateSchema()` (composed), tree walker, scope tracker, route checker, Levenshtein helper, HTML element set, `BASE_CLASS_LAYERS` + `LAYER_KEYS` constants |
+| `schema-system/shared/tests/semanticValidation.test.ts` | **New.** Unit tests for all semantic checks                                                                                                                                                                                                       |
+| `schema-system/shared/src/index.ts`                     | Re-export `validateSchema` from `semanticValidation.ts` (replaces old export), export `validateStructure`, `validateSemantic`, `buildValidationContext`, `ValidationContext`                                                                      |
+| `schema-system/shared/src/validators.ts`                | Rename `validateSchema` → `validateStructure`, `validateNode` → `validateNodeStructure`                                                                                                                                                           |
+| `schema-system/shared/tests/validators.test.ts`         | Update renamed function references                                                                                                                                                                                                                |
+| `schema-system/frameworks/solid/src/schemaUpdater.ts`   | Update import: `validateSchema` → `validateStructure`                                                                                                                                                                                             |
+| `schema-system/shared/package.json`                     | Add `@we/ai-context` as `devDependency` (for `AssembledContext` type + `storeEntries` import)                                                                                                                                                     |
 
 ### Rename: `validateSchema` → `validateStructure`
 
-| Before | After | Purpose |
-|--------|-------|---------|
-| `validateSchema()` | `validateStructure()` | Zod structural checks only |
-| `validateNode()` | `validateNodeStructure()` | Single-node Zod checks |
-| _(new)_ | `validateSemantic()` | Component/store/model/scope/route checks |
-| _(new)_ | `validateSchema()` | Composed: structure + semantic |
+| Before             | After                     | Purpose                                  |
+| ------------------ | ------------------------- | ---------------------------------------- |
+| `validateSchema()` | `validateStructure()`     | Zod structural checks only               |
+| `validateNode()`   | `validateNodeStructure()` | Single-node Zod checks                   |
+| _(new)_            | `validateSemantic()`      | Component/store/model/scope/route checks |
+| _(new)_            | `validateSchema()`        | Composed: structure + semantic           |
 
 **Migration scope (1 consumer):**
+
 - `schemaUpdater.ts` — update import to `validateStructure` (it only needs structural checks for real-time editing)
 - `validators.test.ts` — rename test references
 
@@ -326,24 +326,24 @@ if (!result.valid) {
 
 ### Test plan
 
-| Category | Tests |
-|----------|-------|
-| `buildValidationContext` | Builds component set from primitives + components; merges DS props per layer; builds store map from `storeEntries`; builds model set; builds prop type map |
-| Unknown component | Error for unknown type; passes for known primitive; passes for known component; skips `$each`/`$if`/`$routes`; skips native HTML elements |
-| Did-you-mean | Suggests close matches (distance ≤ 3); no suggestion for distant names |
-| Unknown prop | Warning for unknown prop on known component; passes for known own prop; passes for valid DS prop on full-DS primitive; warns for DS prop from unsupported layer with helpful message; works for primitives, components, and widgets; skips unknown components (already errored); `styles` and `on*` always valid |
-| Prop type mismatch | Warning for string where boolean expected; warning for number where string expected; skips token objects; skips `'unknown'` categories |
-| Unknown store | Error for `$store` with unknown store name; passes for known store |
-| Unknown store member | Warning for unknown member path; passes for known member |
-| Unknown action store | Error for `$action` with unknown store |
-| Unknown action method | Warning for `$action` with unknown method on known store |
-| Unknown model | Error for `$query.model` with unknown model name; did-you-mean suggestion |
-| $local scope | Error for `$local` referencing undeclared field; error for `$local` with no `$localState` in scope; passes for declared field; works with nested `$localState` (merged scope); same checks for `$error`, `$valid`, `$touched`, `$touch`, `$setLocal`; skips `$touch: "$all"`, `$formValid: "$scope"`, `$resetLocal: "$scope"` |
-| Route validation | Warning for duplicate paths; warning for routes without `$routes` outlet; warning for orphaned `$routes` |
-| Nested detection | Finds tokens inside `$if.condition`, `$if.then`, `$concat` items, `$map.select` values |
-| Deep tree | Validates children, slots, routes recursively |
-| Composed validation | `validateSchema` skips semantic on structural failure; returns combined errors |
-| Severity | Errors make result invalid; warnings don't |
+| Category                 | Tests                                                                                                                                                                                                                                                                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `buildValidationContext` | Builds component set from primitives + components; merges DS props per layer; builds store map from `storeEntries`; builds model set; builds prop type map                                                                                                                                                                    |
+| Unknown component        | Error for unknown type; passes for known primitive; passes for known component; skips `$each`/`$if`/`$routes`; skips native HTML elements                                                                                                                                                                                     |
+| Did-you-mean             | Suggests close matches (distance ≤ 3); no suggestion for distant names                                                                                                                                                                                                                                                        |
+| Unknown prop             | Warning for unknown prop on known component; passes for known own prop; passes for valid DS prop on full-DS primitive; warns for DS prop from unsupported layer with helpful message; works for primitives, components, and widgets; skips unknown components (already errored); `styles` and `on*` always valid              |
+| Prop type mismatch       | Warning for string where boolean expected; warning for number where string expected; skips token objects; skips `'unknown'` categories                                                                                                                                                                                        |
+| Unknown store            | Error for `$store` with unknown store name; passes for known store                                                                                                                                                                                                                                                            |
+| Unknown store member     | Warning for unknown member path; passes for known member                                                                                                                                                                                                                                                                      |
+| Unknown action store     | Error for `$action` with unknown store                                                                                                                                                                                                                                                                                        |
+| Unknown action method    | Warning for `$action` with unknown method on known store                                                                                                                                                                                                                                                                      |
+| Unknown model            | Error for `$query.model` with unknown model name; did-you-mean suggestion                                                                                                                                                                                                                                                     |
+| $local scope             | Error for `$local` referencing undeclared field; error for `$local` with no `$localState` in scope; passes for declared field; works with nested `$localState` (merged scope); same checks for `$error`, `$valid`, `$touched`, `$touch`, `$setLocal`; skips `$touch: "$all"`, `$formValid: "$scope"`, `$resetLocal: "$scope"` |
+| Route validation         | Warning for duplicate paths; warning for routes without `$routes` outlet; warning for orphaned `$routes`                                                                                                                                                                                                                      |
+| Nested detection         | Finds tokens inside `$if.condition`, `$if.then`, `$concat` items, `$map.select` values                                                                                                                                                                                                                                        |
+| Deep tree                | Validates children, slots, routes recursively                                                                                                                                                                                                                                                                                 |
+| Composed validation      | `validateSchema` skips semantic on structural failure; returns combined errors                                                                                                                                                                                                                                                |
+| Severity                 | Errors make result invalid; warnings don't                                                                                                                                                                                                                                                                                    |
 
 Target: ~55 tests.
 

@@ -5,7 +5,6 @@
   "author": "James Weir",
   "license": "MIT",
   "type": "module",
-  "context": { "type": "widgets" },
   "scripts": {
     "build:css": "sass src/styles/index.scss dist/styles/index.css --no-source-map --style=compressed",
     "build:steps": "tsup && pnpm build:css",
@@ -55,6 +54,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "context": {
+    "type": "widgets"
   },
   "sideEffects": [
     "*.css"

@@ -12,14 +12,14 @@ import {
 import { resolveConcatProp } from './concat';
 import { resolveIfProp } from './conditional';
 import {
-  resolveLocalProp,
-  resolveSetLocalProp,
   resolveErrorProp,
-  resolveValidProp,
-  resolveTouchedProp,
   resolveFormValidProp,
-  resolveTouchProp,
+  resolveLocalProp,
   resolveResetLocalProp,
+  resolveSetLocalProp,
+  resolveTouchedProp,
+  resolveTouchProp,
+  resolveValidProp,
 } from './local';
 import { resolveMapProp } from './map';
 import { resolvePickProp } from './pick';

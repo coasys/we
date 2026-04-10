@@ -9,10 +9,10 @@
     "test": "vitest run",
     "coverage": "vitest run --coverage"
   },
-  "types": "dist/index.d.ts",
   "bin": {
     "we-validate-schemas": "./dist/cli/we-validate-schemas.js"
   },
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

@@ -23,6 +23,7 @@ The original `generate.ts` hardcodes all package paths. Adding a new package req
 Each package runs a CLI tool during its own build to produce a `context.json` fragment. A post-build aggregator merges fragments.
 
 **Rejected because:**
+
 - **3-phase build ordering:** `@we/ai-context` must build first (provides the bin), DS packages build second (run the bin), aggregation runs third (reads all fragments). Today it's one self-contained step. The post-build step is easy to forget.
 - **Reverse dependency:** Every DS package must add `@we/ai-context` as a devDep just for the bin. Currently no DS package depends on `@we/ai-context`.
 - **Complexity for 5 packages:** The system has 5 context providers that change infrequently. A CLI + 3-phase build is over-engineered for this scale.
@@ -33,6 +34,7 @@ Each package runs a CLI tool during its own build to produce a `context.json` fr
 Each package has its own script that imports extractors from `@we/ai-context`.
 
 **Rejected because:**
+
 - Every script is identical boilerplate (import extractor, call it, write JSON).
 - Extractors become part of the public API, locking their signatures.
 - Same build ordering problems as the CLI approach.
@@ -40,6 +42,7 @@ Each package has its own script that imports extractors from `@we/ai-context`.
 ### 3. Keep hardcoded paths (do nothing)
 
 **Rejected because:**
+
 - Adding `@we/block-solid` as a context provider requires modifying `generate.ts`.
 - Doesn't scale to future packages or community contributions.
 - Violates single responsibility — `generate.ts` knows every package's internal structure.
@@ -47,15 +50,18 @@ Each package has its own script that imports extractors from `@we/ai-context`.
 ## Consequences
 
 **Positive:**
+
 - Adding a new context-providing package = add `"context": { "type": "..." }` to its `package.json`. No other files touched.
 - No build pipeline changes. `generate.ts` runs during `@we/ai-context`'s existing `build:steps`, same as today.
 - Extractors stay internal — their APIs can evolve without breaking anything.
 - The `"context"` config format is forward-compatible with a CLI approach if we ever need it.
 
 **Negative:**
+
 - `@we/ai-context` still reads source files from other packages at build time (the dependency direction hasn't changed, only the discovery mechanism).
 - Community packages outside the monorepo can't use our extractors directly — they must ship pre-built `context.json` files.
 
 **Neutral:**
+
 - The glob adds ~10ms to build time. Negligible.
 - ts-morph is still a devDep of `@we/ai-context`, not a runtime dep. No package size impact.

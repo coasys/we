@@ -71,13 +71,13 @@ Optional `src` override for non-default source paths:
 
 **Supported types and defaults:**
 
-| `context.type` | Extractor | `source` label | Default src |
-|----------------|-----------|----------------|-------------|
-| `primitives` | `extractPrimitives` (CEM) | n/a | `custom-elements.json` |
-| `components` | `extractComponentProps` (ts-morph) | `'components'` | `src` |
-| `widgets` | `extractComponentProps` (ts-morph) | `'widgets'` | `src` |
-| `tokens` | `extractTokens` (ts-morph) | n/a | `src` |
-| `models` | `extractModels` (ts-morph) | n/a | `src` |
+| `context.type` | Extractor                          | `source` label | Default src            |
+| -------------- | ---------------------------------- | -------------- | ---------------------- |
+| `primitives`   | `extractPrimitives` (CEM)          | n/a            | `custom-elements.json` |
+| `components`   | `extractComponentProps` (ts-morph) | `'components'` | `src`                  |
+| `widgets`      | `extractComponentProps` (ts-morph) | `'widgets'`    | `src`                  |
+| `tokens`       | `extractTokens` (ts-morph)         | n/a            | `src`                  |
+| `models`       | `extractModels` (ts-morph)         | n/a            | `src`                  |
 
 `components` and `widgets` use the same underlying extraction logic — the only difference is the `source` label stamped on each `ComponentEntry`.
 
@@ -86,11 +86,13 @@ Optional `src` override for non-default source paths:
 ### 1. Refactor `extractComponents` → `extractComponentProps`
 
 Current signature takes two dirs and labels them internally:
+
 ```ts
 extractComponents(baseDirs?: { components?: string; widgets?: string }): ComponentEntry[]
 ```
 
 New signature takes a single dir + explicit source label:
+
 ```ts
 extractComponentProps(dir: string, source: 'components' | 'widgets'): ComponentEntry[]
 ```
@@ -200,13 +202,13 @@ export { aggregateFragments, loadFragment } from './aggregate.js';
 
 ### 5. Add `"context"` field to each package's `package.json`
 
-| Package | Addition |
-|---------|----------|
+| Package          | Addition                              |
+| ---------------- | ------------------------------------- |
 | `@we/primitives` | `"context": { "type": "primitives" }` |
 | `@we/components` | `"context": { "type": "components" }` |
-| `@we/widgets` | `"context": { "type": "widgets" }` |
-| `@we/tokens` | `"context": { "type": "tokens" }` |
-| `@we/models` | `"context": { "type": "models" }` |
+| `@we/widgets`    | `"context": { "type": "widgets" }`    |
+| `@we/tokens`     | `"context": { "type": "tokens" }`     |
+| `@we/models`     | `"context": { "type": "models" }`     |
 
 No other changes to these packages. No devDep additions. No build step changes.
 
@@ -228,28 +230,29 @@ The `"context"` config format is already compatible. Migration to a CLI approach
 
 ## File Inventory
 
-| File | Change |
-|------|--------|
-| `packages/ai-context/src/generate.ts` | Replace hardcoded paths with glob-based discovery |
-| `packages/ai-context/src/assembler.ts` | Accept `ContextData` param instead of calling extractors directly |
+| File                                               | Change                                                                         |
+| -------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `packages/ai-context/src/generate.ts`              | Replace hardcoded paths with glob-based discovery                              |
+| `packages/ai-context/src/assembler.ts`             | Accept `ContextData` param instead of calling extractors directly              |
 | `packages/ai-context/src/extractors/typescript.ts` | Refactor `extractComponents(baseDirs?)` → `extractComponentProps(dir, source)` |
-| `packages/ai-context/src/index.ts` | Remove extractor exports |
-| `packages/design-system/3-primitives/package.json` | Add `"context": { "type": "primitives" }` |
-| `packages/design-system/4-components/package.json` | Add `"context": { "type": "components" }` |
-| `packages/design-system/5-widgets/package.json` | Add `"context": { "type": "widgets" }` |
-| `packages/design-system/1-tokens/package.json` | Add `"context": { "type": "tokens" }` |
-| `packages/models/package.json` | Add `"context": { "type": "models" }` |
+| `packages/ai-context/src/index.ts`                 | Remove extractor exports                                                       |
+| `packages/design-system/3-primitives/package.json` | Add `"context": { "type": "primitives" }`                                      |
+| `packages/design-system/4-components/package.json` | Add `"context": { "type": "components" }`                                      |
+| `packages/design-system/5-widgets/package.json`    | Add `"context": { "type": "widgets" }`                                         |
+| `packages/design-system/1-tokens/package.json`     | Add `"context": { "type": "tokens" }`                                          |
+| `packages/models/package.json`                     | Add `"context": { "type": "models" }`                                          |
 
 ## `@we/ai-context` Public API
 
-| Export | Purpose |
-|--------|---------|
-| `schemaContext` | The generated context string for AI prompts |
-| `storeEntries` | Manually authored store metadata |
-| `aggregateFragments()` | Merges `ContextFragment[]` into `ContextData` |
-| `loadFragment()` | Reads a `context.json` file into a `ContextFragment` |
+| Export                 | Purpose                                              |
+| ---------------------- | ---------------------------------------------------- |
+| `schemaContext`        | The generated context string for AI prompts          |
+| `storeEntries`         | Manually authored store metadata                     |
+| `aggregateFragments()` | Merges `ContextFragment[]` into `ContextData`        |
+| `loadFragment()`       | Reads a `context.json` file into a `ContextFragment` |
 
 **NOT exported** (internal):
+
 - `extractPrimitives`, `extractComponentProps`, `extractTokens`, `extractModels`
 
 Types (`ContextData`, `ContextFragment`, etc.) are exported from `@we/schema-shared`.
