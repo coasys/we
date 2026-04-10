@@ -79,3 +79,6 @@ export interface ContextData {
   tokens: TokenCategory[];
   storeEntries: StoreEntry[];
 }
+
+/** A partial context fragment that a single package exports at build time */
+export type ContextFragment = Partial<ContextData>;

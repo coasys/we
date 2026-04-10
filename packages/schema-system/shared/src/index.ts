@@ -46,6 +46,7 @@ export type {
 
 export type {
   ContextData,
+  ContextFragment,
   PrimitiveEntry,
   ComponentEntry,
   PropEntry,
