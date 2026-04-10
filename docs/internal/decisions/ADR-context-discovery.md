@@ -6,7 +6,7 @@
 
 ## Context
 
-`@we/ai-context` generates AI context (instruction files, `schemaContext.ts`, `context.json`) by extracting type information from design-system packages and models. The extraction uses CEM parsing (primitives) and ts-morph AST analysis (components, widgets, tokens, models).
+`@we/ai-context` generates AI context (agent instruction files for Copilot, Claude, and Cursor; a runtime `schemaContext.ts` constant; and a structured `context.json`) by extracting type information from design-system packages and models. The extraction uses CEM parsing (primitives) and ts-morph AST analysis (components, widgets, tokens, models).
 
 The original `generate.ts` hardcodes all package paths. Adding a new package requires modifying the central file.
 
@@ -14,7 +14,7 @@ The original `generate.ts` hardcodes all package paths. Adding a new package req
 
 **Use glob-based discovery with per-package `"context"` declarations in `package.json`.**
 
-`generate.ts` scans `packages/*/package.json` and `packages/*/*/package.json` for a `"context"` field, then calls the appropriate extractor for each discovered package. Extraction still happens centrally — only discovery is decentralized.
+`generate.ts` scans `packages/**/package.json` (recursively, ignoring `node_modules`) for a `"context"` field, then calls the appropriate extractor for each discovered package. Extraction still happens centrally — only discovery is decentralized.
 
 ## Alternatives Considered
 
@@ -27,7 +27,7 @@ Each package runs a CLI tool during its own build to produce a `context.json` fr
 - **3-phase build ordering:** `@we/ai-context` must build first (provides the bin), DS packages build second (run the bin), aggregation runs third (reads all fragments). Today it's one self-contained step. The post-build step is easy to forget.
 - **Reverse dependency:** Every DS package must add `@we/ai-context` as a devDep just for the bin. Currently no DS package depends on `@we/ai-context`.
 - **Complexity for 5 packages:** The system has 5 context providers that change infrequently. A CLI + 3-phase build is over-engineered for this scale.
-- **Not actually needed for community packages:** Community packages outside the workspace won't follow our `*.types.ts` / `@Model` conventions — our extractors won't work on them. They'll ship pre-built `context.json` files instead, which the glob approach can also read from `node_modules` when that need arises.
+- **Not actually needed for community packages:** Community packages outside the workspace won't follow our `@Model` conventions — our extractors won't work on them. They'll ship pre-built `context.json` files instead, which the glob approach can also read from `node_modules` when that need arises.
 
 ### 2. Per-package `generate-context.ts` scripts
 
