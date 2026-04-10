@@ -60,9 +60,11 @@ const zLocalStateField = z.object({
 The `$setLocal` resolver uses `extractFromPath(event, value.from)` to pull values out of events. `we-file-upload` emits `change` with `detail: File[]`.
 
 For a single-file upload, the schema would use:
+
 ```json
 { "$setLocal": "thumbnail", "from": "$event.detail.0" }
 ```
+
 This extracts `event.detail[0]` (the first File). Verify `extractFromPath` handles numeric path segments for array indexing. If not, add support.
 
 ### 5. Add `$localPreview` token (new) — generate object URLs for image preview
@@ -70,10 +72,14 @@ This extracts `event.detail[0]` (the first File). Verify `extractFromPath` handl
 To show a preview of the selected file, we need a reactive URL derived from the File state. Options:
 
 **Option A — New `$localPreview` token:**
+
 ```ts
-{ $localPreview: 'thumbnail' }
+{
+  $localPreview: 'thumbnail';
+}
 // Resolves to: URL.createObjectURL(file) or '' if null
 ```
+
 Add in `propResolvers/local.ts`. Creates/revokes object URLs reactively.
 
 **Option B — Use `$derived` (if it exists) or a computed pattern:**
@@ -95,6 +101,7 @@ $localState: {
 ```
 
 Add a thumbnail upload section to the form children:
+
 ```ts
 {
   type: 'we-form-field',
@@ -123,6 +130,7 @@ Add a thumbnail upload section to the form children:
 ```
 
 Update the create action to pass the file:
+
 ```ts
 {
   $action: 'adamStore.createSpace',
@@ -147,16 +155,16 @@ Update the create action to pass the file:
 
 ## File Inventory
 
-| File | Change |
-|------|--------|
-| `packages/schema-system/shared/src/types.ts` | Add `'file'` to LocalStateField type union |
-| `packages/schema-system/shared/src/zodSchemas.ts` | Add `'file'` to enum, `z.null()` to initial |
-| `packages/schema-system/shared/src/propResolvers/local.ts` | Add `resolveLocalPreviewProp` function |
-| `packages/schema-system/shared/src/propResolvers/index.ts` | Export new resolver |
-| `packages/schema-system/shared/src/resolveProps.ts` | Handle `$localPreview` token |
+| File                                                             | Change                                                         |
+| ---------------------------------------------------------------- | -------------------------------------------------------------- |
+| `packages/schema-system/shared/src/types.ts`                     | Add `'file'` to LocalStateField type union                     |
+| `packages/schema-system/shared/src/zodSchemas.ts`                | Add `'file'` to enum, `z.null()` to initial                    |
+| `packages/schema-system/shared/src/propResolvers/local.ts`       | Add `resolveLocalPreviewProp` function                         |
+| `packages/schema-system/shared/src/propResolvers/index.ts`       | Export new resolver                                            |
+| `packages/schema-system/shared/src/resolveProps.ts`              | Handle `$localPreview` token                                   |
 | `packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx` | Verify null initial works, possibly manage objectURL lifecycle |
-| `packages/app-framework/src/shared/schemas/WeTemplate.schema.ts` | Add thumbnail to `/new-space` route |
-| `packages/schema-system/shared/tests/` | New/updated tests for file type |
+| `packages/app-framework/src/shared/schemas/WeTemplate.schema.ts` | Add thumbnail to `/new-space` route                            |
+| `packages/schema-system/shared/tests/`                           | New/updated tests for file type                                |
 
 ## Open Questions
 

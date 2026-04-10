@@ -114,7 +114,7 @@
                               │
                     ┌─────────────────────┐
                     │11. Context          │
-                    │    Fragments        │
+                    │    Fragments      ✅│
                     └─────────────────────┘
 
                     ┌─────────────────────┐
@@ -376,14 +376,18 @@ Exposes WE knowledge as MCP tools. Phase 1 (SHACL section tools) is free with #6
 
 ## Phase E: Build Pipeline & Form Extensions
 
-### 11. Context Fragments
+### 11. Context Fragments ✅
 
-**Plan:** [PR-CONTEXT-FRAGMENTS](../prs/PR-CONTEXT-FRAGMENTS.md)
-**Status:** Not started
+**Plan:** [PR-CONTEXT-FRAGMENTS](../prs/PR-CONTEXT-FRAGMENTS.md) | [PR summary](../prs/PR-CONTEXT-FRAGMENTS-SUMMARY.md)
+**Status:** Complete (branch `feat/context-fragments`, 13 commits, 27 files)
 **Depends on:** Schema Validation (#8b) — needs complete validation to verify fragment parity
 **Unblocks:** `@we/block-solid` and community packages shipping their own context without modifying the central extractor
 
-Decentralizes `@we/ai-context/src/generate.ts` from a monolith that hardcodes knowledge of every package's internals into a fragment-based architecture. Each package generates its own `context.json` fragment at build time. Aggregator in `@we/ai-context` merges fragments into unified `ContextData`. Three phases: (1) fragment infrastructure + `ContextFragment` type + aggregator, (2) migrate DS packages one at a time, (3) `@we/block-solid` as first non-DS consumer.
+Replaces hardcoded package paths in `generate.ts` with declarative glob-based discovery. Each package opts in by adding `"context": { "type": "..." }` to its `package.json`. Recursive `packages/**/package.json` scan (excluding `node_modules`) discovers all context providers automatically.
+
+Also rewrites the TypeScript extractor from type-centric (`*.types.ts` scanning with filename matching) to component-centric (scans all `.ts`/`.tsx` for exported PascalCase functions with `*Props` typed parameters). Works for any package structure — DS pattern, block-solid destructured imports, or future patterns.
+
+Added `ContextFragment = Partial<ContextData>` type in `@we/schema-shared`. `aggregateFragments()` merges per-package fragments in glob-sorted order. Removed dead `assembleContext()` and fragment imports from assembler. Added `@we/block-solid` as first non-DS context provider — BlockComposer, BlockRenderer, ImageComponent, ImageDisplay, ImageInput now in AI context. 6 packages configured, 27 components extracted (up from 21). ADR documenting the discovery architecture.
 
 ### 12. File Upload Local State
 
@@ -423,7 +427,7 @@ Adds `'file'` as a new `LocalStateField` type so schemas can declare file state,
 | ✅   | 4   | Local Schema State             | Cust  | 6          | Medium | Med  |
 | ✅   | 4c  | Form Validation                | Cust  | 4          | Medium | Med  |
 | ✅   | 8b‡ | Schema Validation (semantic)   | AI    | 8          | Medium | Low  |
-|      | 11  | Context Fragments              | AI    | 8b         | Medium | Med  |
+| ✅   | 11  | Context Fragments              | AI    | 8b         | Medium | Med  |
 |      | 12  | File Upload Local State        | Cust  | 4c         | Small  | Low  |
 | ⏸️   | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
 | ⏸️   | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |

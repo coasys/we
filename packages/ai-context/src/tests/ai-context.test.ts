@@ -7,7 +7,7 @@ import { assembleReference } from '../assembler.js';
 import { extractPrimitives } from '../extractors/cem.js';
 import { extractModels } from '../extractors/models.js';
 import { extractTokens } from '../extractors/tokens.js';
-import { extractComponents } from '../extractors/typescript.js';
+import { extractComponentProps } from '../extractors/typescript.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../../..');
@@ -42,14 +42,17 @@ describe('extractPrimitives', () => {
   });
 });
 
-describe('extractComponents', () => {
-  it('extracts components and widgets', () => {
-    const components = extractComponents({
-      components: paths.components,
-      widgets: paths.widgets,
-    });
+describe('extractComponentProps', () => {
+  it('extracts components', () => {
+    const components = extractComponentProps(paths.components, 'components');
     expect(components.length).toBeGreaterThan(0);
-    expect(components.some((c) => c.source === 'components')).toBe(true);
+    expect(components.every((c) => c.source === 'components')).toBe(true);
+  });
+
+  it('extracts widgets', () => {
+    const widgets = extractComponentProps(paths.widgets, 'widgets');
+    expect(widgets.length).toBeGreaterThan(0);
+    expect(widgets.every((c) => c.source === 'widgets')).toBe(true);
   });
 });
 
@@ -95,9 +98,13 @@ describe('assembleReference', () => {
   it('contains all expected sections', () => {
     const context = {
       primitives: extractPrimitives(paths.cem),
-      components: extractComponents({ components: paths.components, widgets: paths.widgets }),
+      components: [
+        ...extractComponentProps(paths.components, 'components'),
+        ...extractComponentProps(paths.widgets, 'widgets'),
+      ],
       models: extractModels(paths.models),
       tokens: extractTokens(paths.tokens),
+      storeEntries: [],
       fragments: {
         schemaOperators: 'schema operators content',
         designSystemProps: 'design system props content',
@@ -125,9 +132,13 @@ describe('assembleReference', () => {
   it('includes specific primitives', () => {
     const context = {
       primitives: extractPrimitives(paths.cem),
-      components: extractComponents({ components: paths.components, widgets: paths.widgets }),
+      components: [
+        ...extractComponentProps(paths.components, 'components'),
+        ...extractComponentProps(paths.widgets, 'widgets'),
+      ],
       models: extractModels(paths.models),
       tokens: extractTokens(paths.tokens),
+      storeEntries: [],
       fragments: {
         schemaOperators: '',
         designSystemProps: '',

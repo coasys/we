@@ -1,72 +1,61 @@
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
-import { Project } from 'ts-morph';
+import type { FunctionDeclaration, JSDoc, Type } from 'ts-morph';
+import { Node, Project } from 'ts-morph';
 
 import type { ComponentEntry, PropEntry } from '../types.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 /**
- * Extract component/widget interfaces from *.types.ts files using ts-morph.
- * Reads @ai JSDoc tags for descriptions.
+ * Extract component props by scanning for exported PascalCase function declarations
+ * whose first parameter is typed with a `*Props` interface or type alias.
+ *
+ * Works for any package structure — no `.types.ts` convention required.
+ * Props are resolved via ts-morph regardless of where the type is defined
+ * (same file, separate .types.ts file, or another package entirely).
+ *
+ * @param dir — absolute path to the source directory to scan
+ * @param source — label to stamp on each ComponentEntry ('components' | 'widgets')
  */
-export function extractComponents(baseDirs?: { components?: string; widgets?: string }): ComponentEntry[] {
-  const componentDir = baseDirs?.components ?? resolve(__dirname, '../../../../design-system/4-components/src');
-  const widgetDir = baseDirs?.widgets ?? resolve(__dirname, '../../../../design-system/5-widgets/src');
-
-  // Use the components tsconfig so ts-morph can resolve workspace imports
+export function extractComponentProps(dir: string, source: 'components' | 'widgets'): ComponentEntry[] {
+  // Use the package's tsconfig so ts-morph can resolve workspace imports
   // (e.g. @we/design-types, @we/design-utils/solid) via bundler module resolution
-  const tsConfigFilePath = resolve(componentDir, '..', 'tsconfig.json');
+  const tsConfigFilePath = resolve(dir, '..', 'tsconfig.json');
   const project = new Project({ tsConfigFilePath, skipAddingFilesFromTsConfig: true });
 
-  const entries: ComponentEntry[] = [
-    ...extractFromDir(project, componentDir, 'components'),
-    ...extractFromDir(project, widgetDir, 'widgets'),
-  ];
-
-  return entries.sort((a, b) => a.name.localeCompare(b.name));
+  return extractFromDir(project, dir, source).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function extractFromDir(project: Project, dir: string, source: 'components' | 'widgets'): ComponentEntry[] {
-  const sourceFiles = project.addSourceFilesAtPaths(`${dir}/**/*.types.ts`);
+  const sourceFiles = project.addSourceFilesAtPaths([`${dir}/**/*.ts`, `${dir}/**/*.tsx`]);
   const entries: ComponentEntry[] = [];
+  const seen = new Set<string>();
 
   for (const sourceFile of sourceFiles) {
-    // Extract from interfaces (e.g. export interface DialogProps { ... })
-    for (const iface of sourceFile.getInterfaces()) {
-      const name = iface.getName();
-      if (!name.endsWith('Props')) continue;
+    const filePath = sourceFile.getFilePath();
+    // Skip test, spec, and story files
+    if (/\.(test|spec|stories)\./i.test(filePath)) continue;
 
-      const componentName = name.replace(/Props$/, '');
-      const aiTag = getAiTag(iface);
+    for (const fn of sourceFile.getFunctions()) {
+      if (!fn.isExported()) continue;
 
-      const props: PropEntry[] = iface.getProperties().map((prop) => ({
-        name: prop.getName(),
-        type: prop.getType().getText(prop),
-        optional: prop.hasQuestionToken(),
-        default: undefined,
-      }));
+      const name = fn.getName();
+      if (!name || !/^[A-Z]/.test(name)) continue;
+      if (seen.has(name)) continue;
 
-      entries.push({
-        name: componentName,
-        description: aiTag || undefined,
-        props,
-        source,
-      });
-    }
+      const firstParam = fn.getParameters()[0];
+      if (!firstParam) continue;
 
-    // Extract from type aliases (e.g. export type ColumnProps = Omit<...> & { ... })
-    for (const typeAlias of sourceFile.getTypeAliases()) {
-      const name = typeAlias.getName();
-      if (!name.endsWith('Props')) continue;
-      // Skip if we already found an interface with the same name
-      const componentName = name.replace(/Props$/, '');
-      if (entries.some((e) => e.name === componentName)) continue;
+      // Check the type annotation text — works for both regular and destructured params
+      // e.g. "CircleButtonProps", "BlockComposerProps", "PopoverMenuProps<T>"
+      const typeAnnotation = firstParam.getTypeNode()?.getText();
+      if (!typeAnnotation || !/Props(?:$|<)/.test(typeAnnotation)) continue;
 
-      const resolvedType = typeAlias.getType();
+      const paramType = firstParam.getType();
+
+      seen.add(name);
+
       const props: PropEntry[] = [];
-      for (const sym of resolvedType.getProperties()) {
+      for (const sym of paramType.getProperties()) {
         const decl = sym.getDeclarations()[0];
         if (!decl) continue;
         // Only include props declared in workspace source, not from
@@ -74,15 +63,16 @@ function extractFromDir(project: Project, dir: string, source: 'components' | 'w
         const declPath = decl.getSourceFile().getFilePath();
         if (declPath.includes('/node_modules/')) continue;
 
-        const typeText = sym.getTypeAtLocation(decl).getText(decl);
+        let typeText = sym.getTypeAtLocation(decl).getText(decl);
         const optional = !!(sym.getFlags() & 16777216); // ts.SymbolFlags.Optional
+        if (optional) typeText = typeText.replace(/ \| undefined$/, '');
         props.push({ name: sym.getName(), type: typeText, optional, default: undefined });
       }
 
-      const aiTag = getAiTagFromTypeAlias(typeAlias);
+      const aiTag = getAiDescription(fn, paramType);
 
       entries.push({
-        name: componentName,
+        name,
         description: aiTag || undefined,
         props,
         source,
@@ -93,25 +83,26 @@ function extractFromDir(project: Project, dir: string, source: 'components' | 'w
   return entries;
 }
 
-function getAiTag(iface: ReturnType<import('ts-morph').SourceFile['getInterfaces']>[0]): string | undefined {
-  for (const jsDoc of iface.getJsDocs()) {
-    for (const tag of jsDoc.getTags()) {
-      if (tag.getTagName() === 'ai') {
-        return tag.getCommentText()?.trim();
-      }
+/** Look for an @ai JSDoc tag on the function, then fall back to the Props type declaration. */
+function getAiDescription(fn: FunctionDeclaration, paramType: Type): string | undefined {
+  const fnAi = getAiTagFromJsDocs(fn.getJsDocs());
+  if (fnAi) return fnAi;
+
+  const sym = paramType.getSymbol() ?? paramType.getAliasSymbol();
+  for (const decl of sym?.getDeclarations() ?? []) {
+    if (Node.isInterfaceDeclaration(decl) || Node.isTypeAliasDeclaration(decl)) {
+      const typeAi = getAiTagFromJsDocs(decl.getJsDocs());
+      if (typeAi) return typeAi;
     }
   }
+
   return undefined;
 }
 
-function getAiTagFromTypeAlias(
-  typeAlias: ReturnType<import('ts-morph').SourceFile['getTypeAliases']>[0],
-): string | undefined {
-  for (const jsDoc of typeAlias.getJsDocs()) {
+function getAiTagFromJsDocs(jsDocs: JSDoc[]): string | undefined {
+  for (const jsDoc of jsDocs) {
     for (const tag of jsDoc.getTags()) {
-      if (tag.getTagName() === 'ai') {
-        return tag.getCommentText()?.trim();
-      }
+      if (tag.getTagName() === 'ai') return tag.getCommentText()?.trim();
     }
   }
   return undefined;
