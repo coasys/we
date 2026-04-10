@@ -26,7 +26,11 @@ export function extractFromPath(event: unknown, from: string): unknown {
   const path = from.startsWith('$event.') ? from.slice(7) : from;
   let current: unknown = event;
   for (const segment of path.split('.')) {
-    current = (current as Record<string, unknown>)?.[segment];
+    if (/^\d+$/.test(segment)) {
+      current = (current as unknown[])?.[Number(segment)];
+    } else {
+      current = (current as Record<string, unknown>)?.[segment];
+    }
   }
   return current;
 }

@@ -500,7 +500,7 @@
       "ownProps": [
         {
           "name": "src",
-          "type": "string",
+          "type": "string | File",
           "optional": false,
           "default": "''"
         },

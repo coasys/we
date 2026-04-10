@@ -203,7 +203,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-iframe (LayoutElement)
   Props: src: string = '', title: string = 'Embedded content', allow: string = ''
 - we-image (LayoutElement)
-  Props: src: string = '', alt: string = '', fit: ImageFit = '', loading: ImageLoading = 'eager', gradient: string = ''
+  Props: src: string | File = '', alt: string = '', fit: ImageFit = '', loading: ImageLoading = 'eager', gradient: string = ''
 - we-input (DesignSystemElement)
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: InputSize = 'md'
 - we-link (DesignSystemElement)

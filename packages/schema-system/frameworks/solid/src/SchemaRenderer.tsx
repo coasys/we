@@ -36,6 +36,9 @@ function deepUnwrap(value: unknown, depth = 0): unknown {
     return value.map((item) => deepUnwrap(item, depth + 1));
   }
   if (value && typeof value === 'object') {
+    // Don't deconstruct non-plain objects (File, Blob, Date, DOM nodes, etc.)
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return value;
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
       result[k] = deepUnwrap(v, depth + 1);
@@ -215,6 +218,19 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             !('children' in child) &&
             Object.keys(child).some((k) => k.startsWith('$'))
           ) {
+            // $if in children with component then/else → use ConditionalRenderer
+            if ('$if' in child) {
+              const ifSpec = (child as Record<string, unknown>).$if as Record<string, unknown>;
+              const condNode: SchemaNode = { type: '$if', props: ifSpec } as SchemaNode;
+              return (
+                <ConditionalRenderer
+                  node={condNode}
+                  stores={stores}
+                  context={effectiveContext}
+                  renderNode={renderNode}
+                />
+              );
+            }
             const resolved = resolveProp(child as unknown, stores, effectiveContext, createMemo);
             return (
               <>

@@ -103,12 +103,14 @@ export default class FileUpload extends DesignSystemElement {
 
   private _addFiles(files: File[]) {
     this._files = this.multiple ? [...this._files, ...files] : files.slice(0, 1);
-    this.dispatchEvent(new CustomEvent('change', { detail: this._files, bubbles: true, composed: true }));
+    const detail = this.multiple ? this._files : (this._files[0] ?? null);
+    this.dispatchEvent(new CustomEvent('change', { detail, bubbles: true, composed: true }));
   }
 
   private _removeFile(index: number) {
     this._files = this._files.filter((_, i) => i !== index);
-    this.dispatchEvent(new CustomEvent('change', { detail: this._files, bubbles: true, composed: true }));
+    const detail = this.multiple ? this._files : (this._files[0] ?? null);
+    this.dispatchEvent(new CustomEvent('change', { detail, bubbles: true, composed: true }));
   }
 
   private _onDragOver(e: DragEvent) {
@@ -153,8 +155,9 @@ export default class FileUpload extends DesignSystemElement {
           <span>Drop files here or click to browse</span>
         </slot>
 
-        ${this._files.length > 0
-          ? html`
+        ${
+          this._files.length > 0
+            ? html`
               <div part="file-list" @click=${(e: Event) => e.stopPropagation()}>
                 ${this._files.map(
                   (file, i) => html`
@@ -169,7 +172,8 @@ export default class FileUpload extends DesignSystemElement {
                 )}
               </div>
             `
-          : nothing}
+            : nothing
+        }
       </div>
     `;
   }
