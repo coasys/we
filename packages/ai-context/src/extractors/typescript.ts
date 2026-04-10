@@ -55,12 +55,12 @@ function extractFromDir(project: Project, dir: string, source: 'components' | 'w
       if (componentName !== fileName) continue;
       const aiTag = getAiTag(iface);
 
-      const props: PropEntry[] = iface.getProperties().map((prop) => ({
-        name: prop.getName(),
-        type: prop.getType().getText(prop),
-        optional: prop.hasQuestionToken(),
-        default: undefined,
-      }));
+      const props: PropEntry[] = iface.getProperties().map((prop) => {
+        const optional = prop.hasQuestionToken();
+        let type = prop.getType().getText(prop);
+        if (optional) type = type.replace(/ \| undefined$/, '');
+        return { name: prop.getName(), type, optional, default: undefined };
+      });
 
       entries.push({
         name: componentName,
@@ -90,8 +90,9 @@ function extractFromDir(project: Project, dir: string, source: 'components' | 'w
         const declPath = decl.getSourceFile().getFilePath();
         if (declPath.includes('/node_modules/')) continue;
 
-        const typeText = sym.getTypeAtLocation(decl).getText(decl);
+        let typeText = sym.getTypeAtLocation(decl).getText(decl);
         const optional = !!(sym.getFlags() & 16777216); // ts.SymbolFlags.Optional
+        if (optional) typeText = typeText.replace(/ \| undefined$/, '');
         props.push({ name: sym.getName(), type: typeText, optional, default: undefined });
       }
 
