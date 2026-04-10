@@ -52,13 +52,13 @@ const DEFAULTS: Record<string, string> = {
 function discoverFragments(): ContextFragment[] {
   const fragments: ContextFragment[] = [];
 
-  // Scan workspace packages at two depth levels.
+  // Scan all workspace packages recursively (excludes node_modules).
   // Sort so directory numbering (1-tokens, 3-primitives, 4-components, 5-widgets)
   // controls output order — components before widgets.
-  const pkgPaths = [
-    ...globSync('packages/*/package.json', { cwd: repoRoot }),
-    ...globSync('packages/*/*/package.json', { cwd: repoRoot }),
-  ].sort();
+  const pkgPaths = globSync('packages/**/package.json', {
+    cwd: repoRoot,
+    exclude: (p) => p.includes('node_modules'),
+  }).sort();
 
   for (const rel of pkgPaths) {
     const abs = resolve(repoRoot, rel);
