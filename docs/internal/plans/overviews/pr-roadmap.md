@@ -118,7 +118,7 @@
                     └─────────────────────┘
 
                     ┌─────────────────────┐
-                    │12. File Upload      │
+                    │12. File Upload    ✅│
                     │    Local State      │
                     └─────────────────────┘
 
@@ -389,14 +389,14 @@ Also rewrites the TypeScript extractor from type-centric (`*.types.ts` scanning 
 
 Added `ContextFragment = Partial<ContextData>` type in `@we/schema-shared`. `aggregateFragments()` merges per-package fragments in glob-sorted order. Removed dead `assembleContext()` and fragment imports from assembler. Added `@we/block-solid` as first non-DS context provider — BlockComposer, BlockRenderer, ImageComponent, ImageDisplay, ImageInput now in AI context. 6 packages configured, 27 components extracted (up from 21). ADR documenting the discovery architecture.
 
-### 12. File Upload Local State
+### 12. File Upload Local State ✅
 
-**Plan:** [PR-FILE-UPLOAD-LOCAL-STATE](../prs/PR-FILE-UPLOAD-LOCAL-STATE.md)
-**Status:** Not started
+**Plan:** [PR-FILE-UPLOAD-LOCAL-STATE](../prs/PR-FILE-UPLOAD-LOCAL-STATE.md) | [PR summary](../../PR_FILE_UPLOAD_LOCAL_STATE.md)
+**Status:** Complete (branch `feat/file-upload-local-state`, 1 commit, 14 files)
 **Depends on:** Form Validation (#4c) — extends `$localState` with `'file'` type
 **Unblocks:** image/file uploads in declarative schema forms, space thumbnail upload in `/new-space` route
 
-Adds `'file'` as a new `LocalStateField` type so schemas can declare file state, bind `we-file-upload` to it via `$setLocal`, preview selected images via new `$localPreview` token, and pass `File` objects through to store actions. `adamStore.createSpace` already accepts an optional `imageFile?: File` — this wires it up from the schema layer.
+Adds `'file'` as a new `LocalStateField` type so schemas can declare file state, bind `we-file-upload` to it via `$setLocal`, and pass `File` objects through to store actions. `we-image` accepts `File` as `src` with object URL lifecycle management. `we-file-upload` emits single `File` (not `File[]`) when `multiple=false`, matching other primitive conventions. SchemaRenderer fixes: `$if`-in-children routing to `ConditionalRenderer`, `deepUnwrap` prototype guard preserving non-plain objects (`File`, `Blob`, etc.). `we-image` CSS fix for `object-fit` in fixed-size containers. `/new-space` route wired with thumbnail upload, conditional preview, and `createSpace` args.
 
 ---
 
@@ -428,7 +428,7 @@ Adds `'file'` as a new `LocalStateField` type so schemas can declare file state,
 | ✅   | 4c  | Form Validation                | Cust  | 4          | Medium | Med  |
 | ✅   | 8b‡ | Schema Validation (semantic)   | AI    | 8          | Medium | Low  |
 | ✅   | 11  | Context Fragments              | AI    | 8b         | Medium | Med  |
-|      | 12  | File Upload Local State        | Cust  | 4c         | Small  | Low  |
+| ✅   | 12  | File Upload Local State        | Cust  | 4c         | Small  | Low  |
 | ⏸️   | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
 | ⏸️   | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
 | ⏸️   | 9   | MCP Tools                      | AI    | 6, 8, 8b   | Large  | Med  |
@@ -443,9 +443,9 @@ Phase A PRs (1–3, 4b, 10) are fully independent — all five can run in parall
 
 Within Phase B, #5b (Core Block Types), #5c ($query Service), and #6 (Schema Customization) are all independent of each other — they can run in parallel once #5 lands.
 
-**Remaining work:** #11 (Context Fragments) decentralizes the ai-context pipeline. #12 (File Upload Local State) extends `$localState` to support file/image uploads. #7b, #7c, and #9 are deferred.
+**Remaining work:** #7b, #7c, and #9 are deferred indefinitely.
 
-All core schema, data, customization, form validation, and AI tooling PRs are complete. The next wave focuses on build pipeline decentralization (#11) and extending form capabilities (#12). These are independent and can run in parallel.
+All planned PRs are complete. The full schema system, data architecture, customization, form validation, AI tooling, context fragments, and file upload capabilities are merged to dev.
 
 ```
 Time →
@@ -457,9 +457,8 @@ Track 1:  [1–3, 4b, 10 ✅] ────────────────�
           [8. ai-context → skills ✅] ────────────────────────────────────────
           [4. $localState ✅] → [4c. Form Validation ✅] ────────────────────
           [8b-Ph2. semantic ✅] ──────────────────────────────────────────────
-
-Track 2:  [11. Context Fragments]                                     ← next wave
-          [12. File Upload Local State]                               ← next wave
+          [11. Context Fragments ✅] ─────────────────────────────────────────
+          [12. File Upload Local State ✅] ───────────────────────────────────
 
 Deferred: [7b. Showcase ⏸️] [7c. Storybook ⏸️] [9. MCP Tools ⏸️]
 ```
