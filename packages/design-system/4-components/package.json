@@ -5,6 +5,7 @@
   "author": "James Weir",
   "license": "MIT",
   "type": "module",
+  "context": { "type": "components" },
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build"

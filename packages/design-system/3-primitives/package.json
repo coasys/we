@@ -5,6 +5,7 @@
   "author": "James Weir",
   "license": "MIT",
   "type": "module",
+  "context": { "type": "primitives" },
   "scripts": {
     "build:cem": "cem analyze --litelement --config custom-elements-manifest.config.mjs --globs src/**/*.ts",
     "build:steps": "pnpm build:cem && tsup",
