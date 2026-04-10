@@ -86,8 +86,8 @@ export type QueryToken = {
 };
 
 export type LocalStateField = {
-  type: 'string' | 'boolean' | 'number';
-  initial: string | boolean | number;
+  type: 'string' | 'boolean' | 'number' | 'file';
+  initial: string | boolean | number | null;
   validate?: ValidationRule[];
 };
 

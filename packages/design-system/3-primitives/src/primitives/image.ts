@@ -1,5 +1,5 @@
-import { css, html } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { css, html, PropertyValues } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
 
 import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
@@ -21,6 +21,16 @@ const styles = css`
     display: block;
     max-width: 100%;
     height: auto;
+  }
+
+  :host([fit]) {
+    overflow: hidden;
+  }
+
+  :host([fit]) img,
+  :host([fit]) .gradient-wrapper {
+    width: 100%;
+    height: 100%;
   }
 
   :host([fit='contain']) img,
@@ -53,18 +63,46 @@ const styles = css`
 export default class Image extends LayoutElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: String, reflect: true }) src = '';
+  @property({ attribute: false }) src: string | File = '';
   @property({ type: String, reflect: true }) alt = '';
   @property({ type: String, reflect: true }) fit: ImageFit = '';
   @property({ type: String, reflect: true }) loading: ImageLoading = 'eager';
   @property({ type: String, reflect: true }) gradient = '';
 
+  @state() private _objectUrl: string | null = null;
+
+  willUpdate(changed: PropertyValues) {
+    if (changed.has('src')) {
+      // Revoke previous object URL if we created one
+      if (this._objectUrl) {
+        URL.revokeObjectURL(this._objectUrl);
+        this._objectUrl = null;
+      }
+      // Create a new object URL for File sources
+      if (this.src instanceof File) {
+        this._objectUrl = URL.createObjectURL(this.src);
+      }
+    }
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._objectUrl) {
+      URL.revokeObjectURL(this._objectUrl);
+      this._objectUrl = null;
+    }
+  }
+
+  private get _resolvedSrc(): string {
+    return this._objectUrl ?? (typeof this.src === 'string' ? this.src : '');
+  }
+
   render() {
     // If gradient is provided, use SVG as a mask with gradient background
     if (this.gradient) {
       const maskStyle = `
-        -webkit-mask: url(${this.src}) no-repeat center;
-        mask: url(${this.src}) no-repeat center;
+        -webkit-mask: url(${this._resolvedSrc}) no-repeat center;
+        mask: url(${this._resolvedSrc}) no-repeat center;
         -webkit-mask-size: contain;
         mask-size: contain;
         background: ${this.gradient};
@@ -75,6 +113,6 @@ export default class Image extends LayoutElement {
     }
 
     // Standard image rendering
-    return html`<img src=${this.src} alt=${this.alt} loading=${this.loading} />`;
+    return html`<img src=${this._resolvedSrc} alt=${this.alt} loading=${this.loading} />`;
   }
 }

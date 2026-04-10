@@ -529,6 +529,18 @@ describe('extractFromPath', () => {
   it('returns undefined for missing path', () => {
     expect(extractFromPath({}, '$event.missing.deep')).toBeUndefined();
   });
+
+  it('extracts numeric array index from path', () => {
+    const file = { name: 'photo.png' };
+    const event = { detail: [file, { name: 'other.png' }] };
+    expect(extractFromPath(event, '$event.detail.0')).toBe(file);
+    expect(extractFromPath(event, '$event.detail.1')).toEqual({ name: 'other.png' });
+  });
+
+  it('returns undefined for out-of-bounds array index', () => {
+    const event = { detail: ['only'] };
+    expect(extractFromPath(event, '$event.detail.5')).toBeUndefined();
+  });
 });
 
 describe('$local/$setLocal via dispatcher', () => {

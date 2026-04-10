@@ -117,8 +117,8 @@ const zValidationRule = z.union([
 ]);
 
 const zLocalStateField = z.object({
-  type: z.enum(['string', 'boolean', 'number']),
-  initial: z.union([z.string(), z.boolean(), z.number()]),
+  type: z.enum(['string', 'boolean', 'number', 'file']),
+  initial: z.union([z.string(), z.boolean(), z.number(), z.null()]),
   validate: z.array(zValidationRule).optional(),
 });
 const zLocalStateDeclaration = z.record(z.string(), zLocalStateField);

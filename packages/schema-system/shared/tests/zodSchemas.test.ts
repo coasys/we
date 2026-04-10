@@ -153,6 +153,16 @@ describe('zodSchemas', () => {
     expect(() => zSchemaNode.parse(node)).not.toThrow();
   });
 
+  it('accepts $localState with file type and null initial', () => {
+    const node = {
+      type: 'Column',
+      $localState: {
+        thumbnail: { type: 'file', initial: null },
+      },
+    };
+    expect(() => zSchemaNode.parse(node)).not.toThrow();
+  });
+
   it('rejects $localState with invalid field type', () => {
     const node = {
       type: 'Column',

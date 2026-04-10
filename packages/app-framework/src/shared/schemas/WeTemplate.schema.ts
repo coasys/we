@@ -1499,6 +1499,7 @@ export const weTemplate: TemplateSchema = {
         name: { type: 'string', initial: '', validate: [{ rule: 'required', message: 'Name is required' }] },
         description: { type: 'string', initial: '' },
         shared: { type: 'boolean', initial: false },
+        thumbnail: { type: 'file', initial: null },
       },
       children: [
         {
@@ -1543,6 +1544,42 @@ export const weTemplate: TemplateSchema = {
                     placeholder: 'What is this space about?',
                     value: { $local: 'description' },
                     onInput: { $setLocal: 'description', from: '$event.detail' },
+                  },
+                },
+              ],
+            },
+
+            // Thumbnail upload
+            {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { fontSize: '300', fontWeight: '500', color: 'neutral-600' },
+                  children: ['Thumbnail'],
+                },
+                {
+                  $if: {
+                    condition: { $local: 'thumbnail' },
+                    then: {
+                      type: 'we-image',
+                      props: {
+                        src: { $local: 'thumbnail' },
+                        alt: 'Thumbnail preview',
+                        fit: 'cover',
+                        width: '100%',
+                        height: '160px',
+                        borderRadius: 'var(--we-radius-300)',
+                      },
+                    },
+                  },
+                },
+                {
+                  type: 'we-file-upload',
+                  props: {
+                    accept: 'image/*',
+                    onChange: { $setLocal: 'thumbnail', from: '$event.detail' },
                   },
                 },
               ],
@@ -1618,7 +1655,12 @@ export const weTemplate: TemplateSchema = {
                       condition: { $formValid: '$scope' },
                       then: {
                         $action: 'adamStore.createSpace',
-                        args: [{ $local: 'name' }, { $local: 'description' }, { $local: 'shared' }],
+                        args: [
+                          { $local: 'name' },
+                          { $local: 'description' },
+                          { $local: 'shared' },
+                          { $local: 'thumbnail' },
+                        ],
                       },
                     },
                   },
