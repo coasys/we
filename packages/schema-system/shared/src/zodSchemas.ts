@@ -82,7 +82,10 @@ const zQueryToken = z
   .strict();
 
 const zLocalToken = z.object({ $local: z.string().min(1) }).strict();
-const zSetLocalToken = z.object({ $setLocal: z.string().min(1), from: z.string().min(1) }).strict();
+const zSetLocalToken = z.union([
+  z.object({ $setLocal: z.string().min(1), from: z.string().min(1) }).strict(),
+  z.object({ $setLocal: z.string().min(1), value: z.unknown() }).strict(),
+]);
 const zErrorToken = z.object({ $error: z.string().min(1) }).strict();
 const zValidToken = z.object({ $valid: z.string().min(1) }).strict();
 const zTouchedToken = z.object({ $touched: z.string().min(1) }).strict();
@@ -133,7 +136,7 @@ function schemaNodeShape() {
     slots: z.record(z.string(), lazySchemaNode).optional(),
     slot: z.string().optional(),
     routes: z.array(lazyRouteSchema).optional(),
-    children: z.array(z.union([lazySchemaNode, z.string()])).optional(),
+    children: z.array(z.union([lazySchemaNode, z.string(), zIfToken])).optional(),
     theme: zThemeOverrides.optional(),
     $localState: zLocalStateDeclaration.optional(),
   };

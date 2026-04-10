@@ -1754,6 +1754,16 @@
           "optional": true
         },
         {
+          "name": "flex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "alignSelf",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "overflow",
           "type": "Overflow",
           "optional": true
@@ -2350,6 +2360,16 @@
         {
           "name": "gap",
           "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "flex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "alignSelf",
+          "type": "string",
           "optional": true
         },
         {
@@ -3991,6 +4011,7 @@
       "actions": [
         "navigate",
         "addNewSpace",
+        "createSpace",
         "unlockAgent",
         "setShowPassword"
       ]

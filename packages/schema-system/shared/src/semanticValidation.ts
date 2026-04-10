@@ -375,8 +375,8 @@ function walkOperatorNode(
 }
 
 function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkState {
-  const props = n.props as Record<string, unknown> | undefined;
-  const localState = props?.$localState as Record<string, unknown> | undefined;
+  // $localState lives on the node itself (sibling of type/props/children), not inside props
+  const localState = n.$localState as Record<string, unknown> | undefined;
   if (!localState || typeof localState !== 'object') return state;
 
   const newFields = new Set(state.localScope ?? []);

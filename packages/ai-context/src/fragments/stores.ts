@@ -11,7 +11,7 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'adamStore',
     state: ['loading', 'adamClient', 'me', 'mySpaces', 'bootState', 'passwordError', 'showPassword', 'loginLoading'],
-    actions: ['navigate', 'addNewSpace', 'unlockAgent', 'setShowPassword'],
+    actions: ['navigate', 'addNewSpace', 'createSpace', 'unlockAgent', 'setShowPassword'],
   },
   {
     name: 'routeStore',
@@ -70,6 +70,7 @@ function generateStoresText(entries: StoreEntry[]): string {
       actions: {
         navigate: '(to: string, options?): navigates to a route',
         addNewSpace: '(space: Space): adds a new space',
+        createSpace: '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
         unlockAgent: '(password: string): unlocks the agent with password',
         setShowPassword: '(show: boolean): toggles password visibility',
       },

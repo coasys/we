@@ -21,6 +21,8 @@ export const stateKeys = ['hoverProps', 'activeProps', 'focusProps', 'disabledPr
 
 /** Layout layer: box model & positioning in parent. Every component gets this. */
 export const layoutKeys = [
+  'flex',
+  'alignSelf',
   'width',
   'height',
   'minWidth',

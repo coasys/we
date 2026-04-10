@@ -29,6 +29,8 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 | left | string | Left offset |
 | zIndex | number | Stack order |
 | display | "flex" \\| "block" \\| "inline" \\| "inline-block" \\| "grid" \\| "inline-flex" | Display mode |
+| flex | string | Flex shorthand (e.g. "1", "0 0 auto", "none") — controls grow/shrink/basis |
+| alignSelf | string | Override parent cross-axis alignment for this child |
 | overflow | "hidden" \\| "auto" | Overflow behavior |
 | m | SpaceValue | Margin (all sides) |
 | mx | SpaceValue | Margin left + right |

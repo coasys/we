@@ -368,9 +368,7 @@ describe('$local scope', () => {
     const result = validateSemantic(
       {
         type: 'Column',
-        props: {
-          $localState: { name: { type: 'string', initial: '' } },
-        },
+        $localState: { name: { type: 'string', initial: '' } },
         children: [{ type: 'we-button', props: { text: { $local: 'nme' } } }],
       },
       ctx(),
@@ -387,9 +385,7 @@ describe('$local scope', () => {
     const result = validateSemantic(
       {
         type: 'Column',
-        props: {
-          $localState: { name: { type: 'string', initial: '' } },
-        },
+        $localState: { name: { type: 'string', initial: '' } },
         children: [{ type: 'we-button', props: { text: { $local: 'name' } } }],
       },
       ctx(),
@@ -402,15 +398,11 @@ describe('$local scope', () => {
     const result = validateSemantic(
       {
         type: 'Column',
-        props: {
-          $localState: { name: { type: 'string', initial: '' } },
-        },
+        $localState: { name: { type: 'string', initial: '' } },
         children: [
           {
             type: 'Column',
-            props: {
-              $localState: { email: { type: 'string', initial: '' } },
-            },
+            $localState: { email: { type: 'string', initial: '' } },
             children: [
               { type: 'we-button', props: { text: { $local: 'name' } } },
               { type: 'we-button', props: { text: { $local: 'email' } } },
@@ -428,9 +420,7 @@ describe('$local scope', () => {
     const result = validateSemantic(
       {
         type: 'Column',
-        props: {
-          $localState: { name: { type: 'string', initial: '' } },
-        },
+        $localState: { name: { type: 'string', initial: '' } },
         children: [{ type: 'we-text', props: { tag: { $error: 'nme' } } }],
       },
       ctx(),
@@ -444,9 +434,7 @@ describe('$local scope', () => {
     const result = validateSemantic(
       {
         type: 'Column',
-        props: {
-          $localState: { name: { type: 'string', initial: '' } },
-        },
+        $localState: { name: { type: 'string', initial: '' } },
         children: [{ type: 'we-button', props: { onClick: { $setLocal: 'typo', from: '$event.detail' } } }],
       },
       ctx(),
@@ -460,9 +448,7 @@ describe('$local scope', () => {
     const result = validateSemantic(
       {
         type: 'Column',
-        props: {
-          $localState: { name: { type: 'string', initial: '' } },
-        },
+        $localState: { name: { type: 'string', initial: '' } },
         children: [{ type: 'we-button', props: { onClick: { $touch: '$all' } } }],
       },
       ctx(),
@@ -475,9 +461,7 @@ describe('$local scope', () => {
     const result = validateSemantic(
       {
         type: 'Column',
-        props: {
-          $localState: { name: { type: 'string', initial: '' } },
-        },
+        $localState: { name: { type: 'string', initial: '' } },
         children: [{ type: 'we-button', props: { disabled: { $formValid: '$scope' } } }],
       },
       ctx(),

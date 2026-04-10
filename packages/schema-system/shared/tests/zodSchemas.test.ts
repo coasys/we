@@ -132,8 +132,8 @@ describe('zodSchemas', () => {
     expect(() => zSchemaProp.parse({ $setLocal: 'name', from: '$event.target.value' })).not.toThrow();
   });
 
-  it('rejects $setLocal without from', () => {
-    expect(() => zSchemaProp.parse({ $setLocal: 'name' })).toThrow();
+  it('accepts $setLocal with value instead of from', () => {
+    expect(() => zSchemaProp.parse({ $setLocal: 'name', value: 'hello' })).not.toThrow();
   });
 
   it('rejects $setLocal with empty from', () => {

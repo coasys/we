@@ -55,7 +55,7 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$store', 'string')) return resolveStoreProp(value, stores, memo);
     if (hasToken(value, '$local', 'string')) return resolveLocalProp(value as { $local: string }, context);
     if (hasToken(value, '$setLocal', 'string'))
-      return resolveSetLocalProp(value as { $setLocal: string; from: string }, context);
+      return resolveSetLocalProp(value as { $setLocal: string; from?: string; value?: unknown }, context);
     if (hasToken(value, '$error', 'string')) return resolveErrorProp(value as { $error: string }, context);
     if (hasToken(value, '$valid', 'string')) return resolveValidProp(value as { $valid: string }, context);
     if (hasToken(value, '$touched', 'string')) return resolveTouchedProp(value as { $touched: string }, context);

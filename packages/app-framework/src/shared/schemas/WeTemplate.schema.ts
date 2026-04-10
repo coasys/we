@@ -1357,8 +1357,6 @@ export const weTemplate: TemplateSchema = {
         {
           type: 'CesiumGlobe',
           props: {
-            width: '100%',
-            height: 'calc(100vh - 200px)', // Full height minus header and padding
             backgroundLayers: [
               {
                 factory: 'skyboxLayer',

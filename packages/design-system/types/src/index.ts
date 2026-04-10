@@ -81,6 +81,8 @@ export interface DesignSystemProps {
   ay?: FlexMainAxis | FlexCrossAxis;
   wrap?: boolean;
   gap?: SpaceValue;
+  flex?: string;
+  alignSelf?: string;
   overflow?: Overflow;
   zIndex?: number;
   position?: Position;

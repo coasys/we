@@ -55,6 +55,10 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
   if (props.cursor) style.cursor = props.cursor;
   if (props.pointerEvents) style['pointer-events'] = props.pointerEvents;
 
+  // Flex item
+  if (props.flex) style.flex = props.flex;
+  if (props.alignSelf) style['align-self'] = props.alignSelf;
+
   // Layout
   if (props.width) style.width = props.width;
   if (props.height) style.height = props.height;

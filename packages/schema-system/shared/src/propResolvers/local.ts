@@ -50,9 +50,9 @@ export function resolveLocalProp(value: { $local: string }, context: Props): unk
   return markReactive(accessor);
 }
 
-/** Resolves $setLocal tokens: { $setLocal: "name", from: "$event.target.value" } → event handler */
+/** Resolves $setLocal tokens: { $setLocal: "name", from: "$event.target.value" } or { $setLocal: "name", value: <literal> } → event handler */
 export function resolveSetLocalProp(
-  value: { $setLocal: string; from: string },
+  value: { $setLocal: string; from?: string; value?: unknown },
   context: Props,
 ): (event: unknown) => void {
   const localSetters = context.$localSetters as Record<string, (v: unknown) => void> | undefined;
@@ -65,8 +65,13 @@ export function resolveSetLocalProp(
     console.warn(`Schema $setLocal: field "${value.$setLocal}" not declared in $localState`);
     return () => {};
   }
+  if ('value' in value) {
+    return () => {
+      setter(value.value);
+    };
+  }
   return (event: unknown) => {
-    setter(extractFromPath(event, value.from));
+    setter(extractFromPath(event, value.from!));
   };
 }
 
