@@ -1,42 +1,4 @@
-import type { ContextData } from '@we/schema-shared';
-
-import { extractPrimitives } from './extractors/cem.js';
-import { extractModels } from './extractors/models.js';
-import { extractTokens } from './extractors/tokens.js';
-import { extractComponents } from './extractors/typescript.js';
-import { designSystemProps } from './fragments/design-system-props.js';
-import { routing } from './fragments/routing.js';
-import { rules } from './fragments/rules.js';
-import { schemaOperators } from './fragments/schema-operators.js';
-import { storePatterns } from './fragments/store-patterns.js';
-import { storeEntries, stores } from './fragments/stores.js';
 import type { AssembledContext, ComponentEntry, ModelEntry, PrimitiveEntry, TokenCategory } from './types.js';
-
-/**
- * Assemble the full structured context.
- * If contextData is provided, uses it directly (from glob-based discovery).
- * Otherwise falls back to calling extractors with defaults.
- */
-export function assembleContext(contextData?: ContextData): AssembledContext {
-  const data = contextData ?? {
-    primitives: extractPrimitives(),
-    components: extractComponents(),
-    models: extractModels(),
-    tokens: extractTokens(),
-    storeEntries,
-  };
-  return {
-    ...data,
-    fragments: {
-      schemaOperators,
-      designSystemProps,
-      routing,
-      stores,
-      storePatterns,
-      rules,
-    },
-  };
-}
 
 /**
  * Assemble a formatted text reference from structured context.
@@ -44,8 +6,8 @@ export function assembleContext(contextData?: ContextData): AssembledContext {
  * Consumers add their own intent (generate script adds instruction-file framing,
  * in-app AI adds chat framing).
  */
-export function assembleReference(ctx?: AssembledContext): string {
-  const context = ctx ?? assembleContext();
+export function assembleReference(ctx: AssembledContext): string {
+  const context = ctx;
   const sections: string[] = [];
 
   // Schema operators (structure, dynamic logic, block structures)
