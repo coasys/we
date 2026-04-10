@@ -883,7 +883,7 @@ Native HTML elements (lowercase tags render directly without registry entries):
 
 ## Schema Validation
 
-Run `we-validate-schemas` (or `node packages/cli/dist/we-validate-schemas.js`) from the monorepo root to validate all `.schema.ts` files.
+Run `we-validate-schemas` (or `node packages/schema-system/shared/dist/cli/we-validate-schemas.js`) from the monorepo root to validate all `.schema.ts` files.
 For a specific file: `we-validate-schemas packages/app-framework/src/shared/schemas/MyTemplate.schema.ts`
 
 After creating or modifying a `.schema.ts` file, always run validation to catch:
