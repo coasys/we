@@ -660,7 +660,6 @@ For ephemeral/form state, use $localState/$local/$setLocal instead of stores (se
 
 AdamStore:
 - State:
-  - loading: boolean
   - adamClient: Ad4mClient | undefined
   - me: Agent | undefined
   - mySpaces: array of Space objects

@@ -3999,7 +3999,6 @@
     {
       "name": "adamStore",
       "state": [
-        "loading",
         "adamClient",
         "me",
         "mySpaces",

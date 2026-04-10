@@ -10,7 +10,7 @@ import type { StoreEntry } from '../types.js';
 export const storeEntries: StoreEntry[] = [
   {
     name: 'adamStore',
-    state: ['loading', 'adamClient', 'me', 'mySpaces', 'bootState', 'passwordError', 'showPassword', 'loginLoading'],
+    state: ['adamClient', 'me', 'mySpaces', 'bootState', 'passwordError', 'showPassword', 'loginLoading'],
     actions: ['navigate', 'addNewSpace', 'createSpace', 'unlockAgent', 'setShowPassword'],
   },
   {
@@ -58,7 +58,6 @@ function generateStoresText(entries: StoreEntry[]): string {
   const descriptions: Record<string, { state: Record<string, string>; actions: Record<string, string> }> = {
     adamStore: {
       state: {
-        loading: 'boolean',
         adamClient: 'Ad4mClient | undefined',
         me: 'Agent | undefined',
         mySpaces: 'array of Space objects',
@@ -70,7 +69,8 @@ function generateStoresText(entries: StoreEntry[]): string {
       actions: {
         navigate: '(to: string, options?): navigates to a route',
         addNewSpace: '(space: Space): adds a new space',
-        createSpace: '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
+        createSpace:
+          '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
         unlockAgent: '(password: string): unlocks the agent with password',
         setShowPassword: '(show: boolean): toggles password visibility',
       },
