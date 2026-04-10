@@ -1,25 +1,29 @@
 /**
  * Build-time generate script.
  *
- * 1. Assembles the full context reference
- * 2. Writes instruction files (for local AI agents)
- * 3. Generates schemaContext.ts (for in-app AI)
+ * 1. Discovers packages with a "context" field in package.json
+ * 2. Calls the appropriate extractor for each discovered package
+ * 3. Aggregates fragments into unified ContextData
+ * 4. Assembles the full context reference
+ * 5. Writes instruction files (for local AI agents)
+ * 6. Generates schemaContext.ts (for in-app AI)
  *
  * Run via: node --import tsx packages/ai-context/src/generate.ts
  * Or via: pnpm --filter @we/ai-context generate-context
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { globSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { ContextData } from '@we/schema-shared';
+import type { ContextData, ContextFragment } from '@we/schema-shared';
 
+import { aggregateFragments } from './aggregate.js';
 import { assembleReference } from './assembler.js';
 import { extractPrimitives } from './extractors/cem.js';
 import { extractModels } from './extractors/models.js';
 import { extractTokens } from './extractors/tokens.js';
-import { extractComponents } from './extractors/typescript.js';
+import { extractComponentProps } from './extractors/typescript.js';
 import { designSystemProps } from './fragments/design-system-props.js';
 import { routing } from './fragments/routing.js';
 import { rules } from './fragments/rules.js';
@@ -32,22 +36,77 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(__dirname, '..');
 const repoRoot = resolve(packageRoot, '../..');
 
+/** Default source paths per context type (relative to the package directory) */
+const DEFAULTS: Record<string, string> = {
+  primitives: 'custom-elements.json',
+  components: 'src',
+  widgets: 'src',
+  tokens: 'src',
+  models: 'src',
+};
+
+/**
+ * Discover packages with a "context" field in their package.json
+ * and extract the appropriate context fragment for each.
+ */
+function discoverFragments(): ContextFragment[] {
+  const fragments: ContextFragment[] = [];
+
+  // Scan workspace packages at two depth levels.
+  // Sort so directory numbering (1-tokens, 3-primitives, 4-components, 5-widgets)
+  // controls output order — components before widgets.
+  const pkgPaths = [
+    ...globSync('packages/*/package.json', { cwd: repoRoot }),
+    ...globSync('packages/*/*/package.json', { cwd: repoRoot }),
+  ].sort();
+
+  for (const rel of pkgPaths) {
+    const abs = resolve(repoRoot, rel);
+    const pkg = JSON.parse(readFileSync(abs, 'utf-8'));
+    const config = pkg.context;
+    if (!config?.type) continue;
+
+    const pkgDir = dirname(abs);
+    const src = resolve(pkgDir, config.src ?? DEFAULTS[config.type]);
+
+    console.log(`  Discovered: ${pkg.name ?? rel} (type: ${config.type})`);
+
+    switch (config.type) {
+      case 'primitives':
+        fragments.push({ primitives: extractPrimitives(src) });
+        break;
+      case 'components':
+        fragments.push({ components: extractComponentProps(src, 'components') });
+        break;
+      case 'widgets':
+        fragments.push({ components: extractComponentProps(src, 'widgets') });
+        break;
+      case 'tokens':
+        fragments.push({ tokens: extractTokens(src) });
+        break;
+      case 'models':
+        fragments.push({ models: extractModels(src) });
+        break;
+      default:
+        console.warn(`  Warning: unknown context type "${config.type}" in ${rel}`);
+    }
+  }
+
+  return fragments;
+}
+
 function main() {
   console.log('Generating AI context...');
 
-  // Resolve all paths explicitly (tsup bundles all extractors into dist/generate.js,
-  // so their default __dirname-relative paths would be wrong)
-  const designSystemRoot = resolve(repoRoot, 'packages/design-system');
+  // Discover and extract context from all workspace packages
+  const fragments = discoverFragments();
+  const contextData = aggregateFragments(fragments);
+
+  // Store entries stay manually authored for now
+  contextData.storeEntries = storeEntries;
 
   const context = {
-    primitives: extractPrimitives(resolve(designSystemRoot, '3-primitives/custom-elements.json')),
-    components: extractComponents({
-      components: resolve(designSystemRoot, '4-components/src'),
-      widgets: resolve(designSystemRoot, '5-widgets/src'),
-    }),
-    tokens: extractTokens(resolve(designSystemRoot, '1-tokens/src')),
-    models: extractModels(resolve(repoRoot, 'packages/models/src')),
-    storeEntries,
+    ...contextData,
     fragments: { schemaOperators, designSystemProps, routing, stores, storePatterns, rules },
   };
 
@@ -86,14 +145,14 @@ function main() {
   // 5. Write assembled context JSON (structured data for schema validation CLI)
   // Only the ContextData fields — excludes fragments (AI prompt text, ~50KB)
   const contextJsonPath = resolve(packageRoot, 'context.json');
-  const contextData: ContextData = {
+  const contextJson: ContextData = {
     primitives: context.primitives,
     components: context.components,
     models: context.models,
     tokens: context.tokens,
     storeEntries: context.storeEntries,
   };
-  writeFileSync(contextJsonPath, JSON.stringify(contextData, null, 2), 'utf-8');
+  writeFileSync(contextJsonPath, JSON.stringify(contextJson, null, 2), 'utf-8');
   console.log(`  Written: ${contextJsonPath}`);
 
   console.log('Done.');
