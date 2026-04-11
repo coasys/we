@@ -2,14 +2,7 @@ import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { getModel } from '@shared/registries/modelRegistry';
 import { createTestStore } from '@shared/schemas/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
-import {
-  useAdamStore,
-  useModalStore,
-  useRouteStore,
-  useSpaceStore,
-  useTemplateStore,
-  useThemeStore,
-} from '@solid/stores';
+import { useAdamStore, useRouteStore, useSpaceStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router, useLocation, useNavigate } from '@solidjs/router';
 import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
@@ -92,7 +85,6 @@ export default function TemplateProvider() {
   // Gather up the stores
   const adamStore = useAdamStore();
   const spaceStore = useSpaceStore();
-  const modalStore = useModalStore();
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
   const routeStore = useRouteStore();
@@ -129,7 +121,6 @@ export default function TemplateProvider() {
   const stores = {
     adamStore,
     spaceStore,
-    modalStore,
     themeStore,
     templateStore,
     routeStore,
