@@ -155,9 +155,8 @@ export default class FileUpload extends DesignSystemElement {
           <span>Drop files here or click to browse</span>
         </slot>
 
-        ${
-          this._files.length > 0
-            ? html`
+        ${this._files.length > 0
+          ? html`
               <div part="file-list" @click=${(e: Event) => e.stopPropagation()}>
                 ${this._files.map(
                   (file, i) => html`
@@ -172,8 +171,7 @@ export default class FileUpload extends DesignSystemElement {
                 )}
               </div>
             `
-            : nothing
-        }
+          : nothing}
       </div>
     `;
   }

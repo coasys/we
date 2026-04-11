@@ -217,13 +217,18 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     name: z.string(),
     description: z.string(),
     icon: z.string(),
-    stores: z.union([
-      z.array(z.string()),
-      z.record(z.string(), z.object({
-        actions: z.array(z.string()).optional(),
-        state: z.array(z.string()).optional(),
-      })),
-    ]).optional(),
+    stores: z
+      .union([
+        z.array(z.string()),
+        z.record(
+          z.string(),
+          z.object({
+            actions: z.array(z.string()).optional(),
+            state: z.array(z.string()).optional(),
+          }),
+        ),
+      ])
+      .optional(),
     components: z.array(z.string()).optional(),
   })
   .strict();

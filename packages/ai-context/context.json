@@ -3998,90 +3998,38 @@
   "storeEntries": [
     {
       "name": "adamStore",
-      "state": [
-        "adamClient",
-        "me",
-        "mySpaces",
-        "bootState",
-        "passwordError",
-        "showPassword",
-        "loginLoading"
-      ],
-      "actions": [
-        "navigate",
-        "addNewSpace",
-        "createSpace",
-        "unlockAgent",
-        "setShowPassword"
-      ]
+      "state": ["adamClient", "me", "mySpaces", "bootState", "passwordError", "showPassword", "loginLoading"],
+      "actions": ["navigate", "addNewSpace", "createSpace", "unlockAgent", "setShowPassword"]
     },
     {
       "name": "routeStore",
-      "state": [
-        "currentPath"
-      ],
-      "actions": [
-        "navigate"
-      ]
+      "state": ["currentPath"],
+      "actions": ["navigate"]
     },
     {
       "name": "themeStore",
-      "state": [
-        "themes",
-        "currentTheme"
-      ],
-      "actions": [
-        "setThemes",
-        "setCurrentTheme"
-      ]
+      "state": ["themes", "currentTheme"],
+      "actions": ["setThemes", "setCurrentTheme"]
     },
     {
       "name": "templateStore",
-      "state": [
-        "templates",
-        "currentTemplate"
-      ],
-      "actions": [
-        "updateTemplate",
-        "switchTemplate",
-        "removeTemplate",
-        "saveTemplate"
-      ]
+      "state": ["templates", "currentTemplate"],
+      "actions": ["updateTemplate", "switchTemplate", "removeTemplate", "saveTemplate"]
     },
     {
       "name": "spaceStore",
-      "state": [
-        "spaceId",
-        "perspective",
-        "space",
-        "posts",
-        "loading"
-      ],
-      "actions": [
-        "setSpaceId",
-        "getSpace",
-        "getPosts"
-      ]
+      "state": ["spaceId", "perspective", "space", "posts", "loading"],
+      "actions": ["setSpaceId", "getSpace", "getPosts"]
     },
     {
       "name": "modalStore",
-      "state": [
-        "createSpaceModalOpen"
-      ],
-      "actions": [
-        "openModal",
-        "closeModal"
-      ]
+      "state": ["createSpaceModalOpen"],
+      "actions": ["openModal", "closeModal"]
     },
     {
       "name": "aiStore",
-      "state": [
-        "models",
-        "tasks"
-      ],
-      "actions": [
-        "handleSchemaPrompt"
-      ]
+      "state": ["models", "tasks"],
+      "actions": ["handleSchemaPrompt"]
     }
   ]
 }

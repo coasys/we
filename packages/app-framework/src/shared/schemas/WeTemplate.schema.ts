@@ -412,12 +412,7 @@ export const weTemplate: TemplateSchema = {
         // Welcome header
         {
           type: 'Column',
-          props: {
-            width: '100%',
-            p: '2rem',
-            gap: '0.5rem',
-            bg: 'neutral-0',
-          },
+          props: { width: '100%', p: '2rem', gap: '0.5rem', bg: 'neutral-0' },
           children: [
             {
               type: 'we-text',

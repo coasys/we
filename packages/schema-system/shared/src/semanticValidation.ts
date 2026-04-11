@@ -790,10 +790,12 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   // meta.stores supports two formats:
   //   string[]  — just declares store names exist (original behavior)
   //   Record<string, { actions?: string[]; state?: string[] }> — declares names + additional members
-  const meta = (schema as Record<string, unknown>)?.meta as {
-    stores?: string[] | Record<string, { actions?: string[]; state?: string[] }>;
-    components?: string[];
-  } | undefined;
+  const meta = (schema as Record<string, unknown>)?.meta as
+    | {
+        stores?: string[] | Record<string, { actions?: string[]; state?: string[] }>;
+        components?: string[];
+      }
+    | undefined;
 
   if (meta?.stores || meta?.components?.length) {
     const newStoreNames = new Set(context.storeNames);
