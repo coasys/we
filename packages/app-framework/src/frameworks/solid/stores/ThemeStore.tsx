@@ -52,16 +52,16 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (isValidThemeKey(themeId)) {
       setCurrentThemeKey(themeId);
       document.documentElement.setAttribute('data-we-theme', themeId);
-      // Keep localStorage as fast fallback for initial render and bootscreen before AgentConfig is loaded
+      // Keep localStorage as fast fallback for initial render and bootscreen before AgentSettings is loaded
       localStorage.setItem(THEME_KEY, themeId);
       // Persist to Ad4m
-      adamStore.updatePreferences({ currentThemeId: themeId });
+      adamStore.updateAgentSettings({ currentThemeId: themeId });
     }
   }
 
-  // Apply persisted theme from AgentConfig when available
+  // Apply persisted theme from AgentSettings when available
   createEffect(() => {
-    const prefs = adamStore.userPreferences();
+    const prefs = adamStore.agentSettings();
     if (prefs?.currentThemeId && isValidThemeKey(prefs.currentThemeId)) {
       setCurrentThemeKey(prefs.currentThemeId as ThemeKey);
       document.documentElement.setAttribute('data-we-theme', prefs.currentThemeId);

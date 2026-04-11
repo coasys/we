@@ -111,7 +111,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   // Restore persisted template choice on boot (runs once, then stops)
   let initialRestoreDone = false;
   createEffect(() => {
-    const prefs = adamStore.userPreferences();
+    const prefs = adamStore.agentSettings();
     if (loading() || initialRestoreDone) return;
     if (prefs?.currentTemplateId && prefs.currentTemplateId !== currentTemplate.id) {
       const persisted = templates().find((t) => t.id === prefs.currentTemplateId);
@@ -137,7 +137,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       // Reset to root so the new template doesn't land on a stale route
       routeStore.navigate('/');
       // Persist choice to Ad4m
-      adamStore.updatePreferences({ currentTemplateId: newTemplateId });
+      adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });
     } else {
       console.error(`TemplateStore: switchTemplate - Invalid templateId "${newTemplateId}"`);
     }
@@ -151,8 +151,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       const template = savedTemplateMap.get(templateId)!;
       savedTemplateMap.delete(templateId);
       setTemplates(templates().filter((t) => t.id !== templateId));
-      // Unlink from AgentConfig and delete template
-      const prefs = adamStore.userPreferences();
+      // Unlink from AgentSettings and delete template
+      const prefs = adamStore.agentSettings();
       if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
       template.delete?.().catch((err: unknown) => console.error('TemplateStore: delete error', err));
     }
@@ -198,8 +198,8 @@ export function TemplateStoreProvider(props: ParentProps) {
         });
         savedTemplateMap.set(templateId, newTemplate);
 
-        // Link to AgentConfig via @HasMany relation
-        const prefs = adamStore.userPreferences();
+        // Link to AgentSettings via @HasMany relation
+        const prefs = adamStore.agentSettings();
         if (prefs) await prefs.addInstalledTemplates(newTemplate);
       }
 
