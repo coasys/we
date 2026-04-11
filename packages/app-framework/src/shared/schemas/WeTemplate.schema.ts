@@ -188,17 +188,6 @@ export const weTemplate: TemplateSchema = {
           //   ],
           // },
         ],
-
-        // Footer items
-        footerItems: [
-          {
-            type: 'item',
-            id: 'logout',
-            icon: 'list',
-            label: 'Logout',
-            // onClick: { $action: 'authStore.logout' },
-          },
-        ],
       },
       slots: {
         header: {
@@ -387,17 +376,6 @@ export const weTemplate: TemplateSchema = {
                 active: { $eq: [{ $store: 'routeStore.currentPath' }, '/friends/sophie'] },
               },
             ],
-          },
-        ],
-
-        // Footer items
-        footerItems: [
-          {
-            type: 'item',
-            id: 'logout',
-            icon: 'list',
-            label: 'Logout',
-            // onClick: { $action: 'authStore.logout' },
           },
         ],
       },
@@ -1032,8 +1010,6 @@ export const weTemplate: TemplateSchema = {
             p: '2rem',
             gap: '1rem',
             bg: 'neutral-0',
-            borderBottom: '1px solid',
-            borderColor: 'neutral-200',
           },
           children: [
             // Title

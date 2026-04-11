@@ -296,7 +296,7 @@ function benchRoute(title: string, timerLabel: string, children: SchemaNode[]): 
           children: [
             {
               type: 'we-icon',
-              props: { name: 'check', color: benchColor('testStore.benchLastRender', '600'), size: 'sm' },
+              props: { name: 'clock', color: benchColor('testStore.benchLastRender', '600'), size: 'sm' },
             },
             {
               type: 'we-text',
