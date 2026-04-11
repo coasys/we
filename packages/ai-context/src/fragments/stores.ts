@@ -10,8 +10,8 @@ import type { StoreEntry } from '../types.js';
 export const storeEntries: StoreEntry[] = [
   {
     name: 'adamStore',
-    state: ['adamClient', 'me', 'mySpaces', 'bootState', 'passwordError', 'showPassword', 'loginLoading'],
-    actions: ['navigate', 'addNewSpace', 'createSpace', 'unlockAgent', 'setShowPassword'],
+    state: ['adamClient', 'me', 'mySpaces', 'bootState', 'passwordError', 'loginLoading'],
+    actions: ['navigate', 'addNewSpace', 'createSpace', 'login'],
   },
   {
     name: 'routeStore',
@@ -32,11 +32,6 @@ export const storeEntries: StoreEntry[] = [
     name: 'spaceStore',
     state: ['spaceId', 'perspective', 'space', 'posts', 'loading'],
     actions: ['setSpaceId', 'getSpace', 'getPosts'],
-  },
-  {
-    name: 'modalStore',
-    state: ['createSpaceModalOpen'],
-    actions: ['openModal', 'closeModal'],
   },
   {
     name: 'aiStore',
@@ -63,7 +58,6 @@ function generateStoresText(entries: StoreEntry[]): string {
         mySpaces: 'array of Space objects',
         bootState: 'string',
         passwordError: 'string | undefined',
-        showPassword: 'boolean',
         loginLoading: 'boolean',
       },
       actions: {
@@ -71,8 +65,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         addNewSpace: '(space: Space): adds a new space',
         createSpace:
           '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
-        unlockAgent: '(password: string): unlocks the agent with password',
-        setShowPassword: '(show: boolean): toggles password visibility',
+        login: '(password: string): logs in the agent with password',
       },
     },
     routeStore: {
@@ -113,13 +106,6 @@ function generateStoresText(entries: StoreEntry[]): string {
         setSpaceId: '(id: string): sets the current space id',
         getSpace: '(): loads space data',
         getPosts: '(perspective: PerspectiveProxy): loads posts for a space',
-      },
-    },
-    modalStore: {
-      state: { createSpaceModalOpen: 'boolean (whether the create space modal is open)' },
-      actions: {
-        openModal: '(modal: ModalName): opens a modal',
-        closeModal: '(modal: ModalName): closes a modal',
       },
     },
     aiStore: {

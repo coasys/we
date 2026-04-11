@@ -480,7 +480,15 @@ space: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000
 
 Available data models for $query and store data:
 
-AgentConfig extends Ad4mModel:
+AgentSettings extends Ad4mModel:
+  Fields:
+  - currentTemplateId: string = 'we' [we://current_template]
+  - currentThemeId: string = 'default' [we://current_theme]
+  Relations:
+  - installedTemplates: HasMany → Template [we://installed_template]
+  - installedThemes: HasMany → Theme [we://installed_theme]
+
+AgentSettings extends Ad4mModel:
   Fields:
   - currentTemplateId: string = 'we' [we://current_template]
   - currentThemeId: string = 'default' [we://current_theme]
@@ -665,14 +673,12 @@ AdamStore:
   - mySpaces: array of Space objects
   - bootState: string
   - passwordError: string | undefined
-  - showPassword: boolean
   - loginLoading: boolean
 - Actions:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
   - createSpace(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup
-  - unlockAgent(password: string): unlocks the agent with password
-  - setShowPassword(show: boolean): toggles password visibility
+  - login(password: string): logs in the agent with password
 
 RouteStore:
 - State:
@@ -709,13 +715,6 @@ SpaceStore:
   - setSpaceId(id: string): sets the current space id
   - getSpace(): loads space data
   - getPosts(perspective: PerspectiveProxy): loads posts for a space
-
-ModalStore:
-- State:
-  - createSpaceModalOpen: boolean (whether the create space modal is open)
-- Actions:
-  - openModal(modal: ModalName): opens a modal
-  - closeModal(modal: ModalName): closes a modal
 
 AiStore:
 - State:

@@ -2954,8 +2954,43 @@
   ],
   "models": [
     {
-      "name": "AgentConfig",
-      "className": "AgentConfig",
+      "name": "AgentSettings",
+      "className": "AgentSettings",
+      "extends": "Ad4mModel",
+      "fields": [
+        {
+          "name": "currentTemplateId",
+          "type": "string",
+          "predicate": "we://current_template",
+          "required": false,
+          "default": "'we'"
+        },
+        {
+          "name": "currentThemeId",
+          "type": "string",
+          "predicate": "we://current_theme",
+          "required": false,
+          "default": "'default'"
+        }
+      ],
+      "relations": [
+        {
+          "name": "installedTemplates",
+          "kind": "HasMany",
+          "predicate": "we://installed_template",
+          "target": "Template"
+        },
+        {
+          "name": "installedThemes",
+          "kind": "HasMany",
+          "predicate": "we://installed_theme",
+          "target": "Theme"
+        }
+      ]
+    },
+    {
+      "name": "AgentSettings",
+      "className": "AgentSettings",
       "extends": "Ad4mModel",
       "fields": [
         {
@@ -4004,15 +4039,13 @@
         "mySpaces",
         "bootState",
         "passwordError",
-        "showPassword",
         "loginLoading"
       ],
       "actions": [
         "navigate",
         "addNewSpace",
         "createSpace",
-        "unlockAgent",
-        "setShowPassword"
+        "login"
       ]
     },
     {
@@ -4061,16 +4094,6 @@
         "setSpaceId",
         "getSpace",
         "getPosts"
-      ]
-    },
-    {
-      "name": "modalStore",
-      "state": [
-        "createSpaceModalOpen"
-      ],
-      "actions": [
-        "openModal",
-        "closeModal"
       ]
     },
     {
