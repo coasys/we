@@ -1,5 +1,5 @@
 export { WeNode } from './WeNode';
-export { AgentConfig, Space, Template, Theme } from './entities';
+export { AgentSettings, Space, Template, Theme } from './entities';
 export {
   AudioBlock,
   CalloutBlock,
