@@ -929,6 +929,8 @@ export const schemaBenchmarkTemplate: TemplateSchema = {
     name: 'Schema Benchmark',
     description: 'Performance benchmark suite for schema renderer',
     icon: 'timer',
+    stores: ['testStore'],
+    components: ['BenchmarkTimer'],
   },
   type: 'Column',
   props: { width: '100%', height: '100%' },

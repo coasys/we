@@ -7,7 +7,8 @@
     "build:steps": "tsup",
     "build": "we-build",
     "test": "vitest run",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "validate": "node dist/cli/we-validate-schemas.js ../../app-framework/src/shared/schemas/"
   },
   "bin": {
     "we-validate-schemas": "./dist/cli/we-validate-schemas.js"

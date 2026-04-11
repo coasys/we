@@ -1,5 +1,5 @@
 import { templateRegistry } from '@shared/registries/templateRegistry';
-import { schemaMutationActions } from '@shared/schemas/tests/SchemaMutations.schema';
+import { schemaMutationActions } from '@shared/schemas/tests/SchemaMutations.actions';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';

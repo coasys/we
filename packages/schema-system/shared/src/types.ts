@@ -1,6 +1,13 @@
 // Pure framework-agnostic schema types
 export type SchemaProp = string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined;
-export type TemplateMeta = { name: string; description: string; icon: string };
+export type StoreDeclaration = Record<string, { actions?: string[]; state?: string[] }>;
+export type TemplateMeta = {
+  name: string;
+  description: string;
+  icon: string;
+  stores?: string[] | StoreDeclaration;
+  components?: string[];
+};
 export type TemplateSchema = SchemaNode & { id?: string; schemaVersion?: number; meta: TemplateMeta };
 export type RouteSchema = SchemaNode & { path: string };
 
@@ -63,10 +70,10 @@ export type ActionToken = { $action: string; args?: unknown[] };
 export type IfToken = { $if: { condition: unknown; then: unknown; else?: unknown } };
 export type MapToken = { $map: { items: unknown; select: Record<string, unknown> } };
 export type PickToken = { $pick: { from: unknown; props: string[] } };
-export type EqToken = { $eq: [unknown, unknown] };
-export type NeToken = { $ne: [unknown, unknown] };
-export type LtToken = { $lt: [unknown, unknown] };
-export type GtToken = { $gt: [unknown, unknown] };
+export type EqToken = { $eq: unknown[] };
+export type NeToken = { $ne: unknown[] };
+export type LtToken = { $lt: unknown[] };
+export type GtToken = { $gt: unknown[] };
 export type NotToken = { $not: unknown };
 export type AndToken = { $and: unknown[] };
 export type OrToken = { $or: unknown[] };
@@ -104,7 +111,7 @@ export type MatchRule = { rule: 'match'; field: string; message?: string };
 export type ValidationRule = RequiredRule | MinLengthRule | MaxLengthRule | MinRule | MaxRule | PatternRule | MatchRule;
 
 export type LocalToken = { $local: string };
-export type SetLocalToken = { $setLocal: string; from: string };
+export type SetLocalToken = { $setLocal: string; from: string } | { $setLocal: string; value: unknown };
 export type ErrorToken = { $error: string };
 export type ValidToken = { $valid: string };
 export type TouchedToken = { $touched: string };

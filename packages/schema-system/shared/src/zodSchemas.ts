@@ -119,6 +119,32 @@ const zValidationRule = z.union([
   zMatchRule,
 ]);
 
+/** All prop-level token types — used in both prop values and children arrays */
+const zPropToken = z.union([
+  zStoreToken,
+  zConcatToken,
+  zActionToken,
+  zIfToken,
+  zMapToken,
+  zPickToken,
+  zEqToken,
+  zNeToken,
+  zLtToken,
+  zGtToken,
+  zNotToken,
+  zAndToken,
+  zOrToken,
+  zQueryToken,
+  zLocalToken,
+  zSetLocalToken,
+  zErrorToken,
+  zValidToken,
+  zTouchedToken,
+  zFormValidToken,
+  zTouchToken,
+  zResetLocalToken,
+]);
+
 const zLocalStateField = z.object({
   type: z.enum(['string', 'boolean', 'number', 'file']),
   initial: z.union([z.string(), z.boolean(), z.number(), z.null()]),
@@ -136,7 +162,7 @@ function schemaNodeShape() {
     slots: z.record(z.string(), lazySchemaNode).optional(),
     slot: z.string().optional(),
     routes: z.array(lazyRouteSchema).optional(),
-    children: z.array(z.union([lazySchemaNode, z.string(), zIfToken])).optional(),
+    children: z.array(z.union([lazySchemaNode, z.string(), zPropToken])).optional(),
     theme: zThemeOverrides.optional(),
     $localState: zLocalStateDeclaration.optional(),
   };
@@ -171,28 +197,7 @@ export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
   z.number(),
   z.boolean(),
   // Token objects — tried before the generic record fallback
-  zStoreToken,
-  zConcatToken,
-  zActionToken,
-  zIfToken,
-  zMapToken,
-  zPickToken,
-  zEqToken,
-  zNeToken,
-  zLtToken,
-  zGtToken,
-  zNotToken,
-  zAndToken,
-  zOrToken,
-  zQueryToken,
-  zLocalToken,
-  zSetLocalToken,
-  zErrorToken,
-  zValidToken,
-  zTouchedToken,
-  zFormValidToken,
-  zTouchToken,
-  zResetLocalToken,
+  zPropToken,
   // Fallback: plain objects/arrays that aren't tokens.
   // Rejects objects with $-prefixed keys at the parse level (not via superRefine)
   // so that the union properly rejects malformed tokens.
@@ -212,6 +217,14 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     name: z.string(),
     description: z.string(),
     icon: z.string(),
+    stores: z.union([
+      z.array(z.string()),
+      z.record(z.string(), z.object({
+        actions: z.array(z.string()).optional(),
+        state: z.array(z.string()).optional(),
+      })),
+    ]).optional(),
+    components: z.array(z.string()).optional(),
   })
   .strict();
 

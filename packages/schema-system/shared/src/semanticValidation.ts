@@ -221,7 +221,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
   }
 
   // Universal props
-  const universalProps = new Set(['styles', 'children', 'ref', 'key']);
+  const universalProps = new Set(['style', 'styles', 'children', 'ref', 'key']);
 
   // Stores
   const storeNames = new Set<string>();
@@ -342,14 +342,6 @@ function walkOperatorNode(
   if (!props) return;
 
   if (type === '$each') {
-    // Check for missing 'as' prop
-    if (!props.as) {
-      errors.push({
-        path: `${path}.props`,
-        message: '$each without "as" prop — children can\'t reference item context',
-        severity: 'warning',
-      });
-    }
     // Walk the item template
     if (props.item && typeof props.item === 'object') {
       walkNode(props.item, `${path}.props.item`, ctx, state, errors);
@@ -794,6 +786,46 @@ function walkChildren(
 // ── Public API ─────────────────────────────────────────────────────
 
 export function validateSemantic(schema: unknown, context: ValidationContext): ValidationResult {
+  // If the schema declares custom stores/components in meta, extend the known sets for this validation
+  // meta.stores supports two formats:
+  //   string[]  — just declares store names exist (original behavior)
+  //   Record<string, { actions?: string[]; state?: string[] }> — declares names + additional members
+  const meta = (schema as Record<string, unknown>)?.meta as {
+    stores?: string[] | Record<string, { actions?: string[]; state?: string[] }>;
+    components?: string[];
+  } | undefined;
+
+  if (meta?.stores || meta?.components?.length) {
+    const newStoreNames = new Set(context.storeNames);
+    const newStoreMembers = new Map(context.storeMembers);
+
+    if (meta.stores) {
+      if (Array.isArray(meta.stores)) {
+        // string[] — just add names
+        for (const name of meta.stores) newStoreNames.add(name);
+      } else {
+        // Record — add names and merge members
+        for (const [name, decl] of Object.entries(meta.stores)) {
+          newStoreNames.add(name);
+          const existing = newStoreMembers.get(name) ?? new Set<string>();
+          const merged = new Set(existing);
+          if (decl.actions) for (const a of decl.actions) merged.add(a);
+          if (decl.state) for (const s of decl.state) merged.add(s);
+          newStoreMembers.set(name, merged);
+        }
+      }
+    }
+
+    context = {
+      ...context,
+      storeNames: newStoreNames,
+      storeMembers: newStoreMembers,
+      ...(meta.components?.length && {
+        componentNames: new Set([...context.componentNames, ...meta.components]),
+      }),
+    };
+  }
+
   const errors: ValidationError[] = [];
   const state: WalkState = { localScope: null, hasRoutesAncestor: false };
 

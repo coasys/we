@@ -612,13 +612,14 @@ describe('deep tree', () => {
   });
 });
 
-describe('$each warning', () => {
-  it('warns when $each has no as prop', () => {
+describe('$each validation', () => {
+  it('$each without as prop is valid (defaults to "item")', () => {
     const result = validateSemantic({ type: '$each', props: { source: [] } }, ctx());
-    expect(result.errors.some((e) => e.severity === 'warning' && e.message.includes('$each without "as"'))).toBe(true);
+    const eachErrors = result.errors.filter((e) => e.message.includes('$each'));
+    expect(eachErrors).toHaveLength(0);
   });
 
-  it('no warning when $each has as prop', () => {
+  it('$each with explicit as prop is valid', () => {
     const result = validateSemantic({ type: '$each', props: { source: [], as: 'item' } }, ctx());
     const eachErrors = result.errors.filter((e) => e.message.includes('$each'));
     expect(eachErrors).toHaveLength(0);

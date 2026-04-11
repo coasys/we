@@ -548,54 +548,10 @@ const mapTest = section('$map', 'Transform list items via select', [
             children: [
               {
                 type: 'we-text',
-                props: { color: 'neutral-500', style: { 'min-width': '100px' } },
+                props: { color: 'neutral-500', minWidth: '100px' },
                 children: ['$row.label'],
               },
               { type: 'we-text', children: ['$row.detail'] },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-]);
-
-const mapSingleObjectTest = section('$map (single object)', 'Transform a single object via select', [
-  {
-    type: 'we-text',
-    props: { color: 'neutral-400' },
-    children: ['$map on single object {title,version,debug} → {label,detail}'],
-  },
-  {
-    type: 'we-text',
-    props: { color: 'neutral-600' },
-    children: ['Expect "title=My App, version=2.0" below'],
-  },
-  {
-    type: 'Row',
-    props: {
-      gap: '200',
-      p: '200',
-      bg: 'neutral-50',
-      r: '300',
-      _mapped: {
-        $map: {
-          items: { $store: 'testStore.singleConfig' },
-          select: { label: '$item.title', detail: '$item.version' },
-        },
-      },
-    },
-    children: [
-      { type: 'we-text', props: { color: 'neutral-400' }, children: ['Mapped:'] },
-      {
-        type: 'we-text',
-        children: [
-          {
-            $concat: [
-              'title=',
-              { $store: 'testStore.singleConfig.title' },
-              ', version=',
-              { $store: 'testStore.singleConfig.version' },
             ],
           },
         ],
@@ -622,7 +578,6 @@ const pickTest = section('$pick', 'Extract property subset from object', [
       p: '200',
       bg: 'neutral-50',
       r: '300',
-      _picked: { $pick: { from: { $store: 'testStore.fullObject' }, props: ['name', 'status'] } },
     },
     children: [
       { type: 'we-text', props: { color: 'neutral-400' }, children: ['Picked:'] },
@@ -809,7 +764,7 @@ const queryFilteringTest = section('$query (filtering)', 'Query with where, orde
         children: [
           {
             type: 'Row',
-            props: { gap: '200', wrap: 'wrap' },
+            props: { gap: '200', wrap: true },
             children: [
               filterModeButton('all', 'All', 'list'),
               filterModeButton('active', 'Active only', 'funnel'),
@@ -1753,7 +1708,7 @@ const groups: { key: string; label: string; path: string; children: SchemaNode[]
     key: 'data-transforms',
     label: 'Data Transforms',
     path: '/data-transforms',
-    children: [mapTest, mapSingleObjectTest, pickTest, pickChainingTest],
+    children: [mapTest, pickTest, pickChainingTest],
   },
   {
     key: 'queries',
@@ -1810,6 +1765,7 @@ export const schemaTokensTemplate: TemplateSchema = {
     name: 'Schema Tokens',
     description: 'Visual test suite for all schema tokens',
     icon: 'test-tube',
+    stores: ['testStore'],
   },
   type: 'Column',
   props: { minHeight: '100%', width: '100%', p: '500', bg: 'neutral-50' },

@@ -16,6 +16,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
     name: 'Schema Routing',
     description: 'Testing $routes token and multi-level routing',
     icon: 'signpost',
+    stores: ['testStore'],
   },
   type: 'Column',
   props: { height: '100%', width: '100%' },
