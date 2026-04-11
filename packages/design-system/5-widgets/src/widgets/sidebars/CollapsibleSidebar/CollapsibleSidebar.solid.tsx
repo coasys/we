@@ -75,10 +75,11 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
     props.onItemClick?.(item);
   };
 
-  const toggleGroup = (groupId: string) => {
+  const toggleGroup = (group: SidebarGroup) => {
+    const currentlyCollapsed = isGroupCollapsed(group);
     setGroupStates((prev) => ({
       ...prev,
-      [groupId]: !prev[groupId],
+      [group.id]: !currentlyCollapsed,
     }));
   };
 
@@ -123,7 +124,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
     return (
       <we-button
         class="we-collapsible-sidebar__item"
-        onClick={() => handleItemClick(item)}
+        onClick={() => handleItemClick(getItem())}
         disabled={item.disabled}
         height="auto"
         p={props.itemPadding ?? '300'}
@@ -184,7 +185,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
         <Dynamic
           component={group.collapsible !== false ? 'button' : 'div'}
           class={`we-collapsible-sidebar__group-header${group.collapsible === false ? ' we-collapsible-sidebar__group-header--static' : ''}`}
-          onClick={group.collapsible !== false ? () => toggleGroup(group.id) : undefined}
+          onClick={group.collapsible !== false ? () => toggleGroup(getGroup()) : undefined}
           disabled={group.collapsible !== false ? group.disabled : undefined}
           style={{ opacity: isExpanded() ? 1 : 0, transition: `opacity ${transitionDuration()}ms ease-in-out` }}
         >

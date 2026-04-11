@@ -11,6 +11,7 @@ import { Accessor, createContext, createEffect, createMemo, createSignal, Parent
 import { createStore, reconcile } from 'solid-js/store';
 
 import { useAdamStore } from './AdamStore';
+import { useRouteStore } from './RouteStore';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
 const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', children: [], slots: {}, routes: [] };
@@ -37,6 +38,7 @@ const TemplateContext = createContext<TemplateStore>();
 
 export function TemplateStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
+  const routeStore = useRouteStore();
 
   // Map template ID → AD4M model instance (for updates/deletes)
   const savedTemplateMap = new Map<string, Template>();
@@ -132,6 +134,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     const newTemplate = templates().find((t) => t.id === newTemplateId);
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
+      // Reset to root so the new template doesn't land on a stale route
+      routeStore.navigate('/');
       // Persist choice to Ad4m
       adamStore.updatePreferences({ currentTemplateId: newTemplateId });
     } else {
