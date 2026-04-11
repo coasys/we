@@ -53,18 +53,19 @@ const AdamContext = createContext<AdamStore>();
 export function AdamStoreProvider(props: ParentProps) {
   const platform = usePlatform();
 
+  let sessionPassword = '';
+
   const [bootState, setBootState] = createSignal<BootState>('initialising');
-  let lastPassword = '';
   const [passwordError, setPasswordError] = createSignal(false);
   const [loginLoading, setLoginLoading] = createSignal(false);
   const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
   const [adamClient, setAdamClient] = createSignal<Ad4mClient | undefined>(undefined);
   const [me, setMe] = createSignal<Agent | undefined>(undefined);
-  const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [ad4mPort, setAd4mPort] = createSignal<number | undefined>(undefined);
   const [ad4mToken, setAd4mToken] = createSignal<string | undefined>(undefined);
   const [rootPerspective, setRootPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
+  const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
 
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
@@ -80,8 +81,10 @@ export function AdamStoreProvider(props: ParentProps) {
   async function getMySpaces(client: Ad4mClient): Promise<void> {
     try {
       const perspectives = await client.perspective.all();
-      const spaces = await Promise.all(perspectives.map(async (perspective) => (await Space.findAll(perspective))[0]));
-      const filteredSpaces = spaces.filter((s) => s).sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
+      const spaces = await Promise.all(perspectives.map(async (perspective) => await Space.findOne(perspective)));
+      const filteredSpaces = spaces
+        .filter((s): s is Space => !!s)
+        .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
       setMySpaces(filteredSpaces);
     } catch (error) {
       console.error('AdamStore: getMySpaces error', error);
@@ -217,7 +220,7 @@ export function AdamStoreProvider(props: ParentProps) {
       return;
     }
 
-    lastPassword = password;
+    sessionPassword = password;
     setLoginLoading(true);
     setPasswordError(false);
 
@@ -246,13 +249,13 @@ export function AdamStoreProvider(props: ParentProps) {
     }
 
     try {
-      await client.agent.lock(lastPassword);
+      await client.agent.lock(sessionPassword);
     } catch (err) {
       console.error('AdamStore: Agent lock failed during logout', err);
     } finally {
       setMe(undefined);
       setMySpaces([]);
-      lastPassword = '';
+      sessionPassword = '';
       setBootState('login');
     }
   }
