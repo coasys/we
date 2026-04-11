@@ -22,7 +22,6 @@ export const sidebar: SchemaNode = {
         border: '0',
         itemPadding: '12px',
         centerItems: false,
-
         items: [
           // --- Current space / perspective ---
           {
@@ -59,10 +58,7 @@ export const sidebar: SchemaNode = {
                   icon: '$item.meta.icon',
                   label: '$item.meta.name',
                   active: { $eq: ['$item.id', { $store: 'templateStore.currentTemplate.id' }] },
-                  onClick: {
-                    $action: 'templateStore.switchTemplate',
-                    args: ['$item.id'],
-                  },
+                  onClick: { $action: 'templateStore.switchTemplate', args: ['$item.id'] },
                 },
               },
             },
@@ -73,7 +69,6 @@ export const sidebar: SchemaNode = {
             type: 'group',
             id: 'test-templates',
             label: 'Test Templates',
-            collapsible: true,
             collapsed: true,
             items: {
               $map: {
@@ -83,10 +78,7 @@ export const sidebar: SchemaNode = {
                   icon: '$item.meta.icon',
                   label: '$item.meta.name',
                   active: { $eq: ['$item.id', { $store: 'templateStore.currentTemplate.id' }] },
-                  onClick: {
-                    $action: 'templateStore.switchTemplate',
-                    args: ['$item.id'],
-                  },
+                  onClick: { $action: 'templateStore.switchTemplate', args: ['$item.id'] },
                 },
               },
             },
@@ -97,8 +89,7 @@ export const sidebar: SchemaNode = {
             type: 'group',
             id: 'themes',
             label: 'Themes',
-            // collapsible: true,
-            // collapsed: true,
+            collapsed: true,
             items: {
               $map: {
                 items: { $store: 'themeStore.themes' },
@@ -107,10 +98,7 @@ export const sidebar: SchemaNode = {
                   icon: '$item.icon',
                   label: '$item.name',
                   active: { $eq: ['$item.id', { $store: 'themeStore.currentTheme.id' }] },
-                  onClick: {
-                    $action: 'themeStore.setCurrentTheme',
-                    args: ['$item.id'],
-                  },
+                  onClick: { $action: 'themeStore.setCurrentTheme', args: ['$item.id'] },
                 },
               },
             },
@@ -142,13 +130,6 @@ export const sidebar: SchemaNode = {
 
         // Footer: logout
         footerItems: [
-          // {
-          //   type: 'item',
-          //   id: 'settings',
-          //   icon: 'gear',
-          //   label: 'Settings',
-          //   onClick: { $action: 'modalStore.openModal', args: ['app-settings'] },
-          // },
           {
             type: 'item',
             id: 'logout',
@@ -161,12 +142,7 @@ export const sidebar: SchemaNode = {
       slots: {
         header: {
           type: 'Column',
-          props: {
-            width: '66px',
-            height: '66px',
-            ax: 'center',
-            ay: 'center',
-          },
+          props: { width: '66px', height: '66px', ax: 'center', ay: 'center' },
           children: [
             {
               type: 'we-image',
