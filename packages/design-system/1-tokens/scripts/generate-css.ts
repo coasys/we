@@ -146,10 +146,14 @@ ${colorPalettes}
   fs.writeFileSync(path.join(outputDir, 'color.css'), css);
 }
 
+function camelToKebab(str: string): string {
+  return str.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+}
+
 function generateComponentCSS(component: typeof componentTokens, outputDir: string) {
   const scrollbarVars = Object.entries(component.scrollbar)
     .filter(([key]) => key !== 'thumbBorderRadius' && key !== 'thumbBackground')
-    .map(([key, value]) => `  --we-scrollbar-${key}: ${value};`)
+    .map(([key, value]) => `  --we-scrollbar-${camelToKebab(key)}: ${value};`)
     .join('\n');
 
   const css = `/* COMPONENT TOKENS - Generated from JS tokens */
@@ -157,8 +161,8 @@ function generateComponentCSS(component: typeof componentTokens, outputDir: stri
 :root {
   /* Scrollbar Styles */
 ${scrollbarVars}
-  --we-scrollbar-thumbBorderRadius: var(--we-border-radius);
-  --we-scrollbar-thumbBackground: hsl(var(--we-color-neutral-hue) 5% var(--we-color-lightness-100));
+  --we-scrollbar-thumb-border-radius: var(--we-radius-pill);
+  --we-scrollbar-thumb-background: var(--we-color-neutral-100);
 }`;
 
   fs.writeFileSync(path.join(outputDir, 'component.css'), css);

@@ -3,7 +3,6 @@
  * This file defines component-specific tokens that serve as the source of truth for the design system.
  */
 
-import { colorHues, colorLightness } from './color.js';
 import { radius } from './size.js';
 
 // Literal union type for scrollbar properties
@@ -26,8 +25,8 @@ export const scrollbar = {
   background: 'transparent',
   cornerBackground: '#dfdfdf',
   thumbBoxShadow: 'none',
-  thumbBorderRadius: radius['400'],
-  thumbBackground: `hsl(${colorHues.neutral}, 5%, ${colorLightness['100']})`,
+  thumbBorderRadius: radius['pill'],
+  thumbBackground: 'var(--we-color-neutral-100)',
 } satisfies Record<ScrollbarToken, string>;
 
 /**
