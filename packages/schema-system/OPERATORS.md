@@ -321,8 +321,8 @@ Call store methods, with support for argument extraction from callbacks.
 ```typescript
 {
   onClick: {
-    $action: 'modalStore.openModal',
-    args: ['settings']
+    $action: 'adamStore.navigate',
+    args: ['/settings']
   }
 }
 ```
@@ -659,7 +659,7 @@ Conditionally renders entire subtrees based on a boolean condition.
 {
   type: '$if',
   props: {
-    condition: { $store: 'modalStore.isOpen' },
+    condition: { $store: 'adamStore.bootState' },
     then: {
       type: 'we-modal',
       props: { title: 'Settings' },

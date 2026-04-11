@@ -60,6 +60,7 @@ export const bootScreen: SchemaNode = {
                   initial: '',
                   validate: [{ rule: 'required', message: 'Password is required' }],
                 },
+                showPassword: { type: 'boolean', initial: false },
               },
               children: [
                 {
@@ -105,11 +106,11 @@ export const bootScreen: SchemaNode = {
                             onKeyDown: {
                               $if: {
                                 condition: { $eq: ['$arg.detail.key', 'Enter'] },
-                                then: { $action: 'adamStore.unlockAgent', args: [{ $local: 'password' }] },
+                                then: { $action: 'adamStore.login', args: [{ $local: 'password' }] },
                               },
                             },
                             type: {
-                              $if: { condition: { $store: 'adamStore.showPassword' }, then: 'text', else: 'password' },
+                              $if: { condition: { $local: 'showPassword' }, then: 'text', else: 'password' },
                             },
                           },
                         },
@@ -120,8 +121,11 @@ export const bootScreen: SchemaNode = {
                             bg: 'primary-500',
                             height: '36px',
                             onClick: {
-                              $action: 'adamStore.setShowPassword',
-                              args: [{ $not: { $store: 'adamStore.showPassword' } }],
+                              $if: {
+                                condition: { $local: 'showPassword' },
+                                then: { $setLocal: 'showPassword', value: false },
+                                else: { $setLocal: 'showPassword', value: true },
+                              },
                             },
                           },
                           children: [
@@ -130,7 +134,7 @@ export const bootScreen: SchemaNode = {
                               props: {
                                 name: {
                                   $if: {
-                                    condition: { $store: 'adamStore.showPassword' },
+                                    condition: { $local: 'showPassword' },
                                     then: 'eye',
                                     else: 'eye-slash',
                                   },
@@ -160,7 +164,7 @@ export const bootScreen: SchemaNode = {
                       {
                         $if: {
                           condition: { $formValid: '$scope' },
-                          then: { $action: 'adamStore.unlockAgent', args: [{ $local: 'password' }] },
+                          then: { $action: 'adamStore.login', args: [{ $local: 'password' }] },
                         },
                       },
                     ],

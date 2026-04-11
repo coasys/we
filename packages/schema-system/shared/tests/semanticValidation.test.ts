@@ -77,7 +77,7 @@ function makeContext(overrides?: Partial<ContextData>): ContextData {
       {
         name: 'adamStore',
         state: ['loading', 'bootState', 'me'],
-        actions: ['navigate', 'unlockAgent'],
+        actions: ['navigate', 'login'],
       },
       {
         name: 'routeStore',
