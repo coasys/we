@@ -2,7 +2,7 @@
  * Design System Props fragment — documents the prop groups inherited by all primitives.
  *
  * Hand-maintained: update when DesignSystemProps layers change.
- * Source: packages/design-system/types/src/index.ts
+ * Source: packages/design-system/utils/src/index.ts
  */
 export const designSystemProps = `
 ## Design System Props

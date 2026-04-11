@@ -1,4 +1,4 @@
-import { templateRegistry } from '@shared/registries/templateRegistry';
+import { templateRegistry, testTemplateRegistry } from '@shared/registries/templateRegistry';
 import { schemaMutationActions } from '@shared/schemas/tests/SchemaMutations.actions';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
@@ -7,7 +7,7 @@ import { Template } from '@we/models';
 import type { StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { useAdamStore } from './AdamStore';
@@ -18,6 +18,8 @@ const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', child
 export interface TemplateStoreBase {
   // State
   templates: Accessor<TemplateSchema[]>;
+  mainTemplates: Accessor<TemplateSchema[]>;
+  testTemplates: Accessor<TemplateSchema[]>;
   currentTemplate: TemplateSchema;
   loading: Accessor<boolean>;
 
@@ -45,6 +47,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     id,
   }));
 
+  const builtInTestTemplates: TemplateSchema[] = Object.entries(testTemplateRegistry).map(([id, template]) => ({
+    ...deepClone(template),
+    id,
+  }));
+
   const initialTemplate = deepClone(
     builtInTemplates.find((t) => t.id === 'launcher') || builtInTemplates[0] || emptyTemplate,
   );
@@ -55,9 +62,13 @@ export function TemplateStoreProvider(props: ParentProps) {
   );
 
   // State
-  const [templates, setTemplates] = createSignal<TemplateSchema[]>(builtInTemplates);
+  const [templates, setTemplates] = createSignal<TemplateSchema[]>([...builtInTemplates, ...builtInTestTemplates]);
   const [loading, setLoading] = createSignal(true);
   const [currentTemplate, setCurrentTemplate] = createStore<TemplateSchema>(initialTemplate);
+
+  const testTemplateIds = new Set(Object.keys(testTemplateRegistry));
+  const mainTemplates = createMemo(() => templates().filter((t) => !testTemplateIds.has(t.id!)));
+  const testTemplates = createMemo(() => templates().filter((t) => testTemplateIds.has(t.id!)));
 
   /** Load saved templates from root perspective and merge with built-in */
   async function loadSavedTemplates(): Promise<void> {
@@ -82,7 +93,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         savedTemplateMap.set(templateId, template);
       }
 
-      setTemplates([...builtInTemplates, ...savedTemplates]);
+      setTemplates([...builtInTemplates, ...builtInTestTemplates, ...savedTemplates]);
     } catch (error) {
       console.error('TemplateStore: loadSavedTemplates error', error);
     }
@@ -198,6 +209,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   const store: TemplateStore = {
     // State
     templates,
+    mainTemplates,
+    testTemplates,
     currentTemplate,
     loading,
 

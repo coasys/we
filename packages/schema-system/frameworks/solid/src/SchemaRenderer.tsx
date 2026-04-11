@@ -219,17 +219,25 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             Object.keys(child).some((k) => k.startsWith('$'))
           ) {
             // $if in children with component then/else → use ConditionalRenderer
+            // Only use ConditionalRenderer when then/else are SchemaNode objects;
+            // when they're primitives (strings, numbers), fall through to resolveProp.
             if ('$if' in child) {
               const ifSpec = (child as Record<string, unknown>).$if as Record<string, unknown>;
-              const condNode: SchemaNode = { type: '$if', props: ifSpec } as SchemaNode;
-              return (
-                <ConditionalRenderer
-                  node={condNode}
-                  stores={stores}
-                  context={effectiveContext}
-                  renderNode={renderNode}
-                />
-              );
+              const thenVal = ifSpec.then;
+              const elseVal = ifSpec.else;
+              const thenIsNode = thenVal && typeof thenVal === 'object' && 'type' in thenVal;
+              const elseIsNode = elseVal && typeof elseVal === 'object' && 'type' in elseVal;
+              if (thenIsNode || elseIsNode) {
+                const condNode: SchemaNode = { type: '$if', props: ifSpec } as SchemaNode;
+                return (
+                  <ConditionalRenderer
+                    node={condNode}
+                    stores={stores}
+                    context={effectiveContext}
+                    renderNode={renderNode}
+                  />
+                );
+              }
             }
             const resolved = resolveProp(child as unknown, stores, effectiveContext, createMemo);
             return (

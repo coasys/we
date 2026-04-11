@@ -417,8 +417,6 @@ export const weTemplate: TemplateSchema = {
             p: '2rem',
             gap: '0.5rem',
             bg: 'neutral-0',
-            borderBottom: '1px solid',
-            borderColor: 'neutral-200',
           },
           children: [
             {
@@ -460,8 +458,6 @@ export const weTemplate: TemplateSchema = {
                     gap: '0.5rem',
                     bg: 'neutral-0',
                     r: '400',
-                    borderLeft: '4px solid',
-                    borderColor: 'primary-500',
                   },
                   children: [
                     {
@@ -502,8 +498,6 @@ export const weTemplate: TemplateSchema = {
                     gap: '0.5rem',
                     bg: 'neutral-0',
                     r: '400',
-                    borderLeft: '4px solid',
-                    borderColor: 'blue-500',
                   },
                   children: [
                     {
@@ -544,8 +538,6 @@ export const weTemplate: TemplateSchema = {
                     gap: '0.5rem',
                     bg: 'neutral-0',
                     r: '400',
-                    borderLeft: '4px solid',
-                    borderColor: 'green-500',
                   },
                   children: [
                     {
@@ -586,8 +578,6 @@ export const weTemplate: TemplateSchema = {
                     gap: '0.5rem',
                     bg: 'neutral-0',
                     r: '400',
-                    borderLeft: '4px solid',
-                    borderColor: 'orange-500',
                   },
                   children: [
                     {

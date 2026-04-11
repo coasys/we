@@ -1,3 +1,5 @@
+// TODO: Remove?
+
 import { Accessor, createContext, createSignal, ParentProps, useContext } from 'solid-js';
 
 export type ModalName = 'app-settings' | 'create-space';

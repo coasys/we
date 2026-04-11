@@ -53,15 +53,18 @@ import {
 export const templateRegistry = {
   we: weTemplate,
   twitter: twitterTemplate,
+  // launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
+};
+
+export const testTemplateRegistry = {
   'schema-benchmark': schemaBenchmarkTemplate,
   'schema-tokens': schemaTokensTemplate,
   'schema-mutations': schemaMutationsTemplate,
   'schema-routing': schemaRoutingTemplate,
-  // launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
 };
 
-export type TemplateId = keyof typeof templateRegistry;
+export type TemplateId = keyof typeof templateRegistry | keyof typeof testTemplateRegistry;
 
 export function isValidTemplateId(key: unknown): key is TemplateId {
-  return typeof key === 'string' && key in templateRegistry;
+  return typeof key === 'string' && (key in templateRegistry || key in testTemplateRegistry);
 }

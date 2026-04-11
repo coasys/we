@@ -51,11 +51,33 @@ export const sidebar: SchemaNode = {
             type: 'group',
             id: 'templates',
             label: 'Templates',
-            // collapsible: true,
-            // collapsed: false,
             items: {
               $map: {
-                items: { $store: 'templateStore.templates' },
+                items: { $store: 'templateStore.mainTemplates' },
+                select: {
+                  id: '$item.id',
+                  icon: '$item.meta.icon',
+                  label: '$item.meta.name',
+                  active: { $eq: ['$item.id', { $store: 'templateStore.currentTemplate.id' }] },
+                  onClick: {
+                    $action: 'templateStore.switchTemplate',
+                    args: ['$item.id'],
+                  },
+                },
+              },
+            },
+          },
+
+          // --- Test templates (collapsed by default) ---
+          {
+            type: 'group',
+            id: 'test-templates',
+            label: 'Test Templates',
+            collapsible: true,
+            collapsed: true,
+            items: {
+              $map: {
+                items: { $store: 'templateStore.testTemplates' },
                 select: {
                   id: '$item.id',
                   icon: '$item.meta.icon',
