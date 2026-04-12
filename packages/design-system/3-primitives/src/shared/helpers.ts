@@ -206,6 +206,7 @@ const BASE_TYPOGRAPHY: PropSpec[] = [
   ['font-family', 'font-family'],
   ['font-weight', 'font-weight'],
   ['font-size', 'font-size'],
+  ['font-style', 'font-style'],
   ['line-height', 'line-height'],
   ['letter-spacing', 'letter-spacing'],
   ['text-decoration', 'text-decoration'],
