@@ -17,6 +17,7 @@
  */
 
 import {
+  defaultTemplate,
   schemaBenchmarkTemplate,
   schemaMutationsTemplate,
   schemaRoutingTemplate,
@@ -51,6 +52,7 @@ import {
  * The 'launcher' template is generated from we-seed.json.
  */
 export const templateRegistry = {
+  default: defaultTemplate,
   we: weTemplate,
   twitter: twitterTemplate,
   // launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes

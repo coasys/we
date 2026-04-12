@@ -9,7 +9,7 @@ export class AgentSettings extends Ad4mModel {
   type: string = '';
 
   @Property({ through: 'we://current_template' })
-  currentTemplateId: string = 'we';
+  currentTemplateId: string = 'default';
 
   @Property({ through: 'we://current_theme' })
   currentThemeId: string = 'default';
