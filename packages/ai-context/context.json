@@ -2014,6 +2014,57 @@
       "source": "components"
     },
     {
+      "name": "EditableImage",
+      "props": [
+        {
+          "name": "src",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "alt",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "fit",
+          "type": "\"fill\" | \"none\" | \"cover\" | \"contain\" | \"scale-down\"",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "r",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "placeholderIcon",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onImageChange",
+          "type": "((file: File) => void)",
+          "optional": true
+        },
+        {
+          "name": "class",
+          "type": "string",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
       "name": "IconLabelButton",
       "props": [
         {
@@ -2960,39 +3011,54 @@
   ],
   "models": [
     {
-      "name": "AgentSettings",
-      "className": "AgentSettings",
+      "name": "AgentProfile",
+      "className": "AgentProfile",
       "extends": "Ad4mModel",
       "fields": [
         {
-          "name": "currentTemplateId",
+          "name": "firstName",
           "type": "string",
-          "predicate": "we://current_template",
-          "required": false,
-          "default": "'we'"
+          "predicate": "we://has_first_name",
+          "required": false
         },
         {
-          "name": "currentThemeId",
+          "name": "lastName",
           "type": "string",
-          "predicate": "we://current_theme",
-          "required": false,
-          "default": "'default'"
+          "predicate": "we://has_last_name",
+          "required": false
+        },
+        {
+          "name": "handle",
+          "type": "string",
+          "predicate": "we://has_handle",
+          "required": false
+        },
+        {
+          "name": "bio",
+          "type": "string",
+          "predicate": "we://has_bio",
+          "required": false
+        },
+        {
+          "name": "location",
+          "type": "string",
+          "predicate": "we://has_location",
+          "required": false
+        },
+        {
+          "name": "profileImage",
+          "type": "string | FileData",
+          "predicate": "we://has_profile_image",
+          "required": false
+        },
+        {
+          "name": "coverImage",
+          "type": "string | FileData",
+          "predicate": "we://has_cover_image",
+          "required": false
         }
       ],
-      "relations": [
-        {
-          "name": "installedTemplates",
-          "kind": "HasMany",
-          "predicate": "we://installed_template",
-          "target": "Template"
-        },
-        {
-          "name": "installedThemes",
-          "kind": "HasMany",
-          "predicate": "we://installed_theme",
-          "target": "Theme"
-        }
-      ]
+      "relations": []
     },
     {
       "name": "AgentSettings",
@@ -4091,6 +4157,18 @@
         },
         "systemPage": {
           "type": "string"
+        },
+        "agentProfile": {
+          "type": "object",
+          "properties": [
+            "firstName",
+            "lastName",
+            "handle",
+            "bio",
+            "location",
+            "profileImage",
+            "coverImage"
+          ]
         }
       },
       "actions": [
@@ -4099,7 +4177,10 @@
         "createSpace",
         "login",
         "logout",
-        "setSystemPage"
+        "setSystemPage",
+        "updateAgentProfile",
+        "updateProfileImage",
+        "updateCoverImage"
       ]
     },
     {

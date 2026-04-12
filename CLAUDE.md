@@ -13,7 +13,7 @@ All schemas must be valid JSON. Only use components, props, tokens, and patterns
 A schema is a tree of nodes. Each node can have:
 - type: The component to render (string, e.g. "we-button", "Column")
 - props: An object of props for the component
-- children: An array of child nodes (or strings for text). Do not use objects like { "$expr": ... } directly in children; use a prop (e.g. "text") for dynamic content.
+- children: An array of child nodes (or strings for text), or token objects like { $store: '...' } or { $concat: [...] }.
 - slots: Named slots for advanced composition (optional)
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
@@ -273,6 +273,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexCrossAxis, ay?: FlexMainAxis
 - Dialog
   Props: children?: JSX.Element, onConfirm?: (() => void), onCancel?: (() => void), open?: boolean, title?: string, description?: string, confirmLabel?: string, cancelLabel?: string, variant?: "default" | "danger", styles?: Record<string, string | number>
+- EditableImage
+  Props: src?: string, alt?: string, fit?: "fill" | "none" | "cover" | "contain" | "scale-down", width?: string, height?: string, r?: string, placeholderIcon?: string, onImageChange?: ((file: File) => void), class?: string
 - IconLabelButton
   Props: icon: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
 - List
@@ -480,13 +482,15 @@ space: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000
 
 Available data models for $query and store data:
 
-AgentSettings extends Ad4mModel:
+AgentProfile extends Ad4mModel:
   Fields:
-  - currentTemplateId: string = 'we' [we://current_template]
-  - currentThemeId: string = 'default' [we://current_theme]
-  Relations:
-  - installedTemplates: HasMany → Template [we://installed_template]
-  - installedThemes: HasMany → Theme [we://installed_theme]
+  - firstName: string [we://has_first_name]
+  - lastName: string [we://has_last_name]
+  - handle: string [we://has_handle]
+  - bio: string [we://has_bio]
+  - location: string [we://has_location]
+  - profileImage: string | FileData [we://has_profile_image]
+  - coverImage: string | FileData [we://has_cover_image]
 
 AgentSettings extends Ad4mModel:
   Fields:
@@ -677,6 +681,7 @@ AdamStore:
   - passwordError: string | undefined
   - loginLoading: boolean
   - systemPage: 'settings' | 'profile' | null (active system page, null means template is shown)
+  - agentProfile: AgentProfile | null (the current agent profile with name, bio, images, etc.)
 - Actions:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
@@ -684,6 +689,9 @@ AdamStore:
   - login(password: string): logs in the agent with password
   - logout(): locks the agent and returns to login screen
   - setSystemPage(page: 'settings' | 'profile' | null): shows a system page or returns to template
+  - updateAgentProfile(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)
+  - updateProfileImage(imageFile: File): uploads and sets the profile image
+  - updateCoverImage(imageFile: File): uploads and sets the cover image
 
 RouteStore:
 - State:

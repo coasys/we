@@ -202,10 +202,10 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     (async () => {
       try {
         const perspectives = await client.perspective.all();
-        let testPerspective = perspectives.find((p: PerspectiveProxy) => p.name === '__we_test__') ?? null;
+        let testPerspective = perspectives.find((p: PerspectiveProxy) => p.name === 'we-test') ?? null;
 
         if (!testPerspective) {
-          testPerspective = await client.perspective.add('__we_test__');
+          testPerspective = await client.perspective.add('we-test');
           await testPerspective.ensureSDNASubjectClass(TestItem);
           await new Promise((r) => setTimeout(r, 500));
 

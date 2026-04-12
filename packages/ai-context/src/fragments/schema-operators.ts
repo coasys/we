@@ -10,7 +10,7 @@ export const schemaOperators = `
 A schema is a tree of nodes. Each node can have:
 - type: The component to render (string, e.g. "we-button", "Column")
 - props: An object of props for the component
-- children: An array of child nodes (or strings for text). Do not use objects like { "$expr": ... } directly in children; use a prop (e.g. "text") for dynamic content.
+- children: An array of child nodes (or strings for text), or token objects like { $store: '...' } or { $concat: [...] }.
 - slots: Named slots for advanced composition (optional)
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)

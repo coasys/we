@@ -20,8 +20,22 @@ export const storeEntries: StoreEntry[] = [
       passwordError: { type: 'string' },
       loginLoading: { type: 'boolean' },
       systemPage: { type: 'string' },
+      agentProfile: {
+        type: 'object',
+        properties: ['firstName', 'lastName', 'handle', 'bio', 'location', 'profileImage', 'coverImage'],
+      },
     },
-    actions: ['navigate', 'addNewSpace', 'createSpace', 'login', 'logout', 'setSystemPage'],
+    actions: [
+      'navigate',
+      'addNewSpace',
+      'createSpace',
+      'login',
+      'logout',
+      'setSystemPage',
+      'updateAgentProfile',
+      'updateProfileImage',
+      'updateCoverImage',
+    ],
   },
   {
     name: 'routeStore',
@@ -89,6 +103,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         passwordError: 'string | undefined',
         loginLoading: 'boolean',
         systemPage: "'settings' | 'profile' | null (active system page, null means template is shown)",
+        agentProfile: 'AgentProfile | null (the current agent profile with name, bio, images, etc.)',
       },
       actions: {
         navigate: '(to: string, options?): navigates to a route',
@@ -98,6 +113,10 @@ function generateStoresText(entries: StoreEntry[]): string {
         login: '(password: string): logs in the agent with password',
         logout: '(): locks the agent and returns to login screen',
         setSystemPage: "(page: 'settings' | 'profile' | null): shows a system page or returns to template",
+        updateAgentProfile:
+          '(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)',
+        updateProfileImage: '(imageFile: File): uploads and sets the profile image',
+        updateCoverImage: '(imageFile: File): uploads and sets the cover image',
       },
     },
     routeStore: {

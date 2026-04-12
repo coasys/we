@@ -1,3 +1,4 @@
+export { AgentProfile } from './AgentProfile';
 export { AgentSettings } from './AgentSettings';
 export { Space } from './Space';
 export { Template } from './Template';

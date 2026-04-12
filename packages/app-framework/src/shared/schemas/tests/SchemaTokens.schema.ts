@@ -622,7 +622,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
   {
     type: 'we-text',
     props: { color: 'neutral-400' },
-    children: ['Subscribes to TestItem models in __we_test__ perspective (requires AD4M):'],
+    children: ['Subscribes to TestItem models in we-test perspective (requires AD4M):'],
   },
   {
     type: 'we-text',
