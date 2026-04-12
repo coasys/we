@@ -490,7 +490,7 @@ AgentSettings extends Ad4mModel:
 
 AgentSettings extends Ad4mModel:
   Fields:
-  - currentTemplateId: string = 'we' [we://current_template]
+  - currentTemplateId: string = 'default' [we://current_template]
   - currentThemeId: string = 'default' [we://current_theme]
   Relations:
   - installedTemplates: HasMany → Template [we://installed_template]
@@ -670,7 +670,9 @@ AdamStore:
 - State:
   - adamClient: Ad4mClient | undefined
   - me: Agent | undefined
-  - mySpaces: array of Space objects
+  - allPerspectives: array of PerspectiveProxy objects (all AD4M perspectives)
+  - personalSpaces: array of Space objects (local/personal spaces)
+  - sharedSpaces: array of Space objects (shared/neighbourhood spaces)
   - bootState: string
   - passwordError: string | undefined
   - loginLoading: boolean
@@ -738,7 +740,7 @@ Example: { "$action": "routeStore.navigate", "args": ["/home"] }
 Iterating over store data:
 {
   "type": "$each",
-  "props": { "items": { "$store": "adamStore.mySpaces" }, "as": "space" },
+  "props": { "items": { "$store": "adamStore.personalSpaces" }, "as": "space" },
   "children": [
     {
       "type": "CircleButton",

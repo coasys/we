@@ -10,7 +10,16 @@ import type { StoreEntry } from '../types.js';
 export const storeEntries: StoreEntry[] = [
   {
     name: 'adamStore',
-    state: ['adamClient', 'me', 'mySpaces', 'bootState', 'passwordError', 'loginLoading'],
+    state: [
+      'adamClient',
+      'me',
+      'allPerspectives',
+      'personalSpaces',
+      'sharedSpaces',
+      'bootState',
+      'passwordError',
+      'loginLoading',
+    ],
     actions: ['navigate', 'addNewSpace', 'createSpace', 'login'],
   },
   {
@@ -55,7 +64,9 @@ function generateStoresText(entries: StoreEntry[]): string {
       state: {
         adamClient: 'Ad4mClient | undefined',
         me: 'Agent | undefined',
-        mySpaces: 'array of Space objects',
+        allPerspectives: 'array of PerspectiveProxy objects (all AD4M perspectives)',
+        personalSpaces: 'array of Space objects (local/personal spaces)',
+        sharedSpaces: 'array of Space objects (shared/neighbourhood spaces)',
         bootState: 'string',
         passwordError: 'string | undefined',
         loginLoading: 'boolean',

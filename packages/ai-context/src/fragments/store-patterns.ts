@@ -17,7 +17,7 @@ Example: { "$action": "routeStore.navigate", "args": ["/home"] }
 Iterating over store data:
 {
   "type": "$each",
-  "props": { "items": { "$store": "adamStore.mySpaces" }, "as": "space" },
+  "props": { "items": { "$store": "adamStore.personalSpaces" }, "as": "space" },
   "children": [
     {
       "type": "CircleButton",
