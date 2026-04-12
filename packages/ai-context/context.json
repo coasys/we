@@ -7,7 +7,7 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "AlertVariant",
+          "type": "'info' | 'success' | 'warning' | 'error'",
           "optional": false,
           "default": "'info'"
         },
@@ -80,13 +80,13 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "BadgeVariant",
+          "type": "'' | 'primary' | 'success' | 'danger' | 'warning'",
           "optional": false,
           "default": "''"
         },
         {
           "name": "size",
-          "type": "BadgeSize",
+          "type": "'' | 'sm' | 'lg'",
           "optional": false,
           "default": "''"
         }
@@ -105,13 +105,13 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "ButtonVariant",
+          "type": "'primary' | 'secondary' | 'ghost' | 'danger' | 'outline'",
           "optional": false,
           "default": "'primary'"
         },
         {
           "name": "size",
-          "type": "ButtonSize",
+          "type": "'xs' | 'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         },
@@ -152,7 +152,7 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "CardVariant",
+          "type": "'' | 'elevated' | 'outlined' | 'filled'",
           "optional": false,
           "default": "''"
         }
@@ -189,7 +189,7 @@
         },
         {
           "name": "size",
-          "type": "CheckboxSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -276,7 +276,7 @@
         },
         {
           "name": "size",
-          "type": "ComboboxSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -313,7 +313,7 @@
         },
         {
           "name": "size",
-          "type": "DatePickerSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -412,7 +412,7 @@
         },
         {
           "name": "size",
-          "type": "FormFieldSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -462,7 +462,7 @@
         },
         {
           "name": "weight",
-          "type": "IconWeight",
+          "type": "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'",
           "optional": false,
           "default": "'regular'"
         }
@@ -512,13 +512,13 @@
         },
         {
           "name": "fit",
-          "type": "ImageFit",
+          "type": "'' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down'",
           "optional": false,
           "default": "''"
         },
         {
           "name": "loading",
-          "type": "ImageLoading",
+          "type": "'eager' | 'lazy'",
           "optional": false,
           "default": "'eager'"
         },
@@ -627,7 +627,7 @@
         },
         {
           "name": "size",
-          "type": "InputSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -714,7 +714,7 @@
         },
         {
           "name": "variant",
-          "type": "MenuItemVariant",
+          "type": "'default' | 'danger'",
           "optional": false,
           "default": "'default'"
         },
@@ -791,7 +791,7 @@
         },
         {
           "name": "size",
-          "type": "NumberInputSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -822,7 +822,7 @@
         },
         {
           "name": "size",
-          "type": "PaginationSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -876,13 +876,13 @@
         },
         {
           "name": "variant",
-          "type": "ProgressBarVariant",
+          "type": "'default' | 'success' | 'warning' | 'danger'",
           "optional": false,
           "default": "'default'"
         },
         {
           "name": "size",
-          "type": "ProgressBarSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -919,7 +919,7 @@
         },
         {
           "name": "size",
-          "type": "RadioSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -987,7 +987,7 @@
         },
         {
           "name": "size",
-          "type": "SelectSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -1061,7 +1061,7 @@
         },
         {
           "name": "size",
-          "type": "SliderSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         },
@@ -1080,7 +1080,7 @@
       "ownProps": [
         {
           "name": "size",
-          "type": "SpinnerSize",
+          "type": "'' | 'sm' | 'lg'",
           "optional": false,
           "default": "''"
         },
@@ -1123,7 +1123,7 @@
         },
         {
           "name": "size",
-          "type": "SwitchSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -1173,7 +1173,7 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "TagVariant",
+          "type": "'default' | 'primary' | 'success' | 'warning' | 'danger'",
           "optional": false,
           "default": "'default'"
         },
@@ -1215,6 +1215,12 @@
         },
         {
           "name": "uppercase",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "italic",
           "type": "boolean",
           "optional": false,
           "default": "false"
@@ -1288,7 +1294,7 @@
         },
         {
           "name": "size",
-          "type": "TextareaSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -4033,38 +4039,100 @@
   "storeEntries": [
     {
       "name": "adamStore",
-      "state": [
-        "adamClient",
-        "me",
-        "allPerspectives",
-        "personalSpaces",
-        "sharedSpaces",
-        "bootState",
-        "passwordError",
-        "loginLoading"
-      ],
+      "state": {
+        "adamClient": {
+          "type": "object"
+        },
+        "me": {
+          "type": "object",
+          "properties": [
+            "did",
+            "perspective",
+            "directMessageLanguage"
+          ]
+        },
+        "allPerspectives": {
+          "type": "array",
+          "properties": [
+            "uuid",
+            "name",
+            "sharedUrl",
+            "neighbourhood"
+          ]
+        },
+        "personalSpaces": {
+          "type": "array",
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "url",
+            "visibility"
+          ]
+        },
+        "sharedSpaces": {
+          "type": "array",
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "url",
+            "visibility"
+          ]
+        },
+        "bootState": {
+          "type": "string"
+        },
+        "passwordError": {
+          "type": "string"
+        },
+        "loginLoading": {
+          "type": "boolean"
+        },
+        "systemPage": {
+          "type": "string"
+        }
+      },
       "actions": [
         "navigate",
         "addNewSpace",
         "createSpace",
-        "login"
+        "login",
+        "logout",
+        "setSystemPage"
       ]
     },
     {
       "name": "routeStore",
-      "state": [
-        "currentPath"
-      ],
+      "state": {
+        "currentPath": {
+          "type": "string"
+        }
+      },
       "actions": [
         "navigate"
       ]
     },
     {
       "name": "themeStore",
-      "state": [
-        "themes",
-        "currentTheme"
-      ],
+      "state": {
+        "themes": {
+          "type": "array",
+          "properties": [
+            "id",
+            "name",
+            "icon"
+          ]
+        },
+        "currentTheme": {
+          "type": "object",
+          "properties": [
+            "id",
+            "name",
+            "icon"
+          ]
+        }
+      },
       "actions": [
         "setThemes",
         "setCurrentTheme"
@@ -4072,10 +4140,30 @@
     },
     {
       "name": "templateStore",
-      "state": [
-        "templates",
-        "currentTemplate"
-      ],
+      "state": {
+        "templates": {
+          "type": "array",
+          "properties": [
+            "id",
+            "meta",
+            "type",
+            "props",
+            "children",
+            "routes"
+          ]
+        },
+        "currentTemplate": {
+          "type": "object",
+          "properties": [
+            "id",
+            "meta",
+            "type",
+            "props",
+            "children",
+            "routes"
+          ]
+        }
+      },
       "actions": [
         "updateTemplate",
         "switchTemplate",
@@ -4085,13 +4173,42 @@
     },
     {
       "name": "spaceStore",
-      "state": [
-        "spaceId",
-        "perspective",
-        "space",
-        "posts",
-        "loading"
-      ],
+      "state": {
+        "spaceId": {
+          "type": "string"
+        },
+        "perspective": {
+          "type": "object",
+          "properties": [
+            "uuid",
+            "name",
+            "sharedUrl",
+            "neighbourhood"
+          ]
+        },
+        "space": {
+          "type": "object",
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "url",
+            "visibility"
+          ]
+        },
+        "posts": {
+          "type": "array",
+          "properties": [
+            "id",
+            "author",
+            "timestamp",
+            "content"
+          ]
+        },
+        "loading": {
+          "type": "boolean"
+        }
+      },
       "actions": [
         "setSpaceId",
         "getSpace",
@@ -4100,10 +4217,23 @@
     },
     {
       "name": "aiStore",
-      "state": [
-        "models",
-        "tasks"
-      ],
+      "state": {
+        "models": {
+          "type": "array",
+          "properties": [
+            "id",
+            "name"
+          ]
+        },
+        "tasks": {
+          "type": "array",
+          "properties": [
+            "id",
+            "status",
+            "result"
+          ]
+        }
+      },
       "actions": [
         "handleSchemaPrompt"
       ]

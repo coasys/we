@@ -168,26 +168,26 @@ Most @we/primitives also accept Design System Props (see next section for detail
 
 @we/primitives:
 - we-alert (DesignSystemElement)
-  Props: variant: AlertVariant = 'info', dismissible: boolean = false
+  Props: variant: 'info' | 'success' | 'warning' | 'error' = 'info', dismissible: boolean = false
 - we-avatar (LayoutElement)
   Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: AvatarSizeValue | undefined, clickable: boolean = false
 - we-badge (DesignSystemElement)
-  Props: variant: BadgeVariant = '', size: BadgeSize = ''
+  Props: variant: '' | 'primary' | 'success' | 'danger' | 'warning' = '', size: '' | 'sm' | 'lg' = ''
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: ButtonVariant = 'primary', size: ButtonSize = 'md', text?: string | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false
+  Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' = 'md', text?: string | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false
 - we-card (DesignSystemElement)
-  Props: variant: CardVariant = ''
+  Props: variant: '' | 'elevated' | 'outlined' | 'filled' = ''
 - we-checkbox (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: CheckboxSize = 'md'
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-code (DesignSystemElement)
   Props: block: boolean = false
 - we-color-picker (DesignSystemElement)
   Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ]
 - we-combobox (DesignSystemElement)
-  Props: options: ComboboxOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, name: string = '', size: ComboboxSize = 'md'
+  Props: options: ComboboxOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-date-picker (DesignSystemElement)
-  Props: value: string = '', placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: DatePickerSize = 'md'
+  Props: value: string = '', placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-divider (DesignSystemElement)
   Props: orientation: 'horizontal' | 'vertical' = 'horizontal'
 - we-drawer (OverlayElement)
@@ -195,58 +195,58 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-file-upload (DesignSystemElement)
   Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
 - we-form-field (DesignSystemElement)
-  Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: FormFieldSize = 'md'
+  Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: 'sm' | 'md' | 'lg' = 'md'
 - we-grid (DesignSystemElement)
   Props: columns: number = 1, minChildWidth: string = ''
 - we-icon (LayoutElement)
-  Props: name: string = '', color: string = '', size: IconSize = '', weight: IconWeight = 'regular'
+  Props: name: string = '', color: string = '', size: IconSize = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular'
 - we-iframe (LayoutElement)
   Props: src: string = '', title: string = 'Embedded content', allow: string = ''
 - we-image (LayoutElement)
-  Props: src: string | File = '', alt: string = '', fit: ImageFit = '', loading: ImageLoading = 'eager', gradient: string = ''
+  Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = ''
 - we-input (DesignSystemElement)
-  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: InputSize = 'md'
+  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'sm' | 'md' | 'lg' = 'md'
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', disabled: boolean = false
 - we-menu (DesignSystemElement)
 - we-menu-group (LayoutElement)
   Props: collapsible: boolean = false, open: boolean = false, title: string = ''
 - we-menu-item (DesignSystemElement)
-  Props: selected: boolean = false, active: boolean = false, variant: MenuItemVariant = 'default', label: unknown, value: unknown
+  Props: selected: boolean = false, active: boolean = false, variant: 'default' | 'danger' = 'default', label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
 - we-number-input (DesignSystemElement)
-  Props: value: number = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', size: NumberInputSize = 'md'
+  Props: value: number = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-pagination (DesignSystemElement)
-  Props: page: number = 1, total: number = 1, siblings: number = 1, size: PaginationSize = 'md'
+  Props: page: number = 1, total: number = 1, siblings: number = 1, size: 'sm' | 'md' | 'lg' = 'md'
 - we-popover (LayoutElement)
   Props: open: boolean = false, placement: Placement = 'bottom', popoverElement: HTMLElement, triggerElement: HTMLElement
 - we-progress-bar (DesignSystemElement)
-  Props: value: number = 0, max: number = 100, variant: ProgressBarVariant = 'default', size: ProgressBarSize = 'md'
+  Props: value: number = 0, max: number = 100, variant: 'default' | 'success' | 'warning' | 'danger' = 'default', size: 'sm' | 'md' | 'lg' = 'md'
 - we-radio (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: RadioSize = 'md'
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-scroll-area (DesignSystemElement)
   Props: maxHeight: string = '', maxWidth: string = ''
 - we-select (DesignSystemElement)
-  Props: value: string = '', name: string = '', placeholder: string = '', disabled: boolean = false, required: boolean = false, options: (string | { label: string; value: string })[] = [], size: SelectSize = 'md'
+  Props: value: string = '', name: string = '', placeholder: string = '', disabled: boolean = false, required: boolean = false, options: (string | { label: string; value: string })[] = [], size: 'sm' | 'md' | 'lg' = 'md'
 - we-skeleton (DesignSystemElement)
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
-  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', size: SliderSize = 'md', showValue: boolean = false
+  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md', showValue: boolean = false
 - we-spinner (LayoutElement)
-  Props: size: SpinnerSize = '', color: string = ''
+  Props: size: '' | 'sm' | 'lg' = '', color: string = ''
 - we-switch (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: SwitchSize = 'md'
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-tab (DesignSystemElement)
   Props: key: string = '', active: boolean = false, label?: string | undefined
 - we-tabs (DesignSystemElement)
   Props: activeKey: string = ''
 - we-tag (DesignSystemElement)
-  Props: variant: TagVariant = 'default', dismissible: boolean = false
+  Props: variant: 'default' | 'primary' | 'success' | 'warning' | 'danger' = 'default', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: TextVariant = '', tag: TextTag = 'span', inline: boolean = false, uppercase: boolean = false
+  Props: text?: string | undefined, variant: TextVariant = '', tag: TextTag = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false
 - we-textarea (DesignSystemElement)
-  Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: TextareaSize = 'md'
+  Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'sm' | 'md' | 'lg' = 'md'
 - we-tooltip (LayoutElement)
   Props: open: boolean = false, title: string = '', placement: Placement = 'top', tooltipEl: HTMLElement, triggerEl: HTMLElement, arrowEl: HTMLElement
 
@@ -676,11 +676,14 @@ AdamStore:
   - bootState: string
   - passwordError: string | undefined
   - loginLoading: boolean
+  - systemPage: 'settings' | 'profile' | null (active system page, null means template is shown)
 - Actions:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
   - createSpace(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup
   - login(password: string): logs in the agent with password
+  - logout(): locks the agent and returns to login screen
+  - setSystemPage(page: 'settings' | 'profile' | null): shows a system page or returns to template
 
 RouteStore:
 - State:
@@ -870,8 +873,11 @@ Example:
 - Do not set props to their default/inherited values — omit them. fontSize and fontWeight inherit from parents (~16px / normal), so only set them when you need a different value.
 - Omit empty `props` and `children` — both are optional. Do not write `props: {}` or `children: []`.
 - Do not use `as const` on schema node `type` fields — `SchemaNode.type` is `string`, so it is never needed.
+- For icon-only buttons, nest a `we-icon` child inside `we-button` rather than using a `text` prop with a Unicode character. Example: `{ type: 'we-button', props: { variant: 'ghost', size: 'sm' }, children: [{ type: 'we-icon', props: { name: 'x', size: '20px' } }] }`.
+- For interactive list items and selectable options, use `we-button` with variant switching (e.g., `secondary` when selected, `ghost` when not) instead of manually styling `Row` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
 - All schemas must be valid JSON with property names and string values in double quotes.
 - The meta property at the root is required: { "meta": { "name": "...", "description": "...", "icon": "..." } }
+- Always set `bg: 'neutral-50'` on root-level schema nodes (templates, pages). This ensures proper background in all themes — without it, dark mode renders white backgrounds.
 
 Most @we/primitives inherit all Design System Props documented above (layout, visual, flex, typography, state).
 Some layout-only primitives (we-avatar, we-icon, we-image, we-spinner, etc.) only accept Layout props — see the Design System Props section for the full list.
