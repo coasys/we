@@ -128,8 +128,24 @@ export const sidebar: SchemaNode = {
           // },
         ],
 
-        // Footer: logout
+        // Footer: settings, profile, logout
         footerItems: [
+          {
+            type: 'item',
+            id: 'profile',
+            icon: 'user',
+            label: 'Profile',
+            active: { $eq: [{ $store: 'adamStore.systemPage' }, 'profile'] },
+            onClick: { $action: 'adamStore.setSystemPage', args: ['profile'] },
+          },
+          {
+            type: 'item',
+            id: 'settings',
+            icon: 'gear',
+            label: 'Settings',
+            active: { $eq: [{ $store: 'adamStore.systemPage' }, 'settings'] },
+            onClick: { $action: 'adamStore.setSystemPage', args: ['settings'] },
+          },
           {
             type: 'item',
             id: 'logout',

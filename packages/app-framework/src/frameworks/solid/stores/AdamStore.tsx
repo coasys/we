@@ -35,11 +35,13 @@ export interface AdamStore {
   isDevelopment: Accessor<boolean>;
   rootPerspective: Accessor<PerspectiveProxy | null>;
   agentSettings: Accessor<AgentSettings | null>;
+  systemPage: Accessor<SystemPage>;
 
   // Setters
   setNavigateFunction: (navigate: NavigateFunction) => void;
 
   // Actions
+  setSystemPage: (page: SystemPage) => void;
   login: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   navigate: (to: string, options?: Record<string, unknown>) => void;
@@ -49,6 +51,7 @@ export interface AdamStore {
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
+export type SystemPage = 'settings' | 'profile' | null;
 
 const AdamContext = createContext<AdamStore>();
 
@@ -69,6 +72,7 @@ export function AdamStoreProvider(props: ParentProps) {
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
   const [allPerspectives, setAllPerspectives] = createSignal<PerspectiveProxy[]>([]);
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
+  const [systemPage, setSystemPage] = createSignal<SystemPage>(null);
 
   // Derived: personal and shared spaces
   const personalSpaces = createMemo(() => mySpaces().filter((s) => s.visibility !== 'shared'));
@@ -338,6 +342,9 @@ export function AdamStoreProvider(props: ParentProps) {
   }
 
   function navigate(to: string, options?: Record<string, unknown>) {
+    // Clear system page when navigating to a real route
+    setSystemPage(null);
+
     // Skip if already on target path
     if (window.location.pathname === to) return;
 
@@ -363,11 +370,13 @@ export function AdamStoreProvider(props: ParentProps) {
     isDevelopment,
     rootPerspective,
     agentSettings,
+    systemPage,
 
     // Setters
     setNavigateFunction,
 
     // Actions
+    setSystemPage,
     login,
     logout,
     navigate,

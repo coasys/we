@@ -134,7 +134,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     const newTemplate = templates().find((t) => t.id === newTemplateId);
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
-      // Reset to root so the new template doesn't land on a stale route
+      // Clear any system page overlay and reset to root
+      adamStore.setSystemPage(null);
       routeStore.navigate('/');
       // Persist choice to Ad4m
       adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });

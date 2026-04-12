@@ -22,8 +22,8 @@ import {
   schemaMutationsTemplate,
   schemaRoutingTemplate,
   schemaTokensTemplate,
-  twitterTemplate,
-  weTemplate,
+  // twitterTemplate,
+  // weTemplate,
 } from '@shared/schemas';
 // import type { TemplateSchema } from '@we/schema-shared';
 
@@ -53,8 +53,8 @@ import {
  */
 export const templateRegistry = {
   default: defaultTemplate,
-  we: weTemplate,
-  twitter: twitterTemplate,
+  // we: weTemplate,
+  // twitter: twitterTemplate,
   // launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
 };
 

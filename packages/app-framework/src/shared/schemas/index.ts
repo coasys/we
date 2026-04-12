@@ -16,4 +16,6 @@ export {
 // Shell fragments
 // export { appSettingsSchema, getAppSettingsSchema } from './shell/AppSettings.schema';
 export { bootScreen } from './shell/BootScreen.schema';
+export { profilePage } from './shell/Profile.schema';
+export { settingsPage } from './shell/Settings.schema';
 export { sidebar } from './shell/Sidebar.schema';

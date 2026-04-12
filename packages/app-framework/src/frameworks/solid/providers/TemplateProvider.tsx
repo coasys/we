@@ -5,7 +5,7 @@ import { componentRegistry as registry } from '@solid/registries/componentRegist
 import { useAdamStore, useRouteStore, useSpaceStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router, useLocation, useNavigate } from '@solidjs/router';
-import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
+import type { RouteSchema, SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
 import { createEffect, createMemo, Show } from 'solid-js';
@@ -14,7 +14,7 @@ type FlattenedRoute = { path: string; component: () => JSX.Element };
 type ParentStackItem = { node: RouteSchema; fullPath: string; baseDepth: number };
 
 // Creates the root layout component for the router
-function createLayout(stores: Stores, shellSchema: TemplateSchema) {
+function createLayout(stores: Stores, shellSchema: TemplateSchema, systemPages: Record<string, SchemaNode>) {
   return function Layout(props: ParentProps): JSX.Element {
     // Access the router hooks now we're inside the router context
     const navigate = useNavigate();
@@ -26,24 +26,30 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
     // React to route changes and update relevant stores
     createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
 
-    const templateStore = stores.templateStore as { currentTemplate: TemplateSchema };
-
     return (
       <>
         {/* Shell chrome (boot screen, sidebar) — always rendered */}
         <RenderSchema node={shellSchema} stores={stores} registry={registry} />
 
-        {/* Active template — keyed on ID so it fully remounts on template switch */}
-        <Show when={templateStore.currentTemplate.id} keyed>
-          <div style={{ 'margin-left': '66px', width: 'calc(100% - 66px)' }}>
-            <RenderSchema
-              node={templateStore.currentTemplate}
-              stores={stores}
-              registry={registry}
-              children={props.children}
-            />
-          </div>
-        </Show>
+        {/* Main content area — system page takes priority over template */}
+        <div style={{ 'margin-left': '66px', width: 'calc(100% - 66px)' }}>
+          <Show
+            when={stores.adamStore.systemPage()}
+            keyed
+            fallback={
+              <Show when={stores.templateStore.currentTemplate.id} keyed>
+                <RenderSchema
+                  node={stores.templateStore.currentTemplate}
+                  stores={stores}
+                  registry={registry}
+                  children={props.children}
+                />
+              </Show>
+            }
+          >
+            {(page) => <RenderSchema node={systemPages[page]} stores={stores} registry={registry} />}
+          </Show>
+        </div>
       </>
     );
   };
@@ -146,7 +152,7 @@ export default function TemplateProvider() {
 
   // Return the router with the root layout and routes
   return (
-    <Router root={createLayout(stores, shellSchema)}>
+    <Router root={createLayout(stores, shellSchema, launcherUIRegistry.systemPages)}>
       {routes().map((route) => (
         <Route path={route.path} component={route.component} />
       ))}
