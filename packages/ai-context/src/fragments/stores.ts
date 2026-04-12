@@ -10,41 +10,59 @@ import type { StoreEntry } from '../types.js';
 export const storeEntries: StoreEntry[] = [
   {
     name: 'adamStore',
-    state: [
-      'adamClient',
-      'me',
-      'allPerspectives',
-      'personalSpaces',
-      'sharedSpaces',
-      'bootState',
-      'passwordError',
-      'loginLoading',
-    ],
-    actions: ['navigate', 'addNewSpace', 'createSpace', 'login'],
+    state: {
+      adamClient: { type: 'object' },
+      me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
+      allPerspectives: { type: 'array', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
+      personalSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
+      sharedSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
+      bootState: { type: 'string' },
+      passwordError: { type: 'string' },
+      loginLoading: { type: 'boolean' },
+      systemPage: { type: 'string' },
+    },
+    actions: ['navigate', 'addNewSpace', 'createSpace', 'login', 'logout', 'setSystemPage'],
   },
   {
     name: 'routeStore',
-    state: ['currentPath'],
+    state: {
+      currentPath: { type: 'string' },
+    },
     actions: ['navigate'],
   },
   {
     name: 'themeStore',
-    state: ['themes', 'currentTheme'],
+    state: {
+      themes: { type: 'array', properties: ['id', 'name', 'icon'] },
+      currentTheme: { type: 'object', properties: ['id', 'name', 'icon'] },
+    },
     actions: ['setThemes', 'setCurrentTheme'],
   },
   {
     name: 'templateStore',
-    state: ['templates', 'currentTemplate'],
+    state: {
+      templates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+      currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+    },
     actions: ['updateTemplate', 'switchTemplate', 'removeTemplate', 'saveTemplate'],
   },
   {
     name: 'spaceStore',
-    state: ['spaceId', 'perspective', 'space', 'posts', 'loading'],
+    state: {
+      spaceId: { type: 'string' },
+      perspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
+      space: { type: 'object', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
+      posts: { type: 'array', properties: ['id', 'author', 'timestamp', 'content'] },
+      loading: { type: 'boolean' },
+    },
     actions: ['setSpaceId', 'getSpace', 'getPosts'],
   },
   {
     name: 'aiStore',
-    state: ['models', 'tasks'],
+    state: {
+      models: { type: 'array', properties: ['id', 'name'] },
+      tasks: { type: 'array', properties: ['id', 'status', 'result'] },
+    },
     actions: ['handleSchemaPrompt'],
   },
 ];
@@ -70,6 +88,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         bootState: 'string',
         passwordError: 'string | undefined',
         loginLoading: 'boolean',
+        systemPage: "'settings' | 'profile' | null (active system page, null means template is shown)",
       },
       actions: {
         navigate: '(to: string, options?): navigates to a route',
@@ -77,6 +96,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         createSpace:
           '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
         login: '(password: string): logs in the agent with password',
+        logout: '(): locks the agent and returns to login screen',
+        setSystemPage: "(page: 'settings' | 'profile' | null): shows a system page or returns to template",
       },
     },
     routeStore: {
@@ -137,7 +158,7 @@ function generateStoresText(entries: StoreEntry[]): string {
     lines.push(`${storeName}:`);
 
     lines.push('- State:');
-    for (const key of entry.state) {
+    for (const key of Object.keys(entry.state)) {
       const typeDesc = desc.state[key] ?? 'unknown';
       lines.push(`  - ${key}: ${typeDesc}`);
     }

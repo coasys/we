@@ -54,10 +54,17 @@ export interface ModelRelationEntry {
   target?: string;
 }
 
+/** Type metadata for a store state member, enabling nested property validation */
+export interface StateMemberMeta {
+  type: 'array' | 'object' | 'string' | 'boolean' | 'number';
+  /** Known properties on the value (for objects) or on array items (for arrays) */
+  properties?: string[];
+}
+
 /** A store with its state properties and action methods */
 export interface StoreEntry {
   name: string;
-  state: string[];
+  state: Record<string, StateMemberMeta>;
   actions: string[];
 }
 

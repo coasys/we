@@ -54,6 +54,7 @@ export type {
   ModelFieldEntry,
   ModelRelationEntry,
   StoreEntry,
+  StateMemberMeta,
   TokenCategory,
 } from './contextTypes';
 
