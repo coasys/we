@@ -14,7 +14,7 @@ import {
   Theme,
   WeNode,
 } from '@we/models';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 
@@ -27,7 +27,9 @@ export interface AdamStore {
   loginLoading?: Accessor<boolean>;
   adamClient: Accessor<Ad4mClient | undefined>;
   me: Accessor<Agent | undefined>;
-  mySpaces: Accessor<Space[]>;
+  allPerspectives: Accessor<PerspectiveProxy[]>;
+  personalSpaces: Accessor<Space[]>;
+  sharedSpaces: Accessor<Space[]>;
   ad4mPort: Accessor<number | undefined>;
   ad4mToken: Accessor<string | undefined>;
   isDevelopment: Accessor<boolean>;
@@ -65,7 +67,12 @@ export function AdamStoreProvider(props: ParentProps) {
   const [ad4mToken, setAd4mToken] = createSignal<string | undefined>(undefined);
   const [rootPerspective, setRootPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
+  const [allPerspectives, setAllPerspectives] = createSignal<PerspectiveProxy[]>([]);
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
+
+  // Derived: personal and shared spaces
+  const personalSpaces = createMemo(() => mySpaces().filter((s) => s.visibility !== 'shared'));
+  const sharedSpaces = createMemo(() => mySpaces().filter((s) => s.visibility === 'shared'));
 
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
@@ -81,6 +88,7 @@ export function AdamStoreProvider(props: ParentProps) {
   async function getMySpaces(client: Ad4mClient): Promise<void> {
     try {
       const perspectives = await client.perspective.all();
+      setAllPerspectives(perspectives);
       const spaces = await Promise.all(perspectives.map(async (perspective) => await Space.findOne(perspective)));
       const filteredSpaces = spaces
         .filter((s): s is Space => !!s)
@@ -193,7 +201,10 @@ export function AdamStoreProvider(props: ParentProps) {
       // Model.register resolves before SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      const settings = await AgentSettings.create(perspective, { currentTemplateId: 'we', currentThemeId: 'dark' });
+      const settings = await AgentSettings.create(perspective, {
+        currentTemplateId: 'default',
+        currentThemeId: 'dark',
+      });
 
       setRootPerspective(perspective);
       setAgentSettings(settings);
@@ -344,7 +355,9 @@ export function AdamStoreProvider(props: ParentProps) {
     loginLoading,
     adamClient,
     me,
-    mySpaces,
+    allPerspectives,
+    personalSpaces,
+    sharedSpaces,
     ad4mPort,
     ad4mToken,
     isDevelopment,
