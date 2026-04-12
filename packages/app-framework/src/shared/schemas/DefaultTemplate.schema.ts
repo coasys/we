@@ -60,7 +60,7 @@ export const defaultTemplate: TemplateSchema = {
                 condition: { $store: 'adamStore.sharedSpaces.length' },
                 then: {
                   type: 'Row',
-                  props: { gap: '300', flexWrap: 'wrap' },
+                  props: { gap: '300', wrap: true },
                   children: [
                     {
                       type: '$each',
@@ -116,7 +116,7 @@ export const defaultTemplate: TemplateSchema = {
                 },
                 else: {
                   type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-400', fontStyle: 'italic' },
+                  props: { fontSize: '300', color: 'neutral-400', italic: true },
                   children: ['No shared spaces yet'],
                 },
               },
@@ -147,7 +147,7 @@ export const defaultTemplate: TemplateSchema = {
                 condition: { $store: 'adamStore.personalSpaces.length' },
                 then: {
                   type: 'Row',
-                  props: { gap: '300', flexWrap: 'wrap' },
+                  props: { gap: '300', wrap: true },
                   children: [
                     {
                       type: '$each',
@@ -203,7 +203,7 @@ export const defaultTemplate: TemplateSchema = {
                 },
                 else: {
                   type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-400', fontStyle: 'italic' },
+                  props: { fontSize: '300', color: 'neutral-400', italic: true },
                   children: ['No personal spaces yet'],
                 },
               },
@@ -234,7 +234,7 @@ export const defaultTemplate: TemplateSchema = {
                 condition: { $store: 'adamStore.allPerspectives.length' },
                 then: {
                   type: 'Row',
-                  props: { gap: '300', flexWrap: 'wrap' },
+                  props: { gap: '300', wrap: true },
                   children: [
                     {
                       type: '$each',
@@ -291,7 +291,7 @@ export const defaultTemplate: TemplateSchema = {
                 },
                 else: {
                   type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-400', fontStyle: 'italic' },
+                  props: { fontSize: '300', color: 'neutral-400', italic: true },
                   children: ['No perspectives yet'],
                 },
               },
