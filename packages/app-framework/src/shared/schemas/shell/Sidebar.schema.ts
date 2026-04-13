@@ -52,7 +52,7 @@ export const sidebar: SchemaNode = {
             label: 'Templates',
             items: {
               $map: {
-                items: { $store: 'templateStore.mainTemplates' },
+                items: { $store: 'templateStore.templates' },
                 select: {
                   id: '$item.id',
                   icon: '$item.meta.icon',
@@ -63,91 +63,32 @@ export const sidebar: SchemaNode = {
               },
             },
           },
-
-          // --- Test templates (collapsed by default) ---
-          {
-            type: 'group',
-            id: 'test-templates',
-            label: 'Test Templates',
-            collapsed: true,
-            items: {
-              $map: {
-                items: { $store: 'templateStore.testTemplates' },
-                select: {
-                  id: '$item.id',
-                  icon: '$item.meta.icon',
-                  label: '$item.meta.name',
-                  active: { $eq: ['$item.id', { $store: 'templateStore.currentTemplate.id' }] },
-                  onClick: { $action: 'templateStore.switchTemplate', args: ['$item.id'] },
-                },
-              },
-            },
-          },
-
-          // --- Theme switching ---
-          {
-            type: 'group',
-            id: 'themes',
-            label: 'Themes',
-            collapsed: true,
-            items: {
-              $map: {
-                items: { $store: 'themeStore.themes' },
-                select: {
-                  id: '$item.id',
-                  icon: '$item.icon',
-                  label: '$item.name',
-                  active: { $eq: ['$item.id', { $store: 'themeStore.currentTheme.id' }] },
-                  onClick: { $action: 'themeStore.setCurrentTheme', args: ['$item.id'] },
-                },
-              },
-            },
-          },
-
-          // --- Installed apps (non-core templates / we-apps) ---
-          // {
-          //   type: 'group',
-          //   id: 'apps',
-          //   label: 'Apps',
-          //   collapsible: true,
-          //   collapsed: false,
-          //   items: {
-          //     $map: {
-          //       items: { $store: 'templateStore.installedApps' },
-          //       select: {
-          //         id: '$item.id',
-          //         icon: '$item.meta.icon',
-          //         label: '$item.meta.name',
-          //         onClick: {
-          //           $action: 'templateStore.switchTemplate',
-          //           args: ['$item.id'],
-          //         },
-          //       },
-          //     },
-          //   },
-          // },
         ],
 
         // Footer: settings, profile, logout
         footerItems: [
           {
-            type: 'item',
             id: 'profile',
             icon: 'user',
             label: 'Profile',
-            active: { $eq: [{ $store: 'adamStore.systemPage' }, 'profile'] },
-            onClick: { $action: 'adamStore.setSystemPage', args: ['profile'] },
+            active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'profile'] },
+            onClick: { $action: 'templateStore.switchTemplate', args: ['profile'] },
           },
           {
-            type: 'item',
+            id: 'schema-tests',
+            icon: 'test-tube',
+            label: 'Schema Tests',
+            active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'schema-tests'] },
+            onClick: { $action: 'templateStore.switchTemplate', args: ['schema-tests'] },
+          },
+          {
             id: 'settings',
             icon: 'gear',
             label: 'Settings',
-            active: { $eq: [{ $store: 'adamStore.systemPage' }, 'settings'] },
-            onClick: { $action: 'adamStore.setSystemPage', args: ['settings'] },
+            active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'settings'] },
+            onClick: { $action: 'templateStore.switchTemplate', args: ['settings'] },
           },
           {
-            type: 'item',
             id: 'logout',
             icon: 'sign-out',
             label: 'Logout',

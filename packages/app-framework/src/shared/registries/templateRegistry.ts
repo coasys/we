@@ -18,10 +18,6 @@
 
 import {
   defaultTemplate,
-  schemaBenchmarkTemplate,
-  schemaMutationsTemplate,
-  schemaRoutingTemplate,
-  schemaTokensTemplate,
   // twitterTemplate,
   // weTemplate,
 } from '@shared/schemas';
@@ -58,15 +54,8 @@ export const templateRegistry = {
   // launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
 };
 
-export const testTemplateRegistry = {
-  'schema-benchmark': schemaBenchmarkTemplate,
-  'schema-tokens': schemaTokensTemplate,
-  'schema-mutations': schemaMutationsTemplate,
-  'schema-routing': schemaRoutingTemplate,
-};
-
-export type TemplateId = keyof typeof templateRegistry | keyof typeof testTemplateRegistry;
+export type TemplateId = keyof typeof templateRegistry;
 
 export function isValidTemplateId(key: unknown): key is TemplateId {
-  return typeof key === 'string' && (key in templateRegistry || key in testTemplateRegistry);
+  return typeof key === 'string' && key in templateRegistry;
 }

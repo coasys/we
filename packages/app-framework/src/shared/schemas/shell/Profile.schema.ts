@@ -1,16 +1,14 @@
 /**
- * Profile — System-level agent profile page
- *
- * Rendered by the shell when systemPage === 'profile'.
- * Not a route — does not conflict with template-defined routes.
+ * Profile — Shell template for the agent profile page
  *
  * Displays the current agent's profile with editable cover image,
  * profile picture, and text fields (name, handle, bio, location).
  */
 
-import type { SchemaNode } from '@we/schema-shared';
+import type { TemplateSchema } from '@we/schema-shared';
 
-export const profilePage: SchemaNode = {
+export const profileTemplate: TemplateSchema = {
+  meta: { name: 'Profile', description: 'Agent profile page', icon: 'user' },
   type: 'Column',
   props: { width: '100%', height: '100%', bg: 'neutral-50', overflow: 'auto' },
   children: [
@@ -32,7 +30,7 @@ export const profilePage: SchemaNode = {
           props: {
             variant: 'ghost',
             size: 'sm',
-            onClick: { $action: 'adamStore.setSystemPage', args: [null] },
+            onClick: { $action: 'templateStore.switchTemplate', args: ['default'] },
           },
           children: [{ type: 'we-icon', props: { name: 'x', size: '20px' } }],
         },

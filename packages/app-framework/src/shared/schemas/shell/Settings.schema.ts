@@ -1,15 +1,13 @@
 /**
- * Settings — System-level account settings page
- *
- * Rendered by the shell when systemPage === 'settings'.
- * Not a route — does not conflict with template-defined routes.
+ * Settings — Shell template for account settings
  *
  * Provides: template switching, theme switching, agent info, logout.
  */
 
-import type { SchemaNode } from '@we/schema-shared';
+import type { TemplateSchema } from '@we/schema-shared';
 
-export const settingsPage: SchemaNode = {
+export const settingsTemplate: TemplateSchema = {
+  meta: { name: 'Settings', description: 'Account settings', icon: 'gear' },
   type: 'Column',
   props: {
     p: '600',
@@ -39,7 +37,7 @@ export const settingsPage: SchemaNode = {
           props: {
             variant: 'ghost',
             size: 'sm',
-            onClick: { $action: 'adamStore.setSystemPage', args: [null] },
+            onClick: { $action: 'templateStore.switchTemplate', args: ['default'] },
           },
           children: [{ type: 'we-icon', props: { name: 'x', size: '20px' } }],
         },
@@ -89,7 +87,7 @@ export const settingsPage: SchemaNode = {
           children: [
             {
               type: '$each',
-              props: { items: { $store: 'templateStore.mainTemplates' }, as: 'template' },
+              props: { items: { $store: 'templateStore.templates' }, as: 'template' },
               children: [
                 {
                   type: 'we-button',

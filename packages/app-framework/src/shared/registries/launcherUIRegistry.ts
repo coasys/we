@@ -14,8 +14,6 @@
  */
 
 import { bootScreen } from '@shared/schemas/shell/BootScreen.schema';
-import { profilePage } from '@shared/schemas/shell/Profile.schema';
-import { settingsPage } from '@shared/schemas/shell/Settings.schema';
 import { sidebar } from '@shared/schemas/shell/Sidebar.schema';
 import type { SchemaNode } from '@we/schema-shared';
 
@@ -45,12 +43,6 @@ export const launcherUIRegistry = {
 
   /** Whether template switching is enabled (disabled for embedded apps mode) */
   enableTemplateSwitching: true,
-
-  /** System pages — shown in place of the active template */
-  systemPages: {
-    settings: settingsPage,
-    profile: profilePage,
-  } as Record<string, SchemaNode>,
 };
 
 export type LauncherUIRegistry = typeof launcherUIRegistry;
