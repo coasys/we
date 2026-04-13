@@ -12,79 +12,46 @@ export const profileTemplate: TemplateSchema = {
   type: 'Column',
   props: { width: '100%', height: '100%', bg: 'neutral-50', overflow: 'auto' },
   children: [
-    // ── Header bar (title + close button) ──
-    {
-      type: 'Row',
-      props: { gap: '300', ay: 'center', ax: 'between', px: '600', pt: '600' },
-      children: [
-        {
-          type: 'Row',
-          props: { gap: '200', ay: 'center' },
-          children: [
-            { type: 'we-icon', props: { name: 'user', size: '20px', color: 'neutral-500' } },
-            { type: 'we-text', props: { fontSize: '600', fontWeight: 'bold' }, children: ['Profile'] },
-          ],
-        },
-        {
-          type: 'we-button',
-          props: {
-            variant: 'ghost',
-            size: 'sm',
-            onClick: { $action: 'templateStore.switchTemplate', args: ['default'] },
-          },
-          children: [{ type: 'we-icon', props: { name: 'x', size: '20px' } }],
-        },
-      ],
-    },
-
     // ── Cover image + overlapping profile picture ──
     {
       type: 'Column',
-      props: { width: '100%', px: '600', pt: '400' },
+      props: { width: '100%', position: 'relative' },
       children: [
-        // Cover image container (relative positioned for overlap)
+        // Cover image
+        {
+          type: 'EditableImage',
+          props: {
+            src: { $store: 'adamStore.agentProfile.coverImage' },
+            alt: 'Cover image',
+            fit: 'cover',
+            width: '100%',
+            height: '200px',
+            placeholderIcon: 'panorama',
+            onImageChange: { $action: 'adamStore.updateCoverImage', args: ['$arg'] },
+          },
+        },
+        // Profile picture — overlaps cover by half (absolute positioned)
         {
           type: 'Column',
-          props: { width: '100%', position: 'relative' },
+          props: {
+            position: 'absolute',
+            bottom: '-60px',
+            left: '24px',
+            zIndex: 1,
+          },
           children: [
-            // Cover image
             {
               type: 'EditableImage',
               props: {
-                src: { $store: 'adamStore.agentProfile.coverImage' },
-                alt: 'Cover image',
+                src: { $store: 'adamStore.agentProfile.profileImage' },
+                alt: 'Profile picture',
                 fit: 'cover',
-                width: '100%',
-                height: '200px',
-                r: '400',
-                placeholderIcon: 'panorama',
-                onImageChange: { $action: 'adamStore.updateCoverImage', args: ['$arg'] },
+                width: '120px',
+                height: '120px',
+                r: '300',
+                placeholderIcon: 'user',
+                onImageChange: { $action: 'adamStore.updateProfileImage', args: ['$arg'] },
               },
-            },
-            // Profile picture — overlaps cover by half (absolute positioned)
-            {
-              type: 'Column',
-              props: {
-                position: 'absolute',
-                bottom: '-60px',
-                left: '24px',
-                zIndex: 1,
-              },
-              children: [
-                {
-                  type: 'EditableImage',
-                  props: {
-                    src: { $store: 'adamStore.agentProfile.profileImage' },
-                    alt: 'Profile picture',
-                    fit: 'cover',
-                    width: '120px',
-                    height: '120px',
-                    r: '300',
-                    placeholderIcon: 'user',
-                    onImageChange: { $action: 'adamStore.updateProfileImage', args: ['$arg'] },
-                  },
-                },
-              ],
             },
           ],
         },
