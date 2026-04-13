@@ -4,13 +4,13 @@ import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import { useAdamStore, useRouteStore, useSpaceStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import type { Stores } from '@solid/types';
-import { Route, Router, useLocation, useNavigate } from '@solidjs/router';
+import { Navigate, Route, Router, useLocation, useNavigate } from '@solidjs/router';
 import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
 import { createEffect, createMemo, Show } from 'solid-js';
 
-type FlattenedRoute = { path: string; component: () => JSX.Element };
+type FlattenedRoute = { path: string; component: () => JSX.Element; redirect?: string };
 type ParentStackItem = { node: RouteSchema; fullPath: string; baseDepth: number };
 
 // Creates the root layout component for the router
@@ -56,7 +56,10 @@ function flattenRoutes(
 ): FlattenedRoute[] {
   return routes.flatMap((route) => {
     // Get the full route path and base depth (used for relative navigation)
-    const fullPath = route.path === '/' && parentPath ? parentPath : parentPath + route.path;
+    const fullPath =
+      route.path === '/' && parentPath
+        ? parentPath
+        : parentPath + (route.path.startsWith('/') || !parentPath ? '' : '/') + route.path;
     const baseDepth = fullPath.split('/').filter(Boolean).length;
     const currentMeta = { node: route, fullPath, baseDepth };
 
@@ -71,6 +74,12 @@ function flattenRoutes(
         return RenderSchema({ node: meta.node, stores, registry, context, children: child as JSX.Element });
       }, leaf) as JSX.Element;
     };
+
+    // Redirect routes don't render content — they navigate immediately
+    if (route.redirect) {
+      const target = parentPath + route.redirect;
+      return [{ path: fullPath, component: () => <Navigate href={target} />, redirect: target }];
+    }
 
     // If the route has children, recursively flatten them too, otherwise just return the route
     return route.routes?.length

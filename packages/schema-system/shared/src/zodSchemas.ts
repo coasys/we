@@ -242,4 +242,6 @@ export const zTemplateSchema: z.ZodType<TemplateSchema> = z
   })
   .strict();
 
-export const zRouteSchema: z.ZodType<RouteSchema> = z.object({ ...schemaNodeShape(), path: z.string() }).strict();
+export const zRouteSchema: z.ZodType<RouteSchema> = z
+  .object({ ...schemaNodeShape(), path: z.string(), redirect: z.string().optional() })
+  .strict();
