@@ -39,6 +39,7 @@ export const storeEntries: StoreEntry[] = [
     name: 'routeStore',
     state: {
       currentPath: { type: 'string' },
+      segments: { type: 'array' },
     },
     actions: ['navigate'],
   },
@@ -117,7 +118,10 @@ function generateStoresText(entries: StoreEntry[]): string {
       },
     },
     routeStore: {
-      state: { currentPath: 'string (the current route path)' },
+      state: {
+        currentPath: 'string (the current route path)',
+        segments: 'string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])',
+      },
       actions: { navigate: '(to: string, options?): navigates to a route' },
     },
     themeStore: {

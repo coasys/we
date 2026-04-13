@@ -694,6 +694,7 @@ AdamStore:
 RouteStore:
 - State:
   - currentPath: string (the current route path)
+  - segments: string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])
 - Actions:
   - navigate(to: string, options?): navigates to a route
 
