@@ -222,10 +222,13 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
         z.array(z.string()),
         z.record(
           z.string(),
-          z.object({
-            actions: z.array(z.string()).optional(),
-            state: z.array(z.string()).optional(),
-          }),
+          z.union([
+            z.literal(true),
+            z.object({
+              actions: z.array(z.string()).optional(),
+              state: z.array(z.string()).optional(),
+            }),
+          ]),
         ),
       ])
       .optional(),

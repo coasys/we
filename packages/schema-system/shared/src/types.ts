@@ -1,6 +1,6 @@
 // Pure framework-agnostic schema types
 export type SchemaProp = string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined;
-export type StoreDeclaration = Record<string, { actions?: string[]; state?: string[] }>;
+export type StoreDeclaration = Record<string, true | { actions?: string[]; state?: string[] }>;
 export type TemplateMeta = {
   name: string;
   description: string;

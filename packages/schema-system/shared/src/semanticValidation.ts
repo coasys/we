@@ -874,7 +874,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   //   Record<string, { actions?: string[]; state?: string[] }> — declares names + additional members
   const meta = (schema as Record<string, unknown>)?.meta as
     | {
-        stores?: string[] | Record<string, { actions?: string[]; state?: string[] }>;
+        stores?: string[] | Record<string, true | { actions?: string[]; state?: string[] }>;
         components?: string[];
       }
     | undefined;
@@ -891,11 +891,17 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
         // Record — add names and merge members
         for (const [name, decl] of Object.entries(meta.stores)) {
           newStoreNames.add(name);
-          const existing = newStoreMembers.get(name) ?? new Set<string>();
-          const merged = new Set(existing);
-          if (decl.actions) for (const a of decl.actions) merged.add(a);
-          if (decl.state) for (const s of decl.state) merged.add(s);
-          newStoreMembers.set(name, merged);
+          // `true` means "store exists, accept all members" — remove any global restrictions.
+          // Object with actions/state merges those as additional known members.
+          if (decl === true) {
+            newStoreMembers.delete(name);
+          } else {
+            const existing = newStoreMembers.get(name) ?? new Set<string>();
+            const merged = new Set(existing);
+            if (decl.actions) for (const a of decl.actions) merged.add(a);
+            if (decl.state) for (const s of decl.state) merged.add(s);
+            newStoreMembers.set(name, merged);
+          }
         }
       }
     }
