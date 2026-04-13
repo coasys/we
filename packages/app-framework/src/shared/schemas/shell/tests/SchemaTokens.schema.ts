@@ -1547,7 +1547,7 @@ const namedThemeTest: SchemaNode = {
 // ---------------------------------------------------------------------------
 
 const groups: { key: string; label: string; path: string; children: SchemaNode[] }[] = [
-  { key: 'data-access', label: 'Data Access', path: '/', children: [storeTest, concatTest] },
+  { key: 'data-access', label: 'Data Access', path: '/data-access', children: [storeTest, concatTest] },
   { key: 'actions', label: 'Actions', path: '/actions', children: [actionTest, argTest] },
   { key: 'operators', label: 'Operators', path: '/operators', children: [eqTest, neTest, notTest, andTest, orTest] },
   {
@@ -1621,7 +1621,7 @@ export const schemaTokensTemplate: TemplateSchema = {
     stores: ['testStore'],
   },
   type: 'Column',
-  props: { minHeight: '100%', width: '100%', p: '500', bg: 'neutral-50' },
+  props: { minHeight: '100%', width: '100%', bg: 'neutral-50' },
   children: [
     {
       type: 'Column',
@@ -1643,5 +1643,5 @@ export const schemaTokensTemplate: TemplateSchema = {
     },
     { type: '$routes' },
   ],
-  routes: groups.map(groupRoute),
+  routes: [{ path: '/', redirect: '/data-access' }, ...groups.map(groupRoute)],
 };
