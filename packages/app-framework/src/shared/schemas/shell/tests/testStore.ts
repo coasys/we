@@ -4,6 +4,8 @@ import { Ad4mModel, Model, Property } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { type Accessor, createEffect, createSignal } from 'solid-js';
 
+import { benchmarkBasePath } from './SchemaBenchmark.schema';
+
 // ---------------------------------------------------------------------------
 // Test model — lightweight AD4M model for $query testing
 // ---------------------------------------------------------------------------
@@ -122,7 +124,7 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     } else {
       // All done — return to dashboard
       benchRunning = false;
-      setTimeout(() => benchNavigate!('/'), 50);
+      setTimeout(() => benchNavigate!(benchmarkBasePath), 50);
     }
   }
 
@@ -138,16 +140,16 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
   }
 
   const benchAllRoutes = [
-    '/static-small',
-    '/static-large',
-    '/tokens-light',
-    '/tokens-heavy',
-    '/each-flat',
-    '/each-nested',
-    '/web-components',
-    '/solid-components',
-    '/deep-nesting',
-    '/mixed-realistic',
+    `${benchmarkBasePath}/static-small`,
+    `${benchmarkBasePath}/static-large`,
+    `${benchmarkBasePath}/tokens-light`,
+    `${benchmarkBasePath}/tokens-heavy`,
+    `${benchmarkBasePath}/each-flat`,
+    `${benchmarkBasePath}/each-nested`,
+    `${benchmarkBasePath}/web-components`,
+    `${benchmarkBasePath}/solid-components`,
+    `${benchmarkBasePath}/deep-nesting`,
+    `${benchmarkBasePath}/mixed-realistic`,
   ];
 
   function benchRunAll() {
