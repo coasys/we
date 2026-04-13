@@ -1,11 +1,12 @@
 import { useNavigate } from '@solidjs/router';
-import { Accessor, createContext, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 type NavigateFunction = ReturnType<typeof useNavigate>;
 
 export interface RouteStore {
   // State
   currentPath: Accessor<string>;
+  segments: Accessor<string[]>;
 
   // Setters
   setNavigateFunction: (navigate: NavigateFunction) => void;
@@ -20,6 +21,7 @@ const RouteContext = createContext<RouteStore>();
 export function RouteStoreProvider(props: ParentProps) {
   const [currentPath, setCurrentPath] = createSignal('');
   const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
+  const segments = createMemo(() => currentPath().split('/').filter(Boolean));
 
   function navigate(to: string, options?: Record<string, unknown>) {
     // Skip if already on target path
@@ -33,6 +35,7 @@ export function RouteStoreProvider(props: ParentProps) {
   const store: RouteStore = {
     // State
     currentPath,
+    segments,
 
     // Setters
     setNavigateFunction,
