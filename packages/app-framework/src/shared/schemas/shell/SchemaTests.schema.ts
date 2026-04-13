@@ -13,7 +13,10 @@
  */
 import type { RouteSchema, SchemaNode, TemplateSchema } from '@we/schema-shared';
 
-import { schemaBenchmarkTemplate, schemaMutationsTemplate, schemaRoutingTemplate, schemaTokensTemplate } from './tests';
+import { schemaBenchmarkTemplate } from './tests/SchemaBenchmark.schema';
+import { schemaMutationsTemplate } from './tests/SchemaMutations.schema';
+import { schemaRoutingTemplate } from './tests/SchemaRouting.schema';
+import { schemaTokensTemplate } from './tests/SchemaTokens.schema';
 
 // ---------------------------------------------------------------------------
 // Test sections metadata
@@ -94,6 +97,8 @@ export const schemaTestsTemplate: TemplateSchema = {
     name: 'Testing',
     description: 'Schema test suites — benchmark, tokens, mutations, routing',
     icon: 'flask',
+    stores: { testStore: true, templateStore: true },
+    components: ['BenchmarkTimer'],
   },
   type: 'Column',
   props: { width: '100%', minHeight: '100%', p: '500', bg: 'neutral-50', gap: '400' },
