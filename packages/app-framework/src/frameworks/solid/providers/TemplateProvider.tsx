@@ -1,11 +1,11 @@
 import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { getModel } from '@shared/registries/modelRegistry';
-import { createTestStore } from '@shared/schemas/tests/testStore';
+import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import { useAdamStore, useRouteStore, useSpaceStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router, useLocation, useNavigate } from '@solidjs/router';
-import type { RouteSchema, SchemaNode, TemplateSchema } from '@we/schema-shared';
+import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
 import { createEffect, createMemo, Show } from 'solid-js';
@@ -14,7 +14,7 @@ type FlattenedRoute = { path: string; component: () => JSX.Element };
 type ParentStackItem = { node: RouteSchema; fullPath: string; baseDepth: number };
 
 // Creates the root layout component for the router
-function createLayout(stores: Stores, shellSchema: TemplateSchema, systemPages: Record<string, SchemaNode>) {
+function createLayout(stores: Stores, shellSchema: TemplateSchema) {
   return function Layout(props: ParentProps): JSX.Element {
     // Access the router hooks now we're inside the router context
     const navigate = useNavigate();
@@ -31,23 +31,15 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema, systemPages: 
         {/* Shell chrome (boot screen, sidebar) — always rendered */}
         <RenderSchema node={shellSchema} stores={stores} registry={registry} />
 
-        {/* Main content area — system page takes priority over template */}
+        {/* Main content area — keyed on template ID to force clean remount on switch */}
         <div style={{ 'margin-left': '66px', width: 'calc(100% - 66px)' }}>
-          <Show
-            when={stores.adamStore.systemPage()}
-            keyed
-            fallback={
-              <Show when={stores.templateStore.currentTemplate.id} keyed>
-                <RenderSchema
-                  node={stores.templateStore.currentTemplate}
-                  stores={stores}
-                  registry={registry}
-                  children={props.children}
-                />
-              </Show>
-            }
-          >
-            {(page) => <RenderSchema node={systemPages[page]} stores={stores} registry={registry} />}
+          <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+            <RenderSchema
+              node={stores.templateStore.currentTemplate}
+              stores={stores}
+              registry={registry}
+              children={props.children}
+            />
           </Show>
         </div>
       </>
@@ -150,29 +142,23 @@ export default function TemplateProvider() {
     children: [launcherUIRegistry.bootScreen, launcherUIRegistry.shell],
   };
 
+  // "Not found" fallback node for routed templates
+  const notFoundNode = {
+    type: 'Column',
+    props: { ax: 'center', bg: 'neutral-0', p: '500' },
+    children: [{ type: 'we-text', props: { size: '600' }, children: ['Page not found :_('] }],
+  };
+
   // Return the router with the root layout and routes
   return (
-    <Router root={createLayout(stores, shellSchema, launcherUIRegistry.systemPages)}>
+    <Router root={createLayout(stores, shellSchema)}>
       {routes().map((route) => (
         <Route path={route.path} component={route.component} />
       ))}
-      {/* Fallback in case the schema doesn't define a wildcard route */}
-      {!routes().find((route) => route.path === '*') && (
-        <Route
-          path="*"
-          component={() =>
-            RenderSchema({
-              node: {
-                type: 'Column',
-                props: { ax: 'center', bg: 'neutral-0', p: '500' },
-                children: [{ type: 'we-text', props: { size: '600' }, children: ['Page not found :_('] }],
-              },
-              stores,
-              registry,
-            })
-          }
-        />
-      )}
+      <Route
+        path="*"
+        component={() => (routes().length > 0 ? RenderSchema({ node: notFoundNode, stores, registry }) : null)}
+      />
     </Router>
   );
 }
