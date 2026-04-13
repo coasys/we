@@ -11,7 +11,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import type { SetStoreFunction } from 'solid-js/store';
 
-import { deepClone } from '../../utils';
+import { deepClone } from '../../../utils';
 
 // ---------------------------------------------------------------------------
 // Mutation functions

@@ -23,6 +23,9 @@
  */
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
+/** Base path when mounted under the testing template */
+export const benchmarkBasePath = '/benchmark';
+
 // ---------------------------------------------------------------------------
 // Helpers — generate benchmark content programmatically
 // ---------------------------------------------------------------------------
@@ -271,7 +274,7 @@ function benchRoute(title: string, timerLabel: string, children: SchemaNode[]): 
           props: {
             variant: 'ghost',
             size: 'sm',
-            onClick: { $action: 'routeStore.navigate', args: ['/'] },
+            onClick: { $action: 'routeStore.navigate', args: [benchmarkBasePath] },
           },
           children: [{ type: 'we-icon', props: { name: 'arrow-left', size: 'sm' } }],
         },
@@ -788,16 +791,31 @@ const mixedRealisticRoute = {
 // Dashboard route — results summary + navigation
 // ---------------------------------------------------------------------------
 const benchmarkRoutes = [
-  { path: '/static-small', key: 'static-small', label: 'Static Small (50)' },
-  { path: '/static-large', key: 'static-large', label: 'Static Large (200)' },
-  { path: '/tokens-light', key: 'tokens-light', label: 'Tokens Light' },
-  { path: '/tokens-heavy', key: 'tokens-heavy', label: 'Tokens Heavy' },
-  { path: '/each-flat', key: 'each-flat', label: '$each Flat (100)' },
-  { path: '/each-nested', key: 'each-nested', label: 'Nested $each (10×10)' },
-  { path: '/web-components', key: 'web-components', label: 'Web Components (100)' },
-  { path: '/solid-components', key: 'solid-components', label: 'Solid Components (100)' },
-  { path: '/deep-nesting', key: 'deep-nesting', label: 'Deep Nesting (30)' },
-  { path: '/mixed-realistic', key: 'mixed-realistic', label: 'Mixed Realistic' },
+  { path: '/static-small', key: 'static-small', label: 'Static Small (50)', nav: `${benchmarkBasePath}/static-small` },
+  { path: '/static-large', key: 'static-large', label: 'Static Large (200)', nav: `${benchmarkBasePath}/static-large` },
+  { path: '/tokens-light', key: 'tokens-light', label: 'Tokens Light', nav: `${benchmarkBasePath}/tokens-light` },
+  { path: '/tokens-heavy', key: 'tokens-heavy', label: 'Tokens Heavy', nav: `${benchmarkBasePath}/tokens-heavy` },
+  { path: '/each-flat', key: 'each-flat', label: '$each Flat (100)', nav: `${benchmarkBasePath}/each-flat` },
+  { path: '/each-nested', key: 'each-nested', label: 'Nested $each (10×10)', nav: `${benchmarkBasePath}/each-nested` },
+  {
+    path: '/web-components',
+    key: 'web-components',
+    label: 'Web Components (100)',
+    nav: `${benchmarkBasePath}/web-components`,
+  },
+  {
+    path: '/solid-components',
+    key: 'solid-components',
+    label: 'Solid Components (100)',
+    nav: `${benchmarkBasePath}/solid-components`,
+  },
+  { path: '/deep-nesting', key: 'deep-nesting', label: 'Deep Nesting (30)', nav: `${benchmarkBasePath}/deep-nesting` },
+  {
+    path: '/mixed-realistic',
+    key: 'mixed-realistic',
+    label: 'Mixed Realistic',
+    nav: `${benchmarkBasePath}/mixed-realistic`,
+  },
 ];
 
 const dashboardRoute = {
@@ -864,7 +882,7 @@ const dashboardRoute = {
           cursor: 'pointer',
           border: '1px solid neutral-200',
           hoverProps: { bg: 'primary-25', borderColor: 'primary-300' },
-          onClick: { $action: 'routeStore.navigate', args: [route.path] },
+          onClick: { $action: 'routeStore.navigate', args: [route.nav] },
         },
         children: [
           {
@@ -878,7 +896,7 @@ const dashboardRoute = {
                   text: 'Run',
                   variant: 'primary',
                   size: 'sm',
-                  onClick: { $action: 'routeStore.navigate', args: [route.path] },
+                  onClick: { $action: 'routeStore.navigate', args: [route.nav] },
                 },
               },
             ],

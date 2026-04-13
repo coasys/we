@@ -22,6 +22,9 @@
 
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
 
+/** Base path when mounted under the testing template */
+export const tokensBasePath = '/tokens';
+
 // ---------------------------------------------------------------------------
 // Helpers — reusable test section building blocks
 // ---------------------------------------------------------------------------
@@ -1593,13 +1596,14 @@ function groupRoute(group: (typeof groups)[number]): RouteSchema {
 
 /** Build a nav tab for a group */
 function navTab(group: (typeof groups)[number]): SchemaNode {
-  const isActive = { $eq: [{ $store: 'routeStore.currentPath' }, group.path] };
+  const navPath = tokensBasePath + group.path;
+  const isActive = { $eq: [{ $store: 'routeStore.currentPath' }, navPath] };
 
   return {
     type: 'we-button',
     props: {
       variant: { $if: { condition: isActive, then: 'primary', else: 'secondary' } },
-      onClick: { $action: 'routeStore.navigate', args: [group.path] },
+      onClick: { $action: 'routeStore.navigate', args: [navPath] },
     },
     children: [group.label],
   };
