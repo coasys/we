@@ -680,7 +680,6 @@ AdamStore:
   - bootState: string
   - passwordError: string | undefined
   - loginLoading: boolean
-  - systemPage: 'settings' | 'profile' | null (active system page, null means template is shown)
   - agentProfile: AgentProfile | null (the current agent profile with name, bio, images, etc.)
 - Actions:
   - navigate(to: string, options?): navigates to a route
@@ -688,7 +687,6 @@ AdamStore:
   - createSpace(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup
   - login(password: string): logs in the agent with password
   - logout(): locks the agent and returns to login screen
-  - setSystemPage(page: 'settings' | 'profile' | null): shows a system page or returns to template
   - updateAgentProfile(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)
   - updateProfileImage(imageFile: File): uploads and sets the profile image
   - updateCoverImage(imageFile: File): uploads and sets the cover image
@@ -709,7 +707,8 @@ ThemeStore:
 
 TemplateStore:
 - State:
-  - templates: array of TemplateSchema objects
+  - templates: array of TemplateSchema objects (user-facing templates)
+  - shellTemplates: array of TemplateSchema objects (static system pages: profile, settings, tests)
   - currentTemplate: TemplateSchema (the active template)
 - Actions:
   - updateTemplate(newTemplate: TemplateSchema): updates the current template

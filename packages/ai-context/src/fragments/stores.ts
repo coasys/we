@@ -19,7 +19,6 @@ export const storeEntries: StoreEntry[] = [
       bootState: { type: 'string' },
       passwordError: { type: 'string' },
       loginLoading: { type: 'boolean' },
-      systemPage: { type: 'string' },
       agentProfile: {
         type: 'object',
         properties: ['firstName', 'lastName', 'handle', 'bio', 'location', 'profileImage', 'coverImage'],
@@ -31,7 +30,6 @@ export const storeEntries: StoreEntry[] = [
       'createSpace',
       'login',
       'logout',
-      'setSystemPage',
       'updateAgentProfile',
       'updateProfileImage',
       'updateCoverImage',
@@ -56,6 +54,7 @@ export const storeEntries: StoreEntry[] = [
     name: 'templateStore',
     state: {
       templates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+      shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
     },
     actions: ['updateTemplate', 'switchTemplate', 'removeTemplate', 'saveTemplate'],
@@ -102,7 +101,6 @@ function generateStoresText(entries: StoreEntry[]): string {
         bootState: 'string',
         passwordError: 'string | undefined',
         loginLoading: 'boolean',
-        systemPage: "'settings' | 'profile' | null (active system page, null means template is shown)",
         agentProfile: 'AgentProfile | null (the current agent profile with name, bio, images, etc.)',
       },
       actions: {
@@ -112,7 +110,6 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
         login: '(password: string): logs in the agent with password',
         logout: '(): locks the agent and returns to login screen',
-        setSystemPage: "(page: 'settings' | 'profile' | null): shows a system page or returns to template",
         updateAgentProfile:
           '(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)',
         updateProfileImage: '(imageFile: File): uploads and sets the profile image',
@@ -135,7 +132,8 @@ function generateStoresText(entries: StoreEntry[]): string {
     },
     templateStore: {
       state: {
-        templates: 'array of TemplateSchema objects',
+        templates: 'array of TemplateSchema objects (user-facing templates)',
+        shellTemplates: 'array of TemplateSchema objects (static system pages: profile, settings, tests)',
         currentTemplate: 'TemplateSchema (the active template)',
       },
       actions: {

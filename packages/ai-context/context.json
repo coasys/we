@@ -4155,9 +4155,6 @@
         "loginLoading": {
           "type": "boolean"
         },
-        "systemPage": {
-          "type": "string"
-        },
         "agentProfile": {
           "type": "object",
           "properties": [
@@ -4177,7 +4174,6 @@
         "createSpace",
         "login",
         "logout",
-        "setSystemPage",
         "updateAgentProfile",
         "updateProfileImage",
         "updateCoverImage"
@@ -4223,6 +4219,17 @@
       "name": "templateStore",
       "state": {
         "templates": {
+          "type": "array",
+          "properties": [
+            "id",
+            "meta",
+            "type",
+            "props",
+            "children",
+            "routes"
+          ]
+        },
+        "shellTemplates": {
           "type": "array",
           "properties": [
             "id",
