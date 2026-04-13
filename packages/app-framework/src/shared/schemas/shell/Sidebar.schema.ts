@@ -75,18 +75,18 @@ export const sidebar: SchemaNode = {
             onClick: { $action: 'templateStore.switchTemplate', args: ['profile'] },
           },
           {
-            id: 'schema-tests',
-            icon: 'test-tube',
-            label: 'Schema Tests',
-            active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'schema-tests'] },
-            onClick: { $action: 'templateStore.switchTemplate', args: ['schema-tests'] },
-          },
-          {
             id: 'settings',
             icon: 'gear',
             label: 'Settings',
             active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'settings'] },
             onClick: { $action: 'templateStore.switchTemplate', args: ['settings'] },
+          },
+          {
+            id: 'schema-tests',
+            icon: 'flask',
+            label: 'Schema Tests',
+            active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'schema-tests'] },
+            onClick: { $action: 'templateStore.switchTemplate', args: ['schema-tests'] },
           },
           {
             id: 'logout',

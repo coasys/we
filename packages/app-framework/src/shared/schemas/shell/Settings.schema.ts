@@ -9,15 +9,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 export const settingsTemplate: TemplateSchema = {
   meta: { name: 'Settings', description: 'Account settings', icon: 'gear' },
   type: 'Column',
-  props: {
-    p: '600',
-    gap: '600',
-    mx: 'auto',
-    width: '100%',
-    overflow: 'auto',
-    height: '100%',
-    bg: 'neutral-50',
-  },
+  props: { p: '600', gap: '600', mx: 'auto', width: '100%', overflow: 'auto', height: '100%', bg: 'neutral-50' },
   children: [
     // Header
     {

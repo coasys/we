@@ -6,7 +6,6 @@
  * with routes to the individual test templates.
  *
  * Routes:
- *   /            — landing page with test section cards
  *   /benchmark/* — performance benchmark suite
  *   /tokens/*    — schema token integration tests
  *   /mutations/* — updateSchema diffing engine tests
@@ -22,11 +21,11 @@ import { schemaBenchmarkTemplate, schemaMutationsTemplate, schemaRoutingTemplate
 
 const sections = [
   {
-    id: 'benchmark',
-    label: 'Benchmark',
+    id: 'benchmarks',
+    label: 'Benchmarks',
     description: 'Performance benchmark suite for schema renderer',
     icon: 'timer',
-    path: '/benchmark',
+    path: '/benchmarks',
   },
   {
     id: 'tokens',
@@ -55,46 +54,22 @@ const sections = [
 // Landing page
 // ---------------------------------------------------------------------------
 
-function sectionCard(section: (typeof sections)[number]): SchemaNode {
+function sectionButton(section: (typeof sections)[number]): SchemaNode {
   return {
-    type: 'Column',
+    type: 'we-button',
     props: {
-      p: '400',
-      gap: '200',
-      bg: 'neutral-0',
-      r: '400',
-      cursor: 'pointer',
-      border: '1px solid neutral-200',
-      hoverProps: { bg: 'primary-25', borderColor: 'primary-300' },
+      variant: {
+        $if: {
+          condition: { $eq: [{ $store: 'routeStore.segments.0' }, section.id] },
+          then: 'primary',
+          else: 'secondary',
+        },
+      },
       onClick: { $action: 'routeStore.navigate', args: [section.path] },
     },
-    children: [
-      {
-        type: 'Row',
-        props: { gap: '200', ay: 'center' },
-        children: [
-          { type: 'we-icon', props: { name: section.icon, size: 'lg', color: 'primary-600' } },
-          {
-            type: 'we-text',
-            props: { fontWeight: '600', fontSize: '500', color: 'neutral-800' },
-            children: [section.label],
-          },
-        ],
-      },
-      { type: 'we-text', props: { color: 'neutral-500', fontSize: '300' }, children: [section.description] },
-    ],
+    children: [{ type: 'we-icon', props: { name: section.icon, size: 'sm' } }, section.label],
   };
 }
-
-const landingRoute: RouteSchema = {
-  path: '/',
-  type: 'Column',
-  props: {
-    gap: '300',
-    styles: { display: 'grid', 'grid-template-columns': 'repeat(auto-fill, minmax(280px, 1fr))' },
-  },
-  children: sections.map(sectionCard),
-};
 
 // ---------------------------------------------------------------------------
 // Sub-routes — each wraps a test template's content
@@ -119,41 +94,13 @@ export const schemaTestsTemplate: TemplateSchema = {
     name: 'Testing',
     description: 'Schema test suites — benchmark, tokens, mutations, routing',
     icon: 'flask',
-    stores: {
-      testStore: {},
-      templateStore: {
-        actions: [
-          'addChild',
-          'removeChild',
-          'changeProp',
-          'changeType',
-          'addRouteChild',
-          'removeFromMiddle',
-          'reorderChildren',
-          'deepNestedProp',
-          'multiMutate',
-          'noopMutate',
-          'changeText',
-          'addProp',
-          'removeProp',
-          'toggleTheme',
-          'invalidMutate',
-        ],
-      },
-    },
-    components: ['BenchmarkTimer'],
   },
   type: 'Column',
-  props: { width: '100%', height: '100%', p: '500', bg: 'neutral-50', gap: '400' },
+  props: { width: '100%', minHeight: '100%', p: '500', bg: 'neutral-50', gap: '400' },
   children: [
-    // {
-    //   type: 'we-text',
-    //   props: { fontSize: '700', fontWeight: '700', color: 'primary-800' },
-    //   children: ['Schema Tests'],
-    // },
     {
       type: 'Column',
-      props: { gap: '300' },
+      props: { gap: '400' },
       children: [
         {
           type: 'Row',
@@ -167,19 +114,16 @@ export const schemaTestsTemplate: TemplateSchema = {
             },
           ],
         },
-        {
-          type: 'we-text',
-          props: { color: 'neutral-600' },
-          children: ['Select a test suite to run'],
-        },
+        // { type: 'we-text', props: { color: 'neutral-600' }, children: ['Select a test suite to run'] },
+        { type: 'Row', props: { gap: '300', wrap: true }, children: sections.map(sectionButton) },
         { type: 'we-divider' },
       ],
     },
     { type: '$routes' },
   ],
   routes: [
-    landingRoute,
-    testRoute('/benchmark', schemaBenchmarkTemplate),
+    { path: '/', redirect: '/benchmarks' },
+    testRoute('/benchmarks', schemaBenchmarkTemplate),
     testRoute('/tokens', schemaTokensTemplate),
     testRoute('/mutations', schemaMutationsTemplate),
     testRoute('/routing', schemaRoutingTemplate),
