@@ -49,6 +49,10 @@ const styles = css`
     display: flex;
     flex-direction: column;
   }
+
+  :host([error]:not([error=''])) {
+    --we-ring-color: var(--we-color-danger-500);
+  }
 `;
 
 @customElement('we-form-field')
@@ -59,7 +63,7 @@ export default class FormField extends DesignSystemElement {
 
   @property({ type: String }) label = '';
   @property({ type: String }) description = '';
-  @property({ type: String }) error = '';
+  @property({ type: String, reflect: true }) error = '';
   @property({ type: Boolean, reflect: true }) required = false;
   @property({ type: String, reflect: true }) size: FormFieldSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
