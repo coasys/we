@@ -90,7 +90,7 @@ const header: SchemaNode = {
     {
       type: 'we-text',
       props: { fontSize: '700', fontWeight: '700', color: 'primary-800' },
-      children: ['Schema Mutation Tests'],
+      children: ['Mutation Tests'],
     },
     {
       type: 'we-text',

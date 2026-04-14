@@ -1630,7 +1630,7 @@ export const schemaTokensTemplate: TemplateSchema = {
         {
           type: 'we-text',
           props: { fontSize: '700', fontWeight: '700', color: 'primary-800' },
-          children: ['Schema Token Integration Tests'],
+          children: ['Token Integration Tests'],
         },
         {
           type: 'we-text',

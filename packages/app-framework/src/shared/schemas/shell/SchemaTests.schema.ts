@@ -105,7 +105,7 @@ export const schemaTestsTemplate: TemplateSchema = {
   children: [
     {
       type: 'Column',
-      props: { gap: '400' },
+      props: { gap: '300' },
       children: [
         {
           type: 'Row',
@@ -119,8 +119,12 @@ export const schemaTestsTemplate: TemplateSchema = {
             },
           ],
         },
-        // { type: 'we-text', props: { color: 'neutral-600' }, children: ['Select a test suite to run'] },
-        { type: 'Row', props: { gap: '300', wrap: true }, children: sections.map(sectionButton) },
+        {
+          type: 'we-text',
+          props: { color: 'neutral-600' },
+          children: ['Integration test suite for the schema system'],
+        },
+        { type: 'Row', props: { gap: '300', py: '200', wrap: true }, children: sections.map(sectionButton) },
         { type: 'we-divider' },
       ],
     },
