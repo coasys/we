@@ -18,14 +18,20 @@ export const defaultTemplate: TemplateSchema = {
     icon: 'layout',
   },
   type: 'Column',
-  props: { width: '100%', height: '100%', overflow: 'auto', bg: 'neutral-50' },
-  children: [{ type: '$routes' }],
+  props: { width: '100%', minHeight: '100%', ax: 'center', bg: 'neutral-50' },
+  children: [
+    {
+      type: 'Column',
+      props: { maxWidth: '1200px', width: '100%', bg: 'neutral-50', p: '500', gap: '400' },
+      children: [{ type: '$routes' }],
+    },
+  ],
   routes: [
     // ── Welcome / Home ──
     {
       path: '/',
       type: 'Column',
-      props: { p: '600', gap: '600', maxWidth: '900px', mx: 'auto', width: '100%' },
+      props: { gap: '600', maxWidth: '900px', mx: 'auto', width: '100%' },
       children: [
         // Header
         {

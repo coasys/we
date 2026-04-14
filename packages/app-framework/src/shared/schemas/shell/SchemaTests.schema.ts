@@ -101,34 +101,40 @@ export const schemaTestsTemplate: TemplateSchema = {
     components: ['BenchmarkTimer'],
   },
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', p: '500', bg: 'neutral-50', gap: '400' },
+  props: { width: '100%', minHeight: '100%', ax: 'center', bg: 'neutral-50' },
   children: [
     {
       type: 'Column',
-      props: { gap: '300' },
+      props: { maxWidth: '1200px', width: '100%', bg: 'neutral-50', p: '500', gap: '400' },
       children: [
         {
-          type: 'Row',
-          props: { gap: '200', ay: 'center' },
+          type: 'Column',
+          props: { gap: '300' },
           children: [
-            { type: 'we-icon', props: { name: 'flask', size: 'xl', color: 'primary-700' } },
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                { type: 'we-icon', props: { name: 'flask', size: 'xl', color: 'primary-700' } },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '700', fontWeight: '700', color: 'primary-800' },
+                  children: ['Schema Tests'],
+                },
+              ],
+            },
             {
               type: 'we-text',
-              props: { fontSize: '700', fontWeight: '700', color: 'primary-800' },
-              children: ['Schema Tests'],
+              props: { color: 'neutral-600' },
+              children: ['Integration test suite for the schema system'],
             },
+            { type: 'Row', props: { gap: '300', py: '200', wrap: true }, children: sections.map(sectionButton) },
+            { type: 'we-divider' },
           ],
         },
-        {
-          type: 'we-text',
-          props: { color: 'neutral-600' },
-          children: ['Integration test suite for the schema system'],
-        },
-        { type: 'Row', props: { gap: '300', py: '200', wrap: true }, children: sections.map(sectionButton) },
-        { type: 'we-divider' },
+        { type: '$routes' },
       ],
     },
-    { type: '$routes' },
   ],
   routes: [
     { path: '/', redirect: '/benchmarks' },

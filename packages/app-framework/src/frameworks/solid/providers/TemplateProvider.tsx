@@ -32,7 +32,7 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
         <RenderSchema node={shellSchema} stores={stores} registry={registry} />
 
         {/* Main content area — keyed on template ID to force clean remount on switch */}
-        <div style={{ 'margin-left': '66px', width: 'calc(100% - 66px)' }}>
+        <div style={{ 'margin-left': '66px', width: 'calc(100% - 66px)', height: '100vh', 'overflow-y': 'auto', 'scrollbar-gutter': 'stable' }}>
           <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
             <RenderSchema
               node={stores.templateStore.currentTemplate}
