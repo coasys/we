@@ -85,7 +85,7 @@ export const defaultTemplate: TemplateSchema = {
                             width: '200px',
                             cursor: 'pointer',
                             onClick: {
-                              $action: 'adamStore.navigate',
+                              $action: 'routeStore.navigate',
                               args: [
                                 {
                                   $concat: [
@@ -172,7 +172,7 @@ export const defaultTemplate: TemplateSchema = {
                             width: '200px',
                             cursor: 'pointer',
                             onClick: {
-                              $action: 'adamStore.navigate',
+                              $action: 'routeStore.navigate',
                               args: [
                                 {
                                   $concat: [
@@ -425,6 +425,289 @@ export const defaultTemplate: TemplateSchema = {
               },
             ],
           },
+        },
+      ],
+    },
+
+    // ── Space Detail Page (dynamic) ──
+    {
+      path: '/space/:spaceId',
+      type: 'Column',
+      props: { gap: '500', maxWidth: '900px', mx: 'auto', width: '100%' },
+      children: [
+        // Back link
+        {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            text: '← Back',
+            onClick: { $action: 'routeStore.navigate', args: ['/'] },
+          },
+        },
+
+        // Space header
+        {
+          type: '$if',
+          props: {
+            condition: { $store: 'spaceStore.loading' },
+            then: {
+              type: 'we-text',
+              props: { fontSize: '400', color: 'neutral-400' },
+              children: ['Loading space...'],
+            },
+            else: {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '300', ay: 'center' },
+                  children: [
+                    { type: 'we-icon', props: { name: 'globe', color: 'primary-500', size: '24px' } },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '800', fontWeight: 'bold' },
+                      children: [{ $store: 'spaceStore.space.name' }],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $store: 'spaceStore.space.description' },
+                    then: {
+                      type: 'we-text',
+                      props: { fontSize: '400', color: 'neutral-500' },
+                      children: [{ $store: 'spaceStore.space.description' }],
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+
+        // Tab navigation
+        {
+          type: 'Row',
+          props: { gap: '100', borderBottom: 'neutral-200' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                text: 'Posts',
+                onClick: { $action: 'routeStore.navigate', args: ['./posts'] },
+              },
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                text: 'Members',
+                onClick: { $action: 'routeStore.navigate', args: ['./members'] },
+              },
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                text: 'About',
+                onClick: { $action: 'routeStore.navigate', args: ['./about'] },
+              },
+            },
+          ],
+        },
+
+        // Subroute outlet
+        { type: '$routes' },
+      ],
+      routes: [
+        // Default → redirect to posts
+        { path: '/', type: 'Column', redirect: './posts' },
+
+        // ── Posts subroute ──
+        {
+          path: '/posts',
+          type: 'Column',
+          props: { gap: '400' },
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $store: 'spaceStore.posts.length' },
+                then: {
+                  type: 'Column',
+                  props: { gap: '400' },
+                  children: [
+                    {
+                      type: '$each',
+                      props: {
+                        items: { $store: 'spaceStore.posts' },
+                        as: 'post',
+                      },
+                      children: [
+                        {
+                          type: 'Column',
+                          props: { p: '400', r: '400', bg: 'neutral-100', gap: '200' },
+                          children: [
+                            {
+                              type: '$if',
+                              props: {
+                                condition: '$post.text',
+                                then: {
+                                  type: 'we-text',
+                                  props: { fontSize: '400' },
+                                  children: ['$post.text'],
+                                },
+                              },
+                            },
+                            {
+                              type: '$if',
+                              props: {
+                                condition: '$post.timestamp',
+                                then: {
+                                  type: 'we-text',
+                                  props: { fontSize: '200', color: 'neutral-400' },
+                                  children: ['$post.timestamp'],
+                                },
+                              },
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                else: {
+                  type: 'Column',
+                  props: { p: '600', ay: 'center', ax: 'center', gap: '200' },
+                  children: [
+                    { type: 'we-icon', props: { name: 'chat-square-text', color: 'neutral-300', size: '48px' } },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400', color: 'neutral-400' },
+                      children: ['No posts yet'],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+
+        // ── Members subroute ──
+        {
+          path: '/members',
+          type: 'Column',
+          props: { gap: '300' },
+          children: [
+            {
+              type: 'Column',
+              props: { p: '600', ay: 'center', ax: 'center', gap: '200' },
+              children: [
+                { type: 'we-icon', props: { name: 'people', color: 'neutral-300', size: '48px' } },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '400', color: 'neutral-400' },
+                  children: ['Members list coming soon'],
+                },
+              ],
+            },
+          ],
+        },
+
+        // ── About subroute ──
+        {
+          path: '/about',
+          type: 'Column',
+          props: { gap: '400' },
+          children: [
+            {
+              type: 'Column',
+              props: { p: '400', r: '400', bg: 'neutral-100', gap: '300' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '200' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-500' },
+                      children: ['Name'],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400' },
+                      children: [{ $store: 'spaceStore.space.name' }],
+                    },
+                  ],
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '200' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-500' },
+                      children: ['Description'],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400' },
+                      children: [
+                        {
+                          $if: {
+                            condition: { $store: 'spaceStore.space.description' },
+                            then: { $store: 'spaceStore.space.description' },
+                            else: 'No description',
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '200' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-500' },
+                      children: ['UUID'],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400', fontFamily: 'mono', color: 'neutral-400' },
+                      children: [{ $store: 'spaceStore.space.uuid' }],
+                    },
+                  ],
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $store: 'spaceStore.space.visibility' },
+                    then: {
+                      type: 'Row',
+                      props: { gap: '200' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-500' },
+                          children: ['Visibility'],
+                        },
+                        {
+                          type: 'we-text',
+                          props: { fontSize: '400' },
+                          children: [{ $store: 'spaceStore.space.visibility' }],
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
         },
       ],
     },

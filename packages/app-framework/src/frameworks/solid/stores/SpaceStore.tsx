@@ -4,13 +4,13 @@ import { CollectionBlock, ImageBlock, Space, TextBlock, WeNode } from '@we/model
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 type BlockType = ImageBlock | TextBlock | CollectionBlock;
-type Post = Partial<BlockType & { children?: Post[] }>;
+type Post = Partial<BlockType>;
 
 export interface SpaceStore {
   // State
   spaceId: Accessor<string>;
   perspective: Accessor<PerspectiveProxy | null>;
-  space: Accessor<Partial<Space>>;
+  space: Accessor<Partial<Space | null>>;
   posts: Accessor<Post[]>;
   loading: Accessor<boolean>;
 
@@ -34,29 +34,29 @@ export interface SpaceStore {
   toggleBackground: (backgroundName: string) => void;
 }
 
-// Hardcoded user locations for development
-// TODO: Load from space perspective in production
-const MOCK_USER_LOCATIONS = [
-  { id: '1', name: 'Alice', latitude: 40.7128, longitude: -74.006, color: '#00ffff' }, // New York
-  { id: '2', name: 'Bob', latitude: 51.5074, longitude: -0.1278, color: '#ff00ff' }, // London
-  { id: '3', name: 'Charlie', latitude: 35.6762, longitude: 139.6503, color: '#ffff00' }, // Tokyo
-  { id: '4', name: 'Diana', latitude: -33.8688, longitude: 151.2093, color: '#00ff00' }, // Sydney
-  { id: '5', name: 'Eve', latitude: 48.8566, longitude: 2.3522, color: '#ff6600' }, // Paris
-  { id: '6', name: 'Frank', latitude: -23.5505, longitude: -46.6333, color: '#ff0066' }, // São Paulo
-  { id: '7', name: 'Grace', latitude: 55.7558, longitude: 37.6173, color: '#6600ff' }, // Moscow
-  { id: '8', name: 'Henry', latitude: 1.3521, longitude: 103.8198, color: '#66ff00' }, // Singapore
-];
+// // Hardcoded user locations for development
+// // TODO: Load from space perspective in production
+// const MOCK_USER_LOCATIONS = [
+//   { id: '1', name: 'Alice', latitude: 40.7128, longitude: -74.006, color: '#00ffff' }, // New York
+//   { id: '2', name: 'Bob', latitude: 51.5074, longitude: -0.1278, color: '#ff00ff' }, // London
+//   { id: '3', name: 'Charlie', latitude: 35.6762, longitude: 139.6503, color: '#ffff00' }, // Tokyo
+//   { id: '4', name: 'Diana', latitude: -33.8688, longitude: 151.2093, color: '#00ff00' }, // Sydney
+//   { id: '5', name: 'Eve', latitude: 48.8566, longitude: 2.3522, color: '#ff6600' }, // Paris
+//   { id: '6', name: 'Frank', latitude: -23.5505, longitude: -46.6333, color: '#ff0066' }, // São Paulo
+//   { id: '7', name: 'Grace', latitude: 55.7558, longitude: 37.6173, color: '#6600ff' }, // Moscow
+//   { id: '8', name: 'Henry', latitude: 1.3521, longitude: 103.8198, color: '#66ff00' }, // Singapore
+// ];
 
-const defaultSpace: Partial<Space> = {
-  author: '',
-  timestamp: '',
-  name: '',
-  description: '',
-  uuid: '',
-  visibility: '',
-  locations: [],
-  userLocations: JSON.stringify(MOCK_USER_LOCATIONS),
-};
+// const defaultSpace: Partial<Space> = {
+//   author: '',
+//   timestamp: '',
+//   name: '',
+//   description: '',
+//   uuid: '',
+//   visibility: '',
+//   locations: [],
+//   // userLocations: JSON.stringify(MOCK_USER_LOCATIONS),
+// };
 
 const SpaceContext = createContext<SpaceStore>();
 
@@ -67,7 +67,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   // State
   const [spaceId, setSpaceId] = createSignal('');
   const [perspective, setPerspective] = createSignal<PerspectiveProxy | null>(null);
-  const [space, setSpace] = createSignal<Partial<Space>>(defaultSpace);
+  const [space, setSpace] = createSignal<Partial<Space | null>>(null);
   const [posts, setPosts] = createSignal<Post[]>([]);
   const [loading, setLoading] = createSignal(true);
 
@@ -121,11 +121,13 @@ export function SpaceStoreProvider(props: ParentProps) {
   // Actions
   async function getSpace(): Promise<void> {
     try {
+      console.log('[SpaceStore] getSpace called with spaceId:', spaceId());
       setLoading(true);
       if (!adamStore.adamClient() || !spaceId()) return;
       const spacePerspective = await adamStore.adamClient()!.perspective.byUUID(spaceId());
       const [spaceModel] = await Space.findAll(spacePerspective!);
       setPerspective(spacePerspective);
+      console.log('[SpaceStore] getSpace loaded space:', spaceModel);
       setSpace(spaceModel);
 
       getPosts(spacePerspective!);
@@ -142,7 +144,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // get root collection blocks as posts
       const postsArr = await CollectionBlock.findAll(perspective, { where: { type: 'root' } });
       const postsWithBlocks = await Promise.all(postsArr.map((post) => getBlockTree(post, perspective)));
-      setPosts(postsWithBlocks.filter((post) => !!post));
+      setPosts(postsWithBlocks.filter((post: Post | undefined) => !!post));
 
       // console.log('SpaceStore: getPosts posts', posts());
     } catch (error) {
@@ -186,9 +188,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       const block = await getBlockNode(perspective, parent);
 
-      const children = await CollectionBlock.findAll(perspective, { source: parent.baseExpression });
+      const children = await CollectionBlock.findAll(perspective, { parent: { id: parent.id, predicate: '' } });
       const childrenWithBlocks = await Promise.all(children.map((child) => getBlockTree(child, perspective)));
-      return cleanBlockData({ ...block, children: childrenWithBlocks.filter((child) => !!child) });
+      return cleanBlockData({ ...block, children: childrenWithBlocks.filter((child: Post | undefined) => !!child) });
     } catch (error) {
       console.error('SpaceStore: getBlockTree error', error);
     }

@@ -115,17 +115,21 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
   };
 
   const renderItem = (getItem: () => SidebarNavItem) => {
-    // Access the item once for stable properties (id, icon, label, etc.)
+    // Snapshot stable identity props once (id used for keys, avatar structure)
     const item = getItem();
 
-    // Create a reactive memo for the active state by accessing getItem() inside
+    // Reactive memos for properties that may change via schema store bindings
     const isActive = createMemo(() => getItem().active || false);
+    const label = createMemo(() => getItem().label);
+    const icon = createMemo(() => getItem().icon ?? '');
+    const badge = createMemo(() => getItem().badge);
+    const isDisabled = createMemo(() => getItem().disabled || false);
 
     return (
       <we-button
         class="we-collapsible-sidebar__item"
         onClick={() => handleItemClick(getItem())}
-        disabled={item.disabled}
+        disabled={isDisabled()}
         height="auto"
         p={props.itemPadding ?? '300'}
         ax="start"
@@ -144,7 +148,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
         {/* Avatar or Icon */}
         <Show
           when={item.avatar}
-          fallback={<we-icon class="we-collapsible-sidebar__item-icon" name={item.icon ?? ''} size={iconSize()} />}
+          fallback={<we-icon class="we-collapsible-sidebar__item-icon" name={icon()} size={iconSize()} />}
         >
           <we-avatar
             class="we-collapsible-sidebar__item-avatar"
@@ -156,8 +160,8 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
         </Show>
 
         <div class="we-collapsible-sidebar__item-content">
-          <we-text class="we-collapsible-sidebar__item-label">{item.label}</we-text>
-          <Show when={item.badge}>
+          <we-text class="we-collapsible-sidebar__item-label">{label()}</we-text>
+          <Show when={badge()}>
             <we-badge
               class="we-collapsible-sidebar__item-badge"
               size="sm"
@@ -165,7 +169,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
               bg={badgeBg()}
               color={badgeColor()}
             >
-              {item.badge}
+              {badge()}
             </we-badge>
           </Show>
         </div>

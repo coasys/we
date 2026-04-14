@@ -451,7 +451,7 @@ const nestedEachTest = section('Nested $each', 'Iterate nested lists (groups →
   },
   {
     type: 'Column',
-    props: { gap: '300' },
+    props: { gap: '300', width: '100%' },
     children: [
       {
         type: '$each',
@@ -512,7 +512,7 @@ const mapTest = section('$map', 'Transform list items via select', [
             type: 'Row',
             props: { gap: '200', p: '200', bg: 'neutral-50', r: '300' },
             children: [
-              { type: 'we-text', props: { color: 'neutral-500', minWidth: '100px' }, children: ['$row.label'] },
+              { type: 'we-text', props: { color: 'neutral-500' }, children: ['$row.label'] },
               { type: 'we-text', children: ['$row.detail'] },
             ],
           },

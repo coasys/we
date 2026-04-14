@@ -25,25 +25,46 @@ export const sidebar: SchemaNode = {
         items: [
           // --- Current space / perspective ---
           {
-            type: 'group',
-            id: 'space',
-            label: 'Current Space',
-            collapsible: false,
-            items: [
-              {
-                type: 'item',
-                id: 'current-space',
-                icon: 'map-pin-area',
-                label: {
-                  $if: {
-                    condition: { $store: 'spaceStore.space' },
-                    then: { $concat: [{ $store: 'spaceStore.space.name' }] },
-                    else: 'No space selected',
-                  },
-                },
+            type: 'item',
+            id: 'current-space',
+            icon: 'map-pin-area',
+            label: {
+              $if: {
+                condition: { $store: 'spaceStore.space' },
+                then: { $store: 'spaceStore.space.name' },
+                else: 'Root',
               },
-            ],
+            },
           },
+          // --- Debug: current route ---
+          {
+            type: 'item',
+            id: 'debug-route',
+            icon: 'link-simple',
+            label: { $store: 'routeStore.currentPath' },
+          },
+
+          // // --- Current space / perspective ---
+          // {
+          //   type: 'group',
+          //   id: 'space',
+          //   label: 'Current Space',
+          //   collapsible: false,
+          //   items: [
+          //     {
+          //       type: 'item',
+          //       id: 'current-space',
+          //       icon: 'map-pin-area',
+          //       label: {
+          //         $if: {
+          //           condition: { $store: 'spaceStore.space' },
+          //           then: { $concat: [{ $store: 'spaceStore.space.name' }] },
+          //           else: 'No space selected',
+          //         },
+          //       },
+          //     },
+          //   ],
+          // },
 
           // --- Template switching ---
           {
