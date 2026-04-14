@@ -1,0 +1,10 @@
+.editable-image__overlay {
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+.editable-image:hover .editable-image__overlay {
+  opacity: 1 !important;
+}

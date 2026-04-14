@@ -1,18 +1,43 @@
-import { createSignal, Show } from 'solid-js';
+import { designSystemKeys, filterProps, mergeProps } from '@we/design-utils';
+import { buildLayoutStyles, useStateProps } from '@we/design-utils/solid';
+import { createMemo, createSignal, Show, splitProps } from 'solid-js';
 
 export type * from './EditableImage.types';
 import { Column } from '../../layout/Column/Column.solid';
 import { Row } from '../../layout/Row/Row.solid';
 import type { EditableImageProps } from './EditableImage.types';
 
-export function EditableImage(props: EditableImageProps) {
+const DEFAULTS: Partial<EditableImageProps> = {
+  position: 'relative',
+  width: '100%',
+  height: '200px',
+  overflow: 'hidden',
+  cursor: 'pointer',
+  bg: 'neutral-200',
+};
+
+const editableImageKeys = [...designSystemKeys, 'children'] as const;
+const editableImageStyleKeys = editableImageKeys.filter((key) => key !== 'children');
+const componentKeys = ['src', 'alt', 'fit', 'placeholderIcon', 'onImageChange', 'class'] as const;
+
+export function EditableImage(allProps: EditableImageProps) {
+  const [dsProps, props] = splitProps(
+    allProps,
+    editableImageKeys as unknown as (keyof EditableImageProps)[],
+    componentKeys as unknown as (keyof EditableImageProps)[],
+  );
   const [modalOpen, setModalOpen] = createSignal(false);
   const [preview, setPreview] = createSignal<string | null>(null);
   const [pendingFile, setPendingFile] = createSignal<File | null>(null);
 
-  const width = () => props.width || '100%';
-  const height = () => props.height || '200px';
-  const borderRadius = () => (props.r ? `var(--we-radius-${props.r}, ${props.r})` : '0');
+  const baseStyle = createMemo(() => {
+    const usedProps = filterProps(dsProps, editableImageStyleKeys);
+    const merged = mergeProps(usedProps, DEFAULTS) as EditableImageProps;
+    return { ...buildLayoutStyles(merged, 'column'), 'flex-shrink': '0' };
+  });
+
+  const hasStateProps = () => dsProps.hoverProps || dsProps.activeProps || dsProps.focusProps;
+  const { style, handlers } = useStateProps(baseStyle, dsProps as EditableImageProps, 'column');
 
   function openModal() {
     setPreview(null);
@@ -56,17 +81,9 @@ export function EditableImage(props: EditableImageProps) {
       {/* Image display with hover overlay */}
       <div
         class={`editable-image ${props.class || ''}`}
-        style={{
-          position: 'relative',
-          width: width(),
-          height: height(),
-          'border-radius': borderRadius(),
-          overflow: 'hidden',
-          cursor: 'pointer',
-          'background-color': 'var(--we-color-neutral-200)',
-          'flex-shrink': '0',
-        }}
+        style={hasStateProps() ? style() : baseStyle()}
         onClick={openModal}
+        {...(hasStateProps() ? handlers : {})}
       >
         <Show
           when={props.src}
