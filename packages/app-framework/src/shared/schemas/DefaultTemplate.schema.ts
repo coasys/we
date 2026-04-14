@@ -469,31 +469,47 @@ export const defaultTemplate: TemplateSchema = {
           },
         },
 
-        // Space header
+        // Cover image
         {
-          type: '$if',
+          type: 'EditableImage',
           props: {
-            condition: { $store: 'spaceStore.loading' },
-            then: {
-              type: 'we-text',
-              props: { fontSize: '400', color: 'neutral-400' },
-              children: ['Loading space...'],
+            src: { $store: 'spaceStore.space.thumbnail' },
+            alt: 'Cover image',
+            fit: 'cover',
+            width: '100%',
+            height: '200px',
+            r: '300',
+            placeholderIcon: 'panorama',
+            onImageChange: { $action: 'spaceStore.updateSpaceCoverImage', args: ['$arg'] },
+          },
+        },
+
+        // Space avatar + name (overlapping cover)
+        {
+          type: 'Column',
+          props: { mt: '-60px', gap: '100', px: '400' },
+          children: [
+            {
+              type: 'EditableImage',
+              props: {
+                src: { $store: 'spaceStore.space.image' },
+                alt: 'Space image',
+                fit: 'cover',
+                width: '120px',
+                height: '120px',
+                r: '300',
+                placeholderIcon: 'buildings',
+                onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['$arg'] },
+              },
             },
-            else: {
+            {
               type: 'Column',
-              props: { gap: '200' },
+              props: { gap: '100', mt: '200' },
               children: [
                 {
-                  type: 'Row',
-                  props: { gap: '300', ay: 'center' },
-                  children: [
-                    { type: 'we-icon', props: { name: 'globe', color: 'primary-500', size: '24px' } },
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '800', fontWeight: 'bold' },
-                      children: [{ $store: 'spaceStore.space.name' }],
-                    },
-                  ],
+                  type: 'we-text',
+                  props: { fontSize: '800', fontWeight: 'bold' },
+                  children: [{ $store: 'spaceStore.space.name' }],
                 },
                 {
                   type: '$if',
@@ -508,7 +524,7 @@ export const defaultTemplate: TemplateSchema = {
                 },
               ],
             },
-          },
+          ],
         },
 
         // Tab navigation

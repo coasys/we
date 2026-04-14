@@ -1,6 +1,6 @@
 import { PerspectiveProxy } from '@coasys/ad4m';
 import { useAdamStore, useRouteStore } from '@solid/stores';
-import { CollectionBlock, ImageBlock, Space, TextBlock, WeNode } from '@we/models';
+import { blobToDataURL, CollectionBlock, FileData, ImageBlock, resizeImage, Space, TextBlock, WeNode } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 type BlockType = ImageBlock | TextBlock | CollectionBlock;
@@ -32,6 +32,8 @@ export interface SpaceStore {
   getPosts: (perspective: PerspectiveProxy) => Promise<void>;
   toggleLayer: (layerName: string) => void;
   toggleBackground: (backgroundName: string) => void;
+  updateSpaceImage: (imageFile: File) => Promise<void>;
+  updateSpaceCoverImage: (imageFile: File) => Promise<void>;
 }
 
 // // Hardcoded user locations for development
@@ -196,6 +198,32 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  async function updateSpaceImage(imageFile: File): Promise<void> {
+    const currentSpace = space();
+    const currentPerspective = perspective();
+    if (!currentSpace || !currentPerspective) return;
+    const compressedBlob = await resizeImage(imageFile, 0.6);
+    const imageBase64 = await blobToDataURL(compressedBlob);
+    const [spaceModel] = await Space.findAll(currentPerspective);
+    if (!spaceModel) return;
+    spaceModel.image = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData;
+    await spaceModel.save();
+    setSpace({ ...currentSpace, image: spaceModel.image });
+  }
+
+  async function updateSpaceCoverImage(imageFile: File): Promise<void> {
+    const currentSpace = space();
+    const currentPerspective = perspective();
+    if (!currentSpace || !currentPerspective) return;
+    const compressedBlob = await resizeImage(imageFile, 0.6);
+    const imageBase64 = await blobToDataURL(compressedBlob);
+    const [spaceModel] = await Space.findAll(currentPerspective);
+    if (!spaceModel) return;
+    spaceModel.thumbnail = { data_base64: imageBase64, name: 'space-cover', file_type: 'image/png' } as FileData;
+    await spaceModel.save();
+    setSpace({ ...currentSpace, thumbnail: spaceModel.thumbnail });
+  }
+
   // Listen for route changes and get space data when spaceId changes
   createEffect(() => {
     const [page, pageId] = routeStore.currentPath().split('/').filter(Boolean);
@@ -231,6 +259,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     getPosts,
     toggleLayer,
     toggleBackground,
+    updateSpaceImage,
+    updateSpaceCoverImage,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;
