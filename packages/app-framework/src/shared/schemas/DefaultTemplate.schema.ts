@@ -32,6 +32,17 @@ export const defaultTemplate: TemplateSchema = {
       path: '/',
       type: 'Column',
       props: { gap: '600', maxWidth: '900px', mx: 'auto', width: '100%' },
+      $localState: {
+        createSpaceOpen: { type: 'boolean', initial: false },
+        name: {
+          type: 'string',
+          initial: '',
+          validate: [{ rule: 'required', message: 'Name is required' }],
+        },
+        description: { type: 'string', initial: '' },
+        shared: { type: 'boolean', initial: false },
+        thumbnail: { type: 'file', initial: null },
+      },
       children: [
         // Header
         {
@@ -86,14 +97,7 @@ export const defaultTemplate: TemplateSchema = {
                             cursor: 'pointer',
                             onClick: {
                               $action: 'routeStore.navigate',
-                              args: [
-                                {
-                                  $concat: [
-                                    '/space/',
-                                    { $if: { condition: '$space.url', then: '$space.url', else: '$space.uuid' } },
-                                  ],
-                                },
-                              ],
+                              args: [{ $concat: ['/space/', '$space.uuid'] }],
                             },
                           },
                           children: [
@@ -314,116 +318,136 @@ export const defaultTemplate: TemplateSchema = {
             color: 'neutral-0',
             height: '40px',
             width: 'fit-content',
-            onClick: { $action: 'routeStore.navigate', args: ['/new-space'] },
-          },
-        },
-      ],
-    },
-
-    // ── Create Space Form ──
-    {
-      path: '/new-space',
-      type: 'Column',
-      props: { p: '600', gap: '500', maxWidth: '500px', mx: 'auto', width: '100%' },
-      $localState: {
-        name: {
-          type: 'string',
-          initial: '',
-          validate: [{ rule: 'required', message: 'Name is required' }],
-        },
-        description: { type: 'string', initial: '' },
-        shared: { type: 'boolean', initial: false },
-        thumbnail: { type: 'file', initial: null },
-      },
-      children: [
-        // Back link
-        {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', cursor: 'pointer' },
-          children: [
-            {
-              type: 'we-button',
-              props: {
-                variant: 'ghost',
-                text: '← Back',
-                onClick: { $action: 'routeStore.navigate', args: ['/'] },
-              },
-            },
-          ],
-        },
-        { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create a New Space'] },
-
-        // Name
-        {
-          type: 'we-form-field',
-          props: {
-            error: { $if: { condition: { $error: 'name' }, then: { $error: 'name' } } },
-          },
-          children: [
-            {
-              type: 'we-input',
-              props: {
-                placeholder: 'Space name...',
-                value: { $local: 'name' },
-                onInput: { $setLocal: 'name', from: '$event.detail' },
-                onBlur: { $touch: 'name' },
-              },
-            },
-          ],
-        },
-
-        // Description
-        {
-          type: 'we-input',
-          props: {
-            placeholder: 'Description (optional)',
-            value: { $local: 'description' },
-            onInput: { $setLocal: 'description', from: '$event.detail' },
+            onClick: { $setLocal: 'createSpaceOpen', value: true },
           },
         },
 
-        // Visibility toggle
+        // ── Create Space Modal ──
         {
-          type: 'Row',
-          props: { gap: '300', ay: 'center' },
-          children: [
-            { type: 'we-text', props: { fontSize: '400' }, children: ['Shared'] },
-            {
-              type: 'we-switch',
-              props: {
-                checked: { $local: 'shared' },
-                onChange: { $setLocal: 'shared', from: '$event.detail' },
-              },
-            },
-          ],
-        },
-
-        // Create button
-        {
-          type: 'we-button',
+          type: '$if',
           props: {
-            text: 'Create Space',
-            bg: 'primary-500',
-            color: 'neutral-0',
-            height: '40px',
-            disabled: { $not: { $formValid: '$scope' } },
-            onClick: [
-              { $touch: '$all' },
-              {
-                $if: {
-                  condition: { $formValid: '$scope' },
-                  then: {
-                    $action: 'adamStore.createSpace',
-                    args: [
-                      { $local: 'name' },
-                      { $local: 'description' },
-                      { $local: 'shared' },
-                      { $local: 'thumbnail' },
-                    ],
+            condition: { $local: 'createSpaceOpen' },
+            then: {
+              type: 'we-modal',
+              props: {
+                close: { $setLocal: 'createSpaceOpen', value: false },
+                maxWidth: '560px',
+                width: '100%',
+              },
+              children: [
+                { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create a New Space'] },
+
+                // Space image
+                {
+                  type: 'EditableImage',
+                  props: {
+                    src: { $local: 'thumbnail' },
+                    alt: 'Space image',
+                    fit: 'cover',
+                    width: '100%',
+                    height: '160px',
+                    r: '300',
+                    placeholderIcon: 'image',
+                    onImageChange: { $setLocal: 'thumbnail', from: '$event' },
                   },
                 },
-              },
-            ],
+
+                // Name
+                {
+                  type: 'we-form-field',
+                  props: {
+                    label: 'Name',
+                    error: { $if: { condition: { $error: 'name' }, then: { $error: 'name' } } },
+                  },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        placeholder: 'Space name...',
+                        value: { $local: 'name' },
+                        onInput: { $setLocal: 'name', from: '$event.detail' },
+                        onBlur: { $touch: 'name' },
+                      },
+                    },
+                  ],
+                },
+
+                // Description
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Description' },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        placeholder: 'Description (optional)',
+                        value: { $local: 'description' },
+                        onInput: { $setLocal: 'description', from: '$event.detail' },
+                      },
+                    },
+                  ],
+                },
+
+                // Shared toggle
+                {
+                  type: 'Row',
+                  props: { gap: '300', ay: 'center' },
+                  children: [
+                    { type: 'we-text', props: { fontSize: '400' }, children: ['Shared with network'] },
+                    {
+                      type: 'we-switch',
+                      props: {
+                        checked: { $local: 'shared' },
+                        onChange: { $setLocal: 'shared', from: '$event.detail' },
+                      },
+                    },
+                  ],
+                },
+
+                // Action buttons
+                {
+                  type: 'Row',
+                  props: { gap: '300', ax: 'end', mt: '200' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        text: 'Cancel',
+                        onClick: { $setLocal: 'createSpaceOpen', value: false },
+                      },
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        text: 'Create Space',
+                        bg: 'primary-500',
+                        color: 'neutral-0',
+                        height: '40px',
+                        disabled: { $not: { $formValid: '$scope' } },
+                        onClick: [
+                          { $touch: '$all' },
+                          {
+                            $if: {
+                              condition: { $formValid: '$scope' },
+                              then: {
+                                $action: 'adamStore.createSpace',
+                                args: [
+                                  { $local: 'name' },
+                                  { $local: 'description' },
+                                  { $local: 'shared' },
+                                  { $local: 'thumbnail' },
+                                ],
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
           },
         },
       ],
@@ -489,31 +513,31 @@ export const defaultTemplate: TemplateSchema = {
 
         // Tab navigation
         {
-          type: 'Row',
-          props: { gap: '100', borderBottom: 'neutral-200' },
+          type: 'we-tabs',
+          props: { activeKey: { $store: 'routeStore.segments.2' } },
           children: [
             {
-              type: 'we-button',
+              type: 'we-tab',
               props: {
-                variant: 'ghost',
-                text: 'Posts',
+                key: 'about',
+                label: 'About',
+                onClick: { $action: 'routeStore.navigate', args: ['./about'] },
+              },
+            },
+            {
+              type: 'we-tab',
+              props: {
+                key: 'posts',
+                label: 'Posts',
                 onClick: { $action: 'routeStore.navigate', args: ['./posts'] },
               },
             },
             {
-              type: 'we-button',
+              type: 'we-tab',
               props: {
-                variant: 'ghost',
-                text: 'Members',
+                key: 'members',
+                label: 'Members',
                 onClick: { $action: 'routeStore.navigate', args: ['./members'] },
-              },
-            },
-            {
-              type: 'we-button',
-              props: {
-                variant: 'ghost',
-                text: 'About',
-                onClick: { $action: 'routeStore.navigate', args: ['./about'] },
               },
             },
           ],
@@ -523,8 +547,8 @@ export const defaultTemplate: TemplateSchema = {
         { type: '$routes' },
       ],
       routes: [
-        // Default → redirect to posts
-        { path: '/', type: 'Column', redirect: './posts' },
+        // Default → redirect to about
+        { path: '/', type: 'Column', redirect: './about' },
 
         // ── Posts subroute ──
         {
