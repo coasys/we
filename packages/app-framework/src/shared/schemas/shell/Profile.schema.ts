@@ -59,12 +59,12 @@ export const profileTemplate: TemplateSchema = {
     },
 
     // ── Spacer for profile picture overlap ──
-    { type: 'Column', props: { height: '72px', minHeight: '72px' } },
+    // { type: 'Column', props: { height: '72px', minHeight: '72px' } },
 
     // ── Profile info section ──
     {
       type: 'Column',
-      props: { gap: '600', px: '600', pb: '600' },
+      props: { gap: '600', px: '600', pb: '600', mt: '90px' },
       children: [
         // Name & handle display
         {
