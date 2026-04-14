@@ -10,66 +10,47 @@ import type { TemplateSchema } from '@we/schema-shared';
 export const profileTemplate: TemplateSchema = {
   meta: { name: 'Profile', description: 'Agent profile page', icon: 'user' },
   type: 'Column',
-  props: { width: '100%', height: '100%', bg: 'neutral-50', overflow: 'auto' },
+  props: { minWidth: '100%', minHeight: '100%', bg: 'neutral-50', ax: 'center' },
   children: [
-    // ── Cover image + overlapping profile picture ──
+    // Cover image
+    {
+      type: 'EditableImage',
+      props: {
+        src: { $store: 'adamStore.agentProfile.coverImage' },
+        alt: 'Cover image',
+        fit: 'cover',
+        width: '100%',
+        height: '200px',
+        placeholderIcon: 'panorama',
+        onImageChange: { $action: 'adamStore.updateCoverImage', args: ['$arg'] },
+      },
+    },
+
+    // Main content column
     {
       type: 'Column',
-      props: { width: '100%', position: 'relative' },
+      props: { mt: '-60px', maxWidth: '800px', width: '100%', gap: '400', px: '500', mb: '500' },
       children: [
-        // Cover image
+        // Profile picture
         {
           type: 'EditableImage',
           props: {
-            src: { $store: 'adamStore.agentProfile.coverImage' },
-            alt: 'Cover image',
+            src: { $store: 'adamStore.agentProfile.profileImage' },
+            alt: 'Profile picture',
             fit: 'cover',
-            width: '100%',
-            height: '200px',
-            placeholderIcon: 'panorama',
-            onImageChange: { $action: 'adamStore.updateCoverImage', args: ['$arg'] },
+            width: '120px',
+            height: '120px',
+            r: '300',
+            ring: '0 0 0 3px var(--we-color-neutral-500)',
+            placeholderIcon: 'user',
+            onImageChange: { $action: 'adamStore.updateProfileImage', args: ['$arg'] },
           },
         },
-        // Profile picture — overlaps cover by half (absolute positioned)
-        {
-          type: 'Column',
-          props: {
-            position: 'absolute',
-            bottom: '-60px',
-            left: '24px',
-            zIndex: 1,
-          },
-          children: [
-            {
-              type: 'EditableImage',
-              props: {
-                src: { $store: 'adamStore.agentProfile.profileImage' },
-                alt: 'Profile picture',
-                fit: 'cover',
-                width: '120px',
-                height: '120px',
-                r: '300',
-                placeholderIcon: 'user',
-                onImageChange: { $action: 'adamStore.updateProfileImage', args: ['$arg'] },
-              },
-            },
-          ],
-        },
-      ],
-    },
 
-    // ── Spacer for profile picture overlap ──
-    // { type: 'Column', props: { height: '72px', minHeight: '72px' } },
-
-    // ── Profile info section ──
-    {
-      type: 'Column',
-      props: { gap: '600', px: '600', pb: '600', mt: '90px' },
-      children: [
         // Name & handle display
         {
           type: 'Column',
-          props: { gap: '100' },
+          props: { gap: '100', mt: '200' },
           children: [
             {
               type: 'Row',
@@ -124,12 +105,12 @@ export const profileTemplate: TemplateSchema = {
             condition: { $store: 'adamStore.agentProfile.location' },
             then: {
               type: 'Row',
-              props: { gap: '100', ay: 'center' },
+              props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'map-pin', size: '16px', color: 'neutral-400' } },
+                { type: 'we-icon', props: { name: 'map-pin', size: '20px', color: 'neutral-500' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-500' },
+                  props: { fontSize: '400', color: 'neutral-500' },
                   children: [{ $store: 'adamStore.agentProfile.location' }],
                 },
               ],
@@ -137,51 +118,59 @@ export const profileTemplate: TemplateSchema = {
           },
         },
 
+        // DID
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'key', size: '20px', color: 'neutral-500' } },
+            {
+              type: 'we-text',
+              props: { fontSize: '400', color: 'neutral-500' },
+              children: [{ $store: 'adamStore.me.did' }],
+            },
+          ],
+        },
+
         // ── Editable fields ──
         {
           type: 'Column',
-          props: { gap: '400', p: '400', r: '300', bg: 'neutral-100' },
+          props: { gap: '400', p: '400', r: '300', bg: 'neutral-0' },
           children: [
             {
-              type: 'we-text',
-              props: { fontSize: '500', fontWeight: 'semibold' },
-              children: ['Edit Profile'],
+              type: 'Row',
+              props: { gap: '300', ay: 'center', mb: '200' },
+              children: [
+                { type: 'we-icon', props: { name: 'pencil', color: 'neutral-500' } },
+                {
+                  type: 'we-text',
+                  props: { color: 'neutral-700' },
+                  children: ['Edit Profile'],
+                },
+              ],
             },
             {
               type: 'Row',
-              props: { gap: '300' },
+              props: { gap: '300', wrap: true },
               children: [
                 {
-                  type: 'Column',
-                  props: { gap: '100', flex: '1' },
+                  type: 'we-form-field',
+                  props: { label: 'First Name' },
                   children: [
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '200', fontWeight: 'medium', color: 'neutral-500' },
-                      children: ['First Name'],
-                    },
                     {
                       type: 'we-input',
                       props: {
                         placeholder: 'First name',
                         value: { $store: 'adamStore.agentProfile.firstName' },
-                        onChange: {
-                          $action: 'adamStore.updateAgentProfile',
-                          args: [{ firstName: '$arg.detail' }],
-                        },
+                        onChange: { $action: 'adamStore.updateAgentProfile', args: [{ firstName: '$arg.detail' }] },
                       },
                     },
                   ],
                 },
                 {
-                  type: 'Column',
-                  props: { gap: '100', flex: '1' },
+                  type: 'we-form-field',
+                  props: { label: 'Last Name' },
                   children: [
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '200', fontWeight: 'medium', color: 'neutral-500' },
-                      children: ['Last Name'],
-                    },
                     {
                       type: 'we-input',
                       props: {
@@ -198,14 +187,9 @@ export const profileTemplate: TemplateSchema = {
               ],
             },
             {
-              type: 'Column',
-              props: { gap: '100' },
+              type: 'we-form-field',
+              props: { label: 'Handle' },
               children: [
-                {
-                  type: 'we-text',
-                  props: { fontSize: '200', fontWeight: 'medium', color: 'neutral-500' },
-                  children: ['Handle'],
-                },
                 {
                   type: 'we-input',
                   props: {
@@ -220,14 +204,9 @@ export const profileTemplate: TemplateSchema = {
               ],
             },
             {
-              type: 'Column',
-              props: { gap: '100' },
+              type: 'we-form-field',
+              props: { label: 'Bio' },
               children: [
-                {
-                  type: 'we-text',
-                  props: { fontSize: '200', fontWeight: 'medium', color: 'neutral-500' },
-                  children: ['Bio'],
-                },
                 {
                   type: 'we-textarea',
                   props: {
@@ -242,14 +221,9 @@ export const profileTemplate: TemplateSchema = {
               ],
             },
             {
-              type: 'Column',
-              props: { gap: '100' },
+              type: 'we-form-field',
+              props: { label: 'Location' },
               children: [
-                {
-                  type: 'we-text',
-                  props: { fontSize: '200', fontWeight: 'medium', color: 'neutral-500' },
-                  children: ['Location'],
-                },
                 {
                   type: 'we-input',
                   props: {
@@ -262,57 +236,6 @@ export const profileTemplate: TemplateSchema = {
                   },
                 },
               ],
-            },
-          ],
-        },
-
-        // ── Agent Identity (DID) ──
-        {
-          type: 'Column',
-          props: { gap: '300', p: '400', r: '300', bg: 'neutral-100' },
-          children: [
-            {
-              type: 'we-text',
-              props: { fontSize: '500', fontWeight: 'semibold' },
-              children: ['Identity'],
-            },
-            {
-              type: 'Column',
-              props: { gap: '100' },
-              children: [
-                {
-                  type: 'we-text',
-                  props: { fontSize: '200', fontWeight: 'medium', color: 'neutral-500' },
-                  children: ['DID'],
-                },
-                {
-                  type: 'we-text',
-                  props: { fontSize: '300', fontFamily: 'mono', styles: { 'word-break': 'break-all' } },
-                  children: [{ $store: 'adamStore.me.did' }],
-                },
-              ],
-            },
-            {
-              type: '$if',
-              props: {
-                condition: { $store: 'adamStore.me.directMessageLanguage' },
-                then: {
-                  type: 'Column',
-                  props: { gap: '100' },
-                  children: [
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '200', fontWeight: 'medium', color: 'neutral-500' },
-                      children: ['Direct Message Language'],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '300', fontFamily: 'mono', styles: { 'word-break': 'break-all' } },
-                      children: [{ $store: 'adamStore.me.directMessageLanguage' }],
-                    },
-                  ],
-                },
-              },
             },
           ],
         },
