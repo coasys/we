@@ -6,7 +6,13 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
-const DEFAULT_PROPS: Partial<DesignSystemProps> = { rt: 'md', py: '200', px: '300' };
+const DEFAULT_PROPS: Partial<DesignSystemProps> = {
+  rt: '400',
+  py: '200',
+  px: '300',
+  cursor: 'pointer',
+  hoverProps: { bg: 'neutral-200' },
+};
 
 const CSS_STYLES = css`
   :host {
@@ -19,8 +25,9 @@ const CSS_STYLES = css`
     cursor: pointer;
   }
 
-  [part='base']:focus-visible {
-    box-shadow: 0 0 0 2px var(--we-color-primary-500, #3b82f6);
+  :host([active]) [part='base'] {
+    background: var(--we-color-neutral-100);
+    border-bottom: 2px solid var(--we-color-primary-500) !important;
   }
 `;
 
