@@ -142,6 +142,7 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
   const benchAllRoutes = [
     `${benchmarkBasePath}/static-small`,
     `${benchmarkBasePath}/static-large`,
+    `${benchmarkBasePath}/static-extreme`,
     `${benchmarkBasePath}/tokens-light`,
     `${benchmarkBasePath}/tokens-heavy`,
     `${benchmarkBasePath}/each-flat`,

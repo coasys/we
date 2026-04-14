@@ -366,6 +366,28 @@ const staticLargeRoute = benchRoute('/static-large', 'Static Large — 200 nodes
 ]);
 
 // ---------------------------------------------------------------------------
+// Route: Static Extreme (1000 cards)
+// ---------------------------------------------------------------------------
+const staticExtremeRoute = benchRoute('/static-extreme', 'Static Extreme — 1000 nodes', [
+  {
+    type: 'we-text',
+    props: {
+      text: '1000 static cards — tests scaling of static prop overhead',
+      fontSize: '300',
+      color: 'neutral-500',
+    },
+  },
+  {
+    type: 'Column',
+    props: {
+      gap: '200',
+      styles: { display: 'grid', 'grid-template-columns': 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px' },
+    },
+    children: generateCards(1000, staticCard),
+  },
+]);
+
+// ---------------------------------------------------------------------------
 // Route: Tokens Light (50 cards with $store reads)
 // ---------------------------------------------------------------------------
 const tokensLightRoute = benchRoute('/tokens-light', 'Tokens Light — $store reads', [
@@ -748,6 +770,12 @@ const mixedRealisticRoute = benchRoute('/mixed-realistic', 'Mixed Realistic — 
 const benchmarkRoutes = [
   { path: '/static-small', key: 'static-small', label: 'Static Small (50)', nav: `${benchmarkBasePath}/static-small` },
   { path: '/static-large', key: 'static-large', label: 'Static Large (200)', nav: `${benchmarkBasePath}/static-large` },
+  {
+    path: '/static-extreme',
+    key: 'static-extreme',
+    label: 'Static Extreme (1000)',
+    nav: `${benchmarkBasePath}/static-extreme`,
+  },
   { path: '/tokens-light', key: 'tokens-light', label: 'Tokens Light', nav: `${benchmarkBasePath}/tokens-light` },
   { path: '/tokens-heavy', key: 'tokens-heavy', label: 'Tokens Heavy', nav: `${benchmarkBasePath}/tokens-heavy` },
   { path: '/each-flat', key: 'each-flat', label: '$each Flat (100)', nav: `${benchmarkBasePath}/each-flat` },
@@ -786,7 +814,7 @@ const dashboardRoute = {
         {
           type: 'we-text',
           props: { fontSize: '700', fontWeight: '700', color: 'primary-800' },
-          children: ['Schema Renderer Benchmarks'],
+          children: ['Renderer Benchmarks'],
         },
         {
           type: 'we-text',
@@ -912,6 +940,7 @@ export const schemaBenchmarkTemplate: TemplateSchema = {
     dashboardRoute,
     staticSmallRoute,
     staticLargeRoute,
+    staticExtremeRoute,
     tokensLightRoute,
     tokensHeavyRoute,
     eachFlatRoute,
