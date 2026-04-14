@@ -23,6 +23,7 @@ import {
 } from './local';
 import { resolveMapProp } from './map';
 import { resolvePickProp } from './pick';
+import { REACTIVE_ACCESSOR } from './reactive';
 import { resolveStoreProp } from './store';
 import type { MapProp, Memo, PickProp, Props } from './types';
 import { noMemo } from './types';
@@ -88,7 +89,24 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
   if (value && typeof value === 'object') {
     const resolved: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
-      resolved[k] = resolveProp(v, stores, context, memo, depth + 1);
+      // For event prop arrays (e.g. onClick: [...]), resolve each element lazily at call time
+      // so that conditional tokens ($if etc.) read current store state rather than stale
+      // resolved values captured at render time.
+      if (k.length > 2 && k.startsWith('on') && k[2] === k[2].toUpperCase() && Array.isArray(v)) {
+        resolved[k] = (...args: unknown[]) => {
+          for (const item of v) {
+            // Resolve lazily at call time so $if conditions read current store state
+            let fn = resolveProp(item, stores, context, memo, depth + 1);
+            // $if without $arg returns a reactive accessor (memo) wrapping the action fn — unwrap it
+            if (typeof fn === 'function' && (fn as { [REACTIVE_ACCESSOR]?: boolean })[REACTIVE_ACCESSOR]) {
+              fn = (fn as () => unknown)();
+            }
+            if (typeof fn === 'function') fn(...args);
+          }
+        };
+      } else {
+        resolved[k] = resolveProp(v, stores, context, memo, depth + 1);
+      }
     }
     return resolved;
   }

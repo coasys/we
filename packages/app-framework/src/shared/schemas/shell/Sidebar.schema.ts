@@ -35,6 +35,23 @@ export const sidebar: SchemaNode = {
                 else: 'Root',
               },
             },
+            onClick: [
+              {
+                $if: {
+                  condition: { $store: 'spaceStore.space' },
+                  then: { $action: 'templateStore.switchTemplate', args: ['default'] },
+                },
+              },
+              {
+                $if: {
+                  condition: { $store: 'spaceStore.space' },
+                  then: {
+                    $action: 'routeStore.navigate',
+                    args: [{ $concat: ['/space/', { $store: 'spaceStore.space.uuid' }] }],
+                  },
+                },
+              },
+            ],
           },
           // --- Debug: current route ---
           {
@@ -43,28 +60,6 @@ export const sidebar: SchemaNode = {
             icon: 'link-simple',
             label: { $store: 'routeStore.currentPath' },
           },
-
-          // // --- Current space / perspective ---
-          // {
-          //   type: 'group',
-          //   id: 'space',
-          //   label: 'Current Space',
-          //   collapsible: false,
-          //   items: [
-          //     {
-          //       type: 'item',
-          //       id: 'current-space',
-          //       icon: 'map-pin-area',
-          //       label: {
-          //         $if: {
-          //           condition: { $store: 'spaceStore.space' },
-          //           then: { $concat: [{ $store: 'spaceStore.space.name' }] },
-          //           else: 'No space selected',
-          //         },
-          //       },
-          //     },
-          //   ],
-          // },
 
           // --- Template switching ---
           {
