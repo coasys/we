@@ -23,7 +23,7 @@ export const scrollbar = {
   width: '6px',
   backgroundImage: 'none',
   background: 'transparent',
-  cornerBackground: '#dfdfdf',
+  cornerBackground: 'transparent',
   thumbBoxShadow: 'none',
   thumbBorderRadius: radius['pill'],
   thumbBackground: 'var(--we-color-neutral-100)',
