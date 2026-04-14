@@ -122,8 +122,8 @@ const flexMainAxisMap = {
 const flexCrossAxisMap = { start: 'flex-start', center: 'center', end: 'flex-end', stretch: 'stretch' } as const;
 
 function isRawCSSValue(value: string): boolean {
-  // Check for raw CSS values: var(), px, rem, em, %, vh, vw, rgba, rgb, hsl, etc.
-  return /^(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex))/.test(value);
+  // Check for raw CSS values: var(), px, rem, em, %, vh, vw, rgba, rgb, hsl, negative values, etc.
+  return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex))/.test(value);
 }
 
 export function tokenVar(prefix: string, token?: string, fallback = '0') {
