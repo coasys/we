@@ -46,6 +46,7 @@ export const visualKeys = [
   'color',
   'opacity',
   'shadow',
+  'ring',
   'cursor',
   'pointerEvents',
   'transform',
@@ -122,8 +123,9 @@ const flexMainAxisMap = {
 const flexCrossAxisMap = { start: 'flex-start', center: 'center', end: 'flex-end', stretch: 'stretch' } as const;
 
 function isRawCSSValue(value: string): boolean {
-  // Check for raw CSS values: var(), px, rem, em, %, vh, vw, rgba, rgb, hsl, negative values, etc.
-  return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex))/.test(value);
+  // Check for raw CSS values: var(), px, rem, em, %, vh, vw, rgba, rgb, hsl, negative values,
+  // and multi-value shorthands (number followed by space, e.g. "0 0 2px 2px ...").
+  return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|\s))/.test(value);
 }
 
 export function tokenVar(prefix: string, token?: string, fallback = '0') {

@@ -37,7 +37,10 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
   if (props.borderBottom) style['border-bottom'] = parseBorder(props.borderBottom);
   if (props.borderLeft) style['border-left'] = parseBorder(props.borderLeft);
   if (props.borderWidth) style['border-width'] = props.borderWidth;
-  if (props.shadow) style['box-shadow'] = props.shadow;
+  if (props.shadow || props.ring) {
+    const parts = [props.ring, props.shadow].filter(Boolean).join(', ');
+    style['box-shadow'] = parts;
+  }
   if (props.transform) style.transform = props.transform;
   if (props.transition) style.transition = props.transition;
 

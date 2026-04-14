@@ -100,6 +100,16 @@ function updateCustomVars(
   syncBorderVars(el, prefix, props);
 
   setProperty(el, `${prefix}shadow`, props.shadow ? tokenVar('shadow', props.shadow) : undefined);
+  setProperty(el, `${prefix}ring`, props.ring ?? undefined);
+  // Compose box-shadow from shadow + ring (both are optional, comma-separated when both present)
+  const shadowVal = props.shadow ? tokenVar('shadow', props.shadow) : undefined;
+  const ringVal = props.ring ?? undefined;
+  if (shadowVal || ringVal) {
+    const parts = [ringVal, shadowVal].filter(Boolean).join(', ');
+    setProperty(el, `${prefix}box-shadow`, parts);
+  } else {
+    setProperty(el, `${prefix}box-shadow`, undefined);
+  }
   setProperty(el, `${prefix}transform`, props.transform);
   setProperty(el, `${prefix}transition`, props.transition);
   setProperty(el, `${prefix}cursor`, props.cursor);
@@ -180,7 +190,7 @@ const BASE_VISUAL: PropSpec[] = [
   ['border-bottom', 'border-bottom'],
   ['border-left', 'border-left'],
   ['border-width', 'border-width'],
-  ['box-shadow', 'shadow'],
+  ['box-shadow', 'box-shadow'],
   ['transform', 'transform'],
   ['cursor', 'cursor'],
   ['pointer-events', 'pointer-events'],
@@ -283,7 +293,8 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
         if (l.has('visual'))
           lines.push(`transition: var(${sp}transition, var(${p}transition, ${DEFAULT_TRANSITION}));`);
         if (hostSpecs.length > 0) lines.push(joinStateDecls(sp, p, hostSpecs));
-        const sel = state === 'disabled' ? ':host([disabled])' : `:host(:${state})`;
+        const sel =
+          state === 'disabled' ? ':host([disabled])' : `:host(:${state === 'focus' ? 'focus-within' : state})`;
         styles.push(`${sel} { ${lines.join('\n    ')} }`);
       }
 
@@ -296,7 +307,7 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
         const sel =
           state === 'disabled'
             ? `[part='base']:disabled, [part='base'][aria-disabled='true']`
-            : `[part='base']:${state}:not(:disabled):not([aria-disabled='true'])`;
+            : `[part='base']:${state === 'focus' ? 'focus-within' : state}:not(:disabled):not([aria-disabled='true'])`;
         styles.push(`${sel} { ${lines.join('\n    ')} }`);
       }
     }

@@ -51,6 +51,7 @@ export interface DesignSystemProps {
   borderLeft?: string;
   borderWidth?: string;
   shadow?: ShadowValue;
+  ring?: string;
   transform?: string;
   transition?: string;
 
