@@ -261,6 +261,7 @@ export const defaultTemplate: TemplateSchema = {
                             bg: 'neutral-50',
                             gap: '100',
                             width: '200px',
+                            border: '1px solid neutral-200',
                           },
                           children: [
                             {
@@ -274,7 +275,7 @@ export const defaultTemplate: TemplateSchema = {
                                       $if: {
                                         condition: '$perspective.sharedUrl',
                                         then: 'globe',
-                                        else: 'diagram-3',
+                                        else: 'folder',
                                       },
                                     },
                                     color: 'neutral-400',
@@ -292,6 +293,20 @@ export const defaultTemplate: TemplateSchema = {
                               type: 'we-text',
                               props: { fontSize: '200', color: 'neutral-400', fontFamily: 'mono' },
                               children: [{ $concat: ['UUID: ', '$perspective.uuid'] }],
+                            },
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                text: 'Delete',
+                                color: 'danger-500',
+                                height: '28px',
+                                width: 'fit-content',
+                                onClick: {
+                                  $action: 'adamStore.removePerspective',
+                                  args: ['$perspective.uuid'],
+                                },
+                              },
                             },
                           ],
                         },

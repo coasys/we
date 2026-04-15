@@ -209,7 +209,7 @@ export const settingsTemplate: TemplateSchema = {
                               children: [
                                 {
                                   type: 'we-icon',
-                                  props: { name: 'trash', size: '16px', color: 'red-400' },
+                                  props: { name: 'trash', size: '16px', color: 'danger-400' },
                                 },
                               ],
                             },
