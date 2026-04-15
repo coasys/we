@@ -5,8 +5,19 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  timestamp: number;
+  createdAt?: string;
   status?: 'sending' | 'streaming' | 'sent' | 'error';
+  messageType?: 'text' | 'success' | 'error' | 'info';
+  thinking?: string;
+}
+
+/**
+ * Summary of a chat session for the session list
+ */
+export interface SessionInfo {
+  id: string;
+  name: string;
+  updatedAt: string;
 }
 
 /**
@@ -26,6 +37,7 @@ export interface ChatPanelProps {
   // Messages
   messages: ChatMessage[];
   loading?: boolean;
+  streamingContent?: string;
 
   // Input
   placeholder?: string;
@@ -55,4 +67,20 @@ export interface ChatPanelProps {
   pickerDefaultIcon?: string;
   onPickerConfirm?: (name: string, icon: string) => void;
   onPickerCancel?: () => void;
+
+  // Panel mode: chat or code (JSON viewer)
+  mode?: 'chat' | 'code';
+  schemaJson?: string;
+  onModeChange?: (mode: 'chat' | 'code') => void;
+  onSchemaEdit?: (json: string) => void;
+
+  // Session management
+  sessions?: SessionInfo[];
+  activeSessionId?: string | null;
+  onNewChat?: () => void;
+  onSwitchSession?: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
+
+  // Operation loading
+  operationLoading?: string | null;
 }

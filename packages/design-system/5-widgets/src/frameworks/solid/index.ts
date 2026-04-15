@@ -17,7 +17,7 @@ export {
 } from '../../widgets/sidebars/CollapsibleSidebar';
 
 // Panels
-export { ChatPanel, type ChatPanelProps, type ChatMessage } from '../../widgets/panels/ChatPanel';
+export { ChatPanel, type ChatPanelProps, type ChatMessage, type SessionInfo } from '../../widgets/panels/ChatPanel';
 
 // Cesium
 export { CesiumGlobe, type CesiumGlobeProps } from '../../widgets/cesium/CesiumGlobe/CesiumGlobe.solid';
