@@ -153,12 +153,20 @@ ThemeStore:
 
 TemplateStore:
 - State:
-  - templates: array of TemplateSchema objects
+  - templates: array of TemplateSchema objects (core + installed only, used for sidebar)
+  - allTemplates: array of all TemplateSchema objects (core + custom)
+  - templateManagementList: array of { id, name, icon, description, isCore, isInstalled, isDefault }
   - currentTemplate: TemplateSchema (the active template)
+  - defaultTemplateId: string (id of the default/startup template)
 - Actions:
   - updateTemplate(newTemplate: TemplateSchema): updates the current template
   - switchTemplate(newTemplateId: string): switches to another template
   - removeTemplate(): removes the current template
+  - deleteTemplate(templateId: string): permanently deletes a custom template
+  - installTemplate(templateId: string): installs a custom template (shows in sidebar)
+  - uninstallTemplate(templateId: string): uninstalls a custom template (hides from sidebar)
+  - toggleInstalled(templateId: string): toggles install state of a custom template
+  - setDefaultTemplate(templateId: string): sets the default/startup template
   - saveTemplate(name: string): saves the current template
 
 SpaceStore:
