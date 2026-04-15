@@ -13,11 +13,6 @@ export { default as App } from './App';
 // Platform abstraction
 export * from '../../shared/platform';
 
-// Components
-export { default as AiInterface } from './components/AiInterface';
-export { default as AppSettings } from './components/AppSettings';
-export { default as Splashscreen } from './components/Splashscreen';
-
 // Stores
 export * from './stores';
 
