@@ -11,6 +11,9 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://current_template' })
   currentTemplateId: string = 'default';
 
+  @Property({ through: 'we://default_template' })
+  defaultTemplateId: string = 'default';
+
   @Property({ through: 'we://current_theme' })
   currentThemeId: string = 'default';
 
