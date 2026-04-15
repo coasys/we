@@ -50,9 +50,13 @@ export interface TemplateStoreBase {
   saveTemplateAs: (schema: TemplateSchema) => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
 
+  // Loading state
+  operationLoading: Accessor<string | null>;
+
   // Queries
   isCoreTemplate: (templateId: string) => boolean;
   isInstalled: (templateId: string) => boolean;
+  getTemplateModel: (templateId: string) => Template | undefined;
 }
 
 // TODO: Comment out test mutations before deploying
@@ -94,6 +98,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   const [installedIds, setInstalledIds] = createSignal<Set<string>>(new Set());
   const [loading, setLoading] = createSignal(true);
   const [currentTemplate, setCurrentTemplate] = createStore<TemplateSchema>(initialTemplate);
+  const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
 
   // Derived: core templates are always "installed", plus any custom templates in the installed set
   const templates = () => {
@@ -120,7 +125,8 @@ export function TemplateStoreProvider(props: ParentProps) {
         // The schema field stores a StoredTemplate { schema, sections }
         const stored = template.schema as unknown as StoredTemplate;
         const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
-        const templateId = template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
+        // Prefer the ID embedded in the schema (set during save) over deriving from name
+        const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
 
         savedTemplates.push({ ...schema, id: templateId });
         savedTemplateMap.set(templateId, template);
@@ -225,6 +231,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   async function deleteTemplate(templateId: string): Promise<void> {
     if (!templateId || !savedTemplateMap.has(templateId)) return;
 
+    setOperationLoading(`delete:${templateId}`);
     const template = savedTemplateMap.get(templateId)!;
 
     // Delete from AD4M first, before updating local state
@@ -235,6 +242,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     } catch (err) {
       console.error('TemplateStore: deleteTemplate AD4M error', err);
       toastService.error('Failed to delete template');
+      setOperationLoading(null);
       return;
     }
 
@@ -252,6 +260,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       const fallback = allTemplates().find((t) => t.id === 'default') || allTemplates()[0] || emptyTemplate;
       setCurrentTemplate(reconcile(deepClone(fallback)));
     }
+    setOperationLoading(null);
   }
 
   /** Add a template to the installed set (appears in sidebar) */
@@ -259,6 +268,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (!savedTemplateMap.has(templateId)) return;
     const template = savedTemplateMap.get(templateId)!;
 
+    setOperationLoading(`install:${templateId}`);
     const prefs = adamStore.agentSettings();
     if (prefs) {
       await prefs.addInstalledTemplates(template).catch(() => {});
@@ -269,6 +279,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       next.add(templateId);
       return next;
     });
+    setOperationLoading(null);
   }
 
   /** Remove a template from the installed set (hidden from sidebar, not deleted) */
@@ -276,6 +287,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (!savedTemplateMap.has(templateId)) return;
     const template = savedTemplateMap.get(templateId)!;
 
+    setOperationLoading(`uninstall:${templateId}`);
     const prefs = adamStore.agentSettings();
     if (prefs) {
       await prefs.removeInstalledTemplates(template).catch(() => {});
@@ -286,6 +298,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       next.delete(templateId);
       return next;
     });
+    setOperationLoading(null);
   }
 
   /** Set a template as the default (loaded on boot) */
@@ -364,6 +377,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
 
     const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+    setOperationLoading('save');
     const schemaToSave: TemplateSchema = { ...deepClone(schema), id: templateId };
 
     const storedTemplate = createStoredTemplate(schemaToSave);
@@ -403,15 +417,29 @@ export function TemplateStoreProvider(props: ParentProps) {
       }
 
       await loadSavedTemplates();
-      // Directly set currentTemplate — don't rely on switchTemplate lookup
-      // which can fail if loadSavedTemplates hasn't reflected the new template yet
+
+      // Ensure the just-saved template appears in allTemplates even if
+      // AD4M's file storage hasn't resolved the schema blob yet
+      setAllTemplates((prev) => {
+        if (prev.some((t) => t.id === templateId)) return prev;
+        return [...prev, deepClone(schemaToSave)];
+      });
+      setInstalledIds((prev) => {
+        if (prev.has(templateId)) return prev;
+        const next = new Set(prev);
+        next.add(templateId);
+        return next;
+      });
+
       setCurrentTemplate(reconcile(deepClone(schemaToSave)));
       routeStore.navigate('/');
       adamStore.updateAgentSettings({ currentTemplateId: templateId });
+      setOperationLoading(null);
       return true;
     } catch (error) {
       console.error('TemplateStore: saveTemplateAs error', error);
       toastService.error(`Failed to save template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setOperationLoading(null);
       return false;
     }
   }
@@ -455,6 +483,11 @@ export function TemplateStoreProvider(props: ParentProps) {
   /** Check if a custom template is installed (visible in sidebar) */
   function isInstalled(templateId: string): boolean {
     return installedIds().has(templateId);
+  }
+
+  /** Get the AD4M Template model instance by slug ID (for HasMany operations) */
+  function getTemplateModel(templateId: string): Template | undefined {
+    return savedTemplateMap.get(templateId);
   }
 
   /** Toggle a custom template's installed state */
@@ -505,9 +538,13 @@ export function TemplateStoreProvider(props: ParentProps) {
     saveTemplateAs,
     persistCurrentTemplate,
 
+    // Loading state
+    operationLoading,
+
     // Queries
     isCoreTemplate,
     isInstalled,
+    getTemplateModel,
 
     // Testing
     ...schemaMutationActions(currentTemplate, setCurrentTemplate),
