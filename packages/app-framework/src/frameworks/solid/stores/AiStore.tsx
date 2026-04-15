@@ -5,6 +5,11 @@ import { schemaPromptExamples } from '@shared/prompts/schemaExamples';
 import { deepClone } from '@shared/utils';
 import { useAdamStore, useTemplateStore } from '@solid/stores';
 import { schemaContext } from '@we/ai-context';
+import {
+  ChatMessage as ChatMessageModel,
+  ChatSession as ChatSessionModel,
+  Template as TemplateModel,
+} from '@we/models';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { patchByPath } from '@we/schema-shared';
 import type { ChatMessage } from '@we/widgets/solid';
@@ -23,6 +28,7 @@ export interface AiStore {
   messages: Accessor<ChatMessage[]>;
   isOpen: Accessor<boolean>;
   isStreaming: Accessor<boolean>;
+  streamingContent: Accessor<string>;
   apiKeyConfigured: Accessor<boolean>;
 
   // --- Template context ---
@@ -36,6 +42,19 @@ export interface AiStore {
   pickerAction: Accessor<'fork' | 'fresh'>;
   pickerDefaultName: Accessor<string>;
   pickerDefaultIcon: Accessor<string>;
+
+  // --- Session management ---
+  sessions: Accessor<ChatSessionModel[]>;
+  activeSessionId: Accessor<string | null>;
+  newChat: () => void;
+  switchSession: (sessionId: string) => void;
+  deleteSession: (sessionId: string) => Promise<void>;
+
+  // --- Panel mode (chat / code) ---
+  panelMode: Accessor<'chat' | 'code'>;
+  schemaJson: Accessor<string>;
+  setPanelMode: (mode: 'chat' | 'code') => void;
+  onSchemaEdit: (json: string) => void;
 
   // --- Template actions ---
   startFork: () => void;
@@ -73,8 +92,20 @@ const schemaTask: AITask = {
 const chatSystemPrompt = chatSystemPreamble + schemaContext;
 
 let msgIdCounter = 0;
-function createMessage(role: ChatMessage['role'], content: string, status?: ChatMessage['status']): ChatMessage {
-  return { id: `msg-${++msgIdCounter}`, role, content, timestamp: Date.now(), status };
+function createMessage(
+  role: ChatMessage['role'],
+  content: string,
+  status?: ChatMessage['status'],
+  messageType?: ChatMessage['messageType'],
+): ChatMessage {
+  return {
+    id: `msg-${++msgIdCounter}`,
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+    status,
+    messageType: messageType ?? 'text',
+  };
 }
 
 /** Minimal starter template for "Start Fresh" */
@@ -113,9 +144,20 @@ export function AiStoreProvider(props: ParentProps) {
   const [messages, setMessages] = createSignal<ChatMessage[]>([]);
   const [isOpen, setIsOpen] = createSignal(false);
   const [isStreaming, setIsStreaming] = createSignal(false);
+  const [streamingContent, setStreamingContent] = createSignal('');
   const [apiKey, setApiKeySignal] = createSignal('');
 
   const apiKeyConfigured = () => apiKey().length > 0;
+
+  // --- Session management ---
+  const [sessions, setSessions] = createSignal<ChatSessionModel[]>([]);
+  const [activeSessionId, setActiveSessionId] = createSignal<string | null>(null);
+  // Track the AD4M ChatSession model instance for the active session
+  let activeSessionModel: ChatSessionModel | null = null;
+
+  // --- Panel mode (chat / code) ---
+  const [panelMode, setPanelMode] = createSignal<'chat' | 'code'>('chat');
+  const schemaJson = () => JSON.stringify(templateStore.currentTemplate, null, 2);
 
   // --- Template context (computed) ---
   const templateName = () => templateStore.currentTemplate.meta?.name || templateStore.currentTemplate.id || 'Template';
@@ -134,6 +176,180 @@ export function AiStoreProvider(props: ParentProps) {
   const [pickerAction, setPickerAction] = createSignal<'fork' | 'fresh'>('fork');
   const [pickerDefaultName, setPickerDefaultName] = createSignal('');
   const [pickerDefaultIcon, setPickerDefaultIcon] = createSignal('cube');
+
+  // ----------------------------------------------------------------
+  // Session management — load, create, switch, delete
+  // ----------------------------------------------------------------
+
+  /** Load sessions for a given template and activate the most recent one */
+  async function loadSessionsForTemplate(templateId: string) {
+    // Core (read-only) templates use ephemeral in-memory sessions
+    if (templateStore.isCoreTemplate(templateId)) {
+      setSessions([]);
+      setActiveSessionId(null);
+      activeSessionModel = null;
+      setMessages([]);
+      return;
+    }
+
+    const templateModel = templateStore.getTemplateModel(templateId);
+    if (!templateModel) {
+      setSessions([]);
+      setActiveSessionId(null);
+      activeSessionModel = null;
+      setMessages([]);
+      return;
+    }
+
+    const perspective = adamStore.rootPerspective();
+    if (!perspective) return;
+
+    try {
+      // Single query: sessions for this template with messages already hydrated
+      const templateSessions = await ChatSessionModel.findAll(perspective, {
+        parent: { id: templateModel.id, predicate: 'we://chat_session' },
+        order: { updatedAt: 'DESC' },
+        include: { messages: { order: { createdAt: 'ASC' } } },
+      });
+
+      setSessions(templateSessions);
+
+      // Activate the most recent session
+      if (templateSessions.length > 0) {
+        const latest = templateSessions[0];
+        setActiveSessionId(latest.id);
+        activeSessionModel = latest;
+        setMessages((latest.messages as ChatMessage[]) || []);
+      } else {
+        setActiveSessionId(null);
+        activeSessionModel = null;
+        setMessages([]);
+      }
+    } catch (err) {
+      console.error('Failed to load sessions for template', templateId, err);
+      setSessions([]);
+      setActiveSessionId(null);
+      activeSessionModel = null;
+      setMessages([]);
+    }
+  }
+
+  /** Create a new chat session for the current template */
+  async function newChat() {
+    const templateId = templateStore.currentTemplate.id;
+    if (!templateId || templateStore.isCoreTemplate(templateId)) {
+      // For core templates, clear in-memory messages (ephemeral sessions)
+      setMessages([]);
+      setMessages((prev) => [
+        ...prev,
+        createMessage('assistant', 'Chat cleared. Start a new conversation!', undefined, 'info'),
+      ]);
+      return;
+    }
+
+    const templateModel = templateStore.getTemplateModel(templateId);
+    const perspective = adamStore.rootPerspective();
+    if (!templateModel || !perspective) return;
+
+    try {
+      const sessionName = `Chat ${sessions().length + 1}`;
+      const now = new Date().toISOString();
+      const session = await ChatSessionModel.create(
+        perspective,
+        { name: sessionName, updatedAt: now },
+        { parent: { model: TemplateModel, id: templateModel.id } },
+      );
+
+      activeSessionModel = session;
+      setActiveSessionId(session.id);
+      setMessages([]);
+      setSessions((prev) => [session, ...prev]);
+    } catch (err) {
+      console.error('Failed to create new chat session', err);
+    }
+  }
+
+  /** Switch to an existing session */
+  async function switchSession(sessionId: string) {
+    if (sessionId === activeSessionId()) return;
+
+    const target = sessions().find((s) => s.id === sessionId);
+    if (!target) return;
+
+    activeSessionModel = target;
+    setActiveSessionId(sessionId);
+    setMessages((target.messages as ChatMessage[]) || []);
+  }
+
+  /** Delete a session and its messages */
+  async function deleteSession(sessionId: string) {
+    const templateId = templateStore.currentTemplate.id;
+    if (!templateId) return;
+
+    const templateModel = templateStore.getTemplateModel(templateId);
+    const perspective = adamStore.rootPerspective();
+    if (!templateModel || !perspective) return;
+
+    try {
+      const target = sessions().find((s) => s.id === sessionId);
+      if (!target) return;
+
+      // Delete all hydrated messages in the session
+      for (const msg of target.messages || []) {
+        await (msg as ChatMessageModel).delete();
+      }
+
+      // Remove session from template and delete it
+      await templateModel.removeChatSessions(target);
+      await target.delete();
+
+      // Update local state
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+
+      if (activeSessionId() === sessionId) {
+        const remaining = sessions();
+        if (remaining.length > 0) {
+          const next = remaining[0];
+          activeSessionModel = next;
+          setActiveSessionId(next.id);
+          setMessages((next.messages as ChatMessage[]) || []);
+        } else {
+          setActiveSessionId(null);
+          activeSessionModel = null;
+          setMessages([]);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete session', err);
+    }
+  }
+
+  /** Persist a message to AD4M and link it to the active session */
+  async function persistMessage(
+    role: 'user' | 'assistant',
+    content: string,
+    messageType: string = 'text',
+    thinking: string = '',
+  ) {
+    if (!activeSessionModel) return;
+
+    const perspective = adamStore.rootPerspective();
+    if (!perspective) return;
+
+    try {
+      await ChatMessageModel.create(
+        perspective,
+        { role, content, messageType, thinking },
+        { parent: { model: ChatSessionModel, id: activeSessionModel.id } },
+      );
+
+      // Update session updatedAt
+      activeSessionModel.updatedAt = new Date().toISOString();
+      await activeSessionModel.save();
+    } catch (err) {
+      console.error('Failed to persist message', err);
+    }
+  }
 
   // ----------------------------------------------------------------
   // AD4M AI initialisation (unchanged)
@@ -239,10 +455,9 @@ export function AiStoreProvider(props: ParentProps) {
   }
 
   async function confirmPicker(name: string, icon: string) {
-    setPickerOpen(false);
-
+    // Don't close picker yet — let it show loading state
     const action = pickerAction();
-    const templateId = name.toLowerCase().replace(/\s+/g, '-');
+    const templateId = `${name.toLowerCase().replace(/\s+/g, '-')}-${crypto.randomUUID().slice(0, 8)}`;
 
     let schema: TemplateSchema;
     if (action === 'fresh') {
@@ -262,21 +477,33 @@ export function AiStoreProvider(props: ParentProps) {
     }
 
     const success = await templateStore.saveTemplateAs(schema);
+    setPickerOpen(false);
     if (!success) {
-      setMessages((prev) => [...prev, createMessage('system', `Failed to save template "${name}".`)]);
+      setMessages((prev) => [
+        ...prev,
+        createMessage('assistant', `Failed to save template "${name}".`, undefined, 'error'),
+      ]);
       return;
     }
 
     if (action === 'fresh') {
       setMessages((prev) => [
         ...prev,
-        createMessage('system', `Created new template "${name}". Start chatting to build your interface!`),
+        createMessage(
+          'assistant',
+          `Created new template "${name}". Start chatting to build your interface!`,
+          undefined,
+          'success',
+        ),
       ]);
     } else {
       const hadPending = pendingTemplate() !== null;
       setPendingTemplate(null);
       const suffix = hadPending ? ' Pending changes have been applied.' : '';
-      setMessages((prev) => [...prev, createMessage('system', `Forked as "${name}".${suffix}`)]);
+      setMessages((prev) => [
+        ...prev,
+        createMessage('assistant', `Forked as "${name}".${suffix}`, undefined, 'success'),
+      ]);
     }
   }
 
@@ -288,11 +515,23 @@ export function AiStoreProvider(props: ParentProps) {
   // Chat — send message (Claude primary, AD4M fallback)
   // ----------------------------------------------------------------
   async function sendMessage(text: string) {
+    // Lazy session creation for custom templates: if no active session, create one
+    const templateId = templateStore.currentTemplate.id;
+    if (templateId && !templateStore.isCoreTemplate(templateId) && !activeSessionModel) {
+      await newChat();
+    }
+
     // Add user message to chat
     const userMsg = createMessage('user', text, 'sending');
     setMessages((prev) => [...prev, userMsg]);
 
+    // Persist user message to AD4M (custom templates only)
+    if (activeSessionModel) {
+      persistMessage('user', text);
+    }
+
     setIsStreaming(true);
+    setStreamingContent('');
 
     try {
       if (apiKeyConfigured()) {
@@ -302,11 +541,12 @@ export function AiStoreProvider(props: ParentProps) {
       }
     } catch (err) {
       const errorText = err instanceof Error ? err.message : 'Unknown error';
-      setMessages((prev) => [...prev, createMessage('system', `Error: ${errorText}`)]);
+      setMessages((prev) => [...prev, createMessage('assistant', `Error: ${errorText}`, undefined, 'error')]);
     } finally {
       // Mark user message as sent
       setMessages((prev) => prev.map((m) => (m.id === userMsg.id ? { ...m, status: 'sent' as const } : m)));
       setIsStreaming(false);
+      setStreamingContent('');
     }
   }
 
@@ -338,8 +578,7 @@ export function AiStoreProvider(props: ParentProps) {
       throw new Error(`Claude API error ${response.status}: ${errorBody}`);
     }
 
-    // Create a placeholder assistant message — shows "Thinking..." via loading indicator
-    // We do NOT stream raw JSON tokens into the bubble
+    // Create a placeholder assistant message — shows streaming content as tokens arrive
     const streamMsg = createMessage('assistant', '', 'streaming');
     setMessages((prev) => [...prev, streamMsg]);
 
@@ -368,6 +607,8 @@ export function AiStoreProvider(props: ParentProps) {
           const event = JSON.parse(data);
           if (event.type === 'content_block_delta' && event.delta?.text) {
             fullContent += event.delta.text;
+            // Stream raw tokens to the UI so the user sees something immediately
+            setStreamingContent(fullContent);
           }
         } catch {
           // Skip malformed SSE events
@@ -377,6 +618,8 @@ export function AiStoreProvider(props: ParentProps) {
 
     // Process the final assembled content for schema updates
     // This sets the message content to the human-readable "response" text
+    // Clear streaming content now that we have the final response
+    setStreamingContent('');
     processAiResponse(fullContent, streamMsg.id);
   }
 
@@ -477,7 +720,7 @@ export function AiStoreProvider(props: ParentProps) {
         const display = responseText
           ? `${responseText}\n\n⚠ Could not apply changes: ${errMsg}`
           : `⚠ Could not apply changes: ${errMsg}`;
-        updateAssistantMessage(streamMsgId, display);
+        updateAssistantMessage(streamMsgId, display, 'error');
         return;
       }
     } else if (legacySchema) {
@@ -491,14 +734,14 @@ export function AiStoreProvider(props: ParentProps) {
         const display = responseText
           ? `${responseText}\n\n📋 Changes are ready — fork this template to apply them.`
           : '📋 Changes are ready — fork this template to apply them.';
-        updateAssistantMessage(streamMsgId, display);
+        updateAssistantMessage(streamMsgId, display, 'info');
       } else {
         // Editable template — apply directly and persist to AD4M
         templateStore.updateTemplate(mergedTemplate);
         templateStore.persistCurrentTemplate();
         setPendingTemplate(null);
         const display = responseText ? `${responseText}\n\n✓ Template updated.` : '✓ Template updated.';
-        updateAssistantMessage(streamMsgId, display);
+        updateAssistantMessage(streamMsgId, display, 'success');
       }
     } else {
       // No schema changes — just a text response
@@ -506,19 +749,66 @@ export function AiStoreProvider(props: ParentProps) {
     }
   }
 
-  /** Update or create the assistant message */
-  function updateAssistantMessage(streamMsgId: string | undefined, content: string) {
+  /** Update or create the assistant message, then persist to AD4M */
+  function updateAssistantMessage(streamMsgId: string | undefined, content: string, messageType?: string) {
     if (streamMsgId) {
-      setMessages((prev) => prev.map((m) => (m.id === streamMsgId ? { ...m, content, status: undefined } : m)));
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === streamMsgId
+            ? { ...m, content, status: undefined, messageType: (messageType as ChatMessage['messageType']) ?? 'text' }
+            : m,
+        ),
+      );
     } else {
-      setMessages((prev) => [...prev, createMessage('assistant', content)]);
+      setMessages((prev) => [
+        ...prev,
+        createMessage('assistant', content, undefined, messageType as ChatMessage['messageType']),
+      ]);
+    }
+
+    // Persist to AD4M (fire-and-forget for custom templates)
+    if (activeSessionModel) {
+      persistMessage('assistant', content, messageType || 'text');
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // Schema JSON editing (Code mode)
+  // ----------------------------------------------------------------
+  function onSchemaEdit(json: string) {
+    try {
+      const parsed = JSON.parse(json);
+      templateStore.updateTemplate(parsed as TemplateSchema);
+      templateStore.persistCurrentTemplate();
+      setMessages((prev) => [
+        ...prev,
+        createMessage('assistant', 'Schema updated from JSON editor.', undefined, 'success'),
+      ]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        createMessage('assistant', 'Invalid JSON — changes not applied.', undefined, 'error'),
+      ]);
     }
   }
 
   // ----------------------------------------------------------------
   // Clear chat
   // ----------------------------------------------------------------
-  function clearHistory() {
+  async function clearHistory() {
+    // If persisted session, delete messages from AD4M
+    if (activeSessionModel) {
+      try {
+        // Messages are already hydrated on the session model
+        for (const msg of activeSessionModel.messages || []) {
+          await activeSessionModel.removeMessages(msg as ChatMessageModel);
+          await (msg as ChatMessageModel).delete();
+        }
+        activeSessionModel.messages = [];
+      } catch (err) {
+        console.error('Failed to clear persisted messages', err);
+      }
+    }
     setMessages([]);
     setPendingTemplate(null);
   }
@@ -529,6 +819,16 @@ export function AiStoreProvider(props: ParentProps) {
   createEffect(() => {
     const client = adamStore.adamClient();
     if (client) initialiseStore(client);
+  });
+
+  // ----------------------------------------------------------------
+  // Load sessions when template changes
+  // ----------------------------------------------------------------
+  createEffect(() => {
+    const templateId = templateStore.currentTemplate.id;
+    if (templateId && adamStore.rootPerspective()) {
+      loadSessionsForTemplate(templateId);
+    }
   });
 
   // ----------------------------------------------------------------
@@ -544,6 +844,7 @@ export function AiStoreProvider(props: ParentProps) {
     messages,
     isOpen,
     isStreaming,
+    streamingContent,
     apiKeyConfigured,
 
     // Template context
@@ -557,6 +858,19 @@ export function AiStoreProvider(props: ParentProps) {
     pickerAction,
     pickerDefaultName,
     pickerDefaultIcon,
+
+    // Session management
+    sessions,
+    activeSessionId,
+    newChat,
+    switchSession,
+    deleteSession,
+
+    // Panel mode (chat / code)
+    panelMode,
+    schemaJson,
+    setPanelMode,
+    onSchemaEdit,
 
     // Template actions
     startFork,
