@@ -19,8 +19,11 @@ export const rules = `
 - Do not set props to their default/inherited values — omit them. fontSize and fontWeight inherit from parents (~16px / normal), so only set them when you need a different value.
 - Omit empty \`props\` and \`children\` — both are optional. Do not write \`props: {}\` or \`children: []\`.
 - Do not use \`as const\` on schema node \`type\` fields — \`SchemaNode.type\` is \`string\`, so it is never needed.
+- For icon-only buttons, nest a \`we-icon\` child inside \`we-button\` rather than using a \`text\` prop with a Unicode character. Example: \`{ type: 'we-button', props: { variant: 'ghost', size: 'sm' }, children: [{ type: 'we-icon', props: { name: 'x', size: '20px' } }] }\`.
+- For interactive list items and selectable options, use \`we-button\` with variant switching (e.g., \`secondary\` when selected, \`ghost\` when not) instead of manually styling \`Row\` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
 - All schemas must be valid JSON with property names and string values in double quotes.
 - The meta property at the root is required: { "meta": { "name": "...", "description": "...", "icon": "..." } }
+- Always set \`bg: 'neutral-50'\` on root-level schema nodes (templates, pages). This ensures proper background in all themes — without it, dark mode renders white backgrounds.
 
 Most @we/primitives inherit all Design System Props documented above (layout, visual, flex, typography, state).
 Some layout-only primitives (we-avatar, we-icon, we-image, we-spinner, etc.) only accept Layout props — see the Design System Props section for the full list.

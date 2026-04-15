@@ -3,6 +3,7 @@ import { usePlatform } from '@shared/platform';
 import { useNavigate } from '@solidjs/router';
 import type { FileData } from '@we/models';
 import {
+  AgentProfile,
   AgentSettings,
   blobToDataURL,
   CollectionBlock,
@@ -14,7 +15,7 @@ import {
   Theme,
   WeNode,
 } from '@we/models';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 
@@ -27,12 +28,15 @@ export interface AdamStore {
   loginLoading?: Accessor<boolean>;
   adamClient: Accessor<Ad4mClient | undefined>;
   me: Accessor<Agent | undefined>;
-  mySpaces: Accessor<Space[]>;
+  allPerspectives: Accessor<PerspectiveProxy[]>;
+  personalSpaces: Accessor<Space[]>;
+  sharedSpaces: Accessor<Space[]>;
   ad4mPort: Accessor<number | undefined>;
   ad4mToken: Accessor<string | undefined>;
   isDevelopment: Accessor<boolean>;
   rootPerspective: Accessor<PerspectiveProxy | null>;
   agentSettings: Accessor<AgentSettings | null>;
+  agentProfile: Accessor<AgentProfile | null>;
 
   // Setters
   setNavigateFunction: (navigate: NavigateFunction) => void;
@@ -44,6 +48,9 @@ export interface AdamStore {
   addNewSpace: (space: Space) => void;
   createSpace: (name: string, description: string, shared: boolean, imageFile?: File) => Promise<void>;
   updateAgentSettings: (updates: Partial<AgentSettings>) => Promise<void>;
+  updateAgentProfile: (updates: Partial<AgentProfile>) => Promise<void>;
+  updateProfileImage: (imageFile: File) => Promise<void>;
+  updateCoverImage: (imageFile: File) => Promise<void>;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -65,7 +72,13 @@ export function AdamStoreProvider(props: ParentProps) {
   const [ad4mToken, setAd4mToken] = createSignal<string | undefined>(undefined);
   const [rootPerspective, setRootPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
+  const [agentProfile, setAgentProfile] = createSignal<AgentProfile | null>(null, { equals: false });
+  const [allPerspectives, setAllPerspectives] = createSignal<PerspectiveProxy[]>([]);
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
+
+  // Derived: personal and shared spaces
+  const personalSpaces = createMemo(() => mySpaces().filter((s) => s.visibility !== 'shared'));
+  const sharedSpaces = createMemo(() => mySpaces().filter((s) => s.visibility === 'shared'));
 
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
@@ -81,6 +94,7 @@ export function AdamStoreProvider(props: ParentProps) {
   async function getMySpaces(client: Ad4mClient): Promise<void> {
     try {
       const perspectives = await client.perspective.all();
+      setAllPerspectives(perspectives);
       const spaces = await Promise.all(perspectives.map(async (perspective) => await Space.findOne(perspective)));
       const filteredSpaces = spaces
         .filter((s): s is Space => !!s)
@@ -176,8 +190,12 @@ export function AdamStoreProvider(props: ParentProps) {
 
       if (existing) {
         setRootPerspective(existing);
-        const settings = await AgentSettings.findOne(existing);
+        const [settings, profile] = await Promise.all([
+          AgentSettings.findOne(existing),
+          AgentProfile.findOne(existing),
+        ]);
         if (settings) setAgentSettings(settings);
+        if (profile) setAgentProfile(profile);
         console.log('AdamStore: Found root perspective', existing.uuid);
         return;
       }
@@ -187,16 +205,24 @@ export function AdamStoreProvider(props: ParentProps) {
       const perspective = await client.perspective.add('we-root');
       await Promise.all([
         AgentSettings.register(perspective),
+        AgentProfile.register(perspective),
         Template.register(perspective),
         Theme.register(perspective),
       ]);
       // Model.register resolves before SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      const settings = await AgentSettings.create(perspective, { currentTemplateId: 'we', currentThemeId: 'dark' });
+      const [settings, profile] = await Promise.all([
+        AgentSettings.create(perspective, {
+          currentTemplateId: 'default',
+          currentThemeId: 'dark',
+        }),
+        AgentProfile.create(perspective, {}),
+      ]);
 
       setRootPerspective(perspective);
       setAgentSettings(settings);
+      setAgentProfile(profile);
       console.log('AdamStore: Created root perspective', perspective.uuid);
     } catch (error) {
       console.error('AdamStore: getOrCreateRootPerspective error', error);
@@ -210,6 +236,37 @@ export function AdamStoreProvider(props: ParentProps) {
     Object.assign(settings, updates);
     await settings.save();
     setAgentSettings(settings);
+  }
+
+  async function updateAgentProfile(updates: Partial<AgentProfile>): Promise<void> {
+    const profile = agentProfile();
+    if (!profile) return;
+
+    Object.assign(profile, updates);
+    await profile.save();
+    setAgentProfile(profile);
+  }
+
+  async function updateProfileImage(imageFile: File): Promise<void> {
+    const profile = agentProfile();
+    if (!profile) return;
+
+    const compressedBlob = await resizeImage(imageFile, 0.6);
+    const imageBase64 = await blobToDataURL(compressedBlob);
+    profile.profileImage = { data_base64: imageBase64, name: 'profile-image', file_type: 'image/png' } as FileData;
+    await profile.save();
+    setAgentProfile(profile);
+  }
+
+  async function updateCoverImage(imageFile: File): Promise<void> {
+    const profile = agentProfile();
+    if (!profile) return;
+
+    const compressedBlob = await resizeImage(imageFile, 0.6);
+    const imageBase64 = await blobToDataURL(compressedBlob);
+    profile.coverImage = { data_base64: imageBase64, name: 'cover-image', file_type: 'image/png' } as FileData;
+    await profile.save();
+    setAgentProfile(profile);
   }
 
   async function login(password: string) {
@@ -344,12 +401,15 @@ export function AdamStoreProvider(props: ParentProps) {
     loginLoading,
     adamClient,
     me,
-    mySpaces,
+    allPerspectives,
+    personalSpaces,
+    sharedSpaces,
     ad4mPort,
     ad4mToken,
     isDevelopment,
     rootPerspective,
     agentSettings,
+    agentProfile,
 
     // Setters
     setNavigateFunction,
@@ -361,6 +421,9 @@ export function AdamStoreProvider(props: ParentProps) {
     addNewSpace,
     createSpace,
     updateAgentSettings,
+    updateAgentProfile,
+    updateProfileImage,
+    updateCoverImage,
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;

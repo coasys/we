@@ -4,6 +4,8 @@ import { Ad4mModel, Model, Property } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { type Accessor, createEffect, createSignal } from 'solid-js';
 
+import { benchmarkBasePath } from './SchemaBenchmark.schema';
+
 // ---------------------------------------------------------------------------
 // Test model — lightweight AD4M model for $query testing
 // ---------------------------------------------------------------------------
@@ -122,7 +124,7 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     } else {
       // All done — return to dashboard
       benchRunning = false;
-      setTimeout(() => benchNavigate!('/'), 50);
+      setTimeout(() => benchNavigate!(benchmarkBasePath), 50);
     }
   }
 
@@ -138,16 +140,17 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
   }
 
   const benchAllRoutes = [
-    '/static-small',
-    '/static-large',
-    '/tokens-light',
-    '/tokens-heavy',
-    '/each-flat',
-    '/each-nested',
-    '/web-components',
-    '/solid-components',
-    '/deep-nesting',
-    '/mixed-realistic',
+    `${benchmarkBasePath}/static-small`,
+    `${benchmarkBasePath}/static-large`,
+    `${benchmarkBasePath}/static-extreme`,
+    `${benchmarkBasePath}/tokens-light`,
+    `${benchmarkBasePath}/tokens-heavy`,
+    `${benchmarkBasePath}/each-flat`,
+    `${benchmarkBasePath}/each-nested`,
+    `${benchmarkBasePath}/web-components`,
+    `${benchmarkBasePath}/solid-components`,
+    `${benchmarkBasePath}/deep-nesting`,
+    `${benchmarkBasePath}/mixed-realistic`,
   ];
 
   function benchRunAll() {
@@ -202,10 +205,10 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
     (async () => {
       try {
         const perspectives = await client.perspective.all();
-        let testPerspective = perspectives.find((p: PerspectiveProxy) => p.name === '__we_test__') ?? null;
+        let testPerspective = perspectives.find((p: PerspectiveProxy) => p.name === 'we-test') ?? null;
 
         if (!testPerspective) {
-          testPerspective = await client.perspective.add('__we_test__');
+          testPerspective = await client.perspective.add('we-test');
           await testPerspective.ensureSDNASubjectClass(TestItem);
           await new Promise((r) => setTimeout(r, 500));
 

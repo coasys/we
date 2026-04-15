@@ -25,24 +25,40 @@ export const sidebar: SchemaNode = {
         items: [
           // --- Current space / perspective ---
           {
-            type: 'group',
-            id: 'space',
-            label: 'Current Space',
-            collapsible: false,
-            items: [
+            type: 'item',
+            id: 'current-space',
+            icon: 'map-pin-area',
+            label: {
+              $if: {
+                condition: { $store: 'spaceStore.space' },
+                then: { $store: 'spaceStore.space.name' },
+                else: 'Root',
+              },
+            },
+            onClick: [
               {
-                type: 'item',
-                id: 'current-space',
-                icon: 'map-pin-area',
-                label: {
-                  $if: {
-                    condition: { $store: 'spaceStore.space' },
-                    then: { $concat: [{ $store: 'spaceStore.space.name' }] },
-                    else: 'No space selected',
+                $if: {
+                  condition: { $store: 'spaceStore.space' },
+                  then: { $action: 'templateStore.switchTemplate', args: ['default'] },
+                },
+              },
+              {
+                $if: {
+                  condition: { $store: 'spaceStore.space' },
+                  then: {
+                    $action: 'routeStore.navigate',
+                    args: [{ $concat: ['/space/', { $store: 'spaceStore.space.uuid' }] }],
                   },
                 },
               },
             ],
+          },
+          // --- Debug: current route ---
+          {
+            type: 'item',
+            id: 'debug-route',
+            icon: 'link-simple',
+            label: { $store: 'routeStore.currentPath' },
           },
 
           // --- Template switching ---
@@ -52,7 +68,7 @@ export const sidebar: SchemaNode = {
             label: 'Templates',
             items: {
               $map: {
-                items: { $store: 'templateStore.mainTemplates' },
+                items: { $store: 'templateStore.templates' },
                 select: {
                   id: '$item.id',
                   icon: '$item.meta.icon',
@@ -63,75 +79,39 @@ export const sidebar: SchemaNode = {
               },
             },
           },
-
-          // --- Test templates (collapsed by default) ---
-          {
-            type: 'group',
-            id: 'test-templates',
-            label: 'Test Templates',
-            collapsed: true,
-            items: {
-              $map: {
-                items: { $store: 'templateStore.testTemplates' },
-                select: {
-                  id: '$item.id',
-                  icon: '$item.meta.icon',
-                  label: '$item.meta.name',
-                  active: { $eq: ['$item.id', { $store: 'templateStore.currentTemplate.id' }] },
-                  onClick: { $action: 'templateStore.switchTemplate', args: ['$item.id'] },
-                },
-              },
-            },
-          },
-
-          // --- Theme switching ---
-          {
-            type: 'group',
-            id: 'themes',
-            label: 'Themes',
-            collapsed: true,
-            items: {
-              $map: {
-                items: { $store: 'themeStore.themes' },
-                select: {
-                  id: '$item.id',
-                  icon: '$item.icon',
-                  label: '$item.name',
-                  active: { $eq: ['$item.id', { $store: 'themeStore.currentTheme.id' }] },
-                  onClick: { $action: 'themeStore.setCurrentTheme', args: ['$item.id'] },
-                },
-              },
-            },
-          },
-
-          // --- Installed apps (non-core templates / we-apps) ---
-          // {
-          //   type: 'group',
-          //   id: 'apps',
-          //   label: 'Apps',
-          //   collapsible: true,
-          //   collapsed: false,
-          //   items: {
-          //     $map: {
-          //       items: { $store: 'templateStore.installedApps' },
-          //       select: {
-          //         id: '$item.id',
-          //         icon: '$item.meta.icon',
-          //         label: '$item.meta.name',
-          //         onClick: {
-          //           $action: 'templateStore.switchTemplate',
-          //           args: ['$item.id'],
-          //         },
-          //       },
-          //     },
-          //   },
-          // },
         ],
 
-        // Footer: logout
+        // Footer: settings, profile, logout
         footerItems: [
           {
-            type: 'item',
+            id: 'profile',
+            icon: 'user',
+            label: 'Profile',
+            active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'profile'] },
+            onClick: { $action: 'templateStore.switchTemplate', args: ['profile'] },
+          },
+          {
+            id: 'settings',
+            icon: 'gear',
+            label: 'Settings',
+            active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'settings'] },
+            onClick: { $action: 'templateStore.switchTemplate', args: ['settings'] },
+          },
+          {
+            id: 'schema-tests',
+            icon: 'flask',
+            label: 'Schema Tests',
+            active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'schema-tests'] },
+            onClick: { $action: 'templateStore.switchTemplate', args: ['schema-tests'] },
+          },
+          {
+            id: 'ai-chat',
+            icon: 'robot',
+            label: 'AI Chat',
+            active: { $store: 'aiStore.isOpen' },
+            onClick: { $action: 'aiStore.toggle' },
+          },
+          {
             id: 'logout',
             icon: 'sign-out',
             label: 'Logout',

@@ -9,5 +9,6 @@ export type SerializedBlockNode = any;
 
 export type BlockComposerProps = {
   post?: SerializedBlockNode;
-  perspective: PerspectiveProxy;
+  perspective?: PerspectiveProxy;
+  onSave?: (json: SerializedBlockNode) => void;
 };

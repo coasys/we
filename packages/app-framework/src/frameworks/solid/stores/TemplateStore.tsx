@@ -1,5 +1,6 @@
-import { templateRegistry, testTemplateRegistry } from '@shared/registries/templateRegistry';
-import { schemaMutationActions } from '@shared/schemas/tests/SchemaMutations.actions';
+import { templateRegistry } from '@shared/registries/templateRegistry';
+import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
+import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutations.actions';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
@@ -7,7 +8,7 @@ import { Template } from '@we/models';
 import type { StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { useAdamStore } from './AdamStore';
@@ -19,8 +20,7 @@ const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', child
 export interface TemplateStoreBase {
   // State
   templates: Accessor<TemplateSchema[]>;
-  mainTemplates: Accessor<TemplateSchema[]>;
-  testTemplates: Accessor<TemplateSchema[]>;
+  shellTemplates: TemplateSchema[];
   currentTemplate: TemplateSchema;
   loading: Accessor<boolean>;
 
@@ -29,6 +29,11 @@ export interface TemplateStoreBase {
   switchTemplate: (newTemplateId: string) => void;
   removeTemplate: () => Promise<void>;
   saveTemplate: (name: string) => Promise<void>;
+  saveTemplateAs: (schema: TemplateSchema) => Promise<boolean>;
+  persistCurrentTemplate: () => Promise<void>;
+
+  // Queries
+  isCoreTemplate: (templateId: string) => boolean;
 }
 
 // TODO: Comment out test mutations before deploying
@@ -43,34 +48,32 @@ export function TemplateStoreProvider(props: ParentProps) {
   // Map template ID → AD4M model instance (for updates/deletes)
   const savedTemplateMap = new Map<string, Template>();
 
-  // Built-in templates from registry (always available)
-  const builtInTemplates: TemplateSchema[] = Object.entries(templateRegistry).map(([id, template]) => ({
+  // Core templates from registry (always available)
+  const coreTemplates: TemplateSchema[] = Object.entries(templateRegistry).map(([id, template]) => ({
     ...deepClone(template),
     id,
   }));
 
-  const builtInTestTemplates: TemplateSchema[] = Object.entries(testTemplateRegistry).map(([id, template]) => ({
-    ...deepClone(template),
-    id,
-  }));
+  // Shell templates — static system pages (profile, settings, testing)
+  const shellTemplates: TemplateSchema[] = [
+    { ...deepClone(profileTemplate), id: 'profile' },
+    { ...deepClone(settingsTemplate), id: 'settings' },
+    { ...deepClone(schemaTestsTemplate), id: 'schema-tests' },
+  ];
 
   const initialTemplate = deepClone(
-    builtInTemplates.find((t) => t.id === 'launcher') || builtInTemplates[0] || emptyTemplate,
+    coreTemplates.find((t) => t.id === 'launcher') || coreTemplates[0] || emptyTemplate,
   );
 
   console.log(
-    'TemplateStore: Initializing with built-in templates:',
-    builtInTemplates.map((t) => t.id),
+    'TemplateStore: Initializing with core templates:',
+    coreTemplates.map((t) => t.id),
   );
 
   // State
-  const [templates, setTemplates] = createSignal<TemplateSchema[]>([...builtInTemplates, ...builtInTestTemplates]);
+  const [templates, setTemplates] = createSignal<TemplateSchema[]>([...coreTemplates]);
   const [loading, setLoading] = createSignal(true);
   const [currentTemplate, setCurrentTemplate] = createStore<TemplateSchema>(initialTemplate);
-
-  const testTemplateIds = new Set(Object.keys(testTemplateRegistry));
-  const mainTemplates = createMemo(() => templates().filter((t) => !testTemplateIds.has(t.id!)));
-  const testTemplates = createMemo(() => templates().filter((t) => testTemplateIds.has(t.id!)));
 
   /** Load saved templates from root perspective and merge with built-in */
   async function loadSavedTemplates(): Promise<void> {
@@ -95,7 +98,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         savedTemplateMap.set(templateId, template);
       }
 
-      setTemplates([...builtInTemplates, ...builtInTestTemplates, ...savedTemplates]);
+      setTemplates([...coreTemplates, ...savedTemplates]);
     } catch (error) {
       console.error('TemplateStore: loadSavedTemplates error', error);
     }
@@ -114,7 +117,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     const prefs = adamStore.agentSettings();
     if (loading() || initialRestoreDone) return;
     if (prefs?.currentTemplateId && prefs.currentTemplateId !== currentTemplate.id) {
-      const persisted = templates().find((t) => t.id === prefs.currentTemplateId);
+      const persisted =
+        templates().find((t) => t.id === prefs.currentTemplateId) ||
+        shellTemplates.find((t) => t.id === prefs.currentTemplateId);
       if (persisted) {
         setCurrentTemplate(reconcile(deepClone(persisted)));
         initialRestoreDone = true;
@@ -131,10 +136,10 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   function switchTemplate(newTemplateId: string) {
-    const newTemplate = templates().find((t) => t.id === newTemplateId);
+    const newTemplate =
+      templates().find((t) => t.id === newTemplateId) || shellTemplates.find((t) => t.id === newTemplateId);
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
-      // Reset to root so the new template doesn't land on a stale route
       routeStore.navigate('/');
       // Persist choice to Ad4m
       adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });
@@ -176,8 +181,10 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     // Wrap in StoredTemplate with computed sections
     const storedTemplate = createStoredTemplate(schemaToSave);
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+    const base64 = btoa(String.fromCharCode(...jsonBytes));
     const schemaBlob = {
-      data_base64: btoa(JSON.stringify(storedTemplate)),
+      data_base64: base64,
       name: 'template-schema.json',
       file_type: 'application/json',
     } as FileData;
@@ -210,11 +217,103 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Save a provided schema as a new (or updated) template, refresh the
+   * templates list, and switch to it. Returns true on success.
+   */
+  async function saveTemplateAs(schema: TemplateSchema): Promise<boolean> {
+    const perspective = adamStore.rootPerspective();
+    if (!perspective) {
+      toastService.error('Cannot save template: no root perspective available');
+      return false;
+    }
+
+    const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+    const schemaToSave: TemplateSchema = { ...deepClone(schema), id: templateId };
+
+    const storedTemplate = createStoredTemplate(schemaToSave);
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    const schemaBlob = {
+      data_base64: base64,
+      name: 'template-schema.json',
+      file_type: 'application/json',
+    } as FileData;
+
+    try {
+      const existingTemplate = savedTemplateMap.get(templateId);
+      if (existingTemplate) {
+        existingTemplate.schema = schemaBlob as unknown as Record<string, unknown>;
+        existingTemplate.name = schemaToSave.meta.name;
+        existingTemplate.version = (existingTemplate.version || 1) + 1;
+        await existingTemplate.save();
+      } else {
+        const newTemplate = await Template.create(perspective, {
+          name: schemaToSave.meta.name,
+          origin: 'custom',
+          version: 1,
+          schema: schemaBlob as unknown as Record<string, unknown>,
+        });
+        savedTemplateMap.set(templateId, newTemplate);
+
+        const prefs = adamStore.agentSettings();
+        if (prefs) await prefs.addInstalledTemplates(newTemplate);
+      }
+
+      await loadSavedTemplates();
+      // Directly set currentTemplate — don't rely on switchTemplate lookup
+      // which can fail if loadSavedTemplates hasn't reflected the new template yet
+      setCurrentTemplate(reconcile(deepClone(schemaToSave)));
+      routeStore.navigate('/');
+      adamStore.updateAgentSettings({ currentTemplateId: templateId });
+      return true;
+    } catch (error) {
+      console.error('TemplateStore: saveTemplateAs error', error);
+      toastService.error(`Failed to save template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    }
+  }
+
+  /** Persist the current in-memory template state to AD4M (for saved templates only) */
+  async function persistCurrentTemplate(): Promise<void> {
+    const templateId = currentTemplate.id;
+    if (!templateId || !savedTemplateMap.has(templateId)) return;
+
+    const perspective = adamStore.rootPerspective();
+    if (!perspective) return;
+
+    const schemaToSave: TemplateSchema = deepClone(currentTemplate);
+    const storedTemplate = createStoredTemplate(schemaToSave);
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    const schemaBlob = {
+      data_base64: base64,
+      name: 'template-schema.json',
+      file_type: 'application/json',
+    } as FileData;
+
+    try {
+      const existing = savedTemplateMap.get(templateId)!;
+      existing.schema = schemaBlob as unknown as Record<string, unknown>;
+      existing.version = (existing.version || 1) + 1;
+      await existing.save();
+
+      // Update the in-memory templates signal so switching away and back preserves changes
+      setTemplates((prev) => prev.map((t) => (t.id === templateId ? deepClone(currentTemplate) : t)));
+    } catch (error) {
+      console.error('TemplateStore: persistCurrentTemplate error', error);
+    }
+  }
+
+  /** Check if a template is a built-in core template (not user-saved) */
+  function isCoreTemplate(templateId: string): boolean {
+    return coreTemplates.some((t) => t.id === templateId) && !savedTemplateMap.has(templateId);
+  }
+
   const store: TemplateStore = {
     // State
     templates,
-    mainTemplates,
-    testTemplates,
+    shellTemplates,
     currentTemplate,
     loading,
 
@@ -223,6 +322,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     switchTemplate,
     removeTemplate,
     saveTemplate,
+    saveTemplateAs,
+    persistCurrentTemplate,
+
+    // Queries
+    isCoreTemplate,
 
     // Testing
     ...schemaMutationActions(currentTemplate, setCurrentTemplate),

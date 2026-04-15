@@ -25,6 +25,10 @@ const styles = css`
     --we-text-text-transform: uppercase;
   }
 
+  :host([italic]) {
+    --we-text-font-style: italic;
+  }
+
   :host([tag='p']) {
     --we-text-margin: 0 0 1em 0;
   }
@@ -56,6 +60,7 @@ export default class Text extends DesignSystemElement {
   @property({ type: String, reflect: true }) tag: TextTag = 'span';
   @property({ type: Boolean, reflect: true }) inline = false;
   @property({ type: Boolean, reflect: true }) uppercase = false;
+  @property({ type: Boolean, reflect: true }) italic = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   override getInstanceProps() {

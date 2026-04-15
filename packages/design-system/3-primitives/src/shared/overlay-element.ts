@@ -39,6 +39,7 @@ export abstract class OverlayElement extends DesignSystemElement {
         /* Force host to always be full viewport */
         :host([data-we-overlay]) {
           position: fixed;
+          inset: 0;
           width: 100vw;
           height: 100vh;
           min-width: unset;
@@ -46,6 +47,7 @@ export abstract class OverlayElement extends DesignSystemElement {
           max-width: unset;
           max-height: unset;
           margin: 0;
+          z-index: 9999;
         }
 
         /* Apply sizing props to [part="base"] instead of :host */

@@ -22,6 +22,9 @@
 
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
 
+/** Base path when mounted under the testing template */
+export const tokensBasePath = '/tokens';
+
 // ---------------------------------------------------------------------------
 // Helpers — reusable test section building blocks
 // ---------------------------------------------------------------------------
@@ -448,7 +451,7 @@ const nestedEachTest = section('Nested $each', 'Iterate nested lists (groups →
   },
   {
     type: 'Column',
-    props: { gap: '300' },
+    props: { gap: '300', width: '100%' },
     children: [
       {
         type: '$each',
@@ -509,7 +512,7 @@ const mapTest = section('$map', 'Transform list items via select', [
             type: 'Row',
             props: { gap: '200', p: '200', bg: 'neutral-50', r: '300' },
             children: [
-              { type: 'we-text', props: { color: 'neutral-500', minWidth: '100px' }, children: ['$row.label'] },
+              { type: 'we-text', props: { color: 'neutral-500' }, children: ['$row.label'] },
               { type: 'we-text', children: ['$row.detail'] },
             ],
           },
@@ -622,7 +625,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
   {
     type: 'we-text',
     props: { color: 'neutral-400' },
-    children: ['Subscribes to TestItem models in __we_test__ perspective (requires AD4M):'],
+    children: ['Subscribes to TestItem models in we-test perspective (requires AD4M):'],
   },
   {
     type: 'we-text',
@@ -1544,7 +1547,7 @@ const namedThemeTest: SchemaNode = {
 // ---------------------------------------------------------------------------
 
 const groups: { key: string; label: string; path: string; children: SchemaNode[] }[] = [
-  { key: 'data-access', label: 'Data Access', path: '/', children: [storeTest, concatTest] },
+  { key: 'data-access', label: 'Data Access', path: '/data-access', children: [storeTest, concatTest] },
   { key: 'actions', label: 'Actions', path: '/actions', children: [actionTest, argTest] },
   { key: 'operators', label: 'Operators', path: '/operators', children: [eqTest, neTest, notTest, andTest, orTest] },
   {
@@ -1593,13 +1596,14 @@ function groupRoute(group: (typeof groups)[number]): RouteSchema {
 
 /** Build a nav tab for a group */
 function navTab(group: (typeof groups)[number]): SchemaNode {
-  const isActive = { $eq: [{ $store: 'routeStore.currentPath' }, group.path] };
+  const navPath = tokensBasePath + group.path;
+  const isActive = { $eq: [{ $store: 'routeStore.currentPath' }, navPath] };
 
   return {
     type: 'we-button',
     props: {
       variant: { $if: { condition: isActive, then: 'primary', else: 'secondary' } },
-      onClick: { $action: 'routeStore.navigate', args: [group.path] },
+      onClick: { $action: 'routeStore.navigate', args: [navPath] },
     },
     children: [group.label],
   };
@@ -1617,7 +1621,7 @@ export const schemaTokensTemplate: TemplateSchema = {
     stores: ['testStore'],
   },
   type: 'Column',
-  props: { minHeight: '100%', width: '100%', p: '500', bg: 'neutral-50' },
+  props: { minHeight: '100%', width: '100%', bg: 'neutral-50' },
   children: [
     {
       type: 'Column',
@@ -1626,7 +1630,7 @@ export const schemaTokensTemplate: TemplateSchema = {
         {
           type: 'we-text',
           props: { fontSize: '700', fontWeight: '700', color: 'primary-800' },
-          children: ['Schema Token Integration Tests'],
+          children: ['Token Integration Tests'],
         },
         {
           type: 'we-text',
@@ -1639,5 +1643,5 @@ export const schemaTokensTemplate: TemplateSchema = {
     },
     { type: '$routes' },
   ],
-  routes: groups.map(groupRoute),
+  routes: [{ path: '/', redirect: '/data-access' }, ...groups.map(groupRoute)],
 };

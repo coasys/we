@@ -16,7 +16,7 @@ export type FlexDirection = 'row' | 'row-reverse' | 'column' | 'column-reverse';
 export type FlexMainAxis = 'start' | 'center' | 'end' | 'between' | 'around' | 'even';
 export type FlexCrossAxis = 'start' | 'center' | 'end' | 'stretch';
 export type Position = 'relative' | 'absolute' | 'fixed' | 'sticky';
-export type Overflow = 'hidden' | 'auto';
+export type Overflow = 'hidden' | 'auto' | 'overlay';
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
 export type FontWeight = FontWeightToken | 'light' | 'normal' | 'medium' | 'bold' | 'bolder';
 export type Cursor = 'pointer' | 'default' | 'text' | 'not-allowed';
@@ -51,6 +51,7 @@ export interface DesignSystemProps {
   borderLeft?: string;
   borderWidth?: string;
   shadow?: ShadowValue;
+  ring?: string;
   transform?: string;
   transition?: string;
 

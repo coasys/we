@@ -1,5 +1,5 @@
 import { html } from 'lit';
-import { customElement, property, queryAssignedElements } from 'lit/decorators.js';
+import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
@@ -12,14 +12,18 @@ export class Tabs extends DesignSystemElement {
   @property({ type: String }) activeKey: string = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
-  @queryAssignedElements({ slot: 'tab' }) _tabs!: HTMLElement[];
+  // Use querySelectorAll instead of @queryAssignedElements — the schema renderer
+  // wraps each child web component in a <div style="display:contents"> which
+  // breaks named-slot assignment. querySelectorAll finds we-tab at any depth.
+  private get _allTabs(): HTMLElement[] {
+    return [...this.querySelectorAll('we-tab')] as HTMLElement[];
+  }
 
   updated(changedProperties: Map<PropertyKey, unknown>) {
     super.updated(changedProperties);
-    // Set selected state on tabs
-    this._tabs?.forEach((tab) => {
+    this._allTabs.forEach((tab) => {
       const t = tab as unknown as Record<string, unknown>;
-      t.selected = t.active === this.activeKey;
+      t.active = t.key === this.activeKey;
     });
   }
 
@@ -31,8 +35,8 @@ export class Tabs extends DesignSystemElement {
   render() {
     const inline = this.styles || {};
     return html`
-      <nav part="base" role="tablist" style=${styleMap(inline)}>
-        <slot name="tab" @tab-select=${this.onTabSelect}></slot>
+      <nav part="base" role="tablist" @tab-select=${this.onTabSelect} style=${styleMap(inline)}>
+        <slot></slot>
       </nav>
     `;
   }

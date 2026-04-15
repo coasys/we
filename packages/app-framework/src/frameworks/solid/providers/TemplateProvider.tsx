@@ -1,16 +1,16 @@
 import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { getModel } from '@shared/registries/modelRegistry';
-import { createTestStore } from '@shared/schemas/tests/testStore';
+import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
-import { useAdamStore, useRouteStore, useSpaceStore, useTemplateStore, useThemeStore } from '@solid/stores';
+import { useAdamStore, useAiStore, useRouteStore, useSpaceStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import type { Stores } from '@solid/types';
-import { Route, Router, useLocation, useNavigate } from '@solidjs/router';
+import { Navigate, Route, Router, useLocation, useNavigate } from '@solidjs/router';
 import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
 import { createEffect, createMemo, Show } from 'solid-js';
 
-type FlattenedRoute = { path: string; component: () => JSX.Element };
+type FlattenedRoute = { path: string; component: () => JSX.Element; redirect?: string };
 type ParentStackItem = { node: RouteSchema; fullPath: string; baseDepth: number };
 
 // Creates the root layout component for the router
@@ -26,24 +26,32 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
     // React to route changes and update relevant stores
     createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
 
-    const templateStore = stores.templateStore as { currentTemplate: TemplateSchema };
-
     return (
       <>
-        {/* Shell chrome (boot screen, sidebar) — always rendered */}
+        {/* Shell chrome (boot screen, sidebar, chat panel) — always rendered */}
         <RenderSchema node={shellSchema} stores={stores} registry={registry} />
 
-        {/* Active template — keyed on ID so it fully remounts on template switch */}
-        <Show when={templateStore.currentTemplate.id} keyed>
-          <div style={{ 'margin-left': '66px', width: 'calc(100% - 66px)' }}>
+        {/* Main content area — keyed on template ID to force clean remount on switch */}
+        <div
+          style={{
+            'margin-left': '66px',
+            'margin-right': stores.aiStore.isOpen() ? '400px' : '0',
+            width: stores.aiStore.isOpen() ? 'calc(100% - 66px - 400px)' : 'calc(100% - 66px)',
+            height: '100vh',
+            'overflow-y': 'auto',
+            'scrollbar-gutter': 'stable',
+            transition: 'margin-right 300ms ease, width 300ms ease',
+          }}
+        >
+          <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
             <RenderSchema
-              node={templateStore.currentTemplate}
+              node={stores.templateStore.currentTemplate}
               stores={stores}
               registry={registry}
               children={props.children}
             />
-          </div>
-        </Show>
+          </Show>
+        </div>
       </>
     );
   };
@@ -58,7 +66,10 @@ function flattenRoutes(
 ): FlattenedRoute[] {
   return routes.flatMap((route) => {
     // Get the full route path and base depth (used for relative navigation)
-    const fullPath = route.path === '/' && parentPath ? parentPath : parentPath + route.path;
+    const fullPath =
+      route.path === '/' && parentPath
+        ? parentPath
+        : parentPath + (route.path.startsWith('/') || !parentPath ? '' : '/') + route.path;
     const baseDepth = fullPath.split('/').filter(Boolean).length;
     const currentMeta = { node: route, fullPath, baseDepth };
 
@@ -74,6 +85,12 @@ function flattenRoutes(
       }, leaf) as JSX.Element;
     };
 
+    // Redirect routes don't render content — they navigate immediately
+    if (route.redirect) {
+      const target = parentPath + route.redirect;
+      return [{ path: fullPath, component: () => <Navigate href={target} />, redirect: target }];
+    }
+
     // If the route has children, recursively flatten them too, otherwise just return the route
     return route.routes?.length
       ? flattenRoutes(stores, route.routes, fullPath, [...parentStack, currentMeta])
@@ -84,6 +101,7 @@ function flattenRoutes(
 export default function TemplateProvider() {
   // Gather up the stores
   const adamStore = useAdamStore();
+  const aiStore = useAiStore();
   const spaceStore = useSpaceStore();
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
@@ -120,6 +138,7 @@ export default function TemplateProvider() {
 
   const stores = {
     adamStore,
+    aiStore,
     spaceStore,
     themeStore,
     templateStore,
@@ -138,10 +157,17 @@ export default function TemplateProvider() {
     return flattenRoutes(stores, templateSchema.routes ?? []);
   });
 
-  // Shell schema — boot screen + sidebar chrome (no template content)
+  // Shell schema — boot screen + sidebar chrome + chat panel (no template content)
   const shellSchema: TemplateSchema = {
     meta: { name: 'Shell', description: 'App shell chrome', icon: '' },
-    children: [launcherUIRegistry.bootScreen, launcherUIRegistry.shell],
+    children: [launcherUIRegistry.bootScreen, launcherUIRegistry.shell, launcherUIRegistry.aiChatSidebar],
+  };
+
+  // "Not found" fallback node for routed templates
+  const notFoundNode = {
+    type: 'Column',
+    props: { ax: 'center', bg: 'neutral-0', p: '500' },
+    children: [{ type: 'we-text', props: { size: '600' }, children: ['Page not found :_('] }],
   };
 
   // Return the router with the root layout and routes
@@ -150,23 +176,10 @@ export default function TemplateProvider() {
       {routes().map((route) => (
         <Route path={route.path} component={route.component} />
       ))}
-      {/* Fallback in case the schema doesn't define a wildcard route */}
-      {!routes().find((route) => route.path === '*') && (
-        <Route
-          path="*"
-          component={() =>
-            RenderSchema({
-              node: {
-                type: 'Column',
-                props: { ax: 'center', bg: 'neutral-0', p: '500' },
-                children: [{ type: 'we-text', props: { size: '600' }, children: ['Page not found :_('] }],
-              },
-              stores,
-              registry,
-            })
-          }
-        />
-      )}
+      <Route
+        path="*"
+        component={() => (routes().length > 0 ? RenderSchema({ node: notFoundNode, stores, registry }) : null)}
+      />
     </Router>
   );
 }

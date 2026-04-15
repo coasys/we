@@ -9,10 +9,13 @@ export class AgentSettings extends Ad4mModel {
   type: string = '';
 
   @Property({ through: 'we://current_template' })
-  currentTemplateId: string = 'we';
+  currentTemplateId: string = 'default';
 
   @Property({ through: 'we://current_theme' })
   currentThemeId: string = 'default';
+
+  @Property({ through: 'we://claude_api_key' })
+  claudeApiKey: string = '';
 
   @HasMany(() => Template, { through: 'we://installed_template' })
   installedTemplates: Template[] = [];

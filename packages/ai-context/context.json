@@ -7,7 +7,7 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "AlertVariant",
+          "type": "'info' | 'success' | 'warning' | 'error'",
           "optional": false,
           "default": "'info'"
         },
@@ -80,13 +80,13 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "BadgeVariant",
+          "type": "'' | 'primary' | 'success' | 'danger' | 'warning'",
           "optional": false,
           "default": "''"
         },
         {
           "name": "size",
-          "type": "BadgeSize",
+          "type": "'' | 'sm' | 'lg'",
           "optional": false,
           "default": "''"
         }
@@ -105,13 +105,13 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "ButtonVariant",
+          "type": "'primary' | 'secondary' | 'ghost' | 'danger' | 'outline'",
           "optional": false,
           "default": "'primary'"
         },
         {
           "name": "size",
-          "type": "ButtonSize",
+          "type": "'xs' | 'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         },
@@ -152,7 +152,7 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "CardVariant",
+          "type": "'' | 'elevated' | 'outlined' | 'filled'",
           "optional": false,
           "default": "''"
         }
@@ -189,7 +189,7 @@
         },
         {
           "name": "size",
-          "type": "CheckboxSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -276,7 +276,7 @@
         },
         {
           "name": "size",
-          "type": "ComboboxSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -313,7 +313,7 @@
         },
         {
           "name": "size",
-          "type": "DatePickerSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -412,7 +412,7 @@
         },
         {
           "name": "size",
-          "type": "FormFieldSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -462,7 +462,7 @@
         },
         {
           "name": "weight",
-          "type": "IconWeight",
+          "type": "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'",
           "optional": false,
           "default": "'regular'"
         }
@@ -512,13 +512,13 @@
         },
         {
           "name": "fit",
-          "type": "ImageFit",
+          "type": "'' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down'",
           "optional": false,
           "default": "''"
         },
         {
           "name": "loading",
-          "type": "ImageLoading",
+          "type": "'eager' | 'lazy'",
           "optional": false,
           "default": "'eager'"
         },
@@ -627,7 +627,7 @@
         },
         {
           "name": "size",
-          "type": "InputSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -714,7 +714,7 @@
         },
         {
           "name": "variant",
-          "type": "MenuItemVariant",
+          "type": "'default' | 'danger'",
           "optional": false,
           "default": "'default'"
         },
@@ -791,7 +791,7 @@
         },
         {
           "name": "size",
-          "type": "NumberInputSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -822,7 +822,7 @@
         },
         {
           "name": "size",
-          "type": "PaginationSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -876,13 +876,13 @@
         },
         {
           "name": "variant",
-          "type": "ProgressBarVariant",
+          "type": "'default' | 'success' | 'warning' | 'danger'",
           "optional": false,
           "default": "'default'"
         },
         {
           "name": "size",
-          "type": "ProgressBarSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -919,7 +919,7 @@
         },
         {
           "name": "size",
-          "type": "RadioSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -987,7 +987,7 @@
         },
         {
           "name": "size",
-          "type": "SelectSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -1061,7 +1061,7 @@
         },
         {
           "name": "size",
-          "type": "SliderSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         },
@@ -1080,7 +1080,7 @@
       "ownProps": [
         {
           "name": "size",
-          "type": "SpinnerSize",
+          "type": "'' | 'sm' | 'lg'",
           "optional": false,
           "default": "''"
         },
@@ -1123,7 +1123,7 @@
         },
         {
           "name": "size",
-          "type": "SwitchSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -1173,7 +1173,7 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "TagVariant",
+          "type": "'default' | 'primary' | 'success' | 'warning' | 'danger'",
           "optional": false,
           "default": "'default'"
         },
@@ -1215,6 +1215,12 @@
         },
         {
           "name": "uppercase",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "italic",
           "type": "boolean",
           "optional": false,
           "default": "false"
@@ -1288,7 +1294,7 @@
         },
         {
           "name": "size",
-          "type": "TextareaSize",
+          "type": "'sm' | 'md' | 'lg'",
           "optional": false,
           "default": "'md'"
         }
@@ -1347,7 +1353,12 @@
         {
           "name": "perspective",
           "type": "PerspectiveProxy",
-          "optional": false
+          "optional": true
+        },
+        {
+          "name": "onSave",
+          "type": "((json: SerializedBlockNode) => void)",
+          "optional": true
         }
       ],
       "source": "components"
@@ -1646,6 +1657,11 @@
         {
           "name": "shadow",
           "type": "ShadowValue",
+          "optional": true
+        },
+        {
+          "name": "ring",
+          "type": "string",
           "optional": true
         },
         {
@@ -2008,6 +2024,402 @@
       "source": "components"
     },
     {
+      "name": "EditableImage",
+      "props": [
+        {
+          "name": "src",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "alt",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "fit",
+          "type": "\"fill\" | \"none\" | \"cover\" | \"contain\" | \"scale-down\"",
+          "optional": true
+        },
+        {
+          "name": "placeholderIcon",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onImageChange",
+          "type": "((file: File) => void)",
+          "optional": true
+        },
+        {
+          "name": "class",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bg",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "color",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "opacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "border",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderColor",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "borderTop",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderRight",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderBottom",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderLeft",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderWidth",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "shadow",
+          "type": "ShadowValue",
+          "optional": true
+        },
+        {
+          "name": "ring",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "transform",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "transition",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "textAlign",
+          "type": "TextAlign",
+          "optional": true
+        },
+        {
+          "name": "fontFamily",
+          "type": "FontFamilyValue",
+          "optional": true
+        },
+        {
+          "name": "fontWeight",
+          "type": "FontWeight",
+          "optional": true
+        },
+        {
+          "name": "fontSize",
+          "type": "FontSizeValue",
+          "optional": true
+        },
+        {
+          "name": "lineHeight",
+          "type": "LineHeightValue",
+          "optional": true
+        },
+        {
+          "name": "letterSpacing",
+          "type": "LetterSpacingValue",
+          "optional": true
+        },
+        {
+          "name": "textDecoration",
+          "type": "TextDecoration",
+          "optional": true
+        },
+        {
+          "name": "textTransform",
+          "type": "TextTransform",
+          "optional": true
+        },
+        {
+          "name": "cursor",
+          "type": "Cursor",
+          "optional": true
+        },
+        {
+          "name": "pointerEvents",
+          "type": "PointerEvents",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "minWidth",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "minHeight",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "maxWidth",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "maxHeight",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "display",
+          "type": "Display",
+          "optional": true
+        },
+        {
+          "name": "direction",
+          "type": "FlexDirection",
+          "optional": true
+        },
+        {
+          "name": "ax",
+          "type": "\"center\" | \"start\" | \"end\" | \"stretch\" | \"between\" | \"around\" | \"even\"",
+          "optional": true
+        },
+        {
+          "name": "ay",
+          "type": "\"center\" | \"start\" | \"end\" | \"stretch\" | \"between\" | \"around\" | \"even\"",
+          "optional": true
+        },
+        {
+          "name": "wrap",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "gap",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "flex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "alignSelf",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "overflow",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "zIndex",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "position",
+          "type": "Position",
+          "optional": true
+        },
+        {
+          "name": "top",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "right",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bottom",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "left",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "m",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "ml",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mr",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mt",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mb",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mx",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "my",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "p",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pl",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pr",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pt",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pb",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "px",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "py",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "r",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rt",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rb",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rl",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rr",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rtl",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rtr",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rbr",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rbl",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "hoverProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        },
+        {
+          "name": "activeProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        },
+        {
+          "name": "focusProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        },
+        {
+          "name": "disabledProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
       "name": "IconLabelButton",
       "props": [
         {
@@ -2255,6 +2667,11 @@
         {
           "name": "shadow",
           "type": "ShadowValue",
+          "optional": true
+        },
+        {
+          "name": "ring",
+          "type": "string",
           "optional": true
         },
         {
@@ -2697,6 +3114,143 @@
       "source": "widgets"
     },
     {
+      "name": "ChatPanel",
+      "description": "Sliding chat panel for conversational AI interactions.\nRenders a list of messages with a text input, anchored to a screen edge.\nSupports streaming indicator, auto-scroll, and header/close controls.\nIncludes template context header with fork/fresh actions and name+icon picker.",
+      "props": [
+        {
+          "name": "open",
+          "type": "boolean",
+          "optional": false
+        },
+        {
+          "name": "side",
+          "type": "\"left\" | \"right\"",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "position",
+          "type": "\"fixed\" | \"absolute\"",
+          "optional": true
+        },
+        {
+          "name": "zIndex",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "messages",
+          "type": "ChatMessage[]",
+          "optional": false
+        },
+        {
+          "name": "loading",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onSend",
+          "type": "(message: string) => void",
+          "optional": false
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onClose",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "apiKeyConfigured",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "onSetApiKey",
+          "type": "((key: string) => void)",
+          "optional": true
+        },
+        {
+          "name": "templateName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "templateIcon",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "isReadOnly",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "hasPendingChanges",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "onFork",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "onStartFresh",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "pickerOpen",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "pickerAction",
+          "type": "\"fork\" | \"fresh\"",
+          "optional": true
+        },
+        {
+          "name": "pickerDefaultName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "pickerDefaultIcon",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onPickerConfirm",
+          "type": "((name: string, icon: string) => void)",
+          "optional": true
+        },
+        {
+          "name": "onPickerCancel",
+          "type": "(() => void)",
+          "optional": true
+        }
+      ],
+      "source": "widgets"
+    },
+    {
       "name": "CollapsibleSidebar",
       "props": [
         {
@@ -2726,7 +3280,7 @@
         },
         {
           "name": "position",
-          "type": "\"static\" | \"absolute\" | \"fixed\"",
+          "type": "\"fixed\" | \"absolute\" | \"static\"",
           "optional": true
         },
         {
@@ -2954,39 +3508,54 @@
   ],
   "models": [
     {
-      "name": "AgentSettings",
-      "className": "AgentSettings",
+      "name": "AgentProfile",
+      "className": "AgentProfile",
       "extends": "Ad4mModel",
       "fields": [
         {
-          "name": "currentTemplateId",
+          "name": "firstName",
           "type": "string",
-          "predicate": "we://current_template",
-          "required": false,
-          "default": "'we'"
+          "predicate": "we://has_first_name",
+          "required": false
         },
         {
-          "name": "currentThemeId",
+          "name": "lastName",
           "type": "string",
-          "predicate": "we://current_theme",
-          "required": false,
-          "default": "'default'"
+          "predicate": "we://has_last_name",
+          "required": false
+        },
+        {
+          "name": "handle",
+          "type": "string",
+          "predicate": "we://has_handle",
+          "required": false
+        },
+        {
+          "name": "bio",
+          "type": "string",
+          "predicate": "we://has_bio",
+          "required": false
+        },
+        {
+          "name": "location",
+          "type": "string",
+          "predicate": "we://has_location",
+          "required": false
+        },
+        {
+          "name": "profileImage",
+          "type": "string | FileData",
+          "predicate": "we://has_profile_image",
+          "required": false
+        },
+        {
+          "name": "coverImage",
+          "type": "string | FileData",
+          "predicate": "we://has_cover_image",
+          "required": false
         }
       ],
-      "relations": [
-        {
-          "name": "installedTemplates",
-          "kind": "HasMany",
-          "predicate": "we://installed_template",
-          "target": "Template"
-        },
-        {
-          "name": "installedThemes",
-          "kind": "HasMany",
-          "predicate": "we://installed_theme",
-          "target": "Theme"
-        }
-      ]
+      "relations": []
     },
     {
       "name": "AgentSettings",
@@ -2998,7 +3567,7 @@
           "type": "string",
           "predicate": "we://current_template",
           "required": false,
-          "default": "'we'"
+          "default": "'default'"
         },
         {
           "name": "currentThemeId",
@@ -3006,6 +3575,12 @@
           "predicate": "we://current_theme",
           "required": false,
           "default": "'default'"
+        },
+        {
+          "name": "claudeApiKey",
+          "type": "string",
+          "predicate": "we://claude_api_key",
+          "required": false
         }
       ],
       "relations": [
@@ -3137,6 +3712,12 @@
       "className": "CollectionBlock",
       "extends": "WeNode",
       "fields": [
+        {
+          "name": "type",
+          "type": "string",
+          "predicate": "we://type",
+          "required": false
+        },
         {
           "name": "display",
           "type": "string",
@@ -3890,7 +4471,7 @@
         "width": "6px",
         "backgroundImage": "none",
         "background": "transparent",
-        "cornerBackground": "#dfdfdf",
+        "cornerBackground": "transparent",
         "thumbBoxShadow": "none",
         "thumbBorderRadius": "radius['pill']",
         "thumbBackground": "var(--we-color-neutral-100)"
@@ -4033,78 +4614,132 @@
   "storeEntries": [
     {
       "name": "adamStore",
-      "state": [
-        "adamClient",
-        "me",
-        "mySpaces",
-        "bootState",
-        "passwordError",
-        "loginLoading"
-      ],
+      "state": {
+        "adamClient": {
+          "type": "object"
+        },
+        "me": {
+          "type": "object",
+          "properties": ["did", "perspective", "directMessageLanguage"]
+        },
+        "allPerspectives": {
+          "type": "array",
+          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
+        },
+        "personalSpaces": {
+          "type": "array",
+          "properties": ["uuid", "name", "description", "url", "visibility"]
+        },
+        "sharedSpaces": {
+          "type": "array",
+          "properties": ["uuid", "name", "description", "url", "visibility"]
+        },
+        "bootState": {
+          "type": "string"
+        },
+        "passwordError": {
+          "type": "string"
+        },
+        "loginLoading": {
+          "type": "boolean"
+        },
+        "agentProfile": {
+          "type": "object",
+          "properties": ["firstName", "lastName", "handle", "bio", "location", "profileImage", "coverImage"]
+        }
+      },
       "actions": [
         "navigate",
         "addNewSpace",
         "createSpace",
-        "login"
+        "login",
+        "logout",
+        "updateAgentProfile",
+        "updateProfileImage",
+        "updateCoverImage"
       ]
     },
     {
       "name": "routeStore",
-      "state": [
-        "currentPath"
-      ],
-      "actions": [
-        "navigate"
-      ]
+      "state": {
+        "currentPath": {
+          "type": "string"
+        },
+        "segments": {
+          "type": "array"
+        }
+      },
+      "actions": ["navigate"]
     },
     {
       "name": "themeStore",
-      "state": [
-        "themes",
-        "currentTheme"
-      ],
-      "actions": [
-        "setThemes",
-        "setCurrentTheme"
-      ]
+      "state": {
+        "themes": {
+          "type": "array",
+          "properties": ["id", "name", "icon"]
+        },
+        "currentTheme": {
+          "type": "object",
+          "properties": ["id", "name", "icon"]
+        }
+      },
+      "actions": ["setThemes", "setCurrentTheme"]
     },
     {
       "name": "templateStore",
-      "state": [
-        "templates",
-        "currentTemplate"
-      ],
-      "actions": [
-        "updateTemplate",
-        "switchTemplate",
-        "removeTemplate",
-        "saveTemplate"
-      ]
+      "state": {
+        "templates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "shellTemplates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "currentTemplate": {
+          "type": "object",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        }
+      },
+      "actions": ["updateTemplate", "switchTemplate", "removeTemplate", "saveTemplate"]
     },
     {
       "name": "spaceStore",
-      "state": [
-        "spaceId",
-        "perspective",
-        "space",
-        "posts",
-        "loading"
-      ],
-      "actions": [
-        "setSpaceId",
-        "getSpace",
-        "getPosts"
-      ]
+      "state": {
+        "spaceId": {
+          "type": "string"
+        },
+        "perspective": {
+          "type": "object",
+          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
+        },
+        "space": {
+          "type": "object",
+          "properties": ["uuid", "name", "description", "url", "visibility"]
+        },
+        "posts": {
+          "type": "array",
+          "properties": ["id", "author", "timestamp", "content"]
+        },
+        "loading": {
+          "type": "boolean"
+        }
+      },
+      "actions": ["setSpaceId", "getSpace", "getPosts"]
     },
     {
       "name": "aiStore",
-      "state": [
-        "models",
-        "tasks"
-      ],
-      "actions": [
-        "handleSchemaPrompt"
-      ]
+      "state": {
+        "models": {
+          "type": "array",
+          "properties": ["id", "name"]
+        },
+        "tasks": {
+          "type": "array",
+          "properties": ["id", "status", "result"]
+        }
+      },
+      "actions": ["handleSchemaPrompt"]
     }
   ]
 }

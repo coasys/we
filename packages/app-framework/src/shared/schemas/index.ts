@@ -1,18 +1,15 @@
 // Templates
+export { defaultTemplate } from './DefaultTemplate.schema';
 export { twitterTemplate } from './TwitterTemplate.schema';
 export { weTemplate } from './WeTemplate.schema';
 
-// Test templates
+// Shell
 export {
+  bootScreen,
   createTestStore,
-  schemaBenchmarkTemplate,
-  schemaTokensTemplate,
-  schemaMutationsTemplate,
+  profileTemplate,
+  schemaTestsTemplate,
   schemaMutationActions,
-  schemaRoutingTemplate,
-} from './tests';
-
-// Shell fragments
-// export { appSettingsSchema, getAppSettingsSchema } from './shell/AppSettings.schema';
-export { bootScreen } from './shell/BootScreen.schema';
-export { sidebar } from './shell/Sidebar.schema';
+  settingsTemplate,
+  sidebar,
+} from './shell';

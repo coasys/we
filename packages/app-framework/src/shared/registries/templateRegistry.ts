@@ -17,12 +17,9 @@
  */
 
 import {
-  schemaBenchmarkTemplate,
-  schemaMutationsTemplate,
-  schemaRoutingTemplate,
-  schemaTokensTemplate,
-  twitterTemplate,
-  weTemplate,
+  defaultTemplate,
+  // twitterTemplate,
+  // weTemplate,
 } from '@shared/schemas';
 // import type { TemplateSchema } from '@we/schema-shared';
 
@@ -51,20 +48,14 @@ import {
  * The 'launcher' template is generated from we-seed.json.
  */
 export const templateRegistry = {
-  we: weTemplate,
-  twitter: twitterTemplate,
+  default: defaultTemplate,
+  // we: weTemplate,
+  // twitter: twitterTemplate,
   // launcher: placeholderLauncher, // Replaced by seed system when PlatformProvider initializes
 };
 
-export const testTemplateRegistry = {
-  'schema-benchmark': schemaBenchmarkTemplate,
-  'schema-tokens': schemaTokensTemplate,
-  'schema-mutations': schemaMutationsTemplate,
-  'schema-routing': schemaRoutingTemplate,
-};
-
-export type TemplateId = keyof typeof templateRegistry | keyof typeof testTemplateRegistry;
+export type TemplateId = keyof typeof templateRegistry;
 
 export function isValidTemplateId(key: unknown): key is TemplateId {
-  return typeof key === 'string' && (key in templateRegistry || key in testTemplateRegistry);
+  return typeof key === 'string' && key in templateRegistry;
 }

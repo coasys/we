@@ -10,32 +10,73 @@ import type { StoreEntry } from '../types.js';
 export const storeEntries: StoreEntry[] = [
   {
     name: 'adamStore',
-    state: ['adamClient', 'me', 'mySpaces', 'bootState', 'passwordError', 'loginLoading'],
-    actions: ['navigate', 'addNewSpace', 'createSpace', 'login'],
+    state: {
+      adamClient: { type: 'object' },
+      me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
+      allPerspectives: { type: 'array', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
+      personalSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
+      sharedSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
+      bootState: { type: 'string' },
+      passwordError: { type: 'string' },
+      loginLoading: { type: 'boolean' },
+      agentProfile: {
+        type: 'object',
+        properties: ['firstName', 'lastName', 'handle', 'bio', 'location', 'profileImage', 'coverImage'],
+      },
+    },
+    actions: [
+      'navigate',
+      'addNewSpace',
+      'createSpace',
+      'login',
+      'logout',
+      'updateAgentProfile',
+      'updateProfileImage',
+      'updateCoverImage',
+    ],
   },
   {
     name: 'routeStore',
-    state: ['currentPath'],
+    state: {
+      currentPath: { type: 'string' },
+      segments: { type: 'array' },
+    },
     actions: ['navigate'],
   },
   {
     name: 'themeStore',
-    state: ['themes', 'currentTheme'],
+    state: {
+      themes: { type: 'array', properties: ['id', 'name', 'icon'] },
+      currentTheme: { type: 'object', properties: ['id', 'name', 'icon'] },
+    },
     actions: ['setThemes', 'setCurrentTheme'],
   },
   {
     name: 'templateStore',
-    state: ['templates', 'currentTemplate'],
+    state: {
+      templates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+      shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+      currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+    },
     actions: ['updateTemplate', 'switchTemplate', 'removeTemplate', 'saveTemplate'],
   },
   {
     name: 'spaceStore',
-    state: ['spaceId', 'perspective', 'space', 'posts', 'loading'],
+    state: {
+      spaceId: { type: 'string' },
+      perspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
+      space: { type: 'object', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
+      posts: { type: 'array', properties: ['id', 'author', 'timestamp', 'content'] },
+      loading: { type: 'boolean' },
+    },
     actions: ['setSpaceId', 'getSpace', 'getPosts'],
   },
   {
     name: 'aiStore',
-    state: ['models', 'tasks'],
+    state: {
+      models: { type: 'array', properties: ['id', 'name'] },
+      tasks: { type: 'array', properties: ['id', 'status', 'result'] },
+    },
     actions: ['handleSchemaPrompt'],
   },
 ];
@@ -55,10 +96,13 @@ function generateStoresText(entries: StoreEntry[]): string {
       state: {
         adamClient: 'Ad4mClient | undefined',
         me: 'Agent | undefined',
-        mySpaces: 'array of Space objects',
+        allPerspectives: 'array of PerspectiveProxy objects (all AD4M perspectives)',
+        personalSpaces: 'array of Space objects (local/personal spaces)',
+        sharedSpaces: 'array of Space objects (shared/neighbourhood spaces)',
         bootState: 'string',
         passwordError: 'string | undefined',
         loginLoading: 'boolean',
+        agentProfile: 'AgentProfile | null (the current agent profile with name, bio, images, etc.)',
       },
       actions: {
         navigate: '(to: string, options?): navigates to a route',
@@ -66,10 +110,18 @@ function generateStoresText(entries: StoreEntry[]): string {
         createSpace:
           '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
         login: '(password: string): logs in the agent with password',
+        logout: '(): locks the agent and returns to login screen',
+        updateAgentProfile:
+          '(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)',
+        updateProfileImage: '(imageFile: File): uploads and sets the profile image',
+        updateCoverImage: '(imageFile: File): uploads and sets the cover image',
       },
     },
     routeStore: {
-      state: { currentPath: 'string (the current route path)' },
+      state: {
+        currentPath: 'string (the current route path)',
+        segments: 'string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])',
+      },
       actions: { navigate: '(to: string, options?): navigates to a route' },
     },
     themeStore: {
@@ -84,7 +136,8 @@ function generateStoresText(entries: StoreEntry[]): string {
     },
     templateStore: {
       state: {
-        templates: 'array of TemplateSchema objects',
+        templates: 'array of TemplateSchema objects (user-facing templates)',
+        shellTemplates: 'array of TemplateSchema objects (static system pages: profile, settings, tests)',
         currentTemplate: 'TemplateSchema (the active template)',
       },
       actions: {
@@ -126,7 +179,7 @@ function generateStoresText(entries: StoreEntry[]): string {
     lines.push(`${storeName}:`);
 
     lines.push('- State:');
-    for (const key of entry.state) {
+    for (const key of Object.keys(entry.state)) {
       const typeDesc = desc.state[key] ?? 'unknown';
       lines.push(`  - ${key}: ${typeDesc}`);
     }

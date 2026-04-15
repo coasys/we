@@ -1,5 +1,5 @@
 import type { Ad4mModel } from '@coasys/ad4m';
-import type { AdamStore, RouteStore, SpaceStore, TemplateStore, ThemeStore } from '@solid/stores';
+import type { AdamStore, AiStore, RouteStore, SpaceStore, TemplateStore, ThemeStore } from '@solid/stores';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ModelClass = typeof Ad4mModel & (new (...args: any[]) => Ad4mModel);
@@ -12,6 +12,7 @@ export type ModelStore = {
 
 export type Stores = {
   adamStore: AdamStore;
+  aiStore: AiStore;
   spaceStore: SpaceStore;
   themeStore: ThemeStore;
   templateStore: TemplateStore;

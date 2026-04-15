@@ -90,7 +90,7 @@ const header: SchemaNode = {
     {
       type: 'we-text',
       props: { fontSize: '700', fontWeight: '700', color: 'primary-800' },
-      children: ['Schema Mutation Tests'],
+      children: ['Mutation Tests'],
     },
     {
       type: 'we-text',
@@ -103,7 +103,7 @@ const header: SchemaNode = {
 
 const mainContent: SchemaNode = {
   type: 'Column',
-  props: { minHeight: '100%', width: '100%', p: '500', bg: 'neutral-50', gap: '400' },
+  props: { minHeight: '100%', width: '100%', bg: 'neutral-50', gap: '400' },
   children: [header, mutationButtons, mutationButtons2, mutationButtons3, dynamicArea, routeArea],
 };
 

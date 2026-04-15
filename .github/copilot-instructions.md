@@ -13,7 +13,7 @@ All schemas must be valid JSON. Only use components, props, tokens, and patterns
 A schema is a tree of nodes. Each node can have:
 - type: The component to render (string, e.g. "we-button", "Column")
 - props: An object of props for the component
-- children: An array of child nodes (or strings for text). Do not use objects like { "$expr": ... } directly in children; use a prop (e.g. "text") for dynamic content.
+- children: An array of child nodes (or strings for text), or token objects like { $store: '...' } or { $concat: [...] }.
 - slots: Named slots for advanced composition (optional)
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
@@ -168,26 +168,26 @@ Most @we/primitives also accept Design System Props (see next section for detail
 
 @we/primitives:
 - we-alert (DesignSystemElement)
-  Props: variant: AlertVariant = 'info', dismissible: boolean = false
+  Props: variant: 'info' | 'success' | 'warning' | 'error' = 'info', dismissible: boolean = false
 - we-avatar (LayoutElement)
   Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: AvatarSizeValue | undefined, clickable: boolean = false
 - we-badge (DesignSystemElement)
-  Props: variant: BadgeVariant = '', size: BadgeSize = ''
+  Props: variant: '' | 'primary' | 'success' | 'danger' | 'warning' = '', size: '' | 'sm' | 'lg' = ''
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: ButtonVariant = 'primary', size: ButtonSize = 'md', text?: string | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false
+  Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' = 'md', text?: string | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false
 - we-card (DesignSystemElement)
-  Props: variant: CardVariant = ''
+  Props: variant: '' | 'elevated' | 'outlined' | 'filled' = ''
 - we-checkbox (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: CheckboxSize = 'md'
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-code (DesignSystemElement)
   Props: block: boolean = false
 - we-color-picker (DesignSystemElement)
   Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ]
 - we-combobox (DesignSystemElement)
-  Props: options: ComboboxOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, name: string = '', size: ComboboxSize = 'md'
+  Props: options: ComboboxOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-date-picker (DesignSystemElement)
-  Props: value: string = '', placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: DatePickerSize = 'md'
+  Props: value: string = '', placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-divider (DesignSystemElement)
   Props: orientation: 'horizontal' | 'vertical' = 'horizontal'
 - we-drawer (OverlayElement)
@@ -195,64 +195,64 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-file-upload (DesignSystemElement)
   Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
 - we-form-field (DesignSystemElement)
-  Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: FormFieldSize = 'md'
+  Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: 'sm' | 'md' | 'lg' = 'md'
 - we-grid (DesignSystemElement)
   Props: columns: number = 1, minChildWidth: string = ''
 - we-icon (LayoutElement)
-  Props: name: string = '', color: string = '', size: IconSize = '', weight: IconWeight = 'regular'
+  Props: name: string = '', color: string = '', size: IconSize = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular'
 - we-iframe (LayoutElement)
   Props: src: string = '', title: string = 'Embedded content', allow: string = ''
 - we-image (LayoutElement)
-  Props: src: string | File = '', alt: string = '', fit: ImageFit = '', loading: ImageLoading = 'eager', gradient: string = ''
+  Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = ''
 - we-input (DesignSystemElement)
-  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: InputSize = 'md'
+  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'sm' | 'md' | 'lg' = 'md'
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', disabled: boolean = false
 - we-menu (DesignSystemElement)
 - we-menu-group (LayoutElement)
   Props: collapsible: boolean = false, open: boolean = false, title: string = ''
 - we-menu-item (DesignSystemElement)
-  Props: selected: boolean = false, active: boolean = false, variant: MenuItemVariant = 'default', label: unknown, value: unknown
+  Props: selected: boolean = false, active: boolean = false, variant: 'default' | 'danger' = 'default', label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
 - we-number-input (DesignSystemElement)
-  Props: value: number = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', size: NumberInputSize = 'md'
+  Props: value: number = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-pagination (DesignSystemElement)
-  Props: page: number = 1, total: number = 1, siblings: number = 1, size: PaginationSize = 'md'
+  Props: page: number = 1, total: number = 1, siblings: number = 1, size: 'sm' | 'md' | 'lg' = 'md'
 - we-popover (LayoutElement)
   Props: open: boolean = false, placement: Placement = 'bottom', popoverElement: HTMLElement, triggerElement: HTMLElement
 - we-progress-bar (DesignSystemElement)
-  Props: value: number = 0, max: number = 100, variant: ProgressBarVariant = 'default', size: ProgressBarSize = 'md'
+  Props: value: number = 0, max: number = 100, variant: 'default' | 'success' | 'warning' | 'danger' = 'default', size: 'sm' | 'md' | 'lg' = 'md'
 - we-radio (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: RadioSize = 'md'
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-scroll-area (DesignSystemElement)
   Props: maxHeight: string = '', maxWidth: string = ''
 - we-select (DesignSystemElement)
-  Props: value: string = '', name: string = '', placeholder: string = '', disabled: boolean = false, required: boolean = false, options: (string | { label: string; value: string })[] = [], size: SelectSize = 'md'
+  Props: value: string = '', name: string = '', placeholder: string = '', disabled: boolean = false, required: boolean = false, options: (string | { label: string; value: string })[] = [], size: 'sm' | 'md' | 'lg' = 'md'
 - we-skeleton (DesignSystemElement)
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
-  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', size: SliderSize = 'md', showValue: boolean = false
+  Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md', showValue: boolean = false
 - we-spinner (LayoutElement)
-  Props: size: SpinnerSize = '', color: string = ''
+  Props: size: '' | 'sm' | 'lg' = '', color: string = ''
 - we-switch (DesignSystemElement)
-  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: SwitchSize = 'md'
+  Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-tab (DesignSystemElement)
   Props: key: string = '', active: boolean = false, label?: string | undefined
 - we-tabs (DesignSystemElement)
   Props: activeKey: string = ''
 - we-tag (DesignSystemElement)
-  Props: variant: TagVariant = 'default', dismissible: boolean = false
+  Props: variant: 'default' | 'primary' | 'success' | 'warning' | 'danger' = 'default', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: TextVariant = '', tag: TextTag = 'span', inline: boolean = false, uppercase: boolean = false
+  Props: text?: string | undefined, variant: TextVariant = '', tag: TextTag = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false
 - we-textarea (DesignSystemElement)
-  Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: TextareaSize = 'md'
+  Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'sm' | 'md' | 'lg' = 'md'
 - we-tooltip (LayoutElement)
   Props: open: boolean = false, title: string = '', placement: Placement = 'top', tooltipEl: HTMLElement, triggerEl: HTMLElement, arrowEl: HTMLElement
 
 @we/components:
 - BlockComposer
-  Props: post?: any, perspective: PerspectiveProxy
+  Props: post?: any, perspective?: PerspectiveProxy, onSave?: ((json: SerializedBlockNode) => void)
 - BlockRenderer
   Props: post?: any
 - ImageComponent
@@ -270,9 +270,11 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - CircleButton
   Props: label: string, icon?: string, image?: string, onClick?: (() => void), class?: string, styles?: Record<string, string | number>
 - Column
-  Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexCrossAxis, ay?: FlexMainAxis
+  Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexCrossAxis, ay?: FlexMainAxis
 - Dialog
   Props: children?: JSX.Element, onConfirm?: (() => void), onCancel?: (() => void), open?: boolean, title?: string, description?: string, confirmLabel?: string, cancelLabel?: string, variant?: "default" | "danger", styles?: Record<string, string | number>
+- EditableImage
+  Props: src?: string, alt?: string, fit?: "fill" | "none" | "cover" | "contain" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), class?: string, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, direction?: FlexDirection, ax?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", ay?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>
 - IconLabelButton
   Props: icon: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
 - List
@@ -288,7 +290,7 @@ Generic over option type — consumers can extend `{ id, name, icon }`.
 - RerenderLog
   Props: location: string
 - Row
-  Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexMainAxis, ay?: FlexCrossAxis
+  Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexMainAxis, ay?: FlexCrossAxis
 - Stepper
   Props: onStepClick?: ((index: number) => void), steps?: StepperStep[], activeStep?: number, orientation?: "horizontal" | "vertical", styles?: Record<string, string | number>
 - Table
@@ -304,8 +306,13 @@ Layers are injected via factory functions (planet surface + background).
 Requires a layer factory registry mapping string names to factory functions.
 Not schema-renderable — used directly in application code.
   Props: ionAccessToken?: string, planetLayers?: LayerConfig<unknown>[], backgroundLayers?: LayerConfig<unknown>[], layerFactoryRegistry: Record<string, LayerFactory<any>>
+- ChatPanel — Sliding chat panel for conversational AI interactions.
+Renders a list of messages with a text input, anchored to a screen edge.
+Supports streaming indicator, auto-scroll, and header/close controls.
+Includes template context header with fork/fresh actions and name+icon picker.
+  Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, onPickerConfirm?: ((name: string, icon: string) => void), onPickerCancel?: (() => void)
 - CollapsibleSidebar
-  Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "static" | "absolute" | "fixed", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
+  Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "fixed" | "absolute" | "static", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
 - CreateSpaceModalWidget
   Props: adamClient: Ad4mClient | undefined, addNewSpace: (space: Space) => void, close: () => void, class?: string, style?: Record<string, string | number>
 - GraphWidget — 2D force-directed graph visualization using D3-force layout and Canvas rendering.
@@ -480,18 +487,21 @@ space: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000
 
 Available data models for $query and store data:
 
-AgentSettings extends Ad4mModel:
+AgentProfile extends Ad4mModel:
   Fields:
-  - currentTemplateId: string = 'we' [we://current_template]
-  - currentThemeId: string = 'default' [we://current_theme]
-  Relations:
-  - installedTemplates: HasMany → Template [we://installed_template]
-  - installedThemes: HasMany → Theme [we://installed_theme]
+  - firstName: string [we://has_first_name]
+  - lastName: string [we://has_last_name]
+  - handle: string [we://has_handle]
+  - bio: string [we://has_bio]
+  - location: string [we://has_location]
+  - profileImage: string | FileData [we://has_profile_image]
+  - coverImage: string | FileData [we://has_cover_image]
 
 AgentSettings extends Ad4mModel:
   Fields:
-  - currentTemplateId: string = 'we' [we://current_template]
+  - currentTemplateId: string = 'default' [we://current_template]
   - currentThemeId: string = 'default' [we://current_theme]
+  - claudeApiKey: string [we://claude_api_key]
   Relations:
   - installedTemplates: HasMany → Template [we://installed_template]
   - installedThemes: HasMany → Theme [we://installed_theme]
@@ -521,6 +531,7 @@ CodeBlock extends WeNode:
 
 CollectionBlock extends WeNode:
   Fields:
+  - type: string [we://type]
   - display: string [we://display]
   - direction: string [we://direction]
   - format: string [we://format]
@@ -670,19 +681,27 @@ AdamStore:
 - State:
   - adamClient: Ad4mClient | undefined
   - me: Agent | undefined
-  - mySpaces: array of Space objects
+  - allPerspectives: array of PerspectiveProxy objects (all AD4M perspectives)
+  - personalSpaces: array of Space objects (local/personal spaces)
+  - sharedSpaces: array of Space objects (shared/neighbourhood spaces)
   - bootState: string
   - passwordError: string | undefined
   - loginLoading: boolean
+  - agentProfile: AgentProfile | null (the current agent profile with name, bio, images, etc.)
 - Actions:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
   - createSpace(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup
   - login(password: string): logs in the agent with password
+  - logout(): locks the agent and returns to login screen
+  - updateAgentProfile(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)
+  - updateProfileImage(imageFile: File): uploads and sets the profile image
+  - updateCoverImage(imageFile: File): uploads and sets the cover image
 
 RouteStore:
 - State:
   - currentPath: string (the current route path)
+  - segments: string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])
 - Actions:
   - navigate(to: string, options?): navigates to a route
 
@@ -696,7 +715,8 @@ ThemeStore:
 
 TemplateStore:
 - State:
-  - templates: array of TemplateSchema objects
+  - templates: array of TemplateSchema objects (user-facing templates)
+  - shellTemplates: array of TemplateSchema objects (static system pages: profile, settings, tests)
   - currentTemplate: TemplateSchema (the active template)
 - Actions:
   - updateTemplate(newTemplate: TemplateSchema): updates the current template
@@ -738,7 +758,7 @@ Example: { "$action": "routeStore.navigate", "args": ["/home"] }
 Iterating over store data:
 {
   "type": "$each",
-  "props": { "items": { "$store": "adamStore.mySpaces" }, "as": "space" },
+  "props": { "items": { "$store": "adamStore.personalSpaces" }, "as": "space" },
   "children": [
     {
       "type": "CircleButton",
@@ -868,8 +888,11 @@ Example:
 - Do not set props to their default/inherited values — omit them. fontSize and fontWeight inherit from parents (~16px / normal), so only set them when you need a different value.
 - Omit empty `props` and `children` — both are optional. Do not write `props: {}` or `children: []`.
 - Do not use `as const` on schema node `type` fields — `SchemaNode.type` is `string`, so it is never needed.
+- For icon-only buttons, nest a `we-icon` child inside `we-button` rather than using a `text` prop with a Unicode character. Example: `{ type: 'we-button', props: { variant: 'ghost', size: 'sm' }, children: [{ type: 'we-icon', props: { name: 'x', size: '20px' } }] }`.
+- For interactive list items and selectable options, use `we-button` with variant switching (e.g., `secondary` when selected, `ghost` when not) instead of manually styling `Row` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
 - All schemas must be valid JSON with property names and string values in double quotes.
 - The meta property at the root is required: { "meta": { "name": "...", "description": "...", "icon": "..." } }
+- Always set `bg: 'neutral-50'` on root-level schema nodes (templates, pages). This ensures proper background in all themes — without it, dark mode renders white backgrounds.
 
 Most @we/primitives inherit all Design System Props documented above (layout, visual, flex, typography, state).
 Some layout-only primitives (we-avatar, we-icon, we-image, we-spinner, etc.) only accept Layout props — see the Design System Props section for the full list.

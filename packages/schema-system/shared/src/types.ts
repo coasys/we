@@ -1,6 +1,6 @@
 // Pure framework-agnostic schema types
 export type SchemaProp = string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined;
-export type StoreDeclaration = Record<string, { actions?: string[]; state?: string[] }>;
+export type StoreDeclaration = Record<string, true | { actions?: string[]; state?: string[] }>;
 export type TemplateMeta = {
   name: string;
   description: string;
@@ -9,7 +9,7 @@ export type TemplateMeta = {
   components?: string[];
 };
 export type TemplateSchema = SchemaNode & { id?: string; schemaVersion?: number; meta: TemplateMeta };
-export type RouteSchema = SchemaNode & { path: string };
+export type RouteSchema = SchemaNode & { path: string; redirect?: string };
 
 // Transition configuration for $if operator (can be used in props via prop resolution)
 export type TransitionConfig = {

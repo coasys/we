@@ -141,16 +141,45 @@ export const weTemplate: TemplateSchema = {
               },
             ],
           },
-          // Spaces group — items mapped from adamStore.mySpaces via $map
+          // Shared Spaces group
           {
             type: 'group',
-            id: 'spaces',
-            label: 'Spaces',
+            id: 'shared-spaces',
+            label: 'Shared Spaces',
             collapsible: true,
             collapsed: false,
             items: {
               $map: {
-                items: { $store: 'adamStore.mySpaces' },
+                items: { $store: 'adamStore.sharedSpaces' },
+                select: {
+                  id: { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
+                  label: '$item.name',
+                  avatar: { src: '$item.thumbnail', name: '$item.name' },
+                  onClick: {
+                    $action: 'adamStore.navigate',
+                    args: [
+                      {
+                        $concat: [
+                          '/space/',
+                          { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+          // Personal Spaces group
+          {
+            type: 'group',
+            id: 'personal-spaces',
+            label: 'Personal Spaces',
+            collapsible: true,
+            collapsed: false,
+            items: {
+              $map: {
+                items: { $store: 'adamStore.personalSpaces' },
                 select: {
                   id: { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
                   label: '$item.name',

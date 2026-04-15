@@ -1,6 +1,6 @@
 import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap } from '@we/design-utils';
 
-import type { ContextData } from './contextTypes';
+import type { ContextData, StateMemberMeta } from './contextTypes';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
 
@@ -10,9 +10,11 @@ export type ValidationContext = {
   componentNames: Set<string>;
   componentProps: Map<string, Set<string>>;
   componentPropTypes: Map<string, Map<string, string>>;
+  componentPropAllowedValues: Map<string, Map<string, string[]>>;
   universalProps: Set<string>;
   storeNames: Set<string>;
   storeMembers: Map<string, Set<string>>;
+  storeMemberMeta: Map<string, Map<string, StateMemberMeta>>;
   modelNames: Set<string>;
   dsPropToLayer: Map<string, string>;
 };
@@ -151,11 +153,35 @@ function classifyPropType(typeText: string): string {
   if (t === 'boolean') return 'boolean';
   if (t === 'number') return 'number';
   if (t === 'string') return 'string';
+  // Union of string literals (e.g. "'primary' | 'secondary' | 'ghost'")
+  if (t.includes('|') && extractAllowedValues(t)) return 'string';
   // Union containing 'string' → string
   if (t.includes('|') && t.split('|').some((p) => p.trim() === 'string')) return 'string';
   // Named types (e.g. ButtonVariant, SpaceValue) — all current enums are string-based
   if (/^[A-Z]/.test(t)) return 'string';
   return 'unknown';
+}
+
+/**
+ * Parse a union of string literals into an array of allowed values.
+ * Returns null if the type text is not a pure string literal union.
+ * e.g. "'primary' | 'secondary' | 'ghost'" → ['primary', 'secondary', 'ghost']
+ */
+function extractAllowedValues(typeText: string): string[] | null {
+  const t = typeText.replace(/\s*\|\s*undefined/g, '').trim();
+  if (!t.includes('|')) {
+    // Single literal e.g. "'primary'"
+    const single = /^'([^']*)'$/.exec(t);
+    return single ? [single[1]] : null;
+  }
+  const parts = t.split('|').map((p) => p.trim());
+  const values: string[] = [];
+  for (const part of parts) {
+    const m = /^'([^']*)'$/.exec(part);
+    if (!m) return null; // Not a pure string literal union
+    values.push(m[1]);
+  }
+  return values.length > 0 ? values : null;
 }
 
 function isTokenObject(value: unknown): boolean {
@@ -170,6 +196,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
   const componentNames = new Set<string>();
   const componentProps = new Map<string, Set<string>>();
   const componentPropTypes = new Map<string, Map<string, string>>();
+  const componentPropAllowedValues = new Map<string, Map<string, string[]>>();
   const dsPropToLayer = new Map<string, string>();
 
   // Build dsPropToLayer reverse map
@@ -186,10 +213,13 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     componentNames.add(prim.tagName);
     const props = new Set<string>();
     const propTypes = new Map<string, string>();
+    const propAllowed = new Map<string, string[]>();
 
     for (const p of prim.ownProps) {
       props.add(p.name);
       propTypes.set(p.name, classifyPropType(p.type));
+      const allowed = extractAllowedValues(p.type);
+      if (allowed) propAllowed.set(p.name, allowed);
     }
 
     // Add DS props based on superclass
@@ -205,6 +235,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 
     componentProps.set(prim.tagName, props);
     componentPropTypes.set(prim.tagName, propTypes);
+    if (propAllowed.size > 0) componentPropAllowedValues.set(prim.tagName, propAllowed);
   }
 
   // Components and widgets
@@ -212,12 +243,16 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     componentNames.add(comp.name);
     const props = new Set<string>();
     const propTypes = new Map<string, string>();
+    const propAllowed = new Map<string, string[]>();
     for (const p of comp.props) {
       props.add(p.name);
       propTypes.set(p.name, classifyPropType(p.type));
+      const allowed = extractAllowedValues(p.type);
+      if (allowed) propAllowed.set(p.name, allowed);
     }
     componentProps.set(comp.name, props);
     componentPropTypes.set(comp.name, propTypes);
+    if (propAllowed.size > 0) componentPropAllowedValues.set(comp.name, propAllowed);
   }
 
   // Universal props
@@ -226,12 +261,18 @@ export function buildValidationContext(data: ContextData): ValidationContext {
   // Stores
   const storeNames = new Set<string>();
   const storeMembers = new Map<string, Set<string>>();
+  const storeMemberMeta = new Map<string, Map<string, StateMemberMeta>>();
   for (const store of data.storeEntries) {
     storeNames.add(store.name);
     const members = new Set<string>();
-    for (const s of store.state) members.add(s);
+    const metaMap = new Map<string, StateMemberMeta>();
+    for (const [key, meta] of Object.entries(store.state)) {
+      members.add(key);
+      metaMap.set(key, meta);
+    }
     for (const a of store.actions) members.add(a);
     storeMembers.set(store.name, members);
+    storeMemberMeta.set(store.name, metaMap);
   }
 
   // Models
@@ -244,9 +285,11 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     componentNames,
     componentProps,
     componentPropTypes,
+    componentPropAllowedValues,
     universalProps,
     storeNames,
     storeMembers,
+    storeMemberMeta,
     modelNames,
     dsPropToLayer,
   };
@@ -435,8 +478,22 @@ function checkProps(
               message: `Prop "${propName}" on "${componentType}" expects ${expectedCategory}, got ${actualType}`,
               severity: 'warning',
             });
+            continue;
           }
         }
+      }
+    }
+
+    // Check allowed values for string enums
+    if (typeof propValue === 'string') {
+      const allowedMap = ctx.componentPropAllowedValues.get(componentType);
+      const allowed = allowedMap?.get(propName);
+      if (allowed && !allowed.includes(propValue)) {
+        errors.push({
+          path: propPath,
+          message: `Invalid value "${propValue}" for prop "${propName}" on "${componentType}". Allowed: ${allowed.map((v) => `'${v}'`).join(' | ')}`,
+          severity: 'warning',
+        });
       }
     }
   }
@@ -599,16 +656,41 @@ function checkStoreRef(ref: string, path: string, ctx: ValidationContext, errors
     return;
   }
 
-  if (dotIdx !== -1) {
-    const memberName = ref.slice(dotIdx + 1);
-    const members = ctx.storeMembers.get(storeName);
-    if (members && !members.has(memberName)) {
-      const known = [...members].join(', ');
-      errors.push({
-        path,
-        message: `Unknown member "${memberName}" on store "${storeName}". Known members: ${known}`,
-        severity: 'warning',
-      });
+  if (dotIdx === -1) return;
+
+  // Split remaining path: e.g. "sharedSpaces.length" → ["sharedSpaces", "length"]
+  const rest = ref.slice(dotIdx + 1);
+  const segments = rest.split('.');
+  const rootMember = segments[0];
+
+  // Validate root member exists on store
+  const members = ctx.storeMembers.get(storeName);
+  if (members && !members.has(rootMember)) {
+    const known = [...members].join(', ');
+    errors.push({
+      path,
+      message: `Unknown member "${rootMember}" on store "${storeName}". Known members: ${known}`,
+      severity: 'warning',
+    });
+    return;
+  }
+
+  // Validate nested property access if type metadata is available
+  if (segments.length > 1) {
+    const meta = ctx.storeMemberMeta.get(storeName)?.get(rootMember);
+    if (meta) {
+      const nestedProp = segments[1];
+      // .length is always valid on arrays
+      if (meta.type === 'array' && nestedProp === 'length') return;
+      // Check against known properties
+      if (meta.properties && !meta.properties.includes(nestedProp)) {
+        const known = meta.properties.join(', ');
+        errors.push({
+          path,
+          message: `Unknown property "${nestedProp}" on "${storeName}.${rootMember}" (${meta.type}). Known properties: ${known}`,
+          severity: 'warning',
+        });
+      }
     }
   }
 }
@@ -792,7 +874,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   //   Record<string, { actions?: string[]; state?: string[] }> — declares names + additional members
   const meta = (schema as Record<string, unknown>)?.meta as
     | {
-        stores?: string[] | Record<string, { actions?: string[]; state?: string[] }>;
+        stores?: string[] | Record<string, true | { actions?: string[]; state?: string[] }>;
         components?: string[];
       }
     | undefined;
@@ -809,11 +891,17 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
         // Record — add names and merge members
         for (const [name, decl] of Object.entries(meta.stores)) {
           newStoreNames.add(name);
-          const existing = newStoreMembers.get(name) ?? new Set<string>();
-          const merged = new Set(existing);
-          if (decl.actions) for (const a of decl.actions) merged.add(a);
-          if (decl.state) for (const s of decl.state) merged.add(s);
-          newStoreMembers.set(name, merged);
+          // `true` means "store exists, accept all members" — remove any global restrictions.
+          // Object with actions/state merges those as additional known members.
+          if (decl === true) {
+            newStoreMembers.delete(name);
+          } else {
+            const existing = newStoreMembers.get(name) ?? new Set<string>();
+            const merged = new Set(existing);
+            if (decl.actions) for (const a of decl.actions) merged.add(a);
+            if (decl.state) for (const s of decl.state) merged.add(s);
+            newStoreMembers.set(name, merged);
+          }
         }
       }
     }

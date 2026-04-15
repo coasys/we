@@ -36,9 +36,9 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     hoverProps: { bg: 'neutral-100', color: 'neutral-900' },
   },
   danger: {
-    bg: 'red-500',
+    bg: 'danger-500',
     color: 'neutral-0',
-    hoverProps: { bg: 'red-600', color: 'neutral-0' },
+    hoverProps: { bg: 'danger-600', color: 'neutral-0' },
   },
   outline: {
     bg: 'transparent',
