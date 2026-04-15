@@ -1,4 +1,4 @@
-import { BlockComposer } from '@we/block-solid';
+import { BlockComposer, BlockRenderer } from '@we/block-solid';
 import {
   countryOutlinesLayer,
   h3HexagonsLayer,
@@ -31,6 +31,7 @@ import {
 import type { ComponentRegistry } from '@we/schema-solid';
 import {
   CesiumGlobe,
+  ChatPanel,
   CollapsibleSidebar,
   CreateSpaceModalWidget,
   GraphWidget,
@@ -73,6 +74,7 @@ export const componentRegistry: ComponentRegistry = {
   ToastContainer,
 
   // @we/widgets
+  ChatPanel,
   CreateSpaceModalWidget,
   SpaceSidebarWidget,
   CollapsibleSidebar,
@@ -83,6 +85,7 @@ export const componentRegistry: ComponentRegistry = {
 
   // @we/block-solid
   BlockComposer,
+  BlockRenderer,
 
   // Testing
   BenchmarkTimer,

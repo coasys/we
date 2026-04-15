@@ -13,6 +13,7 @@
  * 4. TemplateProvider reads registry → builds app layout
  */
 
+import { aiChatSidebar } from '@shared/schemas/shell/AiChatSidebar.schema';
 import { bootScreen } from '@shared/schemas/shell/BootScreen.schema';
 import { sidebar } from '@shared/schemas/shell/Sidebar.schema';
 import type { SchemaNode } from '@we/schema-shared';
@@ -26,6 +27,9 @@ import type { SchemaNode } from '@we/schema-shared';
 export const launcherUIRegistry = {
   /** Boot/login screen shown before AD4M is ready */
   bootScreen,
+
+  /** AI chat sidebar panel */
+  aiChatSidebar,
 
   /** Custom app shell schema (set via seed) */
   _customShell: undefined as SchemaNode | undefined,

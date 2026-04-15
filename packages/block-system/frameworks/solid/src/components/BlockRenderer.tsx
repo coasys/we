@@ -1,5 +1,6 @@
 import { ListItemNode, ListNode } from '@lexical/list';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
+import type { SerializedBlockNode } from '@we/block-shared';
 import { Column } from '@we/components/solid';
 import {
   ContentEditable,
@@ -13,10 +14,10 @@ import { createEffect } from 'solid-js';
 import { ImageNode } from '../nodes/ImageNode';
 
 type BlockRendererProps = {
-  post?: Post;
+  post?: SerializedBlockNode;
 };
 
-function LoadPostForRenderer({ post }: { post?: Post }) {
+function LoadPostForRenderer({ post }: { post?: SerializedBlockNode }) {
   const [editor] = useLexicalComposerContext();
 
   createEffect(() => {

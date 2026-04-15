@@ -105,6 +105,13 @@ export const sidebar: SchemaNode = {
             onClick: { $action: 'templateStore.switchTemplate', args: ['schema-tests'] },
           },
           {
+            id: 'ai-chat',
+            icon: 'robot',
+            label: 'AI Chat',
+            active: { $store: 'aiStore.isOpen' },
+            onClick: { $action: 'aiStore.toggle' },
+          },
+          {
             id: 'logout',
             icon: 'sign-out',
             label: 'Logout',

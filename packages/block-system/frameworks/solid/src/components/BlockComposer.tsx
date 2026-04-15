@@ -26,18 +26,26 @@ import SlashCommandPlugin from '../plugins/SlashCommandPlugin';
 
 registerCoreBlocks();
 
-function SaveButton({ perspective }: { perspective: PerspectiveProxy }) {
+function SaveButton({
+  perspective,
+  onSave,
+}: {
+  perspective?: PerspectiveProxy;
+  onSave?: (json: SerializedBlockNode) => void;
+}) {
   const [editor] = useLexicalComposerContext();
 
   function save() {
     editor.update(async () => {
       const editorState = editor.getEditorState();
       const { root } = editorState.toJSON();
-      if (!perspective) {
-        console.error('No perspective available for saving blocks.');
-        return;
+      if (onSave) {
+        onSave(root);
+      } else if (perspective) {
+        await createBlocks(perspective, root);
+      } else {
+        console.error('No onSave callback or perspective available for saving blocks.');
       }
-      await createBlocks(perspective, root);
     });
   }
 
@@ -70,7 +78,7 @@ function LoadPostIntoEditor({ post }: { post?: SerializedBlockNode }) {
   return null;
 }
 
-export function BlockComposer({ post, perspective }: BlockComposerProps) {
+export function BlockComposer({ post, perspective, onSave }: BlockComposerProps) {
   console.log('*** BlockComposer rendered. post:', post);
   const initialConfig = {
     namespace: 'BlockComposer',
@@ -84,7 +92,7 @@ export function BlockComposer({ post, perspective }: BlockComposerProps) {
     <Column class="we-block-composer-wrapper" bg="white" p="1000" r="xl">
       <LexicalComposer initialConfig={initialConfig}>
         <LoadPostIntoEditor post={post} />
-        <SaveButton perspective={perspective} />
+        <SaveButton perspective={perspective} onSave={onSave} />
 
         {/* Lexical plugins */}
         <RichTextPlugin contentEditable={<ContentEditable />} errorBoundary={LexicalErrorBoundary} />

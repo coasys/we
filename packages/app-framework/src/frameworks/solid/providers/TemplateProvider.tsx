@@ -2,7 +2,7 @@ import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { getModel } from '@shared/registries/modelRegistry';
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
-import { useAdamStore, useRouteStore, useSpaceStore, useTemplateStore, useThemeStore } from '@solid/stores';
+import { useAdamStore, useAiStore, useRouteStore, useSpaceStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Navigate, Route, Router, useLocation, useNavigate } from '@solidjs/router';
 import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
@@ -28,11 +28,21 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
 
     return (
       <>
-        {/* Shell chrome (boot screen, sidebar) — always rendered */}
+        {/* Shell chrome (boot screen, sidebar, chat panel) — always rendered */}
         <RenderSchema node={shellSchema} stores={stores} registry={registry} />
 
         {/* Main content area — keyed on template ID to force clean remount on switch */}
-        <div style={{ 'margin-left': '66px', width: 'calc(100% - 66px)', height: '100vh', 'overflow-y': 'auto', 'scrollbar-gutter': 'stable' }}>
+        <div
+          style={{
+            'margin-left': '66px',
+            'margin-right': stores.aiStore.isOpen() ? '400px' : '0',
+            width: stores.aiStore.isOpen() ? 'calc(100% - 66px - 400px)' : 'calc(100% - 66px)',
+            height: '100vh',
+            'overflow-y': 'auto',
+            'scrollbar-gutter': 'stable',
+            transition: 'margin-right 300ms ease, width 300ms ease',
+          }}
+        >
           <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
             <RenderSchema
               node={stores.templateStore.currentTemplate}
@@ -91,6 +101,7 @@ function flattenRoutes(
 export default function TemplateProvider() {
   // Gather up the stores
   const adamStore = useAdamStore();
+  const aiStore = useAiStore();
   const spaceStore = useSpaceStore();
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
@@ -127,6 +138,7 @@ export default function TemplateProvider() {
 
   const stores = {
     adamStore,
+    aiStore,
     spaceStore,
     themeStore,
     templateStore,
@@ -145,10 +157,10 @@ export default function TemplateProvider() {
     return flattenRoutes(stores, templateSchema.routes ?? []);
   });
 
-  // Shell schema — boot screen + sidebar chrome (no template content)
+  // Shell schema — boot screen + sidebar chrome + chat panel (no template content)
   const shellSchema: TemplateSchema = {
     meta: { name: 'Shell', description: 'App shell chrome', icon: '' },
-    children: [launcherUIRegistry.bootScreen, launcherUIRegistry.shell],
+    children: [launcherUIRegistry.bootScreen, launcherUIRegistry.shell, launcherUIRegistry.aiChatSidebar],
   };
 
   // "Not found" fallback node for routed templates

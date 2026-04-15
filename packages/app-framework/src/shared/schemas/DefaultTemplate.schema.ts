@@ -571,11 +571,169 @@ export const defaultTemplate: TemplateSchema = {
           path: '/posts',
           type: 'Column',
           props: { gap: '400' },
+          $localState: {
+            createPostOpen: { type: 'boolean', initial: false },
+            viewMode: { type: 'string', initial: 'posts' },
+          },
           children: [
+            // Top bar: mode toggle + create button
+            {
+              type: 'Row',
+              props: { ax: 'between', ay: 'center', gap: '200' },
+              children: [
+                // Mode toggle
+                {
+                  type: 'Row',
+                  props: { gap: '100' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        text: 'Posts',
+                        height: '32px',
+                        width: 'fit-content',
+                        bg: {
+                          $if: {
+                            condition: { $eq: [{ $local: 'viewMode' }, 'posts'] },
+                            then: 'primary-500',
+                            else: 'neutral-100',
+                          },
+                        },
+                        color: {
+                          $if: {
+                            condition: { $eq: [{ $local: 'viewMode' }, 'posts'] },
+                            then: 'neutral-0',
+                            else: 'neutral-600',
+                          },
+                        },
+                        onClick: { $setLocal: 'viewMode', value: 'posts' },
+                      },
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        text: 'Blocks',
+                        height: '32px',
+                        width: 'fit-content',
+                        bg: {
+                          $if: {
+                            condition: { $eq: [{ $local: 'viewMode' }, 'blocks'] },
+                            then: 'primary-500',
+                            else: 'neutral-100',
+                          },
+                        },
+                        color: {
+                          $if: {
+                            condition: { $eq: [{ $local: 'viewMode' }, 'blocks'] },
+                            then: 'neutral-0',
+                            else: 'neutral-600',
+                          },
+                        },
+                        onClick: { $setLocal: 'viewMode', value: 'blocks' },
+                      },
+                    },
+                  ],
+                },
+                // Create Post button
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Create Post',
+                    bg: 'primary-500',
+                    color: 'neutral-0',
+                    height: '40px',
+                    width: 'fit-content',
+                    onClick: { $setLocal: 'createPostOpen', value: true },
+                  },
+                },
+              ],
+            },
+
+            // Create Post modal
             {
               type: '$if',
               props: {
-                condition: { $store: 'spaceStore.posts.length' },
+                condition: { $local: 'createPostOpen' },
+                then: {
+                  type: 'we-modal',
+                  props: {
+                    close: { $setLocal: 'createPostOpen', value: false },
+                    maxWidth: '680px',
+                    width: '100%',
+                  },
+                  children: [
+                    { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create Post'] },
+                    {
+                      type: 'BlockComposer',
+                      props: {
+                        onSave: [
+                          { $action: 'spaceStore.createPost', args: ['$arg'] },
+                          { $setLocal: 'createPostOpen', value: false },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+
+            // Mode: Full Posts (store-driven, rendered via BlockRenderer)
+            {
+              type: '$if',
+              props: {
+                condition: { $eq: [{ $local: 'viewMode' }, 'posts'] },
+                then: {
+                  type: 'Column',
+                  props: { gap: '400' },
+                  children: [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $store: 'spaceStore.posts.length' },
+                        then: {
+                          type: '$each',
+                          props: {
+                            items: { $store: 'spaceStore.posts' },
+                            as: 'post',
+                          },
+                          children: [
+                            {
+                              type: 'BlockRenderer',
+                              props: { post: '$post' },
+                            },
+                            // {
+                            //   type: 'we-text',
+                            //   children: ['yooo'],
+                            // },
+                          ],
+                        },
+                        else: {
+                          type: 'Column',
+                          props: { p: '600', ay: 'center', ax: 'center', gap: '200' },
+                          children: [
+                            {
+                              type: 'we-icon',
+                              props: { name: 'chat', color: 'neutral-300', size: '48px' },
+                            },
+                            {
+                              type: 'we-text',
+                              props: { fontSize: '400', color: 'neutral-400' },
+                              children: ['No posts yet'],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+
+            // Mode: Individual Blocks ($query-driven, raw property cards)
+            {
+              type: '$if',
+              props: {
+                condition: { $eq: [{ $local: 'viewMode' }, 'blocks'] },
                 then: {
                   type: 'Column',
                   props: { gap: '400' },
@@ -583,8 +741,8 @@ export const defaultTemplate: TemplateSchema = {
                     {
                       type: '$each',
                       props: {
-                        items: { $store: 'spaceStore.posts' },
-                        as: 'post',
+                        items: { $query: { model: 'CollectionBlock', subscribe: true, where: { type: 'root' } } },
+                        as: 'block',
                       },
                       children: [
                         {
@@ -594,40 +752,72 @@ export const defaultTemplate: TemplateSchema = {
                             {
                               type: '$if',
                               props: {
-                                condition: '$post.text',
+                                condition: '$block.display',
                                 then: {
-                                  type: 'we-text',
-                                  props: { fontSize: '400' },
-                                  children: ['$post.text'],
+                                  type: 'Row',
+                                  props: { gap: '200' },
+                                  children: [
+                                    {
+                                      type: 'we-text',
+                                      props: { fontSize: '200', color: 'neutral-400' },
+                                      children: ['Display:'],
+                                    },
+                                    { type: 'we-text', props: { fontSize: '300' }, children: ['$block.display'] },
+                                  ],
                                 },
                               },
                             },
                             {
                               type: '$if',
                               props: {
-                                condition: '$post.timestamp',
+                                condition: '$block.direction',
                                 then: {
-                                  type: 'we-text',
-                                  props: { fontSize: '200', color: 'neutral-400' },
-                                  children: ['$post.timestamp'],
+                                  type: 'Row',
+                                  props: { gap: '200' },
+                                  children: [
+                                    {
+                                      type: 'we-text',
+                                      props: { fontSize: '200', color: 'neutral-400' },
+                                      children: ['Direction:'],
+                                    },
+                                    { type: 'we-text', props: { fontSize: '300' }, children: ['$block.direction'] },
+                                  ],
                                 },
                               },
+                            },
+                            {
+                              type: '$if',
+                              props: {
+                                condition: '$block.format',
+                                then: {
+                                  type: 'Row',
+                                  props: { gap: '200' },
+                                  children: [
+                                    {
+                                      type: 'we-text',
+                                      props: { fontSize: '200', color: 'neutral-400' },
+                                      children: ['Format:'],
+                                    },
+                                    { type: 'we-text', props: { fontSize: '300' }, children: ['$block.format'] },
+                                  ],
+                                },
+                              },
+                            },
+                            {
+                              type: 'Row',
+                              props: { gap: '200' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { fontSize: '200', color: 'neutral-400' },
+                                  children: ['Version:'],
+                                },
+                                { type: 'we-text', props: { fontSize: '300' }, children: ['$block.version'] },
+                              ],
                             },
                           ],
                         },
                       ],
-                    },
-                  ],
-                },
-                else: {
-                  type: 'Column',
-                  props: { p: '600', ay: 'center', ax: 'center', gap: '200' },
-                  children: [
-                    { type: 'we-icon', props: { name: 'chat-square-text', color: 'neutral-300', size: '48px' } },
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '400', color: 'neutral-400' },
-                      children: ['No posts yet'],
                     },
                   ],
                 },

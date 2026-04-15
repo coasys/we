@@ -252,7 +252,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 
 @we/components:
 - BlockComposer
-  Props: post?: any, perspective: PerspectiveProxy
+  Props: post?: any, perspective?: PerspectiveProxy, onSave?: ((json: SerializedBlockNode) => void)
 - BlockRenderer
   Props: post?: any
 - ImageComponent
@@ -306,8 +306,13 @@ Layers are injected via factory functions (planet surface + background).
 Requires a layer factory registry mapping string names to factory functions.
 Not schema-renderable — used directly in application code.
   Props: ionAccessToken?: string, planetLayers?: LayerConfig<unknown>[], backgroundLayers?: LayerConfig<unknown>[], layerFactoryRegistry: Record<string, LayerFactory<any>>
+- ChatPanel — Sliding chat panel for conversational AI interactions.
+Renders a list of messages with a text input, anchored to a screen edge.
+Supports streaming indicator, auto-scroll, and header/close controls.
+Includes template context header with fork/fresh actions and name+icon picker.
+  Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, onPickerConfirm?: ((name: string, icon: string) => void), onPickerCancel?: (() => void)
 - CollapsibleSidebar
-  Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "static" | "absolute" | "fixed", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
+  Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "fixed" | "absolute" | "static", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
 - CreateSpaceModalWidget
   Props: adamClient: Ad4mClient | undefined, addNewSpace: (space: Space) => void, close: () => void, class?: string, style?: Record<string, string | number>
 - GraphWidget — 2D force-directed graph visualization using D3-force layout and Canvas rendering.
@@ -496,6 +501,7 @@ AgentSettings extends Ad4mModel:
   Fields:
   - currentTemplateId: string = 'default' [we://current_template]
   - currentThemeId: string = 'default' [we://current_theme]
+  - claudeApiKey: string [we://claude_api_key]
   Relations:
   - installedTemplates: HasMany → Template [we://installed_template]
   - installedThemes: HasMany → Theme [we://installed_theme]
@@ -525,6 +531,7 @@ CodeBlock extends WeNode:
 
 CollectionBlock extends WeNode:
   Fields:
+  - type: string [we://type]
   - display: string [we://display]
   - direction: string [we://direction]
   - format: string [we://format]

@@ -29,6 +29,11 @@ export interface TemplateStoreBase {
   switchTemplate: (newTemplateId: string) => void;
   removeTemplate: () => Promise<void>;
   saveTemplate: (name: string) => Promise<void>;
+  saveTemplateAs: (schema: TemplateSchema) => Promise<boolean>;
+  persistCurrentTemplate: () => Promise<void>;
+
+  // Queries
+  isCoreTemplate: (templateId: string) => boolean;
 }
 
 // TODO: Comment out test mutations before deploying
@@ -176,8 +181,10 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     // Wrap in StoredTemplate with computed sections
     const storedTemplate = createStoredTemplate(schemaToSave);
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+    const base64 = btoa(String.fromCharCode(...jsonBytes));
     const schemaBlob = {
-      data_base64: btoa(JSON.stringify(storedTemplate)),
+      data_base64: base64,
       name: 'template-schema.json',
       file_type: 'application/json',
     } as FileData;
@@ -210,6 +217,99 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Save a provided schema as a new (or updated) template, refresh the
+   * templates list, and switch to it. Returns true on success.
+   */
+  async function saveTemplateAs(schema: TemplateSchema): Promise<boolean> {
+    const perspective = adamStore.rootPerspective();
+    if (!perspective) {
+      toastService.error('Cannot save template: no root perspective available');
+      return false;
+    }
+
+    const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+    const schemaToSave: TemplateSchema = { ...deepClone(schema), id: templateId };
+
+    const storedTemplate = createStoredTemplate(schemaToSave);
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    const schemaBlob = {
+      data_base64: base64,
+      name: 'template-schema.json',
+      file_type: 'application/json',
+    } as FileData;
+
+    try {
+      const existingTemplate = savedTemplateMap.get(templateId);
+      if (existingTemplate) {
+        existingTemplate.schema = schemaBlob as unknown as Record<string, unknown>;
+        existingTemplate.name = schemaToSave.meta.name;
+        existingTemplate.version = (existingTemplate.version || 1) + 1;
+        await existingTemplate.save();
+      } else {
+        const newTemplate = await Template.create(perspective, {
+          name: schemaToSave.meta.name,
+          origin: 'custom',
+          version: 1,
+          schema: schemaBlob as unknown as Record<string, unknown>,
+        });
+        savedTemplateMap.set(templateId, newTemplate);
+
+        const prefs = adamStore.agentSettings();
+        if (prefs) await prefs.addInstalledTemplates(newTemplate);
+      }
+
+      await loadSavedTemplates();
+      // Directly set currentTemplate — don't rely on switchTemplate lookup
+      // which can fail if loadSavedTemplates hasn't reflected the new template yet
+      setCurrentTemplate(reconcile(deepClone(schemaToSave)));
+      routeStore.navigate('/');
+      adamStore.updateAgentSettings({ currentTemplateId: templateId });
+      return true;
+    } catch (error) {
+      console.error('TemplateStore: saveTemplateAs error', error);
+      toastService.error(`Failed to save template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return false;
+    }
+  }
+
+  /** Persist the current in-memory template state to AD4M (for saved templates only) */
+  async function persistCurrentTemplate(): Promise<void> {
+    const templateId = currentTemplate.id;
+    if (!templateId || !savedTemplateMap.has(templateId)) return;
+
+    const perspective = adamStore.rootPerspective();
+    if (!perspective) return;
+
+    const schemaToSave: TemplateSchema = deepClone(currentTemplate);
+    const storedTemplate = createStoredTemplate(schemaToSave);
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    const schemaBlob = {
+      data_base64: base64,
+      name: 'template-schema.json',
+      file_type: 'application/json',
+    } as FileData;
+
+    try {
+      const existing = savedTemplateMap.get(templateId)!;
+      existing.schema = schemaBlob as unknown as Record<string, unknown>;
+      existing.version = (existing.version || 1) + 1;
+      await existing.save();
+
+      // Update the in-memory templates signal so switching away and back preserves changes
+      setTemplates((prev) => prev.map((t) => (t.id === templateId ? deepClone(currentTemplate) : t)));
+    } catch (error) {
+      console.error('TemplateStore: persistCurrentTemplate error', error);
+    }
+  }
+
+  /** Check if a template is a built-in core template (not user-saved) */
+  function isCoreTemplate(templateId: string): boolean {
+    return coreTemplates.some((t) => t.id === templateId) && !savedTemplateMap.has(templateId);
+  }
+
   const store: TemplateStore = {
     // State
     templates,
@@ -222,6 +322,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     switchTemplate,
     removeTemplate,
     saveTemplate,
+    saveTemplateAs,
+    persistCurrentTemplate,
+
+    // Queries
+    isCoreTemplate,
 
     // Testing
     ...schemaMutationActions(currentTemplate, setCurrentTemplate),

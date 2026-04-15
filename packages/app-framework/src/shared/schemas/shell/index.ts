@@ -1,3 +1,4 @@
+export { aiChatSidebar } from './AiChatSidebar.schema';
 export { bootScreen } from './BootScreen.schema';
 export { profileTemplate } from './Profile.schema';
 export { schemaTestsTemplate } from './SchemaTests.schema';

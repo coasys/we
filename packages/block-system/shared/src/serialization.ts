@@ -1,8 +1,33 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
-import { Ad4mModel, getPropertiesMetadata, LinkQuery } from '@coasys/ad4m';
+import { Ad4mModel, getPropertiesMetadata, LinkQuery, Literal } from '@coasys/ad4m';
 
 import { getBlockModel, getBlockRegistration } from './registry';
 import type { SerializedBlockNode } from './types';
+
+/**
+ * Lexical inline node types — these are text runs inside paragraph/heading
+ * nodes that should be merged into the parent's `text` property rather than
+ * persisted as separate AD4M models.
+ */
+const INLINE_TYPES = new Set(['text', 'linebreak']);
+
+/**
+ * Container-only node types that don't persist as their own model.
+ * Their metadata is carried onto child nodes instead.
+ * e.g. Lexical "list" wraps "listitem" children — we store listType/tag/start
+ * on each listitem and link them directly to the parent CollectionBlock.
+ */
+const PASSTHROUGH_TYPES = new Set(['list']);
+
+/**
+ * Extract concatenated text content from a node's inline children.
+ */
+function extractInlineText(children: SerializedBlockNode[]): string {
+  return children
+    .filter((c) => INLINE_TYPES.has(c.type))
+    .map((c) => (c as Record<string, unknown>).text ?? (c.type === 'linebreak' ? '\n' : ''))
+    .join('');
+}
 
 /** Block model instance that has a children @HasMany relation */
 interface BlockWithChildren extends Ad4mModel {
@@ -54,12 +79,45 @@ export async function createBlocks(
   node: SerializedBlockNode,
 ): Promise<Ad4mModel | undefined> {
   return Ad4mModel.transaction(perspective, async (tx) => {
-    async function persist(node: SerializedBlockNode, parent?: Ad4mModel): Promise<Ad4mModel | undefined> {
+    async function persist(
+      node: SerializedBlockNode,
+      parent?: Ad4mModel,
+      inherited?: Record<string, unknown>,
+    ): Promise<Ad4mModel | undefined> {
+      // Pass-through containers (e.g. "list"): don't create a model,
+      // carry metadata down to children
+      if (PASSTHROUGH_TYPES.has(node.type)) {
+        const meta: Record<string, unknown> = {};
+        if ((node as Record<string, unknown>).listType) meta.listType = (node as Record<string, unknown>).listType;
+        if ((node as Record<string, unknown>).tag) meta.tag = (node as Record<string, unknown>).tag;
+        if ((node as Record<string, unknown>).start) meta.start = (node as Record<string, unknown>).start;
+        if (node.children) {
+          for (const child of node.children) {
+            await persist(child, parent, meta);
+          }
+        }
+        return undefined;
+      }
+
       const ModelClass = getBlockModel(node.type);
       let block: Ad4mModel | undefined;
 
       if (ModelClass) {
         const data = extractBlockData(ModelClass, node);
+
+        // Apply inherited metadata from pass-through parents (e.g. list → listitem)
+        if (inherited) {
+          for (const [k, v] of Object.entries(inherited)) {
+            if (!(k in data) || !data[k]) data[k] = v;
+          }
+        }
+
+        // Merge inline text children (e.g. Lexical "text" nodes inside a paragraph)
+        // into the parent block's `text` property instead of creating separate models.
+        if (node.children && node.children.some((c: SerializedBlockNode) => INLINE_TYPES.has(c.type))) {
+          data.text = extractInlineText(node.children);
+        }
+
         block = await ModelClass.create(perspective, data, { batchId: tx.batchId });
 
         if (parent && block && hasChildrenRelation(parent)) {
@@ -67,9 +125,12 @@ export async function createBlocks(
         }
       }
 
+      // Only recurse into non-inline children (skip text/linebreak nodes)
       if (node.children) {
         for (const child of node.children) {
-          await persist(child, block ?? parent);
+          if (!INLINE_TYPES.has(child.type)) {
+            await persist(child, block ?? parent);
+          }
         }
       }
 
@@ -85,9 +146,14 @@ export async function createBlocks(
  * for its SHACL type link.
  */
 async function resolveBlockType(perspective: PerspectiveProxy, uri: string): Promise<string | undefined> {
-  const links = await perspective.get(new LinkQuery({ source: uri, predicate: 'rdf://type' }));
+  const links = await perspective.get(new LinkQuery({ source: uri, predicate: 'we://type' }));
   if (links.length > 0) {
-    return links[0].data.target;
+    const target = links[0].data.target;
+    try {
+      return Literal.fromUrl(target).get().data;
+    } catch {
+      return target;
+    }
   }
   return undefined;
 }

@@ -1353,7 +1353,12 @@
         {
           "name": "perspective",
           "type": "PerspectiveProxy",
-          "optional": false
+          "optional": true
+        },
+        {
+          "name": "onSave",
+          "type": "((json: SerializedBlockNode) => void)",
+          "optional": true
         }
       ],
       "source": "components"
@@ -3109,6 +3114,143 @@
       "source": "widgets"
     },
     {
+      "name": "ChatPanel",
+      "description": "Sliding chat panel for conversational AI interactions.\nRenders a list of messages with a text input, anchored to a screen edge.\nSupports streaming indicator, auto-scroll, and header/close controls.\nIncludes template context header with fork/fresh actions and name+icon picker.",
+      "props": [
+        {
+          "name": "open",
+          "type": "boolean",
+          "optional": false
+        },
+        {
+          "name": "side",
+          "type": "\"left\" | \"right\"",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "position",
+          "type": "\"fixed\" | \"absolute\"",
+          "optional": true
+        },
+        {
+          "name": "zIndex",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "messages",
+          "type": "ChatMessage[]",
+          "optional": false
+        },
+        {
+          "name": "loading",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onSend",
+          "type": "(message: string) => void",
+          "optional": false
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onClose",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "apiKeyConfigured",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "onSetApiKey",
+          "type": "((key: string) => void)",
+          "optional": true
+        },
+        {
+          "name": "templateName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "templateIcon",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "isReadOnly",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "hasPendingChanges",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "onFork",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "onStartFresh",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "pickerOpen",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "pickerAction",
+          "type": "\"fork\" | \"fresh\"",
+          "optional": true
+        },
+        {
+          "name": "pickerDefaultName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "pickerDefaultIcon",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onPickerConfirm",
+          "type": "((name: string, icon: string) => void)",
+          "optional": true
+        },
+        {
+          "name": "onPickerCancel",
+          "type": "(() => void)",
+          "optional": true
+        }
+      ],
+      "source": "widgets"
+    },
+    {
       "name": "CollapsibleSidebar",
       "props": [
         {
@@ -3138,7 +3280,7 @@
         },
         {
           "name": "position",
-          "type": "\"static\" | \"absolute\" | \"fixed\"",
+          "type": "\"fixed\" | \"absolute\" | \"static\"",
           "optional": true
         },
         {
@@ -3433,6 +3575,12 @@
           "predicate": "we://current_theme",
           "required": false,
           "default": "'default'"
+        },
+        {
+          "name": "claudeApiKey",
+          "type": "string",
+          "predicate": "we://claude_api_key",
+          "required": false
         }
       ],
       "relations": [
@@ -3564,6 +3712,12 @@
       "className": "CollectionBlock",
       "extends": "WeNode",
       "fields": [
+        {
+          "name": "type",
+          "type": "string",
+          "predicate": "we://type",
+          "required": false
+        },
         {
           "name": "display",
           "type": "string",
@@ -4466,40 +4620,19 @@
         },
         "me": {
           "type": "object",
-          "properties": [
-            "did",
-            "perspective",
-            "directMessageLanguage"
-          ]
+          "properties": ["did", "perspective", "directMessageLanguage"]
         },
         "allPerspectives": {
           "type": "array",
-          "properties": [
-            "uuid",
-            "name",
-            "sharedUrl",
-            "neighbourhood"
-          ]
+          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
         },
         "personalSpaces": {
           "type": "array",
-          "properties": [
-            "uuid",
-            "name",
-            "description",
-            "url",
-            "visibility"
-          ]
+          "properties": ["uuid", "name", "description", "url", "visibility"]
         },
         "sharedSpaces": {
           "type": "array",
-          "properties": [
-            "uuid",
-            "name",
-            "description",
-            "url",
-            "visibility"
-          ]
+          "properties": ["uuid", "name", "description", "url", "visibility"]
         },
         "bootState": {
           "type": "string"
@@ -4512,15 +4645,7 @@
         },
         "agentProfile": {
           "type": "object",
-          "properties": [
-            "firstName",
-            "lastName",
-            "handle",
-            "bio",
-            "location",
-            "profileImage",
-            "coverImage"
-          ]
+          "properties": ["firstName", "lastName", "handle", "bio", "location", "profileImage", "coverImage"]
         }
       },
       "actions": [
@@ -4544,78 +4669,39 @@
           "type": "array"
         }
       },
-      "actions": [
-        "navigate"
-      ]
+      "actions": ["navigate"]
     },
     {
       "name": "themeStore",
       "state": {
         "themes": {
           "type": "array",
-          "properties": [
-            "id",
-            "name",
-            "icon"
-          ]
+          "properties": ["id", "name", "icon"]
         },
         "currentTheme": {
           "type": "object",
-          "properties": [
-            "id",
-            "name",
-            "icon"
-          ]
+          "properties": ["id", "name", "icon"]
         }
       },
-      "actions": [
-        "setThemes",
-        "setCurrentTheme"
-      ]
+      "actions": ["setThemes", "setCurrentTheme"]
     },
     {
       "name": "templateStore",
       "state": {
         "templates": {
           "type": "array",
-          "properties": [
-            "id",
-            "meta",
-            "type",
-            "props",
-            "children",
-            "routes"
-          ]
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
         "shellTemplates": {
           "type": "array",
-          "properties": [
-            "id",
-            "meta",
-            "type",
-            "props",
-            "children",
-            "routes"
-          ]
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
         "currentTemplate": {
           "type": "object",
-          "properties": [
-            "id",
-            "meta",
-            "type",
-            "props",
-            "children",
-            "routes"
-          ]
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
         }
       },
-      "actions": [
-        "updateTemplate",
-        "switchTemplate",
-        "removeTemplate",
-        "saveTemplate"
-      ]
+      "actions": ["updateTemplate", "switchTemplate", "removeTemplate", "saveTemplate"]
     },
     {
       "name": "spaceStore",
@@ -4625,64 +4711,35 @@
         },
         "perspective": {
           "type": "object",
-          "properties": [
-            "uuid",
-            "name",
-            "sharedUrl",
-            "neighbourhood"
-          ]
+          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
         },
         "space": {
           "type": "object",
-          "properties": [
-            "uuid",
-            "name",
-            "description",
-            "url",
-            "visibility"
-          ]
+          "properties": ["uuid", "name", "description", "url", "visibility"]
         },
         "posts": {
           "type": "array",
-          "properties": [
-            "id",
-            "author",
-            "timestamp",
-            "content"
-          ]
+          "properties": ["id", "author", "timestamp", "content"]
         },
         "loading": {
           "type": "boolean"
         }
       },
-      "actions": [
-        "setSpaceId",
-        "getSpace",
-        "getPosts"
-      ]
+      "actions": ["setSpaceId", "getSpace", "getPosts"]
     },
     {
       "name": "aiStore",
       "state": {
         "models": {
           "type": "array",
-          "properties": [
-            "id",
-            "name"
-          ]
+          "properties": ["id", "name"]
         },
         "tasks": {
           "type": "array",
-          "properties": [
-            "id",
-            "status",
-            "result"
-          ]
+          "properties": ["id", "status", "result"]
         }
       },
-      "actions": [
-        "handleSchemaPrompt"
-      ]
+      "actions": ["handleSchemaPrompt"]
     }
   ]
 }

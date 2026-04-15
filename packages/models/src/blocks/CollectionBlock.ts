@@ -7,6 +7,9 @@ export class CollectionBlock extends WeNode {
   @HasMany({ through: 'we://children' })
   children: string[] = [];
 
+  @Property({ through: 'we://type' })
+  type: string = '';
+
   @Property({ through: 'we://display' })
   display: string = '';
 
