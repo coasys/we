@@ -1,5 +1,5 @@
 export { WeNode } from './WeNode';
-export { AgentProfile, AgentSettings, Space, Template, Theme } from './entities';
+export { AgentProfile, AgentSettings, ChatMessage, ChatSession, Space, Template, Theme } from './entities';
 export {
   AudioBlock,
   CalloutBlock,
