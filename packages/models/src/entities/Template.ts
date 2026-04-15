@@ -1,11 +1,15 @@
-import { Model, Property } from '@coasys/ad4m';
+import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
 import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { decodeFileAsJson } from '../utils/fileTransforms';
 import { WeNode } from '../WeNode';
+import { ChatSession } from './ChatSession';
 
 @Model({ name: 'Template' })
 export class Template extends WeNode {
+  @Flag({ through: 'we://type', value: 'we://template' })
+  type: string = '';
+
   @Property({ through: 'we://name' })
   name: string = '';
 
@@ -21,4 +25,9 @@ export class Template extends WeNode {
     transform: decodeFileAsJson,
   })
   schema: Record<string, unknown> = {};
+
+  @HasMany(() => ChatSession, { through: 'we://chat_session' })
+  chatSessions: ChatSession[] = [];
 }
+
+export interface Template extends HasManyMethods<'chatSessions'> {}

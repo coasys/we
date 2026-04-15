@@ -26,6 +26,7 @@ export const aiChatSidebar: SchemaNode = {
         placeholder: 'Describe a change to the template...',
         messages: { $store: 'aiStore.messages' },
         loading: { $store: 'aiStore.isStreaming' },
+        streamingContent: { $store: 'aiStore.streamingContent' },
         onSend: { $action: 'aiStore.sendMessage' },
         onClose: { $action: 'aiStore.close' },
         apiKeyConfigured: { $store: 'aiStore.apiKeyConfigured' },
@@ -46,6 +47,22 @@ export const aiChatSidebar: SchemaNode = {
         pickerDefaultIcon: { $store: 'aiStore.pickerDefaultIcon' },
         onPickerConfirm: { $action: 'aiStore.confirmPicker' },
         onPickerCancel: { $action: 'aiStore.cancelPicker' },
+
+        // Session management
+        sessions: { $store: 'aiStore.sessions' },
+        activeSessionId: { $store: 'aiStore.activeSessionId' },
+        onNewChat: { $action: 'aiStore.newChat' },
+        onSwitchSession: { $action: 'aiStore.switchSession' },
+        onDeleteSession: { $action: 'aiStore.deleteSession' },
+
+        // Panel mode (chat / code)
+        mode: { $store: 'aiStore.panelMode' },
+        schemaJson: { $store: 'aiStore.schemaJson' },
+        onModeChange: { $action: 'aiStore.setPanelMode' },
+        onSchemaEdit: { $action: 'aiStore.onSchemaEdit' },
+
+        // Operation loading
+        operationLoading: { $store: 'templateStore.operationLoading' },
       },
     },
   },

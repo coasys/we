@@ -56,52 +56,164 @@ export const settingsTemplate: TemplateSchema = {
           ],
         },
 
-        // Template Selection
+        // Template Management
         {
           type: 'Column',
           props: { gap: '300' },
           children: [
-            { type: 'we-text', props: { fontSize: '600', fontWeight: 'semibold' }, children: ['Template'] },
+            { type: 'we-text', props: { fontSize: '600', fontWeight: 'semibold' }, children: ['Templates'] },
             {
               type: 'Column',
-              props: { gap: '200' },
+              props: { gap: '100' },
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'templateStore.templates' }, as: 'template' },
+                  props: { items: { $store: 'templateStore.templateManagementList' }, as: 'template' },
                   children: [
                     {
-                      type: 'we-button',
+                      type: 'Row',
                       props: {
-                        variant: {
+                        gap: '300',
+                        ay: 'center',
+                        p: '300',
+                        r: '200',
+                        bg: {
                           $if: {
-                            condition: { $eq: ['$template.id', { $store: 'templateStore.currentTemplate.id' }] },
-                            then: 'secondary',
-                            else: 'ghost',
+                            condition: '$template.isDefault',
+                            then: 'neutral-100',
+                            else: 'transparent',
                           },
                         },
-                        width: '100%',
-                        gap: '300',
-                        ax: 'start',
-                        onClick: { $action: 'templateStore.switchTemplate', args: ['$template.id'] },
                       },
                       children: [
-                        { type: 'we-icon', props: { name: '$template.meta.icon', size: '20px' } },
+                        // Template icon + name
                         {
-                          type: 'Column',
-                          props: { gap: '100' },
+                          type: 'Row',
+                          props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
                           children: [
+                            { type: 'we-icon', props: { name: '$template.icon', size: '20px', color: 'neutral-500' } },
                             {
-                              type: 'we-text',
-                              props: { fontSize: '400', fontWeight: 'medium' },
-                              children: ['$template.meta.name'],
-                            },
-                            {
-                              type: 'we-text',
-                              props: { fontSize: '300', color: 'neutral-400' },
-                              children: ['$template.meta.description'],
+                              type: 'Column',
+                              props: { gap: '50' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { fontSize: '400', fontWeight: 'medium' },
+                                  children: ['$template.name'],
+                                },
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: '$template.description',
+                                    then: {
+                                      type: 'we-text',
+                                      props: { fontSize: '300', color: 'neutral-400' },
+                                      children: ['$template.description'],
+                                    },
+                                  },
+                                },
+                              ],
                             },
                           ],
+                        },
+
+                        // Core badge
+                        {
+                          type: '$if',
+                          props: {
+                            condition: '$template.isCore',
+                            then: {
+                              type: 'we-tag',
+                              props: { variant: 'default' },
+                              children: ['Core'],
+                            },
+                          },
+                        },
+
+                        // Install toggle (custom templates only)
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $not: '$template.isCore' },
+                            then: {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { fontSize: '300', color: 'neutral-400' },
+                                  children: ['Installed'],
+                                },
+                                {
+                                  type: 'we-switch',
+                                  props: {
+                                    checked: '$template.isInstalled',
+                                    size: 'sm',
+                                    onChange: {
+                                      $action: 'templateStore.toggleInstalled',
+                                      args: ['$template.id'],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          },
+                        },
+
+                        // Default radio button (only shown if template is installed)
+                        {
+                          type: '$if',
+                          props: {
+                            condition: '$template.isInstalled',
+                            then: {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { fontSize: '300', color: 'neutral-400' },
+                                  children: ['Default'],
+                                },
+                                {
+                                  type: 'we-radio',
+                                  props: {
+                                    checked: '$template.isDefault',
+                                    name: 'default-template',
+                                    value: '$template.id',
+                                    onChange: {
+                                      $action: 'templateStore.setDefaultTemplate',
+                                      args: ['$template.id'],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          },
+                        },
+
+                        // Delete button (custom templates only)
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $not: '$template.isCore' },
+                            then: {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: {
+                                  $action: 'templateStore.deleteTemplate',
+                                  args: ['$template.id'],
+                                },
+                              },
+                              children: [
+                                {
+                                  type: 'we-icon',
+                                  props: { name: 'trash', size: '16px', color: 'danger-400' },
+                                },
+                              ],
+                            },
+                          },
                         },
                       ],
                     },
