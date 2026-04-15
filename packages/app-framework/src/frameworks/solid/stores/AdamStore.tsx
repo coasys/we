@@ -6,6 +6,8 @@ import {
   AgentProfile,
   AgentSettings,
   blobToDataURL,
+  ChatMessage,
+  ChatSession,
   CollectionBlock,
   ImageBlock,
   resizeImage,
@@ -47,6 +49,7 @@ export interface AdamStore {
   navigate: (to: string, options?: Record<string, unknown>) => void;
   addNewSpace: (space: Space) => void;
   createSpace: (name: string, description: string, shared: boolean, imageFile?: File) => Promise<void>;
+  removePerspective: (uuid: string) => Promise<void>;
   updateAgentSettings: (updates: Partial<AgentSettings>) => Promise<void>;
   updateAgentProfile: (updates: Partial<AgentProfile>) => Promise<void>;
   updateProfileImage: (imageFile: File) => Promise<void>;
@@ -189,6 +192,12 @@ export function AdamStoreProvider(props: ParentProps) {
       const existing = perspectives.find((p) => p.name === 'we-root');
 
       if (existing) {
+        // Ensure all models are registered (handles new models added after initial creation)
+        await Promise.all([
+          ChatMessage.register(existing),
+          ChatSession.register(existing),
+          Template.register(existing),
+        ]);
         setRootPerspective(existing);
         const [settings, profile] = await Promise.all([
           AgentSettings.findOne(existing),
@@ -206,6 +215,8 @@ export function AdamStoreProvider(props: ParentProps) {
       await Promise.all([
         AgentSettings.register(perspective),
         AgentProfile.register(perspective),
+        ChatMessage.register(perspective),
+        ChatSession.register(perspective),
         Template.register(perspective),
         Theme.register(perspective),
       ]);
@@ -383,6 +394,19 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
+  async function removePerspective(uuid: string): Promise<void> {
+    const client = adamClient();
+    if (!client) return;
+
+    try {
+      await client.perspective.remove(uuid);
+      setAllPerspectives((prev) => prev.filter((p) => p.uuid !== uuid));
+      setMySpaces((prev) => prev.filter((s) => s.uuid !== uuid));
+    } catch (error) {
+      console.error('AdamStore: removePerspective error', error);
+    }
+  }
+
   function navigate(to: string, options?: Record<string, unknown>) {
     // Skip if already on target path
     if (window.location.pathname === to) return;
@@ -420,6 +444,7 @@ export function AdamStoreProvider(props: ParentProps) {
     navigate,
     addNewSpace,
     createSpace,
+    removePerspective,
     updateAgentSettings,
     updateAgentProfile,
     updateProfileImage,
