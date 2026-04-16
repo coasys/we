@@ -1,8 +1,8 @@
 import { tokenVar } from '@we/design-utils';
-import { createEffect, createSignal, For, type JSX, Show } from 'solid-js';
+import { createEffect, createSignal, For, Show } from 'solid-js';
 
 export type * from './ChatPanel.types';
-import { Column } from '@we/components/solid';
+import { Column, Row } from '@we/components/solid';
 
 import type { ChatMessage, ChatPanelProps } from './ChatPanel.types';
 
@@ -38,7 +38,6 @@ export function ChatPanel(props: ChatPanelProps) {
   const [pickerName, setPickerName] = createSignal('');
   const [pickerIcon, setPickerIcon] = createSignal('');
   let messagesEndRef: HTMLDivElement | undefined;
-  let inputRef: HTMLTextAreaElement | undefined;
 
   // Reset picker fields when picker opens
   createEffect(() => {
@@ -57,28 +56,11 @@ export function ChatPanel(props: ChatPanelProps) {
     });
   });
 
-  // Auto-resize textarea
-  function resizeTextarea() {
-    if (!inputRef) return;
-    inputRef.style.height = 'auto';
-    inputRef.style.height = Math.min(inputRef.scrollHeight, 160) + 'px';
-  }
-
   function handleSend() {
     const text = inputValue().trim();
     if (!text || props.disabled || props.loading) return;
     props.onSend(text);
     setInputValue('');
-    if (inputRef) {
-      inputRef.style.height = 'auto';
-    }
-  }
-
-  function handleKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
   }
 
   function handlePickerConfirm() {
@@ -87,491 +69,369 @@ export function ChatPanel(props: ChatPanelProps) {
     props.onPickerConfirm?.(name, pickerIcon() || 'cube');
   }
 
-  // Container styles
-  const containerStyles = (): JSX.CSSProperties => ({
-    position: position(),
-    top: '0',
-    [side()]: props.open ? '0' : `-${width()}`,
-    width: width(),
-    height: '100vh',
-    'z-index': zIndex(),
-    display: 'flex',
-    'flex-direction': 'column',
-    background: tokenVar('color', 'neutral-0'),
-    'border-left': side() === 'right' ? `1px solid ${tokenVar('color', 'ui-200')}` : 'none',
-    'border-right': side() === 'left' ? `1px solid ${tokenVar('color', 'ui-200')}` : 'none',
-    transition: `${side()} 300ms ease`,
-    'box-shadow': props.open ? '-4px 0 24px rgba(0,0,0,0.08)' : 'none',
-  });
-
-  // Header styles
-  const headerStyles = (): JSX.CSSProperties => ({
-    display: 'flex',
-    'align-items': 'center',
-    'justify-content': 'space-between',
-    padding: `${tokenVar('space', '300')} ${tokenVar('space', '400')}`,
-    'border-bottom': `1px solid ${tokenVar('color', 'ui-200')}`,
-    'flex-shrink': '0',
-  });
-
-  // Messages area styles
-  const messagesStyles = (): JSX.CSSProperties => ({
-    flex: '1',
-    'overflow-y': 'auto',
-    padding: tokenVar('space', '400'),
-    display: 'flex',
-    'flex-direction': 'column',
-    gap: tokenVar('space', '300'),
-  });
-
-  // Input area styles
-  const inputAreaStyles = (): JSX.CSSProperties => ({
-    display: 'flex',
-    'align-items': 'flex-end',
-    gap: tokenVar('space', '200'),
-    padding: tokenVar('space', '400'),
-    'border-top': `1px solid ${tokenVar('color', 'ui-200')}`,
-    'flex-shrink': '0',
-  });
-
   return (
-    <>
-      <div style={containerStyles()} data-testid="chat-panel">
-        {/* Header */}
-        <div style={headerStyles()}>
-          <div style={{ display: 'flex', 'align-items': 'center', gap: tokenVar('space', '200') }}>
-            <we-text fontSize="500" fontWeight="600">
-              {title()}
-            </we-text>
-            {/* Chat / Code toggle */}
-            <Show when={props.onModeChange}>
-              <div
-                style={{
-                  display: 'flex',
-                  'border-radius': tokenVar('radius', 'sm'),
-                  border: `1px solid ${tokenVar('color', 'ui-200')}`,
-                  overflow: 'hidden',
-                  'margin-left': tokenVar('space', '200'),
-                }}
+    <Column
+      bg="neutral-25"
+      position={position() as 'fixed' | 'absolute' | 'relative' | 'sticky'}
+      top="0"
+      width={width()}
+      height="100vh"
+      zIndex={zIndex()}
+      borderLeft={side() === 'right' ? `1px solid ${tokenVar('color', 'ui-200')}` : 'none'}
+      borderRight={side() === 'left' ? `1px solid ${tokenVar('color', 'ui-200')}` : 'none'}
+      transition={`${side()} 300ms ease`}
+      styles={{
+        [side()]: props.open ? '0' : `-${width()}`,
+        'box-shadow': props.open ? '-4px 0 24px rgba(0,0,0,0.08)' : 'none',
+      }}
+      data-testid="chat-panel"
+    >
+      {/* Header */}
+      <Row
+        ax="between"
+        ay="center"
+        px="400"
+        py="300"
+        borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
+        styles={{ 'flex-shrink': '0' }}
+      >
+        <Row ay="center" gap="200">
+          <we-text fontSize="500" fontWeight="600">
+            {title()}
+          </we-text>
+          <Show when={props.onModeChange}>
+            <Row r="sm" border={`1px solid ${tokenVar('color', 'ui-200')}`} overflow="hidden" ml="200">
+              <we-button
+                size="xs"
+                variant={(props.mode ?? 'chat') === 'chat' ? 'primary' : 'ghost'}
+                onClick={() => props.onModeChange?.('chat')}
               >
-                <button
-                  onClick={() => props.onModeChange?.('chat')}
-                  style={{
-                    padding: `${tokenVar('space', '100')} ${tokenVar('space', '200')}`,
-                    border: 'none',
-                    cursor: 'pointer',
-                    'font-size': tokenVar('font-size', '200'),
-                    'font-weight': '600',
-                    background:
-                      (props.mode ?? 'chat') === 'chat'
-                        ? tokenVar('color', 'primary-100')
-                        : tokenVar('color', 'neutral-0'),
-                    color:
-                      (props.mode ?? 'chat') === 'chat'
-                        ? tokenVar('color', 'primary-700')
-                        : tokenVar('color', 'neutral-500'),
-                  }}
-                >
-                  Chat
-                </button>
-                <button
-                  onClick={() => props.onModeChange?.('code')}
-                  style={{
-                    padding: `${tokenVar('space', '100')} ${tokenVar('space', '200')}`,
-                    border: 'none',
-                    'border-left': `1px solid ${tokenVar('color', 'ui-200')}`,
-                    cursor: 'pointer',
-                    'font-size': tokenVar('font-size', '200'),
-                    'font-weight': '600',
-                    background:
-                      (props.mode ?? 'chat') === 'code'
-                        ? tokenVar('color', 'primary-100')
-                        : tokenVar('color', 'neutral-0'),
-                    color:
-                      (props.mode ?? 'chat') === 'code'
-                        ? tokenVar('color', 'primary-700')
-                        : tokenVar('color', 'neutral-500'),
-                  }}
-                >
-                  Code
-                </button>
-              </div>
-            </Show>
-          </div>
-          <div style={{ display: 'flex', 'align-items': 'center', gap: tokenVar('space', '100') }}>
-            <Show when={props.onNewChat}>
-              <we-button variant="ghost" size="sm" onClick={() => props.onNewChat?.()}>
-                <we-icon name="plus" size="sm" />
+                Chat
               </we-button>
-            </Show>
-            <Show when={props.onClose}>
-              <we-button variant="ghost" size="sm" onClick={() => props.onClose?.()}>
-                <we-icon name="x" size="sm" />
-              </we-button>
-            </Show>
-          </div>
-        </div>
-
-        {/* Template Context Header */}
-        <Show when={props.templateName}>
-          <div
-            style={{
-              display: 'flex',
-              'align-items': 'center',
-              'justify-content': 'space-between',
-              padding: `${tokenVar('space', '200')} ${tokenVar('space', '400')}`,
-              'border-bottom': `1px solid ${tokenVar('color', 'ui-200')}`,
-              background: props.isReadOnly ? tokenVar('color', 'warning-50') : tokenVar('color', 'primary-50'),
-              'flex-shrink': '0',
-              gap: tokenVar('space', '200'),
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                'align-items': 'center',
-                gap: tokenVar('space', '200'),
-                'min-width': '0',
-                flex: '1',
-              }}
-            >
-              <Show when={props.templateIcon}>
-                <we-icon name={props.templateIcon} size="sm" />
-              </Show>
-              <we-text
-                fontSize="300"
-                fontWeight="600"
-                color={props.isReadOnly ? 'warning-700' : 'primary-700'}
-                style={{ 'white-space': 'nowrap', overflow: 'hidden', 'text-overflow': 'ellipsis' }}
+              <we-button
+                size="xs"
+                variant={(props.mode ?? 'chat') === 'code' ? 'primary' : 'ghost'}
+                onClick={() => props.onModeChange?.('code')}
               >
-                {props.templateName}
-              </we-text>
-              <we-text fontSize="200" color={props.isReadOnly ? 'warning-500' : 'primary-500'}>
-                {props.isReadOnly ? '(read-only)' : '(editing)'}
-              </we-text>
-            </div>
-            <div style={{ display: 'flex', gap: tokenVar('space', '100'), 'flex-shrink': '0' }}>
-              <Show when={props.onFork}>
-                <we-button variant="ghost" size="xs" onClick={() => props.onFork?.()}>
-                  {props.isReadOnly ? 'Fork & Customize' : 'Fork'}
-                </we-button>
-              </Show>
-              <Show when={props.isReadOnly && props.onStartFresh}>
-                <we-button variant="ghost" size="xs" onClick={() => props.onStartFresh?.()}>
-                  Start Fresh
-                </we-button>
-              </Show>
-            </div>
-          </div>
-
-          {/* Pending changes banner (for read-only templates) */}
-          <Show when={props.isReadOnly && props.hasPendingChanges}>
-            <div
-              style={{
-                padding: `${tokenVar('space', '200')} ${tokenVar('space', '400')}`,
-                background: tokenVar('color', 'info-50'),
-                'border-bottom': `1px solid ${tokenVar('color', 'ui-200')}`,
-                display: 'flex',
-                'align-items': 'center',
-                gap: tokenVar('space', '200'),
-                'flex-shrink': '0',
-              }}
-            >
-              <we-icon name="info" size="xs" />
-              <we-text fontSize="200" color="info-700">
-                Changes are pending — fork this template to apply them.
-              </we-text>
-            </div>
+                Code
+              </we-button>
+            </Row>
           </Show>
-        </Show>
+        </Row>
+        <Row ay="center" gap="100">
+          <Show when={props.onNewChat}>
+            <we-button variant="ghost" size="sm" onClick={() => props.onNewChat?.()}>
+              <we-icon name="plus" size="sm" />
+            </we-button>
+          </Show>
+          <Show when={props.onClose}>
+            <we-button variant="ghost" size="sm" onClick={() => props.onClose?.()}>
+              <we-icon name="x" size="sm" />
+            </we-button>
+          </Show>
+        </Row>
+      </Row>
 
-        {/* Name + Icon Picker */}
-        <Show when={props.pickerOpen}>
-          <div
-            style={{
-              padding: tokenVar('space', '400'),
-              'border-bottom': `1px solid ${tokenVar('color', 'ui-200')}`,
-              display: 'flex',
-              'flex-direction': 'column',
-              gap: tokenVar('space', '300'),
-              background: tokenVar('color', 'neutral-50'),
-              'flex-shrink': '0',
-            }}
-          >
-            <we-text fontSize="400" fontWeight="600" color="neutral-800">
-              {props.pickerAction === 'fresh' ? 'Create New Template' : 'Name Your Fork'}
+      {/* Template Context Header */}
+      <Show when={props.templateName}>
+        <Row
+          ax="between"
+          ay="center"
+          gap="200"
+          px="400"
+          py="200"
+          bg={props.isReadOnly ? 'warning-50' : 'primary-200'}
+          borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
+          styles={{ 'flex-shrink': '0' }}
+        >
+          <Row ay="center" gap="200" flex="1" minWidth="0">
+            <Show when={props.templateIcon}>
+              <we-icon name={props.templateIcon} size="sm" />
+            </Show>
+            <we-text
+              fontSize="300"
+              fontWeight="600"
+              color={props.isReadOnly ? 'warning-700' : 'primary-700'}
+              style={{ 'white-space': 'nowrap', overflow: 'hidden', 'text-overflow': 'ellipsis' }}
+            >
+              {props.templateName}
             </we-text>
-
-            {/* Name input */}
-            <div style={{ display: 'flex', 'flex-direction': 'column', gap: tokenVar('space', '100') }}>
-              <we-text fontSize="200" fontWeight="600" color="neutral-600">
-                Name
-              </we-text>
-              <input
-                type="text"
-                value={pickerName()}
-                onInput={(e) => setPickerName(e.currentTarget.value)}
-                placeholder="My Template"
-                style={{
-                  border: `1px solid ${tokenVar('color', 'ui-300')}`,
-                  'border-radius': tokenVar('radius', 'sm'),
-                  padding: `${tokenVar('space', '200')} ${tokenVar('space', '300')}`,
-                  'font-size': tokenVar('font-size', '300'),
-                  background: tokenVar('color', 'neutral-0'),
-                  color: tokenVar('color', 'neutral-900'),
-                  outline: 'none',
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handlePickerConfirm();
-                  if (e.key === 'Escape') props.onPickerCancel?.();
-                }}
-              />
-            </div>
-
-            {/* Icon picker grid */}
-            <div style={{ display: 'flex', 'flex-direction': 'column', gap: tokenVar('space', '100') }}>
-              <we-text fontSize="200" fontWeight="600" color="neutral-600">
-                Icon
-              </we-text>
-              <div style={{ display: 'flex', 'flex-wrap': 'wrap', gap: tokenVar('space', '100') }}>
-                <For each={ICON_CHOICES}>
-                  {(iconName) => (
-                    <button
-                      onClick={() => setPickerIcon(iconName)}
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        display: 'flex',
-                        'align-items': 'center',
-                        'justify-content': 'center',
-                        border:
-                          pickerIcon() === iconName
-                            ? `2px solid ${tokenVar('color', 'primary-500')}`
-                            : `1px solid ${tokenVar('color', 'ui-200')}`,
-                        'border-radius': tokenVar('radius', 'sm'),
-                        background:
-                          pickerIcon() === iconName ? tokenVar('color', 'primary-50') : tokenVar('color', 'neutral-0'),
-                        cursor: 'pointer',
-                        padding: '0',
-                      }}
-                    >
-                      <we-icon name={iconName} size="sm" color="neutral-800" />
-                    </button>
-                  )}
-                </For>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: tokenVar('space', '200'), 'justify-content': 'flex-end' }}>
-              <we-button
-                size="sm"
-                variant="ghost"
-                onClick={() => props.onPickerCancel?.()}
-                disabled={!!props.operationLoading}
-              >
-                Cancel
+            <we-text fontSize="200" color={props.isReadOnly ? 'warning-500' : 'primary-500'}>
+              {props.isReadOnly ? '(read-only)' : '(editing)'}
+            </we-text>
+          </Row>
+          <Row gap="100" styles={{ 'flex-shrink': '0' }}>
+            <Show when={props.onFork}>
+              <we-button variant="ghost" size="xs" onClick={() => props.onFork?.()}>
+                {props.isReadOnly ? 'Fork & Customize' : 'Fork'}
               </we-button>
-              <we-button
-                size="sm"
-                disabled={!pickerName().trim()}
-                loading={!!props.operationLoading}
-                onClick={handlePickerConfirm}
-              >
-                {props.operationLoading ? 'Saving...' : props.pickerAction === 'fresh' ? 'Create' : 'Fork'}
+            </Show>
+            <Show when={props.isReadOnly && props.onStartFresh}>
+              <we-button variant="ghost" size="xs" onClick={() => props.onStartFresh?.()}>
+                Start Fresh
               </we-button>
-            </div>
-          </div>
-        </Show>
+            </Show>
+          </Row>
+        </Row>
 
-        {/* API Key Setup */}
-        <Show when={props.onSetApiKey && !props.apiKeyConfigured}>
-          <div
-            style={{
-              padding: tokenVar('space', '400'),
-              'border-bottom': `1px solid ${tokenVar('color', 'ui-200')}`,
-              display: 'flex',
-              'flex-direction': 'column',
-              gap: tokenVar('space', '200'),
-              background: tokenVar('color', 'neutral-50'),
-            }}
+        {/* Pending changes banner (for read-only templates) */}
+        <Show when={props.isReadOnly && props.hasPendingChanges}>
+          <Row
+            ay="center"
+            gap="200"
+            px="400"
+            py="200"
+            bg="info-50"
+            borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
+            styles={{ 'flex-shrink': '0' }}
           >
-            <we-text fontSize="300" fontWeight="600" color="neutral-700">
-              Claude API Key
+            <we-icon name="info" size="xs" />
+            <we-text fontSize="200" color="info-700">
+              Changes are pending — fork this template to apply them.
             </we-text>
-            <we-text fontSize="200" color="neutral-500">
-              Enter your Anthropic API key to enable AI chat. The key is stored locally in your agent settings.
+          </Row>
+        </Show>
+      </Show>
+
+      {/* Name + Icon Picker */}
+      <Show when={props.pickerOpen}>
+        <Column
+          gap="300"
+          p="400"
+          bg="neutral-50"
+          borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
+          styles={{ 'flex-shrink': '0' }}
+        >
+          <we-text fontSize="400" fontWeight="600" color="neutral-800">
+            {props.pickerAction === 'fresh' ? 'Create New Template' : 'Name Your Fork'}
+          </we-text>
+
+          {/* Name input */}
+          <Column gap="100">
+            <we-text fontSize="200" fontWeight="600" color="neutral-600">
+              Name
             </we-text>
-            <div style={{ display: 'flex', gap: tokenVar('space', '200') }}>
-              <input
-                type="password"
-                value={apiKeyInput()}
-                onInput={(e) => setApiKeyInput(e.currentTarget.value)}
-                placeholder="sk-ant-..."
-                style={{
-                  flex: '1',
-                  border: `1px solid ${tokenVar('color', 'ui-300')}`,
-                  'border-radius': tokenVar('radius', 'sm'),
-                  padding: `${tokenVar('space', '200')} ${tokenVar('space', '300')}`,
-                  'font-size': tokenVar('font-size', '300'),
-                  background: tokenVar('color', 'neutral-0'),
-                  color: tokenVar('color', 'neutral-900'),
-                  outline: 'none',
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && apiKeyInput().trim()) {
-                    props.onSetApiKey!(apiKeyInput().trim());
-                    setApiKeyInput('');
-                  }
-                }}
-              />
-              <we-button
-                size="sm"
-                disabled={!apiKeyInput().trim()}
-                onClick={() => {
+            <we-input
+              value={pickerName()}
+              placeholder="My Template"
+              size="sm"
+              bg="neutral-0"
+              on:input={(e: CustomEvent) => setPickerName(e.detail)}
+              on:keydown={(e: CustomEvent) => {
+                if (e.detail.key === 'Enter') handlePickerConfirm();
+                if (e.detail.key === 'Escape') props.onPickerCancel?.();
+              }}
+            />
+          </Column>
+
+          {/* Icon picker grid */}
+          <Column gap="100">
+            <we-text fontSize="200" fontWeight="600" color="neutral-600">
+              Icon
+            </we-text>
+            <Row wrap gap="100">
+              <For each={ICON_CHOICES}>
+                {(iconName) => (
+                  <we-button
+                    variant="ghost"
+                    size="xs"
+                    r="sm"
+                    bg={pickerIcon() === iconName ? 'primary-50' : 'neutral-0'}
+                    onClick={() => setPickerIcon(iconName)}
+                    width="36px"
+                    height="36px"
+                    p="0"
+                    minWidth="unset"
+                    border={
+                      pickerIcon() === iconName
+                        ? `2px solid ${tokenVar('color', 'primary-500')}`
+                        : `1px solid ${tokenVar('color', 'ui-200')}`
+                    }
+                  >
+                    <we-icon name={iconName} size="sm" color="neutral-800" />
+                  </we-button>
+                )}
+              </For>
+            </Row>
+          </Column>
+
+          {/* Actions */}
+          <Row ax="end" gap="200">
+            <we-button
+              size="sm"
+              variant="ghost"
+              onClick={() => props.onPickerCancel?.()}
+              disabled={!!props.operationLoading}
+            >
+              Cancel
+            </we-button>
+            <we-button
+              size="sm"
+              disabled={!pickerName().trim()}
+              loading={!!props.operationLoading}
+              onClick={handlePickerConfirm}
+            >
+              {props.operationLoading ? 'Saving...' : props.pickerAction === 'fresh' ? 'Create' : 'Fork'}
+            </we-button>
+          </Row>
+        </Column>
+      </Show>
+
+      {/* API Key Setup */}
+      <Show when={props.onSetApiKey && !props.apiKeyConfigured}>
+        <Column gap="200" p="400" bg="neutral-50" borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}>
+          <we-text fontSize="300" fontWeight="600" color="neutral-700">
+            Claude API Key
+          </we-text>
+          <we-text fontSize="200" color="neutral-500">
+            Enter your Anthropic API key to enable AI chat. The key is stored locally in your agent settings.
+          </we-text>
+          <Row gap="200">
+            <we-input
+              type="password"
+              value={apiKeyInput()}
+              placeholder="sk-ant-..."
+              size="sm"
+              bg="neutral-0"
+              flex="1"
+              on:input={(e: CustomEvent) => setApiKeyInput(e.detail)}
+              on:keydown={(e: CustomEvent) => {
+                if (e.detail.key === 'Enter' && apiKeyInput().trim()) {
                   props.onSetApiKey!(apiKeyInput().trim());
                   setApiKeyInput('');
-                }}
-              >
-                Save
-              </we-button>
-            </div>
-          </div>
-        </Show>
-
-        {/* Session tabs */}
-        <Show when={props.sessions && props.sessions.length > 0}>
-          <div
-            style={{
-              display: 'flex',
-              'align-items': 'center',
-              gap: tokenVar('space', '100'),
-              padding: `${tokenVar('space', '200')} ${tokenVar('space', '400')}`,
-              'border-bottom': `1px solid ${tokenVar('color', 'ui-200')}`,
-              'overflow-x': 'auto',
-              'flex-shrink': '0',
-            }}
-          >
-            <For each={props.sessions}>
-              {(session) => {
-                const isActive = () => session.id === props.activeSessionId;
-                return (
-                  <div
-                    style={{
-                      display: 'flex',
-                      'align-items': 'center',
-                      gap: tokenVar('space', '100'),
-                      padding: `${tokenVar('space', '100')} ${tokenVar('space', '200')}`,
-                      'border-radius': tokenVar('radius', 'sm'),
-                      background: isActive() ? tokenVar('color', 'primary-100') : 'transparent',
-                      cursor: 'pointer',
-                      'white-space': 'nowrap',
-                      'flex-shrink': '0',
-                    }}
-                  >
-                    <div
-                      onClick={() => props.onSwitchSession?.(session.id)}
-                      style={{
-                        'font-size': tokenVar('font-size', '200'),
-                        'font-weight': isActive() ? '600' : '400',
-                        color: isActive() ? tokenVar('color', 'primary-700') : tokenVar('color', 'neutral-600'),
-                      }}
-                    >
-                      {session.name || 'Chat'}
-                    </div>
-                    <Show when={props.onDeleteSession && props.sessions!.length > 1}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          props.onDeleteSession?.(session.id);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: '0',
-                          display: 'flex',
-                          'align-items': 'center',
-                          opacity: '0.5',
-                        }}
-                      >
-                        <we-icon name="x" size="xs" />
-                      </button>
-                    </Show>
-                  </div>
-                );
-              }}
-            </For>
-          </div>
-        </Show>
-
-        {/* Messages (Chat mode) */}
-        <Show when={(props.mode ?? 'chat') === 'chat'}>
-          <div style={messagesStyles()}>
-            <For each={props.messages}>
-              {(msg) => (
-                <MessageBubble
-                  message={msg}
-                  isStreaming={props.loading && msg.status === 'streaming'}
-                  streamingContent={msg.status === 'streaming' ? props.streamingContent : undefined}
-                />
-              )}
-            </For>
-
-            <div ref={messagesEndRef} />
-          </div>
-        </Show>
-
-        {/* Code mode — JSON viewer */}
-        <Show when={(props.mode ?? 'chat') === 'code'}>
-          <CodeViewer
-            json={props.schemaJson ?? '{}'}
-            onSave={(json) => props.onSchemaEdit?.(json)}
-            readOnly={props.isReadOnly}
-          />
-        </Show>
-
-        {/* Input area (only in chat mode) */}
-        <Show when={(props.mode ?? 'chat') === 'chat'}>
-          <div style={inputAreaStyles()}>
-            <textarea
-              ref={inputRef}
-              value={inputValue()}
-              onInput={(e) => {
-                setInputValue(e.currentTarget.value);
-                resizeTextarea();
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder={placeholder()}
-              disabled={props.disabled || props.loading}
-              rows={1}
-              style={{
-                flex: '1',
-                resize: 'none',
-                border: `1px solid ${tokenVar('color', 'ui-300')}`,
-                'border-radius': tokenVar('radius', 'sm'),
-                padding: `${tokenVar('space', '200')} ${tokenVar('space', '300')}`,
-                'font-family': 'inherit',
-                'font-size': tokenVar('font-size', '400'),
-                'line-height': '1.5',
-                background: tokenVar('color', 'neutral-50'),
-                color: tokenVar('color', 'neutral-900'),
-                outline: 'none',
-                'max-height': '160px',
-                'overflow-y': 'auto',
+                }
               }}
             />
             <we-button
               size="sm"
-              onClick={handleSend}
-              disabled={props.disabled || props.loading || inputValue().trim() === ''}
+              disabled={!apiKeyInput().trim()}
+              onClick={() => {
+                props.onSetApiKey!(apiKeyInput().trim());
+                setApiKeyInput('');
+              }}
             >
-              <we-icon name="paper-plane-tilt" size="sm" />
+              Save
             </we-button>
-          </div>
-        </Show>
-      </div>
-    </>
+          </Row>
+        </Column>
+      </Show>
+
+      {/* Session tabs */}
+      <Show when={props.sessions && props.sessions.length > 0}>
+        <Row
+          ay="center"
+          gap="100"
+          p="300"
+          borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
+          styles={{ 'overflow-x': 'auto', 'flex-shrink': '0' }}
+        >
+          <For each={props.sessions}>
+            {(session) => {
+              const isActive = () => session.id === props.activeSessionId;
+              return (
+                <Row
+                  ay="center"
+                  gap="200"
+                  r="400"
+                  px="200"
+                  py="100"
+                  bg={isActive() ? 'primary-200' : 'primary-100'}
+                  cursor="pointer"
+                  styles={{ 'white-space': 'nowrap', 'flex-shrink': '0' }}
+                >
+                  <we-text
+                    fontSize="200"
+                    fontWeight={isActive() ? '600' : '400'}
+                    color={isActive() ? 'primary-700' : 'neutral-600'}
+                    onClick={() => props.onSwitchSession?.(session.id)}
+                    cursor="pointer"
+                  >
+                    {session.name || 'Chat'}
+                  </we-text>
+                  <Show when={props.onDeleteSession && props.sessions!.length > 1}>
+                    <we-button
+                      variant="ghost"
+                      size="xs"
+                      onClick={(e: MouseEvent) => {
+                        e.stopPropagation();
+                        props.onDeleteSession?.(session.id);
+                      }}
+                      opacity={0.5}
+                      p="0"
+                      minWidth="unset"
+                    >
+                      <we-icon name="x" size="xs" />
+                    </we-button>
+                  </Show>
+                </Row>
+              );
+            }}
+          </For>
+        </Row>
+      </Show>
+
+      {/* Messages (Chat mode) */}
+      <Show when={(props.mode ?? 'chat') === 'chat'}>
+        <Column gap="400" p="400" pr="300" flex="1" overflow="auto">
+          <For each={props.messages}>
+            {(msg) => (
+              <MessageBubble
+                message={msg}
+                isStreaming={props.loading && msg.status === 'streaming'}
+                streamingContent={msg.status === 'streaming' ? props.streamingContent : undefined}
+              />
+            )}
+          </For>
+
+          <div ref={messagesEndRef} />
+        </Column>
+      </Show>
+
+      {/* Code mode — JSON viewer */}
+      <Show when={(props.mode ?? 'chat') === 'code'}>
+        <CodeViewer
+          json={props.schemaJson ?? '{}'}
+          onSave={(json) => props.onSchemaEdit?.(json)}
+          readOnly={props.isReadOnly}
+        />
+      </Show>
+
+      {/* Input area (only in chat mode) */}
+      <Show when={(props.mode ?? 'chat') === 'chat'}>
+        <Row
+          ay="end"
+          gap="200"
+          p="400"
+          borderTop={`1px solid ${tokenVar('color', 'ui-200')}`}
+          styles={{ 'flex-shrink': '0' }}
+        >
+          <we-textarea
+            value={inputValue()}
+            placeholder={placeholder()}
+            disabled={props.disabled || props.loading}
+            rows={1}
+            resize="none"
+            flex="1"
+            on:input={(e: CustomEvent) => setInputValue(e.detail)}
+            onKeyDown={(e: KeyboardEvent) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            maxHeight="160px"
+            styles={{ 'overflow-y': 'auto' }}
+          />
+          <we-button
+            size="sm"
+            onClick={handleSend}
+            disabled={props.disabled || props.loading || inputValue().trim() === ''}
+          >
+            <we-icon name="paper-plane-tilt" size="sm" />
+          </we-button>
+        </Row>
+      </Show>
+    </Column>
   );
 }
 
@@ -579,97 +439,31 @@ export function ChatPanel(props: ChatPanelProps) {
 
 function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; streamingContent?: string }) {
   const isUser = () => props.message.role === 'user';
-  const msgType = () => props.message.messageType ?? 'text';
-
-  const bubbleStyles = (): JSX.CSSProperties => {
-    const type = msgType();
-
-    // messageType-based accents
-    if (type === 'success') {
-      return {
-        padding: `${tokenVar('space', '200')} ${tokenVar('space', '300')}`,
-        background: tokenVar('color', 'success-50'),
-        'border-radius': tokenVar('radius', 'sm'),
-        'border-left': `3px solid ${tokenVar('color', 'success-400')}`,
-        display: 'flex',
-        'align-items': 'flex-start',
-        gap: tokenVar('space', '200'),
-      };
-    }
-    if (type === 'error') {
-      return {
-        padding: `${tokenVar('space', '200')} ${tokenVar('space', '300')}`,
-        background: tokenVar('color', 'danger-50'),
-        'border-radius': tokenVar('radius', 'sm'),
-        'border-left': `3px solid ${tokenVar('color', 'danger-400')}`,
-      };
-    }
-    if (type === 'info') {
-      return {
-        padding: `${tokenVar('space', '200')} ${tokenVar('space', '300')}`,
-        background: tokenVar('color', 'warning-50'),
-        'border-radius': tokenVar('radius', 'sm'),
-        'border-left': `3px solid ${tokenVar('color', 'warning-400')}`,
-      };
-    }
-
-    return {
-      padding: `${tokenVar('space', '200')} ${tokenVar('space', '300')}`,
-      background: isUser() ? tokenVar('color', 'primary-50') : tokenVar('color', 'neutral-50'),
-      'border-radius': tokenVar('radius', 'sm'),
-      'max-width': '95%',
-      'align-self': isUser() ? 'flex-end' : 'flex-start',
-      'word-break': 'break-word',
-    };
-  };
-
-  const labelColor = () => {
-    const type = msgType();
-    if (type === 'success') return 'success-700';
-    if (type === 'error') return 'danger-700';
-    if (type === 'info') return 'warning-700';
-    return isUser() ? 'primary-600' : 'neutral-500';
-  };
-
-  const label = () => {
-    const type = msgType();
-    if (type === 'success') return 'AI';
-    if (type === 'error') return '⚠ AI';
-    if (type === 'info') return 'ℹ AI';
-    return isUser() ? 'You' : 'AI';
-  };
 
   const displayContent = () => {
-    // During streaming, show streaming content or a spinner
-    if (props.isStreaming) {
-      return props.streamingContent || '';
-    }
+    if (props.isStreaming) return props.streamingContent || '';
     return props.message.content;
   };
 
   return (
-    <div style={bubbleStyles()}>
-      <Show when={msgType() === 'success'}>
-        <we-icon
-          name="check-circle"
-          size="sm"
-          style={{ color: tokenVar('color', 'success-500'), 'flex-shrink': '0', 'margin-top': '2px' }}
-        />
+    <Column
+      r="400"
+      gap="300"
+      p={isUser() ? '300' : '0'}
+      bg={isUser() ? 'primary-200' : 'neutral-25'}
+      maxWidth={isUser() ? '90%' : '100%'}
+      alignSelf={isUser() ? 'flex-end' : 'flex-start'}
+      styles={{ 'word-break': 'break-word' }}
+    >
+      <Show when={displayContent()}>
+        <we-markdown content={displayContent()} markdownGap="400" />
       </Show>
-      <Column>
-        <we-text fontSize="200" color={labelColor()} fontWeight="600" style={{ 'margin-bottom': '2px' }}>
-          {label()}
+      <Show when={props.message.status === 'error'}>
+        <we-text fontSize="300" color="danger-500" style={{ 'margin-top': '4px' }}>
+          Failed to send
         </we-text>
-        <Show when={displayContent()}>
-          <we-markdown content={displayContent()} />
-        </Show>
-        <Show when={props.message.status === 'error'}>
-          <we-text fontSize="200" color="danger-500" style={{ 'margin-top': '4px' }}>
-            Failed to send
-          </we-text>
-        </Show>
-      </Column>
-    </div>
+      </Show>
+    </Column>
   );
 }
 
@@ -703,25 +497,16 @@ function CodeViewer(props: { json: string; onSave?: (json: string) => void; read
   }
 
   return (
-    <div
-      style={{
-        flex: '1',
-        display: 'flex',
-        'flex-direction': 'column',
-        overflow: 'hidden',
-      }}
-    >
+    <Column flex="1" overflow="hidden">
       {/* Toolbar */}
-      <div
-        style={{
-          display: 'flex',
-          'align-items': 'center',
-          'justify-content': 'flex-end',
-          gap: tokenVar('space', '200'),
-          padding: `${tokenVar('space', '200')} ${tokenVar('space', '400')}`,
-          'border-bottom': `1px solid ${tokenVar('color', 'ui-200')}`,
-          'flex-shrink': '0',
-        }}
+      <Row
+        ax="end"
+        ay="center"
+        gap="200"
+        px="400"
+        py="200"
+        borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
+        styles={{ 'flex-shrink': '0' }}
       >
         <Show
           when={editing()}
@@ -754,7 +539,7 @@ function CodeViewer(props: { json: string; onSave?: (json: string) => void; read
           <we-icon name="copy" size="xs" />
           Copy
         </we-button>
-      </div>
+      </Row>
 
       {/* Content */}
       <Show
@@ -779,24 +564,20 @@ function CodeViewer(props: { json: string; onSave?: (json: string) => void; read
           </pre>
         }
       >
-        <textarea
+        <we-textarea
           value={editValue()}
-          onInput={(e) => setEditValue(e.currentTarget.value)}
-          style={{
-            flex: '1',
-            margin: '0',
-            padding: tokenVar('space', '400'),
-            border: 'none',
-            outline: 'none',
-            resize: 'none',
+          resize="none"
+          flex="1"
+          bg="neutral-50"
+          on:input={(e: CustomEvent) => setEditValue(e.detail)}
+          styles={{
+            'font-family': 'monospace',
             'font-size': tokenVar('font-size', '200'),
             'line-height': '1.5',
-            background: tokenVar('color', 'neutral-50'),
-            color: tokenVar('color', 'neutral-800'),
-            'font-family': 'monospace',
+            border: 'none',
           }}
         />
       </Show>
-    </div>
+    </Column>
   );
 }

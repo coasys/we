@@ -124,19 +124,13 @@ const updateSchemaTool = {
 };
 
 let msgIdCounter = 0;
-function createMessage(
-  role: ChatMessage['role'],
-  content: string,
-  status?: ChatMessage['status'],
-  messageType?: ChatMessage['messageType'],
-): ChatMessage {
+function createMessage(role: ChatMessage['role'], content: string, status?: ChatMessage['status']): ChatMessage {
   return {
     id: `msg-${++msgIdCounter}`,
     role,
     content,
     createdAt: new Date().toISOString(),
     status,
-    messageType: messageType ?? 'text',
   };
 }
 
@@ -272,10 +266,7 @@ export function AiStoreProvider(props: ParentProps) {
     if (!templateId || templateStore.isCoreTemplate(templateId)) {
       // For core templates, clear in-memory messages (ephemeral sessions)
       setMessages([]);
-      setMessages((prev) => [
-        ...prev,
-        createMessage('assistant', 'Chat cleared. Start a new conversation!', undefined, 'info'),
-      ]);
+      setMessages((prev) => [...prev, createMessage('assistant', 'Chat cleared. Start a new conversation!')]);
       return;
     }
 
@@ -357,12 +348,7 @@ export function AiStoreProvider(props: ParentProps) {
   }
 
   /** Persist a message to AD4M and link it to the active session */
-  async function persistMessage(
-    role: 'user' | 'assistant',
-    content: string,
-    messageType: string = 'text',
-    thinking: string = '',
-  ) {
+  async function persistMessage(role: 'user' | 'assistant', content: string) {
     if (!activeSessionModel) return;
 
     const perspective = adamStore.rootPerspective();
@@ -371,13 +357,9 @@ export function AiStoreProvider(props: ParentProps) {
     try {
       await ChatMessageModel.create(
         perspective,
-        { role, content, messageType, thinking },
+        { role, content },
         { parent: { model: ChatSessionModel, id: activeSessionModel.id } },
       );
-
-      // Update session updatedAt
-      activeSessionModel.updatedAt = new Date().toISOString();
-      await activeSessionModel.save();
     } catch (err) {
       console.error('Failed to persist message', err);
     }
@@ -511,31 +493,20 @@ export function AiStoreProvider(props: ParentProps) {
     const success = await templateStore.saveTemplateAs(schema);
     setPickerOpen(false);
     if (!success) {
-      setMessages((prev) => [
-        ...prev,
-        createMessage('assistant', `Failed to save template "${name}".`, undefined, 'error'),
-      ]);
+      setMessages((prev) => [...prev, createMessage('assistant', `Failed to save template "${name}".`)]);
       return;
     }
 
     if (action === 'fresh') {
       setMessages((prev) => [
         ...prev,
-        createMessage(
-          'assistant',
-          `Created new template "${name}". Start chatting to build your interface!`,
-          undefined,
-          'success',
-        ),
+        createMessage('assistant', `Created new template "${name}". Start chatting to build your interface!`),
       ]);
     } else {
       const hadPending = pendingTemplate() !== null;
       setPendingTemplate(null);
       const suffix = hadPending ? ' Pending changes have been applied.' : '';
-      setMessages((prev) => [
-        ...prev,
-        createMessage('assistant', `Forked as "${name}".${suffix}`, undefined, 'success'),
-      ]);
+      setMessages((prev) => [...prev, createMessage('assistant', `Forked as "${name}".${suffix}`)]);
     }
   }
 
@@ -573,7 +544,7 @@ export function AiStoreProvider(props: ParentProps) {
       }
     } catch (err) {
       const errorText = err instanceof Error ? err.message : 'Unknown error';
-      setMessages((prev) => [...prev, createMessage('assistant', `Error: ${errorText}`, undefined, 'error')]);
+      setMessages((prev) => [...prev, createMessage('assistant', `Error: ${errorText}`)]);
     } finally {
       // Mark user message as sent
       setMessages((prev) => prev.map((m) => (m.id === userMsg.id ? { ...m, status: 'sent' as const } : m)));
@@ -847,7 +818,7 @@ export function AiStoreProvider(props: ParentProps) {
           const validation = validatePatches(patches, currentSchema);
 
           if (!validation.valid) {
-            allTextContent += '\n\n<span class="warning">⚠️ Template failed validation. Retrying...</span>';
+            allTextContent += '\n\n<span class="warning">⚠ Template failed validation. Retrying...</span>';
             setStreamingContent(allTextContent);
             toolResults.push({
               type: 'tool_result',
@@ -885,7 +856,7 @@ export function AiStoreProvider(props: ParentProps) {
             }
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : 'Unknown patching error';
-            allTextContent += '\n\n<span class="warning">⚠️ Patch error — retrying...</span>';
+            allTextContent += '\n\n<span class="warning">⚠ Patch error — retrying...</span>';
             setStreamingContent(allTextContent);
             toolResults.push({
               type: 'tool_result',
@@ -912,9 +883,10 @@ export function AiStoreProvider(props: ParentProps) {
       if (!hasErrors) {
         // Inject inline success indicator immediately
         const pended = isReadOnly() && pendingTemplate() !== null;
+        // ✅ ⚠️ ❌
         const statusLine = pended
-          ? '<span class="warning">⚠️ Changes are ready — fork this template to apply them.</span>'
-          : '<span class="success">✅ Template updated</span>';
+          ? '<span class="warning">⚠ Changes are ready — fork this template to apply them.</span>'
+          : '<span class="success">✓ Template updated</span>';
         allTextContent += '\n\n' + statusLine;
         setStreamingContent(allTextContent);
 
@@ -945,7 +917,7 @@ export function AiStoreProvider(props: ParentProps) {
     setStreamingContent('');
     updateAssistantMessage(
       streamMsg.id,
-      allTextContent + '\n\n<span class="danger">❌ Could not apply changes after multiple attempts.</span>',
+      allTextContent + '\n\n<span class="danger">✗ Could not apply changes after multiple attempts.</span>',
     );
   }
 
@@ -995,25 +967,16 @@ export function AiStoreProvider(props: ParentProps) {
   }
 
   /** Update or create the assistant message, then persist to AD4M */
-  function updateAssistantMessage(streamMsgId: string | undefined, content: string, messageType?: string) {
+  function updateAssistantMessage(streamMsgId: string | undefined, content: string) {
     if (streamMsgId) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === streamMsgId
-            ? { ...m, content, status: undefined, messageType: (messageType as ChatMessage['messageType']) ?? 'text' }
-            : m,
-        ),
-      );
+      setMessages((prev) => prev.map((m) => (m.id === streamMsgId ? { ...m, content, status: undefined } : m)));
     } else {
-      setMessages((prev) => [
-        ...prev,
-        createMessage('assistant', content, undefined, messageType as ChatMessage['messageType']),
-      ]);
+      setMessages((prev) => [...prev, createMessage('assistant', content)]);
     }
 
     // Persist to AD4M (fire-and-forget for custom templates)
     if (activeSessionModel) {
-      persistMessage('assistant', content, messageType || 'text');
+      persistMessage('assistant', content);
     }
   }
 
@@ -1025,15 +988,9 @@ export function AiStoreProvider(props: ParentProps) {
       const parsed = JSON.parse(json);
       templateStore.updateTemplate(parsed as TemplateSchema);
       templateStore.persistCurrentTemplate();
-      setMessages((prev) => [
-        ...prev,
-        createMessage('assistant', 'Schema updated from JSON editor.', undefined, 'success'),
-      ]);
+      setMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        createMessage('assistant', 'Invalid JSON — changes not applied.', undefined, 'error'),
-      ]);
+      setMessages((prev) => [...prev, createMessage('assistant', 'Invalid JSON — changes not applied.')]);
     }
   }
 
