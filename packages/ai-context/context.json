@@ -674,6 +674,12 @@
           "type": "string",
           "optional": false,
           "default": "''"
+        },
+        {
+          "name": "markdownGap",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         }
       ]
     },
@@ -1154,7 +1160,7 @@
           "default": "''"
         },
         {
-          "name": "active",
+          "name": "selected",
           "type": "boolean",
           "optional": false,
           "default": "false"
@@ -1162,6 +1168,11 @@
         {
           "name": "label",
           "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "selectedProps",
+          "type": "Partial<DesignSystemProps> | undefined",
           "optional": true
         }
       ]
@@ -1172,7 +1183,7 @@
       "superclass": "DesignSystemElement",
       "ownProps": [
         {
-          "name": "activeKey",
+          "name": "selectedKey",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -3762,22 +3773,9 @@
           "required": false
         },
         {
-          "name": "messageType",
-          "type": "string",
-          "predicate": "we://message_type",
-          "required": false,
-          "default": "'text'"
-        },
-        {
           "name": "content",
           "type": "string",
           "predicate": "we://content",
-          "required": false
-        },
-        {
-          "name": "thinking",
-          "type": "string",
-          "predicate": "we://thinking",
           "required": false
         }
       ],
@@ -3792,12 +3790,6 @@
           "name": "name",
           "type": "string",
           "predicate": "we://name",
-          "required": false
-        },
-        {
-          "name": "updatedAt",
-          "type": "string",
-          "predicate": "we://updated_at",
           "required": false
         }
       ],

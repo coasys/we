@@ -209,7 +209,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', disabled: boolean = false
 - we-markdown (DesignSystemElement)
-  Props: content: string = ''
+  Props: content: string = '', markdownGap: string = ''
 - we-menu (DesignSystemElement)
 - we-menu-group (LayoutElement)
   Props: collapsible: boolean = false, open: boolean = false, title: string = ''
@@ -240,9 +240,9 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-switch (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-tab (DesignSystemElement)
-  Props: key: string = '', active: boolean = false, label?: string | undefined
+  Props: key: string = '', selected: boolean = false, label?: string | undefined, selectedProps?: Partial<DesignSystemProps> | undefined
 - we-tabs (DesignSystemElement)
-  Props: activeKey: string = ''
+  Props: selectedKey: string = ''
 - we-tag (DesignSystemElement)
   Props: variant: 'default' | 'primary' | 'success' | 'warning' | 'danger' = 'default', dismissible: boolean = false
 - we-text (DesignSystemElement)
@@ -528,14 +528,11 @@ CalloutBlock extends WeNode:
 ChatMessage extends WeNode:
   Fields:
   - role: string [we://role]
-  - messageType: string = 'text' [we://message_type]
   - content: string [we://content]
-  - thinking: string [we://thinking]
 
 ChatSession extends WeNode:
   Fields:
   - name: string [we://name]
-  - updatedAt: string [we://updated_at]
   Relations:
   - messages: HasMany → ChatMessage [we://chat_message]
 
