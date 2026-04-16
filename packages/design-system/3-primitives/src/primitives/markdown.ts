@@ -1,4 +1,5 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { tokenVar } from '@we/design-utils';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
@@ -23,7 +24,7 @@ const styles = css`
 
   /* Paragraphs */
   [part='base'] p {
-    margin: 0 0 0.5em 0;
+    margin: 0 0 var(--we-markdown-gap, 0.5em) 0;
   }
   [part='base'] p:last-child {
     margin-bottom: 0;
@@ -36,7 +37,7 @@ const styles = css`
   [part='base'] h4,
   [part='base'] h5,
   [part='base'] h6 {
-    margin: 0.5em 0 0.25em 0;
+    margin: var(--we-markdown-gap, 0.5em) 0 calc(var(--we-markdown-gap, 0.5em) / 2) 0;
     font-weight: 600;
   }
   [part='base'] h1 {
@@ -52,11 +53,20 @@ const styles = css`
   /* Lists */
   [part='base'] ul,
   [part='base'] ol {
-    margin: 0.25em 0;
+    margin: var(--we-markdown-gap, 0.5em) 0;
     padding-left: 1.5em;
   }
   [part='base'] li {
-    margin-bottom: 0.15em;
+    margin-bottom: calc(var(--we-markdown-gap, 0.5em) * 0.3);
+  }
+  /* Remove paragraph margin inside list items to avoid false gaps above nested lists */
+  [part='base'] li > p {
+    margin: 0;
+  }
+  /* Nested lists shouldn't add extra top/bottom margin */
+  [part='base'] li > ul,
+  [part='base'] li > ol {
+    margin: calc(var(--we-markdown-gap, 0.5em) * 0.3) 0 0 0;
   }
 
   /* Inline code */
@@ -74,7 +84,7 @@ const styles = css`
     padding: 0.75em;
     border-radius: 6px;
     overflow-x: auto;
-    margin: 0.5em 0;
+    margin: var(--we-markdown-gap, 0.5em) 0;
   }
   [part='base'] pre code {
     background: none;
@@ -88,7 +98,7 @@ const styles = css`
 
   /* Blockquote */
   [part='base'] blockquote {
-    margin: 0.5em 0;
+    margin: var(--we-markdown-gap, 0.5em) 0;
     padding-left: 0.75em;
     border-left: 3px solid var(--we-color-neutral-300);
     color: var(--we-color-neutral-600);
@@ -104,7 +114,7 @@ const styles = css`
   [part='base'] hr {
     border: none;
     border-top: 1px solid var(--we-color-neutral-200);
-    margin: 0.75em 0;
+    margin: var(--we-markdown-gap, 0.5em) 0;
   }
 
   /* Status markers */
@@ -132,8 +142,23 @@ export default class Markdown extends DesignSystemElement {
   /** Raw markdown string to render */
   @property({ type: String }) content = '';
 
+  /** Spacing between block elements — accepts DS space tokens (e.g. '300') or raw CSS values (e.g. '0.25em') */
+  @property({ type: String }) markdownGap = '';
+
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  updated(changedProperties: Map<string, unknown>) {
+    super.updated(changedProperties);
+    if (changedProperties.has('markdownGap')) {
+      const value = this.markdownGap ? tokenVar('space', this.markdownGap, '') : '';
+      if (value) {
+        this.style.setProperty('--we-markdown-gap', value);
+      } else {
+        this.style.removeProperty('--we-markdown-gap');
+      }
+    }
   }
 
   render() {
