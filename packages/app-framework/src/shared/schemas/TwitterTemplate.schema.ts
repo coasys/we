@@ -163,7 +163,7 @@ export const twitterTemplate: TemplateSchema = {
         {
           type: 'we-tabs',
           props: {
-            activeKey: { $store: 'routeStore.currentPath' },
+            selectedKey: { $store: 'routeStore.currentPath' },
             width: '50%',
             height: '50px',
             // ax: 'start',

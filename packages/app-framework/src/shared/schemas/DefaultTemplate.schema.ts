@@ -545,7 +545,7 @@ export const defaultTemplate: TemplateSchema = {
         // Tab navigation
         {
           type: 'we-tabs',
-          props: { activeKey: { $store: 'routeStore.segments.2' } },
+          props: { selectedKey: { $store: 'routeStore.segments.2' } },
           children: [
             {
               type: 'we-tab',
