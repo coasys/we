@@ -10,12 +10,6 @@ export class ChatMessage extends WeNode {
   @Property({ through: 'we://role' })
   role: string = ''; // 'user' | 'assistant'
 
-  @Property({ through: 'we://message_type' })
-  messageType: string = 'text'; // 'text' | 'success' | 'error' | 'info'
-
   @Property({ through: 'we://content' })
   content: string = '';
-
-  @Property({ through: 'we://thinking' })
-  thinking: string = '';
 }
