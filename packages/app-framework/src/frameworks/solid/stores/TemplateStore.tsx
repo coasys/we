@@ -196,6 +196,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   function switchTemplate(newTemplateId: string) {
+    // If user manually switches before the boot restore fires, skip the restore
+    initialRestoreDone = true;
     const newTemplate =
       allTemplates().find((t) => t.id === newTemplateId) || shellTemplates.find((t) => t.id === newTemplateId);
     if (newTemplate) {
