@@ -124,7 +124,9 @@ const flexCrossAxisMap = { start: 'flex-start', center: 'center', end: 'flex-end
 
 function isRawCSSValue(value: string): boolean {
   // Check for raw CSS values: var(), px, rem, em, %, vh, vw, rgba, rgb, hsl, negative values,
-  // and multi-value shorthands (number followed by space, e.g. "0 0 2px 2px ...").
+  // multi-value shorthands (number followed by space, e.g. "0 0 2px 2px ..."),
+  // and CSS keywords (transparent, currentColor, inherit, initial, unset, revert).
+  if (/^(transparent|currentcolor|inherit|initial|unset|revert)$/i.test(value)) return true;
   return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|\s))/.test(value);
 }
 
