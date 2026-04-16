@@ -11,7 +11,13 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   py: '200',
   px: '300',
   cursor: 'pointer',
+  borderBottom: '2px solid transparent',
   hoverProps: { bg: 'neutral-200' },
+};
+
+const DEFAULT_SELECTED_PROPS: Partial<DesignSystemProps> = {
+  bg: 'neutral-100',
+  borderBottom: '2px solid primary-500',
 };
 
 const CSS_STYLES = css`
@@ -23,12 +29,6 @@ const CSS_STYLES = css`
     all: unset;
     box-sizing: border-box;
     cursor: pointer;
-    border-bottom: 2px solid transparent;
-  }
-
-  :host([active]) [part='base'] {
-    background: var(--we-color-neutral-100);
-    border-bottom-color: var(--we-color-primary-500) !important;
   }
 `;
 
@@ -37,12 +37,21 @@ export class Tab extends DesignSystemElement {
   static styles = [sharedStyles, CSS_STYLES];
 
   @property({ type: String, reflect: true }) key = '';
-  @property({ type: Boolean, reflect: true }) active = false;
+  @property({ type: Boolean, reflect: true }) selected = false;
   @property({ type: String }) label?: string;
+  @property({ type: Object }) selectedProps?: Partial<DesignSystemProps>;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  override getInstanceProps() {
+    const props = super.getInstanceProps();
+    if (this.selected) {
+      Object.assign(props, this.selectedProps ?? DEFAULT_SELECTED_PROPS);
+    }
+    return props;
   }
 
   private handleClick() {
@@ -55,8 +64,7 @@ export class Tab extends DesignSystemElement {
       <button
         part="base"
         role="tab"
-        ?active=${this.active}
-        aria-selected=${this.active}
+        aria-selected=${this.selected}
         @click=${this.handleClick}
         style=${styleMap(inline)}
       >

@@ -9,7 +9,7 @@ import sharedStyles from '../shared/styles';
 export class Tabs extends DesignSystemElement {
   static styles = [sharedStyles];
 
-  @property({ type: String }) activeKey: string = '';
+  @property({ type: String }) selectedKey: string = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   // Use querySelectorAll instead of @queryAssignedElements — the schema renderer
@@ -23,13 +23,15 @@ export class Tabs extends DesignSystemElement {
     super.updated(changedProperties);
     this._allTabs.forEach((tab) => {
       const t = tab as unknown as Record<string, unknown>;
-      t.active = t.key === this.activeKey;
+      t.selected = t.key === this.selectedKey;
     });
   }
 
   private onTabSelect(e: CustomEvent) {
-    this.activeKey = e.detail.value;
-    this.dispatchEvent(new CustomEvent('change', { detail: { value: this.activeKey }, bubbles: true, composed: true }));
+    this.selectedKey = e.detail.value;
+    this.dispatchEvent(
+      new CustomEvent('change', { detail: { value: this.selectedKey }, bubbles: true, composed: true }),
+    );
   }
 
   render() {
