@@ -18,6 +18,7 @@ import './primitives/iframe';
 import './primitives/image';
 import './primitives/input';
 import './primitives/link';
+import './primitives/markdown';
 import './primitives/menu';
 import './primitives/menu-group';
 import './primitives/menu-item';

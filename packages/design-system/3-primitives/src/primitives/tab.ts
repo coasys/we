@@ -23,11 +23,12 @@ const CSS_STYLES = css`
     all: unset;
     box-sizing: border-box;
     cursor: pointer;
+    border-bottom: 2px solid transparent;
   }
 
   :host([active]) [part='base'] {
     background: var(--we-color-neutral-100);
-    border-bottom: 2px solid var(--we-color-primary-500) !important;
+    border-bottom-color: var(--we-color-primary-500) !important;
   }
 `;
 

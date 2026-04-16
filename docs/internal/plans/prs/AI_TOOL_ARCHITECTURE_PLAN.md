@@ -2,9 +2,7 @@
 
 ## Overview
 
-Replace the monolithic JSON blob response format and 80KB system prompt with Claude's `tool_use` feature. Define tools for both **on-demand context retrieval** and **schema mutation**. This cleanly separates conversational text (streamable) from structured operations (tool calls), dramatically improving performance, cost, and UX.
-
-Prerequisite: requires an audit of the `@we/ai-context` package to determine how best to split the monolithic context into tool-sized chunks.
+Replace the JSON blob response format with Claude's `tool_use` for schema mutations only. Keep the full system prompt but add **prompt caching** for ~90% cost reduction. This gives us streaming text, structured validated mutations, native error recovery, and minimal implementation complexity.
 
 ---
 
@@ -12,11 +10,11 @@ Prerequisite: requires an audit of the `@we/ai-context` package to determine how
 
 | Problem | Detail |
 |---------|--------|
-| **80KB system prompt** | Full `@we/ai-context` sent on every request — components, tokens, stores, examples, everything |
 | **JSON blob response** | AI returns `{ response, updatedNodes }` — can't stream any of it |
 | **No streaming** | User sees blank bubble for 5-15s while full response assembles |
-| **High cost** | ~25K+ input tokens per request, most unused |
-| **Diluted accuracy** | AI processes 80KB of context even for simple "change this color" requests |
+| **No error recovery** | If a patch fails, the user sees an error; Claude can't self-correct |
+| **Fragile parsing** | Code fence stripping, prose-mixed-into-JSON, partial JSON edge cases |
+| **High cost** | ~25K input tokens at full price every request |
 
 ---
 
@@ -24,154 +22,232 @@ Prerequisite: requires an audit of the `@we/ai-context` package to determine how
 
 ```
 Current:
-  System prompt: 80KB everything
+  System prompt: 80KB (full price every request)
   User: { request: "...", currentSchema: {...} }
   AI:   { response: "...", updatedNodes: [...] }    ← can't stream any of it
 
 Proposed:
-  System prompt: ~5KB lean (role, rules, tool usage guidelines)
-  Tools available: context retrieval + schema mutation
+  System prompt: 80KB cached (90% discount after first request)
+  Tools: update_schema only
   AI:   "I'll add a header..."                      ← streamed to UI in real-time
-        + tool_use: get_design_tokens()              ← fetches only what's needed
-        + tool_use: update_schema({ patches: [...] })← structured schema changes
+        + tool_use: update_schema({ patches: [...] })← validated before applying
 ```
+
+### Why Not Context Retrieval Tools?
+
+The original plan proposed splitting context into tool-sized chunks (get_design_tokens, get_available_components, etc.) to reduce prompt size. Analysis showed this is counterproductive:
+
+- **Prompt caching** reduces the 25K-token prompt to ~2.5K effective cost — cheaper than tool round-trips
+- **Tool results aren't cached** — each retrieval is fresh input tokens at full price
+- **Each retrieval = extra API round-trip** adding 1-3s latency per tool call
+- **Claude decides what to fetch** — if it doesn't call a tool, it works with incomplete context
+- **25K tokens is well within Claude's effective window** — accuracy isn't diluted at this size
+
+Cached full prompt: cheapest, fastest, most accurate. Tools only for mutations.
 
 ---
 
-## Tool Definitions
+## Tool Definition
 
-### Context Retrieval Tools
-
-Claude calls these to pull focused context on-demand:
-
-| Tool | Returns | Use case |
-|------|---------|----------|
-| `get_available_components` | Component registry with props, descriptions | When building new UI or choosing components |
-| `get_design_tokens` | Color, spacing, typography, sizing tokens | When styling or theming |
-| `get_store_actions(storeName?)` | Store state + actions for a specific store (or all) | When wiring interactivity |
-| `get_schema_tokens` | `$store`, `$action`, `$if`, `$each`, `$eq` syntax docs | When adding dynamic/conditional behavior |
-| `get_current_schema` | Current template schema JSON | When Claude needs to see what exists |
-| `get_component_examples(componentName)` | Usage examples for a specific component | When Claude needs patterns |
-
-### Schema Mutation Tools
-
-| Tool | Input | Effect |
-|------|-------|--------|
-| `update_schema` | `{ patches: [{ path: number[], node: SchemaNode }] }` | Apply node patches via `patchByPath()` |
-| `replace_schema` | `{ schema: SchemaNode }` | Full schema replacement (for major restructuring) |
-
----
-
-## Streaming Flow
-
-With tool_use, Claude naturally produces content in this order:
-
-```
-1. [thinking]     → streamed to collapsible "Thinking..." section (if extended thinking enabled)
-2. [text]         → streamed to chat bubble in real-time (conversational response)
-3. [tool_use]     → get_design_tokens() → tool result returned
-4. [tool_use]     → update_schema({...}) → schema applied, success/error shown
-```
-
-The text block streams token-by-token to the UI — no waiting. Tool calls are processed when they arrive. This completely eliminates the blank bubble problem.
-
-### Incremental Schema Building
-
-A major benefit of tool_use: Claude can emit multiple `update_schema` calls in a single response, each applied as it arrives via the SSE stream. For complex designs, the user watches the template build up live:
-
-```
-AI text: "I'll build this out section by section..."     ← streams immediately
-
-tool_use: update_schema({ replace root with Column })         ← applied → UI updates
-tool_use: update_schema({ add header at path [0] })           ← applied → UI updates
-tool_use: update_schema({ add sidebar at path [1] })          ← applied → UI updates
-tool_use: update_schema({ add content grid at path [2] })     ← applied → UI updates
-tool_use: update_schema({ add footer at path [3] })           ← applied → UI updates
-```
-
-Each tool call is a complete, parseable unit — no partial JSON fragility. This is impossible with the current JSON blob approach (all-or-nothing).
-
-**Considerations:**
-- **Path ordering**: each patch references paths as they exist *after* prior patches. System prompt guidance: "Apply changes sequentially, referencing the schema state after each prior change."
-- **Granularity**: AI should chunk by logical section (header, nav, content, footer) rather than individual nodes. Too many tiny calls = overhead; too few = loses the live feel.
-- **Error handling**: if patch N fails, earlier patches are already applied. Options: snapshot before starting (rollback on error), or let the AI self-correct via tool_result error message.
-- **Works with existing `patchByPath`**: no new schema infrastructure needed — each patch is exactly what we already support.
-
----
-
-## System Prompt (Lean)
-
-The system prompt shrinks from ~80KB to ~5KB:
-
-```
-You are an AI assistant that helps users build UIs using the WE schema system.
-You have tools to retrieve component docs, design tokens, and store actions.
-You have tools to update the schema.
-
-Guidelines:
-- Use get_available_components before suggesting unfamiliar components
-- Use get_design_tokens when the user asks about colors, spacing, etc.
-- Use get_current_schema to understand the current layout before making changes
-- Use update_schema with targeted patches (prefer over replace_schema)
-- Respond conversationally — explain what you're doing and why
-
-[few-shot examples of tool usage patterns]
-```
-
----
-
-## SSE Event Handling
+One tool. Schema mutations with validation and error recovery:
 
 ```ts
-// Track which content block we're in
-let currentBlockType: 'thinking' | 'text' | 'tool_use' | null = null;
-let currentToolName = '';
-let toolInputBuffer = '';
-
-// content_block_start → identifies block type
-// content_block_delta → routes to thinking, text, or tool input accumulation
-// content_block_stop → if tool_use, parse input and execute tool
-
-// For tool calls:
-// 1. Execute the tool (e.g., return component registry JSON)
-// 2. Send tool_result back to Claude (for multi-turn tool use)
-// 3. For update_schema: apply patches, show success/error messageType in chat
-```
-
----
-
-## Tool Execution (Client-Side)
-
-Tools execute locally in the browser — no server needed:
-
-```ts
-const toolHandlers = {
-  get_available_components: () => componentRegistry,       // from @we/ai-context
-  get_design_tokens: () => designTokens,                   // from @we/ai-context
-  get_store_actions: (input) => storeActions[input.storeName],
-  get_schema_tokens: () => schemaTokenDocs,
-  get_current_schema: () => deepClone(templateStore.currentTemplate),
-  get_component_examples: (input) => examples[input.componentName],
-  update_schema: (input) => applyPatches(input.patches),   // returns success/error
-  replace_schema: (input) => replaceFullSchema(input.schema),
+const updateSchemaTool = {
+  name: 'update_schema',
+  description: 'Apply node patches to the current template schema. Each patch replaces the node at the given path. Use path [] to replace the entire schema.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      patches: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            path: {
+              type: 'array',
+              items: { type: 'integer' },
+              description: 'Path to the node to replace. [] = root, [0] = first child of root, [2, 0] = first child of third child of root.',
+            },
+            node: {
+              type: 'object',
+              description: 'The SchemaNode to insert at this path.',
+            },
+          },
+          required: ['path', 'node'],
+        },
+      },
+    },
+    required: ['patches'],
+  },
 };
 ```
 
 ---
 
-## Extended Thinking
+## Request Flow
 
-Extended thinking layers on cleanly as an optional enhancement:
+### Happy Path (single round-trip)
+
+```
+Request:
+  system: [full ai-context, cache_control: ephemeral]
+  tools:  [update_schema]
+  messages: [...history, { role: 'user', content: JSON.stringify({ request, currentSchema }) }]
+
+Response (streamed):
+  [text]:     "I'll add a header with primary-500 background..."   ← streams to chat
+  [tool_use]: update_schema({ patches: [{ path: [0], node: {...} }] })
+              → validate patches → PASS → apply to store → persist
+              → send tool_result: { content: "Template updated successfully" }
+
+Continuation (streamed):
+  [text]:     "Done! The header is now..."     ← optional closing text
+  [stop_reason: end_turn]
+```
+
+### Error Recovery (2-3 round-trips, only on validation failure)
+
+```
+Response (streamed):
+  [text]:     "I'll restructure the layout..."
+  [tool_use]: update_schema({ patches: [{ path: [0, 5], node: {...} }] })
+              → validate → FAIL: "path [0, 5] does not exist (root has 3 children)"
+              → send tool_result: { is_error: true, content: "path [0, 5] does not exist..." }
+
+Continuation (streamed):
+  [text]:     "Let me fix that..."
+  [tool_use]: update_schema({ patches: [{ path: [0, 2], node: {...} }] })
+              → validate → PASS → apply to store → persist
+              → send tool_result: { content: "Template updated successfully" }
+
+Continuation:
+  [text]:     "Done! I've corrected the path..."
+  [stop_reason: end_turn]
+```
+
+Key: validation runs **before** applying to the store. Failed patches never touch state. Claude gets the error as a `tool_result` (first-class API concept) and self-corrects — no fake user messages in the history.
+
+---
+
+## Prompt Caching
+
+Add `cache_control` to the system prompt to enable Anthropic's prompt caching:
 
 ```ts
 body: {
   model: 'claude-sonnet-4-20250514',
   max_tokens: 16384,
   stream: true,
-  thinking: { type: 'enabled', budget_tokens: 4096 },  // optional
-  tools: toolDefinitions,
-  system: leanSystemPrompt,
+  tools: [updateSchemaTool],
+  system: [
+    {
+      type: 'text',
+      text: chatSystemPrompt,           // full ~80KB ai-context
+      cache_control: { type: 'ephemeral' },
+    },
+  ],
   messages: claudeMessages,
+}
+```
+
+Cached tokens are billed at **10% of input price**. After the first request in a session, the 25K-token system prompt costs ~2.5K equivalent tokens. Cache TTL is 5 minutes, refreshed on each request.
+
+---
+
+## System Prompt Changes
+
+The existing `chatSystemPreamble` needs minor updates:
+
+1. **Remove JSON blob format instructions** — Claude no longer returns `{ response, updatedNodes }`
+2. **Add tool usage instructions** — "Use update_schema to apply changes. Respond with plain text to explain what you're doing."
+3. **Keep all ai-context** — components, tokens, stores, operators, rules, examples stay in the prompt
+4. **Keep currentSchema in user messages** — no change to how the schema is provided
+
+The prompt structure becomes:
+
+```
+[existing ai-context: components, tokens, stores, operators, rules, examples]
+
+Response format:
+- Respond with plain text explaining what you're doing and why
+- Use the update_schema tool to apply schema changes
+- Each patch replaces the node at the given path
+- Use path [] to replace the entire schema
+- Prefer targeted patches over full replacement
+- If you have no schema changes, just respond with text
+```
+
+---
+
+## SSE Event Handling
+
+The current SSE handler accumulates text deltas. It needs to also handle `tool_use` content blocks:
+
+```ts
+// State tracking
+let currentBlockType: 'text' | 'tool_use' | null = null;
+let currentToolId = '';
+let toolInputBuffer = '';
+let textContent = '';
+let toolCalls: Array<{ id: string; name: string; input: object }> = [];
+
+// Event routing:
+// content_block_start (type: 'text')     → set currentBlockType = 'text'
+// content_block_start (type: 'tool_use') → set currentBlockType = 'tool_use', capture id + name
+// content_block_delta (type: 'text_delta')       → append to textContent, stream to UI
+// content_block_delta (type: 'input_json_delta') → append to toolInputBuffer
+// content_block_stop                              → if tool_use, parse toolInputBuffer as JSON
+// message_delta (stop_reason: 'tool_use')        → execute tool, send continuation
+// message_delta (stop_reason: 'end_turn')        → done
+```
+
+### Continuation Loop
+
+When Claude's response ends with `stop_reason: 'tool_use'`, execute the tool and continue:
+
+```ts
+// After stream completes with stop_reason: 'tool_use':
+// 1. Validate patches against current schema
+// 2. If valid: apply to store, persist, tool_result = success message
+// 3. If invalid: tool_result = { is_error: true, content: error details }
+// 4. Append assistant message + tool_result to conversation history
+// 5. Send continuation request (same system prompt, extended messages)
+// 6. Stream continuation response (may have more text, another tool_use, or end_turn)
+```
+
+The loop only triggers when validation fails — happy path is one request/response.
+
+---
+
+## Patch Validation
+
+Validate patches **before** applying to the store:
+
+```ts
+function validatePatches(
+  patches: Array<{ path: number[]; node: unknown }>,
+  currentSchema: SchemaNode,
+): { valid: true } | { valid: false; error: string } {
+  for (const { path, node } of patches) {
+    // 1. Verify path exists in current schema
+    let target: SchemaNode = currentSchema;
+    for (let i = 0; i < path.length; i++) {
+      const children = target.children;
+      if (!children || path[i] >= children.length || path[i] < 0) {
+        return {
+          valid: false,
+          error: `Path [${path.join(', ')}] invalid: index ${path[i]} out of bounds at depth ${i} (node has ${children?.length ?? 0} children)`,
+        };
+      }
+      target = children[path[i]];
+    }
+
+    // 2. Verify node has required 'type' field
+    if (!node || typeof node !== 'object' || !('type' in node)) {
+      return { valid: false, error: `Patch at [${path.join(', ')}]: node must have a 'type' field` };
+    }
+  }
+  return { valid: true };
 }
 ```
 
@@ -179,98 +255,37 @@ body: {
 
 ## Performance Impact
 
-| Metric | Current (JSON blob) | Proposed (tools) |
-|--------|---------------------|------------------|
-| System prompt | ~80KB every request | ~5KB every request |
-| Input tokens per request | ~25K+ | ~5K base + tools as needed |
-| Time to first visible token | 5-15s (after full parse) | <1s (text streams immediately) |
-| Context accuracy | Diluted (80KB of everything) | Focused (only relevant tools called) |
-| Cost per request | High | ~50-70% reduction |
+| Metric | Current | Proposed |
+|--------|---------|----------|
+| System prompt cost | ~25K tokens at full price | ~25K tokens at **10% price** (cached) |
+| Time to first visible token | 5-15s (after full JSON parse) | <1s (text streams immediately) |
+| Mutation reliability | Fragile JSON parsing | API-enforced valid JSON |
+| Error recovery | None (show error to user) | Claude self-corrects via tool_result |
+| Implementation complexity | — | Low (2 files changed) |
 
 ---
 
-## Migration Path
+## Files to Modify
 
-The current `processAiResponse()` / `buildClaudeMessages()` approach is replaced:
+| File | Changes |
+|------|---------|
+| `packages/app-framework/src/shared/prompts/chatSystemPrompt.ts` | Remove JSON blob format instructions, add tool usage guidelines |
+| `packages/app-framework/src/frameworks/solid/stores/AiStore.tsx` | Add tool definition to request body, add `cache_control` to system prompt, update SSE handler for tool_use blocks, add continuation loop, add patch validation, update `processAiResponse` → tool-based flow |
 
-1. **System prompt**: swap monolithic context for lean prompt + tool definitions
-2. **User messages**: remove `currentSchema` embedding (Claude calls `get_current_schema` tool)
-3. **Response handling**: replace JSON parsing with SSE tool_use event handling
-4. **Schema application**: `update_schema` tool handler replaces `processAiResponse()`
-5. **Chat history**: tool calls and results are included in conversation history (Claude API handles this natively)
-
----
-
-## `@we/ai-context` Package Changes
-
-**TODO: Audit required** — review the current ai-context package structure to determine the best splits.
-
-Split the monolithic export into tool-sized chunks:
-
-```ts
-// Current: single massive string
-export const schemaContext: string = '...80KB...';
-
-// Proposed: structured exports for tool handlers
-export const componentRegistry: object = { ... };
-export const designTokens: object = { ... };
-export const storeActions: Record<string, object> = { ... };
-export const schemaTokenDocs: object = { ... };
-export const componentExamples: Record<string, object> = { ... };
-export const leanSystemPrompt: string = '...5KB...';
-export const toolDefinitions: Tool[] = [ ... ];
-```
-
-### Audit Questions
-- How is the 80KB context currently structured? Sections, templates, generated code?
-- Which sections map cleanly to individual tools?
-- Are there cross-cutting concerns that need to stay in the system prompt?
-- Can examples be split per-component or are they interleaved?
-- What's the right granularity for `get_store_actions` — per-store or all-at-once?
+No changes to `@we/ai-context` — the full context stays as-is in the system prompt.
 
 ---
 
-## Files to Create/Modify
+## Future Enhancements (not in this PR)
 
-### Modified Files
-- `packages/ai-context/` — split monolithic export into structured tool-sized chunks
-- `packages/app-framework/src/frameworks/solid/stores/AiStore.tsx` — tool_use SSE handling, tool handlers, lean system prompt
-- `packages/app-framework/src/shared/prompts/` — new lean system prompt, tool definitions
-- `packages/design-system/5-widgets/src/widgets/panels/ChatPanel/` — thinking display (collapsible)
-
----
-
-## Feature: Model Switching + Thinking Budget
-
-Expose a model selector in the ChatPanel header or settings. Different models suit different tasks:
+### Model Switching + Thinking Budget
 
 | Mode | Model | Thinking | Use case |
 |------|-------|----------|----------|
-| Quick | Claude Haiku | Off | Simple styling, text changes, small tweaks |
+| Quick | Claude Haiku | Off | Simple styling, text changes |
 | Standard | Claude Sonnet | budget: 4096 | Component additions, layout changes |
 | Thorough | Claude Sonnet | budget: 16384 | Complex multi-component restructuring |
 
-### Thinking Budget Impact
+### Extended Thinking
 
-| Budget | Added latency | Cost impact |
-|--------|---------------|-------------|
-| Off | 0 | Cheapest |
-| 1024 | ~0.5-1s | Low |
-| 4096 | ~1-3s | Medium |
-| 16384 | ~3-8s | High |
-
-Thinking tokens are billed as output tokens. Budget is a cap — Claude may use less.
-
-### UX
-- Dropdown or segmented control in ChatPanel header: Quick / Standard / Thorough
-- Persisted to AgentSettings (new `aiMode` property)
-- Could auto-detect: if user's prompt is short/simple, default to Quick; if complex, suggest Thorough
-
----
-
-## Open Questions
-
-- Should tool results be cached within a session? (e.g., `get_available_components` returns the same thing every time)
-- How to handle multi-turn tool use? (Claude calls tool, gets result, calls another tool, then responds)
-- Should `update_schema` validate patches before applying? (Return validation errors as tool_result so Claude can self-correct)
-- Auto-detect mode vs manual selection — or both with auto as default?
+Layers on cleanly — add `thinking: { type: 'enabled', budget_tokens: N }` to request body. Stream thinking content to a collapsible UI section.

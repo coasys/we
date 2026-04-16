@@ -208,6 +208,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'sm' | 'md' | 'lg' = 'md'
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', disabled: boolean = false
+- we-markdown (DesignSystemElement)
+  Props: content: string = ''
 - we-menu (DesignSystemElement)
 - we-menu-group (LayoutElement)
   Props: collapsible: boolean = false, open: boolean = false, title: string = ''
@@ -310,7 +312,7 @@ Not schema-renderable — used directly in application code.
 Renders a list of messages with a text input, anchored to a screen edge.
 Supports streaming indicator, auto-scroll, and header/close controls.
 Includes template context header with fork/fresh actions and name+icon picker.
-  Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, onPickerConfirm?: ((name: string, icon: string) => void), onPickerCancel?: (() => void)
+  Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, streamingContent?: string, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, onPickerConfirm?: ((name: string, icon: string) => void), onPickerCancel?: (() => void), mode?: "chat" | "code", schemaJson?: string, onModeChange?: ((mode: "chat" | "code") => void), onSchemaEdit?: ((json: string) => void), sessions?: SessionInfo[], activeSessionId?: string | null, onNewChat?: (() => void), onSwitchSession?: ((sessionId: string) => void), onDeleteSession?: ((sessionId: string) => void), operationLoading?: string | null
 - CollapsibleSidebar
   Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "fixed" | "absolute" | "static", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
 - CreateSpaceModalWidget
@@ -500,6 +502,7 @@ AgentProfile extends Ad4mModel:
 AgentSettings extends Ad4mModel:
   Fields:
   - currentTemplateId: string = 'default' [we://current_template]
+  - defaultTemplateId: string = 'default' [we://default_template]
   - currentThemeId: string = 'default' [we://current_theme]
   - claudeApiKey: string [we://claude_api_key]
   Relations:
@@ -521,6 +524,20 @@ CalloutBlock extends WeNode:
   - variant: string = info [we://variant]
   - icon: string [we://icon]
   - version: number [we://version]
+
+ChatMessage extends WeNode:
+  Fields:
+  - role: string [we://role]
+  - messageType: string = 'text' [we://message_type]
+  - content: string [we://content]
+  - thinking: string [we://thinking]
+
+ChatSession extends WeNode:
+  Fields:
+  - name: string [we://name]
+  - updatedAt: string [we://updated_at]
+  Relations:
+  - messages: HasMany → ChatMessage [we://chat_message]
 
 CodeBlock extends WeNode:
   Fields:
@@ -631,6 +648,8 @@ Template extends WeNode:
   - origin: string [we://origin]
   - version: number = 1 [we://version]
   - schema: Record<string, unknown> [we://template_schema]
+  Relations:
+  - chatSessions: HasMany → ChatSession [we://chat_session]
 
 TextBlock extends WeNode:
   Fields:

@@ -665,6 +665,19 @@
       ]
     },
     {
+      "tagName": "we-markdown",
+      "className": "Markdown",
+      "superclass": "DesignSystemElement",
+      "ownProps": [
+        {
+          "name": "content",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        }
+      ]
+    },
+    {
       "tagName": "we-menu",
       "className": "Menu",
       "superclass": "DesignSystemElement",
@@ -3153,6 +3166,11 @@
           "optional": true
         },
         {
+          "name": "streamingContent",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "placeholder",
           "type": "string",
           "optional": true
@@ -3245,6 +3263,56 @@
         {
           "name": "onPickerCancel",
           "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "mode",
+          "type": "\"chat\" | \"code\"",
+          "optional": true
+        },
+        {
+          "name": "schemaJson",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onModeChange",
+          "type": "((mode: \"chat\" | \"code\") => void)",
+          "optional": true
+        },
+        {
+          "name": "onSchemaEdit",
+          "type": "((json: string) => void)",
+          "optional": true
+        },
+        {
+          "name": "sessions",
+          "type": "SessionInfo[]",
+          "optional": true
+        },
+        {
+          "name": "activeSessionId",
+          "type": "string | null",
+          "optional": true
+        },
+        {
+          "name": "onNewChat",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "onSwitchSession",
+          "type": "((sessionId: string) => void)",
+          "optional": true
+        },
+        {
+          "name": "onDeleteSession",
+          "type": "((sessionId: string) => void)",
+          "optional": true
+        },
+        {
+          "name": "operationLoading",
+          "type": "string | null",
           "optional": true
         }
       ],
@@ -3570,6 +3638,13 @@
           "default": "'default'"
         },
         {
+          "name": "defaultTemplateId",
+          "type": "string",
+          "predicate": "we://default_template",
+          "required": false,
+          "default": "'default'"
+        },
+        {
           "name": "currentThemeId",
           "type": "string",
           "predicate": "we://current_theme",
@@ -3674,6 +3749,66 @@
         }
       ],
       "relations": []
+    },
+    {
+      "name": "ChatMessage",
+      "className": "ChatMessage",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "role",
+          "type": "string",
+          "predicate": "we://role",
+          "required": false
+        },
+        {
+          "name": "messageType",
+          "type": "string",
+          "predicate": "we://message_type",
+          "required": false,
+          "default": "'text'"
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "predicate": "we://content",
+          "required": false
+        },
+        {
+          "name": "thinking",
+          "type": "string",
+          "predicate": "we://thinking",
+          "required": false
+        }
+      ],
+      "relations": []
+    },
+    {
+      "name": "ChatSession",
+      "className": "ChatSession",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "predicate": "we://name",
+          "required": false
+        },
+        {
+          "name": "updatedAt",
+          "type": "string",
+          "predicate": "we://updated_at",
+          "required": false
+        }
+      ],
+      "relations": [
+        {
+          "name": "messages",
+          "kind": "HasMany",
+          "predicate": "we://chat_message",
+          "target": "ChatMessage"
+        }
+      ]
     },
     {
       "name": "CodeBlock",
@@ -4197,7 +4332,14 @@
           "required": false
         }
       ],
-      "relations": []
+      "relations": [
+        {
+          "name": "chatSessions",
+          "kind": "HasMany",
+          "predicate": "we://chat_session",
+          "target": "ChatSession"
+        }
+      ]
     },
     {
       "name": "TextBlock",
@@ -4620,19 +4762,40 @@
         },
         "me": {
           "type": "object",
-          "properties": ["did", "perspective", "directMessageLanguage"]
+          "properties": [
+            "did",
+            "perspective",
+            "directMessageLanguage"
+          ]
         },
         "allPerspectives": {
           "type": "array",
-          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
+          "properties": [
+            "uuid",
+            "name",
+            "sharedUrl",
+            "neighbourhood"
+          ]
         },
         "personalSpaces": {
           "type": "array",
-          "properties": ["uuid", "name", "description", "url", "visibility"]
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "url",
+            "visibility"
+          ]
         },
         "sharedSpaces": {
           "type": "array",
-          "properties": ["uuid", "name", "description", "url", "visibility"]
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "url",
+            "visibility"
+          ]
         },
         "bootState": {
           "type": "string"
@@ -4645,7 +4808,15 @@
         },
         "agentProfile": {
           "type": "object",
-          "properties": ["firstName", "lastName", "handle", "bio", "location", "profileImage", "coverImage"]
+          "properties": [
+            "firstName",
+            "lastName",
+            "handle",
+            "bio",
+            "location",
+            "profileImage",
+            "coverImage"
+          ]
         }
       },
       "actions": [
@@ -4669,39 +4840,78 @@
           "type": "array"
         }
       },
-      "actions": ["navigate"]
+      "actions": [
+        "navigate"
+      ]
     },
     {
       "name": "themeStore",
       "state": {
         "themes": {
           "type": "array",
-          "properties": ["id", "name", "icon"]
+          "properties": [
+            "id",
+            "name",
+            "icon"
+          ]
         },
         "currentTheme": {
           "type": "object",
-          "properties": ["id", "name", "icon"]
+          "properties": [
+            "id",
+            "name",
+            "icon"
+          ]
         }
       },
-      "actions": ["setThemes", "setCurrentTheme"]
+      "actions": [
+        "setThemes",
+        "setCurrentTheme"
+      ]
     },
     {
       "name": "templateStore",
       "state": {
         "templates": {
           "type": "array",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
+          "properties": [
+            "id",
+            "meta",
+            "type",
+            "props",
+            "children",
+            "routes"
+          ]
         },
         "shellTemplates": {
           "type": "array",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
+          "properties": [
+            "id",
+            "meta",
+            "type",
+            "props",
+            "children",
+            "routes"
+          ]
         },
         "currentTemplate": {
           "type": "object",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
+          "properties": [
+            "id",
+            "meta",
+            "type",
+            "props",
+            "children",
+            "routes"
+          ]
         }
       },
-      "actions": ["updateTemplate", "switchTemplate", "removeTemplate", "saveTemplate"]
+      "actions": [
+        "updateTemplate",
+        "switchTemplate",
+        "removeTemplate",
+        "saveTemplate"
+      ]
     },
     {
       "name": "spaceStore",
@@ -4711,35 +4921,64 @@
         },
         "perspective": {
           "type": "object",
-          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
+          "properties": [
+            "uuid",
+            "name",
+            "sharedUrl",
+            "neighbourhood"
+          ]
         },
         "space": {
           "type": "object",
-          "properties": ["uuid", "name", "description", "url", "visibility"]
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "url",
+            "visibility"
+          ]
         },
         "posts": {
           "type": "array",
-          "properties": ["id", "author", "timestamp", "content"]
+          "properties": [
+            "id",
+            "author",
+            "timestamp",
+            "content"
+          ]
         },
         "loading": {
           "type": "boolean"
         }
       },
-      "actions": ["setSpaceId", "getSpace", "getPosts"]
+      "actions": [
+        "setSpaceId",
+        "getSpace",
+        "getPosts"
+      ]
     },
     {
       "name": "aiStore",
       "state": {
         "models": {
           "type": "array",
-          "properties": ["id", "name"]
+          "properties": [
+            "id",
+            "name"
+          ]
         },
         "tasks": {
           "type": "array",
-          "properties": ["id", "status", "result"]
+          "properties": [
+            "id",
+            "status",
+            "result"
+          ]
         }
       },
-      "actions": ["handleSchemaPrompt"]
+      "actions": [
+        "handleSchemaPrompt"
+      ]
     }
   ]
 }
