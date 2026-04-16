@@ -103,7 +103,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   // Derived: core templates are always "installed", plus any custom templates in the installed set
   const templates = () => {
     const installed = installedIds();
-    return allTemplates().filter((t) => isCoreTemplate(t.id || '') || installed.has(t.id || ''));
+    return allTemplates().filter((t) => isCoreTemplateId(t.id || '') || installed.has(t.id || ''));
   };
 
   const defaultTemplateId = () => adamStore.agentSettings()?.defaultTemplateId || 'default';
@@ -132,7 +132,10 @@ export function TemplateStoreProvider(props: ParentProps) {
         savedTemplateMap.set(templateId, template);
       }
 
-      setAllTemplates([...coreTemplates, ...savedTemplates]);
+      // If a saved template shares an ID with a core template, use the saved version
+      const savedIds = new Set(savedTemplates.map((t) => t.id));
+      const filteredCore = coreTemplates.filter((t) => !savedIds.has(t.id));
+      setAllTemplates([...filteredCore, ...savedTemplates]);
 
       // Build installed ID set from AgentSettings HasMany relation
       // HasMany without .include() returns raw URI strings, not model instances.
@@ -475,9 +478,14 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   }
 
-  /** Check if a template is a built-in core template (not user-saved) */
+  /** Check if a template ID belongs to a built-in core template */
+  function isCoreTemplateId(templateId: string): boolean {
+    return coreTemplates.some((t) => t.id === templateId);
+  }
+
+  /** Check if a template is a built-in core template (not user-saved/customized) */
   function isCoreTemplate(templateId: string): boolean {
-    return coreTemplates.some((t) => t.id === templateId) && !savedTemplateMap.has(templateId);
+    return isCoreTemplateId(templateId) && !savedTemplateMap.has(templateId);
   }
 
   /** Check if a custom template is installed (visible in sidebar) */
@@ -492,7 +500,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Toggle a custom template's installed state */
   async function toggleInstalled(templateId: string): Promise<void> {
-    if (isCoreTemplate(templateId)) return;
+    if (isCoreTemplateId(templateId)) return;
     if (isInstalled(templateId)) {
       await uninstallTemplate(templateId);
     } else {
@@ -509,8 +517,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       name: t.meta?.name || '',
       icon: t.meta?.icon || '',
       description: t.meta?.description || '',
-      isCore: isCoreTemplate(t.id || ''),
-      isInstalled: isCoreTemplate(t.id || '') || installed.has(t.id || ''),
+      isCore: isCoreTemplateId(t.id || ''),
+      isInstalled: isCoreTemplateId(t.id || '') || installed.has(t.id || ''),
       isDefault: (t.id || '') === defaultId,
     }));
   };
