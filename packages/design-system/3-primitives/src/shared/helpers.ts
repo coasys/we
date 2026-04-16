@@ -92,6 +92,8 @@ function updateCustomVars(
   setProperty(el, `${prefix}left`, props.left);
   setProperty(el, `${prefix}z-index`, props.zIndex?.toString());
   setProperty(el, `${prefix}margin`, hasMargin ? getMarginValues(props) : undefined);
+  setProperty(el, `${prefix}flex`, props.flex);
+  setProperty(el, `${prefix}align-self`, props.alignSelf);
 
   // Visual
   setProperty(el, `${prefix}bg`, props.bg ? tokenVar('color', props.bg, '') : undefined);
@@ -176,6 +178,8 @@ const HOST_LAYOUT: PropSpec[] = [
   ['left', 'left'],
   ['z-index', 'z-index'],
   ['margin', 'margin'],
+  ['flex', 'flex'],
+  ['align-self', 'align-self'],
 ];
 
 // Base properties by layer (inner element appearance/layout)
