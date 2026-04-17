@@ -8,13 +8,13 @@ Replace the JSON blob response format with Claude's `tool_use` for schema mutati
 
 ## Current State
 
-| Problem | Detail |
-|---------|--------|
-| **JSON blob response** | AI returns `{ response, updatedNodes }` — can't stream any of it |
-| **No streaming** | User sees blank bubble for 5-15s while full response assembles |
-| **No error recovery** | If a patch fails, the user sees an error; Claude can't self-correct |
-| **Fragile parsing** | Code fence stripping, prose-mixed-into-JSON, partial JSON edge cases |
-| **High cost** | ~25K input tokens at full price every request |
+| Problem                | Detail                                                               |
+| ---------------------- | -------------------------------------------------------------------- |
+| **JSON blob response** | AI returns `{ response, updatedNodes }` — can't stream any of it     |
+| **No streaming**       | User sees blank bubble for 5-15s while full response assembles       |
+| **No error recovery**  | If a patch fails, the user sees an error; Claude can't self-correct  |
+| **Fragile parsing**    | Code fence stripping, prose-mixed-into-JSON, partial JSON edge cases |
+| **High cost**          | ~25K input tokens at full price every request                        |
 
 ---
 
@@ -54,7 +54,8 @@ One tool. Schema mutations with validation and error recovery:
 ```ts
 const updateSchemaTool = {
   name: 'update_schema',
-  description: 'Apply node patches to the current template schema. Each patch replaces the node at the given path. Use path [] to replace the entire schema.',
+  description:
+    'Apply node patches to the current template schema. Each patch replaces the node at the given path. Use path [] to replace the entire schema.',
   input_schema: {
     type: 'object',
     properties: {
@@ -66,7 +67,8 @@ const updateSchemaTool = {
             path: {
               type: 'array',
               items: { type: 'integer' },
-              description: 'Path to the node to replace. [] = root, [0] = first child of root, [2, 0] = first child of third child of root.',
+              description:
+                'Path to the node to replace. [] = root, [0] = first child of root, [2, 0] = first child of third child of root.',
             },
             node: {
               type: 'object',
@@ -255,21 +257,21 @@ function validatePatches(
 
 ## Performance Impact
 
-| Metric | Current | Proposed |
-|--------|---------|----------|
-| System prompt cost | ~25K tokens at full price | ~25K tokens at **10% price** (cached) |
-| Time to first visible token | 5-15s (after full JSON parse) | <1s (text streams immediately) |
-| Mutation reliability | Fragile JSON parsing | API-enforced valid JSON |
-| Error recovery | None (show error to user) | Claude self-corrects via tool_result |
-| Implementation complexity | — | Low (2 files changed) |
+| Metric                      | Current                       | Proposed                              |
+| --------------------------- | ----------------------------- | ------------------------------------- |
+| System prompt cost          | ~25K tokens at full price     | ~25K tokens at **10% price** (cached) |
+| Time to first visible token | 5-15s (after full JSON parse) | <1s (text streams immediately)        |
+| Mutation reliability        | Fragile JSON parsing          | API-enforced valid JSON               |
+| Error recovery              | None (show error to user)     | Claude self-corrects via tool_result  |
+| Implementation complexity   | —                             | Low (2 files changed)                 |
 
 ---
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `packages/app-framework/src/shared/prompts/chatSystemPrompt.ts` | Remove JSON blob format instructions, add tool usage guidelines |
+| File                                                             | Changes                                                                                                                                                                                                      |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/app-framework/src/shared/prompts/chatSystemPrompt.ts`  | Remove JSON blob format instructions, add tool usage guidelines                                                                                                                                              |
 | `packages/app-framework/src/frameworks/solid/stores/AiStore.tsx` | Add tool definition to request body, add `cache_control` to system prompt, update SSE handler for tool_use blocks, add continuation loop, add patch validation, update `processAiResponse` → tool-based flow |
 
 No changes to `@we/ai-context` — the full context stays as-is in the system prompt.
@@ -280,10 +282,10 @@ No changes to `@we/ai-context` — the full context stays as-is in the system pr
 
 ### Model Switching + Thinking Budget
 
-| Mode | Model | Thinking | Use case |
-|------|-------|----------|----------|
-| Quick | Claude Haiku | Off | Simple styling, text changes |
-| Standard | Claude Sonnet | budget: 4096 | Component additions, layout changes |
+| Mode     | Model         | Thinking      | Use case                              |
+| -------- | ------------- | ------------- | ------------------------------------- |
+| Quick    | Claude Haiku  | Off           | Simple styling, text changes          |
+| Standard | Claude Sonnet | budget: 4096  | Component additions, layout changes   |
 | Thorough | Claude Sonnet | budget: 16384 | Complex multi-component restructuring |
 
 ### Extended Thinking

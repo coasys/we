@@ -60,6 +60,7 @@ When templates regularly exceed ~8K tokens. Current templates are 2-5K — the s
 ## Complexity
 
 Medium. Requires:
+
 - Segment selection logic (mapping user intent → section)
 - Skeleton generation (strip props/children, keep type + childCount)
 - System prompt updates to explain the scoped format

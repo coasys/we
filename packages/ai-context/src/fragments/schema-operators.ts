@@ -78,8 +78,32 @@ Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
 Read:  { "$local": "name" } — returns the signal value (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
+       { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean).
+Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
 $local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
+
+Boolean toggle pattern (show/hide comments, expand/collapse sections, etc.):
+{
+  "$localState": { "showComments": { "type": "boolean", "initial": false } },
+  "children": [
+    {
+      "type": "we-button",
+      "props": {
+        "variant": "ghost",
+        "onClick": { "$toggleLocal": "showComments" }
+      },
+      "children": [{ "type": "we-icon", "props": { "name": "chat-circle" } }]
+    },
+    {
+      "type": "$if",
+      "props": {
+        "condition": { "$local": "showComments" },
+        "then": { "type": "Column", "children": [{ "type": "we-text", "children": ["Comments visible"] }] }
+      }
+    }
+  ]
+}
 
 Form validation (extends $localState):
 Declare validation rules on fields:

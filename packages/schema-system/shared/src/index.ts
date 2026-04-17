@@ -34,6 +34,7 @@ export type {
   FormValidToken,
   TouchToken,
   ResetLocalToken,
+  ToggleLocalToken,
   ValidationRule,
   RequiredRule,
   MinLengthRule,

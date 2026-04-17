@@ -90,4 +90,14 @@ Local state (form with validation):
     }
   ]
 }
+
+Boolean toggle (show/hide, expand/collapse):
+{
+  "type": "Column",
+  "$localState": { "showDetails": { "type": "boolean", "initial": false } },
+  "children": [
+    { "type": "we-button", "props": { "variant": "ghost", "onClick": { "$toggleLocal": "showDetails" } }, "children": ["Toggle Details"] },
+    { "type": "$if", "props": { "condition": { "$local": "showDetails" }, "then": { "type": "we-text", "children": ["Details content here"] } } }
+  ]
+}
 `;

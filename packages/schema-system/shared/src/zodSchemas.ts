@@ -92,6 +92,7 @@ const zTouchedToken = z.object({ $touched: z.string().min(1) }).strict();
 const zFormValidToken = z.object({ $formValid: z.string().min(1) }).strict();
 const zTouchToken = z.object({ $touch: z.string().min(1) }).strict();
 const zResetLocalToken = z.object({ $resetLocal: z.string().min(1) }).strict();
+const zToggleLocalToken = z.object({ $toggleLocal: z.string().min(1) }).strict();
 
 // --- Validation rule Zod schemas ---
 const zRequiredRule = z.object({ rule: z.literal('required'), message: z.string().optional() }).strict();
@@ -143,6 +144,7 @@ const zPropToken = z.union([
   zFormValidToken,
   zTouchToken,
   zResetLocalToken,
+  zToggleLocalToken,
 ]);
 
 const zLocalStateField = z.object({

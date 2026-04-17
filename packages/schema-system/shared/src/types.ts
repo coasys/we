@@ -118,6 +118,7 @@ export type TouchedToken = { $touched: string };
 export type FormValidToken = { $formValid: string };
 export type TouchToken = { $touch: string };
 export type ResetLocalToken = { $resetLocal: string };
+export type ToggleLocalToken = { $toggleLocal: string };
 
 /** Descriptor returned by the shared resolver — pure data, no framework effects */
 export type QueryDescriptor = {
@@ -150,4 +151,5 @@ export type OperatorToken =
   | TouchedToken
   | FormValidToken
   | TouchToken
-  | ResetLocalToken;
+  | ResetLocalToken
+  | ToggleLocalToken;
