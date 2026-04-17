@@ -22,7 +22,7 @@ LLMs consistently fail at computing numeric index paths:
 2. **Children index miscounting** — the AI miscounts how many children a node has, producing a path that points past the end of the array or into a text node.
 3. **Strings in paths** — the AI sometimes emits `[-1, 1, "children", 0]` instead of `[-1, 1, 0]`, including literal `"children"` and `"routes"` strings in what must be an integer-only array.
 
-These are all index arithmetic errors — exactly what LLMs are worst at. The AI consistently knows *what* to target ("the `$each` inside the Posts route") but fails at *computing the address*. Attempts to mitigate with chain-of-thought prompting reduced but did not eliminate the errors.
+These are all index arithmetic errors — exactly what LLMs are worst at. The AI consistently knows _what_ to target ("the `$each` inside the Posts route") but fails at _computing the address_. Attempts to mitigate with chain-of-thought prompting reduced but did not eliminate the errors.
 
 ### Root Cause
 
@@ -131,6 +131,7 @@ Implements JSON Merge Patch (RFC 7396) semantics at one level deep on the node:
 - Always preserves `id` from the existing node (AI can't change/remove IDs)
 
 Examples:
+
 - `mergeNode(existing, { props: { gap: "lg" } })` → updates `gap`, preserves all other props, preserves children/routes
 - `mergeNode(existing, { props: { color: null } })` → removes `color`, preserves everything else
 - `mergeNode(existing, { children: [...] })` → replaces children entirely (intentional full replacement)
@@ -145,6 +146,7 @@ removeChild(schema: SchemaNode, parentId: string, arrayKey: 'children' | 'routes
 ```
 
 **`insertChild`:**
+
 - Finds the parent by `parentId` (supports `""` for root)
 - If no `position`, appends `node` to the end of `parent[arrayKey]`
 - If `{ after: "n5" }`, finds the sibling with that ID and splices after it
@@ -152,6 +154,7 @@ removeChild(schema: SchemaNode, parentId: string, arrayKey: 'children' | 'routes
 - If the sibling ID is not found, returns an error
 
 **`removeChild`:**
+
 - Finds the parent by `parentId` (supports `""` for root)
 - Finds the child with `childId` in `parent[arrayKey]` and removes it
 - If the child ID is not found, returns an error
@@ -274,6 +277,7 @@ Add `id` to the set of allowed node fields so the semantic validator doesn't war
 Critical-path tests for each new utility:
 
 **`ensureNodeIds`:**
+
 - Assigns IDs to a tree with no existing IDs
 - Preserves existing IDs, fills gaps
 - Deduplicates: two nodes with same ID → second gets reassigned
@@ -281,12 +285,14 @@ Critical-path tests for each new utility:
 - Walks children, routes, and slots
 
 **`findNodeById`:**
+
 - Finds a node in children, routes, and slots
 - Returns correct parent, key, and index
 - Returns `null` for unknown ID
 - Returns `null` for `""`
 
 **`mergeNode`:**
+
 - Absent keys preserved from existing
 - Present keys override existing
 - `null` deletes a key
@@ -295,6 +301,7 @@ Critical-path tests for each new utility:
 - `id` always preserved from existing node
 
 **`insertChild`:**
+
 - Append (no position)
 - Insert after sibling
 - Insert before sibling
@@ -302,21 +309,22 @@ Critical-path tests for each new utility:
 - Works with `""` (root) as parent
 
 **`removeChild`:**
+
 - Remove by child ID
 - Error on unknown child ID
 - Works with `""` (root) as parent
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `packages/schema-system/shared/src/types.ts` | Add `id?: string` to `SchemaNode` |
-| `packages/schema-system/shared/src/zodSchemas.ts` | Add `id` to `schemaNodeShape()`, remove from `zTemplateSchema` |
-| `packages/schema-system/shared/src/indexer.ts` | Add `ensureNodeIds()` (with dedup), `findNodeById()`, `mergeNode()`, `insertChild()`, `removeChild()`. Remove `validatePatches()`, `patchByPath()` |
-| `packages/schema-system/shared/src/semanticValidation.ts` | Allow `id` field on nodes |
-| `packages/schema-system/shared/src/__tests__/nodeIdPatching.test.ts` | Unit tests for all new utilities |
-| `packages/app-framework/src/frameworks/solid/stores/AiStore.tsx` | Update tool def (3 patch types), dispatch by patch type, call `ensureNodeIds`, post-patch validation |
-| `packages/app-framework/src/shared/prompts/chatSystemPrompt.ts` | Replace path instructions with ID + insert/remove instructions |
+| File                                                                 | Change                                                                                                                                             |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/schema-system/shared/src/types.ts`                         | Add `id?: string` to `SchemaNode`                                                                                                                  |
+| `packages/schema-system/shared/src/zodSchemas.ts`                    | Add `id` to `schemaNodeShape()`, remove from `zTemplateSchema`                                                                                     |
+| `packages/schema-system/shared/src/indexer.ts`                       | Add `ensureNodeIds()` (with dedup), `findNodeById()`, `mergeNode()`, `insertChild()`, `removeChild()`. Remove `validatePatches()`, `patchByPath()` |
+| `packages/schema-system/shared/src/semanticValidation.ts`            | Allow `id` field on nodes                                                                                                                          |
+| `packages/schema-system/shared/src/__tests__/nodeIdPatching.test.ts` | Unit tests for all new utilities                                                                                                                   |
+| `packages/app-framework/src/frameworks/solid/stores/AiStore.tsx`     | Update tool def (3 patch types), dispatch by patch type, call `ensureNodeIds`, post-patch validation                                               |
+| `packages/app-framework/src/shared/prompts/chatSystemPrompt.ts`      | Replace path instructions with ID + insert/remove instructions                                                                                     |
 
 ## Tradeoffs
 
