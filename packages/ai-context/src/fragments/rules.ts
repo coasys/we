@@ -20,7 +20,10 @@ export const rules = `
 - Omit empty \`props\` and \`children\` — both are optional. Do not write \`props: {}\` or \`children: []\`.
 - Do not use \`as const\` on schema node \`type\` fields — \`SchemaNode.type\` is \`string\`, so it is never needed.
 - For icon-only buttons, nest a \`we-icon\` child inside \`we-button\` rather than using a \`text\` prop with a Unicode character. Example: \`{ type: 'we-button', props: { variant: 'ghost', size: 'sm' }, children: [{ type: 'we-icon', props: { name: 'x', size: '20px' } }] }\`.
+- NEVER pass a bare number like "16" as a size or dimension prop — it is not valid CSS. Always check the component's declared prop type: if it's a string union, use one of the listed values; if it accepts arbitrary strings, include a CSS unit (e.g. "16px", "2rem").
 - For interactive list items and selectable options, use \`we-button\` with variant switching (e.g., \`secondary\` when selected, \`ghost\` when not) instead of manually styling \`Row\` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
+- For card-like layouts, compose from \`Column\` with DS props (bg, r, border, p, gap). This gives full control over spacing and appearance.
+- When rendering lists of similar items (posts, cards, users, etc.), ALWAYS use \`$each\` with a single template child — never duplicate the same node structure multiple times. Use literal arrays in \`items\` for static data, or \`$store\`/\`$query\` for dynamic data.
 
 ### Icon Names (Phosphor Icons)
 

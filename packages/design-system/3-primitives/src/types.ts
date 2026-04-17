@@ -12,7 +12,6 @@ export type BadgeVariant = '' | 'primary' | 'success' | 'danger' | 'warning';
 export type BadgeSize = '' | 'sm' | 'lg';
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
-export type CardVariant = '' | 'elevated' | 'outlined' | 'filled';
 export type CheckboxSize = 'sm' | 'md' | 'lg';
 export type FormFieldSize = 'sm' | 'md' | 'lg';
 export type InputSize = 'sm' | 'md' | 'lg';

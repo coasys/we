@@ -248,6 +248,16 @@ export function validatePatches(
   schema: SchemaNode,
 ): { valid: true } | { valid: false; error: string } {
   for (const { path, node } of patches) {
+    // Validate all path elements are integers
+    for (let j = 0; j < path.length; j++) {
+      if (typeof path[j] !== 'number' || !Number.isInteger(path[j])) {
+        return {
+          valid: false,
+          error: `Path [${path.join(', ')}] invalid: element at index ${j} is "${path[j]}" — path must contain only integers, not strings like "children" or "routes"`,
+        };
+      }
+    }
+
     let target: SchemaNode = schema;
     for (let i = 0; i < path.length; i++) {
       if (path[i] === -1) {

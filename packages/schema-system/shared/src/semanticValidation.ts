@@ -495,6 +495,16 @@ function checkProps(
           severity: 'warning',
         });
       }
+
+      // Catch bare numbers passed as strings (e.g. "16" instead of "16px" or "sm")
+      // Skip DS props — they accept numeric tokens like "100", "200"
+      if (/^\d+(\.\d+)?$/.test(propValue) && !ctx.dsPropToLayer.has(propName)) {
+        errors.push({
+          path: propPath,
+          message: `Prop "${propName}" has bare number "${propValue}" — add a CSS unit (e.g. "${propValue}px") or use one of the component's declared token values.`,
+          severity: 'warning',
+        });
+      }
     }
   }
 }

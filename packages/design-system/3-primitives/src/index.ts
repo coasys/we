@@ -2,7 +2,6 @@ import './primitives/avatar';
 import './primitives/badge';
 import './primitives/blockquote';
 import './primitives/button';
-import './primitives/card';
 import './primitives/checkbox';
 import './primitives/code';
 import './primitives/color-picker';

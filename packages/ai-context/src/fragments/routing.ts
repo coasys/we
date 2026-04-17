@@ -12,10 +12,12 @@ Routes can be nested to support sub-pages and layouts.
 
 Route objects follow the same structure as schema nodes, with an additional "path" property.
 
+- The "routes" array MUST be placed on the ROOT template node (or on a route node for nested routing). The router only reads routes from these positions — placing routes on an arbitrary child node means the router will never find them and nothing will render.
 - Use "path: '*'" or "path: '/*'" for catch-all/not-found routes.
 - Use ":paramName" for dynamic route parameters (e.g. "/space/:spaceId").
 - Use nested "routes" arrays for sub-pages and layouts.
-- Use { "type": "$routes" } in children to indicate where nested routes should render.
+- Use { "type": "$routes" } in children to indicate where nested routes should render. The $routes outlet can be deeply nested — only the routes array placement matters.
+- EVERY { "type": "$routes" } outlet MUST have a "routes" array defined on the same node or an ancestor node. A $routes outlet without a routes array is invalid and will fail validation.
 - NEVER duplicate a route path — every route in the same "routes" array MUST have a unique path.
 - When using tabs, each tab's key and navigate path MUST have a matching route. Ensure a 1:1 correspondence between tabs and routes.
 
@@ -26,10 +28,18 @@ Each we-tab MUST have an onClick with { "$action": "routeStore.navigate" } to tr
 Bind we-tabs selectedKey to the matching route segment so the active tab stays in sync.
 (Alternatively, a single onChange on we-tabs can replace per-tab onClick — see onChange pattern below.)
 
-Recommended pattern (per-tab onClick):
+Recommended pattern — header above tabs (routes on ROOT, $routes outlet nested inside):
 {
   "type": "Column",
+  "routes": [
+    { "path": "/", "type": "we-text", "children": ["Select a tab"] },
+    { "path": "/posts", "type": "Column", "children": [{ "type": "we-text", "children": ["Posts content"] }] },
+    { "path": "/articles", "type": "Column", "children": [{ "type": "we-text", "children": ["Articles content"] }] }
+  ],
   "children": [
+    { "type": "Row", "props": { "p": "300", "ax": "between" }, "children": [
+      { "type": "we-text", "props": { "variant": "heading-lg" }, "children": ["My App"] }
+    ]},
     {
       "type": "we-tabs",
       "props": { "selectedKey": { "$store": "routeStore.segments.0" } },
@@ -39,13 +49,9 @@ Recommended pattern (per-tab onClick):
       ]
     },
     { "type": "$routes" }
-  ],
-  "routes": [
-    { "path": "/", "type": "we-text", "children": ["Select a tab"] },
-    { "path": "/posts", "type": "Column", "children": [{ "type": "we-text", "children": ["Posts content"] }] },
-    { "path": "/articles", "type": "Column", "children": [{ "type": "we-text", "children": ["Articles content"] }] }
   ]
 }
+Note: "routes" is on the root Column, NOT on a child. The $routes outlet is a child — that's fine. Only the routes array placement matters.
 
 Alternative: single onChange on we-tabs (fires with $event.detail.value = selected key):
 { "onChange": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/", "$arg.detail.value"] }] } }

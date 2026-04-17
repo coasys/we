@@ -91,6 +91,51 @@ Local state (form with validation):
   ]
 }
 
+Repeating lists with $each:
+ALWAYS use $each for lists of similar items — never duplicate the same node structure.
+Write the template once; $each renders it for each item.
+
+Use literal arrays for fixed/sample data:
+{
+  "type": "$each",
+  "props": {
+    "items": [
+      { "title": "First Post", "text": "Hello world.", "author": "Alice" },
+      { "title": "Second Post", "text": "Another update.", "author": "Bob" }
+    ],
+    "as": "post"
+  },
+  "children": [
+    {
+      "type": "Column",
+      "props": { "bg": "neutral-0", "r": "400", "border": "1px solid neutral-200", "p": "400", "gap": "300" },
+      "children": [
+        {
+          "type": "Row",
+          "props": { "gap": "300", "ay": "center" },
+          "children": [
+            { "type": "we-avatar", "props": { "initials": "$post.author", "size": "sm" } },
+            { "type": "we-text", "props": { "variant": "label" }, "children": ["$post.author"] }
+          ]
+        },
+        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": ["$post.title"] },
+        { "type": "we-text", "children": ["$post.text"] }
+      ]
+    }
+  ]
+}
+
+Use $query or $store for dynamic data (more common in production):
+{ "type": "$each", "props": { "items": { "$query": { "model": "TextBlock" } }, "as": "post" }, "children": [...] }
+{ "type": "$each", "props": { "items": { "$store": "spaceStore.posts" }, "as": "post" }, "children": [...] }
+
+Per-item customization inside $each:
+To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use $eq: ["$index", N] comparisons — they are fragile, repetitive, and break when items are reordered.
+Example: add "highlighted": true to one item's data, then use $if on "$post.highlighted" in the template:
+{ "type": "$if", "props": { "condition": "$post.highlighted", "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
+For conditional props (e.g. different bg on highlighted items):
+{ "bg": { "$if": { "condition": "$post.highlighted", "then": "primary-50", "else": "neutral-0" } } }
+
 Boolean toggle (show/hide, expand/collapse):
 {
   "type": "Column",
