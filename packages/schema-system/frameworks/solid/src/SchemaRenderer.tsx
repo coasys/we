@@ -318,11 +318,16 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   // Resolve component: registry entry > native HTML/custom element > error
   // Convention: PascalCase = registry component, hyphenated = web component, lowercase = HTML element
-  const isHtmlElement = /^[a-z][a-z0-9]*$/.test(node.type ?? '');
-  const isWebComponent = node.type?.includes('-') ?? false;
-  const component = createMemo(
-    () => registry[node.type ?? ''] ?? (isHtmlElement || isWebComponent ? node.type : undefined),
-  );
+  const component = createMemo(() => {
+    const t = node.type ?? '';
+    // $-prefixed types ($routes, $if, $each) are handled by early returns above.
+    // During reactive updates (node.type changed via store mutation), guard here
+    // so Dynamic never receives an invalid tag name like "$routes".
+    if (t.startsWith('$')) return undefined;
+    const isHtml = /^[a-z][a-z0-9]*$/.test(t);
+    const isWc = t.includes('-');
+    return registry[t] ?? (isHtml || isWc ? t : undefined);
+  });
   if (!component()) throw new Error(`Schema node has unknown type "${node.type}".`);
 
   // Prepare the slot elements in a reactive store
@@ -393,6 +398,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   const slotProp = node.slot ? { slot: node.slot } : {};
   const themeStyle = createMemo(() => (node.theme ? { display: 'contents', ...themeToStyle(node.theme) } : undefined));
   const themeAttr = createMemo(() => node.theme?.themeName);
+  const isWebComponent = node.type?.includes('-') ?? false;
 
   // Render: web components use per-prop property effects, Solid/HTML use reactive spread
   if (isWebComponent) {

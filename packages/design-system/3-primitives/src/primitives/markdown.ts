@@ -130,8 +130,28 @@ const styles = css`
     color: var(--we-color-danger-500);
     font-weight: 600;
   }
-  [part='base'] .muted {
-    color: var(--we-color-neutral-500);
+  [part='base'] .shimmer {
+    color: var(--we-color-neutral-600);
+    background: linear-gradient(
+      90deg,
+      var(--we-color-neutral-500) 40%,
+      rgba(255, 255, 255, 0.8) 50%,
+      var(--we-color-neutral-500) 60%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 1s linear infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 100% 0;
+    }
+    100% {
+      background-position: -100% 0;
+    }
   }
 `;
 

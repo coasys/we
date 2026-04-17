@@ -39,6 +39,7 @@ export interface TemplateStoreBase {
 
   // Actions
   updateTemplate: (newTemplate: TemplateSchema) => void;
+  replaceTemplate: (newTemplate: TemplateSchema) => void;
   switchTemplate: (newTemplateId: string) => void;
   removeTemplate: () => Promise<void>;
   deleteTemplate: (templateId: string) => Promise<void>;
@@ -193,6 +194,13 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (!result.applied && result.errors?.length) {
       toastService.error(`Schema validation failed: ${result.errors[0].message}`);
     }
+  }
+
+  /** Replace the current template wholesale using reconcile (bypasses findMutations).
+   *  Preferred for AI updates where large structural changes (new routes, etc.) need
+   *  reliable reactivity. Caller is responsible for pre-validating the schema. */
+  function replaceTemplate(newTemplate: TemplateSchema) {
+    setCurrentTemplate(reconcile(deepClone(newTemplate)));
   }
 
   function switchTemplate(newTemplateId: string) {
@@ -476,7 +484,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       // Update the in-memory templates signal so switching away and back preserves changes
       setAllTemplates((prev) => prev.map((t) => (t.id === templateId ? deepClone(currentTemplate) : t)));
     } catch (error) {
-      console.error('TemplateStore: persistCurrentTemplate error', error);
+      console.error('[TemplateStore] persistCurrentTemplate failed', error);
     }
   }
 
@@ -537,6 +545,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     // Actions
     updateTemplate,
+    replaceTemplate,
     switchTemplate,
     removeTemplate,
     deleteTemplate,

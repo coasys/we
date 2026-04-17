@@ -16,8 +16,42 @@ Route objects follow the same structure as schema nodes, with an additional "pat
 - Use ":paramName" for dynamic route parameters (e.g. "/space/:spaceId").
 - Use nested "routes" arrays for sub-pages and layouts.
 - Use { "type": "$routes" } in children to indicate where nested routes should render.
+- NEVER duplicate a route path — every route in the same "routes" array MUST have a unique path.
+- When using tabs, each tab's key and navigate path MUST have a matching route. Ensure a 1:1 correspondence between tabs and routes.
 
-Example:
+### Tabs + Routing
+
+IMPORTANT: we-tabs only manages visual selection — clicking a tab does NOT navigate automatically.
+Each we-tab MUST have an onClick with { "$action": "routeStore.navigate" } to trigger route changes.
+Bind we-tabs selectedKey to the matching route segment so the active tab stays in sync.
+(Alternatively, a single onChange on we-tabs can replace per-tab onClick — see onChange pattern below.)
+
+Recommended pattern (per-tab onClick):
+{
+  "type": "Column",
+  "children": [
+    {
+      "type": "we-tabs",
+      "props": { "selectedKey": { "$store": "routeStore.segments.0" } },
+      "children": [
+        { "type": "we-tab", "props": { "key": "posts", "label": "Posts", "onClick": { "$action": "routeStore.navigate", "args": ["/posts"] } } },
+        { "type": "we-tab", "props": { "key": "articles", "label": "Articles", "onClick": { "$action": "routeStore.navigate", "args": ["/articles"] } } }
+      ]
+    },
+    { "type": "$routes" }
+  ],
+  "routes": [
+    { "path": "/", "type": "we-text", "children": ["Select a tab"] },
+    { "path": "/posts", "type": "Column", "children": [{ "type": "we-text", "children": ["Posts content"] }] },
+    { "path": "/articles", "type": "Column", "children": [{ "type": "we-text", "children": ["Articles content"] }] }
+  ]
+}
+
+Alternative: single onChange on we-tabs (fires with $event.detail.value = selected key):
+{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/", "$arg.detail.value"] }] } }
+This replaces all per-tab onClick handlers but requires $concat to build the path.
+
+Nested routing example:
 {
   "routes": [
     { "path": "*", "type": "Column", "props": { "ax": "center", "p": "500" }, "children": [{ "type": "we-text", "children": ["Page not found"] }] },

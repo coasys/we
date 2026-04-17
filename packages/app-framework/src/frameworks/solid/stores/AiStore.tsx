@@ -4,19 +4,28 @@ import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { schemaPromptExamples } from '@shared/prompts/schemaExamples';
 import { deepClone } from '@shared/utils';
 import { useAdamStore, useTemplateStore } from '@solid/stores';
-import { schemaContext } from '@we/ai-context';
+import { contextData, schemaContext } from '@we/ai-context';
 import {
   ChatMessage as ChatMessageModel,
   ChatSession as ChatSessionModel,
   Template as TemplateModel,
 } from '@we/models';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { patchByPath } from '@we/schema-shared';
+import {
+  buildValidationContext,
+  patchByPath,
+  validatePatches,
+  validateSemantic,
+  validateStructure,
+} from '@we/schema-shared';
 import type { ChatMessage } from '@we/widgets/solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 // Re-export for convenience
 export type { ChatMessage } from '@we/widgets/solid';
+
+// Build validation context once at module level from the generated context data
+const validationCtx = buildValidationContext(contextData);
 
 export interface AiStore {
   // --- Existing: AD4M AI state ---
@@ -534,7 +543,7 @@ export function AiStoreProvider(props: ParentProps) {
     }
 
     setIsStreaming(true);
-    setStreamingContent('<span class="muted">*Thinking...*</span>');
+    setStreamingContent('<span class="shimmer">*Thinking...*</span>');
 
     try {
       if (apiKeyConfigured()) {
@@ -543,6 +552,7 @@ export function AiStoreProvider(props: ParentProps) {
         await sendViaAd4m(text);
       }
     } catch (err) {
+      console.error('[AiStore] sendMessage caught error:', err);
       const errorText = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [...prev, createMessage('assistant', `Error: ${errorText}`)]);
     } finally {
@@ -556,59 +566,6 @@ export function AiStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   // Claude API path (SSE streaming with tool_use)
   // ----------------------------------------------------------------
-
-  /** Validate patches against the current schema before applying */
-  function validatePatches(
-    patches: Array<{ path: number[]; node: unknown }>,
-    schema: SchemaNode,
-  ): { valid: true } | { valid: false; error: string } {
-    for (const { path, node } of patches) {
-      // Verify path exists in current schema (empty path = root replacement, always valid)
-      let target: SchemaNode = schema;
-      for (let i = 0; i < path.length; i++) {
-        if (path[i] === -1) {
-          // Route marker — next index selects from routes array
-          const routes = target.routes;
-          const routeIdx = path[i + 1];
-          if (routeIdx === undefined) {
-            return { valid: false, error: `Path [${path.join(', ')}] invalid: -1 at end with no route index` };
-          }
-          if (!routes || routeIdx < 0 || routeIdx >= routes.length) {
-            return {
-              valid: false,
-              error: `Path [${path.join(', ')}] invalid: route index ${routeIdx} out of bounds (node has ${routes?.length ?? 0} routes)`,
-            };
-          }
-          // Skip the route index (already validated) and continue from the route node itself
-          target = routes[routeIdx] as SchemaNode;
-          i++; // skip next element (route index)
-          continue;
-        }
-
-        const children = target.children;
-        if (!children || path[i] < 0 || path[i] >= children.length) {
-          return {
-            valid: false,
-            error: `Path [${path.join(', ')}] invalid: index ${path[i]} out of bounds at depth ${i} (node has ${children?.length ?? 0} children)`,
-          };
-        }
-        const child = children[path[i]];
-        if (typeof child === 'string' || child === null || child === undefined) {
-          return {
-            valid: false,
-            error: `Path [${path.join(', ')}] invalid: node at depth ${i} is a text node, not a SchemaNode`,
-          };
-        }
-        target = child as SchemaNode;
-      }
-
-      // Verify node has required 'type' field
-      if (!node || typeof node !== 'object' || !('type' in node)) {
-        return { valid: false, error: `Patch at [${path.join(', ')}]: node must have a 'type' field` };
-      }
-    }
-    return { valid: true };
-  }
 
   /** Parse an SSE stream and return extracted text + tool calls + stop reason */
   async function parseSSEStream(
@@ -704,39 +661,51 @@ export function AiStoreProvider(props: ParentProps) {
     onTextDelta: (text: string) => void,
     onToolUseStart?: (textSoFar: string) => void,
   ) {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey(),
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 16384,
-        stream: true,
-        tools: [updateSchemaTool],
-        system: [
-          {
-            type: 'text',
-            text: chatSystemPrompt,
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-        messages: claudeMessages,
-      }),
-    });
+    // Abort after 90 seconds to prevent hanging on stalled connections
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      console.error('[AiStore] Request timed out after 90s — aborting');
+      controller.abort();
+    }, 90_000);
 
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => '');
-      throw new Error(`Claude API error ${response.status}: ${errorBody}`);
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey(),
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 16384,
+          stream: true,
+          tools: [updateSchemaTool],
+          system: [
+            {
+              type: 'text',
+              text: chatSystemPrompt,
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
+          messages: claudeMessages,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => '');
+        throw new Error(`Claude API error ${response.status}: ${errorBody}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      return await parseSSEStream(reader, onTextDelta, onToolUseStart);
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response body');
-
-    return parseSSEStream(reader, onTextDelta, onToolUseStart);
   }
 
   async function sendViaClaude(text: string) {
@@ -747,27 +716,33 @@ export function AiStoreProvider(props: ParentProps) {
     setMessages((prev) => [...prev, streamMsg]);
 
     let allTextContent = '';
-    const maxContinuations = 3; // Safety limit to prevent infinite loops
+    const maxContinuations = 5; // Safety limit to prevent infinite loops
 
     const showInlineStatus = (status: string) => {
       const sep = allTextContent ? '\n\n' : '';
-      setStreamingContent(allTextContent + sep + `<span class="muted">*${status}*</span>`);
+      setStreamingContent(allTextContent + sep + `<span class="shimmer">*${status}*</span>`);
     };
 
     for (let turn = 0; turn <= maxContinuations; turn++) {
-      if (turn > 0) showInlineStatus('Retrying...');
-      const { textContent, toolCalls, stopReason } = await sendClaudeRequest(
-        claudeMessages,
-        (accumulated) => {
-          const sep = allTextContent && accumulated ? '\n\n' : '';
-          setStreamingContent(allTextContent + sep + accumulated);
-        },
-        (textSoFar) => {
-          const base = allTextContent + (allTextContent && textSoFar ? '\n\n' : '') + textSoFar;
-          const sep = base ? '\n\n' : '';
-          setStreamingContent(base + sep + '<span class="muted">*Updating template...*</span>');
-        },
-      );
+      let streamResult;
+      try {
+        streamResult = await sendClaudeRequest(
+          claudeMessages,
+          (accumulated) => {
+            const sep = allTextContent && accumulated ? '\n\n' : '';
+            setStreamingContent(allTextContent + sep + accumulated);
+          },
+          (textSoFar) => {
+            const base = allTextContent + (allTextContent && textSoFar ? '\n\n' : '') + textSoFar;
+            const sep = base ? '\n\n' : '';
+            setStreamingContent(base + sep + '<span class="shimmer">*Updating template...*</span>');
+          },
+        );
+      } catch (err) {
+        console.error(`[AiStore] Turn ${turn}: sendClaudeRequest threw`, err);
+        throw err;
+      }
+      const { textContent, toolCalls, stopReason } = streamResult;
 
       if (textContent) {
         allTextContent += (allTextContent ? '\n\n' : '') + textContent;
@@ -799,6 +774,12 @@ export function AiStoreProvider(props: ParentProps) {
       // Execute each tool call and collect results
       const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }> = [];
 
+      // --- Atomic patching: accumulate all patches before applying ---
+      // We clone the template once and apply all tool calls' patches to it.
+      // Only after ALL patches succeed and validate do we apply to the store.
+      let accumulatedSchema: SchemaNode = deepClone(templateStore.currentTemplate) as SchemaNode;
+      let allPatchesValid = true;
+
       for (const tc of toolCalls) {
         if (tc.name === 'update_schema') {
           const patches = (tc.input as { patches: Array<{ path: number[]; node: SchemaNode }> }).patches;
@@ -810,14 +791,22 @@ export function AiStoreProvider(props: ParentProps) {
               content: 'Invalid input: patches must be an array',
               is_error: true,
             });
+            allPatchesValid = false;
             continue;
           }
 
-          // Validate before applying
-          const currentSchema = deepClone(templateStore.currentTemplate) as SchemaNode;
-          const validation = validatePatches(patches, currentSchema);
+          console.log(`[AiStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
+          for (const p of patches) {
+            const nodeType = (p.node as Record<string, unknown>).type ?? 'root';
+            console.log(`  path: [${p.path.join(', ')}], node type: ${nodeType}`);
+          }
+          console.log('[AiStore] Patch detail:', JSON.stringify(patches, null, 2));
+
+          // Validate paths before applying
+          const validation = validatePatches(patches, accumulatedSchema);
 
           if (!validation.valid) {
+            console.warn(`[AiStore] Patch path validation failed: ${validation.error}`);
             allTextContent += '\n\n<span class="warning">⚠ Template failed validation. Retrying...</span>';
             setStreamingContent(allTextContent);
             toolResults.push({
@@ -826,36 +815,24 @@ export function AiStoreProvider(props: ParentProps) {
               content: `Validation failed: ${validation.error}. Please check the currentSchema paths and try again.`,
               is_error: true,
             });
+            allPatchesValid = false;
             continue;
           }
 
-          // Apply patches
+          // Apply patches to the accumulated schema (not to the store yet)
           try {
-            let patched: SchemaNode = currentSchema;
             for (const { path, node } of patches) {
-              patched = patchByPath(patched, path, node);
+              accumulatedSchema = patchByPath(accumulatedSchema, path, node);
             }
-            const mergedTemplate = patched as TemplateSchema;
-
-            if (isReadOnly()) {
-              setPendingTemplate(mergedTemplate);
-              toolResults.push({
-                type: 'tool_result',
-                tool_use_id: tc.id,
-                content: 'Schema changes validated and buffered. Template is read-only — user must fork to apply.',
-              });
-            } else {
-              templateStore.updateTemplate(mergedTemplate);
-              templateStore.persistCurrentTemplate();
-              setPendingTemplate(null);
-              toolResults.push({
-                type: 'tool_result',
-                tool_use_id: tc.id,
-                content: 'Template updated successfully.',
-              });
-            }
+            // Mark success for this tool call (actual store apply deferred)
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: tc.id,
+              content: 'Patches applied.',
+            });
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : 'Unknown patching error';
+            console.warn(`[AiStore] Patch apply failed: ${errMsg}`);
             allTextContent += '\n\n<span class="warning">⚠ Patch error — retrying...</span>';
             setStreamingContent(allTextContent);
             toolResults.push({
@@ -864,6 +841,7 @@ export function AiStoreProvider(props: ParentProps) {
               content: `Patching failed: ${errMsg}. Please check your node structure and try again.`,
               is_error: true,
             });
+            allPatchesValid = false;
           }
         } else {
           toolResults.push({
@@ -875,42 +853,88 @@ export function AiStoreProvider(props: ParentProps) {
         }
       }
 
+      // --- Atomic apply: validate + apply only if ALL tool calls succeeded ---
+      if (allPatchesValid) {
+        const mergedTemplate = accumulatedSchema as TemplateSchema;
+        console.log('[AiStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
+
+        // Step 1: Structural validation (Zod schema check)
+        const structural = validateStructure(mergedTemplate);
+        if (!structural.valid) {
+          console.warn(`[AiStore] Structural validation failed (${structural.errors.length} issues):`);
+          for (const issue of structural.errors) {
+            console.warn(`  [${issue.severity}] ${issue.path}: ${issue.message}`);
+          }
+          const top5 = structural.errors
+            .slice(0, 5)
+            .map((e) => `[${e.severity}] ${e.message}`)
+            .join('; ');
+          allTextContent += '\n\n<span class="warning">⚠ Template failed structural validation. Retrying...</span>';
+          setStreamingContent(allTextContent);
+          for (const tr of toolResults) {
+            tr.content = `Structural validation failed (${structural.errors.length} issues). Top issues: ${top5}. Fix the schema structure and retry.`;
+            tr.is_error = true;
+          }
+        } else {
+          console.log('[AiStore] Structural validation passed');
+
+          // Step 2: Semantic validation (component/prop/store checks)
+          const semantic = validateSemantic(mergedTemplate, validationCtx);
+          const allIssues = semantic.errors;
+          const isClean = allIssues.length === 0;
+
+          if (!isClean) {
+            console.warn(`[AiStore] Semantic validation failed (${allIssues.length} issues):`);
+            for (const issue of allIssues) {
+              console.warn(`  [${issue.severity}] ${issue.path}: ${issue.message}`);
+            }
+            const top5 = allIssues
+              .slice(0, 5)
+              .map((e) => `[${e.severity}] ${e.message}`)
+              .join('; ');
+            allTextContent += '\n\n<span class="warning">⚠ Template failed semantic validation. Retrying...</span>';
+            setStreamingContent(allTextContent);
+            for (const tr of toolResults) {
+              tr.content = `Semantic validation failed (${allIssues.length} issues). Top issues: ${top5}. Fix the invalid tokens/props and retry.`;
+              tr.is_error = true;
+            }
+          } else if (isReadOnly()) {
+            console.log('[AiStore] Semantic validation passed — buffering (read-only template)');
+            setPendingTemplate(mergedTemplate);
+            for (const tr of toolResults) {
+              tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
+            }
+          } else {
+            console.log('[AiStore] Semantic validation passed — applying to store');
+            templateStore.updateTemplate(mergedTemplate);
+            await templateStore.persistCurrentTemplate();
+            setPendingTemplate(null);
+            for (const tr of toolResults) {
+              tr.content = 'Template updated successfully.';
+            }
+          }
+        }
+      }
+
       // Add tool results to conversation history
       claudeMessages.push({ role: 'user', content: toolResults });
 
-      // Check if any errors occurred — if so, continue the loop for Claude to self-correct
+      // Inject inline status if this round succeeded
       const hasErrors = toolResults.some((r) => r.is_error);
       if (!hasErrors) {
-        // Inject inline success indicator immediately
         const pended = isReadOnly() && pendingTemplate() !== null;
-        // ✅ ⚠️ ❌
         const statusLine = pended
           ? '<span class="warning">⚠ Changes are ready — fork this template to apply them.</span>'
           : '<span class="success">✓ Template updated</span>';
         allTextContent += '\n\n' + statusLine;
         setStreamingContent(allTextContent);
-
-        // Show thinking indicator before final request
-        showInlineStatus('Thinking...');
-
-        // Send one more request so Claude can provide closing text
-        const final = await sendClaudeRequest(claudeMessages, (accumulated) => {
-          const sep = allTextContent && accumulated ? '\n\n' : '';
-          setStreamingContent(allTextContent + sep + accumulated);
-        });
-        if (final.textContent) {
-          allTextContent += (allTextContent ? '\n\n' : '') + final.textContent;
-        }
-
-        setStreamingContent('');
-
-        // Finalize the AI message (includes the inline status line)
-        updateAssistantMessage(streamMsg.id, allTextContent || 'Changes applied.');
-        return;
       }
 
-      // Has errors — loop continues, Claude will self-correct
-      showInlineStatus('Retrying...');
+      // Continue the loop — Claude will either:
+      // - send closing text (end_turn) → caught at top of next iteration
+      // - send more tool_use calls → processed in next iteration
+      // - retry after errors → processed in next iteration
+      showInlineStatus(hasErrors ? 'Retrying...' : 'Thinking...');
     }
 
     // Exhausted continuations
