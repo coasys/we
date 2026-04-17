@@ -81,8 +81,32 @@ Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
 Read:  { "$local": "name" } — returns the signal value (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
+       { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean).
+Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
 $local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
+
+Boolean toggle pattern (show/hide comments, expand/collapse sections, etc.):
+{
+  "$localState": { "showComments": { "type": "boolean", "initial": false } },
+  "children": [
+    {
+      "type": "we-button",
+      "props": {
+        "variant": "ghost",
+        "onClick": { "$toggleLocal": "showComments" }
+      },
+      "children": [{ "type": "we-icon", "props": { "name": "chat-circle" } }]
+    },
+    {
+      "type": "$if",
+      "props": {
+        "condition": { "$local": "showComments" },
+        "then": { "type": "Column", "children": [{ "type": "we-text", "children": ["Comments visible"] }] }
+      }
+    }
+  ]
+}
 
 Form validation (extends $localState):
 Declare validation rules on fields:
@@ -176,8 +200,6 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
   Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' = 'md', text?: string | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false
-- we-card (DesignSystemElement)
-  Props: variant: '' | 'elevated' | 'outlined' | 'filled' = ''
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-code (DesignSystemElement)
@@ -208,6 +230,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'sm' | 'md' | 'lg' = 'md'
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', disabled: boolean = false
+- we-markdown (DesignSystemElement)
+  Props: content: string = '', markdownGap: string = ''
 - we-menu (DesignSystemElement)
 - we-menu-group (LayoutElement)
   Props: collapsible: boolean = false, open: boolean = false, title: string = ''
@@ -238,9 +262,9 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-switch (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-tab (DesignSystemElement)
-  Props: key: string = '', active: boolean = false, label?: string | undefined
+  Props: key: string = '', selected: boolean = false, label?: string | undefined, selectedProps?: Partial<DesignSystemProps> | undefined
 - we-tabs (DesignSystemElement)
-  Props: activeKey: string = ''
+  Props: selectedKey: string = ''
 - we-tag (DesignSystemElement)
   Props: variant: 'default' | 'primary' | 'success' | 'warning' | 'danger' = 'default', dismissible: boolean = false
 - we-text (DesignSystemElement)
@@ -310,7 +334,7 @@ Not schema-renderable — used directly in application code.
 Renders a list of messages with a text input, anchored to a screen edge.
 Supports streaming indicator, auto-scroll, and header/close controls.
 Includes template context header with fork/fresh actions and name+icon picker.
-  Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, onPickerConfirm?: ((name: string, icon: string) => void), onPickerCancel?: (() => void)
+  Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, streamingContent?: string, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, onPickerConfirm?: ((name: string, icon: string) => void), onPickerCancel?: (() => void), mode?: "chat" | "code", schemaJson?: string, onModeChange?: ((mode: "chat" | "code") => void), onSchemaEdit?: ((json: string) => void), sessions?: SessionInfo[], activeSessionId?: string | null, onNewChat?: (() => void), onSwitchSession?: ((sessionId: string) => void), onDeleteSession?: ((sessionId: string) => void), operationLoading?: string | null
 - CollapsibleSidebar
   Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "fixed" | "absolute" | "static", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
 - CreateSpaceModalWidget
@@ -500,6 +524,7 @@ AgentProfile extends Ad4mModel:
 AgentSettings extends Ad4mModel:
   Fields:
   - currentTemplateId: string = 'default' [we://current_template]
+  - defaultTemplateId: string = 'default' [we://default_template]
   - currentThemeId: string = 'default' [we://current_theme]
   - claudeApiKey: string [we://claude_api_key]
   Relations:
@@ -521,6 +546,17 @@ CalloutBlock extends WeNode:
   - variant: string = info [we://variant]
   - icon: string [we://icon]
   - version: number [we://version]
+
+ChatMessage extends WeNode:
+  Fields:
+  - role: string [we://role]
+  - content: string [we://content]
+
+ChatSession extends WeNode:
+  Fields:
+  - name: string [we://name]
+  Relations:
+  - messages: HasMany → ChatMessage [we://chat_message]
 
 CodeBlock extends WeNode:
   Fields:
@@ -631,6 +667,8 @@ Template extends WeNode:
   - origin: string [we://origin]
   - version: number = 1 [we://version]
   - schema: Record<string, unknown> [we://template_schema]
+  Relations:
+  - chatSessions: HasMany → ChatSession [we://chat_session]
 
 TextBlock extends WeNode:
   Fields:
@@ -832,6 +870,61 @@ Local state (form with validation):
   ]
 }
 
+Repeating lists with $each:
+ALWAYS use $each for lists of similar items — never duplicate the same node structure.
+Write the template once; $each renders it for each item.
+
+Use literal arrays for fixed/sample data:
+{
+  "type": "$each",
+  "props": {
+    "items": [
+      { "title": "First Post", "text": "Hello world.", "author": "Alice" },
+      { "title": "Second Post", "text": "Another update.", "author": "Bob" }
+    ],
+    "as": "post"
+  },
+  "children": [
+    {
+      "type": "Column",
+      "props": { "bg": "neutral-0", "r": "400", "border": "1px solid neutral-200", "p": "400", "gap": "300" },
+      "children": [
+        {
+          "type": "Row",
+          "props": { "gap": "300", "ay": "center" },
+          "children": [
+            { "type": "we-avatar", "props": { "initials": "$post.author", "size": "sm" } },
+            { "type": "we-text", "props": { "variant": "label" }, "children": ["$post.author"] }
+          ]
+        },
+        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": ["$post.title"] },
+        { "type": "we-text", "children": ["$post.text"] }
+      ]
+    }
+  ]
+}
+
+Use $query or $store for dynamic data (more common in production):
+{ "type": "$each", "props": { "items": { "$query": { "model": "TextBlock" } }, "as": "post" }, "children": [...] }
+{ "type": "$each", "props": { "items": { "$store": "spaceStore.posts" }, "as": "post" }, "children": [...] }
+
+Per-item customization inside $each:
+To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use $eq: ["$index", N] comparisons — they are fragile, repetitive, and break when items are reordered.
+Example: add "highlighted": true to one item's data, then use $if on "$post.highlighted" in the template:
+{ "type": "$if", "props": { "condition": "$post.highlighted", "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
+For conditional props (e.g. different bg on highlighted items):
+{ "bg": { "$if": { "condition": "$post.highlighted", "then": "primary-50", "else": "neutral-0" } } }
+
+Boolean toggle (show/hide, expand/collapse):
+{
+  "type": "Column",
+  "$localState": { "showDetails": { "type": "boolean", "initial": false } },
+  "children": [
+    { "type": "we-button", "props": { "variant": "ghost", "onClick": { "$toggleLocal": "showDetails" } }, "children": ["Toggle Details"] },
+    { "type": "$if", "props": { "condition": { "$local": "showDetails" }, "then": { "type": "we-text", "children": ["Details content here"] } } }
+  ]
+}
+
 ---
 
 ## Routing Structure
@@ -842,12 +935,52 @@ Routes can be nested to support sub-pages and layouts.
 
 Route objects follow the same structure as schema nodes, with an additional "path" property.
 
+- The "routes" array MUST be placed on the ROOT template node (or on a route node for nested routing). The router only reads routes from these positions — placing routes on an arbitrary child node means the router will never find them and nothing will render.
 - Use "path: '*'" or "path: '/*'" for catch-all/not-found routes.
 - Use ":paramName" for dynamic route parameters (e.g. "/space/:spaceId").
 - Use nested "routes" arrays for sub-pages and layouts.
-- Use { "type": "$routes" } in children to indicate where nested routes should render.
+- Use { "type": "$routes" } in children to indicate where nested routes should render. The $routes outlet can be deeply nested — only the routes array placement matters.
+- EVERY { "type": "$routes" } outlet MUST have a "routes" array defined on the same node or an ancestor node. A $routes outlet without a routes array is invalid and will fail validation.
+- NEVER duplicate a route path — every route in the same "routes" array MUST have a unique path.
+- When using tabs, each tab's key and navigate path MUST have a matching route. Ensure a 1:1 correspondence between tabs and routes.
 
-Example:
+### Tabs + Routing
+
+IMPORTANT: we-tabs only manages visual selection — clicking a tab does NOT navigate automatically.
+Each we-tab MUST have an onClick with { "$action": "routeStore.navigate" } to trigger route changes.
+Bind we-tabs selectedKey to the matching route segment so the active tab stays in sync.
+(Alternatively, a single onChange on we-tabs can replace per-tab onClick — see onChange pattern below.)
+
+Recommended pattern — header above tabs (routes on ROOT, $routes outlet nested inside):
+{
+  "type": "Column",
+  "routes": [
+    { "path": "/", "type": "we-text", "children": ["Select a tab"] },
+    { "path": "/posts", "type": "Column", "children": [{ "type": "we-text", "children": ["Posts content"] }] },
+    { "path": "/articles", "type": "Column", "children": [{ "type": "we-text", "children": ["Articles content"] }] }
+  ],
+  "children": [
+    { "type": "Row", "props": { "p": "300", "ax": "between" }, "children": [
+      { "type": "we-text", "props": { "variant": "heading-lg" }, "children": ["My App"] }
+    ]},
+    {
+      "type": "we-tabs",
+      "props": { "selectedKey": { "$store": "routeStore.segments.0" } },
+      "children": [
+        { "type": "we-tab", "props": { "key": "posts", "label": "Posts", "onClick": { "$action": "routeStore.navigate", "args": ["/posts"] } } },
+        { "type": "we-tab", "props": { "key": "articles", "label": "Articles", "onClick": { "$action": "routeStore.navigate", "args": ["/articles"] } } }
+      ]
+    },
+    { "type": "$routes" }
+  ]
+}
+Note: "routes" is on the root Column, NOT on a child. The $routes outlet is a child — that's fine. Only the routes array placement matters.
+
+Alternative: single onChange on we-tabs (fires with $event.detail.value = selected key):
+{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/", "$arg.detail.value"] }] } }
+This replaces all per-tab onClick handlers but requires $concat to build the path.
+
+Nested routing example:
 {
   "routes": [
     { "path": "*", "type": "Column", "props": { "ax": "center", "p": "500" }, "children": [{ "type": "we-text", "children": ["Page not found"] }] },
@@ -889,7 +1022,38 @@ Example:
 - Omit empty `props` and `children` — both are optional. Do not write `props: {}` or `children: []`.
 - Do not use `as const` on schema node `type` fields — `SchemaNode.type` is `string`, so it is never needed.
 - For icon-only buttons, nest a `we-icon` child inside `we-button` rather than using a `text` prop with a Unicode character. Example: `{ type: 'we-button', props: { variant: 'ghost', size: 'sm' }, children: [{ type: 'we-icon', props: { name: 'x', size: '20px' } }] }`.
+- NEVER pass a bare number like "16" as a size or dimension prop — it is not valid CSS. Always check the component's declared prop type: if it's a string union, use one of the listed values; if it accepts arbitrary strings, include a CSS unit (e.g. "16px", "2rem").
 - For interactive list items and selectable options, use `we-button` with variant switching (e.g., `secondary` when selected, `ghost` when not) instead of manually styling `Row` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
+- For card-like layouts, compose from `Column` with DS props (bg, r, border, p, gap). This gives full control over spacing and appearance.
+- When rendering lists of similar items (posts, cards, users, etc.), ALWAYS use `$each` with a single template child — never duplicate the same node structure multiple times. Use literal arrays in `items` for static data, or `$store`/`$query` for dynamic data.
+
+### Icon Names (Phosphor Icons)
+
+we-icon uses **Phosphor Icons** (v2.1). Do NOT use Heroicons, Material, or FontAwesome names.
+Phosphor names are lowercase-kebab-case. The `weight` prop controls style: "regular" (default), "bold", "fill", "light", "thin", "duotone".
+
+Common Phosphor icon names (use these, NOT Heroicons equivalents):
+- Navigation: house, arrow-left, arrow-right, caret-left, caret-right, caret-down, caret-up, arrows-clockwise
+- Actions: plus, minus, x, check, pencil-simple, trash, copy, download, upload, share, link, magnifying-glass, funnel, sliders-horizontal
+- Communication: chat-circle, chat-dots, envelope-simple, paper-plane-tilt, bell, megaphone
+- Social: heart, thumbs-up, thumbs-down, star, share-network, users, user, user-plus
+- Media: image, camera, play, pause, stop, microphone, speaker-high, video-camera
+- Files: file, file-text, folder, folder-open, clipboard-text, note
+- UI: list, squares-four, gear, dots-three, dots-three-vertical, warning, info, question, check-circle, x-circle, eye, eye-slash
+- Misc: lightning, rocket, globe, map-pin, calendar, clock, tag, bookmark, flag, lock, shield-check
+
+WRONG icon names (Heroicons/Material — do NOT use):
+- "chat-bubble-left" → use "chat-circle"
+- "chevron-right" → use "caret-right"
+- "cog" / "settings" → use "gear"
+- "trash-can" → use "trash"
+- "magnifying-glass-circle" → use "magnifying-glass"
+- "home" → use "house"
+- "favorite" → use "heart"
+- "delete" → use "trash"
+- "search" → use "magnifying-glass"
+- "close" → use "x"
+- "menu" → use "list"
 - All schemas must be valid JSON with property names and string values in double quotes.
 - The meta property at the root is required: { "meta": { "name": "...", "description": "...", "icon": "..." } }
 - Always set `bg: 'neutral-50'` on root-level schema nodes (templates, pages). This ensures proper background in all themes — without it, dark mode renders white backgrounds.

@@ -146,19 +146,6 @@
       ]
     },
     {
-      "tagName": "we-card",
-      "className": "Card",
-      "superclass": "DesignSystemElement",
-      "ownProps": [
-        {
-          "name": "variant",
-          "type": "'' | 'elevated' | 'outlined' | 'filled'",
-          "optional": false,
-          "default": "''"
-        }
-      ]
-    },
-    {
       "tagName": "we-checkbox",
       "className": "Checkbox",
       "superclass": "DesignSystemElement",
@@ -665,6 +652,25 @@
       ]
     },
     {
+      "tagName": "we-markdown",
+      "className": "Markdown",
+      "superclass": "DesignSystemElement",
+      "ownProps": [
+        {
+          "name": "content",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "markdownGap",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        }
+      ]
+    },
+    {
       "tagName": "we-menu",
       "className": "Menu",
       "superclass": "DesignSystemElement",
@@ -1141,7 +1147,7 @@
           "default": "''"
         },
         {
-          "name": "active",
+          "name": "selected",
           "type": "boolean",
           "optional": false,
           "default": "false"
@@ -1149,6 +1155,11 @@
         {
           "name": "label",
           "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "selectedProps",
+          "type": "Partial<DesignSystemProps> | undefined",
           "optional": true
         }
       ]
@@ -1159,7 +1170,7 @@
       "superclass": "DesignSystemElement",
       "ownProps": [
         {
-          "name": "activeKey",
+          "name": "selectedKey",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -3153,6 +3164,11 @@
           "optional": true
         },
         {
+          "name": "streamingContent",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "placeholder",
           "type": "string",
           "optional": true
@@ -3245,6 +3261,56 @@
         {
           "name": "onPickerCancel",
           "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "mode",
+          "type": "\"chat\" | \"code\"",
+          "optional": true
+        },
+        {
+          "name": "schemaJson",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onModeChange",
+          "type": "((mode: \"chat\" | \"code\") => void)",
+          "optional": true
+        },
+        {
+          "name": "onSchemaEdit",
+          "type": "((json: string) => void)",
+          "optional": true
+        },
+        {
+          "name": "sessions",
+          "type": "SessionInfo[]",
+          "optional": true
+        },
+        {
+          "name": "activeSessionId",
+          "type": "string | null",
+          "optional": true
+        },
+        {
+          "name": "onNewChat",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "onSwitchSession",
+          "type": "((sessionId: string) => void)",
+          "optional": true
+        },
+        {
+          "name": "onDeleteSession",
+          "type": "((sessionId: string) => void)",
+          "optional": true
+        },
+        {
+          "name": "operationLoading",
+          "type": "string | null",
           "optional": true
         }
       ],
@@ -3570,6 +3636,13 @@
           "default": "'default'"
         },
         {
+          "name": "defaultTemplateId",
+          "type": "string",
+          "predicate": "we://default_template",
+          "required": false,
+          "default": "'default'"
+        },
+        {
           "name": "currentThemeId",
           "type": "string",
           "predicate": "we://current_theme",
@@ -3674,6 +3747,47 @@
         }
       ],
       "relations": []
+    },
+    {
+      "name": "ChatMessage",
+      "className": "ChatMessage",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "role",
+          "type": "string",
+          "predicate": "we://role",
+          "required": false
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "predicate": "we://content",
+          "required": false
+        }
+      ],
+      "relations": []
+    },
+    {
+      "name": "ChatSession",
+      "className": "ChatSession",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "predicate": "we://name",
+          "required": false
+        }
+      ],
+      "relations": [
+        {
+          "name": "messages",
+          "kind": "HasMany",
+          "predicate": "we://chat_message",
+          "target": "ChatMessage"
+        }
+      ]
     },
     {
       "name": "CodeBlock",
@@ -4197,7 +4311,14 @@
           "required": false
         }
       ],
-      "relations": []
+      "relations": [
+        {
+          "name": "chatSessions",
+          "kind": "HasMany",
+          "predicate": "we://chat_session",
+          "target": "ChatSession"
+        }
+      ]
     },
     {
       "name": "TextBlock",

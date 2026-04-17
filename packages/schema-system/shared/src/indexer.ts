@@ -240,6 +240,68 @@ export function extractByPath(schema: SchemaNode, path: number[]): SchemaNode | 
 }
 
 /**
+ * Validate that each patch's path is reachable in the current schema
+ * and that each replacement node has a 'type' field.
+ */
+export function validatePatches(
+  patches: Array<{ path: number[]; node: unknown }>,
+  schema: SchemaNode,
+): { valid: true } | { valid: false; error: string } {
+  for (const { path, node } of patches) {
+    // Validate all path elements are integers
+    for (let j = 0; j < path.length; j++) {
+      if (typeof path[j] !== 'number' || !Number.isInteger(path[j])) {
+        return {
+          valid: false,
+          error: `Path [${path.join(', ')}] invalid: element at index ${j} is "${path[j]}" — path must contain only integers, not strings like "children" or "routes"`,
+        };
+      }
+    }
+
+    let target: SchemaNode = schema;
+    for (let i = 0; i < path.length; i++) {
+      if (path[i] === -1) {
+        const routes = target.routes;
+        const routeIdx = path[i + 1];
+        if (routeIdx === undefined) {
+          return { valid: false, error: `Path [${path.join(', ')}] invalid: -1 at end with no route index` };
+        }
+        if (!routes || routeIdx < 0 || routeIdx >= routes.length) {
+          return {
+            valid: false,
+            error: `Path [${path.join(', ')}] invalid: route index ${routeIdx} out of bounds (node has ${routes?.length ?? 0} routes)`,
+          };
+        }
+        target = routes[routeIdx] as SchemaNode;
+        i++;
+        continue;
+      }
+
+      const children = target.children;
+      if (!children || path[i] < 0 || path[i] >= children.length) {
+        return {
+          valid: false,
+          error: `Path [${path.join(', ')}] invalid: index ${path[i]} out of bounds at depth ${i} (node has ${children?.length ?? 0} children)`,
+        };
+      }
+      const child = children[path[i]];
+      if (typeof child === 'string' || child === null || child === undefined) {
+        return {
+          valid: false,
+          error: `Path [${path.join(', ')}] invalid: node at depth ${i} is a text node, not a SchemaNode`,
+        };
+      }
+      target = child as SchemaNode;
+    }
+
+    if (!node || typeof node !== 'object' || !('type' in node)) {
+      return { valid: false, error: `Patch at [${path.join(', ')}]: node must have a 'type' field` };
+    }
+  }
+  return { valid: true };
+}
+
+/**
  * Patch a subtree into a schema at the given path.
  * Returns a new schema with the subtree replaced (does not mutate the original).
  */

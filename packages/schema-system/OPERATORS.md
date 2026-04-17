@@ -723,11 +723,17 @@ Iterate over an array and render a template for each item.
     as: 'template'
   },
   children: [{
-    type: 'we-card',
+    type: 'Column',
     props: {
-      title: '$template.meta.name',
-      icon: '$template.meta.icon'
-    }
+      bg: 'neutral-0',
+      r: '400',
+      border: '1px solid neutral-200',
+      p: '400',
+      gap: '300'
+    },
+    children: [
+      { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$template.meta.name'] }
+    ]
   }]
 }
 ```

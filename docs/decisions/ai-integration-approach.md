@@ -56,12 +56,12 @@ We sends messages + tool schemas → AD4M forwards to the configured LLM → ret
 
 ### Earlier concerns about AD4M routing, reconsidered
 
-| Initial Concern | Reality |
-|---|---|
-| "Dependency bottleneck / two repos" | The AD4M change is a one-time API extension, not ongoing feature coupling |
-| "Round-trip overhead via GraphQL" | Negligible vs LLM inference time (seconds). Local GraphQL hop is <1ms |
-| "Streaming through GraphQL is painful" | AD4M already does streaming subscriptions for transcription — same pattern |
-| "Wrong abstraction layer" | Actually the right one — AD4M abstracts the provider, app defines the tools |
+| Initial Concern                        | Reality                                                                     |
+| -------------------------------------- | --------------------------------------------------------------------------- |
+| "Dependency bottleneck / two repos"    | The AD4M change is a one-time API extension, not ongoing feature coupling   |
+| "Round-trip overhead via GraphQL"      | Negligible vs LLM inference time (seconds). Local GraphQL hop is <1ms       |
+| "Streaming through GraphQL is painful" | AD4M already does streaming subscriptions for transcription — same pattern  |
+| "Wrong abstraction layer"              | Actually the right one — AD4M abstracts the provider, app defines the tools |
 
 ### No credential duplication
 
@@ -80,6 +80,7 @@ AD4M already supports any OpenAI-compatible endpoint. The tool-calling extension
 ### On custom-trained models (future)
 
 A custom model fine-tuned for We's schema system and tools would be attractive:
+
 - Better schema generation trained on the DSL/token system
 - More reliable tool calling for specific tool definitions
 - Smaller model runnable locally, no API costs

@@ -75,6 +75,25 @@ export function resolveSetLocalProp(
   };
 }
 
+/** Resolves $toggleLocal tokens: { $toggleLocal: "fieldName" } → event handler that toggles a boolean field */
+export function resolveToggleLocalProp(value: { $toggleLocal: string }, context: Props): () => void {
+  const localState = context.$local as Record<string, () => unknown> | undefined;
+  const localSetters = context.$localSetters as Record<string, (v: unknown) => void> | undefined;
+  if (!localState || !localSetters) {
+    console.warn(`Schema $toggleLocal: no $localState in scope for "${value.$toggleLocal}"`);
+    return () => {};
+  }
+  const accessor = localState[value.$toggleLocal];
+  const setter = localSetters[value.$toggleLocal];
+  if (!accessor || !setter) {
+    console.warn(`Schema $toggleLocal: field "${value.$toggleLocal}" not declared in $localState`);
+    return () => {};
+  }
+  return () => {
+    setter(!accessor());
+  };
+}
+
 // --- Validation token resolvers ---
 
 function getMeta(context: Props): LocalMetaMap | undefined {

@@ -11,9 +11,6 @@ export class ChatSession extends WeNode {
   @Property({ through: 'we://name' })
   name: string = '';
 
-  @Property({ through: 'we://updated_at' })
-  updatedAt: string = '';
-
   @HasMany(() => ChatMessage, { through: 'we://chat_message' })
   messages: ChatMessage[] = [];
 }

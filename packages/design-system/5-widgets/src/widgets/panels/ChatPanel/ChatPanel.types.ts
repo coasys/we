@@ -7,8 +7,6 @@ export interface ChatMessage {
   content: string;
   createdAt?: string;
   status?: 'sending' | 'streaming' | 'sent' | 'error';
-  messageType?: 'text' | 'success' | 'error' | 'info';
-  thinking?: string;
 }
 
 /**

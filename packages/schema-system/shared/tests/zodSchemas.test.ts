@@ -140,6 +140,19 @@ describe('zodSchemas', () => {
     expect(() => zSchemaProp.parse({ $setLocal: 'name', from: '' })).toThrow();
   });
 
+  // --- $toggleLocal ---
+  it('accepts $toggleLocal token as SchemaProp', () => {
+    expect(() => zSchemaProp.parse({ $toggleLocal: 'showComments' })).not.toThrow();
+  });
+
+  it('rejects $toggleLocal with empty string', () => {
+    expect(() => zSchemaProp.parse({ $toggleLocal: '' })).toThrow();
+  });
+
+  it('rejects $toggleLocal with extra keys (strict)', () => {
+    expect(() => zSchemaProp.parse({ $toggleLocal: 'name', extra: true })).toThrow();
+  });
+
   // --- $localState on SchemaNode ---
   it('accepts SchemaNode with $localState declaration', () => {
     const node = {

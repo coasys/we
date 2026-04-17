@@ -20,7 +20,38 @@ export const rules = `
 - Omit empty \`props\` and \`children\` — both are optional. Do not write \`props: {}\` or \`children: []\`.
 - Do not use \`as const\` on schema node \`type\` fields — \`SchemaNode.type\` is \`string\`, so it is never needed.
 - For icon-only buttons, nest a \`we-icon\` child inside \`we-button\` rather than using a \`text\` prop with a Unicode character. Example: \`{ type: 'we-button', props: { variant: 'ghost', size: 'sm' }, children: [{ type: 'we-icon', props: { name: 'x', size: '20px' } }] }\`.
+- NEVER pass a bare number like "16" as a size or dimension prop — it is not valid CSS. Always check the component's declared prop type: if it's a string union, use one of the listed values; if it accepts arbitrary strings, include a CSS unit (e.g. "16px", "2rem").
 - For interactive list items and selectable options, use \`we-button\` with variant switching (e.g., \`secondary\` when selected, \`ghost\` when not) instead of manually styling \`Row\` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
+- For card-like layouts, compose from \`Column\` with DS props (bg, r, border, p, gap). This gives full control over spacing and appearance.
+- When rendering lists of similar items (posts, cards, users, etc.), ALWAYS use \`$each\` with a single template child — never duplicate the same node structure multiple times. Use literal arrays in \`items\` for static data, or \`$store\`/\`$query\` for dynamic data.
+
+### Icon Names (Phosphor Icons)
+
+we-icon uses **Phosphor Icons** (v2.1). Do NOT use Heroicons, Material, or FontAwesome names.
+Phosphor names are lowercase-kebab-case. The \`weight\` prop controls style: "regular" (default), "bold", "fill", "light", "thin", "duotone".
+
+Common Phosphor icon names (use these, NOT Heroicons equivalents):
+- Navigation: house, arrow-left, arrow-right, caret-left, caret-right, caret-down, caret-up, arrows-clockwise
+- Actions: plus, minus, x, check, pencil-simple, trash, copy, download, upload, share, link, magnifying-glass, funnel, sliders-horizontal
+- Communication: chat-circle, chat-dots, envelope-simple, paper-plane-tilt, bell, megaphone
+- Social: heart, thumbs-up, thumbs-down, star, share-network, users, user, user-plus
+- Media: image, camera, play, pause, stop, microphone, speaker-high, video-camera
+- Files: file, file-text, folder, folder-open, clipboard-text, note
+- UI: list, squares-four, gear, dots-three, dots-three-vertical, warning, info, question, check-circle, x-circle, eye, eye-slash
+- Misc: lightning, rocket, globe, map-pin, calendar, clock, tag, bookmark, flag, lock, shield-check
+
+WRONG icon names (Heroicons/Material — do NOT use):
+- "chat-bubble-left" → use "chat-circle"
+- "chevron-right" → use "caret-right"
+- "cog" / "settings" → use "gear"
+- "trash-can" → use "trash"
+- "magnifying-glass-circle" → use "magnifying-glass"
+- "home" → use "house"
+- "favorite" → use "heart"
+- "delete" → use "trash"
+- "search" → use "magnifying-glass"
+- "close" → use "x"
+- "menu" → use "list"
 - All schemas must be valid JSON with property names and string values in double quotes.
 - The meta property at the root is required: { "meta": { "name": "...", "description": "...", "icon": "..." } }
 - Always set \`bg: 'neutral-50'\` on root-level schema nodes (templates, pages). This ensures proper background in all themes — without it, dark mode renders white backgrounds.

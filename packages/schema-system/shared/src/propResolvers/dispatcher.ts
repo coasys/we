@@ -17,6 +17,7 @@ import {
   resolveLocalProp,
   resolveResetLocalProp,
   resolveSetLocalProp,
+  resolveToggleLocalProp,
   resolveTouchedProp,
   resolveTouchProp,
   resolveValidProp,
@@ -63,6 +64,8 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$formValid', 'string')) return resolveFormValidProp(context);
     if (hasToken(value, '$touch', 'string')) return resolveTouchProp(value as { $touch: string }, context);
     if (hasToken(value, '$resetLocal', 'string')) return resolveResetLocalProp(context);
+    if (hasToken(value, '$toggleLocal', 'string'))
+      return resolveToggleLocalProp(value as { $toggleLocal: string }, context);
     if (hasToken(value, '$action', 'string')) return resolveActionProp(value, context, stores, memo, resolveProp);
     if (hasToken(value, '$concat', 'array'))
       return resolveConcatProp((value as { $concat: unknown[] })['$concat'], stores, context, memo, resolveProp);
