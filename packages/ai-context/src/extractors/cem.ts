@@ -18,8 +18,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  */
 const typeExpansions: Record<string, string> = {
   // Primitives
-  IconSize: "'' | 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}'",
-  AvatarSizeValue: "'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}'",
+  ComponentSize: "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
+  ComponentVariant: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
+  IconSize: "'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}'",
+  SizeValue: "'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}'",
   TextVariant:
     "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg'",
   TextTag: "'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div'",

@@ -7,9 +7,9 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'info' | 'success' | 'warning' | 'error'",
+          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
           "optional": false,
-          "default": "'info'"
+          "default": "'primary'"
         },
         {
           "name": "dismissible",
@@ -80,15 +80,15 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'' | 'primary' | 'success' | 'danger' | 'warning'",
+          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
           "optional": false,
-          "default": "''"
+          "default": "'neutral'"
         },
         {
           "name": "size",
-          "type": "'' | 'sm' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
-          "default": "''"
+          "default": "'md'"
         }
       ]
     },
@@ -111,7 +111,7 @@
         },
         {
           "name": "size",
-          "type": "'xs' | 'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         },
@@ -176,7 +176,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -257,7 +257,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -356,7 +356,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -400,9 +400,9 @@
         },
         {
           "name": "size",
-          "type": "'' | 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}'",
           "optional": false,
-          "default": "''"
+          "default": "'md'"
         },
         {
           "name": "weight",
@@ -571,7 +571,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -756,7 +756,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -787,7 +787,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -842,13 +842,13 @@
         },
         {
           "name": "variant",
-          "type": "'default' | 'success' | 'warning' | 'danger'",
+          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
           "optional": false,
-          "default": "'default'"
+          "default": "'primary'"
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -885,7 +885,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -953,7 +953,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -1003,7 +1003,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -1077,7 +1077,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         },
@@ -1096,9 +1096,9 @@
       "ownProps": [
         {
           "name": "size",
-          "type": "'' | 'sm' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
-          "default": "''"
+          "default": "'md'"
         },
         {
           "name": "color",
@@ -1139,7 +1139,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -1194,9 +1194,9 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'default' | 'primary' | 'success' | 'warning' | 'danger'",
+          "type": "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
           "optional": false,
-          "default": "'default'"
+          "default": "'neutral'"
         },
         {
           "name": "dismissible",
@@ -1315,7 +1315,7 @@
         },
         {
           "name": "size",
-          "type": "'sm' | 'md' | 'lg'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
         }
@@ -4496,7 +4496,7 @@
     },
     {
       "name": "avatarSize",
-      "type": "Record<AvatarSizeToken, string>",
+      "type": "Record<SizeToken, string>",
       "values": {
         "xxs": "1rem",
         "xs": "1.5rem",
@@ -4575,6 +4575,17 @@
         "thumbBoxShadow": "none",
         "thumbBorderRadius": "radius['pill']",
         "thumbBackground": "var(--we-color-neutral-100)"
+      }
+    },
+    {
+      "name": "componentHeight",
+      "type": "Record<ComponentSize, string>",
+      "values": {
+        "xs": "1.5rem",
+        "sm": "2rem",
+        "md": "2.5rem",
+        "lg": "3rem",
+        "xl": "3.5rem"
       }
     },
     {

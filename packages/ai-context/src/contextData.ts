@@ -9,7 +9,12 @@ export const contextData: ContextData = {
       className: 'Alert',
       superclass: 'DesignSystemElement',
       ownProps: [
-        { name: 'variant', type: "'info' | 'success' | 'warning' | 'error'", optional: false, default: "'info'" },
+        {
+          name: 'variant',
+          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
+          optional: false,
+          default: "'primary'",
+        },
         { name: 'dismissible', type: 'boolean', optional: false, default: 'false' },
       ],
     },
@@ -37,8 +42,13 @@ export const contextData: ContextData = {
       className: 'Badge',
       superclass: 'DesignSystemElement',
       ownProps: [
-        { name: 'variant', type: "'' | 'primary' | 'success' | 'danger' | 'warning'", optional: false, default: "''" },
-        { name: 'size', type: "'' | 'sm' | 'lg'", optional: false, default: "''" },
+        {
+          name: 'variant',
+          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
+          optional: false,
+          default: "'neutral'",
+        },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     { tagName: 'we-blockquote', className: 'Blockquote', superclass: 'DesignSystemElement', ownProps: [] },
@@ -53,7 +63,7 @@ export const contextData: ContextData = {
           optional: false,
           default: "'primary'",
         },
-        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'text', type: 'string | undefined', optional: true },
         { name: 'href', type: 'string | undefined', optional: true },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
@@ -70,7 +80,7 @@ export const contextData: ContextData = {
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
         { name: 'value', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -105,7 +115,7 @@ export const contextData: ContextData = {
         { name: 'placeholder', type: 'string', optional: false, default: "'Select date'" },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -143,7 +153,7 @@ export const contextData: ContextData = {
         { name: 'description', type: 'string', optional: false, default: "''" },
         { name: 'error', type: 'string', optional: false, default: "''" },
         { name: 'required', type: 'boolean', optional: false, default: 'false' },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -162,12 +172,7 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'name', type: 'string', optional: false, default: "''" },
         { name: 'color', type: 'string', optional: false, default: "''" },
-        {
-          name: 'size',
-          type: "'' | 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}'",
-          optional: false,
-          default: "''",
-        },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}'", optional: false, default: "'md'" },
         {
           name: 'weight',
           type: "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'",
@@ -223,7 +228,7 @@ export const contextData: ContextData = {
         { name: 'required', type: 'boolean', optional: false, default: 'false' },
         { name: 'readonly', type: 'boolean', optional: false, default: 'false' },
         { name: 'type', type: 'string', optional: false, default: "'text'" },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -297,7 +302,7 @@ export const contextData: ContextData = {
         { name: 'step', type: 'number', optional: false, default: '1' },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -308,7 +313,7 @@ export const contextData: ContextData = {
         { name: 'page', type: 'number', optional: false, default: '1' },
         { name: 'total', type: 'number', optional: false, default: '1' },
         { name: 'siblings', type: 'number', optional: false, default: '1' },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -338,11 +343,11 @@ export const contextData: ContextData = {
         { name: 'max', type: 'number', optional: false, default: '100' },
         {
           name: 'variant',
-          type: "'default' | 'success' | 'warning' | 'danger'",
+          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
           optional: false,
-          default: "'default'",
+          default: "'primary'",
         },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -354,7 +359,7 @@ export const contextData: ContextData = {
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
         { name: 'value', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -377,7 +382,7 @@ export const contextData: ContextData = {
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'searchable', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -393,7 +398,7 @@ export const contextData: ContextData = {
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'searchable', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -417,7 +422,7 @@ export const contextData: ContextData = {
         { name: 'step', type: 'number', optional: false, default: '1' },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'showValue', type: 'boolean', optional: false, default: 'false' },
       ],
     },
@@ -426,7 +431,7 @@ export const contextData: ContextData = {
       className: 'Spinner',
       superclass: 'LayoutElement',
       ownProps: [
-        { name: 'size', type: "'' | 'sm' | 'lg'", optional: false, default: "''" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
         { name: 'color', type: 'string', optional: false, default: "''" },
       ],
     },
@@ -439,7 +444,7 @@ export const contextData: ContextData = {
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
         { name: 'value', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -466,9 +471,9 @@ export const contextData: ContextData = {
       ownProps: [
         {
           name: 'variant',
-          type: "'default' | 'primary' | 'success' | 'warning' | 'danger'",
+          type: "'neutral' | 'primary' | 'success' | 'warning' | 'danger'",
           optional: false,
-          default: "'default'",
+          default: "'neutral'",
         },
         { name: 'dismissible', type: 'boolean', optional: false, default: 'false' },
       ],
@@ -511,7 +516,7 @@ export const contextData: ContextData = {
         { name: 'required', type: 'boolean', optional: false, default: 'false' },
         { name: 'readonly', type: 'boolean', optional: false, default: 'false' },
         { name: 'resize', type: "'none' | 'vertical' | 'horizontal' | 'both'", optional: false, default: "'vertical'" },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
     {
@@ -1467,7 +1472,7 @@ export const contextData: ContextData = {
     },
     {
       name: 'avatarSize',
-      type: 'Record<AvatarSizeToken, string>',
+      type: 'Record<SizeToken, string>',
       values: { xxs: '1rem', xs: '1.5rem', sm: '2rem', md: '2.5rem', lg: '3rem', xl: '4rem', xxl: '5rem' },
     },
     {
@@ -1518,6 +1523,11 @@ export const contextData: ContextData = {
         thumbBorderRadius: "radius['pill']",
         thumbBackground: 'var(--we-color-neutral-100)',
       },
+    },
+    {
+      name: 'componentHeight',
+      type: 'Record<ComponentSize, string>',
+      values: { xs: '1.5rem', sm: '2rem', md: '2.5rem', lg: '3rem', xl: '3.5rem' },
     },
     {
       name: 'effect.depth',
