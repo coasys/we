@@ -194,7 +194,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-alert (DesignSystemElement)
   Props: variant: 'info' | 'success' | 'warning' | 'error' = 'info', dismissible: boolean = false
 - we-avatar (LayoutElement)
-  Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: AvatarSizeValue | undefined, clickable: boolean = false
+  Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
 - we-badge (DesignSystemElement)
   Props: variant: '' | 'primary' | 'success' | 'danger' | 'warning' = '', size: '' | 'sm' | 'lg' = ''
 - we-blockquote (DesignSystemElement)
@@ -221,7 +221,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-grid (DesignSystemElement)
   Props: columns: number = 1, minChildWidth: string = ''
 - we-icon (LayoutElement)
-  Props: name: string = '', color: string = '', size: IconSize = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular'
+  Props: name: string = '', color: string = '', size: '' | 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular'
 - we-iframe (LayoutElement)
   Props: src: string = '', title: string = 'Embedded content', allow: string = ''
 - we-image (LayoutElement)
@@ -244,7 +244,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-pagination (DesignSystemElement)
   Props: page: number = 1, total: number = 1, siblings: number = 1, size: 'sm' | 'md' | 'lg' = 'md'
 - we-popover (LayoutElement)
-  Props: open: boolean = false, placement: Placement = 'bottom', popoverElement: HTMLElement, triggerElement: HTMLElement
+  Props: open: boolean = false, placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'bottom', popoverElement: HTMLElement, triggerElement: HTMLElement
 - we-progress-bar (DesignSystemElement)
   Props: value: number = 0, max: number = 100, variant: 'default' | 'success' | 'warning' | 'danger' = 'default', size: 'sm' | 'md' | 'lg' = 'md'
 - we-radio (DesignSystemElement)
@@ -268,11 +268,11 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-tag (DesignSystemElement)
   Props: variant: 'default' | 'primary' | 'success' | 'warning' | 'danger' = 'default', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: TextVariant = '', tag: TextTag = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false
+  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false
 - we-textarea (DesignSystemElement)
   Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'sm' | 'md' | 'lg' = 'md'
 - we-tooltip (LayoutElement)
-  Props: open: boolean = false, title: string = '', placement: Placement = 'top', tooltipEl: HTMLElement, triggerEl: HTMLElement, arrowEl: HTMLElement
+  Props: open: boolean = false, title: string = '', placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'top', tooltipEl: HTMLElement, triggerEl: HTMLElement, arrowEl: HTMLElement
 
 @we/components:
 - BlockComposer
@@ -350,7 +350,21 @@ with configurable styling, layout forces, and interaction handlers.
 
 ## Design System Props
 
-Most @we/primitives inherit **all** layers below. Props use design token values (e.g. "200", "md", "primary") — not raw CSS.
+Most @we/primitives inherit **all** layers below. Props use design token values — not raw CSS.
+
+### Token Value Reference
+
+| Token Type | Valid Values |
+|---|---|
+| SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
+| ColorValue | "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color) |
+| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length) |
+| ShadowValue | "sm", "md", "lg", "xl" |
+| FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
+| FontFamilyValue | "base" (or CSS font-family) |
+| LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
+| LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
+| FontWeightValue | "100", "200", "300", "400", "500", "600", "700", "800", "900" |
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, we-tooltip
@@ -397,7 +411,7 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 | borderBottom | string | Bottom border shorthand (color tokens resolved) |
 | borderLeft | string | Left border shorthand (color tokens resolved) |
 | borderWidth | string | Border width (raw CSS, e.g. "1px", "2px 0") |
-| shadow | ShadowValue | Shadow token |
+| shadow | "sm" \| "md" \| "lg" \| "xl" | Shadow token |
 | cursor | "pointer" \| "default" \| "text" \| "not-allowed" | Cursor style |
 | pointerEvents | "none" \| "auto" | Pointer events |
 | transform | string | CSS transform |
@@ -434,11 +448,11 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 | Prop | Type | Description |
 |------|------|-------------|
 | textAlign | "left" \| "center" \| "right" \| "justify" | Text alignment |
-| fontFamily | FontFamilyValue | Font family token |
-| fontWeight | FontWeightValue \| "light" \| "normal" \| "medium" \| "bold" \| "bolder" | Font weight |
-| fontSize | FontSizeValue | Font size token |
-| lineHeight | LineHeightValue | Line height token |
-| letterSpacing | LetterSpacingValue | Letter spacing token |
+| fontFamily | "base" \| {css-font-family} | Font family token |
+| fontWeight | "100"–"900" \| "light" \| "normal" \| "medium" \| "bold" \| "bolder" | Font weight |
+| fontSize | "base" \| "100"–"1000" \| {css-length} | Font size token |
+| lineHeight | "none" \| "tight" \| "snug" \| "normal" \| "relaxed" \| "loose" | Line height token |
+| letterSpacing | "tighter" \| "tight" \| "normal" \| "wide" \| "wider" \| "widest" | Letter spacing token |
 | textDecoration | "underline" \| "line-through" \| "overline" \| "none" | Text decoration |
 | textTransform | "uppercase" \| "lowercase" \| "capitalize" \| "none" | Text transform |
 

@@ -7,7 +7,21 @@
 export const designSystemProps = `
 ## Design System Props
 
-Most @we/primitives inherit **all** layers below. Props use design token values (e.g. "200", "md", "primary") — not raw CSS.
+Most @we/primitives inherit **all** layers below. Props use design token values — not raw CSS.
+
+### Token Value Reference
+
+| Token Type | Valid Values |
+|---|---|
+| SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
+| ColorValue | "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color) |
+| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length) |
+| ShadowValue | "sm", "md", "lg", "xl" |
+| FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
+| FontFamilyValue | "base" (or CSS font-family) |
+| LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
+| LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
+| FontWeightValue | "100", "200", "300", "400", "500", "600", "700", "800", "900" |
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, we-tooltip
@@ -54,7 +68,7 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 | borderBottom | string | Bottom border shorthand (color tokens resolved) |
 | borderLeft | string | Left border shorthand (color tokens resolved) |
 | borderWidth | string | Border width (raw CSS, e.g. "1px", "2px 0") |
-| shadow | ShadowValue | Shadow token |
+| shadow | "sm" \\| "md" \\| "lg" \\| "xl" | Shadow token |
 | cursor | "pointer" \\| "default" \\| "text" \\| "not-allowed" | Cursor style |
 | pointerEvents | "none" \\| "auto" | Pointer events |
 | transform | string | CSS transform |
@@ -91,11 +105,11 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 | Prop | Type | Description |
 |------|------|-------------|
 | textAlign | "left" \\| "center" \\| "right" \\| "justify" | Text alignment |
-| fontFamily | FontFamilyValue | Font family token |
-| fontWeight | FontWeightValue \\| "light" \\| "normal" \\| "medium" \\| "bold" \\| "bolder" | Font weight |
-| fontSize | FontSizeValue | Font size token |
-| lineHeight | LineHeightValue | Line height token |
-| letterSpacing | LetterSpacingValue | Letter spacing token |
+| fontFamily | "base" \\| {css-font-family} | Font family token |
+| fontWeight | "100"–"900" \\| "light" \\| "normal" \\| "medium" \\| "bold" \\| "bolder" | Font weight |
+| fontSize | "base" \\| "100"–"1000" \\| {css-length} | Font size token |
+| lineHeight | "none" \\| "tight" \\| "snug" \\| "normal" \\| "relaxed" \\| "loose" | Line height token |
+| letterSpacing | "tighter" \\| "tight" \\| "normal" \\| "wide" \\| "wider" \\| "widest" | Letter spacing token |
 | textDecoration | "underline" \\| "line-through" \\| "overline" \\| "none" | Text decoration |
 | textTransform | "uppercase" \\| "lowercase" \\| "capitalize" \\| "none" | Text transform |
 

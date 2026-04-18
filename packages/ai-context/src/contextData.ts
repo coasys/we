@@ -24,7 +24,11 @@ export const contextData: ContextData = {
         { name: 'online', type: 'boolean', optional: false, default: 'false' },
         { name: 'initials', type: 'string', optional: false, default: "''" },
         { name: 'icon', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: 'AvatarSizeValue | undefined', optional: true },
+        {
+          name: 'size',
+          type: "'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined",
+          optional: true,
+        },
         { name: 'clickable', type: 'boolean', optional: false, default: 'false' },
       ],
     },
@@ -171,7 +175,12 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'name', type: 'string', optional: false, default: "''" },
         { name: 'color', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: 'IconSize', optional: false, default: "''" },
+        {
+          name: 'size',
+          type: "'' | 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}'",
+          optional: false,
+          default: "''",
+        },
         {
           name: 'weight',
           type: "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'",
@@ -313,7 +322,12 @@ export const contextData: ContextData = {
       superclass: 'LayoutElement',
       ownProps: [
         { name: 'open', type: 'boolean', optional: false, default: 'false' },
-        { name: 'placement', type: 'Placement', optional: false, default: "'bottom'" },
+        {
+          name: 'placement',
+          type: "'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end'",
+          optional: false,
+          default: "'bottom'",
+        },
         { name: 'popoverElement', type: 'HTMLElement', optional: false },
         { name: 'triggerElement', type: 'HTMLElement', optional: false },
       ],
@@ -452,8 +466,18 @@ export const contextData: ContextData = {
       superclass: 'DesignSystemElement',
       ownProps: [
         { name: 'text', type: 'string | undefined', optional: true },
-        { name: 'variant', type: 'TextVariant', optional: false, default: "''" },
-        { name: 'tag', type: 'TextTag', optional: false, default: "'span'" },
+        {
+          name: 'variant',
+          type: "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg'",
+          optional: false,
+          default: "''",
+        },
+        {
+          name: 'tag',
+          type: "'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div'",
+          optional: false,
+          default: "'span'",
+        },
         { name: 'inline', type: 'boolean', optional: false, default: 'false' },
         { name: 'uppercase', type: 'boolean', optional: false, default: 'false' },
         { name: 'italic', type: 'boolean', optional: false, default: 'false' },
@@ -484,7 +508,12 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'open', type: 'boolean', optional: false, default: 'false' },
         { name: 'title', type: 'string', optional: false, default: "''" },
-        { name: 'placement', type: 'Placement', optional: false, default: "'top'" },
+        {
+          name: 'placement',
+          type: "'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end'",
+          optional: false,
+          default: "'top'",
+        },
         { name: 'tooltipEl', type: 'HTMLElement', optional: false },
         { name: 'triggerEl', type: 'HTMLElement', optional: false },
         { name: 'arrowEl', type: 'HTMLElement', optional: false },

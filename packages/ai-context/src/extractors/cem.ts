@@ -7,6 +7,43 @@ import type { PrimitiveEntry, PropEntry } from '../types.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Hand-maintained expansions for opaque type aliases that the regex-based
+ * buildTypeAliasMap cannot resolve (imported types, branded unions, typeof
+ * expressions, etc.).
+ *
+ * When adding new component prop types that expand to a string union,
+ * add them here so the AI receives the actual valid values instead of
+ * an opaque type name. The build will warn about any unresolved types
+ * not in this map.
+ */
+const typeExpansions: Record<string, string> = {
+  // Primitives
+  IconSize: "'' | 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}'",
+  AvatarSizeValue: "'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}'",
+  TextVariant:
+    "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg'",
+  TextTag: "'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div'",
+  Placement:
+    "'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end'",
+  ComboboxOption: '{ label: string; value: string; disabled?: boolean }',
+};
+
+/** Primitive types that are never opaque (no expansion needed). */
+const knownPrimitiveTypes = new Set([
+  'string',
+  'boolean',
+  'number',
+  'unknown',
+  'undefined',
+  'string | undefined',
+  'boolean | undefined',
+  'number | undefined',
+  'array',
+  'HTMLElement',
+  'File',
+]);
+
+/**
  * Build a map of named type aliases → resolved literal union text
  * by parsing `export type X = 'a' | 'b' | 'c';` from types.ts.
  */
@@ -61,6 +98,48 @@ interface CEMManifest {
 }
 
 /**
+ * Resolve a raw type string, expanding opaque names via the alias map
+ * (from types.ts) or the hand-maintained typeExpansions fallback.
+ * Handles compound types like "Foo | undefined" by resolving each part.
+ * Warns at build time about types that remain unresolved.
+ */
+function resolveType(rawType: string, typeAliases: Map<string, string>): string {
+  // Fast path: already resolved by buildTypeAliasMap
+  if (typeAliases.has(rawType)) return typeAliases.get(rawType)!;
+
+  // Fast path: known primitive / trivial
+  if (knownPrimitiveTypes.has(rawType)) return rawType;
+
+  // Already a string-literal union (e.g. "'xs' | 'sm' | 'md'")
+  if (rawType.includes("'")) return rawType;
+
+  // Resolve compound types: "AvatarSizeValue | undefined" → expand each part
+  const parts = rawType.split('|').map((p) => p.trim());
+  const resolved = parts.map((part) => {
+    if (knownPrimitiveTypes.has(part)) return part;
+    if (typeAliases.has(part)) return typeAliases.get(part)!;
+    if (typeExpansions[part]) return typeExpansions[part];
+    return part; // unresolved
+  });
+  const result = resolved.join(' | ');
+
+  // Warn about remaining opaque types (not primitive, not string-literal, not array notation)
+  for (const part of parts) {
+    if (knownPrimitiveTypes.has(part)) continue;
+    if (typeAliases.has(part)) continue;
+    if (typeExpansions[part]) continue;
+    if (part.includes("'")) continue;
+    if (part.endsWith('[]')) continue;
+    if (part.includes('=>')) continue; // function types
+    if (part.includes('<')) continue; // generic types like Partial<...>
+    if (part.startsWith('(')) continue; // grouped types like (string | ...)[]
+    console.warn(`⚠ Unresolved type "${part}" in "${rawType}" — add to typeExpansions in cem.ts`);
+  }
+
+  return result;
+}
+
+/**
  * Extract primitive web components from Custom Elements Manifest.
  * Only includes own props (not inherited DesignSystemProps).
  */
@@ -85,7 +164,7 @@ export function extractPrimitives(cemPath?: string): PrimitiveEntry[] {
         if (member.type?.text?.startsWith('DesignSystemProps[')) continue;
 
         const rawType = member.type?.text ?? 'unknown';
-        const resolvedType = typeAliases.get(rawType) ?? rawType;
+        const resolvedType = resolveType(rawType, typeAliases);
         ownProps.push({
           name: member.name,
           type: resolvedType,

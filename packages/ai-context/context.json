@@ -62,7 +62,7 @@
         },
         {
           "name": "size",
-          "type": "AvatarSizeValue | undefined",
+          "type": "'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined",
           "optional": true
         },
         {
@@ -443,7 +443,7 @@
         },
         {
           "name": "size",
-          "type": "IconSize",
+          "type": "'' | 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}'",
           "optional": false,
           "default": "''"
         },
@@ -847,7 +847,7 @@
         },
         {
           "name": "placement",
-          "type": "Placement",
+          "type": "'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end'",
           "optional": false,
           "default": "'bottom'"
         },
@@ -1208,13 +1208,13 @@
         },
         {
           "name": "variant",
-          "type": "TextVariant",
+          "type": "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg'",
           "optional": false,
           "default": "''"
         },
         {
           "name": "tag",
-          "type": "TextTag",
+          "type": "'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div'",
           "optional": false,
           "default": "'span'"
         },
@@ -1330,7 +1330,7 @@
         },
         {
           "name": "placement",
-          "type": "Placement",
+          "type": "'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end'",
           "optional": false,
           "default": "'top'"
         },
