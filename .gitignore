@@ -5,3 +5,6 @@ storybook.log
 custom-elements.json
 .coverage
 .env
+
+# Auto-generated icon bundle
+packages/design-system/3-primitives/src/generated/
