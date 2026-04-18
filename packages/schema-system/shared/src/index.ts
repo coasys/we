@@ -70,6 +70,17 @@ export type { LocalFieldMeta, LocalMetaMap } from './propResolvers';
 export { hasToken } from './predicates';
 export { themeToStyle } from './themeStyles';
 export { validateField } from './validation';
-export { computeSectionIndex, extractByPath, patchByPath, validatePatches, ensureSections } from './indexer';
-export type { SectionEntry, StoredTemplate } from './indexer';
+export {
+  computeSectionIndex,
+  extractByPath,
+  patchByPath,
+  validatePatches,
+  ensureSections,
+  ensureNodeIds,
+  findNodeById,
+  mergeNode,
+  insertChild,
+  removeChild,
+} from './indexer';
+export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from './indexer';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';

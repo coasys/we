@@ -239,9 +239,242 @@ export function extractByPath(schema: SchemaNode, path: number[]): SchemaNode | 
   return current;
 }
 
+// ── Node ID Patching Utilities ─────────────────────────────────────
+
+/** Result of finding a node by ID in the tree */
+export type FindNodeResult = {
+  node: SchemaNode;
+  parent: SchemaNode | null;
+  key: string; // 'children' | 'routes' | 'slots.<name>'
+  index: number;
+};
+
+/**
+ * Assign stable IDs to every node in the tree that lacks one.
+ * Deduplicates: if two nodes share the same ID, the second gets a new one.
+ * Mutates the schema in place and returns it.
+ */
+export function ensureNodeIds(schema: SchemaNode): SchemaNode {
+  // First pass: collect all existing IDs and find max numeric suffix
+  const existingIds = new Set<string>();
+  let maxSuffix = 0;
+
+  function collectIds(node: SchemaNode): void {
+    if (node.id) {
+      const m = /^n(\d+)$/.exec(node.id);
+      if (m) maxSuffix = Math.max(maxSuffix, parseInt(m[1], 10));
+    }
+    if (node.children) {
+      for (const child of node.children) {
+        if (isSchemaChild(child)) collectIds(child);
+      }
+    }
+    if (node.routes) {
+      for (const route of node.routes) collectIds(route as SchemaNode);
+    }
+    if (node.slots) {
+      for (const slotNode of Object.values(node.slots)) collectIds(slotNode);
+    }
+  }
+  collectIds(schema);
+
+  // Second pass: assign/deduplicate IDs
+  let counter = maxSuffix + 1;
+
+  function assignIds(node: SchemaNode): void {
+    if (!node.id) {
+      node.id = `n${counter++}`;
+    } else if (existingIds.has(node.id)) {
+      // Duplicate — reassign
+      node.id = `n${counter++}`;
+    }
+    existingIds.add(node.id);
+
+    if (node.children) {
+      for (const child of node.children) {
+        if (isSchemaChild(child)) assignIds(child);
+      }
+    }
+    if (node.routes) {
+      for (const route of node.routes) assignIds(route as SchemaNode);
+    }
+    if (node.slots) {
+      for (const slotNode of Object.values(node.slots)) assignIds(slotNode);
+    }
+  }
+  assignIds(schema);
+
+  return schema;
+}
+
+/**
+ * Find a node by its ID in the tree.
+ * Returns the node, its parent, which array key it lives in, and its index.
+ * Returns null if the ID is not found or is empty string.
+ */
+export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResult | null {
+  if (!targetId) return null;
+
+  function search(node: SchemaNode, parent: SchemaNode | null, key: string, index: number): FindNodeResult | null {
+    if (node.id === targetId) return { node, parent, key, index };
+
+    if (node.children) {
+      for (let i = 0; i < node.children.length; i++) {
+        const child = node.children[i];
+        if (isSchemaChild(child)) {
+          const result = search(child, node, 'children', i);
+          if (result) return result;
+        }
+      }
+    }
+    if (node.routes) {
+      for (let i = 0; i < node.routes.length; i++) {
+        const result = search(node.routes[i] as SchemaNode, node, 'routes', i);
+        if (result) return result;
+      }
+    }
+    if (node.slots) {
+      for (const [slotName, slotNode] of Object.entries(node.slots)) {
+        const result = search(slotNode, node, `slots.${slotName}`, 0);
+        if (result) return result;
+      }
+    }
+    return null;
+  }
+
+  return search(schema, null, 'root', 0);
+}
+
+/**
+ * Merge a partial node into an existing node using JSON Merge Patch semantics.
+ * - Keys present in patch override existing
+ * - Keys absent from patch are preserved
+ * - Keys set to null are deleted
+ * - Nested plain objects (e.g. props) are shallow-merged
+ * - Arrays (e.g. children, routes) replace entirely
+ * - The `id` field is always preserved from the existing node
+ */
+export function mergeNode(existing: SchemaNode, patch: Record<string, unknown>): SchemaNode {
+  const result = { ...existing };
+
+  for (const [key, value] of Object.entries(patch)) {
+    // Never allow overwriting id
+    if (key === 'id') continue;
+
+    if (value === null) {
+      // null = delete
+      delete (result as Record<string, unknown>)[key];
+    } else if (Array.isArray(value) || typeof value !== 'object' || value === undefined) {
+      // Primitives, arrays, undefined — replace directly
+      (result as Record<string, unknown>)[key] = value;
+    } else {
+      // Plain object — check if existing is also a plain object for shallow merge
+      const existingVal = (existing as Record<string, unknown>)[key];
+      if (existingVal && typeof existingVal === 'object' && !Array.isArray(existingVal)) {
+        // Shallow merge
+        const merged = { ...(existingVal as Record<string, unknown>) };
+        for (const [subKey, subVal] of Object.entries(value as Record<string, unknown>)) {
+          if (subVal === null) {
+            delete merged[subKey];
+          } else {
+            merged[subKey] = subVal;
+          }
+        }
+        (result as Record<string, unknown>)[key] = merged;
+      } else {
+        // No existing object to merge into — just assign
+        (result as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+
+  return result;
+}
+
+/** Error result from insert/remove operations */
+export type PatchError = { error: string };
+
+/**
+ * Insert a child node into a parent's children or routes array.
+ * Mutates the cloned schema. Returns error string on failure, undefined on success.
+ */
+export function insertChild(
+  schema: SchemaNode,
+  parentId: string,
+  arrayKey: 'children' | 'routes',
+  node: SchemaNode,
+  position?: { after: string } | { before: string },
+): PatchError | undefined {
+  // Find the parent
+  let parent: SchemaNode;
+  if (parentId === '') {
+    parent = schema;
+  } else {
+    const found = findNodeById(schema, parentId);
+    if (!found) return { error: `No node with id "${parentId}" found in the current schema.` };
+    parent = found.node;
+  }
+
+  // Ensure the array exists
+  if (!parent[arrayKey]) {
+    (parent as Record<string, unknown>)[arrayKey] = [];
+  }
+  const arr = parent[arrayKey] as SchemaNode[];
+
+  if (!position) {
+    // Append
+    arr.push(node);
+  } else if ('after' in position) {
+    const sibIdx = arr.findIndex((c) => (c as SchemaNode).id === position.after);
+    if (sibIdx === -1)
+      return { error: `Sibling id "${position.after}" not found in ${arrayKey} of node "${parentId}".` };
+    arr.splice(sibIdx + 1, 0, node);
+  } else {
+    const sibIdx = arr.findIndex((c) => (c as SchemaNode).id === position.before);
+    if (sibIdx === -1)
+      return { error: `Sibling id "${position.before}" not found in ${arrayKey} of node "${parentId}".` };
+    arr.splice(sibIdx, 0, node);
+  }
+
+  return undefined;
+}
+
+/**
+ * Remove a child node from a parent's children or routes array by child ID.
+ * Mutates the cloned schema. Returns error string on failure, undefined on success.
+ */
+export function removeChild(
+  schema: SchemaNode,
+  parentId: string,
+  arrayKey: 'children' | 'routes',
+  childId: string,
+): PatchError | undefined {
+  // Find the parent
+  let parent: SchemaNode;
+  if (parentId === '') {
+    parent = schema;
+  } else {
+    const found = findNodeById(schema, parentId);
+    if (!found) return { error: `No node with id "${parentId}" found in the current schema.` };
+    parent = found.node;
+  }
+
+  const arr = parent[arrayKey] as SchemaNode[] | undefined;
+  if (!arr) return { error: `Node "${parentId}" has no ${arrayKey} array.` };
+
+  const idx = arr.findIndex((c) => (c as SchemaNode).id === childId);
+  if (idx === -1) return { error: `Child id "${childId}" not found in ${arrayKey} of node "${parentId}".` };
+
+  arr.splice(idx, 1);
+  return undefined;
+}
+
+// ── Legacy path-based patching (deprecated — kept for backward compat) ──
+
 /**
  * Validate that each patch's path is reachable in the current schema
  * and that each replacement node has a 'type' field.
+ * @deprecated Use ID-based patching (findNodeById + mergeNode) instead.
  */
 export function validatePatches(
   patches: Array<{ path: number[]; node: unknown }>,
@@ -304,6 +537,7 @@ export function validatePatches(
 /**
  * Patch a subtree into a schema at the given path.
  * Returns a new schema with the subtree replaced (does not mutate the original).
+ * @deprecated Use ID-based patching (findNodeById + mergeNode + insertChild + removeChild) instead.
  */
 export function patchByPath(schema: SchemaNode, path: number[], replacement: SchemaNode): SchemaNode {
   if (path.length === 0) return replacement;
