@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { fluxSeedExample, minimalExample } from '../src/seed/examples';
+import { minimalExample } from '../src/seed/examples';
 import { processSeed, SeedProcessor } from '../src/seed/processor';
 import type { WeSeedFile } from '../src/types/seed';
 
