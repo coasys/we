@@ -1,4 +1,4 @@
-import { iconSizeToVar, parseBorder, tokenVar } from '@we/design-utils';
+import { parseBorder, tokenVar } from '@we/design-utils';
 import { createContext, createEffect, createMemo, createSignal, Index, type JSX, Show } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 
@@ -40,7 +40,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
   // Calculate collapsed width based on icon size, item padding, and sidebar padding
   const collapsedWidth = () =>
     props.collapsedWidth ??
-    `calc(${iconSizeToVar(props.iconSize ?? '')} + 2 * var(--sidebar-item-padding) + 2 * var(--sidebar-padding))`;
+    `calc(${tokenVar('size', props.iconSize, 'var(--we-size-md)')} + 2 * var(--sidebar-item-padding) + 2 * var(--sidebar-padding))`;
   const expandedWidth = () => props.expandedWidth ?? '240px';
 
   // Make items reactive

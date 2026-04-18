@@ -51,7 +51,7 @@ function sanitizeSvg(raw: string): string {
 const styles = css`
   :host {
     --icon-color: currentColor;
-    --icon-size: 26px; /* Default backwards compatible size */
+    --icon-size: var(--we-size-md);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -94,7 +94,7 @@ export default class Icon extends LayoutElement {
 
   @property({ type: String, reflect: true }) name = '';
   @property({ type: String, reflect: true }) color = '';
-  @property({ type: String, reflect: true }) size: IconSize = '';
+  @property({ type: String, reflect: true }) size: IconSize = 'md';
   @property({ type: String, reflect: true }) weight: IconWeight = 'regular';
 
   @state() private svg: string | undefined = undefined;
@@ -144,7 +144,7 @@ export default class Icon extends LayoutElement {
     if (props.has('color')) this.style.setProperty('--icon-color', tokenVar('color', this.color, 'currentColor'));
 
     // Handle custom size values (e.g., "20px", "2rem")
-    if (props.has('size') && this.size && !['xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'].includes(this.size)) {
+    if (props.has('size') && !['xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'].includes(this.size)) {
       this.style.setProperty('--icon-size', this.size);
     }
   }
