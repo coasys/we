@@ -7,8 +7,8 @@ import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import { IconSize, IconWeight } from '../types';
 
-// Module-level SVG cache — shared across all icon instances
-const svgCache = new Map<string, Promise<string>>();
+// Module-level SVG cache — holds resolved strings or pending promises
+const svgCache = new Map<string, string | Promise<string>>();
 
 // Configurable icon resolver
 let iconResolver: ((name: string, weight: IconWeight) => string | Promise<string>) | null = null;
@@ -106,42 +106,64 @@ export default class Icon extends LayoutElement {
   @state() private svg: string | undefined = undefined;
   @state() private error: boolean = false;
 
-  private async loadIcon() {
+  private loadIcon() {
     if (!this.name) return;
 
     const cacheKey = `${this.name}:${this.weight}`;
 
     if (!svgCache.has(cacheKey)) {
-      svgCache.set(cacheKey, this.fetchIcon());
+      const result = this.fetchIcon();
+      if (typeof result === 'string') {
+        // Synchronous resolution — cache the string directly
+        svgCache.set(cacheKey, result);
+      } else {
+        // Async resolution — cache the promise and replace with resolved value
+        const promise = result.then((svg) => {
+          svgCache.set(cacheKey, svg);
+          return svg;
+        });
+        svgCache.set(cacheKey, promise);
+      }
     }
 
-    try {
-      this.svg = await svgCache.get(cacheKey)!;
-    } catch (e) {
-      console.warn(`Failed to load icon "${this.name}":`, e);
-      this.error = true;
+    const cached = svgCache.get(cacheKey)!;
+    if (typeof cached === 'string') {
+      this.svg = cached;
+    } else {
+      cached
+        .then((svg) => {
+          this.svg = svg;
+        })
+        .catch((e) => {
+          console.warn(`Failed to load icon "${this.name}":`, e);
+          this.error = true;
+        });
     }
   }
 
-  private async fetchIcon(): Promise<string> {
-    // Use custom resolver if set
+  private fetchIcon(): string | Promise<string> {
     if (iconResolver) {
-      const result = await iconResolver(this.name, this.weight);
-      // If result looks like SVG, sanitize and return directly
-      if (result.trim().startsWith('<')) return sanitizeSvg(result);
-      // Otherwise treat as URL and fetch
-      const response = await fetch(result);
-      if (!response.ok) throw new Error(`Failed to fetch icon "${this.name}"`);
-      return sanitizeSvg(await response.text());
+      const result = iconResolver(this.name, this.weight);
+      if (typeof result === 'string') {
+        // Synchronous resolver return (bundled icon or URL)
+        return result.trim().startsWith('<') ? sanitizeSvg(result) : this.fetchUrl(result);
+      }
+      // Async resolver return
+      return result.then((r) => (r.trim().startsWith('<') ? sanitizeSvg(r) : this.fetchUrl(r)));
     }
+    return this.fetchUrl(this.buildCdnUrl());
+  }
 
-    const baseUrl = 'https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2.1.1/assets';
-    const fileName = this.weight === 'regular' ? this.name : `${this.name}-${this.weight}`;
-    const url = `${baseUrl}/${this.weight}/${fileName}.svg`;
-
+  private async fetchUrl(url: string): Promise<string> {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Failed to fetch icon "${this.name}"`);
     return sanitizeSvg(await response.text());
+  }
+
+  private buildCdnUrl(): string {
+    const baseUrl = 'https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2.1.1/assets';
+    const fileName = this.weight === 'regular' ? this.name : `${this.name}-${this.weight}`;
+    return `${baseUrl}/${this.weight}/${fileName}.svg`;
   }
 
   updated(props: Map<string, unknown>) {
