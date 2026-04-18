@@ -46,5 +46,6 @@ export type NumberInputSize = 'sm' | 'md' | 'lg';
 export type SliderSize = 'sm' | 'md' | 'lg';
 export type DrawerPosition = 'left' | 'right' | 'top' | 'bottom';
 export type PaginationSize = 'sm' | 'md' | 'lg';
-export type ComboboxSize = 'sm' | 'md' | 'lg';
+/** @deprecated Use SelectSize instead */
+export type ComboboxSize = SelectSize;
 export type DatePickerSize = 'sm' | 'md' | 'lg';

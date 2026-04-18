@@ -6,7 +6,7 @@ Rules and patterns for building UI components (`4-components/`) and widgets (`5-
 
 | Package                           | Scope                                                    | Examples                                     |
 | --------------------------------- | -------------------------------------------------------- | -------------------------------------------- |
-| `4-components` (`@we/components`) | Single-purpose Solid components composed from primitives | CircleButton, Column, Row, PopoverMenu       |
+| `4-components` (`@we/components`) | Single-purpose Solid components composed from primitives | CircleButton, Column, Row, DropdownMenu      |
 | `5-widgets` (`@we/widgets`)       | Composite blocks combining multiple components           | CollapsibleSidebar, CesiumGlobe, GraphWidget |
 
 Components are leaf-level building blocks. Widgets encapsulate higher-level features. Composition above widgets is handled by the schema system.
@@ -79,7 +79,7 @@ When a shared type has a field like `checked: boolean` but the Solid impl needs 
 
 ```ts
 // Solid-specific: items within arrays can pass reactive accessors
-type SolidToggleMenuItem = Omit<PopoverToggleMenuItem, 'checked'> & {
+type SolidDropdownMenuToggle = Omit<DropdownMenuToggle, 'checked'> & {
   checked: Accessor<boolean> | boolean;
 };
 ```
@@ -108,10 +108,10 @@ Add `@ai` tags to types with non-obvious contracts:
 
 ```ts
 /**
- * @ai Popover menu with checkbox-style toggle items for multi-select scenarios.
- * Items can be flat or nested in collapsible groups.
+ * @ai Flexible dropdown menu for actions, toggles, and grouped items.
+ * Use for context menus, settings panels, layer controls, and command palettes.
  */
-export interface PopoverToggleMenuProps { ... }
+export interface DropdownMenuProps { ... }
 ```
 
 **Add `@ai` when:** Complex option shapes, multiple related types, nested structures, or non-schema-renderable components.

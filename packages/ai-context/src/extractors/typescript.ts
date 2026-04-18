@@ -46,7 +46,7 @@ function extractFromDir(project: Project, dir: string, source: 'components' | 'w
       if (!firstParam) continue;
 
       // Check the type annotation text — works for both regular and destructured params
-      // e.g. "CircleButtonProps", "BlockComposerProps", "PopoverMenuProps<T>"
+      // e.g. "CircleButtonProps", "DropdownMenuProps", "SomeComponentProps<T>"
       const typeAnnotation = firstParam.getTypeNode()?.getText();
       if (!typeAnnotation || !/Props(?:$|<)/.test(typeAnnotation)) continue;
 

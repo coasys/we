@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  getIntegrationUrl,
-  hasCapability,
-  type IntegrationManifest,
-} from '../src/shared/integrationLoader';
+import { getIntegrationUrl, hasCapability, type IntegrationManifest } from '../src/shared/integrationLoader';
 
 describe('IntegrationLoader', () => {
   describe('loadIntegrations', () => {

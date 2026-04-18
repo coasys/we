@@ -21,6 +21,10 @@ const styles = css`
   }
 `;
 
+/**
+ * Vertical list container for menu items inside a popover.
+ * Not a standalone selector — wrap in we-popover for dropdown behavior.
+ */
 @customElement('we-menu')
 export default class Menu extends DesignSystemElement {
   static styles = [sharedStyles, styles];

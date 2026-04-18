@@ -43,6 +43,10 @@ const styles = css`
   }
 `;
 
+/**
+ * Single actionable item inside a we-menu.
+ * Supports selected, active, and danger states.
+ */
 @customElement('we-menu-item')
 export default class MenuItem extends DesignSystemElement {
   static styles = [sharedStyles, styles];

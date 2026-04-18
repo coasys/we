@@ -1,76 +1,157 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { css, html, nothing } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import type { SelectSize } from '../types';
 
+export interface SelectOption {
+  label: string;
+  value: string;
+  disabled?: boolean;
+}
+
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
-  display: 'flex',
-  ay: 'center',
-  px: '300',
-  py: '200',
-  fontSize: '400',
-  bg: 'neutral-75',
-  r: '300',
-  color: 'neutral-1000',
-  hoverProps: { bg: 'neutral-100' },
-  focusProps: { bg: 'neutral-100', shadow: '0 0 0 2px var(--we-color-primary-500)' },
+  display: 'inline-flex',
+  direction: 'column',
 };
 
 const SIZE_DEFAULTS: Record<SelectSize, Partial<DesignSystemProps>> = {
-  sm: { px: '200', py: '100', fontSize: '300' },
-  md: { px: '300', py: '200', fontSize: '400' },
-  lg: { px: '400', py: '300', fontSize: '500' },
+  sm: { fontSize: '300' },
+  md: { fontSize: '400' },
+  lg: { fontSize: '500' },
+};
+
+const INPUT_HEIGHT: Record<SelectSize, string> = {
+  sm: '32px',
+  md: '40px',
+  lg: '48px',
 };
 
 const styles = css`
-  [part='select'] {
-    flex: 1;
-    border: none;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    outline: none;
-    padding: 0;
-    min-width: 0;
-    cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
+  :host {
+    min-width: 120px;
   }
 
-  [part='select-wrapper'] {
-    display: flex;
-    align-items: center;
-    width: 100%;
+  [part='input-wrapper'] {
     position: relative;
-  }
-
-  [part='arrow'] {
-    position: absolute;
-    right: 0;
-    pointer-events: none;
-    color: var(--we-color-neutral-500);
     display: flex;
     align-items: center;
+    border: 1px solid var(--we-color-neutral-300);
+    border-radius: var(--we-radius-400);
+    background: var(--we-color-neutral-0);
+    transition: border-color 0.15s ease;
+  }
+
+  [part='input-wrapper']:focus-within {
+    border-color: var(--we-color-primary-500);
+    outline: 2px solid var(--we-color-primary-100);
+    outline-offset: -1px;
+  }
+
+  input[part='native'] {
+    all: unset;
+    flex: 1;
+    padding: 0 var(--we-space-300);
+    font: inherit;
+    color: inherit;
+  }
+
+  [part='toggle'] {
+    all: unset;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0 var(--we-space-200);
+    opacity: 0.5;
+  }
+
+  [part='native-button'] {
+    all: unset;
+    flex: 1;
+    padding: 0 var(--we-space-300);
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  [part='native-button']:empty::before {
+    content: attr(placeholder);
+    color: var(--we-color-neutral-400);
+  }
+
+  [part='listbox'] {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 100%;
+    width: max-content;
+    z-index: 10;
+    max-height: 200px;
+    overflow-y: auto;
+    background: var(--we-color-neutral-0);
+    border: 1px solid var(--we-color-neutral-200);
+    border-radius: var(--we-radius-400);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    margin-top: var(--we-space-100);
+    padding: var(--we-space-100) 0;
+  }
+
+  [part='option'] {
+    padding: var(--we-space-200) var(--we-space-300);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.1s ease;
+  }
+
+  [part='option']:hover,
+  [part='option'][aria-selected='true'] {
+    background: var(--we-color-primary-50);
+  }
+
+  [part='option'][aria-disabled='true'] {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  [part='empty'] {
+    padding: var(--we-space-300);
+    color: var(--we-color-neutral-500);
+    text-align: center;
+  }
+
+  :host([disabled]) {
+    opacity: 0.5;
+    pointer-events: none;
   }
 `;
 
+/**
+ * Pick a single value from a list of options. Custom-rendered dropdown.
+ * Use for form fields, settings, filters. Set searchable=true for type-to-filter.
+ */
 @customElement('we-select')
 export default class Select extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: String, reflect: true }) value = '';
-  @property({ type: String, reflect: true }) name = '';
-  @property({ type: String, reflect: true }) placeholder = '';
+  @property({ type: Array }) options: SelectOption[] = [];
+  @property({ type: String }) value = '';
+  @property({ type: String }) placeholder = '';
   @property({ type: Boolean, reflect: true }) disabled = false;
-  @property({ type: Boolean, reflect: true }) required = false;
-  @property({ type: Array }) options: (string | { label: string; value: string })[] = [];
+  @property({ type: Boolean, reflect: true }) searchable = false;
+  @property({ type: String }) name = '';
   @property({ type: String, reflect: true }) size: SelectSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
+
+  @state() private _open = false;
+  @state() private _filter = '';
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -84,56 +165,114 @@ export default class Select extends DesignSystemElement {
     return mergeProps(usedProps, mergeProps(sizeDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
-  focus() {
-    this.renderRoot.querySelector('select')?.focus();
+  connectedCallback() {
+    super.connectedCallback();
+    this._onDocClick = this._onDocClick.bind(this);
+    document.addEventListener('click', this._onDocClick);
   }
 
-  private _handleChange(e: Event) {
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    document.removeEventListener('click', this._onDocClick);
+  }
+
+  private _onDocClick(e: Event) {
+    if (!this.contains(e.target as Node)) this._open = false;
+  }
+
+  private get _filtered() {
+    if (!this._filter) return this.options;
+    const q = this._filter.toLowerCase();
+    return this.options.filter((o) => o.label.toLowerCase().includes(q));
+  }
+
+  private get _displayValue() {
+    return this.options.find((o) => o.value === this.value)?.label ?? '';
+  }
+
+  private _onInput(e: Event) {
     e.stopPropagation();
-    this.value = (e.target as HTMLSelectElement)?.value;
-    this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true, composed: true }));
+    this._filter = (e.target as HTMLInputElement).value;
+    this._open = true;
   }
 
-  private _handleFocus() {
-    this.dispatchEvent(new CustomEvent('focus', { bubbles: true, composed: true }));
+  private _select(opt: SelectOption) {
+    if (opt.disabled) return;
+    this.value = opt.value;
+    this._filter = '';
+    this._open = false;
+    this.dispatchEvent(new CustomEvent('change', { detail: opt.value, bubbles: true, composed: true }));
   }
 
-  private _handleBlur() {
-    this.dispatchEvent(new CustomEvent('blur', { bubbles: true, composed: true }));
-  }
-
-  private _normalizeOption(opt: string | { label: string; value: string }) {
-    return typeof opt === 'string' ? { label: opt, value: opt } : opt;
+  private _toggle() {
+    this._open = !this._open;
   }
 
   render() {
-    const inline = this.styles || {};
+    const h = INPUT_HEIGHT[this.size];
+    const filtered = this._filtered;
+    const displayVal = this._open ? this._filter : this._displayValue;
+
     return html`
-      <div part="base" style=${styleMap(inline)}>
-        <div part="select-wrapper">
-          <select
-            part="select"
-            .value=${this.value}
-            ?disabled=${this.disabled}
-            ?required=${this.required}
-            @change=${this._handleChange}
-            @focus=${this._handleFocus}
-            @blur=${this._handleBlur}
-          >
-            ${this.placeholder && !this.value
-              ? html`<option value="" disabled selected>${this.placeholder}</option>`
-              : nothing}
-            ${(this.options || []).map((opt) => {
-              const { label, value } = this._normalizeOption(opt);
-              return html`<option value=${value} ?selected=${value === this.value}>${label}</option>`;
-            })}
-          </select>
-          <span part="arrow">
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
-              <polyline points="3 4.5 6 7.5 9 4.5"></polyline>
-            </svg>
-          </span>
+      <div part="base" style=${styleMap({ position: 'relative', ...this.styles })}>
+        <div part="input-wrapper" style=${styleMap({ height: h })}>
+          ${
+            this.searchable
+              ? html`
+                <input
+                  part="native"
+                  type="text"
+                  .value=${displayVal}
+                  placeholder=${this.placeholder || nothing}
+                  ?disabled=${this.disabled}
+                  role="combobox"
+                  aria-expanded=${this._open ? 'true' : 'false'}
+                  aria-autocomplete="list"
+                  @input=${this._onInput}
+                  @focus=${() => (this._open = true)}
+                />
+              `
+              : html`
+                <button
+                  part="native-button"
+                  ?disabled=${this.disabled}
+                  role="combobox"
+                  aria-expanded=${this._open ? 'true' : 'false'}
+                  @click=${this._toggle}
+                >
+                  ${this._displayValue || this.placeholder || nothing}
+                </button>
+              `
+          }
+          <button part="toggle" tabindex="-1" @click=${this._toggle} aria-label="Toggle options">
+            <we-icon name=${this._open ? 'caret-up' : 'caret-down'} size="16px"></we-icon>
+          </button>
         </div>
+        ${
+          this._open
+            ? html`
+              <div part="listbox" role="listbox">
+                ${
+                  filtered.length > 0
+                    ? filtered.map(
+                        (opt) => html`
+                        <div
+                          part="option"
+                          role="option"
+                          aria-selected=${opt.value === this.value ? 'true' : 'false'}
+                          aria-disabled=${opt.disabled ? 'true' : nothing}
+                          @click=${() => this._select(opt)}
+                        >
+                          ${opt.label}
+                        </div>
+                      `,
+                      )
+                    : html`<div part="empty">No results</div>`
+                }
+              </div>
+            `
+            : nothing
+        }
       </div>
     `;
   }

@@ -16,12 +16,15 @@ export {
 } from '../../components/buttons/IconLabelButton/IconLabelButton.solid';
 
 // Menus
-export { PopoverMenu, type PopoverMenuProps } from '../../components/menus/PopoverMenu/PopoverMenu.solid';
 export {
-  PopoverToggleMenu,
-  type PopoverToggleMenuProps,
-  type PopoverToggleMenuItem,
-} from '../../components/menus/PopoverToggleMenu/PopoverToggleMenu.solid';
+  DropdownMenu,
+  type DropdownMenuAction,
+  type DropdownMenuToggle,
+  type DropdownMenuGroup,
+  type DropdownMenuDivider,
+  type DropdownMenuEntry,
+  type DropdownMenuProps,
+} from '../../components/menus/DropdownMenu/DropdownMenu.solid';
 
 // Data
 export { Accordion, type AccordionItem, type AccordionProps } from '../../components/data/Accordion/Accordion.solid';

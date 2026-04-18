@@ -206,8 +206,6 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: block: boolean = false
 - we-color-picker (DesignSystemElement)
   Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ]
-- we-combobox (DesignSystemElement)
-  Props: options: ComboboxOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-divider (DesignSystemElement)
@@ -232,10 +230,12 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: href: string = '', target: string = '', rel: string = '', disabled: boolean = false
 - we-markdown (DesignSystemElement)
   Props: content: string = '', markdownGap: string = ''
-- we-menu (DesignSystemElement)
+- we-menu (DesignSystemElement) — Vertical list container for menu items inside a popover.
+Not a standalone selector — wrap in we-popover for dropdown behavior.
 - we-menu-group (LayoutElement)
   Props: collapsible: boolean = false, open: boolean = false, title: string = ''
-- we-menu-item (DesignSystemElement)
+- we-menu-item (DesignSystemElement) — Single actionable item inside a we-menu.
+Supports selected, active, and danger states.
   Props: selected: boolean = false, active: boolean = false, variant: 'default' | 'danger' = 'default', label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
@@ -243,7 +243,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: value: number = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-pagination (DesignSystemElement)
   Props: page: number = 1, total: number = 1, siblings: number = 1, size: 'sm' | 'md' | 'lg' = 'md'
-- we-popover (LayoutElement)
+- we-popover (LayoutElement) — Low-level floating panel anchored to a trigger element.
+Use DropdownMenu component for dropdown menus.
   Props: open: boolean = false, placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'bottom', popoverElement: HTMLElement, triggerElement: HTMLElement
 - we-progress-bar (DesignSystemElement)
   Props: value: number = 0, max: number = 100, variant: 'default' | 'success' | 'warning' | 'danger' = 'default', size: 'sm' | 'md' | 'lg' = 'md'
@@ -252,7 +253,10 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-scroll-area (DesignSystemElement)
   Props: maxHeight: string = '', maxWidth: string = ''
 - we-select (DesignSystemElement)
-  Props: value: string = '', name: string = '', placeholder: string = '', disabled: boolean = false, required: boolean = false, options: (string | { label: string; value: string })[] = [], size: 'sm' | 'md' | 'lg' = 'md'
+  Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md'
+- we-select (DesignSystemElement) — Pick a single value from a list of options. Custom-rendered dropdown.
+Use for form fields, settings, filters. Set searchable=true for type-to-filter.
+  Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, name: string = '', size: 'sm' | 'md' | 'lg' = 'md'
 - we-skeleton (DesignSystemElement)
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
@@ -297,18 +301,14 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexCrossAxis, ay?: FlexMainAxis
 - Dialog
   Props: children?: JSX.Element, onConfirm?: (() => void), onCancel?: (() => void), open?: boolean, title?: string, description?: string, confirmLabel?: string, cancelLabel?: string, variant?: "default" | "danger", styles?: Record<string, string | number>
+- DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
+  Props: class?: string, styles?: Record<string, string | number>, placement?: Placement, triggerLabel?: string, triggerIcon?: string, items: SolidDropdownMenuEntry[]
 - EditableImage
   Props: src?: string, alt?: string, fit?: "fill" | "none" | "cover" | "contain" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), class?: string, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, direction?: FlexDirection, ax?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", ay?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>
 - IconLabelButton
   Props: icon: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
 - List
   Props: children?: JSX.Element, renderItem?: ((item: ListItem, index: number) => JSX.Element), items?: ListItem[], ordered?: boolean, gap?: string, styles?: Record<string, string | number>
-- PopoverMenu — Dropdown menu that shows a list of selectable options in a popover.
-Each option has an id, name, and icon. The selected option is highlighted.
-Generic over option type — consumers can extend `{ id, name, icon }`.
-  Props: options: T[], selectedOption: T, onSelect: (option: T) => void, class?: string, styles?: Record<string, string | number>
-- PopoverToggleMenu
-  Props: class?: string, styles?: Record<string, string | number>, placement?: Placement, triggerLabel?: string, triggerIcon?: string, items: SolidToggleMenuEntry[]
 - PostCard
   Props: creator?: { name: string; avatar: string; }, title: string, text: string, class?: string, styles?: Record<string, string | number>
 - RerenderLog

@@ -97,19 +97,6 @@ export const contextData: ContextData = {
       ],
     },
     {
-      tagName: 'we-combobox',
-      className: 'Combobox',
-      superclass: 'DesignSystemElement',
-      ownProps: [
-        { name: 'options', type: 'ComboboxOption[]', optional: false, default: '[]' },
-        { name: 'value', type: 'string', optional: false, default: "''" },
-        { name: 'placeholder', type: 'string', optional: false, default: "''" },
-        { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
-        { name: 'name', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
-      ],
-    },
-    {
       tagName: 'we-date-picker',
       className: 'DatePicker',
       superclass: 'DesignSystemElement',
@@ -259,7 +246,14 @@ export const contextData: ContextData = {
         { name: 'markdownGap', type: 'string', optional: false, default: "''" },
       ],
     },
-    { tagName: 'we-menu', className: 'Menu', superclass: 'DesignSystemElement', ownProps: [] },
+    {
+      tagName: 'we-menu',
+      className: 'Menu',
+      description:
+        'Vertical list container for menu items inside a popover.\nNot a standalone selector — wrap in we-popover for dropdown behavior.',
+      superclass: 'DesignSystemElement',
+      ownProps: [],
+    },
     {
       tagName: 'we-menu-group',
       className: 'MenuGroup',
@@ -273,6 +267,7 @@ export const contextData: ContextData = {
     {
       tagName: 'we-menu-item',
       className: 'MenuItem',
+      description: 'Single actionable item inside a we-menu.\nSupports selected, active, and danger states.',
       superclass: 'DesignSystemElement',
       ownProps: [
         { name: 'selected', type: 'boolean', optional: false, default: 'false' },
@@ -319,6 +314,8 @@ export const contextData: ContextData = {
     {
       tagName: 'we-popover',
       className: 'Popover',
+      description:
+        'Low-level floating panel anchored to a trigger element.\nUse DropdownMenu component for dropdown menus.',
       superclass: 'LayoutElement',
       ownProps: [
         { name: 'open', type: 'boolean', optional: false, default: 'false' },
@@ -374,12 +371,28 @@ export const contextData: ContextData = {
       className: 'Select',
       superclass: 'DesignSystemElement',
       ownProps: [
+        { name: 'options', type: 'SelectOption[]', optional: false, default: '[]' },
         { name: 'value', type: 'string', optional: false, default: "''" },
-        { name: 'name', type: 'string', optional: false, default: "''" },
         { name: 'placeholder', type: 'string', optional: false, default: "''" },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
-        { name: 'required', type: 'boolean', optional: false, default: 'false' },
-        { name: 'options', type: '(string | { label: string; value: string })[]', optional: false, default: '[]' },
+        { name: 'searchable', type: 'boolean', optional: false, default: 'false' },
+        { name: 'name', type: 'string', optional: false, default: "''" },
+        { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
+      ],
+    },
+    {
+      tagName: 'we-select',
+      className: 'Select',
+      description:
+        'Pick a single value from a list of options. Custom-rendered dropdown.\nUse for form fields, settings, filters. Set searchable=true for type-to-filter.',
+      superclass: 'DesignSystemElement',
+      ownProps: [
+        { name: 'options', type: 'SelectOption[]', optional: false, default: '[]' },
+        { name: 'value', type: 'string', optional: false, default: "''" },
+        { name: 'placeholder', type: 'string', optional: false, default: "''" },
+        { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
+        { name: 'searchable', type: 'boolean', optional: false, default: 'false' },
+        { name: 'name', type: 'string', optional: false, default: "''" },
         { name: 'size', type: "'sm' | 'md' | 'lg'", optional: false, default: "'md'" },
       ],
     },
@@ -705,6 +718,20 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
+      name: 'DropdownMenu',
+      description:
+        'Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.',
+      props: [
+        { name: 'class', type: 'string', optional: true },
+        { name: 'styles', type: 'Record<string, string | number>', optional: true },
+        { name: 'placement', type: 'Placement', optional: true },
+        { name: 'triggerLabel', type: 'string', optional: true },
+        { name: 'triggerIcon', type: 'string', optional: true },
+        { name: 'items', type: 'SolidDropdownMenuEntry[]', optional: false },
+      ],
+      source: 'components',
+    },
+    {
       name: 'EditableImage',
       props: [
         { name: 'src', type: 'string', optional: true },
@@ -838,31 +865,6 @@ export const contextData: ContextData = {
         { name: 'ordered', type: 'boolean', optional: true },
         { name: 'gap', type: 'string', optional: true },
         { name: 'styles', type: 'Record<string, string | number>', optional: true },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'PopoverMenu',
-      description:
-        'Dropdown menu that shows a list of selectable options in a popover.\nEach option has an id, name, and icon. The selected option is highlighted.\nGeneric over option type — consumers can extend `{ id, name, icon }`.',
-      props: [
-        { name: 'options', type: 'T[]', optional: false },
-        { name: 'selectedOption', type: 'T', optional: false },
-        { name: 'onSelect', type: '(option: T) => void', optional: false },
-        { name: 'class', type: 'string', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'PopoverToggleMenu',
-      props: [
-        { name: 'class', type: 'string', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
-        { name: 'placement', type: 'Placement', optional: true },
-        { name: 'triggerLabel', type: 'string', optional: true },
-        { name: 'triggerIcon', type: 'string', optional: true },
-        { name: 'items', type: 'SolidToggleMenuEntry[]', optional: false },
       ],
       source: 'components',
     },

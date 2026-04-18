@@ -5,7 +5,6 @@ import './primitives/button';
 import './primitives/checkbox';
 import './primitives/code';
 import './primitives/color-picker';
-import './primitives/combobox';
 import './primitives/date-picker';
 import './primitives/divider';
 import './primitives/drawer';

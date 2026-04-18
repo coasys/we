@@ -6,13 +6,16 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { ComboboxSize } from '../types';
+import type { SelectSize } from '../types';
 
-export interface ComboboxOption {
+export interface SelectOption {
   label: string;
   value: string;
   disabled?: boolean;
 }
+
+/** @deprecated Use SelectOption instead */
+export type ComboboxOption = SelectOption;
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
@@ -20,13 +23,13 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   width: '100%',
 };
 
-const SIZE_DEFAULTS: Record<ComboboxSize, Partial<DesignSystemProps>> = {
+const SIZE_DEFAULTS: Record<SelectSize, Partial<DesignSystemProps>> = {
   sm: { fontSize: '300' },
   md: { fontSize: '400' },
   lg: { fontSize: '500' },
 };
 
-const INPUT_HEIGHT: Record<ComboboxSize, string> = {
+const INPUT_HEIGHT: Record<SelectSize, string> = {
   sm: '32px',
   md: '40px',
   lg: '48px',
@@ -65,6 +68,23 @@ const styles = css`
     cursor: pointer;
     padding: 0 var(--we-space-200);
     opacity: 0.5;
+  }
+
+  [part='native-button'] {
+    all: unset;
+    flex: 1;
+    padding: 0 var(--we-space-300);
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  [part='native-button']:empty::before {
+    content: attr(placeholder);
+    color: var(--we-color-neutral-400);
   }
 
   [part='listbox'] {
@@ -111,16 +131,17 @@ const styles = css`
   }
 `;
 
-@customElement('we-combobox')
-export default class Combobox extends DesignSystemElement {
+@customElement('we-select')
+export default class Select extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: Array }) options: ComboboxOption[] = [];
+  @property({ type: Array }) options: SelectOption[] = [];
   @property({ type: String }) value = '';
   @property({ type: String }) placeholder = '';
   @property({ type: Boolean, reflect: true }) disabled = false;
+  @property({ type: Boolean, reflect: true }) searchable = false;
   @property({ type: String }) name = '';
-  @property({ type: String, reflect: true }) size: ComboboxSize = 'md';
+  @property({ type: String, reflect: true }) size: SelectSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;
@@ -131,7 +152,7 @@ export default class Combobox extends DesignSystemElement {
   }
 
   override getInstanceProps() {
-    const ctor = this.constructor as typeof Combobox & { __dsLayers: readonly DSLayer[] };
+    const ctor = this.constructor as typeof Select & { __dsLayers: readonly DSLayer[] };
     const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
     const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
     const sizeDefaults = SIZE_DEFAULTS[this.size] ?? {};
@@ -169,7 +190,7 @@ export default class Combobox extends DesignSystemElement {
     this._open = true;
   }
 
-  private _select(opt: ComboboxOption) {
+  private _select(opt: SelectOption) {
     if (opt.disabled) return;
     this.value = opt.value;
     this._filter = '';
@@ -189,18 +210,32 @@ export default class Combobox extends DesignSystemElement {
     return html`
       <div part="base" style=${styleMap({ position: 'relative', ...this.styles })}>
         <div part="input-wrapper" style=${styleMap({ height: h })}>
-          <input
-            part="native"
-            type="text"
-            .value=${displayVal}
-            placeholder=${this.placeholder || nothing}
-            ?disabled=${this.disabled}
-            role="combobox"
-            aria-expanded=${this._open ? 'true' : 'false'}
-            aria-autocomplete="list"
-            @input=${this._onInput}
-            @focus=${() => (this._open = true)}
-          />
+          ${this.searchable
+            ? html`
+                <input
+                  part="native"
+                  type="text"
+                  .value=${displayVal}
+                  placeholder=${this.placeholder || nothing}
+                  ?disabled=${this.disabled}
+                  role="combobox"
+                  aria-expanded=${this._open ? 'true' : 'false'}
+                  aria-autocomplete="list"
+                  @input=${this._onInput}
+                  @focus=${() => (this._open = true)}
+                />
+              `
+            : html`
+                <button
+                  part="native-button"
+                  ?disabled=${this.disabled}
+                  role="combobox"
+                  aria-expanded=${this._open ? 'true' : 'false'}
+                  @click=${this._toggle}
+                >
+                  ${this._displayValue || this.placeholder || nothing}
+                </button>
+              `}
           <button part="toggle" tabindex="-1" @click=${this._toggle} aria-label="Toggle options">
             <we-icon name=${this._open ? 'caret-up' : 'caret-down'} size="16px"></we-icon>
           </button>

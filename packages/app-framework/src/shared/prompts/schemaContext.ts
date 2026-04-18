@@ -58,7 +58,7 @@ Always use the correct prop names and value types.
 - Row
 - CircleButton
 - IconLabelButton
-- PopoverMenu
+- DropdownMenu
 - PostCard
 
 @we/widgets
@@ -92,7 +92,7 @@ Component-specific props:
 - Column/Row: All design system props, children
 - CircleButton: label, icon, image, onClick, class, styles
 - IconLabelButton: icon, label, selected, iconWeight, onClick, class, styles
-- PopoverMenu: options, selectedOption, onSelect, class, styles
+- DropdownMenu: items, placement, triggerLabel, triggerIcon, class, styles
 - PostCard: creator, title, content, class, styles
 
 ---

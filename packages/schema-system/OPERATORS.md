@@ -574,7 +574,7 @@ Operators can be composed together for complex logic:
 
 ```typescript
 {
-  type: 'PopoverMenu',
+  type: 'DropdownMenu',
   props: {
     // Transform array of templates
     options: {

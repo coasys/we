@@ -21,6 +21,10 @@ const CSS_STYLES = css`
   }
 `;
 
+/**
+ * Low-level floating panel anchored to a trigger element.
+ * Use DropdownMenu component for dropdown menus.
+ */
 @customElement('we-popover')
 export default class Popover extends LayoutElement {
   static styles = CSS_STYLES;

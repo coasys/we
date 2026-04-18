@@ -1274,7 +1274,7 @@ export const weTemplate: TemplateSchema = {
           children: [
             // Combined layer controls
             {
-              type: 'PopoverToggleMenu',
+              type: 'DropdownMenu',
               props: {
                 placement: 'bottom-start',
                 triggerLabel: 'Layers',
@@ -1287,6 +1287,7 @@ export const weTemplate: TemplateSchema = {
                     collapsible: true,
                     items: [
                       {
+                        type: 'toggle',
                         id: 'skybox',
                         label: 'Skybox',
                         icon: 'image',
@@ -1294,6 +1295,7 @@ export const weTemplate: TemplateSchema = {
                         onToggle: { $action: 'spaceStore.toggleBackground', args: ['skybox'] },
                       },
                       {
+                        type: 'toggle',
                         id: 'stars',
                         label: 'Procedural Stars',
                         icon: 'sparkle',
@@ -1301,6 +1303,7 @@ export const weTemplate: TemplateSchema = {
                         onToggle: { $action: 'spaceStore.toggleBackground', args: ['stars'] },
                       },
                       {
+                        type: 'toggle',
                         id: 'solar-system',
                         label: 'Solar System',
                         icon: 'atom',
@@ -1316,6 +1319,7 @@ export const weTemplate: TemplateSchema = {
                     collapsible: true,
                     items: [
                       {
+                        type: 'toggle',
                         id: 'user-locations',
                         label: 'User Locations',
                         icon: 'map-pin',
@@ -1323,6 +1327,7 @@ export const weTemplate: TemplateSchema = {
                         onToggle: { $action: 'spaceStore.toggleLayer', args: ['userLocations'] },
                       },
                       {
+                        type: 'toggle',
                         id: 'countries',
                         label: 'Country Outlines',
                         icon: 'flag',
@@ -1330,6 +1335,7 @@ export const weTemplate: TemplateSchema = {
                         onToggle: { $action: 'spaceStore.toggleLayer', args: ['countryOutlines'] },
                       },
                       {
+                        type: 'toggle',
                         id: 'h3',
                         label: 'H3 Hexagons',
                         icon: 'hexagon',
