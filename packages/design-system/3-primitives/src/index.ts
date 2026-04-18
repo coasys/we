@@ -1,5 +1,4 @@
 import './icons/register-bundled-icons';
-
 import './primitives/avatar';
 import './primitives/badge';
 import './primitives/blockquote';

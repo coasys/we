@@ -1,5 +1,5 @@
-import { setIconResolver } from '../primitives/icon';
 import { bundledIcons } from '../generated/icon-bundle';
+import { setIconResolver } from '../primitives/icon';
 import type { IconWeight } from '../types';
 
 const CDN_BASE = 'https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2.1.1/assets';
