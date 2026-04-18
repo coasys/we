@@ -167,6 +167,9 @@ function classifyPropType(typeText: string): string {
  * Returns null if the type text is not a pure string literal union.
  * e.g. "'primary' | 'secondary' | 'ghost'" → ['primary', 'secondary', 'ghost']
  */
+/** Check if a string looks like a CSS length value (e.g. "20px", "2rem", "50%", "1.5em") */
+const CSS_LENGTH_RE = /^-?\d+(\.\d+)?(px|em|rem|%|vh|vw|vmin|vmax|ch|ex|cap|lh|svh|svw|dvh|dvw|cqi|cqb)$/;
+
 function extractAllowedValues(typeText: string): string[] | null {
   const t = typeText.replace(/\s*\|\s*undefined/g, '').trim();
   if (!t.includes('|')) {
@@ -489,11 +492,15 @@ function checkProps(
       const allowedMap = ctx.componentPropAllowedValues.get(componentType);
       const allowed = allowedMap?.get(propName);
       if (allowed && !allowed.includes(propValue)) {
-        errors.push({
-          path: propPath,
-          message: `Invalid value "${propValue}" for prop "${propName}" on "${componentType}". Allowed: ${allowed.map((v) => `'${v}'`).join(' | ')}`,
-          severity: 'warning',
-        });
+        // {css-length} is a placeholder meaning "any valid CSS length"
+        const acceptsCssLength = allowed.includes('{css-length}') && CSS_LENGTH_RE.test(propValue);
+        if (!acceptsCssLength) {
+          errors.push({
+            path: propPath,
+            message: `Invalid value "${propValue}" for prop "${propName}" on "${componentType}". Allowed: ${allowed.map((v) => `'${v}'`).join(' | ')}`,
+            severity: 'warning',
+          });
+        }
       }
 
       // Catch bare numbers passed as strings (e.g. "16" instead of "16px" or "sm")
