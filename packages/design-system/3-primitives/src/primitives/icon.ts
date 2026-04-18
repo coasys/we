@@ -84,6 +84,12 @@ const styles = css`
   :host([size='xxl']) {
     --icon-size: var(--we-size-xxl);
   }
+
+  span[role='img'] {
+    display: inline-block;
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
 `;
 
 // Todo: allow users to pass in their own icon set
