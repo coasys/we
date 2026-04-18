@@ -23,7 +23,12 @@ import type { OperatorToken, RouteSchema, SchemaNode, TemplateSchema } from './t
 
 /** Type guard: a child is a SchemaNode (not a string or operator token) */
 function isSchemaChild(child: string | SchemaNode | OperatorToken): child is SchemaNode {
-  return typeof child === 'object' && child !== null && !Object.keys(child).some((k) => k.startsWith('$'));
+  if (typeof child !== 'object' || child === null) return false;
+  // A node with `type` or `id` is always a SchemaNode, even if it also
+  // carries $-prefixed properties like $localState.
+  if ('type' in child || 'id' in child) return true;
+  // Otherwise reject objects whose keys are all $-prefixed (operator tokens).
+  return !Object.keys(child).some((k) => k.startsWith('$'));
 }
 
 /** A navigable region in the template tree */

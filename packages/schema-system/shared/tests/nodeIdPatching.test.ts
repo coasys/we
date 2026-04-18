@@ -154,6 +154,28 @@ describe('findNodeById', () => {
     expect(result!.node.id).toBe('root');
     expect(result!.parent).toBeNull();
   });
+
+  it('finds a node that has $localState (not an operator token)', () => {
+    const schemaWithLocalState: SchemaNode = {
+      type: 'Column',
+      id: 'root',
+      children: [
+        {
+          type: 'Row',
+          id: 'row1',
+          $localState: { open: { type: 'boolean', initial: false } },
+          children: [{ type: 'we-text', id: 'inner' }],
+        },
+      ],
+    };
+    const result = findNodeById(schemaWithLocalState, 'row1');
+    expect(result).not.toBeNull();
+    expect(result!.node.id).toBe('row1');
+    // Also verify descendants inside the $localState node are reachable
+    const inner = findNodeById(schemaWithLocalState, 'inner');
+    expect(inner).not.toBeNull();
+    expect(inner!.node.id).toBe('inner');
+  });
 });
 
 // ── mergeNode ──────────────────────────────────────────────────────
