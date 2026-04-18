@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { PaginationSize } from '../types';
+import type { ComponentSize } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
@@ -14,16 +14,20 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   gap: '100',
 };
 
-const SIZE_DEFAULTS: Record<PaginationSize, Partial<DesignSystemProps>> = {
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { fontSize: '200', gap: '50' },
   sm: { fontSize: '300', gap: '50' },
   md: { fontSize: '400', gap: '100' },
   lg: { fontSize: '500', gap: '200' },
+  xl: { fontSize: '500', gap: '300' },
 };
 
-const BUTTON_SIZES: Record<PaginationSize, string> = {
+const BUTTON_SIZES: Record<ComponentSize, string> = {
+  xs: '24px',
   sm: '28px',
   md: '36px',
   lg: '44px',
+  xl: '52px',
 };
 
 const styles = css`
@@ -70,7 +74,7 @@ export default class Pagination extends DesignSystemElement {
   @property({ type: Number }) page = 1;
   @property({ type: Number }) total = 1;
   @property({ type: Number }) siblings = 1;
-  @property({ type: String, reflect: true }) size: PaginationSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {

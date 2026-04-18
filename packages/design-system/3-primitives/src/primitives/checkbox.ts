@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { CheckboxSize } from '../types';
+import type { ComponentSize } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
@@ -17,10 +17,12 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   color: 'neutral-800',
 };
 
-const SIZE_DEFAULTS: Record<CheckboxSize, Partial<DesignSystemProps>> = {
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { fontSize: '200', gap: '100' },
   sm: { fontSize: '300', gap: '100' },
   md: { fontSize: '400', gap: '200' },
   lg: { fontSize: '500', gap: '300' },
+  xl: { fontSize: '500', gap: '400' },
 };
 
 const styles = css`
@@ -78,7 +80,7 @@ export default class Checkbox extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String, reflect: true }) name = '';
   @property({ type: String, reflect: true }) value = '';
-  @property({ type: String, reflect: true }) size: CheckboxSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {

@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { TagVariant } from '../types';
+import type { ComponentVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
@@ -18,12 +18,12 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   fontSize: '300',
 };
 
-const VARIANT_DEFAULTS: Record<TagVariant, Partial<DesignSystemProps>> = {
-  default: { bg: 'neutral-100', color: 'neutral-700' },
+const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
+  neutral: { bg: 'neutral-100', color: 'neutral-700' },
   primary: { bg: 'primary-100', color: 'primary-700' },
-  success: { bg: 'green-100', color: 'green-700' },
-  warning: { bg: 'yellow-100', color: 'yellow-700' },
-  danger: { bg: 'red-100', color: 'red-700' },
+  success: { bg: 'success-100', color: 'success-700' },
+  warning: { bg: 'warning-100', color: 'warning-700' },
+  danger: { bg: 'danger-100', color: 'danger-700' },
 };
 
 const styles = css`
@@ -49,7 +49,7 @@ const styles = css`
 export default class Tag extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: String, reflect: true }) variant: TagVariant = 'default';
+  @property({ type: String, reflect: true }) variant: ComponentVariant = 'neutral';
   @property({ type: Boolean }) dismissible = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 

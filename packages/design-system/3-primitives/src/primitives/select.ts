@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { SelectSize } from '../types';
+import type { ComponentSize } from '../types';
 
 export interface SelectOption {
   label: string;
@@ -19,16 +19,20 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   direction: 'column',
 };
 
-const SIZE_DEFAULTS: Record<SelectSize, Partial<DesignSystemProps>> = {
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { fontSize: '200' },
   sm: { fontSize: '300' },
   md: { fontSize: '400' },
   lg: { fontSize: '500' },
+  xl: { fontSize: '500' },
 };
 
-const INPUT_HEIGHT: Record<SelectSize, string> = {
-  sm: '32px',
-  md: '40px',
-  lg: '48px',
+const CONTROL_HEIGHT: Record<ComponentSize, string> = {
+  xs: 'var(--we-component-height-xs)',
+  sm: 'var(--we-component-height-sm)',
+  md: 'var(--we-component-height-md)',
+  lg: 'var(--we-component-height-lg)',
+  xl: 'var(--we-component-height-xl)',
 };
 
 const styles = css`
@@ -147,7 +151,7 @@ export default class Select extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) searchable = false;
   @property({ type: String }) name = '';
-  @property({ type: String, reflect: true }) size: SelectSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;
@@ -209,16 +213,15 @@ export default class Select extends DesignSystemElement {
   }
 
   render() {
-    const h = INPUT_HEIGHT[this.size];
+    const h = CONTROL_HEIGHT[this.size];
     const filtered = this._filtered;
     const displayVal = this._open ? this._filter : this._displayValue;
 
     return html`
       <div part="base" style=${styleMap({ position: 'relative', ...this.styles })}>
         <div part="input-wrapper" style=${styleMap({ height: h })}>
-          ${
-            this.searchable
-              ? html`
+          ${this.searchable
+            ? html`
                 <input
                   part="native"
                   type="text"
@@ -232,7 +235,7 @@ export default class Select extends DesignSystemElement {
                   @focus=${() => (this._open = true)}
                 />
               `
-              : html`
+            : html`
                 <button
                   part="native-button"
                   ?disabled=${this.disabled}
@@ -242,20 +245,17 @@ export default class Select extends DesignSystemElement {
                 >
                   ${this._displayValue || this.placeholder || nothing}
                 </button>
-              `
-          }
+              `}
           <button part="toggle" tabindex="-1" @click=${this._toggle} aria-label="Toggle options">
             <we-icon name=${this._open ? 'caret-up' : 'caret-down'} size="16px"></we-icon>
           </button>
         </div>
-        ${
-          this._open
-            ? html`
+        ${this._open
+          ? html`
               <div part="listbox" role="listbox">
-                ${
-                  filtered.length > 0
-                    ? filtered.map(
-                        (opt) => html`
+                ${filtered.length > 0
+                  ? filtered.map(
+                      (opt) => html`
                         <div
                           part="option"
                           role="option"
@@ -266,13 +266,11 @@ export default class Select extends DesignSystemElement {
                           ${opt.label}
                         </div>
                       `,
-                      )
-                    : html`<div part="empty">No results</div>`
-                }
+                    )
+                  : html`<div part="empty">No results</div>`}
               </div>
             `
-            : nothing
-        }
+          : nothing}
       </div>
     `;
   }

@@ -5,7 +5,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import { SpinnerSize } from '../types';
+import type { ComponentSize } from '../types';
 
 const styles = css`
   :host {
@@ -15,28 +15,29 @@ const styles = css`
     --we-spinner-color: var(--we-color-primary-500);
   }
 
-  :host([size='xxs']) {
-    --we-spinner-size: var(--we-size-xxs);
-    --we-spinner-stroke: 1px;
-    --we-spinner-color: var(--we-color-primary-500);
-  }
-
   :host([size='xs']) {
     --we-spinner-size: var(--we-size-xs);
-    --we-spinner-stroke: 2px;
-    --we-spinner-color: var(--we-color-primary-500);
+    --we-spinner-stroke: 1px;
   }
 
   :host([size='sm']) {
     --we-spinner-size: var(--we-size-sm);
     --we-spinner-stroke: 2px;
-    --we-spinner-color: var(--we-color-primary-500);
+  }
+
+  :host([size='md']) {
+    --we-spinner-size: var(--we-size-md);
+    --we-spinner-stroke: 2px;
   }
 
   :host([size='lg']) {
     --we-spinner-size: var(--we-size-lg);
     --we-spinner-stroke: 4px;
-    --we-spinner-color: var(--we-color-primary-500);
+  }
+
+  :host([size='xl']) {
+    --we-spinner-size: var(--we-size-xl);
+    --we-spinner-stroke: 4px;
   }
 
   .lds-ring {
@@ -85,7 +86,7 @@ const styles = css`
 export default class Spinner extends LayoutElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: String, reflect: true }) size: SpinnerSize = '';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: String, reflect: true }) color = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -103,7 +104,7 @@ export default class Spinner extends LayoutElement {
     }
 
     // Handle custom size values (e.g., "20px", "2rem")
-    if (props.has('size') && this.size && !['xxs', 'xs', 'sm', 'lg'].includes(this.size)) {
+    if (props.has('size') && this.size && !['xs', 'sm', 'md', 'lg', 'xl'].includes(this.size)) {
       this.style.setProperty('--we-spinner-size', this.size);
     }
   }

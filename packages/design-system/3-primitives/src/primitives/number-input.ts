@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { NumberInputSize } from '../types';
+import type { ComponentSize } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
@@ -18,10 +18,12 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   color: 'neutral-800',
 };
 
-const SIZE_DEFAULTS: Record<NumberInputSize, Partial<DesignSystemProps>> = {
-  sm: { fontSize: '300', height: '32px' },
-  md: { fontSize: '400', height: '40px' },
-  lg: { fontSize: '500', height: '48px' },
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { fontSize: '200', height: 'var(--we-component-height-xs)' },
+  sm: { fontSize: '300', height: 'var(--we-component-height-sm)' },
+  md: { fontSize: '400', height: 'var(--we-component-height-md)' },
+  lg: { fontSize: '500', height: 'var(--we-component-height-lg)' },
+  xl: { fontSize: '500', height: 'var(--we-component-height-xl)' },
 };
 
 const styles = css`
@@ -73,7 +75,7 @@ export default class NumberInput extends DesignSystemElement {
   @property({ type: Number }) step = 1;
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
-  @property({ type: String, reflect: true }) size: NumberInputSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {

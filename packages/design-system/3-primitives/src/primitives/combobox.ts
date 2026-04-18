@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { SelectSize } from '../types';
+import type { ComponentSize } from '../types';
 
 export interface SelectOption {
   label: string;
@@ -23,13 +23,13 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   width: '100%',
 };
 
-const SIZE_DEFAULTS: Record<SelectSize, Partial<DesignSystemProps>> = {
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
   sm: { fontSize: '300' },
   md: { fontSize: '400' },
   lg: { fontSize: '500' },
 };
 
-const INPUT_HEIGHT: Record<SelectSize, string> = {
+const INPUT_HEIGHT: Record<ComponentSize, string> = {
   sm: '32px',
   md: '40px',
   lg: '48px',
@@ -141,7 +141,7 @@ export default class Select extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) searchable = false;
   @property({ type: String }) name = '';
-  @property({ type: String, reflect: true }) size: SelectSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;

@@ -6,7 +6,7 @@ import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
 
 import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { AvatarSizeValue } from '../types';
+import type { SizeValue } from '../types';
 
 const styles = css`
   :host {
@@ -100,7 +100,7 @@ export default class Avatar extends LayoutElement {
   @property({ type: Boolean, reflect: true }) online = false;
   @property({ type: String, reflect: true }) initials = '';
   @property({ type: String }) icon = '';
-  @property({ type: String, reflect: true }) size?: AvatarSizeValue;
+  @property({ type: String, reflect: true }) size?: SizeValue;
   @property({ type: Boolean, reflect: true }) clickable = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -113,13 +113,20 @@ export default class Avatar extends LayoutElement {
     }
   }
 
+  private get derivedInitials(): string {
+    if (!this.initials) return '';
+    const words = this.initials.trim().split(/\s+/);
+    if (words.length === 1) return words[0].charAt(0).toUpperCase();
+    return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
+  }
+
   private renderContent() {
     return this.image
       ? html`<img part="img" .src=${this.image} />`
       : this.hash
         ? unsafeSVG(toSvg(this.hash || '', 100))
         : this.initials
-          ? html`<span part="initials">${this.initials}</span>`
+          ? html`<span part="initials">${this.derivedInitials}</span>`
           : html`<we-icon part="icon" name=${this.icon || 'user'}></we-icon>`;
   }
 

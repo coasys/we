@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { ProgressBarSize, ProgressBarVariant } from '../types';
+import type { ComponentSize, ComponentVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
@@ -14,17 +14,20 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'neutral-200',
 };
 
-const VARIANT_COLORS: Record<ProgressBarVariant, string> = {
-  default: 'var(--we-color-primary-500)',
-  success: 'var(--we-color-green-500)',
-  warning: 'var(--we-color-yellow-500)',
-  danger: 'var(--we-color-red-500)',
+const VARIANT_COLORS: Record<ComponentVariant, string> = {
+  neutral: 'var(--we-color-neutral-500)',
+  primary: 'var(--we-color-primary-500)',
+  success: 'var(--we-color-success-500)',
+  warning: 'var(--we-color-warning-500)',
+  danger: 'var(--we-color-danger-500)',
 };
 
-const SIZE_HEIGHTS: Record<ProgressBarSize, string> = {
+const SIZE_HEIGHTS: Record<ComponentSize, string> = {
+  xs: '2px',
   sm: '4px',
   md: '8px',
   lg: '12px',
+  xl: '16px',
 };
 
 const styles = css`
@@ -45,8 +48,8 @@ export default class ProgressBar extends DesignSystemElement {
 
   @property({ type: Number }) value = 0;
   @property({ type: Number }) max = 100;
-  @property({ type: String, reflect: true }) variant: ProgressBarVariant = 'default';
-  @property({ type: String, reflect: true }) size: ProgressBarSize = 'md';
+  @property({ type: String, reflect: true }) variant: ComponentVariant = 'primary';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {

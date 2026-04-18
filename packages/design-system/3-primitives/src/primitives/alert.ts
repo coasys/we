@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { AlertVariant } from '../types';
+import type { ComponentVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
@@ -18,25 +18,28 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   fontSize: '400',
 };
 
-const VARIANT_DEFAULTS: Record<AlertVariant, Partial<DesignSystemProps>> = {
-  info: { bg: 'blue-50', color: 'blue-800' },
-  success: { bg: 'green-50', color: 'green-800' },
-  warning: { bg: 'yellow-50', color: 'yellow-800' },
-  error: { bg: 'red-50', color: 'red-800' },
+const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
+  neutral: { bg: 'neutral-50', color: 'neutral-800' },
+  primary: { bg: 'primary-50', color: 'primary-800' },
+  success: { bg: 'success-50', color: 'success-800' },
+  warning: { bg: 'warning-50', color: 'warning-800' },
+  danger: { bg: 'danger-50', color: 'danger-800' },
 };
 
-const VARIANT_ICONS: Record<AlertVariant, string> = {
-  info: 'info',
+const VARIANT_ICONS: Record<ComponentVariant, string> = {
+  neutral: 'info',
+  primary: 'info',
   success: 'check-circle',
   warning: 'warning',
-  error: 'x-circle',
+  danger: 'x-circle',
 };
 
-const VARIANT_BORDER: Record<AlertVariant, string> = {
-  info: '1px solid var(--we-color-blue-200)',
-  success: '1px solid var(--we-color-green-200)',
-  warning: '1px solid var(--we-color-yellow-200)',
-  error: '1px solid var(--we-color-red-200)',
+const VARIANT_BORDER: Record<ComponentVariant, string> = {
+  neutral: '1px solid var(--we-color-neutral-200)',
+  primary: '1px solid var(--we-color-primary-200)',
+  success: '1px solid var(--we-color-success-200)',
+  warning: '1px solid var(--we-color-warning-200)',
+  danger: '1px solid var(--we-color-danger-200)',
 };
 
 const styles = css`
@@ -62,7 +65,7 @@ const styles = css`
 export default class Alert extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: String, reflect: true }) variant: AlertVariant = 'info';
+  @property({ type: String, reflect: true }) variant: ComponentVariant = 'primary';
   @property({ type: Boolean }) dismissible = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 

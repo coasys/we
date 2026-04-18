@@ -6,23 +6,27 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { DatePickerSize } from '../types';
+import type { ComponentSize } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
   direction: 'column',
 };
 
-const SIZE_DEFAULTS: Record<DatePickerSize, Partial<DesignSystemProps>> = {
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { fontSize: '200' },
   sm: { fontSize: '300' },
   md: { fontSize: '400' },
   lg: { fontSize: '500' },
+  xl: { fontSize: '500' },
 };
 
-const INPUT_HEIGHT: Record<DatePickerSize, string> = {
-  sm: '32px',
-  md: '40px',
-  lg: '48px',
+const CONTROL_HEIGHT: Record<ComponentSize, string> = {
+  xs: 'var(--we-component-height-xs)',
+  sm: 'var(--we-component-height-sm)',
+  md: 'var(--we-component-height-md)',
+  lg: 'var(--we-component-height-lg)',
+  xl: 'var(--we-component-height-xl)',
 };
 
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -138,7 +142,7 @@ export default class DatePicker extends DesignSystemElement {
   @property({ type: String }) placeholder = 'Select date';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
-  @property({ type: String, reflect: true }) size: DatePickerSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;
@@ -247,7 +251,7 @@ export default class DatePicker extends DesignSystemElement {
   }
 
   render() {
-    const h = INPUT_HEIGHT[this.size];
+    const h = CONTROL_HEIGHT[this.size];
     const monthLabel = new Date(this._viewYear, this._viewMonth).toLocaleString(undefined, {
       month: 'long',
       year: 'numeric',

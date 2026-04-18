@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { SliderSize } from '../types';
+import type { ComponentSize } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
@@ -17,22 +17,28 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   fontSize: '400',
 };
 
-const SIZE_DEFAULTS: Record<SliderSize, Partial<DesignSystemProps>> = {
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { fontSize: '200' },
   sm: { fontSize: '300' },
   md: { fontSize: '400' },
   lg: { fontSize: '500' },
+  xl: { fontSize: '500' },
 };
 
-const TRACK_HEIGHT: Record<SliderSize, string> = {
+const TRACK_HEIGHT: Record<ComponentSize, string> = {
+  xs: '3px',
   sm: '4px',
   md: '6px',
   lg: '8px',
+  xl: '10px',
 };
 
-const THUMB_SIZE: Record<SliderSize, string> = {
+const THUMB_SIZE: Record<ComponentSize, string> = {
+  xs: '12px',
   sm: '14px',
   md: '18px',
   lg: '22px',
+  xl: '26px',
 };
 
 const styles = css`
@@ -94,7 +100,7 @@ export default class Slider extends DesignSystemElement {
   @property({ type: Number }) step = 1;
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
-  @property({ type: String, reflect: true }) size: SliderSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Boolean }) showValue = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 

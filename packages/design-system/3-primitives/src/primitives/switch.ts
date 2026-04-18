@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { SwitchSize } from '../types';
+import type { ComponentSize } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
@@ -17,16 +17,20 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   color: 'neutral-800',
 };
 
-const SIZE_DEFAULTS: Record<SwitchSize, Partial<DesignSystemProps>> = {
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { fontSize: '200', gap: '100' },
   sm: { fontSize: '300', gap: '100' },
   md: { fontSize: '400', gap: '200' },
   lg: { fontSize: '500', gap: '300' },
+  xl: { fontSize: '500', gap: '400' },
 };
 
-const TRACK_SIZES: Record<SwitchSize, { width: string; height: string; thumb: string }> = {
+const TRACK_SIZES: Record<ComponentSize, { width: string; height: string; thumb: string }> = {
+  xs: { width: '24px', height: '14px', thumb: '10px' },
   sm: { width: '28px', height: '16px', thumb: '12px' },
   md: { width: '36px', height: '20px', thumb: '16px' },
   lg: { width: '44px', height: '24px', thumb: '20px' },
+  xl: { width: '52px', height: '28px', thumb: '24px' },
 };
 
 const styles = css`
@@ -83,7 +87,7 @@ export default class Switch extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
   @property({ type: String }) value = '';
-  @property({ type: String, reflect: true }) size: SwitchSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {

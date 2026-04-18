@@ -111,7 +111,7 @@ This is read once at class registration to generate the static DS stylesheet (CS
 
 ## Naming
 
-- Variant/size type unions live in `types.ts` (e.g. `BadgeVariant`, `ButtonSize`).
+- Unique variant/size type unions live in `types.ts` (e.g. `ButtonVariant`, `ModalSize`). Shared types (`ComponentSize`, `ComponentVariant`) come from `@we/tokens`.
 - Default props map: `DEFAULT_PROPS`
 - Variant map: `VARIANT_DEFAULTS`
 - Size map: `SIZE_DEFAULTS`

@@ -6,7 +6,7 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { FormFieldSize } from '../types';
+import type { ComponentSize } from '../types';
 
 let formFieldIdCounter = 0;
 
@@ -16,10 +16,12 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   gap: '100',
 };
 
-const SIZE_DEFAULTS: Record<FormFieldSize, Partial<DesignSystemProps>> = {
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { fontSize: '200' },
   sm: { fontSize: '300' },
   md: { fontSize: '400' },
   lg: { fontSize: '500' },
+  xl: { fontSize: '500' },
 };
 
 const styles = css`
@@ -65,7 +67,7 @@ export default class FormField extends DesignSystemElement {
   @property({ type: String }) description = '';
   @property({ type: String, reflect: true }) error = '';
   @property({ type: Boolean, reflect: true }) required = false;
-  @property({ type: String, reflect: true }) size: FormFieldSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {

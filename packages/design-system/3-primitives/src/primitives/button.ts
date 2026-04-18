@@ -6,13 +6,12 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { ButtonSize, ButtonVariant } from '../types';
+import type { ButtonVariant, ComponentSize } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   cursor: 'pointer',
   r: '400',
   px: '400',
-  py: '200',
   ax: 'center',
   ay: 'center',
   gap: '300',
@@ -48,15 +47,17 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
   },
 };
 
-const SIZE_DEFAULTS: Record<ButtonSize, Partial<DesignSystemProps>> = {
-  xs: { px: '200', py: '100', fontSize: '200' },
-  sm: { px: '300', py: '100', fontSize: '300' },
-  md: { px: '400', py: '200', fontSize: '400' },
-  lg: { px: '500', py: '300', fontSize: '500' },
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { px: '200', fontSize: '200', height: 'var(--we-component-height-xs)' },
+  sm: { px: '300', fontSize: '300', height: 'var(--we-component-height-sm)' },
+  md: { px: '400', fontSize: '400', height: 'var(--we-component-height-md)' },
+  lg: { px: '500', fontSize: '500', height: 'var(--we-component-height-lg)' },
+  xl: { px: '600', fontSize: '500', height: 'var(--we-component-height-xl)' },
 };
 
 const CSS_STYLES = css`
   :host {
+    --we-button-host-display: inline-flex;
     white-space: nowrap;
   }
 
@@ -94,7 +95,7 @@ export default class Button extends DesignSystemElement {
   static styles = [sharedStyles, CSS_STYLES];
 
   @property({ type: String, reflect: true }) variant: ButtonVariant = 'primary';
-  @property({ type: String, reflect: true }) size: ButtonSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: String }) text?: string;
   @property({ type: String }) href?: string;
   @property({ type: Boolean, reflect: true }) disabled = false;

@@ -16,11 +16,11 @@ export const Basic: StoryObj = {
 export const Sizes: StoryObj = {
   render: () => html`
     <div style="display: flex; gap: 16px; align-items: center;">
-      <we-spinner size="xxs"></we-spinner>
       <we-spinner size="xs"></we-spinner>
       <we-spinner size="sm"></we-spinner>
-      <we-spinner></we-spinner>
+      <we-spinner size="md"></we-spinner>
       <we-spinner size="lg"></we-spinner>
+      <we-spinner size="xl"></we-spinner>
     </div>
   `,
 };

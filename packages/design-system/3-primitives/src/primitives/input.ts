@@ -6,13 +6,12 @@ import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
-import type { InputSize } from '../types';
+import type { ComponentSize } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
   ay: 'center',
   px: '300',
-  py: '200',
   fontSize: '400',
   bg: 'neutral-75',
   r: '300',
@@ -22,10 +21,12 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   focusProps: { bg: 'neutral-100', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
 };
 
-const SIZE_DEFAULTS: Record<InputSize, Partial<DesignSystemProps>> = {
-  sm: { px: '200', py: '100', fontSize: '300' },
-  md: { px: '300', py: '200', fontSize: '400' },
-  lg: { px: '400', py: '300', fontSize: '500' },
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { px: '100', fontSize: '200', height: 'var(--we-component-height-xs)' },
+  sm: { px: '200', fontSize: '300', height: 'var(--we-component-height-sm)' },
+  md: { px: '300', fontSize: '400', height: 'var(--we-component-height-md)' },
+  lg: { px: '400', fontSize: '500', height: 'var(--we-component-height-lg)' },
+  xl: { px: '500', fontSize: '500', height: 'var(--we-component-height-xl)' },
 };
 
 const styles = css`
@@ -64,7 +65,7 @@ export default class Input extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) required = false;
   @property({ type: Boolean, reflect: true }) readonly = false;
   @property({ type: String, reflect: true }) type = 'text';
-  @property({ type: String, reflect: true }) size: InputSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
