@@ -1,4 +1,5 @@
 import { tokenVar } from '@we/design-utils';
+import { size as sizeTokens } from '@we/tokens';
 import { css, html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
@@ -108,6 +109,8 @@ export default class Icon extends LayoutElement {
 
   private loadIcon() {
     if (!this.name) return;
+    this.error = false;
+    this.svg = undefined;
 
     const cacheKey = `${this.name}:${this.weight}`;
 
@@ -136,6 +139,7 @@ export default class Icon extends LayoutElement {
         })
         .catch((e) => {
           console.warn(`Failed to load icon "${this.name}":`, e);
+          svgCache.delete(cacheKey);
           this.error = true;
         });
     }
@@ -160,20 +164,24 @@ export default class Icon extends LayoutElement {
     return sanitizeSvg(await response.text());
   }
 
+  private static readonly CDN_BASE = 'https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2.1.1/assets';
+
   private buildCdnUrl(): string {
-    const baseUrl = 'https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2.1.1/assets';
     const fileName = this.weight === 'regular' ? this.name : `${this.name}-${this.weight}`;
-    return `${baseUrl}/${this.weight}/${fileName}.svg`;
+    return `${Icon.CDN_BASE}/${this.weight}/${fileName}.svg`;
+  }
+
+  willUpdate(props: Map<string, unknown>) {
+    if (props.has('name') || props.has('weight')) this.loadIcon();
   }
 
   updated(props: Map<string, unknown>) {
     super.updated(props);
-    if (props.has('name') || props.has('weight')) this.loadIcon();
     if (props.has('color')) this.style.setProperty('--icon-color', tokenVar('color', this.color, 'currentColor'));
 
     // Handle custom size values (e.g., "20px", "2rem")
     // Empty string = no explicit size; let CSS fallback chain (--we-context-icon-size → --we-size-md) apply
-    if (props.has('size') && this.size && !['xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'].includes(this.size)) {
+    if (props.has('size') && this.size && !(this.size in sizeTokens)) {
       this.style.setProperty('--icon-size', this.size);
     }
   }
@@ -181,6 +189,6 @@ export default class Icon extends LayoutElement {
   render() {
     if (this.error) return html`<span role="img" aria-label="icon error"></span>`;
     if (!this.svg) return html`<span role="img" aria-label="icon loading"></span>`;
-    return html`${unsafeHTML(this.svg)}`;
+    return html`<span aria-hidden="true">${unsafeHTML(this.svg)}</span>`;
   }
 }

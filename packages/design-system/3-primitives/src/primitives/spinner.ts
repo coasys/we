@@ -1,4 +1,5 @@
 import { tokenVar } from '@we/design-utils';
+import { componentHeight } from '@we/tokens';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
@@ -104,7 +105,7 @@ export default class Spinner extends LayoutElement {
     }
 
     // Handle custom size values (e.g., "20px", "2rem")
-    if (props.has('size') && this.size && !['xs', 'sm', 'md', 'lg', 'xl'].includes(this.size)) {
+    if (props.has('size') && this.size && !(this.size in componentHeight)) {
       this.style.setProperty('--we-spinner-size', this.size);
     }
   }
