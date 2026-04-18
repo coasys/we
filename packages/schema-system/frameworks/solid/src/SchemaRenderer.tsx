@@ -301,8 +301,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         itemsArray = createQuerySignal(descriptor, stores, getModel);
       }
     } else {
-      const resolvedItems = resolveProp(rawItems, stores, effectiveContext, createMemo);
       itemsArray = createMemo(() => {
+        // Read from store proxy INSIDE the memo so Solid tracks mutations from updateSchema/patching
+        const currentItems = (node.props as Record<string, unknown>)?.items;
+        const resolvedItems = resolveProp(currentItems, stores, effectiveContext, createMemo);
         const items = typeof resolvedItems === 'function' ? resolvedItems() : resolvedItems;
         return Array.isArray(items) ? items : [];
       });
@@ -373,8 +375,16 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   for (const [key, rawValue] of Object.entries(node.props ?? {})) {
     if (isStaticValue(rawValue)) {
       // Read from the store node so Solid tracks changes from updateSchema.
+      // If the value transitions from static to token (e.g. via AI patching),
+      // resolve it through the full prop pipeline instead of returning the raw token.
       const k = key;
-      propMemos[key] = createMemo(() => (node.props as Record<string, unknown>)?.[k]);
+      propMemos[key] = createMemo(() => {
+        const current = (node.props as Record<string, unknown>)?.[k];
+        if (!isStaticValue(current)) {
+          return deepUnwrap(resolveProp(current, stores, effectiveContext, createMemo));
+        }
+        return current;
+      });
     } else if (hasToken(rawValue, '$query', 'object')) {
       // $query: set up reactive subscription via createSignal + createEffect
       // instead of createMemo — subscriptions are side effects, not derivations.
@@ -419,7 +429,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       if (!currentProps || !hostRef) return;
       for (const key of Object.keys(currentProps)) {
         if (!(key in propMemos) && !isEventProp(key)) {
-          hostRef[key] = currentProps[key];
+          const resolved = resolveProp(currentProps[key], stores, effectiveContext, createMemo);
+          hostRef[key] = deepUnwrap(resolved);
         }
       }
     });
@@ -460,7 +471,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     if (currentProps) {
       for (const key of Object.keys(currentProps)) {
         if (!(key in propMemos)) {
-          attrs[key] = currentProps[key];
+          const resolved = resolveProp(currentProps[key], stores, effectiveContext, createMemo);
+          attrs[key] = deepUnwrap(resolved);
         }
       }
     }
