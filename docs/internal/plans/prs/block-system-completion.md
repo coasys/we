@@ -9,6 +9,7 @@ Get the block system from its current state (text blocks working, image half-wor
 ## Current State
 
 ### What works
+
 - **Text blocks** in the BlockComposer: paragraph, headings (h1–h3), quotes, bullet/numbered lists
 - **Serialization** (`createBlocks`): saves Lexical editor state → AD4M block models with parent-child relationships
 - **Loading** (`loadBlocks`): reconstructs block tree from AD4M
@@ -18,6 +19,7 @@ Get the block system from its current state (text blocks working, image half-wor
 - **`createBlockNodeClass` factory**: generic Lexical DecoratorNode factory exists, uses BlockBridge to switch between display/input components
 
 ### What's broken or missing
+
 - **No roundtrip from AD4M back to Lexical** — `loadBlocks()` returns AD4M model instances, but no function converts them back to the Lexical serialized JSON that `editor.parseEditorState()` needs. Without this, saved posts can't be displayed in BlockRenderer from AD4M data.
 - **Inline text formatting is lost on save** — `extractInlineText()` flattens bold/italic/underline spans into a single plain text string, discarding Lexical format bits. Roundtrip destroys rich text formatting.
 - **List wrapper nodes not persisted** — `list` nodes are pass-through in `createBlocks()`, so reconstruction must re-synthesise them from `listitem` metadata.
@@ -35,6 +37,7 @@ Get the block system from its current state (text blocks working, image half-wor
 ### 1. One generic Lexical node via `createBlockNodeClass`, not N custom nodes
 
 We already have the factory (`createBlockNodeClass`). The current `ImageNode` is a legacy hand-rolled DecoratorNode that predates the factory. We should:
+
 - Migrate ImageBlock to use the factory
 - Register all new block types via the factory
 - Remove `ImageNode` and `ImageBlockPlugin` once migrated
@@ -74,12 +77,14 @@ Replace `INSERT_IMAGE_COMMAND` with a generic `INSERT_BLOCK_COMMAND` that takes 
 **Goal:** Saved content looks identical in the renderer and composer.
 
 **Files:**
+
 - `frameworks/solid/src/components/BlockComposer.scss` → extract shared block styles
 - New: `frameworks/solid/src/styles/blocks.scss` — shared `.we-block` styles (padding, border-radius, typography, list markers, blockquote bar, etc.)
 - `frameworks/solid/src/styles/index.scss` — import the shared stylesheet
 - `frameworks/solid/src/components/BlockRenderer.tsx` — apply shared wrapper class
 
 **Changes:**
+
 1. Extract all block-level styles from `BlockComposer.scss` into `blocks.scss` — the core `.we-block` styling, typography for `p`, `h1`–`h3`, `blockquote`, `li`, list markers, counters, nesting
 2. Keep composer-only styles (highlighting on hover via `data-block-highlighted`, editing affordances) in `BlockComposer.scss`
 3. Create `blocks.scss` with a shared root class (e.g. `.we-block-content`) that both `.we-block-composer-editor` and `.we-block-renderer` `@extend` or include
@@ -96,6 +101,7 @@ Replace `INSERT_IMAGE_COMMAND` with a generic `INSERT_BLOCK_COMMAND` that takes 
 **Goal:** Remove the bespoke ImageNode, use `createBlockNodeClass` for images, and create a reusable block insertion mechanism.
 
 **Files:**
+
 - `frameworks/solid/src/nodes/ImageNode/` → delete after migration
 - `frameworks/solid/src/plugins/ImageBlockPlugin/` → replace with generic `BlockInsertPlugin`
 - `frameworks/solid/src/helpers.ts` — extend `transformBlock` + add `INSERT_BLOCK_COMMAND`
@@ -104,14 +110,18 @@ Replace `INSERT_IMAGE_COMMAND` with a generic `INSERT_BLOCK_COMMAND` that takes 
 **Changes:**
 
 1. **Create `ImageBlockNode` via factory:**
+
    ```ts
    // In BlockComposer.tsx or a new nodes/index.ts
    const ImageBlockNode = createBlockNodeClass('image');
    ```
 
 2. **Create generic `INSERT_BLOCK_COMMAND`:**
+
    ```ts
-   export const INSERT_BLOCK_COMMAND = createCommand<{ type: string; props?: Record<string, unknown> }>('INSERT_BLOCK_COMMAND');
+   export const INSERT_BLOCK_COMMAND = createCommand<{ type: string; props?: Record<string, unknown> }>(
+     'INSERT_BLOCK_COMMAND',
+   );
    ```
 
 3. **Create `BlockInsertPlugin`** (replaces `ImageBlockPlugin`):
@@ -126,6 +136,7 @@ Replace `INSERT_IMAGE_COMMAND` with a generic `INSERT_BLOCK_COMMAND` that takes 
 5. **Update `findNodeType()`** to recognise factory-created nodes (check `$isBlockNode` from the factory)
 
 6. **Register all factory node classes** in BlockComposer's `initialConfig.nodes`:
+
    ```ts
    const ImageBlockNode = createBlockNodeClass('image');
    const AudioBlockNode = createBlockNodeClass('audio');
@@ -146,22 +157,27 @@ Replace `INSERT_IMAGE_COMMAND` with a generic `INSERT_BLOCK_COMMAND` that takes 
 For each block type, create a `Display` component (read-only) and an `Input` component (editable), then register them in `core-block-components.ts`.
 
 #### AudioBlock
+
 - **AudioDisplay**: Shows audio player (`<audio>` element) with title and artist
 - **AudioInput**: URL input for audio source, text fields for title/artist, composes AudioDisplay when loaded
 
 #### VideoBlock
+
 - **VideoDisplay**: Shows `<video>` element or iframe embed for YouTube/Vimeo URLs, with title
 - **VideoInput**: URL input, auto-detects provider, shows preview, composes VideoDisplay when loaded
 
 #### FileBlock
+
 - **FileDisplay**: Shows file icon + name + size, download link
 - **FileInput**: URL/upload input for file, name field
 
 #### EmbedBlock
+
 - **EmbedDisplay**: Shows iframe or oEmbed card for external URLs
 - **EmbedInput**: URL input, display mode selector (card vs inline)
 
 **File structure per block type:**
+
 ```
 components/
   AudioBlock/
@@ -178,6 +194,7 @@ components/
 ```
 
 **Registration in `core-block-components.ts`:**
+
 ```ts
 updateBlockRegistration('audio', { display: AudioDisplay, input: AudioInput });
 updateBlockRegistration('video', { display: VideoDisplay, input: VideoInput });
@@ -194,18 +211,22 @@ updateBlockRegistration('embed', { display: EmbedDisplay, input: EmbedInput });
 **Goal:** Code, Callout, Divider, and Link blocks work end-to-end.
 
 #### CodeBlock
+
 - **CodeDisplay**: Renders code with syntax highlighting (use a lightweight highlighter or `<pre><code>` with language class), shows language label
 - **CodeInput**: `<textarea>` or contenteditable for code entry, language selector dropdown
 
 #### CalloutBlock
+
 - **CalloutDisplay**: Styled box with icon + text, variant-based colouring (info/warning/error/success)
 - **CalloutInput**: Text input + variant selector, composes CalloutDisplay
 
 #### DividerBlock
+
 - **DividerDisplay**: Horizontal rule with style variant (solid/dashed/dotted)
 - **DividerInput**: Style selector (minimal — a divider has almost no editable content)
 
 #### LinkBlock
+
 - **LinkDisplay**: Card preview with title, description, thumbnail (link preview card)
 - **LinkInput**: URL input with metadata auto-fetch (title, description, thumbnail), composes LinkDisplay when loaded
 
@@ -218,18 +239,22 @@ updateBlockRegistration('embed', { display: EmbedDisplay, input: EmbedInput });
 **Goal:** Event, Task, Location, and Tag blocks work end-to-end.
 
 #### EventBlock
+
 - **EventDisplay**: Card showing title, date/time range, location, description
 - **EventInput**: Form fields for title, start/end dates (date pickers), location, description
 
 #### TaskBlock
+
 - **TaskDisplay**: Checkbox + title + status badge + priority indicator + optional due date
 - **TaskInput**: Title input, status/priority selectors, date picker for due date, assignee field
 
 #### LocationBlock
+
 - **LocationDisplay**: Map pin icon + name + address (static display; embedded map is a future enhancement)
 - **LocationInput**: Name, address, lat/lng fields
 
 #### TagBlock
+
 - **TagDisplay**: Coloured pill/badge with tag name
 - **TagInput**: Tag name input + colour picker
 
@@ -326,15 +351,16 @@ The block tree is also the **interop layer**: other communities or apps can read
 
 **Why a single blob on the root (not per-block):**
 
-| Approach | Verdict |
-|----------|---------|
-| JSON string property per TextBlock (`inlineChildren: string`) | Hacky, possible literal size limits, JSON-in-a-string on every paragraph |
-| File storage blob per TextBlock | 50 paragraphs = 50 content-addressed blobs = significant save/load overhead |
-| **Single file storage blob on root CollectionBlock** | **One blob, perfect fidelity, same proven pattern as `Template.schema`, minimal overhead** |
+| Approach                                                      | Verdict                                                                                    |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| JSON string property per TextBlock (`inlineChildren: string`) | Hacky, possible literal size limits, JSON-in-a-string on every paragraph                   |
+| File storage blob per TextBlock                               | 50 paragraphs = 50 content-addressed blobs = significant save/load overhead                |
+| **Single file storage blob on root CollectionBlock**          | **One blob, perfect fidelity, same proven pattern as `Template.schema`, minimal overhead** |
 
 This mirrors exactly how Templates work: the `Template` model stores its schema as a single `FileData` blob via `resolveLanguage: FILE_STORAGE_LANGUAGE` + `transform: decodeFileAsJson`. A saved post (root CollectionBlock) is the same concept — a structured document with a canonical representation.
 
 **Files:**
+
 - `packages/models/src/blocks/CollectionBlock.ts` — add `editorState` file-storage property
 - `shared/src/serialization.ts` — save Lexical JSON blob alongside block tree, load it back
 - `packages/models/src/utils/fileTransforms.ts` — reuse existing `decodeFileAsJson`
@@ -418,13 +444,13 @@ This mirrors exactly how Templates work: the `Template` model stores its schema 
 
    **Strategy by phase:**
 
-   *MVP (this PR):* The BlockComposer is the only editor. Every save regenerates both the blob and the block tree atomically. No drift is possible through normal usage. AI tools that mutate individual blocks won't exist yet (they'd need to be explicitly wired up). This is sufficient.
+   _MVP (this PR):_ The BlockComposer is the only editor. Every save regenerates both the blob and the block tree atomically. No drift is possible through normal usage. AI tools that mutate individual blocks won't exist yet (they'd need to be explicitly wired up). This is sufficient.
 
-   *Near-term (when AI block tools land):* AI CRUD tools for blocks should **invalidate the blob** when they mutate the tree. The simplest mechanism: clear the `editorState` property (or set a `editorStateStale: true` flag) when any child block is created, updated, or deleted outside the composer. On next load, the renderer detects the missing/stale blob and falls back to `blocksToLexicalJSON()`. This means:
+   _Near-term (when AI block tools land):_ AI CRUD tools for blocks should **invalidate the blob** when they mutate the tree. The simplest mechanism: clear the `editorState` property (or set a `editorStateStale: true` flag) when any child block is created, updated, or deleted outside the composer. On next load, the renderer detects the missing/stale blob and falls back to `blocksToLexicalJSON()`. This means:
    - AI deletes a paragraph → blob cleared → renderer uses block tree fallback → deleted paragraph is gone (correct) but formatting is simplified (acceptable)
    - User opens post in composer → composer uses block tree fallback to populate editor → user saves → fresh blob generated with current formatting
 
-   *Longer-term (if needed):* A reconciliation step on load that walks both the blob and block tree, keeping the blob's formatting but filtering out nodes whose corresponding block no longer exists in the tree. This is more complex but gives best-of-both-worlds: formatting preserved for unmodified blocks, deletions/additions reflected immediately. Not needed for MVP.
+   _Longer-term (if needed):_ A reconciliation step on load that walks both the blob and block tree, keeping the blob's formatting but filtering out nodes whose corresponding block no longer exists in the tree. This is more complex but gives best-of-both-worlds: formatting preserved for unmodified blocks, deletions/additions reflected immediately. Not needed for MVP.
    - Compose rich text with bold/italic spans → save → load → render → verify formatting preserved
    - Compose lists (bullet, numbered, nested) → save → load → verify list structure intact
    - Compose mixed content (headings, quotes, images, lists) → full roundtrip
@@ -432,7 +458,7 @@ This mirrors exactly how Templates work: the `Template` model stores its schema 
    - Verify fallback `blocksToLexicalJSON()` produces reasonable output when blob is missing
    - Compose each non-text block type → verify all properties survive roundtrip
 
-8. **Handle edge cases:**
+7. **Handle edge cases:**
    - DividerBlock has no text content — just type + style
    - CodeBlock uses `code` property not `text`
    - CollectionBlock nested children ordering must be preserved
@@ -452,6 +478,7 @@ This mirrors exactly how Templates work: the `Template` model stores its schema 
 1. **Move `ImageBlock.tsx`** (the legacy Lexical-coupled component) out of the active tree or delete it — it's superseded by `ImageDisplay`/`ImageInput`
 
 2. **Consolidate component file structure:**
+
    ```
    components/
      BlockComposer.tsx
@@ -498,12 +525,14 @@ Future: diff the new Lexical JSON against the existing block tree. Match nodes b
 When a user embeds someone else's content into their composition (e.g. quoting a paragraph from another post, including an AudioBlock from a shared playlist), two modes are possible:
 
 **Snapshot (copy at embed time):**
+
 - Block tree: new models created (copies of the originals, own URIs)
 - Blob: content captured inline at save time
 - Behaviour: frozen at embed time. Original author's later edits don't affect your composition
 - Use case: quoting, archiving, "here's what they said at the time"
 
 **Live reference (link to original):**
+
 - Block tree: your `CollectionBlock.children` includes the original block's AD4M URI (no copy)
 - Blob: content captured at save time (still a snapshot)
 - Behaviour: block tree always reflects current state; blob may be stale
@@ -512,6 +541,7 @@ When a user embeds someone else's content into their composition (e.g. quoting a
 **Detecting updates — blob nodes carry source URIs:**
 
 Each node in the saved blob could carry an optional `sourceUri` field (the AD4M URI of the block it was created from). On load, the renderer or editor could:
+
 1. For each blob node with a `sourceUri`, query the live AD4M model
 2. Compare the blob's snapshot values against the live model's current values
 3. If they differ, flag the node as "updated since last save" (visual indicator)
@@ -563,14 +593,14 @@ This gives users control: retain the original (citation integrity) or pull in up
 
 ## Phasing Summary
 
-| Phase | Description | Blocks Affected | Complexity |
-|-------|-------------|-----------------|------------|
-| 1 | Renderer style parity | All (visual) | Low |
-| 2 | Factory migration + generic insert | Image (migration) | Medium |
-| 3 | Media block components | Audio, Video, File, Embed | Medium |
-| 4 | Structural block components | Code, Callout, Divider, Link | Medium |
-| 5 | Social block components | Event, Task, Location, Tag | Medium |
-| 6 | Lossless serialization roundtrip | All | **High** |
-| 7 | Package cleanup | N/A (refactor) | Low |
+| Phase | Description                        | Blocks Affected              | Complexity |
+| ----- | ---------------------------------- | ---------------------------- | ---------- |
+| 1     | Renderer style parity              | All (visual)                 | Low        |
+| 2     | Factory migration + generic insert | Image (migration)            | Medium     |
+| 3     | Media block components             | Audio, Video, File, Embed    | Medium     |
+| 4     | Structural block components        | Code, Callout, Divider, Link | Medium     |
+| 5     | Social block components            | Event, Task, Location, Tag   | Medium     |
+| 6     | Lossless serialization roundtrip   | All                          | **High**   |
+| 7     | Package cleanup                    | N/A (refactor)               | Low        |
 
 Phases 1–2 are prerequisites. **Phase 6 (serialization roundtrip) should be tackled alongside or immediately after Phase 1** — without `blocksToLexicalJSON()` and lossless inline text storage, saved posts can't be displayed from AD4M data, which blocks all end-to-end testing. Phases 3–5 can be parallelised across developers once Phase 2 and 6 are in place. Phase 7 can happen at any time.

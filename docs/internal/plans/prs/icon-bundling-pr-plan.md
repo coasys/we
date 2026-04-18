@@ -24,8 +24,12 @@ Give the loading and error `<span>` placeholders explicit dimensions matching `-
 if (!this.svg) return html`<span role="img" aria-label="icon loading"></span>`;
 
 // After
-if (!this.svg) return html`<span role="img" aria-label="icon loading"
-  style="display:inline-block;width:var(--icon-size);height:var(--icon-size)"></span>`;
+if (!this.svg)
+  return html`<span
+    role="img"
+    aria-label="icon loading"
+    style="display:inline-block;width:var(--icon-size);height:var(--icon-size)"
+  ></span>`;
 ```
 
 Same treatment for the error state span.
@@ -53,14 +57,15 @@ A Node script that:
 ```ts
 // packages/design-system/3-primitives/src/generated/icon-bundle.ts  (gitignored)
 export const bundledIcons: Record<string, string> = {
-  "gear:regular": '<svg xmlns="http://www.w3.org/2000/svg" ...>...</svg>',
-  "x:regular": '<svg ...>...</svg>',
-  "arrow-left:bold": '<svg ...>...</svg>',
+  'gear:regular': '<svg xmlns="http://www.w3.org/2000/svg" ...>...</svg>',
+  'x:regular': '<svg ...>...</svg>',
+  'arrow-left:bold': '<svg ...>...</svg>',
   // ...only icons found in the codebase
 };
 ```
 
 **Scan targets** (configurable, but good defaults):
+
 - `packages/app-framework/src/**/*.{ts,tsx,schema.ts}`
 - `packages/design-system/**/src/**/*.ts`
 - `apps/**/src/**/*.{ts,tsx}`
@@ -160,12 +165,13 @@ Add a `build:icons` script that runs the collection before the main build:
 {
   "scripts": {
     "build:icons": "tsx scripts/collect-icons.ts",
-    "build:steps": "pnpm build:icons && pnpm build:cem && tsup",
+    "build:steps": "pnpm build:icons && pnpm build:cem && tsup"
   }
 }
 ```
 
 Add the generated file to `.gitignore`:
+
 ```
 packages/design-system/3-primitives/src/generated/
 ```
@@ -205,13 +211,13 @@ During development (`pnpm dev`), the icon bundle may be stale if new icons were 
 
 ## Commit plan
 
-| # | Scope | Description |
-|---|-------|-------------|
-| 1 | `we-icon` placeholder sizing | Give loading/error spans explicit `width`/`height` via `--icon-size` |
-| 2 | Icon collection script | `scripts/collect-icons.ts` — scans codebase, reads from `@phosphor-icons/core`, emits `icon-bundle.ts` |
-| 3 | Sync-path in `we-icon` | Refactor `loadIcon`/`fetchIcon` to support synchronous resolver returns without microtask delay |
-| 4 | Auto-register resolver | `register-bundled-icons.ts` + import from `index.ts` |
-| 5 | Build integration | Wire `build:icons` into the build pipeline, `.gitignore` the generated file |
+| #   | Scope                        | Description                                                                                            |
+| --- | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 1   | `we-icon` placeholder sizing | Give loading/error spans explicit `width`/`height` via `--icon-size`                                   |
+| 2   | Icon collection script       | `scripts/collect-icons.ts` — scans codebase, reads from `@phosphor-icons/core`, emits `icon-bundle.ts` |
+| 3   | Sync-path in `we-icon`       | Refactor `loadIcon`/`fetchIcon` to support synchronous resolver returns without microtask delay        |
+| 4   | Auto-register resolver       | `register-bundled-icons.ts` + import from `index.ts`                                                   |
+| 5   | Build integration            | Wire `build:icons` into the build pipeline, `.gitignore` the generated file                            |
 
 ---
 

@@ -6,8 +6,9 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "build:icons": "tsx scripts/collect-icons.ts",
     "build:cem": "cem analyze --litelement --config custom-elements-manifest.config.mjs --globs src/**/*.ts",
-    "build:steps": "pnpm build:cem && tsup",
+    "build:steps": "pnpm build:icons && pnpm build:cem && tsup",
     "build": "we-build",
     "start": "pnpm build:cem && storybook dev -p 6006",
     "storybook:build": "storybook build"
@@ -72,7 +73,6 @@
     "@we/design-utils": "workspace:*",
     "@we/tokens": "workspace:*",
     "@floating-ui/dom": "^1.7.4",
-    "@phosphor-icons/core": "^2.1.1",
     "jdenticon": "3.3.0",
     "lit": "3.2.1",
     "marked": "^18.0.0",
@@ -88,6 +88,7 @@
   },
   "devDependencies": {
     "@custom-elements-manifest/analyzer": "0.10.4",
+    "@phosphor-icons/core": "^2.1.1",
     "@storybook/addon-essentials": "8.4.6",
     "@storybook/web-components": "8.4.6",
     "@storybook/web-components-vite": "8.4.6",

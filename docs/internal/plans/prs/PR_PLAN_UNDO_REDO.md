@@ -24,6 +24,7 @@ redoStack: TemplateSchema[]   (most recent at end)
 ```
 
 **Why snapshots over mutation inversion?**
+
 - Simpler and more reliable — no need to compute inverse patches
 - `deepClone` is already used in the patch pipeline (line 817 of AiStore.tsx)
 - Schema objects are small (typically < 50 KB JSON), so memory is not a concern
@@ -45,23 +46,26 @@ redoStack: TemplateSchema[]   (most recent at end)
 **File:** `packages/app-framework/src/frameworks/solid/stores/AiStore.tsx`
 
 1. **Add signals:**
+
    ```ts
    const [undoStack, setUndoStack] = createSignal<TemplateSchema[]>([]);
    const [redoStack, setRedoStack] = createSignal<TemplateSchema[]>([]);
    ```
 
 2. **Add derived accessors:**
+
    ```ts
    const canUndo: Accessor<boolean> = () => undoStack().length > 0;
    const canRedo: Accessor<boolean> = () => redoStack().length > 0;
    ```
 
 3. **Add `pushSnapshot()` helper** (called before every schema mutation):
+
    ```ts
    const MAX_UNDO = 50;
    function pushSnapshot() {
      const current = deepClone(templateStore.currentTemplate) as TemplateSchema;
-     setUndoStack(prev => {
+     setUndoStack((prev) => {
        const next = [...prev, current];
        return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
      });
@@ -70,14 +74,15 @@ redoStack: TemplateSchema[]   (most recent at end)
    ```
 
 4. **Add `undo()` action:**
+
    ```ts
    async function undo() {
      const stack = undoStack();
      if (stack.length === 0) return;
      const snapshot = stack[stack.length - 1];
-     setUndoStack(prev => prev.slice(0, -1));
+     setUndoStack((prev) => prev.slice(0, -1));
      // Push current state onto redo
-     setRedoStack(prev => [...prev, deepClone(templateStore.currentTemplate) as TemplateSchema]);
+     setRedoStack((prev) => [...prev, deepClone(templateStore.currentTemplate) as TemplateSchema]);
      // Apply snapshot
      if (isReadOnly()) {
        setPendingTemplate(snapshot);
@@ -89,13 +94,14 @@ redoStack: TemplateSchema[]   (most recent at end)
    ```
 
 5. **Add `redo()` action** (mirror of undo):
+
    ```ts
    async function redo() {
      const stack = redoStack();
      if (stack.length === 0) return;
      const snapshot = stack[stack.length - 1];
-     setRedoStack(prev => prev.slice(0, -1));
-     setUndoStack(prev => [...prev, deepClone(templateStore.currentTemplate) as TemplateSchema]);
+     setRedoStack((prev) => prev.slice(0, -1));
+     setUndoStack((prev) => [...prev, deepClone(templateStore.currentTemplate) as TemplateSchema]);
      if (isReadOnly()) {
        setPendingTemplate(snapshot);
      } else {
@@ -111,12 +117,14 @@ redoStack: TemplateSchema[]   (most recent at end)
    - **Code-mode edit** (~line 1138): before `templateStore.updateTemplate(parsed)`
 
 7. **Reset stacks on template switch** — add to the existing `createEffect` that watches `currentTemplate.id`:
+
    ```ts
    setUndoStack([]);
    setRedoStack([]);
    ```
 
 8. **Export on the `AiStore` interface:**
+
    ```ts
    canUndo: Accessor<boolean>;
    canRedo: Accessor<boolean>;
@@ -143,6 +151,7 @@ redoStack: TemplateSchema[]   (most recent at end)
 **File:** `packages/design-system/5-widgets/src/widgets/panels/ChatPanel/ChatPanel.solid.tsx`
 
 2. **Add undo/redo buttons** in the header row, next to the existing mode switcher / new-chat button. Use the existing `we-button` + `we-icon` pattern:
+
    ```tsx
    <Show when={props.onUndo}>
      <we-button
@@ -210,12 +219,12 @@ These should be appended inside the `undo()` and `redo()` functions in AiStore u
 
 ## File Change Summary
 
-| File | Changes |
-|------|---------|
-| `packages/app-framework/src/frameworks/solid/stores/AiStore.tsx` | Add undo/redo signals, `pushSnapshot()`, `undo()`, `redo()`, export on interface + store object, insert snapshot calls at 3 mutation sites, reset on template switch |
-| `packages/design-system/5-widgets/src/widgets/panels/ChatPanel/ChatPanel.types.ts` | Add `canUndo`, `canRedo`, `onUndo`, `onRedo` props |
-| `packages/design-system/5-widgets/src/widgets/panels/ChatPanel/ChatPanel.solid.tsx` | Add undo/redo buttons in header toolbar, add keyboard shortcut handler |
-| `packages/app-framework/src/shared/schemas/shell/AiChatSidebar.schema.ts` | Wire 4 new prop bindings |
+| File                                                                                | Changes                                                                                                                                                              |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/app-framework/src/frameworks/solid/stores/AiStore.tsx`                    | Add undo/redo signals, `pushSnapshot()`, `undo()`, `redo()`, export on interface + store object, insert snapshot calls at 3 mutation sites, reset on template switch |
+| `packages/design-system/5-widgets/src/widgets/panels/ChatPanel/ChatPanel.types.ts`  | Add `canUndo`, `canRedo`, `onUndo`, `onRedo` props                                                                                                                   |
+| `packages/design-system/5-widgets/src/widgets/panels/ChatPanel/ChatPanel.solid.tsx` | Add undo/redo buttons in header toolbar, add keyboard shortcut handler                                                                                               |
+| `packages/app-framework/src/shared/schemas/shell/AiChatSidebar.schema.ts`           | Wire 4 new prop bindings                                                                                                                                             |
 
 ---
 

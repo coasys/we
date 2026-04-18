@@ -49,14 +49,14 @@ graph patterns by their declared predicates alone.
 
 ## Affected models (WE)
 
-| Model | @Flag | required | Affected by conformance bug | Affected by delete bug |
-|-------|-------|----------|-----------------------------|------------------------|
-| Theme | ✗ | ✗ | ✓ (via AgentSettings.installedThemes) | ✓ |
-| WeNode | ✗ | ✗ | ✓ (via CollectionBlock.children) | ✓ |
-| EmbedBlock | ✗ | ✗ | ✓ (if targeted by @HasMany) | ✓ |
-| CalloutBlock | ✗ | ✗ | ✓ | ✓ |
-| CollectionBlock | ✗ | ✗ | ✓ | ✓ |
-| DividerBlock | ✗ | ✗ | ✓ | ✓ |
+| Model           | @Flag | required | Affected by conformance bug           | Affected by delete bug |
+| --------------- | ----- | -------- | ------------------------------------- | ---------------------- |
+| Theme           | ✗     | ✗        | ✓ (via AgentSettings.installedThemes) | ✓                      |
+| WeNode          | ✗     | ✗        | ✓ (via CollectionBlock.children)      | ✓                      |
+| EmbedBlock      | ✗     | ✗        | ✓ (if targeted by @HasMany)           | ✓                      |
+| CalloutBlock    | ✗     | ✗        | ✓                                     | ✓                      |
+| CollectionBlock | ✗     | ✗        | ✓                                     | ✓                      |
+| DividerBlock    | ✗     | ✗        | ✓                                     | ✓                      |
 
 Models with `@Flag` or `required` are not affected.
 
@@ -77,21 +77,19 @@ checks:
 // This matches the model's full graph pattern — a node conforms if it
 // has links for every predicate the model declares.
 if (conditions.length === 0) {
-    for (const [_propName, propMeta] of Object.entries(targetProps)) {
-        if (!propMeta.flag && !propMeta.getter && propMeta.through) {
-            conditions.push({
-                type: 'property',
-                predicate: propMeta.through,
-            });
-            sparqlConditions.push(
-                `?target <${escapeQueryString(propMeta.through)}> ?_v${varIdx++} .`
-            );
-        }
+  for (const [_propName, propMeta] of Object.entries(targetProps)) {
+    if (!propMeta.flag && !propMeta.getter && propMeta.through) {
+      conditions.push({
+        type: 'property',
+        predicate: propMeta.through,
+      });
+      sparqlConditions.push(`?target <${escapeQueryString(propMeta.through)}> ?_v${varIdx++} .`);
     }
+  }
 }
 
 if (conditions.length === 0) {
-    return undefined; // Truly empty model — nothing to filter on
+  return undefined; // Truly empty model — nothing to filter on
 }
 ```
 
@@ -101,9 +99,9 @@ Extend `ConformanceCondition.type` to include `'property'`:
 
 ```typescript
 export interface ConformanceCondition {
-    type: 'flag' | 'required' | 'property';
-    predicate: string;
-    value?: string;
+  type: 'flag' | 'required' | 'property';
+  predicate: string;
+  value?: string;
 }
 ```
 
@@ -184,23 +182,23 @@ three other places in the codebase (`AgentClient`, `PerspectiveClient.addLinks`,
 
 ## Files to modify
 
-| File | Change |
-|------|--------|
-| `core/src/shacl/SHACLShape.ts` | Add `'property'` to `ConformanceCondition.type` |
-| `core/src/model/decorators.ts` | Phase-3 fallback in `buildConformanceFilter` |
-| `core/src/perspectives/PerspectiveProxy.ts` | `__typename` stripping in `removeLinks` |
-| `core/src/model/relation-filtering.test.ts` | New tests for property-existence conformance |
+| File                                        | Change                                          |
+| ------------------------------------------- | ----------------------------------------------- |
+| `core/src/shacl/SHACLShape.ts`              | Add `'property'` to `ConformanceCondition.type` |
+| `core/src/model/decorators.ts`              | Phase-3 fallback in `buildConformanceFilter`    |
+| `core/src/perspectives/PerspectiveProxy.ts` | `__typename` stripping in `removeLinks`         |
+| `core/src/model/relation-filtering.test.ts` | New tests for property-existence conformance    |
 
 ---
 
 ## Commit plan
 
-| # | Scope | Description |
-|---|-------|-------------|
-| 1 | `removeLinks` | Strip `__typename` from link objects before mutation |
-| 2 | Conformance type | Add `'property'` to `ConformanceCondition` union |
-| 3 | `buildConformanceFilter` | Phase-3 fallback using all declared property predicates |
-| 4 | Tests | Conformance + deletion tests for flag-less models |
+| #   | Scope                    | Description                                             |
+| --- | ------------------------ | ------------------------------------------------------- |
+| 1   | `removeLinks`            | Strip `__typename` from link objects before mutation    |
+| 2   | Conformance type         | Add `'property'` to `ConformanceCondition` union        |
+| 3   | `buildConformanceFilter` | Phase-3 fallback using all declared property predicates |
+| 4   | Tests                    | Conformance + deletion tests for flag-less models       |
 
 Commits 1 and 2–3 are independent and can be reviewed/merged separately.
 
