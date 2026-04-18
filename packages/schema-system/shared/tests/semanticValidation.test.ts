@@ -76,17 +76,17 @@ function makeContext(overrides?: Partial<ContextData>): ContextData {
     storeEntries: [
       {
         name: 'adamStore',
-        state: ['loading', 'bootState', 'me'],
+        state: { loading: { type: 'boolean' }, bootState: { type: 'string' }, me: { type: 'object' } },
         actions: ['navigate', 'login'],
       },
       {
         name: 'routeStore',
-        state: ['currentPath'],
+        state: { currentPath: { type: 'string' } },
         actions: ['navigate'],
       },
       {
         name: 'themeStore',
-        state: ['themes', 'currentTheme'],
+        state: { themes: { type: 'array' }, currentTheme: { type: 'string' } },
         actions: ['setThemes', 'setCurrentTheme'],
       },
     ],

@@ -53,7 +53,7 @@ describe('SchemaRenderer', () => {
   it('renders HTML element for lowercase type', () => {
     const node: SchemaNode = { type: 'div', props: { class: 'box' }, children: [{ type: 'span' }] };
     const { container } = renderSchema(node);
-    const div = container.querySelector('div');
+    const div = container.querySelector('div.box');
     expect(div).toBeTruthy();
     expect(div!.getAttribute('class')).toBe('box');
     expect(div!.querySelector('span')).toBeTruthy();
@@ -120,7 +120,11 @@ describe('SchemaRenderer', () => {
     };
     const { container } = renderSchema(node, { registry, stores });
     expect(container.querySelector('span')?.textContent).toBe('visible');
-    expect(container.querySelector('div')).toBeNull();
+    // The only divs should be theme wrappers with display:contents, not the else branch
+    const divs = container.querySelectorAll('div');
+    for (const d of divs) {
+      expect(d.style.display).toBe('contents');
+    }
   });
 
   it('$if renders else branch when condition is false', () => {

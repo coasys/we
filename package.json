@@ -19,6 +19,7 @@
     "dev:web": "pnpm --filter @we/app-web dev",
     "dev:electron": "pnpm --filter @we/app-electron electron:dev",
     "dev:tauri": "pnpm --filter @we/app-tauri tauri:dev",
+    "test": "pnpm -r --no-bail run test",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write ."

@@ -52,8 +52,8 @@ describe('updateSchema', () => {
       const initial = makeTemplate();
       const [store, setStore] = createStore<TemplateSchema>(initial);
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      // Missing meta — invalid schema
-      const invalid = { type: 'div', children: [] } as unknown as TemplateSchema;
+      // Unrecognized key triggers strict-mode zod validation failure
+      const invalid = { type: 'div', unknownKey: true } as unknown as TemplateSchema;
       updateSchema(store, invalid, setStore);
       expect(errorSpy).toHaveBeenCalledWith('Invalid schema node:', expect.anything());
       errorSpy.mockRestore();
