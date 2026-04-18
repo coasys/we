@@ -124,7 +124,7 @@ export const settingsTemplate: TemplateSchema = {
                             condition: '$template.isCore',
                             then: {
                               type: 'we-tag',
-                              props: { variant: 'default' },
+                              props: { variant: 'neutral' },
                               children: ['Core'],
                             },
                           },

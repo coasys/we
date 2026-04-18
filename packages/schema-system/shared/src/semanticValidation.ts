@@ -470,9 +470,11 @@ function checkProps(
     }
 
     // Check prop type category (only for static values, not token objects)
+    // Skip $-prefixed strings — these are dynamic references (e.g. $each iteration vars)
     if (propTypes && !isTokenObject(propValue) && typeof propValue !== 'object') {
+      const isDynamicRef = typeof propValue === 'string' && propValue.startsWith('$');
       const expectedCategory = propTypes.get(propName);
-      if (expectedCategory && expectedCategory !== 'unknown') {
+      if (expectedCategory && expectedCategory !== 'unknown' && !isDynamicRef) {
         const actualType = typeof propValue;
         if (actualType === 'string' || actualType === 'boolean' || actualType === 'number') {
           if (actualType !== expectedCategory) {
@@ -503,9 +505,9 @@ function checkProps(
         }
       }
 
-      // Catch bare numbers passed as strings (e.g. "16" instead of "16px" or "sm")
-      // Skip DS props — they accept numeric tokens like "100", "200"
-      if (/^\d+(\.\d+)?$/.test(propValue) && !ctx.dsPropToLayer.has(propName)) {
+      // Catch bare numbers on props that explicitly accept CSS lengths (e.g. "16" should be "16px")
+      // Only flag props whose allowed values include {css-length} — all others may use bare numbers as content
+      if (/^\d+(\.\d+)?$/.test(propValue) && allowed?.includes('{css-length}')) {
         errors.push({
           path: propPath,
           message: `Prop "${propName}" has bare number "${propValue}" — add a CSS unit (e.g. "${propValue}px") or use one of the component's declared token values.`,

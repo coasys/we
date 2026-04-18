@@ -746,6 +746,7 @@ AdamStore:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
   - createSpace(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup
+  - removePerspective(): unknown
   - login(password: string): logs in the agent with password
   - logout(): locks the agent and returns to login screen
   - updateAgentProfile(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)
@@ -772,11 +773,15 @@ TemplateStore:
   - templates: array of TemplateSchema objects (user-facing templates)
   - shellTemplates: array of TemplateSchema objects (static system pages: profile, settings, tests)
   - currentTemplate: TemplateSchema (the active template)
+  - operationLoading: unknown
 - Actions:
   - updateTemplate(newTemplate: TemplateSchema): updates the current template
   - switchTemplate(newTemplateId: string): switches to another template
   - removeTemplate(): removes the current template
   - saveTemplate(name: string): saves the current template
+  - toggleInstalled(): unknown
+  - setDefaultTemplate(): unknown
+  - deleteTemplate(): unknown
 
 SpaceStore:
 - State:
@@ -789,13 +794,46 @@ SpaceStore:
   - setSpaceId(id: string): sets the current space id
   - getSpace(): loads space data
   - getPosts(perspective: PerspectiveProxy): loads posts for a space
+  - createPost(): unknown
+  - updateSpaceImage(): unknown
+  - updateSpaceCoverImage(): unknown
 
 AiStore:
 - State:
   - models: array of Model objects
   - tasks: array of AITask objects
+  - isOpen: unknown
+  - messages: unknown
+  - isStreaming: unknown
+  - streamingContent: unknown
+  - apiKeyConfigured: unknown
+  - templateName: unknown
+  - templateIcon: unknown
+  - isReadOnly: unknown
+  - hasPendingChanges: unknown
+  - pickerOpen: unknown
+  - pickerAction: unknown
+  - pickerDefaultName: unknown
+  - pickerDefaultIcon: unknown
+  - sessions: unknown
+  - activeSessionId: unknown
+  - panelMode: unknown
+  - schemaJson: unknown
+  - operationLoading: unknown
 - Actions:
   - handleSchemaPrompt(prompt: string): generates a schema from a prompt
+  - sendMessage(): unknown
+  - close(): unknown
+  - setApiKey(): unknown
+  - startFork(): unknown
+  - startFresh(): unknown
+  - confirmPicker(): unknown
+  - cancelPicker(): unknown
+  - newChat(): unknown
+  - switchSession(): unknown
+  - deleteSession(): unknown
+  - setPanelMode(): unknown
+  - onSchemaEdit(): unknown
 
 ---
 

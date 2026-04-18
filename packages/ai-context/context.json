@@ -4763,6 +4763,7 @@
         "navigate",
         "addNewSpace",
         "createSpace",
+        "removePerspective",
         "login",
         "logout",
         "updateAgentProfile",
@@ -4810,9 +4811,20 @@
         "currentTemplate": {
           "type": "object",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "operationLoading": {
+          "type": "boolean"
         }
       },
-      "actions": ["updateTemplate", "switchTemplate", "removeTemplate", "saveTemplate"]
+      "actions": [
+        "updateTemplate",
+        "switchTemplate",
+        "removeTemplate",
+        "saveTemplate",
+        "toggleInstalled",
+        "setDefaultTemplate",
+        "deleteTemplate"
+      ]
     },
     {
       "name": "spaceStore",
@@ -4826,7 +4838,7 @@
         },
         "space": {
           "type": "object",
-          "properties": ["uuid", "name", "description", "url", "visibility"]
+          "properties": ["uuid", "name", "description", "url", "visibility", "image", "thumbnail"]
         },
         "posts": {
           "type": "array",
@@ -4836,7 +4848,7 @@
           "type": "boolean"
         }
       },
-      "actions": ["setSpaceId", "getSpace", "getPosts"]
+      "actions": ["setSpaceId", "getSpace", "getPosts", "createPost", "updateSpaceImage", "updateSpaceCoverImage"]
     },
     {
       "name": "aiStore",
@@ -4848,9 +4860,77 @@
         "tasks": {
           "type": "array",
           "properties": ["id", "status", "result"]
+        },
+        "isOpen": {
+          "type": "boolean"
+        },
+        "messages": {
+          "type": "array"
+        },
+        "isStreaming": {
+          "type": "boolean"
+        },
+        "streamingContent": {
+          "type": "string"
+        },
+        "apiKeyConfigured": {
+          "type": "boolean"
+        },
+        "templateName": {
+          "type": "string"
+        },
+        "templateIcon": {
+          "type": "string"
+        },
+        "isReadOnly": {
+          "type": "boolean"
+        },
+        "hasPendingChanges": {
+          "type": "boolean"
+        },
+        "pickerOpen": {
+          "type": "boolean"
+        },
+        "pickerAction": {
+          "type": "string"
+        },
+        "pickerDefaultName": {
+          "type": "string"
+        },
+        "pickerDefaultIcon": {
+          "type": "string"
+        },
+        "sessions": {
+          "type": "array"
+        },
+        "activeSessionId": {
+          "type": "string"
+        },
+        "panelMode": {
+          "type": "string"
+        },
+        "schemaJson": {
+          "type": "string"
+        },
+        "operationLoading": {
+          "type": "boolean"
         }
       },
-      "actions": ["handleSchemaPrompt"]
+      "actions": [
+        "handleSchemaPrompt",
+        "sendMessage",
+        "close",
+        "setApiKey",
+        "startFork",
+        "startFresh",
+        "confirmPicker",
+        "cancelPicker",
+        "newChat",
+        "switchSession",
+        "deleteSession",
+        "setPanelMode",
+        "onSchemaEdit"
+      ]
     }
   ]
 }
