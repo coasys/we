@@ -226,7 +226,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
             transition: `grid-template-rows ${transitionDuration()}ms ease-in-out, opacity ${transitionDuration() * 0.6}ms ease-in-out`,
           }}
         >
-          <div style={{ overflow: 'hidden' }}>
+          <div style={{ overflow: 'hidden', display: 'flex', 'flex-direction': 'column', gap: 'var(--sidebar-gap)' }}>
             <Index each={groupItems()}>{(getItem) => renderEntry(getItem)}</Index>
           </div>
         </div>
