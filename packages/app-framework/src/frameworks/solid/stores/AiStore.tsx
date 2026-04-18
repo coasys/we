@@ -815,6 +815,10 @@ export function AiStoreProvider(props: ParentProps) {
       // We clone the template once and apply all tool calls' patches to it.
       // Only after ALL patches succeed and validate do we apply to the store.
       let accumulatedSchema: SchemaNode = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
+
+      // Capture baseline validation issues so we only reject patches that introduce NEW problems
+      const baselineSemantic = validateSemantic(accumulatedSchema as TemplateSchema, validationCtx);
+      const baselineIssueKeys = new Set(baselineSemantic.errors.map((e) => `${e.severity}|${e.path}|${e.message}`));
       let allPatchesValid = true;
 
       for (const tc of toolCalls) {
@@ -992,23 +996,30 @@ export function AiStoreProvider(props: ParentProps) {
           console.log('[AiStore] Structural validation passed');
 
           // Step 2: Semantic validation (component/prop/store checks)
+          // Only fail on NEW issues introduced by the patch, not pre-existing ones
           const semantic = validateSemantic(mergedTemplate, validationCtx);
-          const allIssues = semantic.errors;
-          const isClean = allIssues.length === 0;
+          const newIssues = semantic.errors.filter(
+            (e) => !baselineIssueKeys.has(`${e.severity}|${e.path}|${e.message}`),
+          );
+          const isClean = newIssues.length === 0;
+
+          if (semantic.errors.length > 0 && newIssues.length === 0) {
+            console.log(`[AiStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`);
+          }
 
           if (!isClean) {
-            console.warn(`[AiStore] Semantic validation failed (${allIssues.length} issues):`);
-            for (const issue of allIssues) {
+            console.warn(`[AiStore] Semantic validation failed (${newIssues.length} new issues):`);
+            for (const issue of newIssues) {
               console.warn(`  [${issue.severity}] ${issue.path}: ${issue.message}`);
             }
-            const top5 = allIssues
+            const top5 = newIssues
               .slice(0, 5)
               .map((e) => `[${e.severity}] ${e.message}`)
               .join('; ');
             allTextContent += '\n\n<span class="warning">⚠ Template failed semantic validation. Retrying...</span>';
             setStreamingContent(allTextContent);
             for (const tr of toolResults) {
-              tr.content = `Semantic validation failed (${allIssues.length} issues). Top issues: ${top5}. Fix the invalid tokens/props and retry.`;
+              tr.content = `Semantic validation failed (${newIssues.length} issues). Top issues: ${top5}. Fix the invalid tokens/props and retry.`;
               tr.is_error = true;
             }
           } else if (isReadOnly()) {

@@ -78,4 +78,32 @@ describe('mutations.findMutations (combined)', () => {
     expect(muts[0].path).toEqual(['arr', 0]);
     expect(typeof muts[0].value).toBe('function');
   });
+
+  it('replaces entire node when type changes (schema node swap)', () => {
+    const oldNode = {
+      type: 'Column',
+      id: 'n1',
+      children: [
+        { type: 'Text', id: 'n2', props: { variant: 'heading', content: 'Hello' } },
+        { type: 'we-button', id: 'n3', props: { text: 'Click' } },
+      ],
+    };
+    const newNode = {
+      type: 'Column',
+      id: 'n1',
+      children: [
+        { type: 'Row', id: 'n2', props: { gap: '400', ay: 'center' }, children: [] },
+        { type: 'we-button', id: 'n3', props: { text: 'Click' } },
+      ],
+    };
+    const muts = findMutations(oldNode, newNode);
+    // The child at index 0 should be a single whole-node replacement (type changed)
+    const childMut = muts.find((m) => m.path[0] === 'children' && m.path[1] === 0);
+    expect(childMut).toBeDefined();
+    expect(childMut!.path).toEqual(['children', 0]);
+    expect(childMut!.value).toEqual(newNode.children[0]);
+    // No individual property mutations for children[0]
+    const deepChildMuts = muts.filter((m) => m.path[0] === 'children' && m.path[1] === 0 && m.path.length > 2);
+    expect(deepChildMuts).toHaveLength(0);
+  });
 });

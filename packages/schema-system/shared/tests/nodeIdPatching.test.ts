@@ -224,6 +224,33 @@ describe('mergeNode', () => {
     expect(result.theme).toBeUndefined();
     expect('theme' in result).toBe(false);
   });
+
+  it('strips stale props when type changes', () => {
+    const existing: SchemaNode = {
+      id: 'n1',
+      type: 'Text',
+      props: { variant: 'heading', content: 'Hello' },
+    };
+    const result = mergeNode(existing, {
+      type: 'Row',
+      props: { gap: '400', ay: 'center' },
+      children: [{ type: 'we-text' }],
+    });
+    expect(result.id).toBe('n1');
+    expect(result.type).toBe('Row');
+    expect(result.props).toEqual({ gap: '400', ay: 'center' });
+    expect(result.children).toHaveLength(1);
+  });
+
+  it('still shallow-merges props when type stays the same', () => {
+    const existing: SchemaNode = {
+      id: 'n1',
+      type: 'Row',
+      props: { gap: 'md', color: 'primary' },
+    };
+    const result = mergeNode(existing, { props: { gap: 'lg' } });
+    expect(result.props).toEqual({ gap: 'lg', color: 'primary' });
+  });
 });
 
 // ── insertChild ────────────────────────────────────────────────────

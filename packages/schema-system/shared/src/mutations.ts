@@ -46,6 +46,17 @@ function accumulateMutations(mutations: Mutation[] = [], path: (string | number)
 
   // Handle objects
   if (isObject(a) && isObject(b)) {
+    // When a schema node's type changes (e.g. Text → Row), replace the entire
+    // object rather than diffing individual properties.  This gives the Solid
+    // store a new reference so <For> rebuilds the RenderSchema component from
+    // scratch — ensuring fresh propMemos, correct isWebComponent flag, etc.
+    const aObj = a as Record<string, unknown>;
+    const bObj = b as Record<string, unknown>;
+    if (typeof aObj.type === 'string' && typeof bObj.type === 'string' && aObj.type !== bObj.type) {
+      mutations.push({ path, value: b });
+      return;
+    }
+
     const aKeys = a ? Object.keys(a) : [];
     const bKeys = b ? Object.keys(b) : [];
     const keys = new Set([...aKeys, ...bKeys]);

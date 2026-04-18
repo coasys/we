@@ -355,6 +355,10 @@ export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResu
  * - The `id` field is always preserved from the existing node
  */
 export function mergeNode(existing: SchemaNode, patch: Record<string, unknown>): SchemaNode {
+  // When the node type changes, old type-specific keys (props, children, slots, etc.) are stale.
+  // Replace them wholesale instead of shallow-merging to avoid leaking invalid props.
+  const typeChanging = 'type' in patch && patch.type !== existing.type;
+
   const result = { ...existing };
 
   for (const [key, value] of Object.entries(patch)) {
@@ -370,8 +374,8 @@ export function mergeNode(existing: SchemaNode, patch: Record<string, unknown>):
     } else {
       // Plain object — check if existing is also a plain object for shallow merge
       const existingVal = (existing as Record<string, unknown>)[key];
-      if (existingVal && typeof existingVal === 'object' && !Array.isArray(existingVal)) {
-        // Shallow merge
+      if (!typeChanging && existingVal && typeof existingVal === 'object' && !Array.isArray(existingVal)) {
+        // Shallow merge (only when type stays the same)
         const merged = { ...(existingVal as Record<string, unknown>) };
         for (const [subKey, subVal] of Object.entries(value as Record<string, unknown>)) {
           if (subVal === null) {
@@ -382,8 +386,19 @@ export function mergeNode(existing: SchemaNode, patch: Record<string, unknown>):
         }
         (result as Record<string, unknown>)[key] = merged;
       } else {
-        // No existing object to merge into — just assign
+        // Type changed or no existing object to merge into — just assign
         (result as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+
+  // When changing type, remove keys from the old node that the patch doesn't mention
+  // (e.g. old props, children, slots that don't belong to the new type)
+  if (typeChanging) {
+    const preserve = new Set(['id', 'type', ...Object.keys(patch)]);
+    for (const key of Object.keys(result)) {
+      if (!preserve.has(key)) {
+        delete (result as Record<string, unknown>)[key];
       }
     }
   }
