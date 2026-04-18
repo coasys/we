@@ -118,7 +118,8 @@ const updateSchemaTool = {
           properties: {
             targetId: {
               type: 'string' as const,
-              description: 'The id of the node to target. Use "" for root.',
+              description:
+                'For node (update): the id of the node to merge into. For insert/remove: the id of the PARENT node whose children/routes array to modify. Use "" for root.',
             },
             node: {
               type: 'object' as const,
