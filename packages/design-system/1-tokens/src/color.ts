@@ -9,6 +9,9 @@ export type HexColor = `#${string}`;
 
 // Literal union types
 export type ColorHueToken = 'neutral' | 'primary' | 'success' | 'warning' | 'danger';
+
+/** Semantic variant scale used by component variant props — maps 1:1 to color hues */
+export type ComponentVariant = ColorHueToken;
 export type ColorBaseToken = 'white' | 'black';
 export type ColorConfigToken = 'multiplier' | 'subtractor' | 'saturation' | 'neutralSaturation';
 export type ColorLightnessToken =

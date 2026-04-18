@@ -7,8 +7,11 @@
  * - `avatarSize`: Avatar component sizing
  */
 
-// Literal union type for named sizes
-export type SizeToken = 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
+/** Universal component size scale used by all component size props */
+export type ComponentSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+
+// Extended dimensional scale — includes extremes for raw CSS sizing
+export type SizeToken = 'xxs' | ComponentSize | 'xxl';
 
 // Branded type to allow both tokens and raw size values (px, rem, %, etc.) while preserving autocomplete
 export type SizeValue = SizeToken | (string & {});
@@ -52,14 +55,6 @@ export const radius = {
   full: '50%',
 } satisfies Record<RadiusToken, string>;
 
-/**
- * Avatar size scale.
- */
-export type AvatarSizeToken = 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
-
-// Branded type to allow both tokens and raw avatar size values (px, rem, %, etc.) while preserving autocomplete
-export type AvatarSizeValue = AvatarSizeToken | (string & {});
-
 export const avatarSize = {
   xxs: '1rem', // 16px
   xs: '1.5rem', // 24px
@@ -68,4 +63,17 @@ export const avatarSize = {
   lg: '3rem', // 48px
   xl: '4rem', // 64px
   xxl: '5rem', // 80px
-} satisfies Record<AvatarSizeToken, string>;
+} satisfies Record<SizeToken, string>;
+
+/**
+ * Component height scale.
+ * Used for buttons, inputs, selects, badges, and other sized components
+ * to ensure consistent heights across the design system.
+ */
+export const componentHeight = {
+  xs: '1.5rem', // 24px
+  sm: '2rem', // 32px
+  md: '2.5rem', // 40px
+  lg: '3rem', // 48px
+  xl: '3.5rem', // 56px
+} satisfies Record<ComponentSize, string>;

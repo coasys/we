@@ -11,11 +11,11 @@ import { component } from './component.js';
 import { effect } from './effect.js';
 import { font } from './font.js';
 import { shadow } from './shadow.js';
-import { avatarSize, radius, size } from './size.js';
+import { avatarSize, componentHeight, radius, size } from './size.js';
 import { space } from './space.js';
 
 // Re-export all token objects
-export { animation, border, color, component, effect, font, shadow, size, radius, avatarSize, space };
+export { animation, border, color, component, effect, font, shadow, size, radius, avatarSize, componentHeight, space };
 
 // Export token types
 export type { AnimationTransitionToken } from './animation.js';
@@ -25,6 +25,7 @@ export type {
   ColorConfigToken,
   ColorHueToken,
   ColorLightnessToken,
+  ComponentVariant,
   HexColor,
   Percentage,
   ColorToken,
@@ -44,7 +45,7 @@ export type {
   LetterSpacingValue,
 } from './font.js';
 export type { ShadowToken, ShadowValue } from './shadow.js';
-export type { SizeToken, SizeValue, RadiusToken, RadiusValue, AvatarSizeToken, AvatarSizeValue } from './size.js';
+export type { SizeToken, SizeValue, RadiusToken, RadiusValue, ComponentSize } from './size.js';
 export type { SpaceToken, SpaceValue } from './space.js';
 
 /**
@@ -52,4 +53,17 @@ export type { SpaceToken, SpaceValue } from './space.js';
  * This object combines all token categories into a single, organized structure
  * for applications that need access to the full design system.
  */
-export const tokens = { animation, border, color, component, effect, font, shadow, size, radius, avatarSize, space };
+export const tokens = {
+  animation,
+  border,
+  color,
+  component,
+  effect,
+  font,
+  shadow,
+  size,
+  radius,
+  avatarSize,
+  componentHeight,
+  space,
+};
