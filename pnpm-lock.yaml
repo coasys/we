@@ -545,9 +545,6 @@ importers:
       '@floating-ui/dom':
         specifier: ^1.7.4
         version: 1.7.6
-      '@phosphor-icons/core':
-        specifier: ^2.1.1
-        version: 2.1.1
       '@we/design-utils':
         specifier: workspace:*
         version: link:../utils
@@ -573,6 +570,9 @@ importers:
       '@custom-elements-manifest/analyzer':
         specifier: 0.10.4
         version: 0.10.4
+      '@phosphor-icons/core':
+        specifier: ^2.1.1
+        version: 2.1.1
       '@storybook/addon-essentials':
         specifier: 8.4.6
         version: 8.4.6(@types/react@19.2.14)(storybook@8.4.6(prettier@3.8.3))
