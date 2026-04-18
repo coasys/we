@@ -13,8 +13,11 @@ import {
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import {
   buildValidationContext,
-  patchByPath,
-  validatePatches,
+  ensureNodeIds,
+  findNodeById,
+  insertChild,
+  mergeNode,
+  removeChild,
   validateSemantic,
   validateStructure,
 } from '@we/schema-shared';
@@ -100,11 +103,11 @@ const schemaTask: AITask = {
 // Build the full system prompt for Claude chat
 const chatSystemPrompt = chatSystemPreamble + schemaContext;
 
-// Tool definition for schema mutations
+// Tool definition for schema mutations (ID-based patching)
 const updateSchemaTool = {
   name: 'update_schema',
   description:
-    'Apply node patches to the current template schema. Each patch replaces the node at the given path. Use path [] to replace the entire schema.',
+    'Apply patches to the current template schema. Each patch targets a node by its id. Exactly one of node, insert, or remove must be provided per patch.',
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -113,18 +116,52 @@ const updateSchemaTool = {
         items: {
           type: 'object' as const,
           properties: {
-            path: {
-              type: 'array' as const,
-              items: { type: 'integer' as const },
-              description:
-                'Path to the node to replace. [] = root, [0] = first child of root, [2, 0] = first child of third child of root. Use -1 to enter routes array.',
+            targetId: {
+              type: 'string' as const,
+              description: 'The id of the node to target. Use "" for root.',
             },
             node: {
               type: 'object' as const,
-              description: 'The full SchemaNode to insert at this path.',
+              description:
+                'Partial node to merge (JSON Merge Patch). Absent keys preserved, null deletes a key. Mutually exclusive with insert/remove.',
+            },
+            insert: {
+              type: 'object' as const,
+              properties: {
+                children: {
+                  type: 'object' as const,
+                  properties: {
+                    node: { type: 'object' as const, description: 'The new node to insert.' },
+                    after: { type: 'string' as const, description: 'ID of sibling to insert after. Omit to append.' },
+                    before: { type: 'string' as const, description: 'ID of sibling to insert before.' },
+                  },
+                  required: ['node'],
+                },
+                routes: {
+                  type: 'object' as const,
+                  properties: {
+                    node: { type: 'object' as const, description: 'The new route node to insert.' },
+                    after: {
+                      type: 'string' as const,
+                      description: 'ID of sibling route to insert after. Omit to append.',
+                    },
+                    before: { type: 'string' as const, description: 'ID of sibling route to insert before.' },
+                  },
+                  required: ['node'],
+                },
+              },
+              description: 'Insert into children or routes array. Mutually exclusive with node/remove.',
+            },
+            remove: {
+              type: 'object' as const,
+              properties: {
+                children: { type: 'string' as const, description: 'ID of child to remove.' },
+                routes: { type: 'string' as const, description: 'ID of route to remove.' },
+              },
+              description: 'Remove from children or routes array by child ID. Mutually exclusive with node/insert.',
             },
           },
-          required: ['path', 'node'],
+          required: ['targetId'],
         },
       },
     },
@@ -777,12 +814,21 @@ export function AiStoreProvider(props: ParentProps) {
       // --- Atomic patching: accumulate all patches before applying ---
       // We clone the template once and apply all tool calls' patches to it.
       // Only after ALL patches succeed and validate do we apply to the store.
-      let accumulatedSchema: SchemaNode = deepClone(templateStore.currentTemplate) as SchemaNode;
+      let accumulatedSchema: SchemaNode = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
       let allPatchesValid = true;
 
       for (const tc of toolCalls) {
         if (tc.name === 'update_schema') {
-          const patches = (tc.input as { patches: Array<{ path: number[]; node: SchemaNode }> }).patches;
+          type IdPatch = {
+            targetId: string;
+            node?: Record<string, unknown>;
+            insert?: {
+              children?: { node: SchemaNode; after?: string; before?: string };
+              routes?: { node: SchemaNode; after?: string; before?: string };
+            };
+            remove?: { children?: string; routes?: string };
+          };
+          const patches = (tc.input as { patches: IdPatch[] }).patches;
 
           if (!patches || !Array.isArray(patches)) {
             toolResults.push({
@@ -797,33 +843,100 @@ export function AiStoreProvider(props: ParentProps) {
 
           console.log(`[AiStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
           for (const p of patches) {
-            const nodeType = (p.node as Record<string, unknown>).type ?? 'root';
-            console.log(`  path: [${p.path.join(', ')}], node type: ${nodeType}`);
+            const op = p.node ? 'update' : p.insert ? 'insert' : 'remove';
+            console.log(`  targetId: "${p.targetId}", op: ${op}`);
           }
           console.log('[AiStore] Patch detail:', JSON.stringify(patches, null, 2));
 
-          // Validate paths before applying
-          const validation = validatePatches(patches, accumulatedSchema);
-
-          if (!validation.valid) {
-            console.warn(`[AiStore] Patch path validation failed: ${validation.error}`);
-            allTextContent += '\n\n<span class="warning">⚠ Template failed validation. Retrying...</span>';
-            setStreamingContent(allTextContent);
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: tc.id,
-              content: `Validation failed: ${validation.error}. Please check the currentSchema paths and try again.`,
-              is_error: true,
-            });
-            allPatchesValid = false;
-            continue;
-          }
-
-          // Apply patches to the accumulated schema (not to the store yet)
+          // Apply ID-based patches to the accumulated schema (not to the store yet)
           try {
-            for (const { path, node } of patches) {
-              accumulatedSchema = patchByPath(accumulatedSchema, path, node);
+            let patchError: string | undefined;
+
+            for (const patch of patches) {
+              const opCount = [patch.node, patch.insert, patch.remove].filter(Boolean).length;
+              if (opCount !== 1) {
+                patchError = `Patch for targetId "${patch.targetId}" must have exactly one of: node, insert, remove.`;
+                break;
+              }
+
+              if (patch.node) {
+                // Merge update
+                if (patch.targetId === '') {
+                  // Root merge
+                  accumulatedSchema = mergeNode(accumulatedSchema, patch.node);
+                } else {
+                  const found = findNodeById(accumulatedSchema, patch.targetId);
+                  if (!found) {
+                    patchError = `No node with id "${patch.targetId}" found in the current schema.`;
+                    break;
+                  }
+                  const merged = mergeNode(found.node, patch.node);
+                  // Replace the node in its parent
+                  if (found.parent) {
+                    if (found.key === 'children' && found.parent.children) {
+                      found.parent.children[found.index] = merged;
+                    } else if (found.key === 'routes' && found.parent.routes) {
+                      found.parent.routes[found.index] = merged as SchemaNode & { path: string };
+                    } else if (found.key.startsWith('slots.') && found.parent.slots) {
+                      const slotName = found.key.slice(6);
+                      found.parent.slots[slotName] = merged;
+                    }
+                  } else {
+                    // found.node IS the root — merge into accumulated
+                    accumulatedSchema = merged;
+                  }
+                }
+              } else if (patch.insert) {
+                // Insert child or route
+                const insertSpec = patch.insert.children ?? patch.insert.routes;
+                const arrayKey = patch.insert.children ? 'children' : 'routes';
+                if (!insertSpec) {
+                  patchError = `Insert patch for targetId "${patch.targetId}" must specify children or routes.`;
+                  break;
+                }
+                const position = insertSpec.after
+                  ? { after: insertSpec.after }
+                  : insertSpec.before
+                    ? { before: insertSpec.before }
+                    : undefined;
+                const err = insertChild(accumulatedSchema, patch.targetId, arrayKey, insertSpec.node, position);
+                if (err) {
+                  patchError = err.error;
+                  break;
+                }
+              } else if (patch.remove) {
+                // Remove child or route
+                const childId = patch.remove.children ?? patch.remove.routes;
+                const arrayKey = patch.remove.children ? 'children' : 'routes';
+                if (!childId) {
+                  patchError = `Remove patch for targetId "${patch.targetId}" must specify children or routes.`;
+                  break;
+                }
+                const err = removeChild(accumulatedSchema, patch.targetId, arrayKey, childId);
+                if (err) {
+                  patchError = err.error;
+                  break;
+                }
+              }
             }
+
+            if (patchError) {
+              console.warn(`[AiStore] Patch validation failed: ${patchError}`);
+              allTextContent += '\n\n<span class="warning">⚠ Template failed validation. Retrying...</span>';
+              setStreamingContent(allTextContent);
+              toolResults.push({
+                type: 'tool_result',
+                tool_use_id: tc.id,
+                content: `Patching failed: ${patchError}`,
+                is_error: true,
+              });
+              allPatchesValid = false;
+              continue;
+            }
+
+            // Assign IDs to any newly inserted nodes
+            ensureNodeIds(accumulatedSchema);
+
             // Mark success for this tool call (actual store apply deferred)
             toolResults.push({
               type: 'tool_result',
@@ -966,12 +1079,13 @@ export function AiStoreProvider(props: ParentProps) {
       }
     }
 
-    // Add current message with latest schema
+    // Add current message with latest schema (with node IDs for ID-based patching)
+    const schemaWithIds = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
     history.push({
       role: 'user',
       content: JSON.stringify({
         request: latestText,
-        currentSchema: templateStore.currentTemplate,
+        currentSchema: schemaWithIds,
       }),
     });
 

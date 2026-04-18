@@ -159,6 +159,7 @@ export const NODE_OPERATORS = new Set(['$each', '$if', '$routes']);
 
 function schemaNodeShape() {
   return {
+    id: z.string().optional(),
     type: z.string().optional(),
     props: z.record(z.string(), lazySchemaProp).optional(),
     slots: z.record(z.string(), lazySchemaNode).optional(),
@@ -241,7 +242,6 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
 export const zTemplateSchema: z.ZodType<TemplateSchema> = z
   .object({
     ...schemaNodeShape(),
-    id: z.string().optional(),
     schemaVersion: z.number().optional(),
     meta: zTemplateMeta,
   })

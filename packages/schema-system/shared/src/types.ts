@@ -35,6 +35,7 @@ export type ThemeOverrides = {
 };
 
 export type SchemaNode = {
+  id?: string; // Stable node identifier for ID-based patching (assigned by ensureNodeIds)
   type?: string; // Used to look up the node's component in the registry (if not included, children rendered in a fragment)
   props?: Record<string, SchemaProp>; // Props to pass to the component
   slots?: Record<string, SchemaNode>; // Named slots for components that support them
