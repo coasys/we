@@ -1,4 +1,4 @@
-import { Model, Property } from '@coasys/ad4m';
+import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { decodeFileAsJson, decodeFileAsString } from '../utils/fileTransforms';
@@ -6,6 +6,9 @@ import { WeNode } from '../WeNode';
 
 @Model({ name: 'Theme' })
 export class Theme extends WeNode {
+  @Flag({ through: 'we://type', value: 'we://theme' })
+  type: string = '';
+
   @Property({ through: 'we://name' })
   name: string = '';
 
