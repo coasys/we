@@ -40,6 +40,23 @@ const styles = css`
   :host {
     --we-badge-host-display: inline-flex;
   }
+
+  /* Provide icon sizing context for slotted we-icon children */
+  :host([size='xs']) {
+    --we-context-icon-size: var(--we-size-xxs);
+  }
+  :host([size='sm']) {
+    --we-context-icon-size: var(--we-size-xs);
+  }
+  :host([size='md']) {
+    --we-context-icon-size: var(--we-size-sm);
+  }
+  :host([size='lg']) {
+    --we-context-icon-size: var(--we-size-md);
+  }
+  :host([size='xl']) {
+    --we-context-icon-size: var(--we-size-lg);
+  }
 `;
 
 @customElement('we-badge')

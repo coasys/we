@@ -10,7 +10,7 @@ const allowedTextTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'small', 'b', 
 export type TextTag = (typeof allowedTextTags)[number];
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
 export type MenuItemVariant = 'default' | 'danger';
-export type IconSize = ComponentSize | (string & {}); // semantic sizes + raw CSS values
+export type IconSize = '' | ComponentSize | (string & {}); // '' = inherit from parent context, semantic sizes, or raw CSS values
 export type IconWeight = 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
 export type ModalSize = ComponentSize | 'fullscreen';
 export type PopoverEvent = 'contextmenu' | 'mouseover' | 'click';
