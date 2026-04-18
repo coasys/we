@@ -16,5 +16,6 @@
   "stylelint.validate": ["css"],
   "eslint.validate": ["javascript", "typescript", "typescriptreact"],
   "eslint.useFlatConfig": true,
-  "files.eol": "\n"
+  "files.eol": "\n",
+  "prettier.prettierPath": "./node_modules/prettier"
 }
