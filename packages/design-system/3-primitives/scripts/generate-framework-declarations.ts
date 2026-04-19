@@ -218,6 +218,12 @@ function extractComponentsFromCustomElementsManifest(cemData: CustomElementsMani
 }
 
 function generateComponentProps(component: Component, typesPath: string, framework?: Framework): string {
+  // Build a map of custom event names to their types so DOM handlers can be overridden
+  const customEventTypes = new Map<string, string>();
+  for (const event of component.events) {
+    customEventTypes.set(event.name, event.type || 'CustomEvent');
+  }
+
   return [
     // Map properties from the component
     ...Object.entries(component.properties).map(([name, prop]) => {
@@ -232,15 +238,15 @@ function generateComponentProps(component: Component, typesPath: string, framewo
     // Add framework-aware standard properties
     ...getStandardProps(framework),
 
-    // Add DOM event handlers
-    `${indent(4)}onClick?: (event: MouseEvent) => void;`,
-    `${indent(4)}onInput?: (event: InputEvent) => void;`,
-    `${indent(4)}onChange?: (event: Event) => void;`,
-    `${indent(4)}onFocus?: (event: FocusEvent) => void;`,
-    `${indent(4)}onBlur?: (event: FocusEvent) => void;`,
-    `${indent(4)}onKeyDown?: (event: KeyboardEvent) => void;`,
-    `${indent(4)}onKeyUp?: (event: KeyboardEvent) => void;`,
-    `${indent(4)}onSubmit?: (event: Event) => void;`,
+    // Add DOM event handlers (use custom event type when the component overrides the event)
+    `${indent(4)}onClick?: (event: ${customEventTypes.get('click') || 'MouseEvent'}) => void;`,
+    `${indent(4)}onInput?: (event: ${customEventTypes.get('input') || 'InputEvent'}) => void;`,
+    `${indent(4)}onChange?: (event: ${customEventTypes.get('change') || 'Event'}) => void;`,
+    `${indent(4)}onFocus?: (event: ${customEventTypes.get('focus') || 'FocusEvent'}) => void;`,
+    `${indent(4)}onBlur?: (event: ${customEventTypes.get('blur') || 'FocusEvent'}) => void;`,
+    `${indent(4)}onKeyDown?: (event: ${customEventTypes.get('keydown') || 'KeyboardEvent'}) => void;`,
+    `${indent(4)}onKeyUp?: (event: ${customEventTypes.get('keyup') || 'KeyboardEvent'}) => void;`,
+    `${indent(4)}onSubmit?: (event: ${customEventTypes.get('submit') || 'Event'}) => void;`,
 
     // Add component-specific custom events
     ...getEventProps(component.events, framework),
