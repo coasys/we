@@ -230,7 +230,7 @@ export const defaultTemplate: TemplateSchema = {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'diagram-3', color: 'neutral-500', size: '20px' } },
+                { type: 'we-icon', props: { name: 'intersect-three', color: 'neutral-500', size: '20px' } },
                 {
                   type: 'we-text',
                   props: { fontSize: '600', fontWeight: 'semibold' },

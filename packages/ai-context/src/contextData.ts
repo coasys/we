@@ -1535,6 +1535,7 @@ export const contextData: ContextData = {
       className: 'CollectionBlock',
       extends: 'WeNode',
       fields: [
+        { name: 'editorState', type: 'Record<string, unknown>', predicate: 'we://editor_state', required: false },
         { name: 'type', type: 'string', predicate: 'we://type', required: false },
         { name: 'display', type: 'string', predicate: 'we://display', required: false },
         { name: 'direction', type: 'string', predicate: 'we://direction', required: false },

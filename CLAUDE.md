@@ -631,6 +631,7 @@ CodeBlock extends WeNode:
 
 CollectionBlock extends WeNode:
   Fields:
+  - editorState: Record<string, unknown> [we://editor_state]
   - type: string [we://type]
   - display: string [we://display]
   - direction: string [we://direction]
