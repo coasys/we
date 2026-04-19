@@ -3263,6 +3263,26 @@
           "optional": true
         },
         {
+          "name": "canUndo",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "canRedo",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "onUndo",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "onRedo",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
           "name": "sessions",
           "type": "SessionInfo[]",
           "optional": true

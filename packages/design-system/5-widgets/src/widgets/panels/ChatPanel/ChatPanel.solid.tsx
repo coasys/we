@@ -85,6 +85,14 @@ export function ChatPanel(props: ChatPanelProps) {
         'box-shadow': props.open ? '-4px 0 24px rgba(0,0,0,0.08)' : 'none',
       }}
       data-testid="chat-panel"
+      onKeyDown={(e: KeyboardEvent) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+          e.preventDefault();
+          if (e.shiftKey) props.onRedo?.();
+          else props.onUndo?.();
+        }
+      }}
+      tabIndex={0}
     >
       {/* Header */}
       <Row
@@ -119,6 +127,26 @@ export function ChatPanel(props: ChatPanelProps) {
           </Show>
         </Row>
         <Row ay="center" gap="100">
+          <Show when={props.onUndo}>
+            <we-button
+              variant="ghost"
+              size="sm"
+              disabled={!props.canUndo || props.loading}
+              onClick={() => props.onUndo?.()}
+            >
+              <we-icon name="arrow-u-up-left" size="sm" />
+            </we-button>
+          </Show>
+          <Show when={props.onRedo}>
+            <we-button
+              variant="ghost"
+              size="sm"
+              disabled={!props.canRedo || props.loading}
+              onClick={() => props.onRedo?.()}
+            >
+              <we-icon name="arrow-u-up-right" size="sm" />
+            </we-button>
+          </Show>
           <Show when={props.onNewChat}>
             <we-button variant="ghost" size="sm" onClick={() => props.onNewChat?.()}>
               <we-icon name="plus" size="sm" />

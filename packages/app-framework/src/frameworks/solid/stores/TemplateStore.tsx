@@ -467,7 +467,11 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     const schemaToSave: TemplateSchema = deepClone(currentTemplate);
     const storedTemplate = createStoredTemplate(schemaToSave);
-    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+    // Include a timestamp so the content hash is unique per save — avoids
+    // "Key already exists" rejections from the content-addressed store when
+    // re-persisting a previously-saved schema (e.g. after undo/redo).
+    const envelope = { ...storedTemplate, savedAt: Date.now() };
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(envelope));
     const base64 = btoa(String.fromCharCode(...jsonBytes));
     const schemaBlob = {
       data_base64: base64,
@@ -480,12 +484,20 @@ export function TemplateStoreProvider(props: ParentProps) {
       existing.schema = schemaBlob as unknown as Record<string, unknown>;
       existing.version = (existing.version || 1) + 1;
       await existing.save();
-
-      // Update the in-memory templates signal so switching away and back preserves changes
-      setAllTemplates((prev) => prev.map((t) => (t.id === templateId ? deepClone(currentTemplate) : t)));
     } catch (error) {
-      console.error('[TemplateStore] persistCurrentTemplate failed', error);
+      // Content-addressed store returns "Key already exists" when the blob
+      // is already stored — this is expected and the data is persisted.
+      const msg = String(error);
+      if (!msg.includes('Key already exists')) {
+        console.error('[TemplateStore] persistCurrentTemplate failed', error);
+        return; // Only bail on real errors
+      }
     }
+
+    // Update the in-memory templates signal so switching away and back preserves changes.
+    // Use schemaToSave (captured before any await) — currentTemplate may have changed
+    // if the user navigated to a different template while the save was in flight.
+    setAllTemplates((prev) => prev.map((t) => (t.id === templateId ? schemaToSave : t)));
   }
 
   /** Check if a template ID belongs to a built-in core template */
