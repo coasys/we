@@ -29,6 +29,26 @@ const styles = css`
     height: 100%;
     border-left: 1px solid var(--we-color-neutral-200);
   }
+
+  :host([variant='dashed'][orientation='horizontal']) [part='base'],
+  :host([variant='dashed']:not([orientation])) [part='base'],
+  :host([variant='dashed'][orientation='']) [part='base'] {
+    border-top-style: dashed;
+  }
+
+  :host([variant='dashed'][orientation='vertical']) [part='base'] {
+    border-left-style: dashed;
+  }
+
+  :host([variant='dotted'][orientation='horizontal']) [part='base'],
+  :host([variant='dotted']:not([orientation])) [part='base'],
+  :host([variant='dotted'][orientation='']) [part='base'] {
+    border-top-style: dotted;
+  }
+
+  :host([variant='dotted'][orientation='vertical']) [part='base'] {
+    border-left-style: dotted;
+  }
 `;
 
 @customElement('we-divider')
@@ -36,6 +56,7 @@ export default class Divider extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
   @property({ type: String, reflect: true }) orientation: 'horizontal' | 'vertical' = 'horizontal';
+  @property({ type: String, reflect: true }) variant: 'solid' | 'dashed' | 'dotted' = 'solid';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {

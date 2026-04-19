@@ -24,6 +24,14 @@ export function setIconResolver(resolver: (name: string, weight: IconWeight) => 
   svgCache.clear(); // Clear cache when resolver changes
 }
 
+const CDN_BASE = 'https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2.1.1/assets';
+
+/** Build a CDN URL for a Phosphor icon by name and weight. */
+export function buildCdnUrl(name: string, weight: IconWeight): string {
+  const fileName = weight === 'regular' ? name : `${name}-${weight}`;
+  return `${CDN_BASE}/${weight}/${fileName}.svg`;
+}
+
 /** Strip dangerous elements/attributes from SVG strings */
 function sanitizeSvg(raw: string): string {
   const parser = new DOMParser();
@@ -155,20 +163,13 @@ export default class Icon extends LayoutElement {
       // Async resolver return
       return result.then((r) => (r.trim().startsWith('<') ? sanitizeSvg(r) : this.fetchUrl(r)));
     }
-    return this.fetchUrl(this.buildCdnUrl());
+    return this.fetchUrl(buildCdnUrl(this.name, this.weight));
   }
 
   private async fetchUrl(url: string): Promise<string> {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Failed to fetch icon "${this.name}"`);
     return sanitizeSvg(await response.text());
-  }
-
-  private static readonly CDN_BASE = 'https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2.1.1/assets';
-
-  private buildCdnUrl(): string {
-    const fileName = this.weight === 'regular' ? this.name : `${this.name}-${this.weight}`;
-    return `${Icon.CDN_BASE}/${this.weight}/${fileName}.svg`;
   }
 
   willUpdate(props: Map<string, unknown>) {
