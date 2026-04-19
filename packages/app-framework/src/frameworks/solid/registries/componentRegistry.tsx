@@ -32,7 +32,6 @@ import {
   CesiumGlobe,
   ChatPanel,
   CollapsibleSidebar,
-  CreateSpaceModalWidget,
   GraphWidget,
   mockGraphData,
   SpaceSidebarWidget,
@@ -73,7 +72,6 @@ export const componentRegistry: ComponentRegistry = {
 
   // @we/widgets
   ChatPanel,
-  CreateSpaceModalWidget,
   SpaceSidebarWidget,
   CollapsibleSidebar,
   // Inject layerFactoryRegistry dependency
