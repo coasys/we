@@ -10,20 +10,23 @@ import {
   LexicalNode,
 } from 'lexical';
 
-import { $createImageNode, $isImageNode } from './nodes/ImageNode';
+import { $createBlockNode, $isBlockNode } from './nodes/createBlockNodeClass';
+import { blockNodeClassMap } from './nodes';
 
 type TransformBlockProps = { editor: LexicalEditor; nodeKey: string; newNodeType: string };
 type ReorderBlockProps = { editor: LexicalEditor; sourceKey: string; targetKey: string; insertBefore: boolean };
+type InsertBlockPayload = { type: string; props?: Record<string, unknown> };
 
 export const TRANSFORM_BLOCK_COMMAND = createCommand<TransformBlockProps>('TRANSFORM_BLOCK_COMMAND');
 export const REORDER_BLOCK_COMMAND = createCommand<ReorderBlockProps>('REORDER_BLOCK_COMMAND');
+export const INSERT_BLOCK_COMMAND = createCommand<InsertBlockPayload>('INSERT_BLOCK_COMMAND');
 
 export function findNodeType(node: LexicalNode): string {
   // Used to determine the block type of a node for the block menu
   let type = '';
   if ($isParagraphNode(node)) type = 'p';
   else if ($isQuoteNode(node)) type = 'quote';
-  else if ($isImageNode(node)) type = 'image';
+  else if ($isBlockNode(node)) type = (node as unknown as { exportJSON(): { type: string } }).exportJSON().type;
   else if ($isHeadingNode(node) || $isListNode(node)) type = node.getTag();
   else if ($isListItemNode(node)) {
     // In the case of list items return the parent list type (ul, ol, cl)
@@ -54,7 +57,6 @@ export function transformBlock({ editor, nodeKey, newNodeType }: TransformBlockP
     let newNode;
     if (newNodeType === 'p') newNode = $createParagraphNode();
     else if (newNodeType === 'quote') newNode = $createQuoteNode();
-    else if (newNodeType === 'image') newNode = $createImageNode();
     else if (['h1', 'h2', 'h3'].includes(newNodeType)) newNode = $createHeadingNode(newNodeType as 'h1' | 'h2' | 'h3');
     else if (['ul', 'ol', 'cl'].includes(newNodeType)) {
       // If the new block is a list we need to create a list node and append a list item node to it
@@ -64,10 +66,13 @@ export function transformBlock({ editor, nodeKey, newNodeType }: TransformBlockP
       if ($isElementNode(node)) node.getChildren().forEach((child) => listItemNode.append(child));
       listNode.append(listItemNode);
       newNode = listNode;
+    } else if (blockNodeClassMap[newNodeType]) {
+      // Factory-created decorator block (image, audio, video, etc.)
+      newNode = $createBlockNode(blockNodeClassMap[newNodeType], {});
     } else return; // Skip if unsupported block type
 
-    // Transfer content
-    if ($isElementNode(node)) {
+    // Transfer text children for text-to-text transforms
+    if ($isElementNode(node) && $isElementNode(newNode)) {
       if ($isParagraphNode(newNode) || $isQuoteNode(newNode) || $isHeadingNode(newNode)) {
         node.getChildren().forEach((child) => newNode.append(child));
       }

@@ -25,6 +25,7 @@ export interface BlockNodeClass {
   getType(): string;
   clone(node: DecoratorNode<HTMLElement>): DecoratorNode<HTMLElement>;
   importJSON(serializedNode: SerializedBlockNode): DecoratorNode<HTMLElement>;
+  transform(): ((node: LexicalNode) => void) | null;
 }
 
 /**

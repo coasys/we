@@ -11,7 +11,7 @@ import {
 } from 'lexical-solid';
 import { createEffect } from 'solid-js';
 
-import { ImageNode } from '../nodes/ImageNode';
+import { blockNodeClasses } from '../nodes';
 
 type BlockRendererProps = {
   post?: SerializedBlockNode;
@@ -37,7 +37,7 @@ export function BlockRenderer({ post }: BlockRendererProps) {
   const initialConfig = {
     namespace: 'BlockRenderer',
     theme: { root: 'we-block-renderer we-block-content' },
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, ImageNode] as const,
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, ...blockNodeClasses] as const,
     editable: false, // If supported
     onError: (error: Error) => console.error('Renderer Error:', error),
   };

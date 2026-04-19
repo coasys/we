@@ -17,9 +17,9 @@ import {
 } from 'lexical-solid';
 import { createEffect } from 'solid-js';
 
-import { ImageNode } from '../nodes/ImageNode';
+import { blockNodeClasses } from '../nodes';
 import BlockHandlesPlugin from '../plugins/BlockHandlesPlugin';
-import ImagePlugin from '../plugins/ImageBlockPlugin';
+import BlockInsertPlugin from '../plugins/BlockInsertPlugin';
 import IndentationPlugin from '../plugins/IndentationPlugin';
 import PlaceholdersPlugin from '../plugins/PlaceholdersPlugin';
 import SlashCommandPlugin from '../plugins/SlashCommandPlugin';
@@ -83,7 +83,7 @@ export function BlockComposer({ post, perspective, onSave }: BlockComposerProps)
   const initialConfig = {
     namespace: 'BlockComposer',
     theme: { root: 'we-block-composer-editor we-block-content' },
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, ImageNode] as const,
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, ...blockNodeClasses] as const,
     onError: (error: Error) => console.error('Editor Error:', error),
   };
   console.log('*** BlockComposer initialConfig:', initialConfig);
@@ -105,7 +105,7 @@ export function BlockComposer({ post, perspective, onSave }: BlockComposerProps)
         <PlaceholdersPlugin />
         <SlashCommandPlugin />
         <IndentationPlugin />
-        <ImagePlugin />
+        <BlockInsertPlugin />
       </LexicalComposer>
     </Column>
   );
