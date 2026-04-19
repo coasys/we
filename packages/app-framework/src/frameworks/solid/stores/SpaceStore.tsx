@@ -1,7 +1,7 @@
 import { LinkQuery, PerspectiveProxy } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { useAdamStore, useRouteStore } from '@solid/stores';
-import { createBlocks, loadBlocks } from '@we/block-shared';
+import { blocksToLexicalJSON, createBlocks, loadBlocks } from '@we/block-shared';
 import { blobToDataURL, CollectionBlock, FileData, ImageBlock, resizeImage, Space, TextBlock } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
@@ -158,109 +158,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  // Lexical paragraph/heading/quote types that contain inline text runs
-  const TEXT_CONTAINER_TYPES = new Set(['paragraph', 'heading', 'quote', 'listitem']);
-  // Properties added by AD4M that aren't part of Lexical's JSON format
-  const AD4M_ONLY_PROPS = new Set([
-    'id',
-    'children',
-    'author',
-    'createdAt',
-    'updatedAt',
-    'display',
-    'columns',
-    'gap',
-    'textStyle',
-  ]);
-
-  // Convert a loaded block tree (from loadBlocks) to Lexical-compatible JSON
-  function blockToLexical(block: Record<string, unknown>): Record<string, unknown> {
-    const node: Record<string, unknown> = {};
-    // Copy properties, skipping AD4M internals and AD4M-only fields
-    for (const key of Object.keys(block)) {
-      if (key.startsWith('_') || AD4M_ONLY_PROPS.has(key)) continue;
-      const val = block[key];
-      if (Array.isArray(val) && val.length === 0) continue;
-      if (val !== undefined && val !== null) node[key] = val;
-    }
-
-    // For text-container types (paragraph, heading, etc.), reconstruct
-    // inline text children from the merged `text` property
-    const blockType = node.type as string;
-    const blockText = block.text as string | undefined;
-    if (TEXT_CONTAINER_TYPES.has(blockType) && blockText) {
-      node.children = [
-        {
-          type: 'text',
-          text: blockText,
-          detail: 0,
-          format: (block.textFormat as number) || 0,
-          mode: 'normal',
-          style: (block.textStyle as string) || '',
-          version: 1,
-        },
-      ];
-      // Remove text/textFormat from the paragraph node (not valid Lexical paragraph props)
-      delete node.text;
-      delete node.textFormat;
-      // For listitems, strip list-wrapper props (they go on the list node)
-      if (blockType === 'listitem') {
-        delete node.listType;
-        delete node.tag;
-        delete node.start;
-        // Lexical listitems need a value prop
-        node.value = (block.start as number) || 1;
-      }
-    } else {
-      // Recursively convert block-level children
-      const loadedChildren = (block as Record<string, unknown>)._loadedChildren;
-      if (Array.isArray(loadedChildren) && loadedChildren.length) {
-        const converted = loadedChildren.map(blockToLexical);
-        // Group consecutive listitem children into list wrapper nodes
-        node.children = groupListItems(converted);
-      } else if (!node.children) {
-        node.children = [];
-      }
-    }
-
-    return node;
-  }
-
-  /**
-   * Group consecutive listitem nodes into Lexical list wrapper nodes.
-   * e.g. [paragraph, listitem, listitem, paragraph] →
-   *      [paragraph, list{children:[listitem, listitem]}, paragraph]
-   */
-  function groupListItems(nodes: Record<string, unknown>[]): Record<string, unknown>[] {
-    const result: Record<string, unknown>[] = [];
-    let currentList: Record<string, unknown> | null = null;
-
-    for (const node of nodes) {
-      if (node.type === 'listitem') {
-        if (!currentList) {
-          currentList = {
-            type: 'list',
-            listType: (node as Record<string, unknown>).listType || 'bullet',
-            tag: (node as Record<string, unknown>).tag || 'ul',
-            start: 1,
-            direction: (node as Record<string, unknown>).direction || 'ltr',
-            format: '',
-            indent: 0,
-            version: 1,
-            children: [],
-          };
-          result.push(currentList);
-        }
-        (currentList.children as Record<string, unknown>[]).push(node);
-      } else {
-        currentList = null;
-        result.push(node);
-      }
-    }
-
-    return result;
-  }
-
   async function getPosts(): Promise<void> {
     const p = perspective();
     if (!p) {
@@ -291,7 +188,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       console.log('[SpaceStore] getPosts: loaded', loaded.filter(Boolean).length, 'block trees');
       const lexicalPosts = loaded
         .filter((b): b is NonNullable<typeof b> => !!b)
-        .map((b) => blockToLexical(b as unknown as Record<string, unknown>));
+        .map((b) => {
+          // Prefer the lossless editorState blob when available
+          const es = (b as CollectionBlock).editorState;
+          if (es && typeof es === 'object' && Object.keys(es).length > 0) {
+            return es;
+          }
+          // Fallback: reconstruct from block tree (lossy — no inline formatting)
+          return blocksToLexicalJSON(b);
+        });
       console.log('[SpaceStore] getPosts: converted to lexical:', JSON.stringify(lexicalPosts, null, 2));
       setPosts(lexicalPosts);
     } catch (error) {
