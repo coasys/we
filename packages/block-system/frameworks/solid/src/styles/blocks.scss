@@ -1,0 +1,115 @@
+@use 'sass:list';
+
+// Shared block styles used by both BlockComposer and BlockRenderer.
+// Composer-only styles (highlight on hover, editing affordances) stay in BlockComposer.scss.
+
+.we-block-content {
+  font-family: var(--we-font-family);
+  color: var(--we-color-neutral-900);
+
+  .we-block {
+    padding: 10px;
+    border-radius: 10px;
+    margin: 0;
+    color: var(--we-color-neutral-900);
+    position: relative;
+  }
+
+  p,
+  h1,
+  h2,
+  h3,
+  blockquote,
+  li {
+    @extend .we-block;
+  }
+
+  blockquote {
+    padding-left: 30px;
+    color: var(--we-color-neutral-600);
+
+    &:before {
+      margin-left: 20px;
+    }
+
+    &::after {
+      content: ' ';
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      height: calc(100% - 20px);
+      background-color: var(--we-color-neutral-100);
+    }
+  }
+
+  ul,
+  ol {
+    margin: 0;
+    padding-left: 0;
+  }
+
+  // Apply bullet markers to unordered lists based on their nesting level
+  $bullets: '•', '◦', '▪';
+  $bullet-levels: list.length($bullets);
+
+  ul > li::after {
+    position: absolute;
+    top: 5px;
+    left: 10px;
+    font-size: 22px;
+    content: list.nth($bullets, 1);
+  }
+
+  @for $i from 1 through 20 {
+    $selector: 'ul';
+    @for $j from 1 through $i {
+      $selector: $selector + ' > li > ul';
+    }
+
+    #{$selector} > li::after {
+      content: list.nth($bullets, ($i % $bullet-levels) + 1);
+    }
+  }
+
+  ol {
+    counter-reset: list-item;
+  }
+
+  ol > li {
+    counter-increment: list-item;
+
+    &::after {
+      content: counter(list-item) '.';
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 16px;
+    }
+  }
+
+  li {
+    list-style: none;
+    position: relative;
+    padding-left: 30px;
+
+    &:has(> ul),
+    &:has(> ol) {
+      padding-bottom: 0;
+    }
+
+    &:before {
+      margin-left: 20px;
+    }
+
+    ul,
+    ol {
+      li {
+        &:first-child {
+          margin-top: 10px;
+        }
+
+        margin-left: 20px;
+      }
+    }
+  }
+}

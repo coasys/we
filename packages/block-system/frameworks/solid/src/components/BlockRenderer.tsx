@@ -36,7 +36,7 @@ function LoadPostForRenderer({ post }: { post?: SerializedBlockNode }) {
 export function BlockRenderer({ post }: BlockRendererProps) {
   const initialConfig = {
     namespace: 'BlockRenderer',
-    theme: { root: 'we-block-renderer' },
+    theme: { root: 'we-block-renderer we-block-content' },
     nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, ImageNode] as const,
     editable: false, // If supported
     onError: (error: Error) => console.error('Renderer Error:', error),

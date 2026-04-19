@@ -82,7 +82,7 @@ export function BlockComposer({ post, perspective, onSave }: BlockComposerProps)
   console.log('*** BlockComposer rendered. post:', post);
   const initialConfig = {
     namespace: 'BlockComposer',
-    theme: { root: 'we-block-composer-editor' },
+    theme: { root: 'we-block-composer-editor we-block-content' },
     nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, ImageNode] as const,
     onError: (error: Error) => console.error('Editor Error:', error),
   };
