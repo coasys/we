@@ -61,6 +61,12 @@ export const aiChatSidebar: SchemaNode = {
         onModeChange: { $action: 'aiStore.setPanelMode' },
         onSchemaEdit: { $action: 'aiStore.onSchemaEdit' },
 
+        // Undo / Redo
+        canUndo: { $store: 'aiStore.canUndo' },
+        canRedo: { $store: 'aiStore.canRedo' },
+        onUndo: { $action: 'aiStore.undo' },
+        onRedo: { $action: 'aiStore.redo' },
+
         // Operation loading
         operationLoading: { $store: 'templateStore.operationLoading' },
       },

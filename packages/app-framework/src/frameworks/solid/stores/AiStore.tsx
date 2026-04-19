@@ -22,7 +22,7 @@ import {
   validateStructure,
 } from '@we/schema-shared';
 import type { ChatMessage } from '@we/widgets/solid';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createEffect, createSignal, ParentProps, untrack, useContext } from 'solid-js';
 
 // Re-export for convenience
 export type { ChatMessage } from '@we/widgets/solid';
@@ -67,6 +67,12 @@ export interface AiStore {
   schemaJson: Accessor<string>;
   setPanelMode: (mode: 'chat' | 'code') => void;
   onSchemaEdit: (json: string) => void;
+
+  // --- Undo / Redo ---
+  canUndo: Accessor<boolean>;
+  canRedo: Accessor<boolean>;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
 
   // --- Template actions ---
   startFork: () => void;
@@ -243,6 +249,74 @@ export function AiStoreProvider(props: ParentProps) {
   // --- Pending changes (buffered edits for read-only templates) ---
   const [pendingTemplate, setPendingTemplate] = createSignal<TemplateSchema | null>(null);
   const hasPendingChanges = () => pendingTemplate() !== null;
+
+  // --- Undo / Redo ---
+  const MAX_UNDO = 50;
+  const [undoStack, setUndoStack] = createSignal<TemplateSchema[]>([]);
+  const [redoStack, setRedoStack] = createSignal<TemplateSchema[]>([]);
+  const stackCache = new Map<string, { undo: TemplateSchema[]; redo: TemplateSchema[] }>();
+  let prevTemplateId: string | undefined;
+  const canUndo: Accessor<boolean> = () => undoStack().length > 0;
+  const canRedo: Accessor<boolean> = () => redoStack().length > 0;
+
+  function pushSnapshot() {
+    const current = isReadOnly()
+      ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
+      : deepClone(templateStore.currentTemplate);
+    setUndoStack((prev) => {
+      const next = [...prev, current as TemplateSchema];
+      return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
+    });
+    setRedoStack([]);
+  }
+
+  async function undo() {
+    const stack = undoStack();
+    if (stack.length === 0) return;
+    const snapshot = stack[stack.length - 1];
+    setUndoStack((prev) => prev.slice(0, -1));
+    setRedoStack((prev) => [
+      ...prev,
+      (isReadOnly()
+        ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
+        : deepClone(templateStore.currentTemplate)) as TemplateSchema,
+    ]);
+    if (isReadOnly()) {
+      setPendingTemplate(snapshot);
+    } else {
+      templateStore.updateTemplate(snapshot);
+      try {
+        await templateStore.persistCurrentTemplate();
+      } catch {
+        /* key may already exist */
+      }
+    }
+    setMessages((prev) => [...prev, createMessage('assistant', '↶ Reverted to previous schema state.')]);
+  }
+
+  async function redo() {
+    const stack = redoStack();
+    if (stack.length === 0) return;
+    const snapshot = stack[stack.length - 1];
+    setRedoStack((prev) => prev.slice(0, -1));
+    setUndoStack((prev) => [
+      ...prev,
+      (isReadOnly()
+        ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
+        : deepClone(templateStore.currentTemplate)) as TemplateSchema,
+    ]);
+    if (isReadOnly()) {
+      setPendingTemplate(snapshot);
+    } else {
+      templateStore.updateTemplate(snapshot);
+      try {
+        await templateStore.persistCurrentTemplate();
+      } catch {
+        /* key may already exist */
+      }
+    }
+    setMessages((prev) => [...prev, createMessage('assistant', '↷ Re-applied schema change.')]);
+  }
 
   // --- Name + Icon picker state ---
   const [pickerOpen, setPickerOpen] = createSignal(false);
@@ -1025,12 +1099,14 @@ export function AiStoreProvider(props: ParentProps) {
             }
           } else if (isReadOnly()) {
             console.log('[AiStore] Semantic validation passed — buffering (read-only template)');
+            pushSnapshot();
             setPendingTemplate(mergedTemplate);
             for (const tr of toolResults) {
               tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
             }
           } else {
             console.log('[AiStore] Semantic validation passed — applying to store');
+            pushSnapshot();
             templateStore.updateTemplate(mergedTemplate);
             await templateStore.persistCurrentTemplate();
             setPendingTemplate(null);
@@ -1136,6 +1212,7 @@ export function AiStoreProvider(props: ParentProps) {
   function onSchemaEdit(json: string) {
     try {
       const parsed = JSON.parse(json);
+      pushSnapshot();
       templateStore.updateTemplate(parsed as TemplateSchema);
       templateStore.persistCurrentTemplate();
       setMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
@@ -1183,6 +1260,28 @@ export function AiStoreProvider(props: ParentProps) {
     }
   });
 
+  // Save/restore undo/redo stacks per template
+  createEffect(() => {
+    const newId = templateStore.currentTemplate.id;
+    untrack(() => {
+      // Save outgoing stacks
+      if (prevTemplateId) {
+        const undo = undoStack();
+        const redo = redoStack();
+        if (undo.length || redo.length) {
+          stackCache.set(prevTemplateId, { undo, redo });
+        } else {
+          stackCache.delete(prevTemplateId);
+        }
+      }
+      // Restore incoming stacks
+      const cached = newId ? stackCache.get(newId) : undefined;
+      setUndoStack(cached?.undo ?? []);
+      setRedoStack(cached?.redo ?? []);
+      prevTemplateId = newId;
+    });
+  });
+
   // ----------------------------------------------------------------
   // Store object
   // ----------------------------------------------------------------
@@ -1223,6 +1322,12 @@ export function AiStoreProvider(props: ParentProps) {
     schemaJson,
     setPanelMode,
     onSchemaEdit,
+
+    // Undo / Redo
+    canUndo,
+    canRedo,
+    undo,
+    redo,
 
     // Template actions
     startFork,

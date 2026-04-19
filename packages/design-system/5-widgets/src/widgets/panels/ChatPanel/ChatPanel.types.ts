@@ -72,6 +72,12 @@ export interface ChatPanelProps {
   onModeChange?: (mode: 'chat' | 'code') => void;
   onSchemaEdit?: (json: string) => void;
 
+  // Undo / Redo
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
+
   // Session management
   sessions?: SessionInfo[];
   activeSessionId?: string | null;
