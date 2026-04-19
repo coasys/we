@@ -58,10 +58,7 @@ function SaveButton({
   );
 }
 
-// question abgout ds component vs block distinction (especially for external devs)
-
 function LoadPostIntoEditor({ post }: { post?: SerializedBlockNode }) {
-  // console.log('888 LoadPostIntoEditor post:', post);
   const [editor] = useLexicalComposerContext();
 
   createEffect(() => {
