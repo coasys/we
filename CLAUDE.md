@@ -193,6 +193,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
 @we/primitives:
 - we-alert (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', dismissible: boolean = false
+- we-audio (LayoutVisualElement)
+  Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false
 - we-avatar (LayoutElement)
   Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
 - we-badge (DesignSystemElement)
@@ -209,7 +211,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (DesignSystemElement)
-  Props: orientation: 'horizontal' | 'vertical' = 'horizontal'
+  Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid'
 - we-drawer (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
 - we-file-upload (DesignSystemElement)
@@ -220,9 +222,9 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: columns: number = 1, minChildWidth: string = ''
 - we-icon (LayoutElement)
   Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular'
-- we-iframe (LayoutElement)
-  Props: src: string = '', title: string = 'Embedded content', allow: string = ''
-- we-image (LayoutElement)
+- we-iframe (LayoutVisualElement)
+  Props: src: string = '', title: string = 'Embedded content', allow: string = '', sandbox?: string | undefined
+- we-image (LayoutVisualElement)
   Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = ''
 - we-input (DesignSystemElement)
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
@@ -277,18 +279,66 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-tooltip (LayoutElement)
   Props: open: boolean = false, title: string = '', placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'top', tooltipEl: HTMLElement, triggerEl: HTMLElement, arrowEl: HTMLElement
+- we-video (LayoutVisualElement)
+  Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false
 
 @we/components:
+- AudioDisplay
+  Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
+- AudioInput
+  Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
 - BlockComposer
   Props: post?: any, perspective?: PerspectiveProxy, onSave?: ((json: SerializedBlockNode) => void)
 - BlockRenderer
   Props: post?: any
-- ImageComponent
-  Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined, nodeKey: string
+- CalloutDisplay
+  Props: text: string | undefined, variant: string | undefined, icon: string | undefined
+- CalloutInput
+  Props: text: string | undefined, variant: string | undefined, icon: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- CodeDisplay
+  Props: code: string | undefined, language: string | undefined, title: string | undefined
+- CodeInput
+  Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- DividerDisplay
+  Props: style: "solid" | "dashed" | "dotted" | undefined
+- DividerInput
+  Props: style: DividerVariant | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- EmbedDisplay
+  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined
+- EmbedInput
+  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- EventDisplay
+  Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined
+- EventInput
+  Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- FileDisplay
+  Props: name: string | undefined, url: string | undefined, mimeType: string | undefined, size: number | undefined
+- FileInput
+  Props: name: string | undefined, url: string | undefined, mimeType: string | undefined, size: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
 - ImageDisplay
   Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined
 - ImageInput
   Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- LinkDisplay
+  Props: url: string | undefined, title: string | undefined, description: string | undefined, thumbnail: string | undefined
+- LinkInput
+  Props: url: string | undefined, title: string | undefined, description: string | undefined, thumbnail: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- LocationDisplay
+  Props: name: string | undefined, latitude: number | undefined, longitude: number | undefined, address: string | undefined
+- LocationInput
+  Props: name: string | undefined, latitude: number | undefined, longitude: number | undefined, address: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- TagDisplay
+  Props: name: string | undefined, color: string | undefined
+- TagInput
+  Props: name: string | undefined, color: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- TaskDisplay
+  Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined
+- TaskInput
+  Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- VideoDisplay
+  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined
+- VideoInput
+  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
 - Accordion
   Props: children?: JSX.Element, renderContent?: ((item: AccordionItem, index: number) => JSX.Element), onChange?: ((openItems: string[]) => void), items?: AccordionItem[], multiple?: boolean, styles?: Record<string, string | number>
 - Breadcrumbs
@@ -337,8 +387,6 @@ Includes template context header with fork/fresh actions and name+icon picker.
   Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, streamingContent?: string, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, onPickerConfirm?: ((name: string, icon: string) => void), onPickerCancel?: (() => void), mode?: "chat" | "code", schemaJson?: string, onModeChange?: ((mode: "chat" | "code") => void), onSchemaEdit?: ((json: string) => void), canUndo?: boolean, canRedo?: boolean, onUndo?: (() => void), onRedo?: (() => void), sessions?: SessionInfo[], activeSessionId?: string | null, onNewChat?: (() => void), onSwitchSession?: ((sessionId: string) => void), onDeleteSession?: ((sessionId: string) => void), operationLoading?: string | null
 - CollapsibleSidebar
   Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "fixed" | "absolute" | "static", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
-- CreateSpaceModalWidget
-  Props: adamClient: Ad4mClient | undefined, addNewSpace: (space: Space) => void, close: () => void, class?: string, style?: Record<string, string | number>
 - GraphWidget — 2D force-directed graph visualization using D3-force layout and Canvas rendering.
 Displays typed nodes (user, space, post) and edges (follows, member-of, etc.)
 with configurable styling, layout forces, and interaction handlers.
