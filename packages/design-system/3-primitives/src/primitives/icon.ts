@@ -94,6 +94,10 @@ const styles = css`
     --icon-size: var(--we-size-xxl);
   }
 
+  span[aria-hidden] {
+    display: contents;
+  }
+
   span[role='img'] {
     display: inline-block;
     width: var(--icon-size);

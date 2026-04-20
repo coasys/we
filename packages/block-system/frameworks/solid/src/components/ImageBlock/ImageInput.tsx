@@ -1,4 +1,5 @@
-import { createEffect, createSignal, onCleanup, Show } from 'solid-js';
+import { Column, Row } from '@we/components/solid';
+import { createSignal, Show } from 'solid-js';
 
 import { ImageDisplay } from './ImageDisplay';
 
@@ -18,26 +19,40 @@ interface ImageInputProps {
  * Composes ImageDisplay when an image is loaded, with edit affordances overlaid.
  */
 export function ImageInput(props: ImageInputProps) {
-  const [showInputModal, setShowInputModal] = createSignal(false);
+  const [showModal, setShowModal] = createSignal(false);
+  const [mode, setMode] = createSignal<'upload' | 'url'>('upload');
   const [imageUrl, setImageUrl] = createSignal('');
-  let inputModalRef: HTMLDivElement | undefined;
-  let inputRef: HTMLInputElement | undefined;
 
-  function openInputModal(e: MouseEvent) {
+  function openModal(e: MouseEvent) {
     e.stopPropagation();
-    setShowInputModal(true);
+    setShowModal(true);
   }
 
-  function closeInputModal() {
-    setShowInputModal(false);
+  function closeModal() {
+    setShowModal(false);
     setImageUrl('');
+    setMode('upload');
   }
 
-  function handleUrlSubmit(e: Event) {
-    e.preventDefault();
-    if (imageUrl().trim()) {
-      props.onChange('src', imageUrl().trim());
-      closeInputModal();
+  function handleFileChange(e: Event) {
+    const file = (e as CustomEvent).detail as File | null;
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        props.onChange('src', reader.result);
+        closeModal();
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleUrlSubmit() {
+    const url = imageUrl().trim();
+    if (url) {
+      props.onChange('src', url);
+      closeModal();
     }
   }
 
@@ -46,62 +61,75 @@ export function ImageInput(props: ImageInputProps) {
     props.onChange('src', undefined);
   }
 
-  // Close popup when clicking outside
-  createEffect(() => {
-    if (!showInputModal()) return;
-
-    function handleClickOutside(e: MouseEvent) {
-      if (inputModalRef && !inputModalRef.contains(e.target as Node)) closeInputModal();
-    }
-
-    if (inputRef) inputRef.focus();
-
-    document.addEventListener('mousedown', handleClickOutside);
-    onCleanup(() => document.removeEventListener('mousedown', handleClickOutside));
-  });
-
   return (
-    <div class="we-image-block" onClick={props.onSelect}>
+    <Column class="we-image-block" onClick={props.onSelect} position="relative">
       <Show
         when={props.src}
         fallback={
-          <button onClick={openInputModal}>
-            <we-icon name="image" size="lg" />
+          <we-button variant="ghost" onClick={openModal} class="we-block-input-placeholder">
+            <we-icon name="image" />
             Add Image
-          </button>
+          </we-button>
         }
       >
-        {/* Compose the display component — same rendering as read-only */}
         <ImageDisplay src={props.src} altText={props.altText} width={props.width} height={props.height} />
 
-        {/* Edit affordances layered on top */}
         <Show when={props.isSelected()}>
-          <button class="we-image-block-delete" onClick={handleDelete}>
-            ×
-          </button>
+          <Row gap="200" class="we-image-block-actions">
+            <we-button variant="ghost" onClick={openModal}>
+              <we-icon name="pencil-simple" size="sm" />
+            </we-button>
+            <we-button variant="ghost" onClick={handleDelete}>
+              <we-icon name="x" size="sm" />
+            </we-button>
+          </Row>
         </Show>
       </Show>
 
-      <Show when={showInputModal()}>
-        <div class="we-image-block-input-modal" ref={inputModalRef}>
-          <form onSubmit={handleUrlSubmit}>
-            <h4>Add Image URL</h4>
-            <input
-              ref={inputRef}
-              type="text"
-              value={imageUrl()}
-              onInput={(e) => setImageUrl(e.currentTarget.value)}
-              placeholder="https://example.com/image.jpg"
-            />
-            <div class="we-image-block-input-buttons">
-              <button type="button" onClick={closeInputModal}>
-                Cancel
-              </button>
-              <button type="submit">Add</button>
-            </div>
-          </form>
-        </div>
+      <Show when={showModal()}>
+        <we-modal close={closeModal} p="500" width="400px" r="300">
+          <Column gap="300">
+            <we-text variant="subheading">{props.src ? 'Change Image' : 'Add Image'}</we-text>
+
+            <Row gap="200">
+              <we-button variant={mode() === 'upload' ? 'secondary' : 'ghost'} onClick={() => setMode('upload')}>
+                Upload
+              </we-button>
+              <we-button variant={mode() === 'url' ? 'secondary' : 'ghost'} onClick={() => setMode('url')}>
+                URL
+              </we-button>
+            </Row>
+
+            <Show when={mode() === 'upload'}>
+              <we-file-upload accept="image/*" on:change={handleFileChange}>
+                <we-icon name="image" size="32px" color="neutral-300" />
+                <we-text variant="footnote" color="neutral-400">
+                  Drop an image or click to browse
+                </we-text>
+              </we-file-upload>
+            </Show>
+
+            <Show when={mode() === 'url'}>
+              <we-form-field label="Image URL">
+                <we-input
+                  type="text"
+                  value={imageUrl()}
+                  onInput={(e: CustomEvent) => setImageUrl(e.detail)}
+                  placeholder="https://example.com/image.jpg"
+                />
+              </we-form-field>
+              <Row ax="end" gap="200">
+                <we-button variant="secondary" onClick={closeModal}>
+                  Cancel
+                </we-button>
+                <we-button variant="primary" onClick={handleUrlSubmit}>
+                  Add
+                </we-button>
+              </Row>
+            </Show>
+          </Column>
+        </we-modal>
       </Show>
-    </div>
+    </Column>
   );
 }

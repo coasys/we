@@ -1,3 +1,5 @@
+import { Show } from 'solid-js';
+
 interface ImageDisplayProps {
   src: string | undefined;
   altText: string | undefined;
@@ -12,17 +14,15 @@ interface ImageDisplayProps {
  */
 export function ImageDisplay(props: ImageDisplayProps) {
   return (
-    <div class="we-image-block">
-      {props.src ? (
-        <img
-          src={props.src}
-          alt={props.altText}
-          style={{
-            width: props.width ? `${props.width}px` : 'auto',
-            height: props.height ? `${props.height}px` : 'auto',
-          }}
-        />
-      ) : null}
-    </div>
+    <Show when={props.src}>
+      <we-image
+        src={props.src}
+        alt={props.altText || ''}
+        width={props.width ? `${props.width}px` : '100%'}
+        height={props.height ? `${props.height}px` : 'auto'}
+        fit="contain"
+        r="200"
+      />
+    </Show>
   );
 }

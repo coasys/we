@@ -17,6 +17,7 @@ import {
 } from 'lexical-solid';
 import { createEffect } from 'solid-js';
 
+import { registerCoreBlockComponents } from '../core-block-components';
 import { blockNodeClasses } from '../nodes';
 import BlockHandlesPlugin from '../plugins/BlockHandlesPlugin';
 import BlockInsertPlugin from '../plugins/BlockInsertPlugin';
@@ -25,6 +26,7 @@ import PlaceholdersPlugin from '../plugins/PlaceholdersPlugin';
 import SlashCommandPlugin from '../plugins/SlashCommandPlugin';
 
 registerCoreBlocks();
+registerCoreBlockComponents();
 
 function SaveButton({
   perspective,
