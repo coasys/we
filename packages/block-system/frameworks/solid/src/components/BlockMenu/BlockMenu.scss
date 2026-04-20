@@ -1,6 +1,6 @@
 .we-block-menu {
   position: absolute;
-  z-index: 1;
+  z-index: var(--we-z-popover);
   top: 20px;
   pointer-events: auto;
   display: flex;
