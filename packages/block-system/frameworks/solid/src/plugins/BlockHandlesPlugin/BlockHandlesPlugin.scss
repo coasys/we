@@ -31,7 +31,8 @@
     }
   }
 
-  &[data-block-highlighted='true'] {
+  &[data-block-hovered='true'],
+  &[data-block-focused='true'] {
     opacity: 1;
   }
 }

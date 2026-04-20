@@ -717,10 +717,6 @@ export const defaultTemplate: TemplateSchema = {
                               type: 'BlockRenderer',
                               props: { post: '$post' },
                             },
-                            // {
-                            //   type: 'we-text',
-                            //   children: ['yooo'],
-                            // },
                           ],
                         },
                         else: {

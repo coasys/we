@@ -15,7 +15,7 @@ import {
   RichTextPlugin,
   useLexicalComposerContext,
 } from 'lexical-solid';
-import { createEffect } from 'solid-js';
+import { createEffect, onMount } from 'solid-js';
 
 import { registerCoreBlockComponents } from '../core-block-components';
 import { blockNodeClasses } from '../nodes';
@@ -77,6 +77,27 @@ function LoadPostIntoEditor({ post }: { post?: SerializedBlockNode }) {
   return null;
 }
 
+/** Focuses the editor after the next frame so the modal/DOM is fully settled. */
+function DeferredAutoFocusPlugin() {
+  const [editor] = useLexicalComposerContext();
+
+  onMount(() => {
+    requestAnimationFrame(() => {
+      editor.focus(
+        () => {
+          const rootElement = editor.getRootElement();
+          if (rootElement && document.activeElement !== rootElement) {
+            rootElement.focus({ preventScroll: true });
+          }
+        },
+        { defaultSelection: 'rootStart' },
+      );
+    });
+  });
+
+  return null;
+}
+
 export function BlockComposer({ post, perspective, onSave }: BlockComposerProps) {
   console.log('*** BlockComposer rendered. post:', post);
   const initialConfig = {
@@ -98,6 +119,7 @@ export function BlockComposer({ post, perspective, onSave }: BlockComposerProps)
         <LexicalMarkdownShortcutPlugin transformers={[HEADING, QUOTE, UNORDERED_LIST, ORDERED_LIST, CHECK_LIST]} />
         <HistoryPlugin />
         <ListPlugin />
+        <DeferredAutoFocusPlugin />
 
         {/* Custom plugins */}
         <BlockHandlesPlugin />

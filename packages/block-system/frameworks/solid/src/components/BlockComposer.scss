@@ -5,10 +5,5 @@
   .we-block-composer-editor {
     outline: none;
     position: relative;
-
-    // Composer-only: highlight block on hover/selection
-    .we-block[data-block-highlighted='true'] {
-      background-color: var(--we-color-neutral-25);
-    }
   }
 }
