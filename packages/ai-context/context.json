@@ -2662,7 +2662,7 @@
         },
         {
           "name": "zIndex",
-          "type": "number",
+          "type": "ZIndexValue",
           "optional": true
         },
         {
@@ -3166,7 +3166,7 @@
         },
         {
           "name": "zIndex",
-          "type": "number",
+          "type": "ZIndexValue",
           "optional": true
         },
         {
@@ -3641,7 +3641,7 @@
         },
         {
           "name": "zIndex",
-          "type": "number",
+          "type": "ZIndexValue",
           "optional": true
         },
         {
@@ -5569,6 +5569,18 @@
         "800": "2.75rem",
         "900": "3.25rem",
         "1000": "4rem"
+      }
+    },
+    {
+      "name": "zIndex",
+      "type": "Record<ZIndexLayer, string>",
+      "values": {
+        "dropdown": "100",
+        "sticky": "200",
+        "modal": "300",
+        "popover": "400",
+        "toast": "500",
+        "tooltip": "600"
       }
     }
   ],
