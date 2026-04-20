@@ -11,6 +11,28 @@
   font-family: var(--we-font-family);
   border: 1px solid var(--we-color-neutral-300);
   min-width: 250px;
+  max-height: min(400px, 60vh);
+  overflow-y: auto;
+
+  .we-block-menu-filter {
+    all: unset;
+    font-size: 13px;
+    padding: 6px 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--we-color-neutral-100);
+    color: var(--we-color-neutral-900);
+
+    &::placeholder {
+      color: var(--we-color-neutral-300);
+    }
+  }
+
+  .we-block-menu-empty {
+    font-size: 13px;
+    color: var(--we-color-neutral-400);
+    padding: 8px;
+    text-align: center;
+  }
 
   .we-block-menu-item {
     all: unset;
