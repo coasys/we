@@ -20,7 +20,7 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Store the navigate function in the Route store so schema actions can use it
+    // Store the navigate function in the route store so schema actions can use it
     createEffect(() => stores.routeStore.setNavigateFunction(() => navigate));
 
     // React to route changes and update relevant stores

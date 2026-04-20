@@ -439,6 +439,7 @@ export const defaultTemplate: TemplateSchema = {
                         bg: 'primary-500',
                         color: 'neutral-0',
                         height: '40px',
+                        loading: { $store: 'adamStore.creatingSpace' },
                         disabled: { $not: { $formValid: '$scope' } },
                         onClick: [
                           { $touch: '$all' },
@@ -851,7 +852,7 @@ export const defaultTemplate: TemplateSchema = {
               type: 'Column',
               props: { p: '600', ay: 'center', ax: 'center', gap: '200' },
               children: [
-                { type: 'we-icon', props: { name: 'people', color: 'neutral-300', size: '48px' } },
+                { type: 'we-icon', props: { name: 'users', color: 'neutral-300', size: '48px' } },
                 {
                   type: 'we-text',
                   props: { fontSize: '400', color: 'neutral-400' },
