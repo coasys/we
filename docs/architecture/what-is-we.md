@@ -1,217 +1,161 @@
 # What is WE?
 
-WE is a **meta-app for communities** — a shared environment where people can build, remix, and evolve their own social, governance, economic, and knowledge experiences on top of AD4M.
+WE is an **application framework for building evolvable, uncapturable communities** on decentralized infrastructure.
 
-AD4M provides the sovereign foundation: identity, data ownership, peer-to-peer coordination, and shared meaning. **WE builds on top of that foundation** to give communities something more immediately useful: a modular, interoperable environment they can actually inhabit and shape.
+## The Vision
 
-Instead of forcing every community into the same rigid platform design, WE lets communities adopt, combine, and evolve the tools they need.
+**Enable evolvable, uncapturable, decentralized social architecture for the world.**
 
----
+We believe communities should be able to coordinate freely without:
 
-## The Core Idea
+- Platform risk (bans, shutdowns, policy changes)
+- Developer dependency (waiting for features, paying for custom code)
+- Migration paralysis (trapped by switching costs and data loss)
+- Capture dynamics (investors, algorithms, advertising models)
 
-Most online communities today live inside platforms they do not control.
+## The Solution
 
-They can create posts, chats, groups, and channels — but the deeper structure is fixed for them:
+WE provides **composable coordination infrastructure** where communities can:
 
-- the feed logic is fixed
-- the moderation tools are fixed
-- the governance model is fixed
-- the payment and funding options are fixed
-- the interface is fixed
-- the incentive structure is fixed
+1. **Start from templates** - Pre-built configurations for different use cases (social networks, DAOs, marketplaces, collectives)
+2. **Compose from modules** - Add governance, economics, custom content types, and UI components from a shared ecosystem
+3. **Customize without code** - Adjust layouts, styling, and functionality through JSON schemas
+4. **Evolve over time** - Swap modules, change templates, experiment with new coordination mechanisms
+5. **Own their stack** - Run on decentralized infrastructure (AD4M) where users control data and computation
 
-Even when a platform offers plugins or customization, the community is still living inside someone else’s system.
+## Key Concepts
 
-WE takes a different approach.
+### Templates as Products
 
-With WE, a community is not just a group inside a platform. It can become a **self-shaping environment**:
+Communities don't build apps - they **share templates**. A template is a JSON schema that defines:
 
-- its own spaces and interfaces
-- its own governance mechanisms
-- its own signalling systems
-- its own knowledge structures
-- its own payment and resource flows
-- its own evolving mix of modules, templates, and experiences
+- Which modules to use (governance, chat, posts, treasury, etc.)
+- How they're laid out and styled
+- What interactions are possible
 
----
+Templates can be forked, remixed, and evolved. Successful patterns spread organically.
 
-## Why WE Exists
+### Module Ecosystem
 
-The modern internet is full of social energy but structurally constrained.
+Instead of monolithic applications, WE has a composable module system:
 
-Communities can gather attention, conversation, and creativity — but they usually cannot truly evolve the tools through which they coordinate. They are confined to whatever product decisions a platform owner has made.
+- **Governance modules** - Voting, proposals, decision-making mechanisms
+- **Economics modules** - Tokens, treasuries, resource allocation, markets
+- **Social modules** - Chat, posts, profiles, reputation
+- **Content modules** - Rich block composer for fractal post compositions
+- **UI modules** - Templates, themes, custom interfaces
+- **Coordination modules** - Geographic layers, calendars, task management
 
-That creates a familiar pattern:
+### Evolvable Architecture
 
-- communities outgrow the tools they were given
-- useful experiments are hard to adopt
-- successful platforms become rigid and extractive
-- users get trapped by data loss, network effects, and migration costs
-- innovation resets every time someone starts a new app from scratch
+Communities can experiment with different coordination structures in real-time:
 
-WE is meant to change that.
+- Monday: Simple majority voting
+- Tuesday: Community discusses limitations
+- Wednesday: Switch to quadratic voting template
+- Thursday: Test and gather feedback
+- Friday: Fork and customize to their needs
 
-It gives communities a shared environment where successful ideas can spread as reusable modules and experiences rather than remaining locked inside isolated products.
+**No code changes. No data migration. Just schema swaps.**
 
----
+### Uncapturable by Design
 
-## WE as a Meta-App
+Built on [AD4M](https://ad4m.dev) (Agent-Centric Distributed Application Meta-protocol):
 
-WE is not just a framework for making lots of separate apps.
+- **Agent-centric** - Users run their own nodes, control their own data
+- **Decentralized** - No central servers to shut down or capture
+- **Open protocol** - Anyone can build modules, templates, or alternative clients
+- **Exit-friendly** - Templates are portable, data stays with users
 
-It is a **meta-app**: one broader environment in which many experiences can coexist, interoperate, and be remixed together.
+## Why This Matters
 
-That matters because a shared environment creates compounding advantages:
+### The Platform Problem
 
-- **continuity for users** — one identity, one data layer, one evolving workspace across many experiences
-- **continuity for communities** — shared infrastructure instead of starting over for every new tool
-- **continuity for developers and creators** — modules can improve the whole ecosystem, not just one isolated app
-- **continuity for AI** — agents can understand and modify one structured environment rather than many disconnected silos
+Every successful social platform eventually gets captured:
 
-In WE, different experiences do not need to behave like sealed kingdoms. They can become different interfaces and coordination patterns operating over shared data, shared identities, and shared building blocks.
+- Investors demand returns → monetization, ads, dark patterns
+- Growth pressures → engagement optimization, algorithmic manipulation
+- Regulatory capture → censorship, surveillance, compliance costs
+- Network effects → lock-in, switching costs, monopolistic behavior
 
----
+**The more successful the platform, the worse the incentive alignment becomes.**
 
-## What Communities Can Do in WE
+### The WE Alternative
 
-A community using WE could:
+WE flips this model:
 
-- run discussions, posts, chats, and shared spaces
-- experiment with different ways of surfacing important content
-- adopt new governance tools without migrating to a whole new platform
-- add integrated payments, shared treasuries, or contribution flows
-- build collaborative knowledge maps and shared memory structures
-- remix successful patterns from other communities
-- customize its interface and structure over time without throwing away its history
+- Communities control their own rules and economics
+- Success doesn't require capture (no investors to please)
+- Competition drives quality (easy to fork and switch)
+- Network effects benefit users (shared modules improve all communities)
 
-That means communities are no longer limited to asking for features from a platform owner. They can evolve their environments directly.
+## Use Cases
 
----
+### Local Communities
 
-## The Marketplace as an Evolutionary Engine
+- Mutual aid networks with resource sharing and coordination
+- Neighborhood governance with proposals and voting
+- Local marketplaces with reputation and trust mechanisms
 
-The marketplace is one of the core ideas in WE.
+### DAOs & Collectives
 
-It is not just a place to download themes or widgets. It is the mechanism by which the ecosystem evolves.
+- Governance frameworks with customizable voting mechanisms
+- Treasury management with transparent fund allocation
+- Project coordination with tasks, milestones, and bounties
 
-Modules in WE can include:
+### Creative Communities
 
-- components
-- widgets
-- blocks
-- themes
-- templates
-- governance mechanisms
-- signalling systems
-- payment flows
-- moderation tools
-- knowledge and mapping interfaces
+- Content platforms with rich composition tools
+- Curation systems with reputation and rewards
+- Collaborative creation with shared ownership
 
-This means useful social techniques can become reusable. If one community develops a better way to surface important information, make collective decisions, coordinate resources, or visualize shared knowledge, that pattern can spread.
+### Research & Learning
 
-Instead of social platforms evolving only through centralized product roadmaps, WE enables **distributed experimentation**:
+- Knowledge graphs with linked concepts
+- Peer review and reputation systems
+- Collaborative documentation and resources
 
-- communities try new approaches
-- creators and developers publish modules and experiences
-- others adopt, remix, improve, or fork them
-- successful patterns spread through the network
+### Network States
 
-That is a much healthier model for social evolution than waiting for one company to redesign the internet for everyone.
+- Geographic coordination layers
+- Distributed governance at scale
+- Economic systems and resource allocation
 
----
+## Technical Foundation
 
-## Why This Is Better Than Many Separate Apps on AD4M
+WE is built on:
 
-AD4M makes it possible to build sovereign, peer-to-peer applications. But if everyone simply builds separate apps on top of AD4M, many of the old problems can reappear at the experience layer:
+- **AD4M** - Decentralized protocol for agent-centric applications
+- **Schema Renderer** - JSON-to-UI system with reactive data tokens
+- **Module System** - Composable coordination primitives
+- **Template System** - Shareable configurations and themes
 
-- fragmented interfaces
-- duplicated effort
-- weaker discoverability
-- weaker composability
-- slower evolution of shared patterns
-- less continuity for users and communities
+See [architecture overview](./overview.md) for details.
 
-WE solves that by providing a common experiential layer on top of AD4M.
+## Current Status
 
-Rather than just giving people a decentralized substrate, WE gives them a **shared environment for cumulative evolution**.
+WE is in active development. We have:
 
-That means:
+- ✅ Core design system and component library
+- ✅ Schema-based UI rendering engine
+- ✅ AD4M integration layer
+- ✅ Template and seed system
+- 🚧 Block composer (early stages)
+- 🚧 Example use case templates
+- 📋 Governance modules (planned)
+- 📋 Economics modules (planned)
 
-- shared module ecosystems instead of isolated feature silos
-- shared data and identity continuity across experiences
-- lower-cost experimentation for communities
-- a better surface for AI collaboration
-- innovation that compounds instead of resetting per app
+## Get Involved
 
----
+WE is open source and community-driven:
 
-## Why AI Matters in WE
+- Build modules and share them with the ecosystem
+- Create templates for different use cases
+- Contribute to core infrastructure
+- Use WE to coordinate your own community
 
-AI is not the whole story, but it becomes much more useful inside WE.
-
-In most software today, AI is trapped outside the product. It can chat about software, but it cannot easily reshape the interface, logic, or structure around the user.
-
-WE is different because experiences are structured and interpretable:
-
-- interfaces are schema-driven
-- modules are composable
-- data has shared meaning
-- experiences can be inspected and modified
-
-That gives AI a much better surface to work with.
-
-In WE, AI can help:
-
-- customize a community’s environment
-- remix elements from one experience into another
-- adapt layouts and workflows to local needs
-- help users navigate complex spaces
-- support the ongoing evolution of the system
-
-So AI is not just an assistant using software from the outside. It can become a collaborator in shaping the environment itself.
+**The goal is to enable a Cambrian explosion of social coordination experiments** - where communities can rapidly discover what actually works through evolution, not theory.
 
 ---
 
-## What WE Adds on Top of AD4M
-
-AD4M provides the substrate. WE provides the lived environment.
-
-AD4M gives:
-
-- sovereign identity
-- agent-centric data
-- peer-to-peer coordination
-- semantic interoperability
-
-WE adds:
-
-- a shared design and component system
-- schema-driven, remixable interfaces
-- a marketplace for reusable modules and experiences
-- continuity across many experiences within one environment
-- AI-friendly structures for customization and evolution
-- a practical way for communities to shape their own software conditions
-
-This is what turns a powerful protocol foundation into something communities can actually use to organize themselves.
-
----
-
-## A Better Model for Online Communities
-
-WE starts from a simple conviction:
-
-**communities should be able to evolve not just what they say, but the interfaces, incentives, and institutions through which they relate.**
-
-That means:
-
-- less dependence on rigid platforms
-- less lock-in
-- more experimentation
-- more portability
-- more collective ownership over digital environments
-- more room for new forms of coordination, governance, and value creation
-
-The long-term result could be a much richer internet: not a handful of giant platforms controlling social life, but a living ecosystem of interoperable community environments that can learn from one another.
-
-That is what WE is for.
+_"WordPress democratized web publishing. WE democratizes social coordination."_
