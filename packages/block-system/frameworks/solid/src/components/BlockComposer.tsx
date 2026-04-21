@@ -126,7 +126,7 @@ export function BlockComposer({ post, onSave, onReady }: BlockComposerProps) {
   };
 
   return (
-    <Column class="we-block-composer-wrapper" bg="white" p="1000" r="xl">
+    <Column class="we-block-composer-wrapper">
       <LexicalComposer initialConfig={initialConfig}>
         <LoadPostIntoEditor post={post} />
         {onReady ? <OnReadyPlugin onSave={onSave} onReady={onReady} /> : <SaveButton onSave={onSave} />}
