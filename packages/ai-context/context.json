@@ -1551,13 +1551,13 @@
           "optional": true
         },
         {
-          "name": "perspective",
-          "type": "PerspectiveProxy",
+          "name": "onSave",
+          "type": "((json: SerializedBlockNode) => void)",
           "optional": true
         },
         {
-          "name": "onSave",
-          "type": "((json: SerializedBlockNode) => void)",
+          "name": "onReady",
+          "type": "((api: { save: () => void; }) => void)",
           "optional": true
         }
       ],
@@ -4653,7 +4653,8 @@
           "name": "editorState",
           "type": "Record<string, unknown>",
           "predicate": "we://editor_state",
-          "required": false
+          "required": false,
+          "default": "null"
         },
         {
           "name": "type",
@@ -5593,19 +5594,40 @@
         },
         "me": {
           "type": "object",
-          "properties": ["did", "perspective", "directMessageLanguage"]
+          "properties": [
+            "did",
+            "perspective",
+            "directMessageLanguage"
+          ]
         },
         "allPerspectives": {
           "type": "array",
-          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
+          "properties": [
+            "uuid",
+            "name",
+            "sharedUrl",
+            "neighbourhood"
+          ]
         },
         "personalSpaces": {
           "type": "array",
-          "properties": ["uuid", "name", "description", "url", "visibility"]
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "url",
+            "visibility"
+          ]
         },
         "sharedSpaces": {
           "type": "array",
-          "properties": ["uuid", "name", "description", "url", "visibility"]
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "url",
+            "visibility"
+          ]
         },
         "bootState": {
           "type": "string"
@@ -5616,9 +5638,20 @@
         "loginLoading": {
           "type": "boolean"
         },
+        "creatingSpace": {
+          "type": "boolean"
+        },
         "agentProfile": {
           "type": "object",
-          "properties": ["firstName", "lastName", "handle", "bio", "location", "profileImage", "coverImage"]
+          "properties": [
+            "firstName",
+            "lastName",
+            "handle",
+            "bio",
+            "location",
+            "profileImage",
+            "coverImage"
+          ]
         }
       },
       "actions": [
@@ -5643,36 +5676,70 @@
           "type": "array"
         }
       },
-      "actions": ["navigate"]
+      "actions": [
+        "navigate"
+      ]
     },
     {
       "name": "themeStore",
       "state": {
         "themes": {
           "type": "array",
-          "properties": ["id", "name", "icon"]
+          "properties": [
+            "id",
+            "name",
+            "icon"
+          ]
         },
         "currentTheme": {
           "type": "object",
-          "properties": ["id", "name", "icon"]
+          "properties": [
+            "id",
+            "name",
+            "icon"
+          ]
         }
       },
-      "actions": ["setThemes", "setCurrentTheme"]
+      "actions": [
+        "setThemes",
+        "setCurrentTheme"
+      ]
     },
     {
       "name": "templateStore",
       "state": {
         "templates": {
           "type": "array",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
+          "properties": [
+            "id",
+            "meta",
+            "type",
+            "props",
+            "children",
+            "routes"
+          ]
         },
         "shellTemplates": {
           "type": "array",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
+          "properties": [
+            "id",
+            "meta",
+            "type",
+            "props",
+            "children",
+            "routes"
+          ]
         },
         "currentTemplate": {
           "type": "object",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
+          "properties": [
+            "id",
+            "meta",
+            "type",
+            "props",
+            "children",
+            "routes"
+          ]
         },
         "operationLoading": {
           "type": "boolean"
@@ -5696,32 +5763,64 @@
         },
         "perspective": {
           "type": "object",
-          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
+          "properties": [
+            "uuid",
+            "name",
+            "sharedUrl",
+            "neighbourhood"
+          ]
         },
         "space": {
           "type": "object",
-          "properties": ["uuid", "name", "description", "url", "visibility", "image", "thumbnail"]
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "url",
+            "visibility",
+            "image",
+            "thumbnail"
+          ]
         },
         "posts": {
           "type": "array",
-          "properties": ["id", "author", "timestamp", "content"]
+          "properties": [
+            "id",
+            "author",
+            "timestamp",
+            "content"
+          ]
         },
         "loading": {
           "type": "boolean"
         }
       },
-      "actions": ["setSpaceId", "getSpace", "getPosts", "createPost", "updateSpaceImage", "updateSpaceCoverImage"]
+      "actions": [
+        "setSpaceId",
+        "getSpace",
+        "getPosts",
+        "createPost",
+        "updateSpaceImage",
+        "updateSpaceCoverImage"
+      ]
     },
     {
       "name": "aiStore",
       "state": {
         "models": {
           "type": "array",
-          "properties": ["id", "name"]
+          "properties": [
+            "id",
+            "name"
+          ]
         },
         "tasks": {
           "type": "array",
-          "properties": ["id", "status", "result"]
+          "properties": [
+            "id",
+            "status",
+            "result"
+          ]
         },
         "isOpen": {
           "type": "boolean"
@@ -5776,6 +5875,12 @@
         },
         "operationLoading": {
           "type": "boolean"
+        },
+        "canUndo": {
+          "type": "boolean"
+        },
+        "canRedo": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -5791,7 +5896,9 @@
         "switchSession",
         "deleteSession",
         "setPanelMode",
-        "onSchemaEdit"
+        "onSchemaEdit",
+        "undo",
+        "redo"
       ]
     }
   ]

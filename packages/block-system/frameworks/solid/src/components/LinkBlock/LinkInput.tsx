@@ -69,7 +69,7 @@ export function LinkInput(props: LinkInputProps) {
                 <we-input
                   type="text"
                   value={url()}
-                  onInput={(e: CustomEvent) => setUrl(e.detail)}
+                  on:input={(e: CustomEvent) => setUrl(e.detail)}
                   placeholder="https://example.com"
                 />
               </we-form-field>
@@ -77,7 +77,7 @@ export function LinkInput(props: LinkInputProps) {
                 <we-input
                   type="text"
                   value={title()}
-                  onInput={(e: CustomEvent) => setTitle(e.detail)}
+                  on:input={(e: CustomEvent) => setTitle(e.detail)}
                   placeholder="Link title"
                 />
               </we-form-field>
@@ -85,7 +85,7 @@ export function LinkInput(props: LinkInputProps) {
                 <we-input
                   type="text"
                   value={description()}
-                  onInput={(e: CustomEvent) => setDescription(e.detail)}
+                  on:input={(e: CustomEvent) => setDescription(e.detail)}
                   placeholder="Brief description"
                 />
               </we-form-field>

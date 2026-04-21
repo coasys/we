@@ -288,7 +288,7 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
 - BlockComposer
-  Props: post?: any, perspective?: PerspectiveProxy, onSave?: ((json: SerializedBlockNode) => void)
+  Props: post?: any, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
 - BlockRenderer
   Props: post?: any
 - CalloutDisplay
@@ -633,7 +633,7 @@ CodeBlock extends WeNode:
 
 CollectionBlock extends WeNode:
   Fields:
-  - editorState: Record<string, unknown> [we://editor_state]
+  - editorState: Record<string, unknown> = null [we://editor_state]
   - type: string [we://type]
   - display: string [we://display]
   - direction: string [we://direction]
@@ -792,6 +792,7 @@ AdamStore:
   - bootState: string
   - passwordError: string | undefined
   - loginLoading: boolean
+  - creatingSpace: boolean (true while a new space is being created)
   - agentProfile: AgentProfile | null (the current agent profile with name, bio, images, etc.)
 - Actions:
   - navigate(to: string, options?): navigates to a route
@@ -871,6 +872,8 @@ AiStore:
   - panelMode: unknown
   - schemaJson: unknown
   - operationLoading: unknown
+  - canUndo: boolean (true when there are schema edits that can be undone)
+  - canRedo: boolean (true when there are undone schema edits that can be redone)
 - Actions:
   - handleSchemaPrompt(prompt: string): generates a schema from a prompt
   - sendMessage(): unknown
@@ -885,6 +888,8 @@ AiStore:
   - deleteSession(): unknown
   - setPanelMode(): unknown
   - onSchemaEdit(): unknown
+  - undo(): undoes the last schema edit
+  - redo(): redoes the last undone schema edit
 
 ---
 

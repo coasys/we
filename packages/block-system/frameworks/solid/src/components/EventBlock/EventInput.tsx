@@ -77,7 +77,7 @@ export function EventInput(props: EventInputProps) {
                 <we-input
                   type="text"
                   value={title()}
-                  onInput={(e: CustomEvent) => setTitle(e.detail)}
+                  on:input={(e: CustomEvent) => setTitle(e.detail)}
                   placeholder="Event title"
                 />
               </we-form-field>
@@ -85,17 +85,17 @@ export function EventInput(props: EventInputProps) {
                 <we-input
                   type="datetime-local"
                   value={startDate()}
-                  onInput={(e: CustomEvent) => setStartDate(e.detail)}
+                  on:input={(e: CustomEvent) => setStartDate(e.detail)}
                 />
               </we-form-field>
               <we-form-field label="End Date">
-                <we-input type="datetime-local" value={endDate()} onInput={(e: CustomEvent) => setEndDate(e.detail)} />
+                <we-input type="datetime-local" value={endDate()} on:input={(e: CustomEvent) => setEndDate(e.detail)} />
               </we-form-field>
               <we-form-field label="Location">
                 <we-input
                   type="text"
                   value={location()}
-                  onInput={(e: CustomEvent) => setLocation(e.detail)}
+                  on:input={(e: CustomEvent) => setLocation(e.detail)}
                   placeholder="Event location"
                 />
               </we-form-field>
@@ -103,7 +103,7 @@ export function EventInput(props: EventInputProps) {
                 <we-input
                   type="text"
                   value={description()}
-                  onInput={(e: CustomEvent) => setDescription(e.detail)}
+                  on:input={(e: CustomEvent) => setDescription(e.detail)}
                   placeholder="Brief description"
                 />
               </we-form-field>

@@ -1,9 +1,8 @@
-import { PerspectiveProxy } from '@coasys/ad4m';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { CHECK_LIST, HEADING, ORDERED_LIST, QUOTE, UNORDERED_LIST } from '@lexical/markdown';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import type { BlockComposerProps, SerializedBlockNode } from '@we/block-shared';
-import { createBlocks, registerCoreBlocks } from '@we/block-shared';
+import { registerCoreBlocks } from '@we/block-shared';
 import { Column, Row } from '@we/components/solid';
 import {
   ContentEditable,
@@ -28,25 +27,17 @@ import SlashCommandPlugin from '../plugins/SlashCommandPlugin';
 registerCoreBlocks();
 registerCoreBlockComponents();
 
-function SaveButton({
-  perspective,
-  onSave,
-}: {
-  perspective?: PerspectiveProxy;
-  onSave?: (json: SerializedBlockNode) => void;
-}) {
+function SaveButton({ onSave }: { onSave?: (json: SerializedBlockNode) => void }) {
   const [editor] = useLexicalComposerContext();
 
   function save() {
-    editor.update(async () => {
+    editor.update(() => {
       const editorState = editor.getEditorState();
       const { root } = editorState.toJSON();
       if (onSave) {
         onSave(root);
-      } else if (perspective) {
-        await createBlocks(perspective, root);
       } else {
-        console.error('No onSave callback or perspective available for saving blocks.');
+        console.error('BlockComposer: no onSave callback provided.');
       }
     });
   }
@@ -98,21 +89,47 @@ function DeferredAutoFocusPlugin() {
   return null;
 }
 
-export function BlockComposer({ post, perspective, onSave }: BlockComposerProps) {
-  console.log('*** BlockComposer rendered. post:', post);
+/** Calls onReady with a save API after the editor mounts. */
+function OnReadyPlugin({
+  onSave,
+  onReady,
+}: {
+  onSave?: (json: SerializedBlockNode) => void;
+  onReady: (api: { save: () => void }) => void;
+}) {
+  const [editor] = useLexicalComposerContext();
+
+  onMount(() => {
+    const save = () => {
+      editor.update(() => {
+        const editorState = editor.getEditorState();
+        const { root } = editorState.toJSON();
+        if (onSave) {
+          onSave(root);
+        } else {
+          console.error('BlockComposer: no onSave callback provided.');
+        }
+      });
+    };
+    onReady({ save });
+  });
+
+  return null;
+}
+
+export function BlockComposer({ post, onSave, onReady }: BlockComposerProps) {
   const initialConfig = {
     namespace: 'BlockComposer',
     theme: { root: 'we-block-composer-editor we-block-content' },
     nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, ...blockNodeClasses] as const,
     onError: (error: Error) => console.error('Editor Error:', error),
   };
-  console.log('*** BlockComposer initialConfig:', initialConfig);
 
   return (
     <Column class="we-block-composer-wrapper" bg="white" p="1000" r="xl">
       <LexicalComposer initialConfig={initialConfig}>
         <LoadPostIntoEditor post={post} />
-        <SaveButton perspective={perspective} onSave={onSave} />
+        {onReady ? <OnReadyPlugin onSave={onSave} onReady={onReady} /> : <SaveButton onSave={onSave} />}
 
         {/* Lexical plugins */}
         <RichTextPlugin contentEditable={<ContentEditable />} errorBoundary={LexicalErrorBoundary} />

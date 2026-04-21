@@ -132,6 +132,10 @@ export default class Input extends DesignSystemElement {
     );
   }
 
+  handlePaste(e: ClipboardEvent) {
+    e.stopPropagation();
+  }
+
   render() {
     const inline = this.styles || {};
     return html`
@@ -158,6 +162,7 @@ export default class Input extends DesignSystemElement {
           @blur=${this.handleBlur}
           @focus=${this.handleFocus}
           @keydown=${this.handleKeyDown}
+          @paste=${this.handlePaste}
         />
         <slot name="end"></slot>
       </div>

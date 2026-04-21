@@ -71,7 +71,7 @@ export function EmbedInput(props: EmbedInputProps) {
                 <we-input
                   type="text"
                   value={url()}
-                  onInput={(e: CustomEvent) => setUrl(e.detail)}
+                  on:input={(e: CustomEvent) => setUrl(e.detail)}
                   placeholder="https://example.com"
                 />
               </we-form-field>

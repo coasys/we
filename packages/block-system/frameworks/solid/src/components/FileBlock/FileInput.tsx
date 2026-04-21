@@ -66,7 +66,7 @@ export function FileInput(props: FileInputProps) {
                 <we-input
                   type="text"
                   value={url()}
-                  onInput={(e: CustomEvent) => setUrl(e.detail)}
+                  on:input={(e: CustomEvent) => setUrl(e.detail)}
                   placeholder="https://example.com/file.pdf"
                 />
               </we-form-field>
@@ -74,7 +74,7 @@ export function FileInput(props: FileInputProps) {
                 <we-input
                   type="text"
                   value={name()}
-                  onInput={(e: CustomEvent) => setName(e.detail)}
+                  on:input={(e: CustomEvent) => setName(e.detail)}
                   placeholder="document.pdf"
                 />
               </we-form-field>

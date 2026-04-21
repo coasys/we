@@ -130,9 +130,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const scopeFields: string[] = [];
 
     for (const [name, field] of Object.entries(node.$localState as Record<string, LocalStateField>)) {
-      const [get, set] = createSignal(field.initial);
+      const [get, set] = createSignal<unknown>(field.initial);
       accessors[name] = get;
-      setters[name] = set;
+      // Function-type fields: Solid treats setter(fn) as a functional update (calls fn(prev)).
+      // Wrap the setter so that storing a function value works correctly.
+      setters[name] = field.type === 'function' ? (v) => set(() => v as never) : (set as (v: unknown) => void);
       scopeFields.push(name);
 
       const [touched, setTouched] = createSignal(false);
@@ -142,7 +144,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       // For cross-field rules (match), reads other field accessors — Solid tracks these automatically.
       const errors = createMemo(() => {
         const val = get();
-        return validateField(val, rules, (otherField) => {
+        return validateField(val, rules, (otherField: string) => {
           // Look up in merged accessors (parent + current scope)
           const parentLocal = (context.$local as Record<string, () => unknown>) ?? {};
           const accessor = accessors[otherField] ?? parentLocal[otherField];

@@ -19,6 +19,7 @@ export const storeEntries: StoreEntry[] = [
       bootState: { type: 'string' },
       passwordError: { type: 'string' },
       loginLoading: { type: 'boolean' },
+      creatingSpace: { type: 'boolean' },
       agentProfile: {
         type: 'object',
         properties: ['firstName', 'lastName', 'handle', 'bio', 'location', 'profileImage', 'coverImage'],
@@ -107,6 +108,8 @@ export const storeEntries: StoreEntry[] = [
       panelMode: { type: 'string' },
       schemaJson: { type: 'string' },
       operationLoading: { type: 'boolean' },
+      canUndo: { type: 'boolean' },
+      canRedo: { type: 'boolean' },
     },
     actions: [
       'handleSchemaPrompt',
@@ -122,6 +125,8 @@ export const storeEntries: StoreEntry[] = [
       'deleteSession',
       'setPanelMode',
       'onSchemaEdit',
+      'undo',
+      'redo',
     ],
   },
 ];
@@ -148,6 +153,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         passwordError: 'string | undefined',
         loginLoading: 'boolean',
         agentProfile: 'AgentProfile | null (the current agent profile with name, bio, images, etc.)',
+        creatingSpace: 'boolean (true while a new space is being created)',
       },
       actions: {
         navigate: '(to: string, options?): navigates to a route',
@@ -210,8 +216,14 @@ function generateStoresText(entries: StoreEntry[]): string {
       state: {
         models: 'array of Model objects',
         tasks: 'array of AITask objects',
+        canUndo: 'boolean (true when there are schema edits that can be undone)',
+        canRedo: 'boolean (true when there are undone schema edits that can be redone)',
       },
-      actions: { handleSchemaPrompt: '(prompt: string): generates a schema from a prompt' },
+      actions: {
+        handleSchemaPrompt: '(prompt: string): generates a schema from a prompt',
+        undo: '(): undoes the last schema edit',
+        redo: '(): redoes the last undone schema edit',
+      },
     },
   };
 

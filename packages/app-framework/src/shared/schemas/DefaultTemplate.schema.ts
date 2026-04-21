@@ -590,6 +590,7 @@ export const defaultTemplate: TemplateSchema = {
           $localState: {
             createPostOpen: { type: 'boolean', initial: false },
             viewMode: { type: 'string', initial: 'posts' },
+            savePost: { type: 'function', initial: null },
           },
           children: [
             // Top bar: mode toggle + create button
@@ -682,11 +683,36 @@ export const defaultTemplate: TemplateSchema = {
                     {
                       type: 'BlockComposer',
                       props: {
+                        onReady: { $setLocal: 'savePost', from: '$event.save' },
                         onSave: [
                           { $action: 'spaceStore.createPost', args: ['$arg'] },
                           { $setLocal: 'createPostOpen', value: false },
                         ],
                       },
+                    },
+                    {
+                      type: 'Row',
+                      props: { gap: '300', ax: 'end', mt: '200' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            text: 'Cancel',
+                            onClick: { $setLocal: 'createPostOpen', value: false },
+                          },
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            text: 'Post',
+                            bg: 'primary-500',
+                            color: 'neutral-0',
+                            height: '40px',
+                            onClick: { $callLocal: 'savePost' },
+                          },
+                        },
+                      ],
                     },
                   ],
                 },

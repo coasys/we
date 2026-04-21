@@ -74,7 +74,7 @@ export function LocationInput(props: LocationInputProps) {
                 <we-input
                   type="text"
                   value={name()}
-                  onInput={(e: CustomEvent) => setName(e.detail)}
+                  on:input={(e: CustomEvent) => setName(e.detail)}
                   placeholder="Location name"
                 />
               </we-form-field>
@@ -82,7 +82,7 @@ export function LocationInput(props: LocationInputProps) {
                 <we-input
                   type="text"
                   value={address()}
-                  onInput={(e: CustomEvent) => setAddress(e.detail)}
+                  on:input={(e: CustomEvent) => setAddress(e.detail)}
                   placeholder="Address (optional)"
                 />
               </we-form-field>
@@ -92,7 +92,7 @@ export function LocationInput(props: LocationInputProps) {
                     type="number"
                     step="any"
                     value={latitude()}
-                    onInput={(e: CustomEvent) => setLatitude(e.detail)}
+                    on:input={(e: CustomEvent) => setLatitude(e.detail)}
                     placeholder="Latitude"
                   />
                 </we-form-field>
@@ -101,7 +101,7 @@ export function LocationInput(props: LocationInputProps) {
                     type="number"
                     step="any"
                     value={longitude()}
-                    onInput={(e: CustomEvent) => setLongitude(e.detail)}
+                    on:input={(e: CustomEvent) => setLongitude(e.detail)}
                     placeholder="Longitude"
                   />
                 </we-form-field>

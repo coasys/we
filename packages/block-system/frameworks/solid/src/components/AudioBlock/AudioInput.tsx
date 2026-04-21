@@ -70,7 +70,7 @@ export function AudioInput(props: AudioInputProps) {
                 <we-input
                   type="text"
                   value={url()}
-                  onInput={(e: CustomEvent) => setUrl(e.detail)}
+                  on:input={(e: CustomEvent) => setUrl(e.detail)}
                   placeholder="https://example.com/audio.mp3"
                 />
               </we-form-field>
@@ -78,7 +78,7 @@ export function AudioInput(props: AudioInputProps) {
                 <we-input
                   type="text"
                   value={title()}
-                  onInput={(e: CustomEvent) => setTitle(e.detail)}
+                  on:input={(e: CustomEvent) => setTitle(e.detail)}
                   placeholder="Track title"
                 />
               </we-form-field>
@@ -86,7 +86,7 @@ export function AudioInput(props: AudioInputProps) {
                 <we-input
                   type="text"
                   value={artist()}
-                  onInput={(e: CustomEvent) => setArtist(e.detail)}
+                  on:input={(e: CustomEvent) => setArtist(e.detail)}
                   placeholder="Artist name"
                 />
               </we-form-field>

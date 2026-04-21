@@ -114,7 +114,7 @@ export function ImageInput(props: ImageInputProps) {
                 <we-input
                   type="text"
                   value={imageUrl()}
-                  onInput={(e: CustomEvent) => setImageUrl(e.detail)}
+                  on:input={(e: CustomEvent) => setImageUrl(e.detail)}
                   placeholder="https://example.com/image.jpg"
                 />
               </we-form-field>

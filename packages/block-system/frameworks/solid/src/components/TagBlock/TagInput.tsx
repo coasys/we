@@ -64,7 +64,7 @@ export function TagInput(props: TagInputProps) {
                 <we-input
                   type="text"
                   value={name()}
-                  onInput={(e: CustomEvent) => setName(e.detail)}
+                  on:input={(e: CustomEvent) => setName(e.detail)}
                   placeholder="Tag name"
                 />
               </we-form-field>

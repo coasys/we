@@ -10,8 +10,8 @@ import {
   LexicalNode,
 } from 'lexical';
 
-import { $createBlockNode, $isBlockNode } from './nodes/createBlockNodeClass';
 import { blockNodeClassMap } from './nodes';
+import { $createBlockNode, $isBlockNode } from './nodes/createBlockNodeClass';
 
 type TransformBlockProps = { editor: LexicalEditor; nodeKey: string; newNodeType: string };
 type ReorderBlockProps = { editor: LexicalEditor; sourceKey: string; targetKey: string; insertBefore: boolean };

@@ -1,4 +1,4 @@
-import { LinkQuery, PerspectiveProxy } from '@coasys/ad4m';
+import { PerspectiveProxy } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { useAdamStore, useRouteStore } from '@solid/stores';
 import { blocksToLexicalJSON, createBlocks, loadBlocks } from '@we/block-shared';
@@ -38,30 +38,6 @@ export interface SpaceStore {
   updateSpaceImage: (imageFile: File) => Promise<void>;
   updateSpaceCoverImage: (imageFile: File) => Promise<void>;
 }
-
-// // Hardcoded user locations for development
-// // TODO: Load from space perspective in production
-// const MOCK_USER_LOCATIONS = [
-//   { id: '1', name: 'Alice', latitude: 40.7128, longitude: -74.006, color: '#00ffff' }, // New York
-//   { id: '2', name: 'Bob', latitude: 51.5074, longitude: -0.1278, color: '#ff00ff' }, // London
-//   { id: '3', name: 'Charlie', latitude: 35.6762, longitude: 139.6503, color: '#ffff00' }, // Tokyo
-//   { id: '4', name: 'Diana', latitude: -33.8688, longitude: 151.2093, color: '#00ff00' }, // Sydney
-//   { id: '5', name: 'Eve', latitude: 48.8566, longitude: 2.3522, color: '#ff6600' }, // Paris
-//   { id: '6', name: 'Frank', latitude: -23.5505, longitude: -46.6333, color: '#ff0066' }, // São Paulo
-//   { id: '7', name: 'Grace', latitude: 55.7558, longitude: 37.6173, color: '#6600ff' }, // Moscow
-//   { id: '8', name: 'Henry', latitude: 1.3521, longitude: 103.8198, color: '#66ff00' }, // Singapore
-// ];
-
-// const defaultSpace: Partial<Space> = {
-//   author: '',
-//   timestamp: '',
-//   name: '',
-//   description: '',
-//   uuid: '',
-//   visibility: '',
-//   locations: [],
-//   // userLocations: JSON.stringify(MOCK_USER_LOCATIONS),
-// };
 
 const SpaceContext = createContext<SpaceStore>();
 
@@ -166,26 +142,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
     try {
       setLoading(true);
-      console.log('[SpaceStore] getPosts: querying CollectionBlocks...');
       let roots = await CollectionBlock.findAll(p, { where: { type: 'root' } });
-      console.log('[SpaceStore] getPosts: found', roots.length, 'root blocks with type=root');
-      // Diagnostic: check we://type links for first root
-      if (roots.length > 0) {
-        const typeLinks = await p.get(new LinkQuery({ source: roots[0].id, predicate: 'we://type' }));
-        console.log(
-          '[SpaceStore] we://type links for first root:',
-          typeLinks.map((l) => l.data.target),
-        );
-      }
-      if (roots.length === 0) {
-        console.log('[SpaceStore] getPosts: no typed roots found, trying without filter...');
-        const allBlocks = await CollectionBlock.findAll(p);
-        console.log('[SpaceStore] getPosts: found', allBlocks.length, 'total CollectionBlocks');
-        // Use all CollectionBlocks as fallback
-        roots = allBlocks;
-      }
       const loaded = await Promise.all(roots.map((root) => loadBlocks(p, root.id)));
-      console.log('[SpaceStore] getPosts: loaded', loaded.filter(Boolean).length, 'block trees');
+      console.log('[SpaceStore] getPosts: loaded', loaded);
       const lexicalPosts = loaded
         .filter((b): b is NonNullable<typeof b> => !!b)
         .map((b) => {
@@ -197,7 +156,7 @@ export function SpaceStoreProvider(props: ParentProps) {
           // Fallback: reconstruct from block tree (lossy — no inline formatting)
           return blocksToLexicalJSON(b);
         });
-      console.log('[SpaceStore] getPosts: converted to lexical:', JSON.stringify(lexicalPosts, null, 2));
+      // console.log('[SpaceStore] getPosts: converted to lexical:', JSON.stringify(lexicalPosts, null, 2));
       setPosts(lexicalPosts);
     } catch (error) {
       console.error('SpaceStore: getPosts error', error);

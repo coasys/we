@@ -92,14 +92,14 @@ export function TaskInput(props: TaskInputProps) {
                 <we-input
                   type="text"
                   value={title()}
-                  onInput={(e: CustomEvent) => setTitle(e.detail)}
+                  on:input={(e: CustomEvent) => setTitle(e.detail)}
                   placeholder="Task title"
                 />
               </we-form-field>
               <we-form-field label="Description">
                 <we-textarea
                   value={description()}
-                  onInput={(e: CustomEvent) => setDescription(e.detail)}
+                  on:input={(e: CustomEvent) => setDescription(e.detail)}
                   placeholder="Description (optional)"
                   rows={2}
                 />
@@ -122,13 +122,13 @@ export function TaskInput(props: TaskInputProps) {
               </Row>
               <Row gap="200">
                 <we-form-field label="Due Date" flex="1">
-                  <we-input type="date" value={dueDate()} onInput={(e: CustomEvent) => setDueDate(e.detail)} />
+                  <we-input type="date" value={dueDate()} on:input={(e: CustomEvent) => setDueDate(e.detail)} />
                 </we-form-field>
                 <we-form-field label="Assignee" flex="1">
                   <we-input
                     type="text"
                     value={assignee()}
-                    onInput={(e: CustomEvent) => setAssignee(e.detail)}
+                    on:input={(e: CustomEvent) => setAssignee(e.detail)}
                     placeholder="Assignee"
                   />
                 </we-form-field>

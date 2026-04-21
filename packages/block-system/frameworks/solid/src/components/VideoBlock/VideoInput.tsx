@@ -66,7 +66,7 @@ export function VideoInput(props: VideoInputProps) {
                 <we-input
                   type="text"
                   value={url()}
-                  onInput={(e: CustomEvent) => setUrl(e.detail)}
+                  on:input={(e: CustomEvent) => setUrl(e.detail)}
                   placeholder="https://youtube.com/watch?v=... or .mp4 URL"
                 />
               </we-form-field>
@@ -74,7 +74,7 @@ export function VideoInput(props: VideoInputProps) {
                 <we-input
                   type="text"
                   value={title()}
-                  onInput={(e: CustomEvent) => setTitle(e.detail)}
+                  on:input={(e: CustomEvent) => setTitle(e.detail)}
                   placeholder="Video title"
                 />
               </we-form-field>
