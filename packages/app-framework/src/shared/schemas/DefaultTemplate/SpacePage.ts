@@ -218,14 +218,20 @@ export const spacePage: RouteSchema = {
               children: [
                 { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create Post'] },
                 {
-                  type: 'BlockComposer',
-                  props: {
-                    onReady: { $setLocal: 'savePost', from: '$event.save' },
-                    onSave: [
-                      { $action: 'spaceStore.createPost', args: ['$arg'] },
-                      { $setLocal: 'createPostOpen', value: false },
-                    ],
-                  },
+                  type: 'Column',
+                  props: { width: '100%', bg: 'neutral-25', p: '600', r: '400' },
+                  children: [
+                    {
+                      type: 'BlockComposer',
+                      props: {
+                        onReady: { $setLocal: 'savePost', from: '$event.save' },
+                        onSave: [
+                          { $action: 'spaceStore.createPost', args: ['$arg'] },
+                          { $setLocal: 'createPostOpen', value: false },
+                        ],
+                      },
+                    },
+                  ],
                 },
                 {
                   type: 'Row',
@@ -277,8 +283,14 @@ export const spacePage: RouteSchema = {
                       },
                       children: [
                         {
-                          type: 'BlockRenderer',
-                          props: { post: '$post' },
+                          type: 'Column',
+                          props: { width: '100%', bg: 'neutral-25', p: '600', r: '400' },
+                          children: [
+                            {
+                              type: 'BlockRenderer',
+                              props: { post: '$post' },
+                            },
+                          ],
                         },
                       ],
                     },
@@ -316,7 +328,7 @@ export const spacePage: RouteSchema = {
                 {
                   type: '$each',
                   props: {
-                    items: { $query: { model: 'CollectionBlock', subscribe: true, where: { type: 'root' } } },
+                    items: { $query: { model: 'ImageBlock', subscribe: true } },
                     as: 'block',
                   },
                   children: [
@@ -325,71 +337,31 @@ export const spacePage: RouteSchema = {
                       props: { p: '400', r: '400', bg: 'neutral-100', gap: '200' },
                       children: [
                         {
-                          type: '$if',
+                          type: 'we-image',
                           props: {
-                            condition: '$block.display',
-                            then: {
-                              type: 'Row',
-                              props: { gap: '200' },
-                              children: [
-                                {
-                                  type: 'we-text',
-                                  props: { fontSize: '200', color: 'neutral-400' },
-                                  children: ['Display:'],
-                                },
-                                { type: 'we-text', props: { fontSize: '300' }, children: ['$block.display'] },
-                              ],
-                            },
+                            src: { $get: '$block.src' },
+                            alt: { $get: '$block.altText' },
+                            width: { $get: '$block.width' },
+                            height: { $get: '$block.height' },
                           },
                         },
-                        {
-                          type: '$if',
-                          props: {
-                            condition: '$block.direction',
-                            then: {
-                              type: 'Row',
-                              props: { gap: '200' },
-                              children: [
-                                {
-                                  type: 'we-text',
-                                  props: { fontSize: '200', color: 'neutral-400' },
-                                  children: ['Direction:'],
-                                },
-                                { type: 'we-text', props: { fontSize: '300' }, children: ['$block.direction'] },
-                              ],
-                            },
-                          },
-                        },
-                        {
-                          type: '$if',
-                          props: {
-                            condition: '$block.format',
-                            then: {
-                              type: 'Row',
-                              props: { gap: '200' },
-                              children: [
-                                {
-                                  type: 'we-text',
-                                  props: { fontSize: '200', color: 'neutral-400' },
-                                  children: ['Format:'],
-                                },
-                                { type: 'we-text', props: { fontSize: '300' }, children: ['$block.format'] },
-                              ],
-                            },
-                          },
-                        },
-                        {
-                          type: 'Row',
-                          props: { gap: '200' },
-                          children: [
-                            {
-                              type: 'we-text',
-                              props: { fontSize: '200', color: 'neutral-400' },
-                              children: ['Version:'],
-                            },
-                            { type: 'we-text', props: { fontSize: '300' }, children: ['$block.version'] },
-                          ],
-                        },
+                        // type: '$if',
+                        // props: {
+                        //   condition: '$block.display',
+                        //   then: {
+                        // type: 'Row',
+                        // props: { gap: '200' },
+                        // children: [
+                        //   {
+                        //     type: 'we-text',
+                        //     props: { fontSize: '200', color: 'neutral-400' },
+                        //     children: ['Display:'],
+                        //   },
+                        //   { type: 'we-text', props: { fontSize: '300' }, children: ['$block.display'] },
+                        // ],
+                        // },
+                        // },
+                        // },
                       ],
                     },
                   ],
