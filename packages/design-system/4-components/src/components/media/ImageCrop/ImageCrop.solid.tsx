@@ -46,6 +46,8 @@ export function ImageCrop(allProps: ImageCropProps) {
   // Rotation stored as degrees to avoid float drift on the slider
   const [fineRotDeg, setFineRotDeg] = createSignal(0); // slider: −45…+45
   const [snapRotDeg, setSnapRotDeg] = createSignal(0); // 90° increments: 0|90|180|270
+  const [flipH, setFlipH] = createSignal(false);
+  const [flipV, setFlipV] = createSignal(false);
 
   const totalAngleRad = createMemo(() => ((fineRotDeg() + snapRotDeg()) * Math.PI) / 180);
 
@@ -86,10 +88,18 @@ export function ImageCrop(allProps: ImageCropProps) {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     const { w: cw, h: ch } = cropSize();
+    const sx = flipH() ? -1 : 1;
+    const sy = flipV() ? -1 : 1;
 
-    // Transform pan offset into image-local frame
-    const localX = px * cos + py * sin;
-    const localY = -px * sin + py * cos;
+    // Coverage constraint involves sx*px and sy*py (flip-adjusted pan).
+    // When a flip is active the draw transform is translate→scale(flip)→rotate,
+    // so the effective local-frame pan is (sx*px, sy*py) not (px, py).
+    const epx = sx * px;
+    const epy = sy * py;
+
+    // Transform effective pan to image-local frame
+    const localX = epx * cos + epy * sin;
+    const localY = -epx * sin + epy * cos;
 
     // Max reach of any crop-box corner along each local axis
     const extX = (cw / 2) * Math.abs(cos) + (ch / 2) * Math.abs(sin);
@@ -102,8 +112,10 @@ export function ImageCrop(allProps: ImageCropProps) {
     const clX = clamp(localX, -limitX, limitX);
     const clY = clamp(localY, -limitY, limitY);
 
-    // Rotate back to world space
-    return [clX * cos - clY * sin, clX * sin + clY * cos];
+    // Rotate clamped effective pan back to effective-pan space, then undo flip
+    const clepx = clX * cos - clY * sin;
+    const clepy = clX * sin + clY * cos;
+    return [sx * clepx, sy * clepy];
   }
 
   function applyZoom(newZ: number) {
@@ -143,6 +155,7 @@ export function ImageCrop(allProps: ImageCropProps) {
     // Image
     ctx.save();
     ctx.translate(W / 2 + px, H / 2 + py);
+    ctx.scale(flipH() ? -1 : 1, flipV() ? -1 : 1);
     ctx.rotate(angle);
     ctx.drawImage(
       img,
@@ -226,11 +239,37 @@ export function ImageCrop(allProps: ImageCropProps) {
 
   // ── rotation ─────────────────────────────────────────────────────────────────
   function onSlider(e: Event) {
-    const deg = Number((e as CustomEvent).detail);
-    setFineRotDeg(deg);
-    const newAngle = ((deg + snapRotDeg()) * Math.PI) / 180;
+    const newDeg = Number((e as CustomEvent).detail);
+    const oldAngle = ((fineRotDeg() + snapRotDeg()) * Math.PI) / 180;
+    const newAngle = ((newDeg + snapRotDeg()) * Math.PI) / 180;
+    const delta = newAngle - oldAngle;
+
+    // Rotate the pan vector by the rotation delta so the image point currently
+    // under the crop center stays fixed — i.e. rotation pivots around the crop zone.
+    // When one axis is flipped (but not both), the effective rotation direction of
+    // the pan correction inverts, hence multiplying sin terms by the flip sign product.
+    const cos = Math.cos(delta);
+    const sin = Math.sin(delta);
+    const fSign = (flipH() ? -1 : 1) * (flipV() ? -1 : 1);
+    const rpx = panX() * cos - fSign * panY() * sin;
+    const rpy = fSign * panX() * sin + panY() * cos;
+
+    setFineRotDeg(newDeg);
     const minZ = minZoomForCoverage(img.naturalWidth, img.naturalHeight, cropSize().w, cropSize().h, newAngle);
     setZoom((z) => Math.max(z, minZ));
+    const [cx, cy] = clampPan(rpx, rpy, zoom());
+    setPanX(cx);
+    setPanY(cy);
+  }
+
+  function toggleFlipH() {
+    setFlipH((v) => !v);
+    const [cx, cy] = clampPan(panX(), panY(), zoom());
+    setPanX(cx);
+    setPanY(cy);
+  }
+  function toggleFlipV() {
+    setFlipV((v) => !v);
     const [cx, cy] = clampPan(panX(), panY(), zoom());
     setPanX(cx);
     setPanY(cy);
@@ -268,6 +307,7 @@ export function ImageCrop(allProps: ImageCropProps) {
     off.height = offH;
     const octx = off.getContext('2d')!;
     octx.translate(offW / 2, offH / 2);
+    octx.scale(flipH() ? -1 : 1, flipV() ? -1 : 1);
     octx.rotate(angle);
     octx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2, img.naturalWidth, img.naturalHeight);
 
@@ -374,20 +414,38 @@ export function ImageCrop(allProps: ImageCropProps) {
         }}
       />
 
-      {/* Rotation controls */}
+      {/* Rotation and flip controls */}
       <Row ay="center" gap="300">
-        <we-button size="md" square variant="ghost" onClick={snapRotateLeft}>
-          <we-icon name="arrow-counter-clockwise" />
-        </we-button>
+        <we-tooltip title="Flip horizontal">
+          <we-button size="md" square variant="ghost" onClick={toggleFlipH}>
+            <we-icon name="flip-horizontal" />
+          </we-button>
+        </we-tooltip>
+
+        <we-tooltip title="Rotate left 90°">
+          <we-button size="md" square variant="ghost" onClick={snapRotateLeft}>
+            <we-icon name="arrow-counter-clockwise" />
+          </we-button>
+        </we-tooltip>
+
         <Column ax="center">
           <we-slider mt="24px" min={-45} max={45} step={0.5} value={fineRotDeg()} on:change={onSlider} />
           <we-text mt="10px" fontSize="300" color="neutral-500">
             {fineRotDeg() > 0 ? `+${fineRotDeg()}°` : `${fineRotDeg()}°`}
           </we-text>
         </Column>
-        <we-button size="md" square variant="ghost" onClick={snapRotateRight}>
-          <we-icon name="arrow-clockwise" />
-        </we-button>
+
+        <we-tooltip title="Rotate right 90°">
+          <we-button size="md" square variant="ghost" onClick={snapRotateRight}>
+            <we-icon name="arrow-clockwise" />
+          </we-button>
+        </we-tooltip>
+
+        <we-tooltip title="Flip vertical">
+          <we-button size="md" square variant="ghost" onClick={toggleFlipV}>
+            <we-icon name="flip-vertical" />
+          </we-button>
+        </we-tooltip>
       </Row>
     </div>
   );

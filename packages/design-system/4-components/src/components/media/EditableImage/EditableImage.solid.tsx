@@ -103,17 +103,9 @@ export function EditableImage(allProps: EditableImageProps) {
         <Show
           when={props.src}
           fallback={
-            <div
-              style={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                'align-items': 'center',
-                'justify-content': 'center',
-              }}
-            >
+            <Column width="100%" height="100%" ax="center" ay="center">
               <we-icon name={props.placeholderIcon || 'image'} size="32px" color="neutral-400" />
-            </div>
+            </Column>
           }
         >
           <we-image
@@ -141,7 +133,7 @@ export function EditableImage(allProps: EditableImageProps) {
             fallback={
               /* ── Step 1: Upload ── */
               <>
-                <we-text fontSize="500" fontWeight="semibold">
+                <we-text fontSize="600" fontWeight="semibold">
                   {props.src ? 'Change Image' : 'Upload Image'}
                 </we-text>
                 <we-file-upload accept="image/*" on:change={handleFileChange}>
@@ -152,7 +144,7 @@ export function EditableImage(allProps: EditableImageProps) {
             }
           >
             {/* ── Step 2: Crop ── */}
-            <we-text fontSize="500" fontWeight="semibold">
+            <we-text fontSize="600" fontWeight="semibold">
               Crop Image
             </we-text>
             <ImageCrop
