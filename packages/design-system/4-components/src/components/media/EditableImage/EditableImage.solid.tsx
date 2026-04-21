@@ -33,6 +33,15 @@ export function EditableImage(allProps: EditableImageProps) {
   const [rawUrl, setRawUrl] = createSignal<string | null>(null);
   const [pendingFile, setPendingFile] = createSignal<File | null>(null);
 
+  // Derive a sensible modal width from the crop aspect ratio so wide images
+  // get enough horizontal space to show a usable crop zone.
+  const modalMinWidth = createMemo(() => {
+    const a = props.aspect ?? 1;
+    const cropH = Math.max(120, Math.min(340, 680 / Math.max(a, 0.25))) * 0.85;
+    const needed = Math.round(cropH * a + 120);
+    return `${Math.max(520, Math.min(1100, needed))}px`;
+  });
+
   // Imperative handle to ImageCrop — set once the crop component reports ready
   let cropRef: ImageCropRef | undefined;
 
@@ -127,13 +136,13 @@ export function EditableImage(allProps: EditableImageProps) {
 
       {/* Modal */}
       <Show when={modalOpen()}>
-        <we-modal close={closeModal} gap="400" p="900" minWidth="460px">
+        <we-modal close={closeModal}>
           <Show
             when={step() === 'crop'}
             fallback={
               /* ── Step 1: Upload ── */
               <>
-                <we-text fontSize="600" fontWeight="semibold">
+                <we-text fontSize="700" fontWeight="semibold">
                   {props.src ? 'Change Image' : 'Upload Image'}
                 </we-text>
                 <we-file-upload accept="image/*" on:change={handleFileChange}>
@@ -144,24 +153,26 @@ export function EditableImage(allProps: EditableImageProps) {
             }
           >
             {/* ── Step 2: Crop ── */}
-            <we-text fontSize="600" fontWeight="semibold">
-              Crop Image
-            </we-text>
-            <ImageCrop
-              src={rawUrl()!}
-              fileName={pendingFile()?.name}
-              aspect={props.aspect}
-              maxSize={props.maxSize}
-              onReady={(ref) => {
-                cropRef = ref;
-              }}
-            />
-            <Row ax="end" gap="200">
-              <we-button variant="secondary" onClick={changePhoto}>
-                Change photo
-              </we-button>
-              <we-button onClick={confirm}>Save</we-button>
-            </Row>
+            <Column minWidth={modalMinWidth()} ax="center" gap="500">
+              <we-text fontSize="700" fontWeight="semibold">
+                Crop Image
+              </we-text>
+              <ImageCrop
+                src={rawUrl()!}
+                fileName={pendingFile()?.name}
+                aspect={props.aspect}
+                maxSize={props.maxSize}
+                onReady={(ref) => {
+                  cropRef = ref;
+                }}
+              />
+              <Row ax="end" gap="200">
+                <we-button variant="secondary" onClick={changePhoto}>
+                  Change photo
+                </we-button>
+                <we-button onClick={confirm}>Save</we-button>
+              </Row>
+            </Column>
           </Show>
         </we-modal>
       </Show>

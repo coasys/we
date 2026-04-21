@@ -6,7 +6,6 @@ import { Row } from '../../layout/Row/Row.solid';
 import type { ImageCropProps } from './ImageCrop.types';
 
 // ── constants ─────────────────────────────────────────────────────────────────
-const CANVAS_HEIGHT = 340;
 const OVERLAY = 'rgba(0,0,0,0.55)';
 const BORDER = 'rgba(255,255,255,0.9)';
 const GRID = 'rgba(255,255,255,0.3)';
@@ -30,6 +29,9 @@ export function ImageCrop(allProps: ImageCropProps) {
   const aspect = () => (allProps.aspect === undefined ? 1 : allProps.aspect);
   const outputType = () => allProps.outputType ?? 'image/jpeg';
   const quality = () => allProps.quality ?? 0.9;
+  // Canvas height shrinks for wide aspect ratios so the crop zone stays large
+  // enough to interact with. Portrait/square images cap at 340px.
+  const canvasHeight = createMemo(() => Math.max(120, Math.min(340, Math.round(680 / Math.max(aspect(), 0.25)))));
 
   let canvas!: HTMLCanvasElement;
   let container!: HTMLDivElement;
@@ -54,7 +56,7 @@ export function ImageCrop(allProps: ImageCropProps) {
   // ── crop box geometry ───────────────────────────────────────────────────────
   const cropSize = createMemo(() => {
     const W = canvasW();
-    const H = CANVAS_HEIGHT;
+    const H = canvasHeight();
     const ratio = aspect();
     if (ratio === 0) return { w: W * 0.8, h: H * 0.8 };
     const maxW = W * 0.85;
@@ -62,7 +64,7 @@ export function ImageCrop(allProps: ImageCropProps) {
     return maxW / maxH > ratio ? { w: maxH * ratio, h: maxH } : { w: maxW, h: maxW / ratio };
   });
   const cropLeft = createMemo(() => (canvasW() - cropSize().w) / 2);
-  const cropTop = createMemo(() => (CANVAS_HEIGHT - cropSize().h) / 2);
+  const cropTop = createMemo(() => (canvasHeight() - cropSize().h) / 2);
 
   // Re-fit the image whenever the canvas is first measured or the image first loads,
   // whichever happens last. untrack prevents rotation-signal changes from re-triggering.
@@ -119,9 +121,12 @@ export function ImageCrop(allProps: ImageCropProps) {
   }
 
   function applyZoom(newZ: number) {
+    const oldZ = zoom();
     const z = Math.max(newZ, getMinZoom());
+    // Scale pan proportionally so the image point under the crop center stays fixed.
+    const ratio = z / oldZ;
+    const [cx, cy] = clampPan(panX() * ratio, panY() * ratio, z);
     setZoom(z);
-    const [cx, cy] = clampPan(panX(), panY(), z);
     setPanX(cx);
     setPanY(cy);
   }
@@ -138,7 +143,7 @@ export function ImageCrop(allProps: ImageCropProps) {
     if (!imgLoaded() || !canvasW()) return;
 
     const W = canvasW();
-    const H = CANVAS_HEIGHT;
+    const H = canvasHeight();
     const z = zoom();
     const px = panX();
     const py = panY();
@@ -290,7 +295,7 @@ export function ImageCrop(allProps: ImageCropProps) {
   // ── export ────────────────────────────────────────────────────────────────────
   function getCroppedFile(): Promise<File> {
     const W = canvasW();
-    const H = CANVAS_HEIGHT;
+    const H = canvasHeight();
     const z = zoom();
     const px = panX();
     const py = panY();
@@ -375,22 +380,24 @@ export function ImageCrop(allProps: ImageCropProps) {
 
   // ── render ────────────────────────────────────────────────────────────────────
   return (
-    <div
+    <Column
       ref={(el) => {
         container = el;
       }}
-      style={{ display: 'flex', 'flex-direction': 'column', gap: 'var(--we-space-300)' }}
+      gap="300"
+      width="100%"
+      ax="center"
     >
       <canvas
         ref={(el) => {
           canvas = el;
         }}
         width={canvasW() * dpr}
-        height={CANVAS_HEIGHT * dpr}
+        height={canvasHeight() * dpr}
         style={{
           display: 'block',
           width: '100%',
-          height: `${CANVAS_HEIGHT}px`,
+          height: `${canvasHeight()}px`,
           cursor: 'grab',
           'touch-action': 'none',
           'border-radius': 'var(--we-radius-400)',
@@ -447,6 +454,6 @@ export function ImageCrop(allProps: ImageCropProps) {
           </we-button>
         </we-tooltip>
       </Row>
-    </div>
+    </Column>
   );
 }
