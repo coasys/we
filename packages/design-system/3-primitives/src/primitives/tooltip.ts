@@ -28,9 +28,9 @@ const CSS_STYLES = css`
 
   [part='tooltip'] {
     display: none;
-    position: absolute;
-    z-index: 999;
-    whitespace: nowrap;
+    position: fixed;
+    z-index: var(--we-z-tooltip);
+    white-space: nowrap;
     font-size: var(--we-font-size-400, 14px);
     font-weight: 500;
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
