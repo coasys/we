@@ -4,6 +4,7 @@ export { Row, type RowProps } from '../../components/layout/Row/Row.solid';
 
 // Media
 export { EditableImage, type EditableImageProps } from '../../components/media/EditableImage/EditableImage.solid';
+export { ImageCrop, type ImageCropProps, type ImageCropRef } from '../../components/media/ImageCrop/ImageCrop.solid';
 
 // Cards
 export { PostCard, type PostCardProps } from '../../components/cards/PostCard/PostCard.solid';

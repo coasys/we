@@ -5,6 +5,8 @@ import { createMemo, createSignal, Show, splitProps } from 'solid-js';
 export type * from './EditableImage.types';
 import { Column } from '../../layout/Column/Column.solid';
 import { Row } from '../../layout/Row/Row.solid';
+import { ImageCrop } from '../ImageCrop/ImageCrop.solid';
+import type { ImageCropRef } from '../ImageCrop/ImageCrop.types';
 import type { EditableImageProps } from './EditableImage.types';
 
 const DEFAULTS: Partial<EditableImageProps> = {
@@ -18,7 +20,7 @@ const DEFAULTS: Partial<EditableImageProps> = {
 
 const editableImageKeys = [...designSystemKeys, 'children'] as const;
 const editableImageStyleKeys = editableImageKeys.filter((key) => key !== 'children');
-const componentKeys = ['src', 'alt', 'fit', 'placeholderIcon', 'onImageChange', 'class'] as const;
+const componentKeys = ['src', 'alt', 'fit', 'placeholderIcon', 'onImageChange', 'class', 'aspect', 'maxSize'] as const;
 
 export function EditableImage(allProps: EditableImageProps) {
   const [dsProps, props] = splitProps(
@@ -27,8 +29,12 @@ export function EditableImage(allProps: EditableImageProps) {
     componentKeys as unknown as (keyof EditableImageProps)[],
   );
   const [modalOpen, setModalOpen] = createSignal(false);
-  const [preview, setPreview] = createSignal<string | null>(null);
+  const [step, setStep] = createSignal<'upload' | 'crop'>('upload');
+  const [rawUrl, setRawUrl] = createSignal<string | null>(null);
   const [pendingFile, setPendingFile] = createSignal<File | null>(null);
+
+  // Imperative handle to ImageCrop — set once the crop component reports ready
+  let cropRef: ImageCropRef | undefined;
 
   const baseStyle = createMemo(() => {
     const usedProps = filterProps(dsProps, editableImageStyleKeys);
@@ -40,40 +46,49 @@ export function EditableImage(allProps: EditableImageProps) {
   const { style, handlers } = useStateProps(baseStyle, dsProps as EditableImageProps, 'column');
 
   function openModal() {
-    setPreview(null);
+    setStep('upload');
+    setRawUrl(null);
     setPendingFile(null);
+    cropRef = undefined;
     setModalOpen(true);
   }
 
   function closeModal() {
     setModalOpen(false);
-    const url = preview();
+    const url = rawUrl();
     if (url) URL.revokeObjectURL(url);
-    setPreview(null);
+    setRawUrl(null);
     setPendingFile(null);
+    cropRef = undefined;
   }
 
   function handleFileChange(e: Event) {
     const file = (e as CustomEvent).detail as File | null;
-    if (!file || !file.type.startsWith('image/')) {
-      setPendingFile(null);
-      const old = preview();
-      if (old) URL.revokeObjectURL(old);
-      setPreview(null);
-      return;
-    }
-    const old = preview();
+    if (!file || !file.type.startsWith('image/')) return;
+    const old = rawUrl();
     if (old) URL.revokeObjectURL(old);
     setPendingFile(file);
-    setPreview(URL.createObjectURL(file));
+    setRawUrl(URL.createObjectURL(file));
+    setStep('crop');
   }
 
-  function confirm() {
-    const file = pendingFile();
-    if (file && props.onImageChange) {
-      props.onImageChange(file);
+  function changePhoto() {
+    const url = rawUrl();
+    if (url) URL.revokeObjectURL(url);
+    setRawUrl(null);
+    setPendingFile(null);
+    cropRef = undefined;
+    setStep('upload');
+  }
+
+  async function confirm() {
+    if (!cropRef) return;
+    try {
+      const file = await cropRef.getCroppedFile();
+      props.onImageChange?.(file);
+    } finally {
+      closeModal();
     }
-    closeModal();
   }
 
   return (
@@ -118,40 +133,44 @@ export function EditableImage(allProps: EditableImageProps) {
         </Column>
       </div>
 
-      {/* Upload modal */}
+      {/* Modal */}
       <Show when={modalOpen()}>
-        <we-modal close={closeModal} gap="400" p="900" minWidth="400px">
-          <we-text fontSize="500" fontWeight="semibold">
-            {props.src ? 'Change Image' : 'Upload Image'}
-          </we-text>
-
-          <we-file-upload accept="image/*" on:change={handleFileChange}>
-            <we-icon name="upload-simple" size="32px"></we-icon>
-            <span>Drop an image here or click to browse</span>
-          </we-file-upload>
-
-          <Show when={preview()}>
-            <we-image
-              src={preview()!}
-              alt="Preview"
-              fit="contain"
-              style={{
-                width: '100%',
-                'max-height': '200px',
-                'border-radius': 'var(--we-radius-200)',
+        <we-modal close={closeModal} gap="400" p="900" minWidth="460px">
+          <Show
+            when={step() === 'crop'}
+            fallback={
+              /* ── Step 1: Upload ── */
+              <>
+                <we-text fontSize="500" fontWeight="semibold">
+                  {props.src ? 'Change Image' : 'Upload Image'}
+                </we-text>
+                <we-file-upload accept="image/*" on:change={handleFileChange}>
+                  <we-icon name="upload-simple" size="32px" />
+                  <span>Drop an image here or click to browse</span>
+                </we-file-upload>
+              </>
+            }
+          >
+            {/* ── Step 2: Crop ── */}
+            <we-text fontSize="500" fontWeight="semibold">
+              Crop Image
+            </we-text>
+            <ImageCrop
+              src={rawUrl()!}
+              fileName={pendingFile()?.name}
+              aspect={props.aspect}
+              maxSize={props.maxSize}
+              onReady={(ref) => {
+                cropRef = ref;
               }}
             />
+            <Row ax="end" gap="200">
+              <we-button variant="secondary" onClick={changePhoto}>
+                Change photo
+              </we-button>
+              <we-button onClick={confirm}>Save</we-button>
+            </Row>
           </Show>
-
-          {/* Actions */}
-          <Row ax="end" gap="200">
-            <we-button variant="ghost" onClick={closeModal}>
-              Cancel
-            </we-button>
-            <we-button disabled={!pendingFile()} onClick={confirm}>
-              Save
-            </we-button>
-          </Row>
         </we-modal>
       </Show>
     </>
