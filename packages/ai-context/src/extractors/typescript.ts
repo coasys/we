@@ -70,11 +70,18 @@ function extractFromDir(project: Project, dir: string, source: 'components' | 'w
       }
 
       const aiTag = getAiDescription(fn, paramType);
+      const superclassTag = getSuperclassTag(fn, paramType);
+
+      // When a superclass is declared, filter out props that belong to that
+      // superclass so only own/specific props are stored (mirrors how
+      // PrimitiveEntry.ownProps works for web components).
+      const ownProps = superclassTag ? filterOwnProps(props) : props;
 
       entries.push({
         name,
         description: aiTag || undefined,
-        props,
+        superclass: superclassTag || undefined,
+        props: ownProps,
         source,
       });
     }
@@ -99,10 +106,116 @@ function getAiDescription(fn: FunctionDeclaration, paramType: Type): string | un
   return undefined;
 }
 
+/** Look for a @superclass JSDoc tag on the function or Props type declaration. */
+function getSuperclassTag(fn: FunctionDeclaration, paramType: Type): string | undefined {
+  const tag = getTagFromJsDocs(fn.getJsDocs(), 'superclass');
+  if (tag) return tag;
+
+  const sym = paramType.getSymbol() ?? paramType.getAliasSymbol();
+  for (const decl of sym?.getDeclarations() ?? []) {
+    if (Node.isInterfaceDeclaration(decl) || Node.isTypeAliasDeclaration(decl)) {
+      const typeTag = getTagFromJsDocs(decl.getJsDocs(), 'superclass');
+      if (typeTag) return typeTag;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * When a superclass is declared, filter out props whose names belong to the
+ * design system base — those are inherited and documented separately in the
+ * AI context under "Design System Props".
+ */
+function filterOwnProps(props: PropEntry[]): PropEntry[] {
+  return props.filter((p) => !DS_PROP_NAMES.has(p.name));
+}
+
+// Canonical set of DesignSystemProps property names — kept in sync with @we/design-types.
+// When superclass is set, these are omitted from own props (documented separately).
+const DS_PROP_NAMES = new Set([
+  'bg',
+  'color',
+  'opacity',
+  'border',
+  'borderColor',
+  'borderTop',
+  'borderRight',
+  'borderBottom',
+  'borderLeft',
+  'borderWidth',
+  'shadow',
+  'ring',
+  'transform',
+  'transition',
+  'textAlign',
+  'fontFamily',
+  'fontWeight',
+  'fontSize',
+  'lineHeight',
+  'letterSpacing',
+  'textDecoration',
+  'textTransform',
+  'cursor',
+  'pointerEvents',
+  'width',
+  'height',
+  'minWidth',
+  'minHeight',
+  'maxWidth',
+  'maxHeight',
+  'display',
+  'direction',
+  'ax',
+  'ay',
+  'wrap',
+  'gap',
+  'flex',
+  'alignSelf',
+  'overflow',
+  'zIndex',
+  'position',
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'm',
+  'ml',
+  'mr',
+  'mt',
+  'mb',
+  'mx',
+  'my',
+  'p',
+  'pl',
+  'pr',
+  'pt',
+  'pb',
+  'px',
+  'py',
+  'r',
+  'rt',
+  'rb',
+  'rl',
+  'rr',
+  'rtl',
+  'rtr',
+  'rbr',
+  'rbl',
+  'hoverProps',
+  'activeProps',
+  'focusProps',
+  'disabledProps',
+]);
+
 function getAiTagFromJsDocs(jsDocs: JSDoc[]): string | undefined {
+  return getTagFromJsDocs(jsDocs, 'ai');
+}
+
+function getTagFromJsDocs(jsDocs: JSDoc[], tagName: string): string | undefined {
   for (const jsDoc of jsDocs) {
     for (const tag of jsDoc.getTags()) {
-      if (tag.getTagName() === 'ai') return tag.getCommentText()?.trim();
+      if (tag.getTagName() === tagName) return tag.getCommentText()?.trim();
     }
   }
   return undefined;

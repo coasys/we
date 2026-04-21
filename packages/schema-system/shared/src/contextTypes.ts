@@ -19,6 +19,7 @@ export interface PrimitiveEntry {
 export interface ComponentEntry {
   name: string;
   description?: string;
+  superclass?: string;
   props: PropEntry[];
   source: 'components' | 'widgets';
 }

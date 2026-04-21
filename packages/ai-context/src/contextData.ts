@@ -597,6 +597,7 @@ export const contextData: ContextData = {
     },
     {
       name: 'BlockComposer',
+      superclass: 'DesignSystemElement',
       props: [
         { name: 'post', type: 'any', optional: true },
         { name: 'onSave', type: '((json: SerializedBlockNode) => void)', optional: true },
@@ -604,7 +605,12 @@ export const contextData: ContextData = {
       ],
       source: 'components',
     },
-    { name: 'BlockRenderer', props: [{ name: 'post', type: 'any', optional: true }], source: 'components' },
+    {
+      name: 'BlockRenderer',
+      superclass: 'DesignSystemElement',
+      props: [{ name: 'post', type: 'any', optional: true }],
+      source: 'components',
+    },
     {
       name: 'CalloutDisplay',
       props: [

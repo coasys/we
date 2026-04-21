@@ -1544,6 +1544,7 @@
     },
     {
       "name": "BlockComposer",
+      "superclass": "DesignSystemElement",
       "props": [
         {
           "name": "post",
@@ -1565,6 +1566,7 @@
     },
     {
       "name": "BlockRenderer",
+      "superclass": "DesignSystemElement",
       "props": [
         {
           "name": "post",

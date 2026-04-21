@@ -1,4 +1,4 @@
-export type { BlockComposerProps, SerializedBlockNode } from './types';
+export type { BlockComposerProps, BlockRendererProps, SerializedBlockNode } from './types';
 export type { BlockRegistration } from './registry';
 export { registerBlock, getBlockRegistration, getBlockModel, updateBlockRegistration } from './registry';
 export { registerCoreBlocks } from './core-blocks';

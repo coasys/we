@@ -287,9 +287,9 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
-- BlockComposer
+- BlockComposer (DesignSystemElement)
   Props: post?: any, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
-- BlockRenderer
+- BlockRenderer (DesignSystemElement)
   Props: post?: any
 - CalloutDisplay
   Props: text: string | undefined, variant: string | undefined, icon: string | undefined

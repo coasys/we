@@ -3,6 +3,7 @@ import { CHECK_LIST, HEADING, ORDERED_LIST, QUOTE, UNORDERED_LIST } from '@lexic
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import type { BlockComposerProps, SerializedBlockNode } from '@we/block-shared';
 import { registerCoreBlocks } from '@we/block-shared';
+import type { ColumnProps } from '@we/components/solid';
 import { Column, Row } from '@we/components/solid';
 import {
   ContentEditable,
@@ -117,7 +118,10 @@ function OnReadyPlugin({
   return null;
 }
 
-export function BlockComposer({ post, onSave, onReady }: BlockComposerProps) {
+type Props = Omit<BlockComposerProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'ay'>;
+
+/** @superclass DesignSystemElement */
+export function BlockComposer({ post, onSave, onReady, width = '100%', ...rest }: Props) {
   const initialConfig = {
     namespace: 'BlockComposer',
     theme: { root: 'we-block-composer-editor we-block-content' },
@@ -126,7 +130,7 @@ export function BlockComposer({ post, onSave, onReady }: BlockComposerProps) {
   };
 
   return (
-    <Column class="we-block-composer-wrapper">
+    <Column class="we-block-composer-wrapper" width={width} {...rest}>
       <LexicalComposer initialConfig={initialConfig}>
         <LoadPostIntoEditor post={post} />
         {onReady ? <OnReadyPlugin onSave={onSave} onReady={onReady} /> : <SaveButton onSave={onSave} />}

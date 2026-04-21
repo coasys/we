@@ -1,6 +1,7 @@
 import { ListItemNode, ListNode } from '@lexical/list';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
-import type { SerializedBlockNode } from '@we/block-shared';
+import type { BlockRendererProps, SerializedBlockNode } from '@we/block-shared';
+import type { ColumnProps } from '@we/components/solid';
 import { Column } from '@we/components/solid';
 import {
   ContentEditable,
@@ -13,9 +14,7 @@ import { createEffect } from 'solid-js';
 
 import { blockNodeClasses } from '../nodes';
 
-type BlockRendererProps = {
-  post?: SerializedBlockNode;
-};
+type Props = Omit<BlockRendererProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'ay'>;
 
 function LoadPostForRenderer({ post }: { post?: SerializedBlockNode }) {
   const [editor] = useLexicalComposerContext();
@@ -33,7 +32,8 @@ function LoadPostForRenderer({ post }: { post?: SerializedBlockNode }) {
   return null;
 }
 
-export function BlockRenderer({ post }: BlockRendererProps) {
+/** @superclass DesignSystemElement */
+export function BlockRenderer({ post, width = '100%', ...rest }: Props) {
   const initialConfig = {
     namespace: 'BlockRenderer',
     theme: { root: 'we-block-renderer we-block-content' },
@@ -43,7 +43,7 @@ export function BlockRenderer({ post }: BlockRendererProps) {
   };
 
   return (
-    <Column class="we-block-renderer-wrapper" bg="white" p="1000" r="xl">
+    <Column class="we-block-renderer-wrapper" width={width} {...rest}>
       <LexicalComposer initialConfig={initialConfig}>
         <LoadPostForRenderer post={post} />
         <RichTextPlugin contentEditable={<ContentEditable readOnly={true} />} errorBoundary={LexicalErrorBoundary} />
