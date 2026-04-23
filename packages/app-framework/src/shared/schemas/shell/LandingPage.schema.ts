@@ -38,7 +38,7 @@ const CARDS = [
     },
     back: {
       icon: 'git-fork',
-      body: 'In WE, every experience is built from structured descriptions — not locked code — that anyone can inspect, adapt, and share. Define what signals mean for your community. Fork an experience, make it yours, publish it back.',
+      body: 'In WE, every experience is built from structured templates — not locked code — that anyone can inspect, adapt, and share. Define what signals mean for your community. Fork an experience, make it yours, publish it back.',
     },
   },
   {
@@ -121,18 +121,20 @@ export const landingPageTemplate: TemplateSchema = {
                 color: 'neutral-900',
                 styles: { 'text-align': 'center', 'line-height': '1.15' },
               },
-              children: ["Communities grow.\nTheir platforms don't."],
+              children: ['The social layer humanity needs'],
             },
             {
               type: 'we-text',
-              props: {
-                tag: 'p',
-                fontSize: '500',
-                color: 'neutral-600',
-                styles: { 'text-align': 'center', 'max-width': '620px', 'line-height': '1.6' },
-              },
+              props: { fontSize: '600', color: 'neutral-700', textAlign: 'center' },
               children: [
-                "You've built something real — a culture, a shared body of decisions and knowledge. But the infrastructure it runs on belongs to someone else. WE gives communities genuine ownership — infrastructure they control, tools they can shape, built to grow with them.",
+                "Scattered across the planet are the insights and capacity to solve the hardest problems we face. But we're held back by social infrastructure built to extract from us, not evolve with us — locked tools, fragmented context, coordination systems no one can change.",
+              ],
+            },
+            {
+              type: 'we-text',
+              props: { fontSize: '600', color: 'neutral-700', textAlign: 'center' },
+              children: [
+                'WE offers communities a foundation to reclaim their infrastructure, reshape their tools, and an open ecosystem where better forms of governance and coordination can emerge and spread.',
               ],
             },
           ],
