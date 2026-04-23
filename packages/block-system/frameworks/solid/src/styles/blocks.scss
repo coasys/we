@@ -5,12 +5,12 @@
 .we-block-content {
   // Hover highlight (lighter) — attribute set by BlockHandlesPlugin
   [data-block-hovered='true'] {
-    background-color: var(--we-color-neutral-25);
+    background-color: var(--we-color-neutral-50);
   }
 
   // Focus highlight (stronger) — block containing the caret
   [data-block-focused='true'] {
-    background-color: var(--we-color-neutral-50);
+    background-color: var(--we-color-neutral-75);
   }
 
   font-family: var(--we-font-family);
