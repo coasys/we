@@ -99,7 +99,7 @@ function createQuerySignal(
         subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
         dispose: () => void;
       };
-      builder.subscribe((results) => setItems(results));
+      builder.subscribe((results) => setItems(results)).then((initial) => setItems(initial));
       onCleanup(() => builder.dispose());
     } else {
       (ModelClass.findAll(p, descriptor.params) as Promise<unknown[]>).then(setItems);
