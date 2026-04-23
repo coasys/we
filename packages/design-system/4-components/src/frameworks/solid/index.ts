@@ -7,6 +7,7 @@ export { EditableImage, type EditableImageProps } from '../../components/media/E
 export { ImageCrop, type ImageCropProps, type ImageCropRef } from '../../components/media/ImageCrop/ImageCrop.solid';
 
 // Cards
+export { FlipCard, type FlipCardProps } from '../../components/cards/FlipCard/FlipCard.solid';
 export { PostCard, type PostCardProps } from '../../components/cards/PostCard/PostCard.solid';
 
 // Buttons
