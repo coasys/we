@@ -77,7 +77,7 @@ function makeContext(overrides?: Partial<ContextData>): ContextData {
       {
         name: 'adamStore',
         state: { loading: { type: 'boolean' }, bootState: { type: 'string' }, me: { type: 'object' } },
-        actions: ['navigate', 'login'],
+        actions: ['login'],
       },
       {
         name: 'routeStore',
@@ -249,7 +249,7 @@ describe('unknown prop', () => {
 
   it('event handlers are always valid', () => {
     const result = validateSemantic(
-      { type: 'we-button', props: { onClick: { $action: 'adamStore.navigate' } } },
+      { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate' } } },
       ctx(),
     );
     const propErrors = result.errors.filter((e) => e.message.includes('Unknown prop'));
@@ -330,7 +330,7 @@ describe('unknown action', () => {
 
   it('passes for known action', () => {
     const result = validateSemantic(
-      { type: 'we-button', props: { onClick: { $action: 'adamStore.navigate' } } },
+      { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate' } } },
       ctx(),
     );
     const actionErrors = result.errors.filter((e) => e.message.includes('Unknown'));

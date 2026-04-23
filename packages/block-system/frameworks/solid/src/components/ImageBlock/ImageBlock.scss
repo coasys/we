@@ -1,69 +1,27 @@
 .we-image-block {
-  position: relative;
-  display: flex;
-
-  > button {
-    all: unset;
-    cursor: pointer;
-    padding: 10px;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--we-color-neutral-500);
-    background-color: var(--we-color-neutral-75);
-  }
-
-  > img {
-    max-width: 100%;
-    object-fit: contain;
-  }
-
-  .we-image-block-input-modal {
+  .we-image-block-actions {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: white;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 10;
-    width: 300px;
+    top: 4px;
+    right: 4px;
+    background: var(--we-color-neutral-0);
+    border: 1px solid var(--we-color-neutral-100);
+    border-radius: var(--we-radius-300);
+    padding: 2px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  }
 
-    h4 {
-      margin-top: 0;
-      margin-bottom: 16px;
-    }
+  .we-image-block-actions-sep {
+    width: 1px;
+    height: 16px;
+    background: var(--we-color-neutral-200);
+    margin: 0 2px;
+    align-self: center;
+  }
 
-    input {
-      width: 100%;
-      padding: 8px;
-      margin-bottom: 16px;
-      border: 1px solid #e0e0e0;
-      border-radius: 4px;
-    }
-
-    .we-image-block-input-buttons {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-
-      button {
-        padding: 6px 12px;
-        border-radius: 4px;
-
-        &[type='button'] {
-          background: transparent;
-          border: 1px solid #e0e0e0;
-        }
-
-        &[type='submit'] {
-          background: var(--we-color-primary-500);
-          color: white;
-          border: none;
-        }
-      }
-    }
+  .we-image-block-input {
+    padding: var(--we-space-300);
+    border: 1px dashed var(--we-color-neutral-200);
+    border-radius: var(--we-radius-300);
+    background: var(--we-color-neutral-25);
   }
 }

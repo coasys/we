@@ -1,0 +1,16 @@
+// Shared styles for block components
+
+.we-block-input-placeholder {
+  all: unset;
+  cursor: pointer;
+  padding: 10px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--we-color-neutral-500);
+  background-color: var(--we-color-neutral-75);
+  border-radius: 8px;
+  font-family: var(--we-font-family);
+  font-size: 14px;
+}

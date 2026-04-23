@@ -16,6 +16,7 @@ import type {
   size as sizeTokens,
 } from '../src/size.js';
 import type { space as spaceTokens } from '../src/space.js';
+import type { zIndex as zIndexTokens } from '../src/z-index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,6 +44,7 @@ export async function generateCSS() {
       avatarSize,
       componentHeight,
       space,
+      zIndex,
     } = tokens;
 
     // Generate CSS files
@@ -55,6 +57,7 @@ export async function generateCSS() {
     generateShadowCSS(shadow, outputDir);
     generateSizeCSS(size, radius, avatarSize, componentHeight, outputDir);
     generateSpaceCSS(space, outputDir);
+    generateZIndexCSS(zIndex, outputDir);
 
     // Generate combined index file
     generateCombinedCSS(outputDir);
@@ -316,6 +319,16 @@ ${spaceVars}
   fs.writeFileSync(path.join(outputDir, 'space.css'), css);
 }
 
+function generateZIndexCSS(zIndex: typeof zIndexTokens, outputDir: string) {
+  const zIndexVars = Object.entries(zIndex)
+    .map(([key, value]) => `  --we-z-${key}: ${value};`)
+    .join('\n');
+
+  const css = `/* Z-INDEX TOKENS - Generated from JS tokens */\n\n:root {\n  /* Stacking Layers */\n${zIndexVars}\n}`;
+
+  fs.writeFileSync(path.join(outputDir, 'z-index.css'), css);
+}
+
 function generateCombinedCSS(outputDir: string) {
   const indexCSS = `/* @we/tokens CSS variables - Main Entry Point */
 
@@ -332,6 +345,7 @@ function generateCombinedCSS(outputDir: string) {
 @import './shadow.css';
 @import './size.css';
 @import './space.css';
+@import './z-index.css';
 `;
 
   fs.writeFileSync(path.join(outputDir, 'index.css'), indexCSS);

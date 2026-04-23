@@ -139,6 +139,14 @@ export function tokenVar(prefix: string, token?: string, fallback = '0') {
   return `var(--we-${prefix}-${token})`;
 }
 
+/** Resolve a zIndex prop value: layer names → CSS var, numbers → passthrough. */
+export function zIndexVar(value?: string | number): string | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'number') return value.toString();
+  if (/^-?\d+$/.test(value)) return value;
+  return `var(--we-z-${value})`;
+}
+
 /**
  * Parse border shorthand value and convert color tokens to CSS variables
  * Example: "1px solid ui-200" -> "1px solid var(--we-color-neutral-200)"

@@ -12,6 +12,7 @@ import {
 import { resolveConcatProp } from './concat';
 import { resolveIfProp } from './conditional';
 import {
+  resolveCallLocalProp,
   resolveErrorProp,
   resolveFormValidProp,
   resolveLocalProp,
@@ -66,6 +67,7 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$resetLocal', 'string')) return resolveResetLocalProp(context);
     if (hasToken(value, '$toggleLocal', 'string'))
       return resolveToggleLocalProp(value as { $toggleLocal: string }, context);
+    if (hasToken(value, '$callLocal', 'string')) return resolveCallLocalProp(value as { $callLocal: string }, context);
     if (hasToken(value, '$action', 'string')) return resolveActionProp(value, context, stores, memo, resolveProp);
     if (hasToken(value, '$concat', 'array'))
       return resolveConcatProp((value as { $concat: unknown[] })['$concat'], stores, context, memo, resolveProp);

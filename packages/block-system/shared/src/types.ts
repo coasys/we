@@ -1,4 +1,4 @@
-import type { PerspectiveProxy } from '@coasys/ad4m';
+import type { DesignSystemProps } from '@we/design-types';
 
 /**
  * Represents a serialized block node (e.g., from Lexical editor state JSON).
@@ -7,8 +7,12 @@ import type { PerspectiveProxy } from '@coasys/ad4m';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SerializedBlockNode = any;
 
-export type BlockComposerProps = {
+export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
   post?: SerializedBlockNode;
-  perspective?: PerspectiveProxy;
   onSave?: (json: SerializedBlockNode) => void;
+  onReady?: (api: { save: () => void }) => void;
+};
+
+export type BlockRendererProps = Omit<DesignSystemProps, 'direction'> & {
+  post?: SerializedBlockNode;
 };

@@ -2,7 +2,15 @@ import type { DesignSystemProps } from '@we/design-types';
 import type { Accessor } from 'solid-js';
 import { createSignal, JSX } from 'solid-js';
 
-import { getMarginValues, getPaddingValues, getRadiusValues, mapFlexAxes, parseBorder, tokenVar } from '../index';
+import {
+  getMarginValues,
+  getPaddingValues,
+  getRadiusValues,
+  mapFlexAxes,
+  parseBorder,
+  tokenVar,
+  zIndexVar,
+} from '../index';
 
 export type MaybeAccessor<T> = T | Accessor<T>;
 
@@ -74,7 +82,7 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
   style['align-items'] = cross;
   if (props.gap) style.gap = tokenVar('space', props.gap);
   if (props.overflow) style.overflow = props.overflow;
-  if (props.zIndex !== undefined) style['z-index'] = props.zIndex;
+  if (props.zIndex !== undefined) style['z-index'] = zIndexVar(props.zIndex);
   if (props.position) style.position = props.position;
   if (props.top) style.top = props.top;
   if (props.right) style.right = props.right;

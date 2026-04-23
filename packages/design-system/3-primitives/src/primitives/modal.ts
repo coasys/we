@@ -11,8 +11,10 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   p: '900',
   ax: 'center',
   ay: 'center',
-  gap: '300',
+  gap: '500',
   direction: 'column',
+  maxHeight: 'calc(100vh - 64px)',
+  overflow: 'hidden',
 };
 
 const CSS_STYLES = css`
@@ -96,8 +98,8 @@ export default class Modal extends OverlayElement {
           ? html`
               <div part="close-button-wrapper">
                 <slot name="close-button">
-                  <we-button part="close-button" variant="ghost" p="0" @click=${this.close}>
-                    <we-icon name="x" size="sm"></we-icon>
+                  <we-button part="close-button" variant="ghost" size="sm" square @click=${this.close}>
+                    <we-icon name="x"></we-icon>
                   </we-button>
                 </slot>
               </div>

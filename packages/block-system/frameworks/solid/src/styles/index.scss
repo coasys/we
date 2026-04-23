@@ -1,3 +1,7 @@
+// Shared block styles (used by both BlockComposer and BlockRenderer)
+@use './blocks.scss';
+@use './block-inputs.scss';
+
 // Components
 @use '../components/BlockComposer.scss';
 @use '../components/BlockMenu/BlockMenu.scss';

@@ -28,7 +28,7 @@ const styles = css`
 
   [part='popover'] {
     position: absolute;
-    z-index: 10;
+    z-index: var(--we-z-dropdown);
     background: var(--we-color-neutral-0);
     border: 1px solid var(--we-color-neutral-200);
     border-radius: var(--we-radius-500);

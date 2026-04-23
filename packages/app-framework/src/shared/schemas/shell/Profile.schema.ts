@@ -21,6 +21,7 @@ export const profileTemplate: TemplateSchema = {
         fit: 'cover',
         width: '100%',
         height: '200px',
+        aspect: 4 / 1,
         placeholderIcon: 'panorama',
         onImageChange: { $action: 'adamStore.updateCoverImage', args: ['$arg'] },
       },

@@ -118,6 +118,7 @@ export default class Button extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) loading = false;
   @property({ type: Boolean, reflect: true }) gradient = false;
+  @property({ type: Boolean, reflect: true }) square = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
@@ -140,10 +141,20 @@ export default class Button extends DesignSystemElement {
     const variantDefaults = VARIANT_DEFAULTS[this.variant] ?? {};
     const sizeDefaults = SIZE_DEFAULTS[this.size] ?? {};
     // Merge chain: explicit user props > variant > size > component defaults
-    return mergeProps(
+    const props = mergeProps(
       usedProps,
       mergeProps(variantDefaults, mergeProps(sizeDefaults, DEFAULT_PROPS)),
     ) as Partial<DesignSystemProps>;
+
+    if (this.square) {
+      const h = `var(--we-component-height-${this.size})`;
+      props.width = h;
+      props.height = h;
+      delete props.px;
+      delete props.py;
+    }
+
+    return props;
   }
 
   private _onClick = (e: MouseEvent) => {

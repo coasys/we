@@ -1,5 +1,5 @@
 import { templateRegistry } from '@shared/registries/templateRegistry';
-import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
+import { landingPageTemplate, profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
 import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutations.actions';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
@@ -80,6 +80,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   // Shell templates — static system pages (profile, settings, testing)
   const shellTemplates: TemplateSchema[] = [
+    { ...deepClone(landingPageTemplate), id: 'landing-page' },
     { ...deepClone(profileTemplate), id: 'profile' },
     { ...deepClone(settingsTemplate), id: 'settings' },
     { ...deepClone(schemaTestsTemplate), id: 'schema-tests' },

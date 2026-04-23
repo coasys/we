@@ -47,7 +47,7 @@ export abstract class OverlayElement extends DesignSystemElement {
           max-width: unset;
           max-height: unset;
           margin: 0;
-          z-index: 9999;
+          z-index: var(--we-z-modal);
         }
 
         /* Apply sizing props to [part="base"] instead of :host */

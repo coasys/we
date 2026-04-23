@@ -59,25 +59,31 @@ const styles = css`
   }
 
   input[part='native']::-webkit-slider-runnable-track {
+    height: var(--track-height);
     border-radius: var(--we-radius-pill);
     background: var(--we-color-neutral-200);
   }
 
   input[part='native']::-moz-range-track {
+    height: var(--track-height);
     border-radius: var(--we-radius-pill);
     background: var(--we-color-neutral-200);
   }
 
   input[part='native']::-webkit-slider-thumb {
     -webkit-appearance: none;
+    width: var(--thumb-size);
+    height: var(--thumb-size);
     border-radius: var(--we-radius-full);
     background: var(--we-color-primary-500);
     border: 2px solid white;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-    margin-top: calc((var(--_thumb-size) - var(--_track-height)) / -2);
+    margin-top: calc((var(--thumb-size) - var(--track-height)) / -2);
   }
 
   input[part='native']::-moz-range-thumb {
+    width: var(--thumb-size);
+    height: var(--thumb-size);
     border-radius: var(--we-radius-full);
     background: var(--we-color-primary-500);
     border: 2px solid white;
@@ -140,8 +146,8 @@ export default class Slider extends DesignSystemElement {
             ?disabled=${this.disabled}
             @input=${this._onInput}
             style=${styleMap({
-              '--_track-height': trackH,
-              '--_thumb-size': thumbS,
+              '--track-height': trackH,
+              '--thumb-size': thumbS,
             })}
           />
         </div>

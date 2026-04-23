@@ -1,6 +1,6 @@
 .we-block-handle {
   position: absolute;
-  z-index: 1;
+  z-index: var(--we-z-popover);
   opacity: 0;
   display: flex;
   height: 40px;
@@ -31,7 +31,8 @@
     }
   }
 
-  &[data-block-highlighted='true'] {
+  &[data-block-hovered='true'],
+  &[data-block-focused='true'] {
     opacity: 1;
   }
 }
@@ -41,11 +42,12 @@
   height: 4px;
   background-color: var(--we-color-primary-400);
   border-radius: 2px;
-  z-index: 10;
+  z-index: var(--we-z-popover);
   pointer-events: none;
   opacity: 0;
   // transition: opacity var(--we-transition-300);
   will-change: opacity;
+  // z-index: var(--we-z-dropdown);
 
   &.we-block-handle-visible {
     opacity: 1;

@@ -92,7 +92,7 @@ const styles = css`
     top: 100%;
     left: 0;
     right: 0;
-    z-index: 10;
+    z-index: var(--we-z-dropdown);
     max-height: 200px;
     overflow-y: auto;
     background: var(--we-color-neutral-0);

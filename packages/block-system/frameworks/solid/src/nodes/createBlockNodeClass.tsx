@@ -2,9 +2,8 @@ import { getBlockRegistration } from '@we/block-shared';
 import type { LexicalEditor, LexicalNode, NodeKey, SerializedLexicalNode } from 'lexical';
 import { $getNodeByKey, DecoratorNode } from 'lexical';
 import { useLexicalComposerContext, useLexicalNodeSelection } from 'lexical-solid';
-import type { Component } from 'solid-js';
+import type { Component, JSX } from 'solid-js';
 import { createMemo } from 'solid-js';
-import { render } from 'solid-js/web';
 
 import { useDisplayOverride } from '../components/BlockDisplayOverrides';
 
@@ -21,10 +20,11 @@ export interface BlockNodeInstance {
 
 /** Constructor type for block node classes created by the factory. */
 export interface BlockNodeClass {
-  new (props?: Record<string, unknown>, key?: NodeKey): DecoratorNode<HTMLElement> & BlockNodeInstance;
+  new (props?: Record<string, unknown>, key?: NodeKey): DecoratorNode<() => JSX.Element> & BlockNodeInstance;
   getType(): string;
-  clone(node: DecoratorNode<HTMLElement>): DecoratorNode<HTMLElement>;
-  importJSON(serializedNode: SerializedBlockNode): DecoratorNode<HTMLElement>;
+  clone(node: DecoratorNode<() => JSX.Element>): DecoratorNode<() => JSX.Element>;
+  importJSON(serializedNode: SerializedBlockNode): DecoratorNode<() => JSX.Element>;
+  transform(): ((node: LexicalNode) => void) | null;
 }
 
 /**
@@ -114,7 +114,7 @@ export function createBlockNodeClass(
   nodeType: string,
   BlockComponent?: Component<Record<string, unknown>>,
 ): BlockNodeClass {
-  class BlockNode extends DecoratorNode<HTMLElement> {
+  class BlockNode extends DecoratorNode<() => JSX.Element> {
     __props: Record<string, unknown>;
 
     static getType(): string {
@@ -149,20 +149,20 @@ export function createBlockNodeClass(
       writable.__props = { ...writable.__props, [name]: value };
     }
 
-    decorate(): HTMLElement {
-      const container = document.createElement('div');
-      container.className = 'we-block';
+    decorate(): () => JSX.Element {
+      const nodeKey = this.__key;
+      const nodeProps = this.__props;
 
-      // Check if registered display/input components exist
+      // Return a SolidJS component function — lexical-solid renders this
+      // inside a Portal mounted to createDOM()'s element, preserving
+      // the LexicalComposerContext tree.
       const reg = getBlockRegistration(nodeType);
       if (reg?.display || reg?.input) {
-        render(() => <BlockBridge nodeKey={this.__key} nodeProps={this.__props} nodeType={nodeType} />, container);
+        return () => <BlockBridge nodeKey={nodeKey} nodeProps={nodeProps} nodeType={nodeType} />;
       } else if (BlockComponent) {
-        // Fallback to legacy direct component rendering
-        render(() => <BlockComponent {...this.__props} nodeKey={this.__key} />, container);
+        return () => <BlockComponent {...nodeProps} nodeKey={nodeKey} />;
       }
-
-      return container;
+      return () => null as unknown as JSX.Element;
     }
 
     exportJSON(): SerializedBlockNode {
@@ -186,13 +186,13 @@ export function createBlockNodeClass(
 export function $createBlockNode(
   NodeClass: BlockNodeClass,
   props: Record<string, unknown>,
-): DecoratorNode<HTMLElement> & BlockNodeInstance {
+): DecoratorNode<() => JSX.Element> & BlockNodeInstance {
   return new NodeClass(props);
 }
 
 /** Type guard for any block node created by createBlockNodeClass. */
 export function $isBlockNode(
   node: LexicalNode | null | undefined,
-): node is DecoratorNode<HTMLElement> & BlockNodeInstance {
+): node is DecoratorNode<() => JSX.Element> & BlockNodeInstance {
   return node instanceof DecoratorNode && '__props' in node;
 }
