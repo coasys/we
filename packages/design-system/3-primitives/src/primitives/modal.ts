@@ -13,6 +13,8 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   gap: '500',
   direction: 'column',
+  maxHeight: 'calc(100vh - 64px)',
+  overflow: 'hidden',
 };
 
 const CSS_STYLES = css`
