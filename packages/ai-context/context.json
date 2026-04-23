@@ -3351,6 +3351,37 @@
       "source": "components"
     },
     {
+      "name": "FlipCard",
+      "props": [
+        {
+          "name": "front",
+          "type": "{ icon?: string; title: string; body: string; }",
+          "optional": false
+        },
+        {
+          "name": "back",
+          "type": "{ icon?: string; body: string; }",
+          "optional": false
+        },
+        {
+          "name": "height",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "class",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "styles",
+          "type": "Record<string, string | number>",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
       "name": "IconLabelButton",
       "props": [
         {
