@@ -132,6 +132,10 @@ export default class Input extends DesignSystemElement {
     );
   }
 
+  handleBeforeInput(e: InputEvent) {
+    e.stopPropagation();
+  }
+
   handlePaste(e: ClipboardEvent) {
     e.stopPropagation();
   }
@@ -162,6 +166,7 @@ export default class Input extends DesignSystemElement {
           @blur=${this.handleBlur}
           @focus=${this.handleFocus}
           @keydown=${this.handleKeyDown}
+          @beforeinput=${this.handleBeforeInput}
           @paste=${this.handlePaste}
         />
         <slot name="end"></slot>

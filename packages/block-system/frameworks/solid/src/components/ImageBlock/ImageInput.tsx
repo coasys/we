@@ -1,6 +1,7 @@
 import type { ImageCropRef } from '@we/components/solid';
 import { Column, ImageCrop, Row } from '@we/components/solid';
 import { createSignal, For, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 
 import { ImageDisplay } from './ImageDisplay';
 
@@ -102,29 +103,19 @@ export function ImageInput(props: ImageInputProps) {
       <Show
         when={!showInput()}
         fallback={
-          <Column class="we-image-block-input" gap="300">
+          <Column class="we-image-block-input" gap="400" ax="center">
             <we-file-upload accept="image/*" on:change={handleFileChange}>
-              <we-icon name="image" size="32px" color="neutral-300" />
-              <we-text variant="footnote" color="neutral-400">
-                Drop an image or click to browse
-              </we-text>
+              <we-icon name="image" color="neutral-500" />
+              <we-text color="neutral-500">Drop an image or click to browse</we-text>
             </we-file-upload>
 
-            <Row class="we-image-block-or" gap="200">
-              <div class="we-image-block-or-line" />
-              <we-text variant="footnote" color="neutral-400">
-                or
-              </we-text>
-              <div class="we-image-block-or-line" />
-            </Row>
-
-            <Row gap="100">
+            <Row gap="300" ax="center">
               <we-input
-                style={{ flex: '1' }}
                 type="text"
                 value={imageUrl()}
                 on:input={(e: CustomEvent) => setImageUrl(e.detail)}
                 placeholder="Paste image URL…"
+                width="100%"
               />
               <we-button onClick={handleUrlSubmit}>Add</we-button>
             </Row>
@@ -167,11 +158,14 @@ export function ImageInput(props: ImageInputProps) {
         </Show>
       </Show>
 
-      {/* Crop modal — kept as a modal because the crop tool needs a dedicated canvas */}
+      {/* Crop modal — portalled to document.body to escape the Lexical contenteditable
+          context, which causes browsers to miscalculate containing blocks for
+          shadow-DOM absolute children ([part="close-button-wrapper"]) and light-DOM
+          web-component sizing (we-tooltip). */}
       <Show when={rawUrl()}>
-        <we-modal close={handleCropBack} p="500" r="300">
-          <Column minWidth="520px" gap="300" ax="center">
-            <we-text variant="subheading">Crop Image</we-text>
+        <Portal>
+          <we-modal close={handleCropBack} p="500" r="300">
+            <we-text variant="heading">Crop Image</we-text>
             <ImageCrop
               src={rawUrl()!}
               fileName={pendingFile()?.name}
@@ -185,8 +179,8 @@ export function ImageInput(props: ImageInputProps) {
               </we-button>
               <we-button onClick={handleCropSave}>Save</we-button>
             </Row>
-          </Column>
-        </we-modal>
+          </we-modal>
+        </Portal>
       </Show>
     </Column>
   );

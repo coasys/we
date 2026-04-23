@@ -161,11 +161,16 @@ export default class FileUpload extends DesignSystemElement {
                 ${this._files.map(
                   (file, i) => html`
                     <div part="file-item">
-                      <we-icon name="file" size="14px"></we-icon>
+                      <we-icon name="file" size="sm"></we-icon>
                       <span>${file.name}</span>
-                      <button part="remove" aria-label="Remove file" @click=${() => this._removeFile(i)}>
-                        <we-icon name="x" size="14px"></we-icon>
-                      </button>
+                      <we-button
+                        part="remove"
+                        variant="secondary"
+                        aria-label="Remove file"
+                        @click=${() => this._removeFile(i)}
+                      >
+                        <we-icon name="x"></we-icon>
+                      </we-button>
                     </div>
                   `,
                 )}
