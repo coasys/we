@@ -1,6 +1,6 @@
 import type { ImageCropRef } from '@we/components/solid';
 import { Column, ImageCrop, Row } from '@we/components/solid';
-import { createSignal, Show } from 'solid-js';
+import { createSignal, For, Show } from 'solid-js';
 
 import { ImageDisplay } from './ImageDisplay';
 
@@ -14,28 +14,35 @@ interface ImageInputProps {
   onSelect: (e: MouseEvent) => void;
 }
 
+const WIDTH_PRESETS = [
+  { label: 'S', value: 33 },
+  { label: 'M', value: 66 },
+  { label: 'L', value: 100 },
+] as const;
+
 /**
  * Input component for ImageBlock.
  * Pure SolidJS — no Lexical imports. Receives onChange from the factory.
  * Composes ImageDisplay when an image is loaded, with edit affordances overlaid.
+ *
+ * UX: upload and URL input are shown simultaneously — no mode toggle needed.
+ * Width is stored as a percentage (33 / 66 / 100) and chosen via S/M/L presets
+ * that appear in the selection toolbar. Cropping is the one modal exception
+ * because the crop tool requires a minimum 520px canvas.
  */
 export function ImageInput(props: ImageInputProps) {
-  const [showModal, setShowModal] = createSignal(false);
-  const [mode, setMode] = createSignal<'upload' | 'url' | 'crop'>('upload');
+  const [editing, setEditing] = createSignal(false);
   const [imageUrl, setImageUrl] = createSignal('');
   const [rawUrl, setRawUrl] = createSignal<string | null>(null);
   const [pendingFile, setPendingFile] = createSignal<File | null>(null);
   let cropRef: ImageCropRef | undefined;
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
-    setShowModal(true);
-  }
+  const showInput = () => !props.src || editing();
+  const activeWidth = () => props.width ?? 33;
 
-  function closeModal() {
-    setShowModal(false);
+  function cancelEdit() {
+    setEditing(false);
     setImageUrl('');
-    setMode('upload');
     const url = rawUrl();
     if (url) URL.revokeObjectURL(url);
     setRawUrl(null);
@@ -50,7 +57,6 @@ export function ImageInput(props: ImageInputProps) {
     if (old) URL.revokeObjectURL(old);
     setPendingFile(file);
     setRawUrl(URL.createObjectURL(file));
-    setMode('crop');
   }
 
   async function handleCropSave() {
@@ -60,7 +66,10 @@ export function ImageInput(props: ImageInputProps) {
     reader.onload = () => {
       if (typeof reader.result === 'string') {
         props.onChange('src', reader.result);
-        closeModal();
+        setRawUrl(null);
+        setPendingFile(null);
+        setEditing(false);
+        cropRef = undefined;
       }
     };
     reader.readAsDataURL(file);
@@ -72,14 +81,14 @@ export function ImageInput(props: ImageInputProps) {
     setRawUrl(null);
     setPendingFile(null);
     cropRef = undefined;
-    setMode('upload');
   }
 
   function handleUrlSubmit() {
     const url = imageUrl().trim();
     if (url) {
       props.onChange('src', url);
-      closeModal();
+      setImageUrl('');
+      setEditing(false);
     }
   }
 
@@ -91,19 +100,64 @@ export function ImageInput(props: ImageInputProps) {
   return (
     <Column class="we-image-block" onClick={props.onSelect} position="relative">
       <Show
-        when={props.src}
+        when={!showInput()}
         fallback={
-          <we-button variant="ghost" ay="center" onClick={openModal}>
-            <we-icon name="image" />
-            Add Image
-          </we-button>
+          <Column class="we-image-block-input" gap="300">
+            <we-file-upload accept="image/*" on:change={handleFileChange}>
+              <we-icon name="image" size="32px" color="neutral-300" />
+              <we-text variant="footnote" color="neutral-400">
+                Drop an image or click to browse
+              </we-text>
+            </we-file-upload>
+
+            <Row class="we-image-block-or" gap="200">
+              <div class="we-image-block-or-line" />
+              <we-text variant="footnote" color="neutral-400">
+                or
+              </we-text>
+              <div class="we-image-block-or-line" />
+            </Row>
+
+            <Row gap="100">
+              <we-input
+                style={{ flex: '1' }}
+                type="text"
+                value={imageUrl()}
+                on:input={(e: CustomEvent) => setImageUrl(e.detail)}
+                placeholder="Paste image URL…"
+              />
+              <we-button onClick={handleUrlSubmit}>Add</we-button>
+            </Row>
+
+            <Show when={editing()}>
+              <Row ax="end">
+                <we-button variant="ghost" onClick={cancelEdit}>
+                  Cancel
+                </we-button>
+              </Row>
+            </Show>
+          </Column>
         }
       >
         <ImageDisplay src={props.src} altText={props.altText} width={props.width} height={props.height} />
 
         <Show when={props.isSelected()}>
-          <Row gap="200" class="we-image-block-actions">
-            <we-button variant="ghost" onClick={openModal}>
+          <Row class="we-image-block-actions" gap="100">
+            <For each={WIDTH_PRESETS}>
+              {(preset) => (
+                <we-button
+                  variant={activeWidth() === preset.value ? 'secondary' : 'ghost'}
+                  onClick={(e: MouseEvent) => {
+                    e.stopPropagation();
+                    props.onChange('width', preset.value);
+                  }}
+                >
+                  {preset.label}
+                </we-button>
+              )}
+            </For>
+            <div class="we-image-block-actions-sep" />
+            <we-button variant="ghost" onClick={() => setEditing(true)}>
               <we-icon name="pencil-simple" size="sm" />
             </we-button>
             <we-button variant="ghost" onClick={handleDelete}>
@@ -113,67 +167,24 @@ export function ImageInput(props: ImageInputProps) {
         </Show>
       </Show>
 
-      <Show when={showModal()}>
-        <we-modal close={closeModal} p="500" r="300">
-          <Column minWidth={mode() === 'crop' ? '520px' : '360px'} gap="300">
-            <we-text variant="subheading">
-              {mode() === 'crop' ? 'Crop Image' : props.src ? 'Change Image' : 'Add Image'}
-            </we-text>
-
-            <Show when={mode() !== 'crop'}>
-              <Row gap="200">
-                <we-button variant={mode() === 'upload' ? 'secondary' : 'ghost'} onClick={() => setMode('upload')}>
-                  Upload
-                </we-button>
-                <we-button variant={mode() === 'url' ? 'secondary' : 'ghost'} onClick={() => setMode('url')}>
-                  URL
-                </we-button>
-              </Row>
-            </Show>
-
-            <Show when={mode() === 'upload'}>
-              <we-file-upload accept="image/*" on:change={handleFileChange}>
-                <we-icon name="image" size="32px" color="neutral-300" />
-                <we-text variant="footnote" color="neutral-400">
-                  Drop an image or click to browse
-                </we-text>
-              </we-file-upload>
-            </Show>
-
-            <Show when={mode() === 'url'}>
-              <we-form-field label="Image URL">
-                <we-input
-                  type="text"
-                  value={imageUrl()}
-                  on:input={(e: CustomEvent) => setImageUrl(e.detail)}
-                  placeholder="https://example.com/image.jpg"
-                />
-              </we-form-field>
-              <Row ax="end" gap="200">
-                <we-button variant="secondary" onClick={closeModal}>
-                  Cancel
-                </we-button>
-                <we-button variant="primary" onClick={handleUrlSubmit}>
-                  Add
-                </we-button>
-              </Row>
-            </Show>
-
-            <Show when={mode() === 'crop'}>
-              <ImageCrop
-                src={rawUrl()!}
-                fileName={pendingFile()?.name}
-                onReady={(ref) => {
-                  cropRef = ref;
-                }}
-              />
-              <Row ax="end" gap="200">
-                <we-button variant="secondary" onClick={handleCropBack}>
-                  Back
-                </we-button>
-                <we-button onClick={handleCropSave}>Save</we-button>
-              </Row>
-            </Show>
+      {/* Crop modal — kept as a modal because the crop tool needs a dedicated canvas */}
+      <Show when={rawUrl()}>
+        <we-modal close={handleCropBack} p="500" r="300">
+          <Column minWidth="520px" gap="300" ax="center">
+            <we-text variant="subheading">Crop Image</we-text>
+            <ImageCrop
+              src={rawUrl()!}
+              fileName={pendingFile()?.name}
+              onReady={(ref) => {
+                cropRef = ref;
+              }}
+            />
+            <Row ax="end" gap="200">
+              <we-button variant="secondary" onClick={handleCropBack}>
+                Back
+              </we-button>
+              <we-button onClick={handleCropSave}>Save</we-button>
+            </Row>
           </Column>
         </we-modal>
       </Show>
