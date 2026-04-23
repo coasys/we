@@ -122,7 +122,15 @@ export const sidebar: SchemaNode = {
       slots: {
         header: {
           type: 'Column',
-          props: { width: '66px', height: '66px', ax: 'center', ay: 'center' },
+          props: {
+            width: '66px',
+            height: '66px',
+            ax: 'center',
+            ay: 'center',
+            styles: { cursor: 'pointer' },
+            onClick: { $action: 'templateStore.switchTemplate', args: ['landing-page'] },
+            title: 'About WE',
+          },
           children: [
             {
               type: 'we-image',

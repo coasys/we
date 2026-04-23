@@ -7,6 +7,7 @@ export { weTemplate } from './WeTemplate.schema';
 export {
   bootScreen,
   createTestStore,
+  landingPageTemplate,
   profileTemplate,
   schemaTestsTemplate,
   schemaMutationActions,

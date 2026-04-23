@@ -1,5 +1,6 @@
 export { aiChatSidebar } from './AiChatSidebar.schema';
 export { bootScreen } from './BootScreen.schema';
+export { landingPageTemplate } from './LandingPage.schema';
 export { profileTemplate } from './Profile.schema';
 export { schemaTestsTemplate } from './SchemaTests.schema';
 export { settingsTemplate } from './Settings.schema';
