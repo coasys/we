@@ -1,19 +1,15 @@
 import { PerspectiveProxy } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { useAdamStore, useRouteStore } from '@solid/stores';
-import { blocksToLexicalJSON, createBlocks, loadBlocks } from '@we/block-shared';
+import { createBlocks } from '@we/block-shared';
 import { blobToDataURL, CollectionBlock, FileData, ImageBlock, resizeImage, Space, TextBlock } from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
-
-type BlockType = ImageBlock | TextBlock | CollectionBlock;
-type Post = Partial<BlockType>;
 
 export interface SpaceStore {
   // State
   spaceId: Accessor<string>;
   perspective: Accessor<PerspectiveProxy | null>;
   space: Accessor<Partial<Space | null>>;
-  posts: Accessor<Post[]>;
   loading: Accessor<boolean>;
 
   // Layer visibility
@@ -31,7 +27,6 @@ export interface SpaceStore {
 
   // Actions
   getSpace: () => Promise<void>;
-  getPosts: () => Promise<void>;
   createPost: (json: unknown) => Promise<void>;
   toggleLayer: (layerName: string) => void;
   toggleBackground: (backgroundName: string) => void;
@@ -54,7 +49,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [spaceId, setSpaceId] = createSignal('');
   const [perspective, setPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [space, setSpace] = createSignal<Partial<Space | null>>(null);
-  const [posts, setPosts] = createSignal<Post[]>([]);
   const [loading, setLoading] = createSignal(true);
 
   // Layer visibility state
@@ -125,41 +119,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       setPerspective(spacePerspective);
       console.log('[SpaceStore] getSpace loaded space:', spaceModel);
       setSpace(spaceModel);
-
-      await getPosts();
     } catch (error) {
       console.error('SpaceStore: getSpace error', error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function getPosts(): Promise<void> {
-    const p = perspective();
-    if (!p) {
-      console.warn('[SpaceStore] getPosts: no perspective available');
-      return;
-    }
-    try {
-      setLoading(true);
-      let roots = await CollectionBlock.findAll(p, { where: { type: 'root' } });
-      const loaded = await Promise.all(roots.map((root) => loadBlocks(p, root.id)));
-      console.log('[SpaceStore] getPosts: loaded', loaded);
-      const lexicalPosts = loaded
-        .filter((b): b is NonNullable<typeof b> => !!b)
-        .map((b) => {
-          // Prefer the lossless editorState blob when available
-          const es = (b as CollectionBlock).editorState;
-          if (es && typeof es === 'object' && Object.keys(es).length > 0) {
-            return es;
-          }
-          // Fallback: reconstruct from block tree (lossy — no inline formatting)
-          return blocksToLexicalJSON(b);
-        });
-      // console.log('[SpaceStore] getPosts: converted to lexical:', JSON.stringify(lexicalPosts, null, 2));
-      setPosts(lexicalPosts);
-    } catch (error) {
-      console.error('SpaceStore: getPosts error', error);
     } finally {
       setLoading(false);
     }
@@ -169,7 +130,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = perspective();
     if (!p) return;
     await createBlocks(p, json);
-    await getPosts();
   }
 
   async function updateSpaceImage(imageFile: File): Promise<void> {
@@ -212,7 +172,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceId,
     perspective,
     space,
-    posts,
     loading,
 
     // Layer visibility
@@ -230,7 +189,6 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Actions
     getSpace,
-    getPosts,
     createPost,
     toggleLayer,
     toggleBackground,

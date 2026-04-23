@@ -212,14 +212,21 @@ export const spacePage: RouteSchema = {
               type: 'we-modal',
               props: {
                 close: { $setLocal: 'createPostOpen', value: false },
-                maxWidth: '680px',
+                maxWidth: '900px',
                 width: '100%',
               },
               children: [
                 { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create Post'] },
                 {
                   type: 'Column',
-                  props: { width: '100%', bg: 'neutral-25', p: '600', r: '400' },
+                  props: {
+                    width: '100%',
+                    bg: 'neutral-25',
+                    p: '600',
+                    pl: '1000',
+                    r: '400',
+                    overflow: 'auto',
+                  },
                   children: [
                     {
                       type: 'BlockComposer',
@@ -262,7 +269,7 @@ export const spacePage: RouteSchema = {
           },
         },
 
-        // Mode: Full Posts (store-driven, rendered via BlockRenderer)
+        // Mode: Full Posts ($query-driven, rendered via BlockRenderer)
         {
           type: '$if',
           props: {
@@ -272,44 +279,23 @@ export const spacePage: RouteSchema = {
               props: { gap: '400' },
               children: [
                 {
-                  type: '$if',
+                  type: '$each',
                   props: {
-                    condition: { $store: 'spaceStore.posts.length' },
-                    then: {
-                      type: '$each',
-                      props: {
-                        items: { $store: 'spaceStore.posts' },
-                        as: 'post',
-                      },
-                      children: [
-                        {
-                          type: 'Column',
-                          props: { width: '100%', bg: 'neutral-25', p: '600', r: '400' },
-                          children: [
-                            {
-                              type: 'BlockRenderer',
-                              props: { post: '$post' },
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                    else: {
-                      type: 'Column',
-                      props: { p: '600', ay: 'center', ax: 'center', gap: '200' },
-                      children: [
-                        {
-                          type: 'we-icon',
-                          props: { name: 'chat', color: 'neutral-300', size: '48px' },
-                        },
-                        {
-                          type: 'we-text',
-                          props: { fontSize: '400', color: 'neutral-400' },
-                          children: ['No posts yet'],
-                        },
-                      ],
-                    },
+                    items: { $query: { model: 'CollectionBlock', where: { type: 'root' }, subscribe: true } },
+                    as: 'post',
                   },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { width: '100%', bg: 'neutral-25', p: '600', r: '400' },
+                      children: [
+                        {
+                          type: 'BlockRenderer',
+                          props: { post: '$post.editorState' },
+                        },
+                      ],
+                    },
+                  ],
                 },
               ],
             },
@@ -337,12 +323,17 @@ export const spacePage: RouteSchema = {
                       props: { p: '400', r: '400', bg: 'neutral-100', gap: '200' },
                       children: [
                         {
+                          type: 'we-text',
+                          props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-500' },
+                          children: ['Image Block'],
+                        },
+                        {
                           type: 'we-image',
                           props: {
-                            src: { $get: '$block.src' },
-                            alt: { $get: '$block.altText' },
-                            width: { $get: '$block.width' },
-                            height: { $get: '$block.height' },
+                            src: '$block.src',
+                            alt: '$block.altText',
+                            // width: '$block.width',
+                            // height: '$block.height',
                           },
                         },
                         // type: '$if',
