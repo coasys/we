@@ -35,6 +35,7 @@ import {
   CollapsibleSidebar,
   GraphWidget,
   mockGraphData,
+  SignalBar,
   SpaceSidebarWidget,
 } from '@we/widgets/solid';
 
@@ -80,6 +81,9 @@ export const componentRegistry: ComponentRegistry = {
   CesiumGlobe: (props) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
   // Inject mockGraphData dependency
   GraphWidget: (props) => <GraphWidget {...props} data={props.data || mockGraphData} />,
+
+  // @we/widgets — signals
+  SignalBar,
 
   // @we/block-solid
   BlockComposer,
