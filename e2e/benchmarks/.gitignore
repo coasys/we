@@ -1,0 +1,5 @@
+results/
+node_modules/
+dist/
+app/dist/
+test-results/

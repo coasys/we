@@ -1,0 +1,26 @@
+{
+  "name": "@we/sparql-benchmarks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "./scripts/setup-sdk.sh",
+    "bench": "vitest run",
+    "bench:raw": "vitest run benchmarks/01-raw-sparql.bench.ts",
+    "bench:orm": "vitest run benchmarks/02-ad4m-model.bench.ts benchmarks/03-custom-getters.bench.ts",
+    "bench:compare": "tsx helpers/compare.ts",
+    "app:dev": "cd app && vite"
+  },
+  "devDependencies": {
+    "@apollo/client": "3.7.10",
+    "@coasys/ad4m": "workspace:*",
+    "cross-fetch": "^4.0.0",
+    "graphql": "15.7.2",
+    "solid-js": "^1.9.12",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.3.0",
+    "vite-plugin-solid": "^2.11.0",
+    "vitest": "^4.1.5"
+  }
+}
