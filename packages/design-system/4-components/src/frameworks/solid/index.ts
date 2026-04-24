@@ -53,5 +53,13 @@ export {
 } from '../../components/navigation/Breadcrumbs/Breadcrumbs.solid';
 export { Stepper, type StepperStep, type StepperProps } from '../../components/navigation/Stepper/Stepper.solid';
 
+// Signals
+export {
+  SignalControl,
+  type SignalControlProps,
+  type SignalTypeData,
+  type SignalDisplay,
+} from '../../components/signals/SignalControl/SignalControl.solid';
+
 // Testing
 export { RerenderLog, type RerenderLogProps } from '../../components/testing/RerenderLog/RerenderLog.solid';
