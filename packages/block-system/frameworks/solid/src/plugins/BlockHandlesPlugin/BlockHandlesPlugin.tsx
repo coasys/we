@@ -1,6 +1,16 @@
 import { $isListItemNode, $isListNode, ListNode } from '@lexical/list';
 import { mergeRegister } from '@lexical/utils';
-import { $getRoot, $isDecoratorNode, $isElementNode, COMMAND_PRIORITY_EDITOR, LexicalNode } from 'lexical';
+import {
+  $getRoot,
+  $getSelection,
+  $isDecoratorNode,
+  $isElementNode,
+  $isRangeSelection,
+  COMMAND_PRIORITY_EDITOR,
+  COMMAND_PRIORITY_LOW,
+  LexicalNode,
+  SELECTION_CHANGE_COMMAND,
+} from 'lexical';
 import { useLexicalComposerContext } from 'lexical-solid';
 import { createEffect, createSignal, JSX, onCleanup } from 'solid-js';
 import { Portal } from 'solid-js/web';
@@ -17,7 +27,8 @@ import {
 // Data attributes for block elements
 const ATTR_BLOCK_ID = 'data-block-id';
 const ATTR_HANDLE_FOR_BLOCK = 'data-handle-for-block';
-const ATTR_BLOCK_HIGHLIGHTED = 'data-block-highlighted';
+const ATTR_BLOCK_HOVERED = 'data-block-hovered';
+const ATTR_BLOCK_FOCUSED = 'data-block-focused';
 const ATTR_DRAG_SOURCE = 'data-dragging-node-key';
 const ATTR_DROP_TARGET = 'data-drop-target';
 const ATTR_DROP_POSITION = 'data-drop-position';
@@ -161,6 +172,34 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
     const root = editor.getRootElement();
     if (!root) return;
 
+    function applyFocusHighlight() {
+      editor.getEditorState().read(() => {
+        const selection = $getSelection();
+        root
+          ?.querySelectorAll(`[${ATTR_BLOCK_FOCUSED}="true"]`)
+          .forEach((el) => el.removeAttribute(ATTR_BLOCK_FOCUSED));
+        document
+          .querySelectorAll(`[${ATTR_HANDLE_FOR_BLOCK}][${ATTR_BLOCK_FOCUSED}="true"]`)
+          .forEach((el) => el.removeAttribute(ATTR_BLOCK_FOCUSED));
+
+        if ($isRangeSelection(selection)) {
+          const anchorNode = selection.anchor.getNode();
+          const key = anchorNode.getKey() === 'root' ? null : anchorNode.getTopLevelElementOrThrow().getKey();
+          if (key) {
+            const el = root?.querySelector(`[${ATTR_BLOCK_ID}="${key}"]`);
+            if (el) {
+              el.setAttribute(ATTR_BLOCK_FOCUSED, 'true');
+              el.removeAttribute(ATTR_BLOCK_HOVERED);
+            }
+            const handleEl = document.querySelector(`[${ATTR_HANDLE_FOR_BLOCK}="${key}"]`);
+            if (handleEl) {
+              handleEl.setAttribute(ATTR_BLOCK_FOCUSED, 'true');
+            }
+          }
+        }
+      });
+    }
+
     function buildBlockMap() {
       editor.update(() => {
         const root = $getRoot();
@@ -198,6 +237,9 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
           return prev;
         });
       });
+
+      // Apply focus highlight now that block IDs are set
+      applyFocusHighlight();
     }
 
     function onMouseOver(e: MouseEvent) {
@@ -209,27 +251,30 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
           : blockOrHandle.getAttribute(ATTR_HANDLE_FOR_BLOCK);
 
         const blockElement = root?.querySelector(`[${ATTR_BLOCK_ID}="${blockId}"]`);
-        if (blockElement?.hasAttribute(ATTR_BLOCK_HIGHLIGHTED)) return;
+        if (blockElement?.hasAttribute(ATTR_BLOCK_HOVERED)) return;
       }
 
       document
-        .querySelectorAll(`[${ATTR_BLOCK_HIGHLIGHTED}="true"]`)
-        .forEach((element) => element.removeAttribute(ATTR_BLOCK_HIGHLIGHTED));
+        .querySelectorAll(`[${ATTR_BLOCK_HOVERED}="true"]`)
+        .forEach((element) => element.removeAttribute(ATTR_BLOCK_HOVERED));
 
       if (blockId) {
         const blockElement = root?.querySelector(`[${ATTR_BLOCK_ID}="${blockId}"]`);
         const handleElement = document.querySelector(`[${ATTR_HANDLE_FOR_BLOCK}="${blockId}"]`);
 
-        if (blockElement) blockElement.setAttribute(ATTR_BLOCK_HIGHLIGHTED, 'true');
-        if (handleElement) handleElement.setAttribute(ATTR_BLOCK_HIGHLIGHTED, 'true');
+        // Don't apply hover highlight on the focused block
+        if (blockElement && !blockElement.hasAttribute(ATTR_BLOCK_FOCUSED)) {
+          blockElement.setAttribute(ATTR_BLOCK_HOVERED, 'true');
+        }
+        if (handleElement) handleElement.setAttribute(ATTR_BLOCK_HOVERED, 'true');
       }
     }
 
     function onMouseOut(e: MouseEvent) {
       if (!(e.relatedTarget as HTMLElement)?.closest(BLOCK_OR_HANDLE_SELECTOR)) {
         document
-          .querySelectorAll(`[${ATTR_BLOCK_HIGHLIGHTED}="true"]`)
-          .forEach((element) => element.removeAttribute(ATTR_BLOCK_HIGHLIGHTED));
+          .querySelectorAll(`[${ATTR_BLOCK_HOVERED}="true"]`)
+          .forEach((element) => element.removeAttribute(ATTR_BLOCK_HOVERED));
       }
     }
 
@@ -319,6 +364,14 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
     const unregisterCommands = mergeRegister(
       editor.registerCommand(TRANSFORM_BLOCK_COMMAND, transformBlock, COMMAND_PRIORITY_EDITOR),
       editor.registerCommand(REORDER_BLOCK_COMMAND, reorderBlock, COMMAND_PRIORITY_EDITOR),
+      editor.registerCommand(
+        SELECTION_CHANGE_COMMAND,
+        () => {
+          applyFocusHighlight();
+          return false;
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
     );
 
     const removeUpdateListener = editor.registerUpdateListener(() => {

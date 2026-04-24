@@ -13,9 +13,24 @@ import { font } from './font.js';
 import { shadow } from './shadow.js';
 import { avatarSize, componentHeight, radius, size } from './size.js';
 import { space } from './space.js';
+import { zIndex } from './z-index.js';
 
 // Re-export all token objects
-export { animation, border, color, component, effect, font, shadow, size, radius, avatarSize, componentHeight, space };
+export {
+  animation,
+  border,
+  color,
+  component,
+  effect,
+  font,
+  shadow,
+  size,
+  radius,
+  avatarSize,
+  componentHeight,
+  space,
+  zIndex,
+};
 
 // Export token types
 export type { AnimationTransitionToken } from './animation.js';
@@ -47,6 +62,7 @@ export type {
 export type { ShadowToken, ShadowValue } from './shadow.js';
 export type { SizeToken, SizeValue, RadiusToken, RadiusValue, ComponentSize } from './size.js';
 export type { SpaceToken, SpaceValue } from './space.js';
+export type { ZIndexLayer, ZIndexValue } from './z-index.js';
 
 /**
  * Complete design token system.

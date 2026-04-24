@@ -94,6 +94,28 @@ export function resolveToggleLocalProp(value: { $toggleLocal: string }, context:
   };
 }
 
+/** Resolves $callLocal tokens: { $callLocal: "fieldName" } → event handler that calls the stored function */
+export function resolveCallLocalProp(value: { $callLocal: string }, context: Props): (...args: unknown[]) => void {
+  const localState = context.$local as Record<string, () => unknown> | undefined;
+  if (!localState) {
+    console.warn(`Schema $callLocal: no $localState in scope for "${value.$callLocal}"`);
+    return () => {};
+  }
+  const accessor = localState[value.$callLocal];
+  if (!accessor) {
+    console.warn(`Schema $callLocal: field "${value.$callLocal}" not declared in $localState`);
+    return () => {};
+  }
+  return (...args: unknown[]) => {
+    const fn = accessor();
+    if (typeof fn === 'function') {
+      fn(...args);
+    } else {
+      console.warn(`Schema $callLocal: field "${value.$callLocal}" is not a function (yet?)`);
+    }
+  };
+}
+
 // --- Validation token resolvers ---
 
 function getMeta(context: Props): LocalMetaMap | undefined {

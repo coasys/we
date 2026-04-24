@@ -157,6 +157,8 @@ function classifyPropType(typeText: string): string {
   if (t.includes('|') && extractAllowedValues(t)) return 'string';
   // Union containing 'string' → string
   if (t.includes('|') && t.split('|').some((p) => p.trim() === 'string')) return 'string';
+  // Named types that accept both strings and numbers (e.g. ZIndexValue)
+  if (t === 'ZIndexValue') return 'string|number';
   // Named types (e.g. ButtonVariant, SpaceValue) — all current enums are string-based
   if (/^[A-Z]/.test(t)) return 'string';
   return 'unknown';
@@ -477,7 +479,11 @@ function checkProps(
       if (expectedCategory && expectedCategory !== 'unknown' && !isDynamicRef) {
         const actualType = typeof propValue;
         if (actualType === 'string' || actualType === 'boolean' || actualType === 'number') {
-          if (actualType !== expectedCategory) {
+          const allowed =
+            expectedCategory === 'string|number'
+              ? actualType === 'string' || actualType === 'number'
+              : actualType === expectedCategory;
+          if (!allowed) {
             errors.push({
               path: propPath,
               message: `Prop "${propName}" on "${componentType}" expects ${expectedCategory}, got ${actualType}`,

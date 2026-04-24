@@ -494,6 +494,9 @@ importers:
       '@coasys/ad4m':
         specifier: file:../../../../ad4m/core
         version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@we/design-types':
+        specifier: workspace:*
+        version: link:../../design-system/types
       '@we/models':
         specifier: workspace:*
         version: link:../../models

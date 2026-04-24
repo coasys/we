@@ -62,7 +62,6 @@ Always use the correct prop names and value types.
 - PostCard
 
 @we/widgets
-- CreateSpaceModalWidget
 - SpaceSidebarWidget
 
 Native HTML elements (lowercase tags render directly without registry entries):

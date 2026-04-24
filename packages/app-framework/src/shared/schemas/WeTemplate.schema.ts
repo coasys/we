@@ -156,7 +156,7 @@ export const weTemplate: TemplateSchema = {
                   label: '$item.name',
                   avatar: { src: '$item.thumbnail', name: '$item.name' },
                   onClick: {
-                    $action: 'adamStore.navigate',
+                    $action: 'routeStore.navigate',
                     args: [
                       {
                         $concat: [
@@ -185,7 +185,7 @@ export const weTemplate: TemplateSchema = {
                   label: '$item.name',
                   avatar: { src: '$item.thumbnail', name: '$item.name' },
                   onClick: {
-                    $action: 'adamStore.navigate',
+                    $action: 'routeStore.navigate',
                     args: [
                       {
                         $concat: [

@@ -211,6 +211,7 @@ function createWindow() {
 
   // Show window only when content is ready
   mainWindow.once('ready-to-show', () => {
+    mainWindow.maximize();
     mainWindow.show();
   });
 

@@ -10,6 +10,7 @@ import {
   parseBorder,
   radiusKeys,
   tokenVar,
+  zIndexVar,
 } from '@we/design-utils';
 
 /**
@@ -90,7 +91,7 @@ function updateCustomVars(
   setProperty(el, `${prefix}right`, props.right);
   setProperty(el, `${prefix}bottom`, props.bottom);
   setProperty(el, `${prefix}left`, props.left);
-  setProperty(el, `${prefix}z-index`, props.zIndex?.toString());
+  setProperty(el, `${prefix}z-index`, zIndexVar(props.zIndex));
   setProperty(el, `${prefix}margin`, hasMargin ? getMarginValues(props) : undefined);
   setProperty(el, `${prefix}flex`, props.flex);
   setProperty(el, `${prefix}align-self`, props.alignSelf);

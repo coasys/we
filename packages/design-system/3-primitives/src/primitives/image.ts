@@ -1,7 +1,7 @@
 import { css, html, PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
-import { LayoutElement } from '../shared/design-system-element';
+import { LayoutVisualElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import { ImageFit, ImageLoading } from '../types';
 
@@ -60,7 +60,7 @@ const styles = css`
 `;
 
 @customElement('we-image')
-export default class Image extends LayoutElement {
+export default class Image extends LayoutVisualElement {
   static styles = [sharedStyles, styles];
 
   @property({ attribute: false }) src: string | File = '';

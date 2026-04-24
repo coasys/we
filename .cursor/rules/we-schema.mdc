@@ -193,13 +193,15 @@ Most @we/primitives also accept Design System Props (see next section for detail
 @we/primitives:
 - we-alert (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', dismissible: boolean = false
+- we-audio (LayoutVisualElement)
+  Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false
 - we-avatar (LayoutElement)
   Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
 - we-badge (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false
+  Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
@@ -209,7 +211,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (DesignSystemElement)
-  Props: orientation: 'horizontal' | 'vertical' = 'horizontal'
+  Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid'
 - we-drawer (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
 - we-file-upload (DesignSystemElement)
@@ -220,9 +222,9 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: columns: number = 1, minChildWidth: string = ''
 - we-icon (LayoutElement)
   Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular'
-- we-iframe (LayoutElement)
-  Props: src: string = '', title: string = 'Embedded content', allow: string = ''
-- we-image (LayoutElement)
+- we-iframe (LayoutVisualElement)
+  Props: src: string = '', title: string = 'Embedded content', allow: string = '', sandbox?: string | undefined
+- we-image (LayoutVisualElement)
   Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = ''
 - we-input (DesignSystemElement)
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
@@ -277,18 +279,66 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-tooltip (LayoutElement)
   Props: open: boolean = false, title: string = '', placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'top', tooltipEl: HTMLElement, triggerEl: HTMLElement, arrowEl: HTMLElement
+- we-video (LayoutVisualElement)
+  Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false
 
 @we/components:
-- BlockComposer
-  Props: post?: any, perspective?: PerspectiveProxy, onSave?: ((json: SerializedBlockNode) => void)
-- BlockRenderer
+- AudioDisplay
+  Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
+- AudioInput
+  Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- BlockComposer (DesignSystemElement)
+  Props: post?: any, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+- BlockRenderer (DesignSystemElement)
   Props: post?: any
-- ImageComponent
-  Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined, nodeKey: string
+- CalloutDisplay
+  Props: text: string | undefined, variant: string | undefined, icon: string | undefined
+- CalloutInput
+  Props: text: string | undefined, variant: string | undefined, icon: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- CodeDisplay
+  Props: code: string | undefined, language: string | undefined, title: string | undefined
+- CodeInput
+  Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- DividerDisplay
+  Props: style: "solid" | "dashed" | "dotted" | undefined
+- DividerInput
+  Props: style: DividerVariant | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- EmbedDisplay
+  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined
+- EmbedInput
+  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- EventDisplay
+  Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined
+- EventInput
+  Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- FileDisplay
+  Props: name: string | undefined, url: string | undefined, mimeType: string | undefined, size: number | undefined
+- FileInput
+  Props: name: string | undefined, url: string | undefined, mimeType: string | undefined, size: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
 - ImageDisplay
   Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined
 - ImageInput
   Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- LinkDisplay
+  Props: url: string | undefined, title: string | undefined, description: string | undefined, thumbnail: string | undefined
+- LinkInput
+  Props: url: string | undefined, title: string | undefined, description: string | undefined, thumbnail: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- LocationDisplay
+  Props: name: string | undefined, latitude: number | undefined, longitude: number | undefined, address: string | undefined
+- LocationInput
+  Props: name: string | undefined, latitude: number | undefined, longitude: number | undefined, address: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- TagDisplay
+  Props: name: string | undefined, color: string | undefined
+- TagInput
+  Props: name: string | undefined, color: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- TaskDisplay
+  Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined
+- TaskInput
+  Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+- VideoDisplay
+  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined
+- VideoInput
+  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
 - Accordion
   Props: children?: JSX.Element, renderContent?: ((item: AccordionItem, index: number) => JSX.Element), onChange?: ((openItems: string[]) => void), items?: AccordionItem[], multiple?: boolean, styles?: Record<string, string | number>
 - Breadcrumbs
@@ -298,15 +348,19 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
 - CircleButton
   Props: label: string, icon?: string, image?: string, onClick?: (() => void), class?: string, styles?: Record<string, string | number>
 - Column
-  Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexCrossAxis, ay?: FlexMainAxis
+  Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexCrossAxis, ay?: FlexMainAxis
 - Dialog
   Props: children?: JSX.Element, onConfirm?: (() => void), onCancel?: (() => void), open?: boolean, title?: string, description?: string, confirmLabel?: string, cancelLabel?: string, variant?: "default" | "danger", styles?: Record<string, string | number>
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
   Props: class?: string, styles?: Record<string, string | number>, placement?: Placement, triggerLabel?: string, triggerIcon?: string, items: SolidDropdownMenuEntry[]
 - EditableImage
-  Props: src?: string, alt?: string, fit?: "fill" | "none" | "cover" | "contain" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), class?: string, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, direction?: FlexDirection, ax?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", ay?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>
+  Props: src?: string, alt?: string, fit?: "fill" | "none" | "cover" | "contain" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), class?: string, aspect?: number, maxSize?: number, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, direction?: FlexDirection, ax?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", ay?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>
+- FlipCard
+  Props: front: { icon?: string; title: string; body: string; }, back: { icon?: string; body: string; }, height?: string, class?: string, styles?: Record<string, string | number>
 - IconLabelButton
   Props: icon: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
+- ImageCrop
+  Props: src: string, fileName?: string, aspect?: number, maxSize?: number, outputType?: string, quality?: number, onReady?: ((ref: ImageCropRef) => void)
 - List
   Props: children?: JSX.Element, renderItem?: ((item: ListItem, index: number) => JSX.Element), items?: ListItem[], ordered?: boolean, gap?: string, styles?: Record<string, string | number>
 - PostCard
@@ -314,7 +368,7 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
 - RerenderLog
   Props: location: string
 - Row
-  Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: number, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexMainAxis, ay?: FlexCrossAxis
+  Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexMainAxis, ay?: FlexCrossAxis
 - Stepper
   Props: onStepClick?: ((index: number) => void), steps?: StepperStep[], activeStep?: number, orientation?: "horizontal" | "vertical", styles?: Record<string, string | number>
 - Table
@@ -337,8 +391,6 @@ Includes template context header with fork/fresh actions and name+icon picker.
   Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, streamingContent?: string, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, onPickerConfirm?: ((name: string, icon: string) => void), onPickerCancel?: (() => void), mode?: "chat" | "code", schemaJson?: string, onModeChange?: ((mode: "chat" | "code") => void), onSchemaEdit?: ((json: string) => void), canUndo?: boolean, canRedo?: boolean, onUndo?: (() => void), onRedo?: (() => void), sessions?: SessionInfo[], activeSessionId?: string | null, onNewChat?: (() => void), onSwitchSession?: ((sessionId: string) => void), onDeleteSession?: ((sessionId: string) => void), operationLoading?: string | null
 - CollapsibleSidebar
   Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "fixed" | "absolute" | "static", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
-- CreateSpaceModalWidget
-  Props: adamClient: Ad4mClient | undefined, addNewSpace: (space: Space) => void, close: () => void, class?: string, style?: Record<string, string | number>
 - GraphWidget — 2D force-directed graph visualization using D3-force layout and Canvas rendering.
 Displays typed nodes (user, space, post) and edges (follows, member-of, etc.)
 with configurable styling, layout forces, and interaction handlers.
@@ -521,6 +573,8 @@ size: 'xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'
 
 space: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'
 
+zIndex: 'dropdown', 'sticky', 'modal', 'popover', 'toast', 'tooltip'
+
 ---
 
 ## Block & Entity Models
@@ -583,6 +637,7 @@ CodeBlock extends WeNode:
 
 CollectionBlock extends WeNode:
   Fields:
+  - editorState: Record<string, unknown> = null [we://editor_state]
   - type: string [we://type]
   - display: string [we://display]
   - direction: string [we://direction]
@@ -741,6 +796,7 @@ AdamStore:
   - bootState: string
   - passwordError: string | undefined
   - loginLoading: boolean
+  - creatingSpace: boolean (true while a new space is being created)
   - agentProfile: AgentProfile | null (the current agent profile with name, bio, images, etc.)
 - Actions:
   - navigate(to: string, options?): navigates to a route
@@ -820,6 +876,8 @@ AiStore:
   - panelMode: unknown
   - schemaJson: unknown
   - operationLoading: unknown
+  - canUndo: boolean (true when there are schema edits that can be undone)
+  - canRedo: boolean (true when there are undone schema edits that can be redone)
 - Actions:
   - handleSchemaPrompt(prompt: string): generates a schema from a prompt
   - sendMessage(): unknown
@@ -834,6 +892,8 @@ AiStore:
   - deleteSession(): unknown
   - setPanelMode(): unknown
   - onSchemaEdit(): unknown
+  - undo(): undoes the last schema edit
+  - redo(): redoes the last undone schema edit
 
 ---
 

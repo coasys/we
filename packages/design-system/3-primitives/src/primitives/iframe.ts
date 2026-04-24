@@ -1,7 +1,8 @@
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { ifDefined } from 'lit/directives/if-defined.js';
 
-import { LayoutElement } from '../shared/design-system-element';
+import { LayoutVisualElement } from '../shared/design-system-element';
 
 const CSS_STYLES = css`
   :host {
@@ -18,12 +19,13 @@ const CSS_STYLES = css`
 `;
 
 @customElement('we-iframe')
-export default class Iframe extends LayoutElement {
+export default class Iframe extends LayoutVisualElement {
   static styles = CSS_STYLES;
 
   @property({ type: String }) src = '';
   @property({ type: String }) title = 'Embedded content';
   @property({ type: String }) allow = '';
+  @property({ type: String }) sandbox?: string;
 
   private iframe?: HTMLIFrameElement;
 
@@ -47,6 +49,12 @@ export default class Iframe extends LayoutElement {
   }
 
   render() {
-    return html`<iframe src=${this.src} title=${this.title} allow=${this.allow} allowfullscreen></iframe>`;
+    return html`<iframe
+      src=${this.src}
+      title=${this.title}
+      allow=${this.allow}
+      sandbox=${ifDefined(this.sandbox)}
+      allowfullscreen
+    ></iframe>`;
   }
 }

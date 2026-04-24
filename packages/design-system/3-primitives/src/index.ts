@@ -1,4 +1,5 @@
 import './icons/register-bundled-icons';
+import './primitives/audio';
 import './primitives/avatar';
 import './primitives/badge';
 import './primitives/blockquote';
@@ -39,5 +40,6 @@ import './primitives/textarea';
 import './primitives/tooltip';
 import './primitives/tab';
 import './primitives/tabs';
+import './primitives/video';
 
-export { setIconResolver } from './primitives/icon';
+export { buildCdnUrl, setIconResolver } from './primitives/icon';

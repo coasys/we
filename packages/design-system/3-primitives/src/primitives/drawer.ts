@@ -23,7 +23,7 @@ const POSITION_CSS: Record<DrawerPosition, Record<string, string>> = {
 
 const styles = css`
   :host {
-    z-index: 1000;
+    z-index: var(--we-z-modal);
   }
 
   [part='backdrop'] {

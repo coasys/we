@@ -8,6 +8,7 @@ import type {
   RadiusValue,
   ShadowValue,
   SpaceValue,
+  ZIndexValue,
 } from '@we/tokens';
 
 export type ElementState = 'hover' | 'focus' | 'active' | 'disabled';
@@ -85,7 +86,7 @@ export interface DesignSystemProps {
   flex?: string;
   alignSelf?: string;
   overflow?: Overflow;
-  zIndex?: number;
+  zIndex?: ZIndexValue;
   position?: Position;
   top?: string;
   right?: string;

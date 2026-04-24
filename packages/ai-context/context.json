@@ -20,6 +20,49 @@
       ]
     },
     {
+      "tagName": "we-audio",
+      "className": "Audio",
+      "superclass": "LayoutVisualElement",
+      "ownProps": [
+        {
+          "name": "src",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "controls",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "preload",
+          "type": "'none' | 'metadata' | 'auto'",
+          "optional": false,
+          "default": "'metadata'"
+        },
+        {
+          "name": "autoplay",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "loop",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "muted",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        }
+      ]
+    },
+    {
       "tagName": "we-avatar",
       "className": "Avatar",
       "superclass": "LayoutElement",
@@ -139,6 +182,12 @@
         },
         {
           "name": "gradient",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "square",
           "type": "boolean",
           "optional": false,
           "default": "false"
@@ -273,6 +322,12 @@
           "type": "'horizontal' | 'vertical'",
           "optional": false,
           "default": "'horizontal'"
+        },
+        {
+          "name": "variant",
+          "type": "'solid' | 'dashed' | 'dotted'",
+          "optional": false,
+          "default": "'solid'"
         }
       ]
     },
@@ -415,7 +470,7 @@
     {
       "tagName": "we-iframe",
       "className": "Iframe",
-      "superclass": "LayoutElement",
+      "superclass": "LayoutVisualElement",
       "ownProps": [
         {
           "name": "src",
@@ -434,13 +489,18 @@
           "type": "string",
           "optional": false,
           "default": "''"
+        },
+        {
+          "name": "sandbox",
+          "type": "string | undefined",
+          "optional": true
         }
       ]
     },
     {
       "tagName": "we-image",
       "className": "Image",
-      "superclass": "LayoutElement",
+      "superclass": "LayoutVisualElement",
       "ownProps": [
         {
           "name": "src",
@@ -1360,11 +1420,137 @@
           "optional": false
         }
       ]
+    },
+    {
+      "tagName": "we-video",
+      "className": "Video",
+      "superclass": "LayoutVisualElement",
+      "ownProps": [
+        {
+          "name": "src",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "poster",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "controls",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "preload",
+          "type": "'none' | 'metadata' | 'auto'",
+          "optional": false,
+          "default": "'metadata'"
+        },
+        {
+          "name": "autoplay",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "loop",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "muted",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        }
+      ]
     }
   ],
   "components": [
     {
+      "name": "AudioDisplay",
+      "props": [
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "artist",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "audioUrl",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "duration",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "albumArt",
+          "type": "string | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "AudioInput",
+      "props": [
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "artist",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "audioUrl",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "duration",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "albumArt",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
       "name": "BlockComposer",
+      "superclass": "DesignSystemElement",
       "props": [
         {
           "name": "post",
@@ -1372,13 +1558,13 @@
           "optional": true
         },
         {
-          "name": "perspective",
-          "type": "PerspectiveProxy",
+          "name": "onSave",
+          "type": "((json: SerializedBlockNode) => void)",
           "optional": true
         },
         {
-          "name": "onSave",
-          "type": "((json: SerializedBlockNode) => void)",
+          "name": "onReady",
+          "type": "((api: { save: () => void; }) => void)",
           "optional": true
         }
       ],
@@ -1386,6 +1572,7 @@
     },
     {
       "name": "BlockRenderer",
+      "superclass": "DesignSystemElement",
       "props": [
         {
           "name": "post",
@@ -1396,31 +1583,372 @@
       "source": "components"
     },
     {
-      "name": "ImageComponent",
+      "name": "CalloutDisplay",
       "props": [
         {
-          "name": "src",
+          "name": "text",
           "type": "string | undefined",
           "optional": false
         },
         {
-          "name": "altText",
+          "name": "variant",
           "type": "string | undefined",
           "optional": false
         },
         {
-          "name": "width",
+          "name": "icon",
+          "type": "string | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "CalloutInput",
+      "props": [
+        {
+          "name": "text",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "variant",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "icon",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "CodeDisplay",
+      "props": [
+        {
+          "name": "code",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "language",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "CodeInput",
+      "props": [
+        {
+          "name": "code",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "language",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "DividerDisplay",
+      "props": [
+        {
+          "name": "style",
+          "type": "\"solid\" | \"dashed\" | \"dotted\" | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "DividerInput",
+      "props": [
+        {
+          "name": "style",
+          "type": "DividerVariant | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "EmbedDisplay",
+      "props": [
+        {
+          "name": "url",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "target",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "targetType",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "displayMode",
+          "type": "string | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "EmbedInput",
+      "props": [
+        {
+          "name": "url",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "target",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "targetType",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "displayMode",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "EventDisplay",
+      "props": [
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "description",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "startDate",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "endDate",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "location",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "allDay",
+          "type": "boolean | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "EventInput",
+      "props": [
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "description",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "startDate",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "endDate",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "location",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "allDay",
+          "type": "boolean | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "FileDisplay",
+      "props": [
+        {
+          "name": "name",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "url",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "mimeType",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "size",
+          "type": "number | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "FileInput",
+      "props": [
+        {
+          "name": "name",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "url",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "mimeType",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "size",
           "type": "number | undefined",
           "optional": false
         },
         {
-          "name": "height",
-          "type": "number | undefined",
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
           "optional": false
         },
         {
-          "name": "nodeKey",
-          "type": "string",
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
           "optional": false
         }
       ],
@@ -1473,6 +2001,341 @@
         {
           "name": "height",
           "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "LinkDisplay",
+      "props": [
+        {
+          "name": "url",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "description",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "thumbnail",
+          "type": "string | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "LinkInput",
+      "props": [
+        {
+          "name": "url",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "description",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "thumbnail",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "LocationDisplay",
+      "props": [
+        {
+          "name": "name",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "latitude",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "longitude",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "address",
+          "type": "string | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "LocationInput",
+      "props": [
+        {
+          "name": "name",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "latitude",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "longitude",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
+          "name": "address",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "TagDisplay",
+      "props": [
+        {
+          "name": "name",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "color",
+          "type": "string | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "TagInput",
+      "props": [
+        {
+          "name": "name",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "color",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "TaskDisplay",
+      "props": [
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "description",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "status",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "priority",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "dueDate",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "assignee",
+          "type": "string | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "TaskInput",
+      "props": [
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "description",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "status",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "priority",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "dueDate",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "assignee",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        },
+        {
+          "name": "onSelect",
+          "type": "(e: MouseEvent) => void",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "VideoDisplay",
+      "props": [
+        {
+          "name": "url",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "thumbnail",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "provider",
+          "type": "string | undefined",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "VideoInput",
+      "props": [
+        {
+          "name": "url",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "thumbnail",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "provider",
+          "type": "string | undefined",
           "optional": false
         },
         {
@@ -1807,7 +2670,7 @@
         },
         {
           "name": "zIndex",
-          "type": "number",
+          "type": "ZIndexValue",
           "optional": true
         },
         {
@@ -2115,6 +2978,16 @@
           "optional": true
         },
         {
+          "name": "aspect",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "maxSize",
+          "type": "number",
+          "optional": true
+        },
+        {
           "name": "bg",
           "type": "ColorValue",
           "optional": true
@@ -2311,7 +3184,7 @@
         },
         {
           "name": "zIndex",
-          "type": "number",
+          "type": "ZIndexValue",
           "optional": true
         },
         {
@@ -2478,6 +3351,37 @@
       "source": "components"
     },
     {
+      "name": "FlipCard",
+      "props": [
+        {
+          "name": "front",
+          "type": "{ icon?: string; title: string; body: string; }",
+          "optional": false
+        },
+        {
+          "name": "back",
+          "type": "{ icon?: string; body: string; }",
+          "optional": false
+        },
+        {
+          "name": "height",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "class",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "styles",
+          "type": "Record<string, string | number>",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
       "name": "IconLabelButton",
       "props": [
         {
@@ -2513,6 +3417,47 @@
         {
           "name": "styles",
           "type": "import(\"/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid\").MaybeAccessor<Record<string, string | number> | undefined>",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "ImageCrop",
+      "props": [
+        {
+          "name": "src",
+          "type": "string",
+          "optional": false
+        },
+        {
+          "name": "fileName",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "aspect",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "maxSize",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "outputType",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "quality",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "onReady",
+          "type": "((ref: ImageCropRef) => void)",
           "optional": true
         }
       ],
@@ -2786,7 +3731,7 @@
         },
         {
           "name": "zIndex",
-          "type": "number",
+          "type": "ZIndexValue",
           "optional": true
         },
         {
@@ -3472,37 +4417,6 @@
       "source": "widgets"
     },
     {
-      "name": "CreateSpaceModalWidget",
-      "props": [
-        {
-          "name": "adamClient",
-          "type": "Ad4mClient | undefined",
-          "optional": false
-        },
-        {
-          "name": "addNewSpace",
-          "type": "(space: Space) => void",
-          "optional": false
-        },
-        {
-          "name": "close",
-          "type": "() => void",
-          "optional": false
-        },
-        {
-          "name": "class",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "style",
-          "type": "Record<string, string | number>",
-          "optional": true
-        }
-      ],
-      "source": "widgets"
-    },
-    {
       "name": "GraphWidget",
       "description": "2D force-directed graph visualization using D3-force layout and Canvas rendering.\nDisplays typed nodes (user, space, post) and edges (follows, member-of, etc.)\nwith configurable styling, layout forces, and interaction handlers.",
       "props": [
@@ -3825,6 +4739,13 @@
       "className": "CollectionBlock",
       "extends": "WeNode",
       "fields": [
+        {
+          "name": "editorState",
+          "type": "Record<string, unknown>",
+          "predicate": "we://editor_state",
+          "required": false,
+          "default": "null"
+        },
         {
           "name": "type",
           "type": "string",
@@ -4740,6 +5661,18 @@
         "900": "3.25rem",
         "1000": "4rem"
       }
+    },
+    {
+      "name": "zIndex",
+      "type": "Record<ZIndexLayer, string>",
+      "values": {
+        "dropdown": "100",
+        "sticky": "200",
+        "modal": "300",
+        "popover": "400",
+        "toast": "500",
+        "tooltip": "600"
+      }
     }
   ],
   "storeEntries": [
@@ -4772,6 +5705,9 @@
           "type": "string"
         },
         "loginLoading": {
+          "type": "boolean"
+        },
+        "creatingSpace": {
           "type": "boolean"
         },
         "agentProfile": {
@@ -4934,6 +5870,12 @@
         },
         "operationLoading": {
           "type": "boolean"
+        },
+        "canUndo": {
+          "type": "boolean"
+        },
+        "canRedo": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -4949,7 +5891,9 @@
         "switchSession",
         "deleteSession",
         "setPanelMode",
-        "onSchemaEdit"
+        "onSchemaEdit",
+        "undo",
+        "redo"
       ]
     }
   ]

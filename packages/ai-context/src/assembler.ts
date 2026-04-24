@@ -75,7 +75,8 @@ function formatComponentRegistry(primitives: PrimitiveEntry[], components: Compo
     lines.push('@we/components:');
     for (const comp of comps) {
       const desc = comp.description ? ` — ${comp.description}` : '';
-      lines.push(`- ${comp.name}${desc}`);
+      const superHint = comp.superclass ? ` (${comp.superclass})` : '';
+      lines.push(`- ${comp.name}${superHint}${desc}`);
       if (comp.props.length > 0) {
         const propList = comp.props.map((p) => {
           const opt = p.optional ? '?' : '';
@@ -93,7 +94,8 @@ function formatComponentRegistry(primitives: PrimitiveEntry[], components: Compo
     lines.push('@we/widgets:');
     for (const w of widgets) {
       const desc = w.description ? ` — ${w.description}` : '';
-      lines.push(`- ${w.name}${desc}`);
+      const superHint = w.superclass ? ` (${w.superclass})` : '';
+      lines.push(`- ${w.name}${superHint}${desc}`);
       if (w.props.length > 0) {
         const propList = w.props.map((p) => {
           const opt = p.optional ? '?' : '';

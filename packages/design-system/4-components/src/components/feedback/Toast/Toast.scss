@@ -1,6 +1,6 @@
 .we-toast-container {
   position: fixed;
-  z-index: 9999;
+  z-index: var(--we-z-toast);
   display: flex;
   flex-direction: column;
   gap: var(--we-space-200);

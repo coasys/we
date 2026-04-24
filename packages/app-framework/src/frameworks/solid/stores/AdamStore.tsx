@@ -1,6 +1,5 @@
 import { Ad4mClient, Agent, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
 import { usePlatform } from '@shared/platform';
-import { useNavigate } from '@solidjs/router';
 import type { FileData } from '@we/models';
 import {
   AgentProfile,
@@ -19,9 +18,9 @@ import {
 } from '@we/models';
 import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
-export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
+import { useRouteStore } from './RouteStore';
 
-type NavigateFunction = ReturnType<typeof useNavigate>;
+export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 
 export interface AdamStore {
   // State
@@ -39,14 +38,11 @@ export interface AdamStore {
   rootPerspective: Accessor<PerspectiveProxy | null>;
   agentSettings: Accessor<AgentSettings | null>;
   agentProfile: Accessor<AgentProfile | null>;
-
-  // Setters
-  setNavigateFunction: (navigate: NavigateFunction) => void;
+  creatingSpace: Accessor<boolean>;
 
   // Actions
   login: (password: string) => Promise<void>;
   logout: () => Promise<void>;
-  navigate: (to: string, options?: Record<string, unknown>) => void;
   addNewSpace: (space: Space) => void;
   createSpace: (name: string, description: string, shared: boolean, imageFile?: File) => Promise<void>;
   removePerspective: (uuid: string) => Promise<void>;
@@ -62,13 +58,13 @@ const AdamContext = createContext<AdamStore>();
 
 export function AdamStoreProvider(props: ParentProps) {
   const platform = usePlatform();
+  const routeStore = useRouteStore();
 
   let sessionPassword = '';
 
   const [bootState, setBootState] = createSignal<BootState>('initialising');
   const [passwordError, setPasswordError] = createSignal(false);
   const [loginLoading, setLoginLoading] = createSignal(false);
-  const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
   const [adamClient, setAdamClient] = createSignal<Ad4mClient | undefined>(undefined);
   const [me, setMe] = createSignal<Agent | undefined>(undefined);
   const [ad4mPort, setAd4mPort] = createSignal<number | undefined>(undefined);
@@ -78,6 +74,7 @@ export function AdamStoreProvider(props: ParentProps) {
   const [agentProfile, setAgentProfile] = createSignal<AgentProfile | null>(null, { equals: false });
   const [allPerspectives, setAllPerspectives] = createSignal<PerspectiveProxy[]>([]);
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
+  const [creatingSpace, setCreatingSpace] = createSignal(false);
 
   // Derived: personal and shared spaces
   const personalSpaces = createMemo(() => mySpaces().filter((s) => s.visibility !== 'shared'));
@@ -150,7 +147,7 @@ export function AdamStoreProvider(props: ParentProps) {
       setBootState('ready');
 
       // Navigate to root route when ready
-      navigate('/');
+      routeStore.navigate('/');
     } catch (error) {
       console.error('AdamStore: initialiseStore error', error);
       setBootState('error');
@@ -300,7 +297,7 @@ export function AdamStoreProvider(props: ParentProps) {
       setBootState('ready');
 
       // Navigate to root route after successful login
-      navigate('/');
+      routeStore.navigate('/');
     } catch (err) {
       console.error('AdamStore: Agent unlock failed', err);
       setPasswordError(true);
@@ -336,6 +333,7 @@ export function AdamStoreProvider(props: ParentProps) {
     const client = adamClient();
     if (!client) return;
 
+    setCreatingSpace(true);
     try {
       // Create the perspective
       const spacePerspective = await client.perspective.add(name);
@@ -388,9 +386,11 @@ export function AdamStoreProvider(props: ParentProps) {
 
       // Update sidebar and navigate
       addNewSpace(space);
-      navigate(`/space/${space.url || space.uuid}`);
+      routeStore.navigate(`/space/${space.url || space.uuid}`);
     } catch (error) {
       console.error('AdamStore: createSpace error', error);
+    } finally {
+      setCreatingSpace(false);
     }
   }
 
@@ -405,15 +405,6 @@ export function AdamStoreProvider(props: ParentProps) {
     } catch (error) {
       console.error('AdamStore: removePerspective error', error);
     }
-  }
-
-  function navigate(to: string, options?: Record<string, unknown>) {
-    // Skip if already on target path
-    if (window.location.pathname === to) return;
-
-    const nav = navigateFunction();
-    if (nav) nav(to, options);
-    else console.warn('Navigate function not available yet');
   }
 
   createEffect(initialiseStore);
@@ -434,14 +425,11 @@ export function AdamStoreProvider(props: ParentProps) {
     rootPerspective,
     agentSettings,
     agentProfile,
-
-    // Setters
-    setNavigateFunction,
+    creatingSpace,
 
     // Actions
     login,
     logout,
-    navigate,
     addNewSpace,
     createSpace,
     removePerspective,

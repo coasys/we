@@ -1,5 +1,5 @@
 // Templates
-export { defaultTemplate } from './DefaultTemplate.schema';
+export { defaultTemplate } from './DefaultTemplate';
 export { twitterTemplate } from './TwitterTemplate.schema';
 export { weTemplate } from './WeTemplate.schema';
 
@@ -7,6 +7,7 @@ export { weTemplate } from './WeTemplate.schema';
 export {
   bootScreen,
   createTestStore,
+  landingPageTemplate,
   profileTemplate,
   schemaTestsTemplate,
   schemaMutationActions,

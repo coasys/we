@@ -131,6 +131,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
         onClick={() => handleItemClick(getItem())}
         disabled={isDisabled()}
         height="auto"
+        size="lg"
         p={props.itemPadding ?? '300'}
         ax="start"
         direction={side() === 'left' ? 'row' : 'row-reverse'}

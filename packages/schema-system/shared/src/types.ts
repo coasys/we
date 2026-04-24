@@ -94,7 +94,7 @@ export type QueryToken = {
 };
 
 export type LocalStateField = {
-  type: 'string' | 'boolean' | 'number' | 'file';
+  type: 'string' | 'boolean' | 'number' | 'file' | 'function';
   initial: string | boolean | number | null;
   validate?: ValidationRule[];
 };
@@ -120,6 +120,7 @@ export type FormValidToken = { $formValid: string };
 export type TouchToken = { $touch: string };
 export type ResetLocalToken = { $resetLocal: string };
 export type ToggleLocalToken = { $toggleLocal: string };
+export type CallLocalToken = { $callLocal: string };
 
 /** Descriptor returned by the shared resolver — pure data, no framework effects */
 export type QueryDescriptor = {
@@ -153,4 +154,5 @@ export type OperatorToken =
   | FormValidToken
   | TouchToken
   | ResetLocalToken
-  | ToggleLocalToken;
+  | ToggleLocalToken
+  | CallLocalToken;

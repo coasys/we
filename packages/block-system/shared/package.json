@@ -15,6 +15,7 @@
     }
   },
   "dependencies": {
+    "@we/design-types": "workspace:*",
     "@we/models": "workspace:*"
   },
   "peerDependencies": {

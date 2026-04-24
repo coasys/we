@@ -1,5 +1,6 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
 import { Ad4mModel, getPropertiesMetadata, LinkQuery, Literal } from '@coasys/ad4m';
+import type { CollectionBlock } from '@we/models';
 
 import { getBlockModel, getBlockRegistration } from './registry';
 import type { SerializedBlockNode } from './types';
@@ -137,7 +138,23 @@ export async function createBlocks(
       return block;
     }
 
-    return persist(node);
+    const root = await persist(node);
+
+    // Store the full Lexical serialized JSON as a file-storage blob on the
+    // root CollectionBlock for lossless roundtrip. The block tree (created
+    // above) continues to exist alongside it for queryability and interop.
+    if (root && 'editorState' in root) {
+      const jsonStr = JSON.stringify(node);
+      const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
+      (root as CollectionBlock).editorState = {
+        data_base64: base64,
+        name: 'editor-state.json',
+        file_type: 'application/json',
+      } as unknown as Record<string, unknown>;
+      await root.save(tx.batchId);
+    }
+
+    return root;
   });
 }
 
@@ -197,4 +214,130 @@ export async function loadBlocks(perspective: PerspectiveProxy, rootUri: string)
   }
 
   return loadNode(rootUri);
+}
+
+// ---------------------------------------------------------------------------
+// Fallback: reconstruct Lexical JSON from an AD4M block tree
+// ---------------------------------------------------------------------------
+
+/** Lexical paragraph/heading/quote types that contain inline text runs */
+const TEXT_CONTAINER_TYPES = new Set(['paragraph', 'heading', 'quote', 'listitem']);
+
+/** Properties added by AD4M that aren't part of Lexical's JSON format */
+const AD4M_ONLY_PROPS = new Set([
+  'id',
+  'children',
+  'author',
+  'createdAt',
+  'updatedAt',
+  'display',
+  'columns',
+  'gap',
+  'textStyle',
+  'editorState',
+  'comments',
+  'reactions',
+]);
+
+/**
+ * Convert a loaded block model (from `loadBlocks`) into Lexical-compatible
+ * serialized JSON. This is the **lossy fallback** used when the root
+ * CollectionBlock has no `editorState` blob (e.g. cross-community content,
+ * or data created before blob storage was added).
+ *
+ * Inline text formatting (bold/italic/underline) is reduced to a single
+ * format value per paragraph — span-level detail is lost because
+ * `extractInlineText` merges all inline children at save time.
+ */
+function blockToLexical(block: Record<string, unknown>): Record<string, unknown> {
+  const node: Record<string, unknown> = {};
+
+  for (const key of Object.keys(block)) {
+    if (key.startsWith('_') || AD4M_ONLY_PROPS.has(key)) continue;
+    const val = block[key];
+    if (Array.isArray(val) && val.length === 0) continue;
+    if (val !== undefined && val !== null) node[key] = val;
+  }
+
+  const blockType = node.type as string;
+  const blockText = block.text as string | undefined;
+
+  if (TEXT_CONTAINER_TYPES.has(blockType) && blockText) {
+    node.children = [
+      {
+        type: 'text',
+        text: blockText,
+        detail: 0,
+        format: (block.textFormat as number) || 0,
+        mode: 'normal',
+        style: (block.textStyle as string) || '',
+        version: 1,
+      },
+    ];
+    delete node.text;
+    delete node.textFormat;
+
+    if (blockType === 'listitem') {
+      delete node.listType;
+      delete node.tag;
+      delete node.start;
+      node.value = (block.start as number) || 1;
+    }
+  } else {
+    const loadedChildren = (block as Record<string, unknown>)._loadedChildren;
+    if (Array.isArray(loadedChildren) && loadedChildren.length) {
+      const converted = loadedChildren.map(blockToLexical);
+      node.children = groupListItems(converted);
+    } else if (!node.children) {
+      node.children = [];
+    }
+  }
+
+  return node;
+}
+
+/**
+ * Group consecutive listitem nodes into Lexical list wrapper nodes.
+ * e.g. [paragraph, listitem, listitem, paragraph] →
+ *      [paragraph, list{children:[listitem, listitem]}, paragraph]
+ */
+function groupListItems(nodes: Record<string, unknown>[]): Record<string, unknown>[] {
+  const result: Record<string, unknown>[] = [];
+  let currentList: Record<string, unknown> | null = null;
+
+  for (const node of nodes) {
+    if (node.type === 'listitem') {
+      if (!currentList) {
+        currentList = {
+          type: 'list',
+          listType: (node as Record<string, unknown>).listType || 'bullet',
+          tag: (node as Record<string, unknown>).tag || 'ul',
+          start: 1,
+          direction: (node as Record<string, unknown>).direction || 'ltr',
+          format: '',
+          indent: 0,
+          version: 1,
+          children: [],
+        };
+        result.push(currentList);
+      }
+      (currentList.children as Record<string, unknown>[]).push(node);
+    } else {
+      currentList = null;
+      result.push(node);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Best-effort conversion of a loaded AD4M block tree back to Lexical JSON.
+ *
+ * Used as a fallback when `editorState` blob is absent. The result is
+ * formatting-lossy (inline bold/italic spans collapsed to a single format
+ * per paragraph) but structurally correct.
+ */
+export function blocksToLexicalJSON(rootBlock: Ad4mModel): SerializedBlockNode {
+  return blockToLexical(rootBlock as unknown as Record<string, unknown>);
 }

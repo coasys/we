@@ -12,7 +12,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   ax: 'center',
   gap: '300',
-  p: '800',
+  p: '700',
   r: '500',
   border: '2px dashed var(--we-color-neutral-300)',
   color: 'neutral-500',
@@ -161,11 +161,16 @@ export default class FileUpload extends DesignSystemElement {
                 ${this._files.map(
                   (file, i) => html`
                     <div part="file-item">
-                      <we-icon name="file" size="14px"></we-icon>
+                      <we-icon name="file" size="sm"></we-icon>
                       <span>${file.name}</span>
-                      <button part="remove" aria-label="Remove file" @click=${() => this._removeFile(i)}>
-                        <we-icon name="x" size="14px"></we-icon>
-                      </button>
+                      <we-button
+                        part="remove"
+                        variant="secondary"
+                        aria-label="Remove file"
+                        @click=${() => this._removeFile(i)}
+                      >
+                        <we-icon name="x"></we-icon>
+                      </we-button>
                     </div>
                   `,
                 )}
