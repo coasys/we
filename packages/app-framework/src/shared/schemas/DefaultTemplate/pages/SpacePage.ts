@@ -7,6 +7,9 @@
 
 import type { RouteSchema } from '@we/schema-shared';
 
+import { createPostModal } from '../modals/CreatePostModal';
+import { createSignalTypeModal } from '../modals/CreateSignalTypeModal';
+
 export const spacePage: RouteSchema = {
   path: '/space/:spaceId',
   type: 'Column',
@@ -216,64 +219,7 @@ export const spacePage: RouteSchema = {
           type: '$if',
           props: {
             condition: { $local: 'createPostOpen' },
-            then: {
-              type: 'we-modal',
-              props: {
-                close: { $setLocal: 'createPostOpen', value: false },
-                maxWidth: '900px',
-                width: '100%',
-              },
-              children: [
-                { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create Post'] },
-                {
-                  type: 'Column',
-                  props: {
-                    width: '100%',
-                    bg: 'neutral-25',
-                    p: '600',
-                    pl: '1000',
-                    r: '400',
-                    overflow: 'auto',
-                  },
-                  children: [
-                    {
-                      type: 'BlockComposer',
-                      props: {
-                        onReady: { $setLocal: 'savePost', from: '$event.save' },
-                        onSave: [
-                          { $action: 'spaceStore.createPost', args: ['$arg'] },
-                          { $setLocal: 'createPostOpen', value: false },
-                        ],
-                      },
-                    },
-                  ],
-                },
-                {
-                  type: 'Row',
-                  props: { gap: '300', ax: 'end', mt: '200' },
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: {
-                        variant: 'ghost',
-                        text: 'Cancel',
-                        onClick: { $setLocal: 'createPostOpen', value: false },
-                      },
-                    },
-                    {
-                      type: 'we-button',
-                      props: {
-                        text: 'Post',
-                        bg: 'primary-500',
-                        color: 'neutral-0',
-                        height: '40px',
-                        onClick: { $callLocal: 'savePost' },
-                      },
-                    },
-                  ],
-                },
-              ],
-            },
+            then: createPostModal,
           },
         },
 
@@ -489,126 +435,7 @@ export const spacePage: RouteSchema = {
           type: '$if',
           props: {
             condition: { $local: 'createOpen' },
-            then: {
-              type: 'we-modal',
-              props: { close: { $setLocal: 'createOpen', value: false }, maxWidth: '500px', width: '100%' },
-              children: [
-                { type: 'we-text', props: { fontSize: '600', fontWeight: 'bold' }, children: ['New Signal Type'] },
-                {
-                  type: 'we-form-field',
-                  props: { label: 'Name' },
-                  children: [
-                    {
-                      type: 'we-input',
-                      props: {
-                        placeholder: 'e.g. Like',
-                        value: { $local: 'newName' },
-                        onInput: { $setLocal: 'newName', from: '$event.detail' },
-                      },
-                    },
-                  ],
-                },
-                {
-                  type: 'we-form-field',
-                  props: { label: 'Icon (emoji)' },
-                  children: [
-                    {
-                      type: 'we-input',
-                      props: {
-                        value: { $local: 'newIcon' },
-                        onInput: { $setLocal: 'newIcon', from: '$event.detail' },
-                      },
-                    },
-                  ],
-                },
-                {
-                  type: 'we-form-field',
-                  props: { label: 'Display' },
-                  children: [
-                    {
-                      type: 'we-select',
-                      props: {
-                        value: { $local: 'newDisplay' },
-                        onChange: { $setLocal: 'newDisplay', from: '$event.target.value' },
-                        options: [
-                          { label: 'Icon (toggle)', value: 'icon' },
-                          { label: 'Up / Down', value: 'vertical-icons' },
-                          { label: 'Star rating', value: 'horizontal-icons' },
-                          { label: 'Slider', value: 'slider' },
-                        ],
-                      },
-                    },
-                  ],
-                },
-                {
-                  type: 'we-form-field',
-                  props: { label: 'Aggregate' },
-                  children: [
-                    {
-                      type: 'we-select',
-                      props: {
-                        value: { $local: 'newAggregate' },
-                        onChange: { $setLocal: 'newAggregate', from: '$event.target.value' },
-                        options: [
-                          { label: 'Count', value: 'count' },
-                          { label: 'Sum', value: 'sum' },
-                          { label: 'Mean', value: 'mean' },
-                          { label: 'Median', value: 'median' },
-                        ],
-                      },
-                    },
-                  ],
-                },
-                // Live preview
-                {
-                  type: 'SignalControl',
-                  props: {
-                    signalType: {
-                      icon: { $local: 'newIcon' },
-                      display: { $local: 'newDisplay' },
-                      rangeMin: { $local: 'newRangeMin' },
-                      rangeMax: { $local: 'newRangeMax' },
-                    },
-                    aggregate: 0,
-                  },
-                },
-                {
-                  type: 'Row',
-                  props: { gap: '300', ax: 'end', mt: '200' },
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: { variant: 'ghost', text: 'Cancel', onClick: { $setLocal: 'createOpen', value: false } },
-                    },
-                    {
-                      type: 'we-button',
-                      props: {
-                        text: 'Create',
-                        bg: 'primary-500',
-                        color: 'neutral-0',
-                        height: '40px',
-                        onClick: [
-                          {
-                            $action: 'spaceStore.createSignalType',
-                            args: [
-                              {
-                                name: { $local: 'newName' },
-                                icon: { $local: 'newIcon' },
-                                display: { $local: 'newDisplay' },
-                                aggregate: { $local: 'newAggregate' },
-                                rangeMin: { $local: 'newRangeMin' },
-                                rangeMax: { $local: 'newRangeMax' },
-                              },
-                            ],
-                          },
-                          { $setLocal: 'createOpen', value: false },
-                        ],
-                      },
-                    },
-                  ],
-                },
-              ],
-            },
+            then: createSignalTypeModal,
           },
         },
       ],

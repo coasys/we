@@ -1,7 +1,7 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
-import { homePage } from './HomePage';
-import { spacePage } from './SpacePage';
+import { homePage } from './pages/HomePage';
+import { spacePage } from './pages/SpacePage';
 
 export const defaultTemplate: TemplateSchema = {
   meta: {
