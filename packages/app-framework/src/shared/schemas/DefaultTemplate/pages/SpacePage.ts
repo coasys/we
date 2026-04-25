@@ -274,7 +274,7 @@ export const spacePage: RouteSchema = {
                             {
                               type: 'SignalControl',
                               props: {
-                                signalType: { icon: '❤️', display: 'icon', rangeMin: 0, rangeMax: 1 },
+                                signalType: { icon: '❤️', mode: 'toggle', rangeMin: 0, rangeMax: 1 },
                                 myValue: '$post.$myLikeSignal.value',
                                 aggregate: '$post.$totalLikeCount',
                                 onSignal: { $action: 'spaceStore.upsertSignal', args: ['$post.id', 'like', '$arg'] },
@@ -362,10 +362,12 @@ export const spacePage: RouteSchema = {
         createOpen: { type: 'boolean', initial: false },
         newName: { type: 'string', initial: '' },
         newIcon: { type: 'string', initial: '❤️' },
-        newDisplay: { type: 'string', initial: 'icon' },
+        newIconSecondary: { type: 'string', initial: '' },
+        newMode: { type: 'string', initial: 'toggle' },
         newAggregate: { type: 'string', initial: 'count' },
         newRangeMin: { type: 'number', initial: 0 },
         newRangeMax: { type: 'number', initial: 1 },
+        newStep: { type: 'number', initial: 1 },
       },
       children: [
         // Header
@@ -409,7 +411,7 @@ export const spacePage: RouteSchema = {
                     {
                       type: 'we-text',
                       props: { fontSize: '300', color: 'neutral-400' },
-                      children: ['$signalType.display'],
+                      children: ['$signalType.mode'],
                     },
                   ],
                 },
@@ -418,7 +420,7 @@ export const spacePage: RouteSchema = {
                   props: {
                     signalType: {
                       icon: '$signalType.icon',
-                      display: '$signalType.display',
+                      mode: '$signalType.mode',
                       rangeMin: '$signalType.rangeMin',
                       rangeMax: '$signalType.rangeMax',
                     },

@@ -1,6 +1,6 @@
 import { Ad4mModel, Flag, Model, Property } from '@coasys/ad4m';
 
-export type SignalDisplay = 'icon' | 'vertical-icons' | 'horizontal-icons' | 'slider';
+export type SignalMode = 'toggle' | 'vote' | 'rating' | 'slider';
 export type SignalAggregate = 'count' | 'mean' | 'sum' | 'median';
 export type SignalSemantic = 'approval' | 'quality' | 'relevance' | 'agreement' | 'custom';
 
@@ -18,14 +18,20 @@ export class SignalType extends Ad4mModel {
   @Property({ through: 'we://icon' })
   icon: string = '';
 
+  @Property({ through: 'we://icon_secondary' })
+  iconSecondary: string = '';
+
+  @Property({ through: 'we://step' })
+  step: number = 1;
+
   @Property({ through: 'we://range_min' })
   rangeMin: number = 0;
 
   @Property({ through: 'we://range_max' })
   rangeMax: number = 1;
 
-  @Property({ through: 'we://display' })
-  display: SignalDisplay = 'icon';
+  @Property({ through: 'we://mode' })
+  mode: SignalMode = 'toggle';
 
   @Property({ through: 'we://aggregate' })
   aggregate: SignalAggregate = 'count';

@@ -468,6 +468,43 @@
       ]
     },
     {
+      "tagName": "we-icon-picker",
+      "className": "IconPicker",
+      "superclass": "DesignSystemElement",
+      "ownProps": [
+        {
+          "name": "value",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "disabled",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "size",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
+          "optional": false,
+          "default": "'md'"
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "optional": false,
+          "default": "'Pick icon'"
+        }
+      ]
+    },
+    {
       "tagName": "we-iframe",
       "className": "Iframe",
       "superclass": "LayoutVisualElement",
@@ -5151,6 +5188,19 @@
           "required": false
         },
         {
+          "name": "iconSecondary",
+          "type": "string",
+          "predicate": "we://icon_secondary",
+          "required": false
+        },
+        {
+          "name": "step",
+          "type": "number",
+          "predicate": "we://step",
+          "required": false,
+          "default": "1"
+        },
+        {
           "name": "rangeMin",
           "type": "number",
           "predicate": "we://range_min",
@@ -5164,11 +5214,11 @@
           "default": "1"
         },
         {
-          "name": "display",
-          "type": "SignalDisplay",
-          "predicate": "we://display",
+          "name": "mode",
+          "type": "SignalMode",
+          "predicate": "we://mode",
           "required": false,
-          "default": "'icon'"
+          "default": "'toggle'"
         },
         {
           "name": "aggregate",

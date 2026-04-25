@@ -10,7 +10,7 @@ export {
   Template,
   Theme,
 } from './entities';
-export type { SignalDisplay, SignalAggregate, SignalSemantic } from './entities';
+export type { SignalMode, SignalAggregate, SignalSemantic } from './entities';
 export {
   AudioBlock,
   CalloutBlock,

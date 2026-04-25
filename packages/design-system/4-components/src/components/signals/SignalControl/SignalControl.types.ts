@@ -1,11 +1,13 @@
-export type SignalDisplay = 'icon' | 'vertical-icons' | 'horizontal-icons' | 'slider';
+export type SignalMode = 'toggle' | 'vote' | 'rating' | 'slider';
 
 /** Structural subset of SignalType — any object with these fields is accepted */
 export interface SignalTypeData {
   icon: string;
+  iconSecondary?: string;
   rangeMin: number;
   rangeMax: number;
-  display: SignalDisplay;
+  step?: number;
+  mode: SignalMode;
 }
 
 export interface SignalControlProps {

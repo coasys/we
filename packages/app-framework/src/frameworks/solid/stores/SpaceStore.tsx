@@ -45,10 +45,12 @@ export interface SpaceStore {
   createSignalType: (config: {
     name: string;
     icon: string;
-    display: string;
+    iconSecondary?: string;
+    mode: string;
     aggregate: string;
     rangeMin: number;
     rangeMax: number;
+    step?: number;
   }) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
 }
@@ -184,10 +186,12 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function createSignalType(config: {
     name: string;
     icon: string;
-    display: string;
+    iconSecondary?: string;
+    mode: string;
     aggregate: string;
     rangeMin: number;
     rangeMax: number;
+    step?: number;
   }): Promise<void> {
     const p = perspective();
     if (!p) return;

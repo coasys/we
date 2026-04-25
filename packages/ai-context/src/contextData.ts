@@ -199,6 +199,18 @@ export const contextData: ContextData = {
       ],
     },
     {
+      tagName: 'we-icon-picker',
+      className: 'IconPicker',
+      superclass: 'DesignSystemElement',
+      ownProps: [
+        { name: 'value', type: 'string', optional: false, default: "''" },
+        { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
+        { name: 'name', type: 'string', optional: false, default: "''" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
+        { name: 'placeholder', type: 'string', optional: false, default: "'Pick icon'" },
+      ],
+    },
+    {
       tagName: 'we-iframe',
       className: 'Iframe',
       superclass: 'LayoutVisualElement',
@@ -1707,9 +1719,11 @@ export const contextData: ContextData = {
         { name: 'name', type: 'string', predicate: 'we://name', required: false },
         { name: 'description', type: 'string', predicate: 'we://description', required: false },
         { name: 'icon', type: 'string', predicate: 'we://icon', required: false },
+        { name: 'iconSecondary', type: 'string', predicate: 'we://icon_secondary', required: false },
+        { name: 'step', type: 'number', predicate: 'we://step', required: false, default: '1' },
         { name: 'rangeMin', type: 'number', predicate: 'we://range_min', required: false },
         { name: 'rangeMax', type: 'number', predicate: 'we://range_max', required: false, default: '1' },
-        { name: 'display', type: 'SignalDisplay', predicate: 'we://display', required: false, default: "'icon'" },
+        { name: 'mode', type: 'SignalMode', predicate: 'we://mode', required: false, default: "'toggle'" },
         {
           name: 'aggregate',
           type: 'SignalAggregate',

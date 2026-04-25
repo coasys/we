@@ -222,6 +222,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: columns: number = 1, minChildWidth: string = ''
 - we-icon (LayoutElement)
   Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular'
+- we-icon-picker (DesignSystemElement)
+  Props: value: string = '', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', placeholder: string = 'Pick icon'
 - we-iframe (LayoutVisualElement)
   Props: src: string = '', title: string = 'Embedded content', allow: string = '', sandbox?: string | undefined
 - we-image (LayoutVisualElement)
@@ -716,9 +718,11 @@ SignalType extends Ad4mModel:
   - name: string [we://name]
   - description: string [we://description]
   - icon: string [we://icon]
+  - iconSecondary: string [we://icon_secondary]
+  - step: number = 1 [we://step]
   - rangeMin: number [we://range_min]
   - rangeMax: number = 1 [we://range_max]
-  - display: SignalDisplay = 'icon' [we://display]
+  - mode: SignalMode = 'toggle' [we://mode]
   - aggregate: SignalAggregate = 'count' [we://aggregate]
   - semantic: SignalSemantic = 'custom' [we://semantic]
   - allowChange: boolean = true [we://allow_change]

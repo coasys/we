@@ -19,7 +19,7 @@ export function SignalControl(props: SignalControlProps) {
     <div class={`signal-control ${props.class || ''}`} style={props.styles}>
       <Switch>
         {/* ── icon ─────────────────────────────────────────────────────────── */}
-        <Match when={props.signalType.display === 'icon'}>
+        <Match when={props.signalType.mode === 'toggle'}>
           <div class="signal-control__icon">
             <we-button
               class={props.myValue ? 'is-active' : ''}
@@ -34,7 +34,7 @@ export function SignalControl(props: SignalControlProps) {
         </Match>
 
         {/* ── vertical-icons ───────────────────────────────────────────────── */}
-        <Match when={props.signalType.display === 'vertical-icons'}>
+        <Match when={props.signalType.mode === 'vote'}>
           <div class="signal-control__vertical">
             <we-button
               class={props.myValue !== null && props.myValue > 0 ? 'is-active' : ''}
@@ -44,7 +44,7 @@ export function SignalControl(props: SignalControlProps) {
                 props.onSignal(props.myValue !== null && props.myValue > 0 ? 0 : props.signalType.rangeMax)
               }
             >
-              <we-icon name="arrow-up" />
+              {renderIcon(props.signalType.icon)}
             </we-button>
             <span class="signal-control__count">{props.aggregate}</span>
             <we-button
@@ -55,21 +55,30 @@ export function SignalControl(props: SignalControlProps) {
                 props.onSignal(props.myValue !== null && props.myValue < 0 ? 0 : props.signalType.rangeMin)
               }
             >
-              <we-icon name="arrow-down" />
+              {renderIcon(props.signalType.iconSecondary || props.signalType.icon)}
             </we-button>
           </div>
         </Match>
 
-        {/* ── horizontal-icons ─────────────────────────────────────────────── */}
-        <Match when={props.signalType.display === 'horizontal-icons'}>
+        {/* ── rating ─────────────────────────────────────────────────────────── */}
+        <Match when={props.signalType.mode === 'rating'}>
           <div class="signal-control__horizontal">
-            <For each={Array.from({ length: Math.round(props.signalType.rangeMax) }, (_, i) => i + 1)}>
-              {(n) => (
+            <For
+              each={Array.from(
+                {
+                  length: Math.round(
+                    (props.signalType.rangeMax - props.signalType.rangeMin) / (props.signalType.step ?? 1),
+                  ),
+                },
+                (_, i) => props.signalType.rangeMin + (i + 1) * (props.signalType.step ?? 1),
+              )}
+            >
+              {(val) => (
                 <we-button
-                  class={props.myValue !== null && props.myValue >= n ? 'is-active' : ''}
+                  class={props.myValue !== null && props.myValue >= val ? 'is-active' : ''}
                   variant="ghost"
                   disabled={props.disabled}
-                  onClick={() => props.onSignal(n)}
+                  onClick={() => props.onSignal(val)}
                 >
                   {renderIcon(props.signalType.icon)}
                 </we-button>
@@ -80,7 +89,7 @@ export function SignalControl(props: SignalControlProps) {
         </Match>
 
         {/* ── slider ───────────────────────────────────────────────────────── */}
-        <Match when={props.signalType.display === 'slider'}>
+        <Match when={props.signalType.mode === 'slider'}>
           <div class="signal-control__slider">
             {renderIcon(props.signalType.icon)}
             <we-slider

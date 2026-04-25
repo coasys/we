@@ -58,7 +58,7 @@ export {
   SignalControl,
   type SignalControlProps,
   type SignalTypeData,
-  type SignalDisplay,
+  type SignalMode,
 } from '../../components/signals/SignalControl/SignalControl.solid';
 
 // Testing

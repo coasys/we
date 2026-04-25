@@ -6,25 +6,6 @@ import { Column, Row } from '@we/components/solid';
 
 import type { ChatMessage, ChatPanelProps } from './ChatPanel.types';
 
-const ICON_CHOICES = [
-  'cube',
-  'rocket-launch',
-  'gear',
-  'star',
-  'target',
-  'chat-circle',
-  'list-checks',
-  'palette',
-  'house',
-  'folder',
-  'bell',
-  'users',
-  'chart-bar',
-  'pencil-simple',
-  'music-note',
-  'camera',
-];
-
 export function ChatPanel(props: ChatPanelProps) {
   const side = () => props.side ?? 'right';
   const width = () => props.width ?? '400px';
@@ -252,35 +233,12 @@ export function ChatPanel(props: ChatPanelProps) {
             />
           </Column>
 
-          {/* Icon picker grid */}
+          {/* Icon picker */}
           <Column gap="100">
             <we-text fontSize="200" fontWeight="600" color="neutral-600">
               Icon
             </we-text>
-            <Row wrap gap="100">
-              <For each={ICON_CHOICES}>
-                {(iconName) => (
-                  <we-button
-                    variant="ghost"
-                    size="xs"
-                    r="sm"
-                    bg={pickerIcon() === iconName ? 'primary-50' : 'neutral-0'}
-                    onClick={() => setPickerIcon(iconName)}
-                    width="36px"
-                    height="36px"
-                    p="0"
-                    minWidth="unset"
-                    border={
-                      pickerIcon() === iconName
-                        ? `2px solid ${tokenVar('color', 'primary-500')}`
-                        : `1px solid ${tokenVar('color', 'ui-200')}`
-                    }
-                  >
-                    <we-icon name={iconName} size="sm" color="neutral-800" />
-                  </we-button>
-                )}
-              </For>
-            </Row>
+            <we-icon-picker value={pickerIcon()} size="sm" on:change={(e: CustomEvent) => setPickerIcon(e.detail)} />
           </Column>
 
           {/* Actions */}

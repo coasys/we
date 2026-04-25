@@ -19,52 +19,115 @@ export const createSignalTypeModal = {
     },
     {
       type: 'we-form-field',
-      props: { label: 'Icon (emoji)' },
+      props: { label: 'Icon' },
       children: [
         {
-          type: 'we-input',
+          type: 'we-icon-picker',
           props: {
             value: { $local: 'newIcon' },
-            onInput: { $setLocal: 'newIcon', from: '$event.detail' },
+            onChange: { $setLocal: 'newIcon', from: '$event.detail' },
           },
         },
       ],
     },
     {
       type: 'we-form-field',
-      props: { label: 'Display' },
+      props: { label: 'Secondary Icon', helpText: 'Used as the negative icon in vote mode' },
+      children: [
+        {
+          type: 'we-icon-picker',
+          props: {
+            placeholder: 'Same as icon',
+            value: { $local: 'newIconSecondary' },
+            onChange: { $setLocal: 'newIconSecondary', from: '$event.detail' },
+          },
+        },
+      ],
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'Mode' },
       children: [
         {
           type: 'we-select',
           props: {
-            value: { $local: 'newDisplay' },
-            onChange: { $setLocal: 'newDisplay', from: '$event.target.value' },
+            value: { $local: 'newMode' },
+            onChange: { $setLocal: 'newMode', from: '$event.target.value' },
             options: [
-              { label: 'Icon (toggle)', value: 'icon' },
-              { label: 'Up / Down', value: 'vertical-icons' },
-              { label: 'Star rating', value: 'horizontal-icons' },
+              { label: 'Toggle', value: 'toggle' },
+              { label: 'Vote', value: 'vote' },
+              { label: 'Rating', value: 'rating' },
               { label: 'Slider', value: 'slider' },
             ],
           },
         },
       ],
     },
+    // {
+    //   type: 'we-form-field',
+    //   props: { label: 'Aggregate' },
+    //   children: [
+    //     {
+    //       type: 'we-select',
+    //       props: {
+    //         value: { $local: 'newAggregate' },
+    //         onChange: { $setLocal: 'newAggregate', from: '$event.target.value' },
+    //         options: [
+    //           { label: 'Count', value: 'count' },
+    //           { label: 'Sum', value: 'sum' },
+    //           { label: 'Mean', value: 'mean' },
+    //           { label: 'Median', value: 'median' },
+    //         ],
+    //       },
+    //     },
+    //   ],
+    // },
+
+    // Range & step
     {
-      type: 'we-form-field',
-      props: { label: 'Aggregate' },
+      type: 'Row',
+      props: { gap: '300' },
       children: [
         {
-          type: 'we-select',
-          props: {
-            value: { $local: 'newAggregate' },
-            onChange: { $setLocal: 'newAggregate', from: '$event.target.value' },
-            options: [
-              { label: 'Count', value: 'count' },
-              { label: 'Sum', value: 'sum' },
-              { label: 'Mean', value: 'mean' },
-              { label: 'Median', value: 'median' },
-            ],
-          },
+          type: 'we-form-field',
+          props: { label: 'Min' },
+          children: [
+            {
+              type: 'we-number-input',
+              props: {
+                value: { $local: 'newRangeMin' },
+                onChange: { $setLocal: 'newRangeMin', from: '$event.detail' },
+              },
+            },
+          ],
+        },
+        {
+          type: 'we-form-field',
+          props: { label: 'Max' },
+          children: [
+            {
+              type: 'we-number-input',
+              props: {
+                value: { $local: 'newRangeMax' },
+                onChange: { $setLocal: 'newRangeMax', from: '$event.detail' },
+              },
+            },
+          ],
+        },
+        {
+          type: 'we-form-field',
+          props: { label: 'Step' },
+          children: [
+            {
+              type: 'we-number-input',
+              props: {
+                value: { $local: 'newStep' },
+                min: 0.1,
+                step: 0.5,
+                onChange: { $setLocal: 'newStep', from: '$event.detail' },
+              },
+            },
+          ],
         },
       ],
     },
@@ -75,9 +138,11 @@ export const createSignalTypeModal = {
       props: {
         signalType: {
           icon: { $local: 'newIcon' },
-          display: { $local: 'newDisplay' },
+          iconSecondary: { $local: 'newIconSecondary' },
+          mode: { $local: 'newMode' },
           rangeMin: { $local: 'newRangeMin' },
           rangeMax: { $local: 'newRangeMax' },
+          step: { $local: 'newStep' },
         },
         aggregate: 0,
       },
@@ -105,10 +170,12 @@ export const createSignalTypeModal = {
                   {
                     name: { $local: 'newName' },
                     icon: { $local: 'newIcon' },
-                    display: { $local: 'newDisplay' },
+                    iconSecondary: { $local: 'newIconSecondary' },
+                    mode: { $local: 'newMode' },
                     aggregate: { $local: 'newAggregate' },
                     rangeMin: { $local: 'newRangeMin' },
                     rangeMax: { $local: 'newRangeMax' },
+                    step: { $local: 'newStep' },
                   },
                 ],
               },
