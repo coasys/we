@@ -23,6 +23,7 @@ import {
   PostCard,
   RerenderLog,
   Row,
+  SignalControl,
   Stepper,
   Table,
   Timeline,
@@ -35,7 +36,6 @@ import {
   CollapsibleSidebar,
   GraphWidget,
   mockGraphData,
-  SignalBar,
   SpaceSidebarWidget,
 } from '@we/widgets/solid';
 
@@ -80,7 +80,7 @@ export const componentRegistry: ComponentRegistry = {
   CollapsibleSidebar,
   CesiumGlobe: (props) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
   GraphWidget: (props) => <GraphWidget {...props} data={props.data || mockGraphData} />,
-  SignalBar,
+  SignalControl,
 
   // @we/block-solid
   BlockComposer,

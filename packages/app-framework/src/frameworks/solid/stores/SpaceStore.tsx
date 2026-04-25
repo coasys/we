@@ -1,8 +1,18 @@
-import { PerspectiveProxy } from '@coasys/ad4m';
+import { LinkQuery, PerspectiveProxy } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { useAdamStore, useRouteStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';
-import { blobToDataURL, CollectionBlock, FileData, ImageBlock, resizeImage, Space, TextBlock } from '@we/models';
+import {
+  blobToDataURL,
+  CollectionBlock,
+  FileData,
+  ImageBlock,
+  resizeImage,
+  Signal,
+  SignalType,
+  Space,
+  TextBlock,
+} from '@we/models';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 export interface SpaceStore {
@@ -32,6 +42,15 @@ export interface SpaceStore {
   toggleBackground: (backgroundName: string) => void;
   updateSpaceImage: (imageFile: File) => Promise<void>;
   updateSpaceCoverImage: (imageFile: File) => Promise<void>;
+  createSignalType: (config: {
+    name: string;
+    icon: string;
+    display: string;
+    aggregate: string;
+    rangeMin: number;
+    rangeMax: number;
+  }) => Promise<void>;
+  upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
 }
 
 const SpaceContext = createContext<SpaceStore>();
@@ -40,6 +59,8 @@ const SpaceContext = createContext<SpaceStore>();
 registerModel('CollectionBlock', CollectionBlock as any);
 registerModel('TextBlock', TextBlock as any);
 registerModel('ImageBlock', ImageBlock as any);
+registerModel('Signal', Signal as any);
+registerModel('SignalType', SignalType as any);
 
 export function SpaceStoreProvider(props: ParentProps) {
   const routeStore = useRouteStore();
@@ -112,6 +133,8 @@ export function SpaceStoreProvider(props: ParentProps) {
         CollectionBlock.register(spacePerspective),
         TextBlock.register(spacePerspective),
         ImageBlock.register(spacePerspective),
+        Signal.register(spacePerspective),
+        SignalType.register(spacePerspective),
       ]);
       await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
 
@@ -158,6 +181,45 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpace({ ...currentSpace, thumbnail: spaceModel.thumbnail });
   }
 
+  async function createSignalType(config: {
+    name: string;
+    icon: string;
+    display: string;
+    aggregate: string;
+    rangeMin: number;
+    rangeMax: number;
+  }): Promise<void> {
+    const p = perspective();
+    if (!p) return;
+    await SignalType.create(p, config);
+  }
+
+  async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
+    const p = perspective();
+    const myDid = adamStore.me()?.did;
+    if (!p || !myDid) return;
+
+    const nodeLinks = await p.get(new LinkQuery({ source: nodeId, predicate: 'we://has_signals' }));
+    const myLinks = nodeLinks.filter((l) => l.author === myDid);
+
+    for (const link of myLinks) {
+      const [existing] = await Signal.findAll(p, { where: { id: link.data.target, signalTypeId } });
+      if (existing) {
+        if (existing.value === value) {
+          // Toggle off — remove the parent link
+          await p.remove(link.data);
+        } else {
+          existing.value = value;
+          await existing.save();
+        }
+        return;
+      }
+    }
+
+    // No existing signal — create new, linked atomically via parent param
+    await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://has_signals' } });
+  }
+
   // Listen for route changes and get space data when spaceId changes
   createEffect(() => {
     const [page, pageId] = routeStore.currentPath().split('/').filter(Boolean);
@@ -194,6 +256,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     toggleBackground,
     updateSpaceImage,
     updateSpaceCoverImage,
+    createSignalType,
+    upsertSignal,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

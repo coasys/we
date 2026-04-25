@@ -109,6 +109,14 @@ export const spacePage: RouteSchema = {
             onClick: { $action: 'routeStore.navigate', args: ['./members'] },
           },
         },
+        {
+          type: 'we-tab',
+          props: {
+            key: 'signals',
+            label: 'Signals',
+            onClick: { $action: 'routeStore.navigate', args: ['./signals'] },
+          },
+        },
       ],
     },
 
@@ -281,17 +289,52 @@ export const spacePage: RouteSchema = {
                 {
                   type: '$each',
                   props: {
-                    items: { $query: { model: 'CollectionBlock', where: { type: 'root' }, subscribe: true } },
+                    items: {
+                      $query: {
+                        model: 'CollectionBlock',
+                        where: { type: 'root' },
+                        subscribe: true,
+                        include: {
+                          $totalLikeCount: { from: 'signals', where: { signalTypeId: 'like' }, count: true },
+                          $myLikeSignal: {
+                            from: 'signals',
+                            where: { signalTypeId: 'like', author: { $store: 'adamStore.me.did' } },
+                            limit: 1,
+                          },
+                        },
+                      },
+                    },
                     as: 'post',
                   },
                   children: [
                     {
                       type: 'Column',
-                      props: { width: '100%', bg: 'neutral-25', p: '600', r: '400' },
+                      props: { width: '100%', bg: 'neutral-25', r: '400', overflow: 'hidden' },
                       children: [
                         {
-                          type: 'BlockRenderer',
-                          props: { post: '$post.editorState' },
+                          type: 'Column',
+                          props: { p: '600' },
+                          children: [
+                            {
+                              type: 'BlockRenderer',
+                              props: { post: '$post.editorState' },
+                            },
+                          ],
+                        },
+                        {
+                          type: 'Row',
+                          props: { px: '600', py: '300', borderTop: '1px solid', borderColor: 'neutral-100' },
+                          children: [
+                            {
+                              type: 'SignalControl',
+                              props: {
+                                signalType: { icon: '❤️', display: 'icon', rangeMin: 0, rangeMax: 1 },
+                                myValue: '$post.$myLikeSignal.value',
+                                aggregate: '$post.$totalLikeCount',
+                                onSignal: { $action: 'spaceStore.upsertSignal', args: ['$post.id', 'like', '$arg'] },
+                              },
+                            },
+                          ],
                         },
                       ],
                     },
@@ -354,6 +397,213 @@ export const spacePage: RouteSchema = {
                         // },
                         // },
                       ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+
+    // ── Signals subroute ──
+    {
+      path: '/signals',
+      type: 'Column',
+      props: { gap: '400' },
+      $localState: {
+        createOpen: { type: 'boolean', initial: false },
+        newName: { type: 'string', initial: '' },
+        newIcon: { type: 'string', initial: '❤️' },
+        newDisplay: { type: 'string', initial: 'icon' },
+        newAggregate: { type: 'string', initial: 'count' },
+        newRangeMin: { type: 'number', initial: 0 },
+        newRangeMax: { type: 'number', initial: 1 },
+      },
+      children: [
+        // Header
+        {
+          type: 'Row',
+          props: { ax: 'between', ay: 'center' },
+          children: [
+            { type: 'we-text', props: { fontSize: '600', fontWeight: 'bold' }, children: ['Signal Types'] },
+            {
+              type: 'we-button',
+              props: {
+                text: 'Add Signal Type',
+                bg: 'primary-500',
+                color: 'neutral-0',
+                height: '40px',
+                width: 'fit-content',
+                onClick: { $setLocal: 'createOpen', value: true },
+              },
+            },
+          ],
+        },
+
+        // Existing signal types (live from $query)
+        {
+          type: '$each',
+          props: {
+            items: { $query: { model: 'SignalType', subscribe: true } },
+            as: 'signalType',
+          },
+          children: [
+            {
+              type: 'Row',
+              props: { p: '300', r: '300', bg: 'neutral-100', gap: '300', ay: 'center' },
+              children: [
+                { type: 'we-text', props: { fontSize: '500' }, children: ['$signalType.icon'] },
+                {
+                  type: 'Column',
+                  props: { gap: '50' },
+                  children: [
+                    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$signalType.name'] },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '300', color: 'neutral-400' },
+                      children: ['$signalType.display'],
+                    },
+                  ],
+                },
+                {
+                  type: 'SignalControl',
+                  props: {
+                    signalType: {
+                      icon: '$signalType.icon',
+                      display: '$signalType.display',
+                      rangeMin: '$signalType.rangeMin',
+                      rangeMax: '$signalType.rangeMax',
+                    },
+                    aggregate: 0,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+
+        // Create modal
+        {
+          type: '$if',
+          props: {
+            condition: { $local: 'createOpen' },
+            then: {
+              type: 'we-modal',
+              props: { close: { $setLocal: 'createOpen', value: false }, maxWidth: '500px', width: '100%' },
+              children: [
+                { type: 'we-text', props: { fontSize: '600', fontWeight: 'bold' }, children: ['New Signal Type'] },
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Name' },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        placeholder: 'e.g. Like',
+                        value: { $local: 'newName' },
+                        onInput: { $setLocal: 'newName', from: '$event.detail' },
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Icon (emoji)' },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        value: { $local: 'newIcon' },
+                        onInput: { $setLocal: 'newIcon', from: '$event.detail' },
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Display' },
+                  children: [
+                    {
+                      type: 'we-select',
+                      props: {
+                        value: { $local: 'newDisplay' },
+                        onChange: { $setLocal: 'newDisplay', from: '$event.target.value' },
+                        options: [
+                          { label: 'Icon (toggle)', value: 'icon' },
+                          { label: 'Up / Down', value: 'vertical-icons' },
+                          { label: 'Star rating', value: 'horizontal-icons' },
+                          { label: 'Slider', value: 'slider' },
+                        ],
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Aggregate' },
+                  children: [
+                    {
+                      type: 'we-select',
+                      props: {
+                        value: { $local: 'newAggregate' },
+                        onChange: { $setLocal: 'newAggregate', from: '$event.target.value' },
+                        options: [
+                          { label: 'Count', value: 'count' },
+                          { label: 'Sum', value: 'sum' },
+                          { label: 'Mean', value: 'mean' },
+                          { label: 'Median', value: 'median' },
+                        ],
+                      },
+                    },
+                  ],
+                },
+                // Live preview
+                {
+                  type: 'SignalControl',
+                  props: {
+                    signalType: {
+                      icon: { $local: 'newIcon' },
+                      display: { $local: 'newDisplay' },
+                      rangeMin: { $local: 'newRangeMin' },
+                      rangeMax: { $local: 'newRangeMax' },
+                    },
+                    aggregate: 0,
+                  },
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '300', ax: 'end', mt: '200' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: { variant: 'ghost', text: 'Cancel', onClick: { $setLocal: 'createOpen', value: false } },
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        text: 'Create',
+                        bg: 'primary-500',
+                        color: 'neutral-0',
+                        height: '40px',
+                        onClick: [
+                          {
+                            $action: 'spaceStore.createSignalType',
+                            args: [
+                              {
+                                name: { $local: 'newName' },
+                                icon: { $local: 'newIcon' },
+                                display: { $local: 'newDisplay' },
+                                aggregate: { $local: 'newAggregate' },
+                                rangeMin: { $local: 'newRangeMin' },
+                                rangeMax: { $local: 'newRangeMax' },
+                              },
+                            ],
+                          },
+                          { $setLocal: 'createOpen', value: false },
+                        ],
+                      },
                     },
                   ],
                 },

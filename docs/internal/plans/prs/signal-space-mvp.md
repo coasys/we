@@ -7,16 +7,17 @@
 ## Current State
 
 ### What already exists
-| Item | Location | Status |
-|------|----------|--------|
-| `Signal` model | `packages/models/src/entities/Signal.ts` | ✅ |
-| `SignalType` model | `packages/models/src/entities/SignalType.ts` | ✅ |
-| `WeNode.signals: string[]` | `packages/models/src/WeNode.ts` | ✅ (predicate `we://has_signals`) |
-| `SignalControl` component | `4-components/.../signals/SignalControl/` | ✅ |
-| `SignalBar` widget | `5-widgets/.../signals/SignalBar/` | ✅ (remove, no longer needed) |
-| `aggregateSignals` utility | `packages/models/src/utils/signalAggregate.ts` | ✅ |
-| `SpaceStore` | `packages/app-framework/.../stores/SpaceStore.tsx` | ✅ (no signal actions yet) |
-| `include` projection in AD4M `$query` | `ad4m/core` `feat/include-projections` branch | ✅ built + installed |
+
+| Item                                  | Location                                           | Status                            |
+| ------------------------------------- | -------------------------------------------------- | --------------------------------- |
+| `Signal` model                        | `packages/models/src/entities/Signal.ts`           | ✅                                |
+| `SignalType` model                    | `packages/models/src/entities/SignalType.ts`       | ✅                                |
+| `WeNode.signals: string[]`            | `packages/models/src/WeNode.ts`                    | ✅ (predicate `we://has_signals`) |
+| `SignalControl` component             | `4-components/.../signals/SignalControl/`          | ✅                                |
+| `SignalBar` widget                    | `5-widgets/.../signals/SignalBar/`                 | ✅ (remove, no longer needed)     |
+| `aggregateSignals` utility            | `packages/models/src/utils/signalAggregate.ts`     | ✅                                |
+| `SpaceStore`                          | `packages/app-framework/.../stores/SpaceStore.tsx` | ✅ (no signal actions yet)        |
+| `include` projection in AD4M `$query` | `ad4m/core` `feat/include-projections` branch      | ✅ built + installed              |
 
 ---
 
@@ -99,12 +100,16 @@ Since `createQuerySignal` already runs inside a Solid `createEffect`, any signal
 **File:** `packages/app-framework/src/frameworks/solid/stores/SpaceStore.tsx`
 
 Two additions:
+
 1. At module scope, alongside existing `registerModel` calls:
+
 ```ts
 registerModel('Signal', Signal as any);
 registerModel('SignalType', SignalType as any);
 ```
+
 2. Inside `getSpace()`, add to the parallel SHACL registration:
+
 ```ts
 await Promise.all([
   CollectionBlock.register(spacePerspective),
@@ -122,15 +127,21 @@ await Promise.all([
 **File:** `packages/app-framework/src/frameworks/solid/stores/SpaceStore.tsx`
 
 Store interface addition:
+
 ```ts
 createSignalType: (config: Partial<SignalType>) => Promise<void>;
 ```
 
 Implementation:
+
 ```ts
 async function createSignalType(config: {
-  name: string; icon: string; display: string;
-  aggregate: string; rangeMin: number; rangeMax: number;
+  name: string;
+  icon: string;
+  display: string;
+  aggregate: string;
+  rangeMin: number;
+  rangeMax: number;
 }): Promise<void> {
   const p = perspective();
   if (!p) return;
@@ -146,11 +157,13 @@ async function createSignalType(config: {
 **File:** `packages/app-framework/src/frameworks/solid/stores/SpaceStore.tsx`
 
 Store interface addition:
+
 ```ts
 upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
 ```
 
 Implementation:
+
 ```ts
 async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
   const p = perspective();
@@ -160,7 +173,7 @@ async function upsertSignal(nodeId: string, signalTypeId: string, value: number)
   // Find this user's existing signal on this node for this type
   // Signals are linked from the node via we://has_signals
   const nodeLinks = await p.get({ source: nodeId, predicate: 'we://has_signals' });
-  const myLinks = nodeLinks.filter(l => l.author === myDid);
+  const myLinks = nodeLinks.filter((l) => l.author === myDid);
 
   for (const link of myLinks) {
     // Load the Signal instance
@@ -178,11 +191,7 @@ async function upsertSignal(nodeId: string, signalTypeId: string, value: number)
   }
 
   // No existing signal — create new, linked to node atomically via parent param
-  await Signal.create(
-    p,
-    { signalTypeId, value },
-    { parent: { id: nodeId, predicate: 'we://has_signals' } },
-  );
+  await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://has_signals' } });
 }
 ```
 
@@ -193,6 +202,7 @@ async function upsertSignal(nodeId: string, signalTypeId: string, value: number)
 **File:** `packages/app-framework/src/shared/schemas/DefaultTemplate/SpacePage.ts`
 
 **4a.** Add a "Signals" tab button alongside About/Posts/Members:
+
 ```ts
 {
   type: 'we-tab',
@@ -205,6 +215,7 @@ async function upsertSignal(nodeId: string, signalTypeId: string, value: number)
 ```
 
 **4b.** Add a `/signals` subroute with create modal and list:
+
 ```ts
 {
   path: '/signals',
@@ -437,6 +448,7 @@ const builder = ModelClass.query(p, resolvedParams) as ...;
 ```
 
 With this in place, `include.where` can use `$store` tokens directly:
+
 ```ts
 $myLikeSignal: { from: 'signals', where: { signalTypeId: 'like', author: { $store: 'adamStore.me.did' } }, limit: 1 }
 ```
@@ -449,9 +461,9 @@ $myLikeSignal: { from: 'signals', where: { signalTypeId: 'like', author: { $stor
 
 2. **Concurrent devices / duplicate signals** — AD4M `p.add()` is not transactional. Two tabs could create duplicate `Signal` links. Accept for MVP; address later with last-writer-wins merge strategy.
 
-4. **`signalTypeId: 'like'` coupling** — hardcoding `'like'` in the schema ties the include projection to a specific SignalType identifier. Once the Signals management tab exists, this should be replaced with the persisted SignalType's base expression URI; or the SignalType can be seeded with a stable well-known ID.
+3. **`signalTypeId: 'like'` coupling** — hardcoding `'like'` in the schema ties the include projection to a specific SignalType identifier. Once the Signals management tab exists, this should be replaced with the persisted SignalType's base expression URI; or the SignalType can be seeded with a stable well-known ID.
 
-5. **SHACL registration delay** — `getSpace()` has a 500ms fixed delay after SHACL registration. Adding Signal + SignalType registration should be fine, but watch for race conditions if `$query` fires before schemas are registered.
+4. **SHACL registration delay** — `getSpace()` has a 500ms fixed delay after SHACL registration. Adding Signal + SignalType registration should be fine, but watch for race conditions if `$query` fires before schemas are registered.
 
 ---
 

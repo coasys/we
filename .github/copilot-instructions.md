@@ -397,19 +397,6 @@ Includes template context header with fork/fresh actions and name+icon picker.
 Displays typed nodes (user, space, post) and edges (follows, member-of, etc.)
 with configurable styling, layout forces, and interaction handlers.
   Props: data: GraphData, width?: string | number, height?: string | number, nodeStyle?: NodeStyleConfig, edgeStyle?: EdgeStyleConfig, layout?: LayoutConfig, interactions?: InteractionConfig
-- SignalBar — A row of signal controls (like, vote, rating, etc.) for a content node.
-
-Pass `signalTypes` to configure which signals to show. Each entry maps to
-one `SignalControl`. If a type has an `id` and `state` is provided, live
-signal counts + the current user's value are displayed.
-
-When `state` is absent (or the type has no `id`), the bar renders in
-preview mode: controls are visible and interactive but nothing persists.
-This is the expected state while prototyping with the AI.
-
-The outer container is responsible for fetching Signal instances and
-passing computed `state`; SignalBar itself is purely presentational.
-  Props: nodeId?: string, signalTypes: SignalBarTypeConfig[], state?: (SignalTypeState | null)[], onSignal?: ((type: SignalBarTypeConfig, value: number) => void), class?: string, styles?: Record<string, string | number>
 - SpaceSidebarWidget
   Props: name: string, description?: string, class?: string, style?: Record<string, string | number>
 

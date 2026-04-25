@@ -80,10 +80,10 @@ posts[0].$likeSignals; // Signal[]
 
 ```ts
 interface IncludeProjection {
-  from: string;                    // relation name declared on the model (must exist)
-  count?: true;                    // if set → result is a number, all other options ignored
+  from: string; // relation name declared on the model (must exist)
+  count?: true; // if set → result is a number, all other options ignored
   where?: Record<string, unknown>; // filter applied to the loaded relation items
-  limit?: number;                  // limit results; limit: 1 → returns T | null (not T[])
+  limit?: number; // limit results; limit: 1 → returns T | null (not T[])
 }
 ```
 
@@ -143,14 +143,14 @@ Note: `author` (and `timestamp`) are **special fields** on every `Ad4mModel` ins
 
 ## Semantics
 
-| Descriptor                 | Result type | Notes                                                 |
-| -------------------------- | ----------- | ----------------------------------------------------- |
-| `{ from, count: true }`      | `number`    | All other fields ignored when `count` is set                          |
-| `{ from }`                   | `T[]`       | Equivalent to `include: { from: true }` but named                     |
-| `{ from, where }`            | `T[]`       | Filtered subset                                                       |
-| `{ from, limit: 1 }`         | `T \| null` | Single-item lookup — unwrapped, not an array                          |
-| `{ from, limit: N }`         | `T[]`       | First N items                                                         |
-| `{ from, where, limit: 1 }`  | `T \| null` | Filtered single-item — the common "my signal" pattern                 |
+| Descriptor                  | Result type | Notes                                                 |
+| --------------------------- | ----------- | ----------------------------------------------------- |
+| `{ from, count: true }`     | `number`    | All other fields ignored when `count` is set          |
+| `{ from }`                  | `T[]`       | Equivalent to `include: { from: true }` but named     |
+| `{ from, where }`           | `T[]`       | Filtered subset                                       |
+| `{ from, limit: 1 }`        | `T \| null` | Single-item lookup — unwrapped, not an array          |
+| `{ from, limit: N }`        | `T[]`       | First N items                                         |
+| `{ from, where, limit: 1 }` | `T \| null` | Filtered single-item — the common "my signal" pattern |
 
 ---
 

@@ -13,14 +13,6 @@ export {
 // Panels
 export { ChatPanel, type ChatPanelProps, type ChatMessage, type SessionInfo } from '../../widgets/panels/ChatPanel';
 
-// Signals
-export {
-  SignalBar,
-  type SignalBarProps,
-  type SignalBarTypeConfig,
-  type SignalTypeState,
-} from '../../widgets/signals/SignalBar';
-
 // Cesium
 export { CesiumGlobe, type CesiumGlobeProps } from '../../widgets/cesium/CesiumGlobe/CesiumGlobe.solid';
 export type {

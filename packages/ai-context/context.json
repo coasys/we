@@ -4500,43 +4500,6 @@
       "source": "widgets"
     },
     {
-      "name": "SignalBar",
-      "description": "A row of signal controls (like, vote, rating, etc.) for a content node.\n\nPass `signalTypes` to configure which signals to show. Each entry maps to\none `SignalControl`. If a type has an `id` and `state` is provided, live\nsignal counts + the current user's value are displayed.\n\nWhen `state` is absent (or the type has no `id`), the bar renders in\npreview mode: controls are visible and interactive but nothing persists.\nThis is the expected state while prototyping with the AI.\n\nThe outer container is responsible for fetching Signal instances and\npassing computed `state`; SignalBar itself is purely presentational.",
-      "props": [
-        {
-          "name": "nodeId",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "signalTypes",
-          "type": "SignalBarTypeConfig[]",
-          "optional": false
-        },
-        {
-          "name": "state",
-          "type": "(SignalTypeState | null)[]",
-          "optional": true
-        },
-        {
-          "name": "onSignal",
-          "type": "((type: SignalBarTypeConfig, value: number) => void)",
-          "optional": true
-        },
-        {
-          "name": "class",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "styles",
-          "type": "Record<string, string | number>",
-          "optional": true
-        }
-      ],
-      "source": "widgets"
-    },
-    {
       "name": "SpaceSidebarWidget",
       "props": [
         {
@@ -5863,40 +5826,19 @@
         },
         "me": {
           "type": "object",
-          "properties": [
-            "did",
-            "perspective",
-            "directMessageLanguage"
-          ]
+          "properties": ["did", "perspective", "directMessageLanguage"]
         },
         "allPerspectives": {
           "type": "array",
-          "properties": [
-            "uuid",
-            "name",
-            "sharedUrl",
-            "neighbourhood"
-          ]
+          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
         },
         "personalSpaces": {
           "type": "array",
-          "properties": [
-            "uuid",
-            "name",
-            "description",
-            "url",
-            "visibility"
-          ]
+          "properties": ["uuid", "name", "description", "url", "visibility"]
         },
         "sharedSpaces": {
           "type": "array",
-          "properties": [
-            "uuid",
-            "name",
-            "description",
-            "url",
-            "visibility"
-          ]
+          "properties": ["uuid", "name", "description", "url", "visibility"]
         },
         "bootState": {
           "type": "string"
@@ -5912,15 +5854,7 @@
         },
         "agentProfile": {
           "type": "object",
-          "properties": [
-            "firstName",
-            "lastName",
-            "handle",
-            "bio",
-            "location",
-            "profileImage",
-            "coverImage"
-          ]
+          "properties": ["firstName", "lastName", "handle", "bio", "location", "profileImage", "coverImage"]
         }
       },
       "actions": [
@@ -5945,70 +5879,36 @@
           "type": "array"
         }
       },
-      "actions": [
-        "navigate"
-      ]
+      "actions": ["navigate"]
     },
     {
       "name": "themeStore",
       "state": {
         "themes": {
           "type": "array",
-          "properties": [
-            "id",
-            "name",
-            "icon"
-          ]
+          "properties": ["id", "name", "icon"]
         },
         "currentTheme": {
           "type": "object",
-          "properties": [
-            "id",
-            "name",
-            "icon"
-          ]
+          "properties": ["id", "name", "icon"]
         }
       },
-      "actions": [
-        "setThemes",
-        "setCurrentTheme"
-      ]
+      "actions": ["setThemes", "setCurrentTheme"]
     },
     {
       "name": "templateStore",
       "state": {
         "templates": {
           "type": "array",
-          "properties": [
-            "id",
-            "meta",
-            "type",
-            "props",
-            "children",
-            "routes"
-          ]
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
         "shellTemplates": {
           "type": "array",
-          "properties": [
-            "id",
-            "meta",
-            "type",
-            "props",
-            "children",
-            "routes"
-          ]
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
         "currentTemplate": {
           "type": "object",
-          "properties": [
-            "id",
-            "meta",
-            "type",
-            "props",
-            "children",
-            "routes"
-          ]
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
         "operationLoading": {
           "type": "boolean"
@@ -6032,64 +5932,32 @@
         },
         "perspective": {
           "type": "object",
-          "properties": [
-            "uuid",
-            "name",
-            "sharedUrl",
-            "neighbourhood"
-          ]
+          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
         },
         "space": {
           "type": "object",
-          "properties": [
-            "uuid",
-            "name",
-            "description",
-            "url",
-            "visibility",
-            "image",
-            "thumbnail"
-          ]
+          "properties": ["uuid", "name", "description", "url", "visibility", "image", "thumbnail"]
         },
         "posts": {
           "type": "array",
-          "properties": [
-            "id",
-            "author",
-            "timestamp",
-            "content"
-          ]
+          "properties": ["id", "author", "timestamp", "content"]
         },
         "loading": {
           "type": "boolean"
         }
       },
-      "actions": [
-        "setSpaceId",
-        "getSpace",
-        "getPosts",
-        "createPost",
-        "updateSpaceImage",
-        "updateSpaceCoverImage"
-      ]
+      "actions": ["setSpaceId", "getSpace", "getPosts", "createPost", "updateSpaceImage", "updateSpaceCoverImage"]
     },
     {
       "name": "aiStore",
       "state": {
         "models": {
           "type": "array",
-          "properties": [
-            "id",
-            "name"
-          ]
+          "properties": ["id", "name"]
         },
         "tasks": {
           "type": "array",
-          "properties": [
-            "id",
-            "status",
-            "result"
-          ]
+          "properties": ["id", "status", "result"]
         },
         "isOpen": {
           "type": "boolean"
