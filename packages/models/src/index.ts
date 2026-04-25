@@ -1,5 +1,15 @@
 export { WeNode } from './WeNode';
-export { AgentProfile, AgentSettings, ChatMessage, ChatSession, Signal, SignalType, Space, Template, Theme } from './entities';
+export {
+  AgentProfile,
+  AgentSettings,
+  ChatMessage,
+  ChatSession,
+  Signal,
+  SignalType,
+  Space,
+  Template,
+  Theme,
+} from './entities';
 export type { SignalDisplay, SignalAggregate, SignalSemantic } from './entities';
 export {
   AudioBlock,

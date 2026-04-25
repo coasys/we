@@ -369,6 +369,8 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: location: string
 - Row
   Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexMainAxis, ay?: FlexCrossAxis
+- SignalControl
+  Props: signalType: SignalTypeData, myValue: number | null, aggregate: number, onSignal: (value: number) => void, disabled?: boolean, class?: string, styles?: Record<string, string | number>
 - Stepper
   Props: onStepClick?: ((index: number) => void), steps?: StepperStep[], activeStep?: number, orientation?: "horizontal" | "vertical", styles?: Record<string, string | number>
 - Table
@@ -395,6 +397,19 @@ Includes template context header with fork/fresh actions and name+icon picker.
 Displays typed nodes (user, space, post) and edges (follows, member-of, etc.)
 with configurable styling, layout forces, and interaction handlers.
   Props: data: GraphData, width?: string | number, height?: string | number, nodeStyle?: NodeStyleConfig, edgeStyle?: EdgeStyleConfig, layout?: LayoutConfig, interactions?: InteractionConfig
+- SignalBar — A row of signal controls (like, vote, rating, etc.) for a content node.
+
+Pass `signalTypes` to configure which signals to show. Each entry maps to
+one `SignalControl`. If a type has an `id` and `state` is provided, live
+signal counts + the current user's value are displayed.
+
+When `state` is absent (or the type has no `id`), the bar renders in
+preview mode: controls are visible and interactive but nothing persists.
+This is the expected state while prototyping with the AI.
+
+The outer container is responsible for fetching Signal instances and
+passing computed `state`; SignalBar itself is purely presentational.
+  Props: nodeId?: string, signalTypes: SignalBarTypeConfig[], state?: (SignalTypeState | null)[], onSignal?: ((type: SignalBarTypeConfig, value: number) => void), class?: string, styles?: Record<string, string | number>
 - SpaceSidebarWidget
   Props: name: string, description?: string, class?: string, style?: Record<string, string | number>
 
@@ -704,6 +719,25 @@ LocationBlock extends WeNode:
   - address: string [we://address]
   - version: number [we://version]
 
+Signal extends Ad4mModel:
+  Fields:
+  - signalTypeId: string [we://signal_type_id]
+  - value: number [we://value]
+
+SignalType extends Ad4mModel:
+  Fields:
+  - name: string [we://name]
+  - description: string [we://description]
+  - icon: string [we://icon]
+  - rangeMin: number [we://range_min]
+  - rangeMax: number = 1 [we://range_max]
+  - display: SignalDisplay = 'icon' [we://display]
+  - aggregate: SignalAggregate = 'count' [we://aggregate]
+  - semantic: SignalSemantic = 'custom' [we://semantic]
+  - allowChange: boolean = true [we://allow_change]
+  - valueType: string = 'numeric' [we://signal_value_type]
+  - schemaVersion: number = 1 [we://schema_version]
+
 Space extends WeNode:
   Fields:
   - uuid: string [we://has_uuid]
@@ -776,7 +810,7 @@ VideoBlock extends WeNode:
 WeNode extends Ad4mModel:
   Relations:
   - comments: HasMany [we://has_comments]
-  - reactions: HasMany [we://has_reactions]
+  - signals: HasMany [we://has_signals]
 
 ---
 

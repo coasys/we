@@ -1,7 +1,8 @@
 export type * from './SignalBar.types';
 
-import { For } from 'solid-js';
 import { SignalControl } from '@we/components/solid';
+import { For } from 'solid-js';
+
 import type { SignalBarProps, SignalBarTypeConfig, SignalTypeState } from './SignalBar.types';
 
 const DEFAULT_STATE: SignalTypeState = { myValue: null, aggregate: 0 };

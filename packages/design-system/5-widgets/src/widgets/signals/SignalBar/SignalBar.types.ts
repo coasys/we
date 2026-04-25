@@ -31,9 +31,8 @@ export interface SignalTypeState {
  * preview mode: controls are visible and interactive but nothing persists.
  * This is the expected state while prototyping with the AI.
  *
- * The outer container (e.g. componentRegistry wrapper) is responsible for
- * fetching Signal instances and passing computed `state`; SignalBar itself
- * is purely presentational.
+ * The outer container is responsible for fetching Signal instances and
+ * passing computed `state`; SignalBar itself is purely presentational.
  *
  * @example
  * // Schema template — add a like button to posts:
