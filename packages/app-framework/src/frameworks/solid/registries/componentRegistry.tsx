@@ -39,6 +39,7 @@ import {
   SpaceSidebarWidget,
 } from '@we/widgets/solid';
 
+import Scene1 from '../components/3js/Scene1';
 import { BenchmarkTimer } from '../components/BenchmarkTimer';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,12 +78,8 @@ export const componentRegistry: ComponentRegistry = {
   ChatPanel,
   SpaceSidebarWidget,
   CollapsibleSidebar,
-  // Inject layerFactoryRegistry dependency
   CesiumGlobe: (props) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
-  // Inject mockGraphData dependency
   GraphWidget: (props) => <GraphWidget {...props} data={props.data || mockGraphData} />,
-
-  // @we/widgets — signals
   SignalBar,
 
   // @we/block-solid
@@ -92,6 +89,9 @@ export const componentRegistry: ComponentRegistry = {
   // Testing
   BenchmarkTimer,
   RerenderLog,
+
+  // 3D
+  Scene1,
 };
 
 // Ideas:
