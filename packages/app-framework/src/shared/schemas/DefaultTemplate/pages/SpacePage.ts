@@ -361,6 +361,7 @@ export const spacePage: RouteSchema = {
       $localState: {
         createOpen: { type: 'boolean', initial: false },
         newName: { type: 'string', initial: '' },
+        newDescription: { type: 'string', initial: '' },
         newIcon: { type: 'string', initial: '❤️' },
         newIconSecondary: { type: 'string', initial: '' },
         newMode: { type: 'string', initial: 'toggle' },

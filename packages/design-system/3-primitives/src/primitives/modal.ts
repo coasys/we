@@ -9,7 +9,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'neutral-0',
   r: '600',
   p: '900',
-  ax: 'center',
+  ax: 'stretch',
   ay: 'center',
   gap: '500',
   direction: 'column',

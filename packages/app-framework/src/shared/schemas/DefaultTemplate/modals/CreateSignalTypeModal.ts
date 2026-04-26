@@ -2,7 +2,14 @@ export const createSignalTypeModal = {
   type: 'we-modal',
   props: { close: { $setLocal: 'createOpen', value: false }, maxWidth: '500px', width: '100%' },
   children: [
-    { type: 'we-text', props: { fontSize: '600', fontWeight: 'bold' }, children: ['New Signal Type'] },
+    // Title
+    {
+      type: 'we-text',
+      props: { fontSize: '700', fontWeight: 'bold', textAlign: 'center' },
+      children: ['New Signal Type'],
+    },
+
+    // Name
     {
       type: 'we-form-field',
       props: { label: 'Name' },
@@ -17,140 +24,170 @@ export const createSignalTypeModal = {
         },
       ],
     },
-    {
-      type: 'we-form-field',
-      props: { label: 'Icon' },
-      children: [
-        {
-          type: 'we-icon-picker',
-          props: {
-            value: { $local: 'newIcon' },
-            onChange: { $setLocal: 'newIcon', from: '$event.detail' },
-          },
-        },
-      ],
-    },
-    {
-      type: 'we-form-field',
-      props: { label: 'Secondary Icon', helpText: 'Used as the negative icon in vote mode' },
-      children: [
-        {
-          type: 'we-icon-picker',
-          props: {
-            placeholder: 'Same as icon',
-            value: { $local: 'newIconSecondary' },
-            onChange: { $setLocal: 'newIconSecondary', from: '$event.detail' },
-          },
-        },
-      ],
-    },
-    {
-      type: 'we-form-field',
-      props: { label: 'Mode' },
-      children: [
-        {
-          type: 'we-select',
-          props: {
-            value: { $local: 'newMode' },
-            onChange: { $setLocal: 'newMode', from: '$event.target.value' },
-            options: [
-              { label: 'Toggle', value: 'toggle' },
-              { label: 'Vote', value: 'vote' },
-              { label: 'Rating', value: 'rating' },
-              { label: 'Slider', value: 'slider' },
-            ],
-          },
-        },
-      ],
-    },
-    // {
-    //   type: 'we-form-field',
-    //   props: { label: 'Aggregate' },
-    //   children: [
-    //     {
-    //       type: 'we-select',
-    //       props: {
-    //         value: { $local: 'newAggregate' },
-    //         onChange: { $setLocal: 'newAggregate', from: '$event.target.value' },
-    //         options: [
-    //           { label: 'Count', value: 'count' },
-    //           { label: 'Sum', value: 'sum' },
-    //           { label: 'Mean', value: 'mean' },
-    //           { label: 'Median', value: 'median' },
-    //         ],
-    //       },
-    //     },
-    //   ],
-    // },
 
-    // Range & step
+    // Description
+    {
+      type: 'we-form-field',
+      props: { label: 'Description' },
+      children: [
+        {
+          type: 'we-textarea',
+          props: {
+            placeholder: 'Description',
+            value: { $local: 'newDescription' },
+            onInput: { $setLocal: 'newDescription', from: '$event.detail' },
+          },
+        },
+      ],
+    },
+
+    // Mode & icon selectors
     {
       type: 'Row',
-      props: { gap: '300' },
+      props: { gap: '400', ax: 'center', wrap: true },
       children: [
+        // Mode selector
         {
           type: 'we-form-field',
-          props: { label: 'Min' },
+          props: { label: 'Mode' },
           children: [
             {
-              type: 'we-number-input',
+              type: 'we-select',
               props: {
-                value: { $local: 'newRangeMin' },
-                onChange: { $setLocal: 'newRangeMin', from: '$event.detail' },
+                value: { $local: 'newMode' },
+                onChange: { $setLocal: 'newMode', from: '$event.target.value' },
+                options: [
+                  { label: 'Toggle', value: 'toggle' },
+                  { label: 'Vote', value: 'vote' },
+                  { label: 'Rating', value: 'rating' },
+                  { label: 'Slider', value: 'slider' },
+                ],
               },
             },
           ],
         },
+
+        // Primary icon
         {
           type: 'we-form-field',
-          props: { label: 'Max' },
+          props: { label: 'Icon' },
           children: [
             {
-              type: 'we-number-input',
+              type: 'we-icon-picker',
               props: {
-                value: { $local: 'newRangeMax' },
-                onChange: { $setLocal: 'newRangeMax', from: '$event.detail' },
+                value: { $local: 'newIcon' },
+                onChange: { $setLocal: 'newIcon', from: '$event.detail' },
               },
             },
           ],
         },
+
+        // Secondary icon (only for vote mode)
         {
-          type: 'we-form-field',
-          props: { label: 'Step' },
-          children: [
-            {
-              type: 'we-number-input',
-              props: {
-                value: { $local: 'newStep' },
-                min: 0.1,
-                step: 0.5,
-                onChange: { $setLocal: 'newStep', from: '$event.detail' },
-              },
+          type: '$if',
+          props: {
+            condition: { $eq: [{ $local: 'newMode' }, 'vote'] },
+            then: {
+              type: 'we-form-field',
+              props: { label: 'Secondary Icon', helpText: 'Used as the negative icon in vote mode' },
+              children: [
+                {
+                  type: 'we-icon-picker',
+                  props: {
+                    placeholder: 'Same as icon',
+                    value: { $local: 'newIconSecondary' },
+                    onChange: { $setLocal: 'newIconSecondary', from: '$event.detail' },
+                  },
+                },
+              ],
             },
-          ],
+          },
         },
       ],
+    },
+
+    // Range & step inputs (only for rating and slider modes)
+    {
+      type: '$if',
+      props: {
+        condition: { $or: [{ $eq: [{ $local: 'newMode' }, 'rating'] }, { $eq: [{ $local: 'newMode' }, 'slider'] }] },
+        then: {
+          type: 'Row',
+          props: { gap: '300', ax: 'center' },
+          children: [
+            {
+              type: 'we-form-field',
+              props: { label: 'Min' },
+              children: [
+                {
+                  type: 'we-number-input',
+                  props: {
+                    value: { $local: 'newRangeMin' },
+                    onChange: { $setLocal: 'newRangeMin', from: '$event.detail' },
+                  },
+                },
+              ],
+            },
+            {
+              type: 'we-form-field',
+              props: { label: 'Max' },
+              children: [
+                {
+                  type: 'we-number-input',
+                  props: {
+                    value: { $local: 'newRangeMax' },
+                    onChange: { $setLocal: 'newRangeMax', from: '$event.detail' },
+                  },
+                },
+              ],
+            },
+            {
+              type: 'we-form-field',
+              props: { label: 'Step' },
+              children: [
+                {
+                  type: 'we-number-input',
+                  props: {
+                    value: { $local: 'newStep' },
+                    min: 0.1,
+                    step: 0.1,
+                    onChange: { $setLocal: 'newStep', from: '$event.detail' },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
     },
 
     // Live preview
     {
-      type: 'SignalControl',
-      props: {
-        signalType: {
-          icon: { $local: 'newIcon' },
-          iconSecondary: { $local: 'newIconSecondary' },
-          mode: { $local: 'newMode' },
-          rangeMin: { $local: 'newRangeMin' },
-          rangeMax: { $local: 'newRangeMax' },
-          step: { $local: 'newStep' },
+      type: 'Column',
+      props: { gap: '200', ax: 'center', border: '1px solid neutral-200', p: '300', r: '500' },
+      children: [
+        { type: 'we-text', props: { color: 'neutral-500' }, children: ['Preview'] },
+        {
+          type: 'SignalControl',
+          props: {
+            signalType: {
+              icon: { $local: 'newIcon' },
+              iconSecondary: { $local: 'newIconSecondary' },
+              mode: { $local: 'newMode' },
+              rangeMin: { $local: 'newRangeMin' },
+              rangeMax: { $local: 'newRangeMax' },
+              step: { $local: 'newStep' },
+            },
+            aggregate: 0,
+          },
         },
-        aggregate: 0,
-      },
+      ],
     },
 
+    // Action buttons
     {
       type: 'Row',
-      props: { gap: '300', ax: 'end', mt: '200' },
+      props: { gap: '300', ax: 'center', mt: '200' },
       children: [
         {
           type: 'we-button',

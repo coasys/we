@@ -94,8 +94,18 @@ export default class NumberInput extends DesignSystemElement {
     return Math.min(this.max, Math.max(this.min, val));
   }
 
+  private _stepPrecision(): number {
+    const s = String(this.step);
+    return s.includes('.') ? s.split('.')[1].length : 0;
+  }
+
+  private _round(val: number): number {
+    const dp = this._stepPrecision();
+    return parseFloat(val.toFixed(dp));
+  }
+
   private _emit(val: number) {
-    const clamped = this._clamp(val);
+    const clamped = this._clamp(this._round(val));
     this.value = clamped;
     this.dispatchEvent(new CustomEvent('change', { detail: clamped, bubbles: true, composed: true }));
   }

@@ -3,6 +3,7 @@ export type * from './SignalControl.types';
 import type { JSX } from 'solid-js';
 import { For, Match, Switch } from 'solid-js';
 
+import { Row } from '../../../frameworks/solid';
 import type { SignalControlProps } from './SignalControl.types';
 
 /** Renders an emoji inline or a design-system icon by name */
@@ -18,9 +19,9 @@ export function SignalControl(props: SignalControlProps) {
   return (
     <div class={`signal-control ${props.class || ''}`} style={props.styles}>
       <Switch>
-        {/* ── icon ─────────────────────────────────────────────────────────── */}
+        {/* Toggle */}
         <Match when={props.signalType.mode === 'toggle'}>
-          <div class="signal-control__icon">
+          <Row class="signal-control__toggle" ay="center" gap="300">
             <we-button
               class={props.myValue ? 'is-active' : ''}
               variant="ghost"
@@ -29,13 +30,13 @@ export function SignalControl(props: SignalControlProps) {
             >
               {renderIcon(props.signalType.icon)}
             </we-button>
-            <span class="signal-control__count">{props.aggregate}</span>
-          </div>
+            <we-text class="signal-control__count">{props.aggregate}</we-text>
+          </Row>
         </Match>
 
-        {/* ── vertical-icons ───────────────────────────────────────────────── */}
+        {/* Vote */}
         <Match when={props.signalType.mode === 'vote'}>
-          <div class="signal-control__vertical">
+          <Row class="signal-control__vote" ay="center" gap="300">
             <we-button
               class={props.myValue !== null && props.myValue > 0 ? 'is-active' : ''}
               variant="ghost"
@@ -46,7 +47,7 @@ export function SignalControl(props: SignalControlProps) {
             >
               {renderIcon(props.signalType.icon)}
             </we-button>
-            <span class="signal-control__count">{props.aggregate}</span>
+            <we-text class="signal-control__count">{props.aggregate}</we-text>
             <we-button
               class={props.myValue !== null && props.myValue < 0 ? 'is-active' : ''}
               variant="ghost"
@@ -57,12 +58,12 @@ export function SignalControl(props: SignalControlProps) {
             >
               {renderIcon(props.signalType.iconSecondary || props.signalType.icon)}
             </we-button>
-          </div>
+          </Row>
         </Match>
 
         {/* ── rating ─────────────────────────────────────────────────────────── */}
         <Match when={props.signalType.mode === 'rating'}>
-          <div class="signal-control__horizontal">
+          <Row class="signal-control__rating" ay="center" gap="300">
             <For
               each={Array.from(
                 {
@@ -84,23 +85,24 @@ export function SignalControl(props: SignalControlProps) {
                 </we-button>
               )}
             </For>
-            <span class="signal-control__count">{props.aggregate}</span>
-          </div>
+            <we-text class="signal-control__count">{props.aggregate}</we-text>
+          </Row>
         </Match>
 
         {/* ── slider ───────────────────────────────────────────────────────── */}
         <Match when={props.signalType.mode === 'slider'}>
-          <div class="signal-control__slider">
+          <Row class="signal-control__slider" ay="center" gap="300">
             {renderIcon(props.signalType.icon)}
             <we-slider
               min={props.signalType.rangeMin}
               max={props.signalType.rangeMax}
+              step={props.signalType.step ?? 1}
               value={props.myValue ?? props.signalType.rangeMin}
               disabled={props.disabled}
               onChange={(e: Event) => props.onSignal((e as CustomEvent<number>).detail)}
             />
-            <span class="signal-control__count">{props.aggregate}</span>
-          </div>
+            <we-text class="signal-control__count">{props.aggregate}</we-text>
+          </Row>
         </Match>
       </Switch>
     </div>
