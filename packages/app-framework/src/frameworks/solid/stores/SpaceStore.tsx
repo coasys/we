@@ -202,9 +202,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     for (const link of myLinks) {
       const [existing] = await Signal.findAll(p, { where: { id: link.data.target, signalTypeId } });
       if (existing) {
-        if (existing.value === value) {
-          // Toggle off — remove the parent link
-          await p.remove(link.data);
+        if (value === 0) {
+          // Toggle off — delete the signal node and its links
+          await existing.delete();
         } else {
           existing.value = value;
           await existing.save();
@@ -213,7 +213,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       }
     }
 
-    // No existing signal — create new, linked atomically via parent param
+    // No existing signal — create new (skip if value is 0)
+    if (value === 0) return;
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://has_signals' } });
   }
 

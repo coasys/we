@@ -13,10 +13,10 @@ export const postsList: SchemaNode = {
             where: { type: 'root' },
             subscribe: true,
             include: {
-              $totalLikeCount: { from: 'signals', where: { signalTypeId: 'like' }, count: true },
+              $totalLikeCount: { from: 'signals', where: { signalTypeId: 'ybkqrvtstqargzzuucqamwje' }, count: true },
               $myLikeSignal: {
                 from: 'signals',
-                where: { signalTypeId: 'like', author: { $store: 'adamStore.me.did' } },
+                where: { signalTypeId: 'ybkqrvtstqargzzuucqamwje', author: { $store: 'adamStore.me.did' } },
                 limit: 1,
               },
             },
@@ -27,11 +27,10 @@ export const postsList: SchemaNode = {
       children: [
         {
           type: 'Column',
-          props: { width: '100%', bg: 'neutral-25', r: '400', overflow: 'hidden' },
+          props: { width: '100%', bg: 'neutral-25', r: '400', p: '600' },
           children: [
             {
               type: 'Column',
-              props: { p: '600' },
               children: [
                 {
                   type: 'BlockRenderer',
@@ -41,7 +40,7 @@ export const postsList: SchemaNode = {
             },
             {
               type: 'Row',
-              props: { px: '600', py: '300', borderTop: '1px solid', borderColor: 'neutral-100' },
+              props: { mt: '400', ay: 'center', gap: '300' },
               children: [
                 {
                   type: 'SignalControl',
@@ -49,7 +48,10 @@ export const postsList: SchemaNode = {
                     signalType: { icon: '❤️', mode: 'toggle', rangeMin: 0, rangeMax: 1 },
                     myValue: '$post.$myLikeSignal.value',
                     aggregate: '$post.$totalLikeCount',
-                    onSignal: { $action: 'spaceStore.upsertSignal', args: ['$post.id', 'like', '$arg'] },
+                    onSignal: {
+                      $action: 'spaceStore.upsertSignal',
+                      args: ['$post.id', 'ybkqrvtstqargzzuucqamwje', '$arg'],
+                    },
                   },
                 },
               ],
