@@ -7,9 +7,9 @@
 
 import type { RouteSchema } from '@we/schema-shared';
 
-import { createSpaceModal } from '../modals/CreateSpaceModal';
+import { createSpaceModal } from './CreateSpaceModal';
 
-export const homePage: RouteSchema = {
+export const homeRoute: RouteSchema = {
   path: '/',
   type: 'Column',
   props: { gap: '600', maxWidth: '900px', mx: 'auto', width: '100%' },
