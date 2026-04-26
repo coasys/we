@@ -21,6 +21,11 @@ const VARIANT_DEFAULTS: Record<TextVariant, Partial<DesignSystemProps>> = {
 };
 
 const styles = css`
+  :host {
+    --we-text-host-display: block;
+    --we-text-display: block;
+  }
+
   :host([uppercase]) {
     --we-text-text-transform: uppercase;
   }

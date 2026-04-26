@@ -1,5 +1,16 @@
 export { WeNode } from './WeNode';
-export { AgentProfile, AgentSettings, ChatMessage, ChatSession, Space, Template, Theme } from './entities';
+export {
+  AgentProfile,
+  AgentSettings,
+  ChatMessage,
+  ChatSession,
+  Signal,
+  SignalType,
+  Space,
+  Template,
+  Theme,
+} from './entities';
+export type { SignalMode, SignalAggregate, SignalSemantic } from './entities';
 export {
   AudioBlock,
   CalloutBlock,
@@ -20,3 +31,5 @@ export {
 export { FILE_STORAGE_LANGUAGE } from './constants';
 export { dataURItoBlob, blobToDataURL, resizeImage } from './utils/imageHelpers';
 export type { FileData } from './utils/imageHelpers';
+export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';
+export { aggregateSignals } from './utils/signalAggregate';

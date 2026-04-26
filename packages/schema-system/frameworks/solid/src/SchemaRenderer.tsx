@@ -54,6 +54,40 @@ function isEventProp(key: string): boolean {
 }
 
 /**
+ * Deep-walk query params and evaluate any $store/$local tokens to their current values.
+ * Scoped to descriptor.params only — never touches the broader schema tree.
+ * Must be called inside a Solid createEffect so that signal reads register as
+ * reactive dependencies automatically, triggering re-runs when store values change.
+ */
+function deepResolveTokens(
+  params: unknown,
+  stores: Record<string, unknown>,
+  context: Record<string, unknown>,
+): unknown {
+  if (params === null || params === undefined) return params;
+  if (typeof params !== 'object') return params;
+  if (Array.isArray(params)) return params.map((item) => deepResolveTokens(item, stores, context));
+
+  const obj = params as Record<string, unknown>;
+  const hasTokenKey = Object.keys(obj).some((k) => k.startsWith('$'));
+  if (hasTokenKey) {
+    const resolved = resolveProp(obj, stores, context);
+    // Unwrap reactive accessors — calling them here registers deps in the enclosing createEffect
+    if (typeof resolved === 'function' && REACTIVE_ACCESSOR in (resolved as object)) {
+      return (resolved as () => unknown)();
+    }
+    return resolved;
+  }
+
+  // Plain object — recurse into values
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    result[k] = deepResolveTokens(v, stores, context);
+  }
+  return result;
+}
+
+/**
  * Compose an array of handler values into a single sequential handler.
  * Non-function entries (e.g. undefined from $if without else) are skipped.
  */
@@ -94,15 +128,20 @@ function createQuerySignal(
       return;
     }
 
+    const resolvedParams = deepResolveTokens(descriptor.params, stores as Record<string, unknown>, {}) as Record<
+      string,
+      unknown
+    >;
+
     if (descriptor.subscribe) {
-      const builder = ModelClass.query(p, descriptor.params) as {
+      const builder = ModelClass.query(p, resolvedParams) as {
         subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
         dispose: () => void;
       };
       builder.subscribe((results) => setItems(results)).then((initial) => setItems(initial));
       onCleanup(() => builder.dispose());
     } else {
-      (ModelClass.findAll(p, descriptor.params) as Promise<unknown[]>).then(setItems);
+      (ModelClass.findAll(p, resolvedParams) as Promise<unknown[]>).then(setItems);
     }
   });
 

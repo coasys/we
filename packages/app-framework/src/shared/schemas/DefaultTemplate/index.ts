@@ -1,7 +1,7 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
-import { homePage } from './HomePage';
-import { spacePage } from './SpacePage';
+import { homeRoute } from './routes/HomeRoute';
+import { spaceRoute } from './routes/SpaceRoute';
 
 export const defaultTemplate: TemplateSchema = {
   meta: {
@@ -18,5 +18,5 @@ export const defaultTemplate: TemplateSchema = {
       children: [{ type: '$routes' }],
     },
   ],
-  routes: [homePage, spacePage],
+  routes: [homeRoute, spaceRoute],
 };

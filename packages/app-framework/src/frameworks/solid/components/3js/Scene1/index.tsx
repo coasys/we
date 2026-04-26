@@ -6,8 +6,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-import wecubeModel from '@/assets/wecube-beveled.glb';
-
+import wecubeModel from '../../../../../shared/assets/wecube-beveled.glb';
 import styles from './index.module.scss';
 
 type MaterialType = 'gold' | 'white' | 'glass';

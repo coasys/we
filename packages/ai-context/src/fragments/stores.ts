@@ -80,10 +80,36 @@ export const storeEntries: StoreEntry[] = [
         type: 'object',
         properties: ['uuid', 'name', 'description', 'url', 'visibility', 'image', 'thumbnail'],
       },
-      posts: { type: 'array', properties: ['id', 'author', 'timestamp', 'content'] },
+      signalTypes: {
+        type: 'array',
+        properties: [
+          'id',
+          'name',
+          'slug',
+          'description',
+          'icon',
+          'iconSecondary',
+          'mode',
+          'rangeMin',
+          'rangeMax',
+          'step',
+        ],
+      },
+      signalTypesBySlug: {
+        type: 'object',
+      },
       loading: { type: 'boolean' },
     },
-    actions: ['setSpaceId', 'getSpace', 'getPosts', 'createPost', 'updateSpaceImage', 'updateSpaceCoverImage'],
+    actions: [
+      'setSpaceId',
+      'getSpace',
+      'createPost',
+      'updateSpaceImage',
+      'updateSpaceCoverImage',
+      'createSignalType',
+      'upsertSignal',
+      'deriveSlug',
+    ],
   },
   {
     name: 'aiStore',
@@ -203,13 +229,20 @@ function generateStoresText(entries: StoreEntry[]): string {
         spaceId: 'string (current space id)',
         perspective: 'PerspectiveProxy | null',
         space: 'Partial<Space> (current space object)',
-        posts: 'array of Post objects',
+        signalTypes: 'array of SignalType objects (community-created reaction/vote types)',
+        signalTypesBySlug:
+          'Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID',
         loading: 'boolean',
       },
       actions: {
         setSpaceId: '(id: string): sets the current space id',
         getSpace: '(): loads space data',
-        getPosts: '(perspective: PerspectiveProxy): loads posts for a space',
+        createPost: '(editorState: unknown): creates a new post',
+        createSignalType:
+          '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
+        upsertSignal:
+          '(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it',
+        deriveSlug: '(name: string) => string: converts a name to a URL-safe slug (lowercase, hyphens)',
       },
     },
     aiStore: {

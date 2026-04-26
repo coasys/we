@@ -17,7 +17,7 @@ const start = process.hrtime.bigint();
 await printBuildBanner(pkg);
 
 // Run the local build steps
-const child = spawn('pnpm', ['run', 'build:steps'], { stdio: 'inherit', shell: true });
+const child = spawn('pnpm', ['run', 'build:steps'], { stdio: 'inherit' });
 await new Promise((resolve, reject) => {
   child.on('close', (code) => {
     if (code === 0) resolve(null);

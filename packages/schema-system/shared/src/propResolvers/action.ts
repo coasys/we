@@ -61,6 +61,27 @@ function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
   return arg;
 }
 
+// Recursively unwrap reactive accessors inside plain objects and arrays so store
+// methods always receive plain values rather than signal/memo functions.
+// Only recurses into plain objects (constructor === Object) — class instances,
+// Dates, Files etc. are passed through as-is to avoid unintended spreading.
+function deepUnwrap(value: unknown): unknown {
+  if (typeof value === 'function' && REACTIVE_ACCESSOR in value) {
+    return deepUnwrap((value as unknown as () => unknown)());
+  }
+  if (Array.isArray(value)) {
+    return value.map(deepUnwrap);
+  }
+  if (value !== null && typeof value === 'object' && (value as object).constructor === Object) {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[k] = deepUnwrap(v);
+    }
+    return result;
+  }
+  return value;
+}
+
 // Resolves $action props: { $action: 'routeStore.navigate', args: ['/home'] }
 // Supports $arg token for extracting properties from callback arguments: args: ['$arg.id']
 export function resolveActionProp(
@@ -106,10 +127,8 @@ export function resolveActionProp(
       // Use finalArgs if any were defined in schema, otherwise use callArgs
       const argsToUse = resolvedArgs.length > 0 ? finalArgs : callArgs;
 
-      // Unwrap reactive accessors so store methods receive current values, not signal functions
-      const unwrappedArgs = argsToUse.map((a: unknown) =>
-        typeof a === 'function' && REACTIVE_ACCESSOR in a ? (a as unknown as () => unknown)() : a,
-      );
+      // Unwrap reactive accessors at all depths so store methods receive plain values
+      const unwrappedArgs = argsToUse.map(deepUnwrap);
       return method.apply(store, unwrappedArgs);
     };
   }

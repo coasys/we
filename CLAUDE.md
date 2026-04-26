@@ -222,6 +222,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: columns: number = 1, minChildWidth: string = ''
 - we-icon (LayoutElement)
   Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular'
+- we-icon-picker (DesignSystemElement)
+  Props: value: string = '', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', placeholder: string = 'Pick icon'
 - we-iframe (LayoutVisualElement)
   Props: src: string = '', title: string = 'Embedded content', allow: string = '', sandbox?: string | undefined
 - we-image (LayoutVisualElement)
@@ -241,6 +243,8 @@ Supports selected, active, and danger states.
   Props: selected: boolean = false, active: boolean = false, variant: 'default' | 'danger' = 'default', label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
+- we-number (DesignSystemElement) — Displays a number, optionally abbreviated (1 200 → 1.2K, 1 500 000 → 1.5M).
+  Props: value: number = 0, shorten: boolean = false, precision: number = 1, locale: string = 'en', formattedValue: string
 - we-number-input (DesignSystemElement)
   Props: value: number = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-pagination (DesignSystemElement)
@@ -277,6 +281,9 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false
 - we-textarea (DesignSystemElement)
   Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+- we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute
+when `relative` is enabled.
+  Props: value: string = '', relative: boolean = false, locale: string = 'en', dateStyle: Intl.DateTimeFormatOptions['dateStyle'] | null = null, timeStyle: Intl.DateTimeFormatOptions['timeStyle'] | null = null, weekday: Intl.DateTimeFormatOptions['weekday'] | null = null, year: Intl.DateTimeFormatOptions['year'] | null = null, month: Intl.DateTimeFormatOptions['month'] | null = null, day: Intl.DateTimeFormatOptions['day'] | null = null, hour: Intl.DateTimeFormatOptions['hour'] | null = null, minute: Intl.DateTimeFormatOptions['minute'] | null = null, second: Intl.DateTimeFormatOptions['second'] | null = null, timeZone: string | null = null, hourCycle: Intl.DateTimeFormatOptions['hourCycle'] | null = null, formattedTime: string
 - we-tooltip (LayoutElement)
   Props: open: boolean = false, title: string = '', placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'top', tooltipEl: HTMLElement, triggerEl: HTMLElement, arrowEl: HTMLElement
 - we-video (LayoutVisualElement)
@@ -369,6 +376,8 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: location: string
 - Row
   Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexMainAxis, ay?: FlexCrossAxis
+- SignalControl
+  Props: signalType: SignalTypeData, myValue?: number | null, aggregate?: number, onSignal?: ((value: number) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
 - Stepper
   Props: onStepClick?: ((index: number) => void), steps?: StepperStep[], activeStep?: number, orientation?: "horizontal" | "vertical", styles?: Record<string, string | number>
 - Table
@@ -704,6 +713,28 @@ LocationBlock extends WeNode:
   - address: string [we://address]
   - version: number [we://version]
 
+Signal extends Ad4mModel:
+  Fields:
+  - signalTypeId: string [we://signal_type_id]
+  - value: number [we://value]
+
+SignalType extends Ad4mModel:
+  Fields:
+  - name: string [we://name]
+  - slug: string [we://slug]
+  - description: string [we://description]
+  - icon: string [we://icon]
+  - iconSecondary: string [we://icon_secondary]
+  - step: number = 1 [we://step]
+  - rangeMin: number [we://range_min]
+  - rangeMax: number = 1 [we://range_max]
+  - mode: SignalMode = 'toggle' [we://mode]
+  - aggregate: SignalAggregate = 'count' [we://aggregate]
+  - semantic: SignalSemantic = 'custom' [we://semantic]
+  - allowChange: boolean = true [we://allow_change]
+  - valueType: string = 'numeric' [we://signal_value_type]
+  - schemaVersion: number = 1 [we://schema_version]
+
 Space extends WeNode:
   Fields:
   - uuid: string [we://has_uuid]
@@ -776,7 +807,7 @@ VideoBlock extends WeNode:
 WeNode extends Ad4mModel:
   Relations:
   - comments: HasMany [we://has_comments]
-  - reactions: HasMany [we://has_reactions]
+  - signals: HasMany → Signal [we://has_signals]
 
 ---
 
@@ -844,15 +875,18 @@ SpaceStore:
   - spaceId: string (current space id)
   - perspective: PerspectiveProxy | null
   - space: Partial<Space> (current space object)
-  - posts: array of Post objects
+  - signalTypes: array of SignalType objects (community-created reaction/vote types)
+  - signalTypesBySlug: Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID
   - loading: boolean
 - Actions:
   - setSpaceId(id: string): sets the current space id
   - getSpace(): loads space data
-  - getPosts(perspective: PerspectiveProxy): loads posts for a space
-  - createPost(): unknown
+  - createPost(editorState: unknown): creates a new post
   - updateSpaceImage(): unknown
   - updateSpaceCoverImage(): unknown
+  - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
+  - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
+  - deriveSlug(name: string) => string: converts a name to a URL-safe slug (lowercase, hyphens)
 
 AiStore:
 - State:
@@ -1038,6 +1072,77 @@ Boolean toggle (show/hide, expand/collapse):
     { "type": "$if", "props": { "condition": { "$local": "showDetails" }, "then": { "type": "we-text", "children": ["Details content here"] } } }
   ]
 }
+
+Signal types (community-specific reactions/votes):
+Signal types are created per-community by the user. Never hardcode signal type UUIDs in schemas.
+Instead reference them by slug through spaceStore.signalTypesBySlug.
+
+ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
+Then use that slug in the pattern below.
+
+Pattern — live wired SignalControl (inside a $each over a model with $query include):
+{
+  "type": "$each",
+  "props": {
+    "items": {
+      "$query": {
+        "model": "MyBlock",
+        "include": {
+          "$totalLikeCount": {
+            "from": "signals",
+            "where": { "signalTypeId": { "$store": "spaceStore.signalTypesBySlug.like.id" } },
+            "count": true
+          },
+          "$myLikeSignal": {
+            "from": "signals",
+            "where": {
+              "signalTypeId": { "$store": "spaceStore.signalTypesBySlug.like.id" },
+              "author": { "$store": "adamStore.me.did" }
+            },
+            "limit": 1
+          }
+        }
+      }
+    },
+    "as": "item"
+  },
+  "children": [
+    {
+      "type": "$if",
+      "props": {
+        "condition": { "$store": "spaceStore.signalTypesBySlug.like" },
+        "then": {
+          "type": "SignalControl",
+          "props": {
+            "signalType": { "$store": "spaceStore.signalTypesBySlug.like" },
+            "myValue": "$item.$myLikeSignal.value",
+            "aggregate": "$item.$totalLikeCount",
+            "onSignal": {
+              "$action": "spaceStore.upsertSignal",
+              "args": ["$item.id", { "$store": "spaceStore.signalTypesBySlug.like.id" }, "$arg"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}
+
+Notes:
+- The $if guard hides SignalControl if the community hasn't created a signal type with that slug.
+- Replace "like" with the user's slug throughout (in $store paths and args).
+- $query include adds $totalLikeCount and $myLikeSignal as computed properties on each item.
+- signalType prop accepts the full SignalType object (provides icon, mode, range to the UI component).
+
+Preview / mockup mode (static, no store wiring):
+{
+  "type": "SignalControl",
+  "props": {
+    "preview": true,
+    "signalType": { "icon": "❤️", "mode": "toggle", "rangeMin": 0, "rangeMax": 1 }
+  }
+}
+Use preview: true when sketching a layout without real data. Remove it (and add the full wiring above) when going live.
 
 ---
 

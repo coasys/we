@@ -1,9 +1,19 @@
-import { PerspectiveProxy } from '@coasys/ad4m';
+import { LinkQuery, PerspectiveProxy } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { useAdamStore, useRouteStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';
-import { blobToDataURL, CollectionBlock, FileData, ImageBlock, resizeImage, Space, TextBlock } from '@we/models';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  blobToDataURL,
+  CollectionBlock,
+  FileData,
+  ImageBlock,
+  resizeImage,
+  Signal,
+  SignalType,
+  Space,
+  TextBlock,
+} from '@we/models';
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 export interface SpaceStore {
   // State
@@ -11,6 +21,8 @@ export interface SpaceStore {
   perspective: Accessor<PerspectiveProxy | null>;
   space: Accessor<Partial<Space | null>>;
   loading: Accessor<boolean>;
+  signalTypes: Accessor<SignalType[]>;
+  signalTypesBySlug: Accessor<Record<string, SignalType>>;
 
   // Layer visibility
   showUserLocations: Accessor<boolean>;
@@ -32,6 +44,9 @@ export interface SpaceStore {
   toggleBackground: (backgroundName: string) => void;
   updateSpaceImage: (imageFile: File) => Promise<void>;
   updateSpaceCoverImage: (imageFile: File) => Promise<void>;
+  createSignalType: (config: Partial<SignalType>) => Promise<void>;
+  upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
+  deriveSlug: (name: string) => string;
 }
 
 const SpaceContext = createContext<SpaceStore>();
@@ -40,6 +55,8 @@ const SpaceContext = createContext<SpaceStore>();
 registerModel('CollectionBlock', CollectionBlock as any);
 registerModel('TextBlock', TextBlock as any);
 registerModel('ImageBlock', ImageBlock as any);
+registerModel('Signal', Signal as any);
+registerModel('SignalType', SignalType as any);
 
 export function SpaceStoreProvider(props: ParentProps) {
   const routeStore = useRouteStore();
@@ -50,6 +67,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [perspective, setPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [space, setSpace] = createSignal<Partial<Space | null>>(null);
   const [loading, setLoading] = createSignal(true);
+
+  // Signal types
+  const [signalTypes, setSignalTypes] = createSignal<SignalType[]>([]);
+  const signalTypesBySlug = createMemo(() => Object.fromEntries(signalTypes().map((st) => [st.slug, st])));
 
   // Layer visibility state
   const [showUserLocations, setShowUserLocations] = createSignal(true);
@@ -112,6 +133,8 @@ export function SpaceStoreProvider(props: ParentProps) {
         CollectionBlock.register(spacePerspective),
         TextBlock.register(spacePerspective),
         ImageBlock.register(spacePerspective),
+        Signal.register(spacePerspective),
+        SignalType.register(spacePerspective),
       ]);
       await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
 
@@ -119,6 +142,10 @@ export function SpaceStoreProvider(props: ParentProps) {
       setPerspective(spacePerspective);
       console.log('[SpaceStore] getSpace loaded space:', spaceModel);
       setSpace(spaceModel);
+
+      const signalTypeModels = await SignalType.findAll(spacePerspective);
+      setSignalTypes(signalTypeModels);
+      console.log('[SpaceStore] getSpace loaded signalTypes:', signalTypeModels);
     } catch (error) {
       console.error('SpaceStore: getSpace error', error);
     } finally {
@@ -158,6 +185,61 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpace({ ...currentSpace, thumbnail: spaceModel.thumbnail });
   }
 
+  async function createSignalType(config: Partial<SignalType>): Promise<void> {
+    const p = perspective();
+    if (!p) return;
+    // Fixed ranges for modes where the user doesn't configure them
+    const rangeOverrides: Record<string, { rangeMin: number; rangeMax: number }> = {
+      toggle: { rangeMin: 0, rangeMax: 1 },
+      vote: { rangeMin: -1, rangeMax: 1 },
+    };
+    const slugFromName = config.name ? deriveSlug(config.name) : '';
+    const effectiveSlug = config.slug ? config.slug : slugFromName;
+    const withSlug = { ...config, slug: effectiveSlug };
+    const normalised =
+      withSlug.mode && rangeOverrides[withSlug.mode] ? { ...withSlug, ...rangeOverrides[withSlug.mode] } : withSlug;
+    const created = await SignalType.create(p, normalised);
+    setSignalTypes((prev) => [...prev, created]);
+  }
+
+  function deriveSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-');
+  }
+
+  async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
+    const p = perspective();
+    const myDid = adamStore.me()?.did;
+    if (!p || !myDid) return;
+
+    const nodeLinks = await p.get(new LinkQuery({ source: nodeId, predicate: 'we://has_signals' }));
+    const myLinks = nodeLinks.filter((l) => l.author === myDid);
+
+    for (const link of myLinks) {
+      const [existing] = await Signal.findAll(p, { where: { id: link.data.target, signalTypeId } });
+      if (existing) {
+        if (value === 0) {
+          // Remove the has_signals link FIRST (triggers subscription re-run so UI
+          // de-highlights immediately), then delete the orphaned Signal node.
+          // Pass the full LinkExpression (not link.data) so p.remove() can match it.
+          await p.remove(link);
+          await existing.delete();
+        } else {
+          existing.value = value;
+          await existing.save();
+        }
+        return;
+      }
+    }
+
+    // No existing signal — create new (skip if value is 0)
+    if (value === 0) return;
+    await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://has_signals' } });
+  }
+
   // Listen for route changes and get space data when spaceId changes
   createEffect(() => {
     const [page, pageId] = routeStore.currentPath().split('/').filter(Boolean);
@@ -173,6 +255,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     perspective,
     space,
     loading,
+    signalTypes,
+    signalTypesBySlug,
 
     // Layer visibility
     showUserLocations,
@@ -194,6 +278,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     toggleBackground,
     updateSpaceImage,
     updateSpaceCoverImage,
+    createSignalType,
+    upsertSignal,
+    deriveSlug,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;
