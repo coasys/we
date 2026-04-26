@@ -45,8 +45,7 @@ export const fluxSeedExample: WeSeedFile = {
     {
       id: 'flux',
       name: 'Flux',
-      route: '/',
-      entry: 'index.html',
+      icon: 'camera',
       capabilities: ['perspectives', 'languages', 'agents'],
       paths: {
         projectRoot: './',
@@ -55,12 +54,6 @@ export const fluxSeedExample: WeSeedFile = {
           port: 5173,
           host: 'localhost',
         },
-      },
-      commands: {
-        install: 'yarn install',
-        build: 'yarn build',
-        dev: 'yarn dev',
-        clean: 'yarn clean',
       },
     },
   ],
@@ -82,7 +75,7 @@ export const communityAppExample: WeSeedFile = {
     {
       id: 'community',
       name: 'Community Hub',
-      route: '/',
+      icon: 'users',
       capabilities: ['perspectives', 'agents'],
       paths: {
         projectRoot: './',
@@ -90,11 +83,6 @@ export const communityAppExample: WeSeedFile = {
         devServer: {
           port: 3000,
         },
-      },
-      commands: {
-        install: 'pnpm install',
-        build: 'pnpm build',
-        dev: 'pnpm dev',
       },
     },
   ],
@@ -115,16 +103,11 @@ export const minimalExample: WeSeedFile = {
     {
       id: 'myapp',
       name: 'My App',
-      route: '/',
+      icon: 'app-window',
       capabilities: [],
       paths: {
         projectRoot: './',
         dist: 'dist',
-      },
-      commands: {
-        install: 'pnpm install',
-        build: 'pnpm build',
-        dev: 'pnpm dev',
       },
     },
   ],

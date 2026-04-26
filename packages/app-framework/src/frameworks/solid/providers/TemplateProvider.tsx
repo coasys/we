@@ -2,13 +2,21 @@ import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { getModel } from '@shared/registries/modelRegistry';
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
-import { useAdamStore, useAiStore, useRouteStore, useSpaceStore, useTemplateStore, useThemeStore } from '@solid/stores';
+import {
+  useAdamStore,
+  useAiStore,
+  useAppStore,
+  useRouteStore,
+  useSpaceStore,
+  useTemplateStore,
+  useThemeStore,
+} from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Navigate, Route, Router, useLocation, useNavigate } from '@solidjs/router';
 import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
-import { createEffect, createMemo, Show } from 'solid-js';
+import { createEffect, createMemo, For, Show } from 'solid-js';
 
 type FlattenedRoute = { path: string; component: () => JSX.Element; redirect?: string };
 type ParentStackItem = { node: RouteSchema; fullPath: string; baseDepth: number };
@@ -26,31 +34,67 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
     // React to route changes and update relevant stores
     createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
 
+    const aiRightMargin = () => (stores.aiStore.isOpen() ? '400px' : '0');
+    const contentWidth = () => (stores.aiStore.isOpen() ? 'calc(100% - 66px - 400px)' : 'calc(100% - 66px)');
+
     return (
       <>
         {/* Shell chrome (boot screen, sidebar, chat panel) — always rendered */}
         <RenderSchema node={shellSchema} stores={stores} registry={registry} />
 
-        {/* Main content area — keyed on template ID to force clean remount on switch */}
+        {/* Content viewport — shared by templates and app iframes */}
         <div
           style={{
-            'margin-left': '66px',
-            'margin-right': stores.aiStore.isOpen() ? '400px' : '0',
-            width: stores.aiStore.isOpen() ? 'calc(100% - 66px - 400px)' : 'calc(100% - 66px)',
+            position: 'fixed',
+            top: '0',
+            left: '66px',
+            right: aiRightMargin(),
+            width: contentWidth(),
             height: '100vh',
-            'overflow-y': 'auto',
-            'scrollbar-gutter': 'stable',
-            transition: 'margin-right 300ms ease, width 300ms ease',
+            transition: 'right 300ms ease, width 300ms ease',
           }}
         >
-          <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-            <RenderSchema
-              node={stores.templateStore.currentTemplate}
-              stores={stores}
-              registry={registry}
-              children={props.children}
-            />
-          </Show>
+          {/* Persistent app iframes — always mounted, CSS-toggled visible/hidden */}
+          <For each={stores.appStore.apps()}>
+            {(app) => (
+              <div
+                style={{
+                  display: stores.appStore.activeAppId() === app.id ? 'block' : 'none',
+                  width: '100%',
+                  height: '100%',
+                }}
+              >
+                <we-iframe
+                  src={app.url}
+                  title={app.name}
+                  allow={app.allow}
+                  width="100%"
+                  height="100%"
+                  display="block"
+                />
+              </div>
+            )}
+          </For>
+
+          {/* Template content area — hidden when an app is active */}
+          <div
+            style={{
+              display: stores.appStore.activeAppId() ? 'none' : 'block',
+              width: '100%',
+              height: '100%',
+              'overflow-y': 'auto',
+              'scrollbar-gutter': 'stable',
+            }}
+          >
+            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+              <RenderSchema
+                node={stores.templateStore.currentTemplate}
+                stores={stores}
+                registry={registry}
+                children={props.children}
+              />
+            </Show>
+          </div>
         </div>
       </>
     );
@@ -102,6 +146,7 @@ export default function TemplateProvider() {
   // Gather up the stores
   const adamStore = useAdamStore();
   const aiStore = useAiStore();
+  const appStore = useAppStore();
   const spaceStore = useSpaceStore();
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
@@ -139,6 +184,7 @@ export default function TemplateProvider() {
   const stores = {
     adamStore,
     aiStore,
+    appStore,
     spaceStore,
     themeStore,
     templateStore,

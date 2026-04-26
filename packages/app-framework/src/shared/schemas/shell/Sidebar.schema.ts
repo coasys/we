@@ -73,8 +73,41 @@ export const sidebar: SchemaNode = {
                   id: '$item.id',
                   icon: '$item.meta.icon',
                   label: '$item.meta.name',
-                  active: { $eq: ['$item.id', { $store: 'templateStore.currentTemplate.id' }] },
-                  onClick: { $action: 'templateStore.switchTemplate', args: ['$item.id'] },
+                  active: {
+                    $eq: [
+                      '$item.id',
+                      {
+                        $if: {
+                          condition: { $store: 'appStore.activeAppId' },
+                          then: null,
+                          else: { $store: 'templateStore.currentTemplate.id' },
+                        },
+                      },
+                    ],
+                  },
+                  onClick: [
+                    { $action: 'appStore.deactivateApp' },
+                    { $action: 'templateStore.switchTemplate', args: ['$item.id'] },
+                  ],
+                },
+              },
+            },
+          },
+
+          // --- Installed apps ---
+          {
+            type: 'group',
+            id: 'apps',
+            label: 'Apps',
+            items: {
+              $map: {
+                items: { $store: 'appStore.apps' },
+                select: {
+                  id: '$item.id',
+                  icon: '$item.icon',
+                  label: '$item.name',
+                  active: { $eq: ['$item.id', { $store: 'appStore.activeAppId' }] },
+                  onClick: { $action: 'appStore.activateApp', args: ['$item.id'] },
                 },
               },
             },
@@ -87,22 +120,64 @@ export const sidebar: SchemaNode = {
             id: 'profile',
             icon: 'user',
             label: 'Profile',
-            active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'profile'] },
-            onClick: { $action: 'templateStore.switchTemplate', args: ['profile'] },
+            active: {
+              $eq: [
+                {
+                  $if: {
+                    condition: { $store: 'appStore.activeAppId' },
+                    then: null,
+                    else: { $store: 'templateStore.currentTemplate.id' },
+                  },
+                },
+                'profile',
+              ],
+            },
+            onClick: [
+              { $action: 'appStore.deactivateApp' },
+              { $action: 'templateStore.switchTemplate', args: ['profile'] },
+            ],
           },
           {
             id: 'settings',
             icon: 'gear',
             label: 'Settings',
-            active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'settings'] },
-            onClick: { $action: 'templateStore.switchTemplate', args: ['settings'] },
+            active: {
+              $eq: [
+                {
+                  $if: {
+                    condition: { $store: 'appStore.activeAppId' },
+                    then: null,
+                    else: { $store: 'templateStore.currentTemplate.id' },
+                  },
+                },
+                'settings',
+              ],
+            },
+            onClick: [
+              { $action: 'appStore.deactivateApp' },
+              { $action: 'templateStore.switchTemplate', args: ['settings'] },
+            ],
           },
           {
             id: 'schema-tests',
             icon: 'flask',
             label: 'Schema Tests',
-            active: { $eq: [{ $store: 'templateStore.currentTemplate.id' }, 'schema-tests'] },
-            onClick: { $action: 'templateStore.switchTemplate', args: ['schema-tests'] },
+            active: {
+              $eq: [
+                {
+                  $if: {
+                    condition: { $store: 'appStore.activeAppId' },
+                    then: null,
+                    else: { $store: 'templateStore.currentTemplate.id' },
+                  },
+                },
+                'schema-tests',
+              ],
+            },
+            onClick: [
+              { $action: 'appStore.deactivateApp' },
+              { $action: 'templateStore.switchTemplate', args: ['schema-tests'] },
+            ],
           },
           {
             id: 'ai-chat',
