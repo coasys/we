@@ -1,14 +1,13 @@
 import type { RouteSchema } from '@we/schema-shared';
 
 import { createSignalTypeModal } from './CreateSignalTypeModal';
+import { signalTypeCard } from './SignalTypeCard';
 
 export const signalsRoute: RouteSchema = {
   path: '/signals',
   type: 'Column',
   props: { gap: '400' },
-  $localState: {
-    createOpen: { type: 'boolean', initial: false },
-  },
+  $localState: { createOpen: { type: 'boolean', initial: false } },
   children: [
     // Header
     {
@@ -33,85 +32,14 @@ export const signalsRoute: RouteSchema = {
     // Existing signal types (live from $query)
     {
       type: '$each',
-      props: {
-        items: { $query: { model: 'SignalType', subscribe: true } },
-        as: 'signalType',
-      },
-      children: [
-        {
-          type: 'Column',
-          props: { p: '400', r: '400', bg: 'neutral-50', border: '1px solid neutral-100', gap: '300' },
-          children: [
-            // Header: icon + name/description + delete
-            {
-              type: 'Row',
-              props: { gap: '300', ay: 'center' },
-              children: [
-                { type: 'we-text', props: { fontSize: '700' }, children: ['$signalType.icon'] },
-                {
-                  type: 'Column',
-                  props: { gap: '100' },
-                  children: [
-                    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$signalType.name'] },
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '300', color: 'neutral-400' },
-                      children: ['$signalType.description'],
-                    },
-                  ],
-                },
-                {
-                  type: 'we-button',
-                  props: {
-                    variant: 'ghost',
-                    size: 'sm',
-                    onClick: { $action: 'model.delete', args: ['SignalType', '$signalType.id'] },
-                  },
-                  children: [{ type: 'we-icon', props: { name: 'trash', color: 'danger-500' } }],
-                },
-              ],
-            },
-            // Footer: mode/aggregate badges + live preview
-            {
-              type: 'Row',
-              props: { gap: '200', ay: 'center', ax: 'between' },
-              children: [
-                {
-                  type: 'Row',
-                  props: { gap: '100' },
-                  children: [
-                    { type: 'we-badge', props: { variant: 'neutral' }, children: ['$signalType.mode'] },
-                    { type: 'we-badge', props: { variant: 'neutral' }, children: ['$signalType.aggregate'] },
-                  ],
-                },
-                {
-                  type: 'SignalControl',
-                  props: {
-                    preview: true,
-                    signalType: {
-                      icon: '$signalType.icon',
-                      iconSecondary: '$signalType.iconSecondary',
-                      mode: '$signalType.mode',
-                      rangeMin: '$signalType.rangeMin',
-                      rangeMax: '$signalType.rangeMax',
-                      step: '$signalType.step',
-                    },
-                  },
-                },
-              ],
-            },
-          ],
-        },
-      ],
+      props: { items: { $query: { model: 'SignalType', subscribe: true } }, as: 'signalType' },
+      children: [signalTypeCard],
     },
 
     // Create modal
     {
       type: '$if',
-      props: {
-        condition: { $local: 'createOpen' },
-        then: createSignalTypeModal,
-      },
+      props: { condition: { $local: 'createOpen' }, then: createSignalTypeModal },
     },
   ],
 };
