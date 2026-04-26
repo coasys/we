@@ -47,7 +47,7 @@ export function SignalControl(props: SignalControlProps) {
             >
               {renderIcon(props.signalType.icon)}
             </we-button>
-            <we-text class="signal-control__count">{aggregate()}</we-text>
+            <we-number class="signal-control__count" value={aggregate()} shorten />
           </Row>
         </Match>
 
@@ -61,7 +61,7 @@ export function SignalControl(props: SignalControlProps) {
             >
               {renderIcon(props.signalType.icon)}
             </we-button>
-            <we-text class="signal-control__count">{aggregate()}</we-text>
+            <we-number class="signal-control__count" value={aggregate()} shorten />
             <we-button
               variant={value() !== null && value()! < 0 ? 'primary' : 'ghost'}
               disabled={isDisabled()}
@@ -142,7 +142,7 @@ export function SignalControl(props: SignalControlProps) {
               disabled={isDisabled()}
               onChange={(e: Event) => signal((e as CustomEvent<number>).detail)}
             />
-            <we-text class="signal-control__count">{aggregate()}</we-text>
+            <we-number class="signal-control__count" value={aggregate()} shorten />
           </Row>
         </Match>
       </Switch>

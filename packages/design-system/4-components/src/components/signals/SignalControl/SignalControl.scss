@@ -1,5 +1,11 @@
 // ── SignalControl ──────────────────────────────────────────────────────────────
 
+// min-width: 1ch (= width of "0" in current font) keeps the counter stable
+// when toggling between 0 and 1. tabular-nums in we-number handles multi-digit.
+.signal-control__count {
+  min-width: 1ch;
+}
+
 .signal-control__rating {
   display: flex;
   flex-direction: column;

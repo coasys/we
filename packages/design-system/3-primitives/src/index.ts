@@ -20,6 +20,7 @@ import './primitives/image';
 import './primitives/input';
 import './primitives/link';
 import './primitives/markdown';
+import './primitives/number';
 import './primitives/menu';
 import './primitives/menu-group';
 import './primitives/menu-item';
@@ -41,6 +42,7 @@ import './primitives/textarea';
 import './primitives/tooltip';
 import './primitives/tab';
 import './primitives/tabs';
+import './primitives/timestamp';
 import './primitives/video';
 
 export { buildCdnUrl, setIconResolver } from './primitives/icon';

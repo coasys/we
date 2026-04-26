@@ -72,6 +72,7 @@
   "dependencies": {
     "@we/design-utils": "workspace:*",
     "@we/tokens": "workspace:*",
+    "@we/utils": "workspace:*",
     "@floating-ui/dom": "^1.7.4",
     "jdenticon": "3.3.0",
     "lit": "3.2.1",
