@@ -1,6 +1,17 @@
 export const createSignalTypeModal = {
   type: 'we-modal',
   props: { close: { $setLocal: 'createOpen', value: false }, maxWidth: '500px', width: '100%' },
+  $localState: {
+    name: { type: 'string', initial: '' },
+    description: { type: 'string', initial: '' },
+    icon: { type: 'string', initial: '❤️' },
+    iconSecondary: { type: 'string', initial: '' },
+    mode: { type: 'string', initial: 'toggle' },
+    aggregate: { type: 'string', initial: 'count' },
+    rangeMin: { type: 'number', initial: 0 },
+    rangeMax: { type: 'number', initial: 1 },
+    step: { type: 'number', initial: 1 },
+  },
   children: [
     // Title
     {
@@ -18,8 +29,8 @@ export const createSignalTypeModal = {
           type: 'we-input',
           props: {
             placeholder: 'e.g. Like',
-            value: { $local: 'newName' },
-            onInput: { $setLocal: 'newName', from: '$event.detail' },
+            value: { $local: 'name' },
+            onInput: { $setLocal: 'name', from: '$event.detail' },
           },
         },
       ],
@@ -34,8 +45,8 @@ export const createSignalTypeModal = {
           type: 'we-textarea',
           props: {
             placeholder: 'Description',
-            value: { $local: 'newDescription' },
-            onInput: { $setLocal: 'newDescription', from: '$event.detail' },
+            value: { $local: 'description' },
+            onInput: { $setLocal: 'description', from: '$event.detail' },
           },
         },
       ],
@@ -54,8 +65,8 @@ export const createSignalTypeModal = {
             {
               type: 'we-select',
               props: {
-                value: { $local: 'newMode' },
-                onChange: { $setLocal: 'newMode', from: '$event.target.value' },
+                value: { $local: 'mode' },
+                onChange: { $setLocal: 'mode', from: '$event.target.value' },
                 options: [
                   { label: 'Toggle', value: 'toggle' },
                   { label: 'Vote', value: 'vote' },
@@ -75,8 +86,8 @@ export const createSignalTypeModal = {
             {
               type: 'we-icon-picker',
               props: {
-                value: { $local: 'newIcon' },
-                onChange: { $setLocal: 'newIcon', from: '$event.detail' },
+                value: { $local: 'icon' },
+                onChange: { $setLocal: 'icon', from: '$event.detail' },
               },
             },
           ],
@@ -86,7 +97,7 @@ export const createSignalTypeModal = {
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $local: 'newMode' }, 'vote'] },
+            condition: { $eq: [{ $local: 'mode' }, 'vote'] },
             then: {
               type: 'we-form-field',
               props: { label: 'Secondary Icon', helpText: 'Used as the negative icon in vote mode' },
@@ -95,8 +106,8 @@ export const createSignalTypeModal = {
                   type: 'we-icon-picker',
                   props: {
                     placeholder: 'Same as icon',
-                    value: { $local: 'newIconSecondary' },
-                    onChange: { $setLocal: 'newIconSecondary', from: '$event.detail' },
+                    value: { $local: 'iconSecondary' },
+                    onChange: { $setLocal: 'iconSecondary', from: '$event.detail' },
                   },
                 },
               ],
@@ -110,7 +121,7 @@ export const createSignalTypeModal = {
     {
       type: '$if',
       props: {
-        condition: { $or: [{ $eq: [{ $local: 'newMode' }, 'rating'] }, { $eq: [{ $local: 'newMode' }, 'slider'] }] },
+        condition: { $or: [{ $eq: [{ $local: 'mode' }, 'rating'] }, { $eq: [{ $local: 'mode' }, 'slider'] }] },
         then: {
           type: 'Row',
           props: { gap: '300', ax: 'center' },
@@ -122,8 +133,8 @@ export const createSignalTypeModal = {
                 {
                   type: 'we-number-input',
                   props: {
-                    value: { $local: 'newRangeMin' },
-                    onChange: { $setLocal: 'newRangeMin', from: '$event.detail' },
+                    value: { $local: 'rangeMin' },
+                    onChange: { $setLocal: 'rangeMin', from: '$event.detail' },
                   },
                 },
               ],
@@ -135,8 +146,8 @@ export const createSignalTypeModal = {
                 {
                   type: 'we-number-input',
                   props: {
-                    value: { $local: 'newRangeMax' },
-                    onChange: { $setLocal: 'newRangeMax', from: '$event.detail' },
+                    value: { $local: 'rangeMax' },
+                    onChange: { $setLocal: 'rangeMax', from: '$event.detail' },
                   },
                 },
               ],
@@ -148,10 +159,10 @@ export const createSignalTypeModal = {
                 {
                   type: 'we-number-input',
                   props: {
-                    value: { $local: 'newStep' },
+                    value: { $local: 'step' },
                     min: 0.1,
                     step: 0.1,
-                    onChange: { $setLocal: 'newStep', from: '$event.detail' },
+                    onChange: { $setLocal: 'step', from: '$event.detail' },
                   },
                 },
               ],
@@ -172,12 +183,12 @@ export const createSignalTypeModal = {
           props: {
             preview: true,
             signalType: {
-              icon: { $local: 'newIcon' },
-              iconSecondary: { $local: 'newIconSecondary' },
-              mode: { $local: 'newMode' },
-              rangeMin: { $local: 'newRangeMin' },
-              rangeMax: { $local: 'newRangeMax' },
-              step: { $local: 'newStep' },
+              icon: { $local: 'icon' },
+              iconSecondary: { $local: 'iconSecondary' },
+              mode: { $local: 'mode' },
+              rangeMin: { $local: 'rangeMin' },
+              rangeMax: { $local: 'rangeMax' },
+              step: { $local: 'step' },
             },
           },
         },
@@ -205,19 +216,20 @@ export const createSignalTypeModal = {
                 $action: 'spaceStore.createSignalType',
                 args: [
                   {
-                    name: { $local: 'newName' },
-                    description: { $local: 'newDescription' },
-                    icon: { $local: 'newIcon' },
-                    iconSecondary: { $local: 'newIconSecondary' },
-                    mode: { $local: 'newMode' },
-                    aggregate: { $local: 'newAggregate' },
-                    rangeMin: { $local: 'newRangeMin' },
-                    rangeMax: { $local: 'newRangeMax' },
-                    step: { $local: 'newStep' },
+                    name: { $local: 'name' },
+                    description: { $local: 'description' },
+                    icon: { $local: 'icon' },
+                    iconSecondary: { $local: 'iconSecondary' },
+                    mode: { $local: 'mode' },
+                    aggregate: { $local: 'aggregate' },
+                    rangeMin: { $local: 'rangeMin' },
+                    rangeMax: { $local: 'rangeMax' },
+                    step: { $local: 'step' },
                   },
                 ],
               },
               { $resetLocal: '$scope' },
+              { $setLocal: 'createOpen', value: false },
             ],
           },
         },

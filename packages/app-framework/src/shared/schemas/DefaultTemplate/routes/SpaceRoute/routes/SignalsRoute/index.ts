@@ -2,23 +2,12 @@ import type { RouteSchema } from '@we/schema-shared';
 
 import { createSignalTypeModal } from './CreateSignalTypeModal';
 
-// NOTE: $localState field names here (createOpen, newName, newDescription, etc.) are
-// coupled to the field references in createSignalTypeModal — keep them in sync.
 export const signalsRoute: RouteSchema = {
   path: '/signals',
   type: 'Column',
   props: { gap: '400' },
   $localState: {
     createOpen: { type: 'boolean', initial: false },
-    newName: { type: 'string', initial: '' },
-    newDescription: { type: 'string', initial: '' },
-    newIcon: { type: 'string', initial: '❤️' },
-    newIconSecondary: { type: 'string', initial: '' },
-    newMode: { type: 'string', initial: 'toggle' },
-    newAggregate: { type: 'string', initial: 'count' },
-    newRangeMin: { type: 'number', initial: 0 },
-    newRangeMax: { type: 'number', initial: 1 },
-    newStep: { type: 'number', initial: 1 },
   },
   children: [
     // Header
