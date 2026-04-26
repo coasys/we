@@ -811,6 +811,43 @@
       ]
     },
     {
+      "tagName": "we-number",
+      "className": "WeNumber",
+      "description": "Displays a number, optionally abbreviated (1 200 → 1.2K, 1 500 000 → 1.5M).",
+      "superclass": "DesignSystemElement",
+      "ownProps": [
+        {
+          "name": "value",
+          "type": "number",
+          "optional": false,
+          "default": "0"
+        },
+        {
+          "name": "shorten",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "precision",
+          "type": "number",
+          "optional": false,
+          "default": "1"
+        },
+        {
+          "name": "locale",
+          "type": "string",
+          "optional": false,
+          "default": "'en'"
+        },
+        {
+          "name": "formattedValue",
+          "type": "string",
+          "optional": false
+        }
+      ]
+    },
+    {
       "tagName": "we-number-input",
       "className": "NumberInput",
       "superclass": "DesignSystemElement",
@@ -1415,6 +1452,103 @@
           "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
+        }
+      ]
+    },
+    {
+      "tagName": "we-timestamp",
+      "className": "WeTimestamp",
+      "description": "Displays a formatted or relative timestamp that self-updates each minute\nwhen `relative` is enabled.",
+      "superclass": "DesignSystemElement",
+      "ownProps": [
+        {
+          "name": "value",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "relative",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "locale",
+          "type": "string",
+          "optional": false,
+          "default": "'en'"
+        },
+        {
+          "name": "dateStyle",
+          "type": "Intl.DateTimeFormatOptions['dateStyle'] | null",
+          "optional": false,
+          "default": "null"
+        },
+        {
+          "name": "timeStyle",
+          "type": "Intl.DateTimeFormatOptions['timeStyle'] | null",
+          "optional": false,
+          "default": "null"
+        },
+        {
+          "name": "weekday",
+          "type": "Intl.DateTimeFormatOptions['weekday'] | null",
+          "optional": false,
+          "default": "null"
+        },
+        {
+          "name": "year",
+          "type": "Intl.DateTimeFormatOptions['year'] | null",
+          "optional": false,
+          "default": "null"
+        },
+        {
+          "name": "month",
+          "type": "Intl.DateTimeFormatOptions['month'] | null",
+          "optional": false,
+          "default": "null"
+        },
+        {
+          "name": "day",
+          "type": "Intl.DateTimeFormatOptions['day'] | null",
+          "optional": false,
+          "default": "null"
+        },
+        {
+          "name": "hour",
+          "type": "Intl.DateTimeFormatOptions['hour'] | null",
+          "optional": false,
+          "default": "null"
+        },
+        {
+          "name": "minute",
+          "type": "Intl.DateTimeFormatOptions['minute'] | null",
+          "optional": false,
+          "default": "null"
+        },
+        {
+          "name": "second",
+          "type": "Intl.DateTimeFormatOptions['second'] | null",
+          "optional": false,
+          "default": "null"
+        },
+        {
+          "name": "timeZone",
+          "type": "string | null",
+          "optional": false,
+          "default": "null"
+        },
+        {
+          "name": "hourCycle",
+          "type": "Intl.DateTimeFormatOptions['hourCycle'] | null",
+          "optional": false,
+          "default": "null"
+        },
+        {
+          "name": "formattedTime",
+          "type": "string",
+          "optional": false
         }
       ]
     },
@@ -3960,20 +4094,25 @@
         {
           "name": "myValue",
           "type": "number | null",
-          "optional": false
+          "optional": true
         },
         {
           "name": "aggregate",
           "type": "number",
-          "optional": false
+          "optional": true
         },
         {
           "name": "onSignal",
-          "type": "(value: number) => void",
-          "optional": false
+          "type": "((value: number) => void)",
+          "optional": true
         },
         {
           "name": "disabled",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "preview",
           "type": "boolean",
           "optional": true
         },
@@ -5876,40 +6015,19 @@
         },
         "me": {
           "type": "object",
-          "properties": [
-            "did",
-            "perspective",
-            "directMessageLanguage"
-          ]
+          "properties": ["did", "perspective", "directMessageLanguage"]
         },
         "allPerspectives": {
           "type": "array",
-          "properties": [
-            "uuid",
-            "name",
-            "sharedUrl",
-            "neighbourhood"
-          ]
+          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
         },
         "personalSpaces": {
           "type": "array",
-          "properties": [
-            "uuid",
-            "name",
-            "description",
-            "url",
-            "visibility"
-          ]
+          "properties": ["uuid", "name", "description", "url", "visibility"]
         },
         "sharedSpaces": {
           "type": "array",
-          "properties": [
-            "uuid",
-            "name",
-            "description",
-            "url",
-            "visibility"
-          ]
+          "properties": ["uuid", "name", "description", "url", "visibility"]
         },
         "bootState": {
           "type": "string"
@@ -5925,15 +6043,7 @@
         },
         "agentProfile": {
           "type": "object",
-          "properties": [
-            "firstName",
-            "lastName",
-            "handle",
-            "bio",
-            "location",
-            "profileImage",
-            "coverImage"
-          ]
+          "properties": ["firstName", "lastName", "handle", "bio", "location", "profileImage", "coverImage"]
         }
       },
       "actions": [
@@ -5958,70 +6068,36 @@
           "type": "array"
         }
       },
-      "actions": [
-        "navigate"
-      ]
+      "actions": ["navigate"]
     },
     {
       "name": "themeStore",
       "state": {
         "themes": {
           "type": "array",
-          "properties": [
-            "id",
-            "name",
-            "icon"
-          ]
+          "properties": ["id", "name", "icon"]
         },
         "currentTheme": {
           "type": "object",
-          "properties": [
-            "id",
-            "name",
-            "icon"
-          ]
+          "properties": ["id", "name", "icon"]
         }
       },
-      "actions": [
-        "setThemes",
-        "setCurrentTheme"
-      ]
+      "actions": ["setThemes", "setCurrentTheme"]
     },
     {
       "name": "templateStore",
       "state": {
         "templates": {
           "type": "array",
-          "properties": [
-            "id",
-            "meta",
-            "type",
-            "props",
-            "children",
-            "routes"
-          ]
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
         "shellTemplates": {
           "type": "array",
-          "properties": [
-            "id",
-            "meta",
-            "type",
-            "props",
-            "children",
-            "routes"
-          ]
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
         "currentTemplate": {
           "type": "object",
-          "properties": [
-            "id",
-            "meta",
-            "type",
-            "props",
-            "children",
-            "routes"
-          ]
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
         "operationLoading": {
           "type": "boolean"
@@ -6045,64 +6121,32 @@
         },
         "perspective": {
           "type": "object",
-          "properties": [
-            "uuid",
-            "name",
-            "sharedUrl",
-            "neighbourhood"
-          ]
+          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
         },
         "space": {
           "type": "object",
-          "properties": [
-            "uuid",
-            "name",
-            "description",
-            "url",
-            "visibility",
-            "image",
-            "thumbnail"
-          ]
+          "properties": ["uuid", "name", "description", "url", "visibility", "image", "thumbnail"]
         },
         "posts": {
           "type": "array",
-          "properties": [
-            "id",
-            "author",
-            "timestamp",
-            "content"
-          ]
+          "properties": ["id", "author", "timestamp", "content"]
         },
         "loading": {
           "type": "boolean"
         }
       },
-      "actions": [
-        "setSpaceId",
-        "getSpace",
-        "getPosts",
-        "createPost",
-        "updateSpaceImage",
-        "updateSpaceCoverImage"
-      ]
+      "actions": ["setSpaceId", "getSpace", "getPosts", "createPost", "updateSpaceImage", "updateSpaceCoverImage"]
     },
     {
       "name": "aiStore",
       "state": {
         "models": {
           "type": "array",
-          "properties": [
-            "id",
-            "name"
-          ]
+          "properties": ["id", "name"]
         },
         "tasks": {
           "type": "array",
-          "properties": [
-            "id",
-            "status",
-            "result"
-          ]
+          "properties": ["id", "status", "result"]
         },
         "isOpen": {
           "type": "boolean"
