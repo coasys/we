@@ -42,16 +42,7 @@ export interface SpaceStore {
   toggleBackground: (backgroundName: string) => void;
   updateSpaceImage: (imageFile: File) => Promise<void>;
   updateSpaceCoverImage: (imageFile: File) => Promise<void>;
-  createSignalType: (config: {
-    name: string;
-    icon: string;
-    iconSecondary?: string;
-    mode: string;
-    aggregate: string;
-    rangeMin: number;
-    rangeMax: number;
-    step?: number;
-  }) => Promise<void>;
+  createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
 }
 
@@ -144,6 +135,10 @@ export function SpaceStoreProvider(props: ParentProps) {
       setPerspective(spacePerspective);
       console.log('[SpaceStore] getSpace loaded space:', spaceModel);
       setSpace(spaceModel);
+
+      // log out signals
+      const signals = await SignalType.findAll(spacePerspective);
+      console.log('[SpaceStore] getSpace loaded signals:', signals);
     } catch (error) {
       console.error('SpaceStore: getSpace error', error);
     } finally {
@@ -183,16 +178,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpace({ ...currentSpace, thumbnail: spaceModel.thumbnail });
   }
 
-  async function createSignalType(config: {
-    name: string;
-    icon: string;
-    iconSecondary?: string;
-    mode: string;
-    aggregate: string;
-    rangeMin: number;
-    rangeMax: number;
-    step?: number;
-  }): Promise<void> {
+  async function createSignalType(config: Partial<SignalType>): Promise<void> {
     const p = perspective();
     if (!p) return;
     // Fixed ranges for modes where the user doesn't configure them
@@ -200,7 +186,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       toggle: { rangeMin: 0, rangeMax: 1 },
       vote: { rangeMin: -1, rangeMax: 1 },
     };
-    const normalised = rangeOverrides[config.mode] ? { ...config, ...rangeOverrides[config.mode] } : config;
+    const normalised =
+      config.mode && rangeOverrides[config.mode] ? { ...config, ...rangeOverrides[config.mode] } : config;
     await SignalType.create(p, normalised);
   }
 

@@ -206,6 +206,7 @@ export const createSignalTypeModal = {
                 args: [
                   {
                     name: { $local: 'newName' },
+                    description: { $local: 'newDescription' },
                     icon: { $local: 'newIcon' },
                     iconSecondary: { $local: 'newIconSecondary' },
                     mode: { $local: 'newMode' },
@@ -216,7 +217,7 @@ export const createSignalTypeModal = {
                   },
                 ],
               },
-              { $setLocal: 'createOpen', value: false },
+              { $resetLocal: '$scope' },
             ],
           },
         },
