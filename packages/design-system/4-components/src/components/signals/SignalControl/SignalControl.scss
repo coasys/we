@@ -18,9 +18,9 @@
   // Background icon: muted neutral colour
   color: var(--we-color-neutral-200);
 
-  // Emoji fallback: dim background copy (no colour property for emoji)
-  > .signal-icon-emoji {
-    opacity: 0.3;
+  // Emoji fallback: dim via custom property (pierces shadow DOM)
+  > we-icon {
+    --we-icon-emoji-opacity: 0.3;
   }
 
   &.is-disabled {
@@ -30,11 +30,11 @@
 }
 
 .signal-icon-stack__fill {
-  // Fill icon: primary colour + full emoji opacity
+  // Fill icon: primary colour + restore full emoji opacity
   color: var(--we-color-primary-600);
 
-  .signal-icon-emoji {
-    opacity: 1;
+  we-icon {
+    --we-icon-emoji-opacity: 1;
   }
 }
 

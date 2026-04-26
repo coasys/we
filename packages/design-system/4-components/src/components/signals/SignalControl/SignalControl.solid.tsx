@@ -1,20 +1,9 @@
 export type * from './SignalControl.types';
 
-import type { IconWeight } from '@we/primitives/types';
-import type { JSX } from 'solid-js';
 import { createSignal, For, Match, Switch } from 'solid-js';
 
 import { Row } from '../../../frameworks/solid';
 import type { SignalControlProps } from './SignalControl.types';
-
-/** Renders an emoji inline or a design-system icon by name */
-function renderIcon(icon: string, weight?: IconWeight): JSX.Element {
-  return /^[a-z0-9-]+$/i.test(icon) ? (
-    ((<we-icon name={icon} {...(weight !== undefined ? { weight } : {})} />) as JSX.Element)
-  ) : (
-    <span class="signal-icon-emoji">{icon}</span>
-  );
-}
 
 export function SignalControl(props: SignalControlProps) {
   const [previewValue, setPreviewValue] = createSignal<number | null>(null);
@@ -42,10 +31,11 @@ export function SignalControl(props: SignalControlProps) {
           <Row class="signal-control__toggle" ay="center" gap="300">
             <we-button
               variant={value() ? 'primary' : 'ghost'}
+              square
               disabled={isDisabled()}
               onClick={() => signal(value() ? 0 : props.signalType.rangeMax)}
             >
-              {renderIcon(props.signalType.icon)}
+              <we-icon name={props.signalType.icon} />
             </we-button>
             <we-number class="signal-control__count" value={aggregate()} shorten />
           </Row>
@@ -56,18 +46,20 @@ export function SignalControl(props: SignalControlProps) {
           <Row class="signal-control__vote" ay="center" gap="300">
             <we-button
               variant={value() !== null && value()! > 0 ? 'primary' : 'ghost'}
+              square
               disabled={isDisabled()}
               onClick={() => signal(value() !== null && value()! > 0 ? 0 : 1)}
             >
-              {renderIcon(props.signalType.icon)}
+              <we-icon name={props.signalType.icon} />
             </we-button>
             <we-number class="signal-control__count" value={aggregate()} shorten />
             <we-button
               variant={value() !== null && value()! < 0 ? 'primary' : 'ghost'}
+              square
               disabled={isDisabled()}
               onClick={() => signal(value() !== null && value()! < 0 ? 0 : -1)}
             >
-              {renderIcon(props.signalType.iconSecondary || props.signalType.icon)}
+              <we-icon name={props.signalType.iconSecondary || props.signalType.icon} />
             </we-button>
           </Row>
         </Match>
@@ -104,13 +96,13 @@ export function SignalControl(props: SignalControlProps) {
                       onClick={isDisabled() ? undefined : handleClick}
                     >
                       {/* Background (empty) icon — muted colour via CSS */}
-                      {renderIcon(props.signalType.icon)}
+                      <we-icon name={props.signalType.icon} size="sm" />
                       {/* Foreground (filled) icon — primary colour via CSS, clipped to fraction */}
                       <span
                         class="signal-icon-stack__fill"
                         style={{ 'clip-path': `inset(0 ${(1 - fraction()) * 100}% 0 0)` }}
                       >
-                        {renderIcon(props.signalType.icon)}
+                        <we-icon name={props.signalType.icon} size="sm" />
                       </span>
                     </span>
                   );
@@ -133,7 +125,7 @@ export function SignalControl(props: SignalControlProps) {
         {/* ── slider ───────────────────────────────────────────────────────── */}
         <Match when={props.signalType.mode === 'slider'}>
           <Row class="signal-control__slider" ay="center" gap="300">
-            {renderIcon(props.signalType.icon)}
+            <we-icon name={props.signalType.icon} />
             <we-slider
               min={props.signalType.rangeMin}
               max={props.signalType.rangeMax}

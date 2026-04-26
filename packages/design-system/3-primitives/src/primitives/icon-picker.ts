@@ -411,7 +411,6 @@ export default class IconPicker extends DesignSystemElement {
   private _renderTrigger() {
     const h = CONTROL_HEIGHT[this.size];
     const hasValue = Boolean(this.value);
-    const isEmoji = hasValue && !isPhosphorName(this.value);
 
     return html`
       <button
@@ -425,11 +424,9 @@ export default class IconPicker extends DesignSystemElement {
         ${hasValue
           ? html`
               <span part="preview-icon">
-                ${isEmoji
-                  ? html`<span style="font-size:1.2em">${this.value}</span>`
-                  : html`<we-icon name=${this.value} size="sm"></we-icon>`}
+                <we-icon name=${this.value} size="sm"></we-icon>
               </span>
-              ${isEmoji ? nothing : html`<span part="label">${this.value}</span>`}
+              ${isPhosphorName(this.value) ? html`<span part="label">${this.value}</span>` : nothing}
             `
           : html`<span part="placeholder">${this.placeholder}</span>`}
         <span part="caret"><we-icon name="caret-down" size="sm"></we-icon></span>

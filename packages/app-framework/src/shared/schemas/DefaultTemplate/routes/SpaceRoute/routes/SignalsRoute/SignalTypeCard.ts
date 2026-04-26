@@ -9,7 +9,7 @@ export const signalTypeCard: SchemaNode = {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
       children: [
-        { type: 'we-text', props: { fontSize: '700' }, children: ['$signalType.icon'] },
+        { type: 'we-icon', props: { name: '$signalType.icon' } },
         {
           type: 'Column',
           props: { gap: '100' },
@@ -17,19 +17,10 @@ export const signalTypeCard: SchemaNode = {
             { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$signalType.name'] },
             {
               type: 'we-text',
-              props: { fontSize: '300', color: 'neutral-400' },
+              props: { fontSize: '400', color: 'neutral-500' },
               children: ['$signalType.description'],
             },
           ],
-        },
-        {
-          type: 'we-button',
-          props: {
-            variant: 'ghost',
-            size: 'sm',
-            onClick: { $action: 'model.delete', args: ['SignalType', '$signalType.id'] },
-          },
-          children: [{ type: 'we-icon', props: { name: 'trash', color: 'danger-500' } }],
         },
       ],
     },
@@ -44,6 +35,15 @@ export const signalTypeCard: SchemaNode = {
           children: [
             { type: 'we-badge', props: { variant: 'neutral' }, children: ['Mode: ', '$signalType.mode'] },
             { type: 'we-badge', props: { variant: 'neutral' }, children: ['Aggregate: ', '$signalType.aggregate'] },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                size: 'sm',
+                onClick: { $action: 'model.delete', args: ['SignalType', '$signalType.id'] },
+              },
+              children: [{ type: 'we-icon', props: { name: 'trash', color: 'danger-500' } }],
+            },
           ],
         },
         {

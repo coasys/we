@@ -32,6 +32,11 @@ export function buildCdnUrl(name: string, weight: IconWeight): string {
   return `${CDN_BASE}/${weight}/${fileName}.svg`;
 }
 
+/** Returns true for phosphor icon names (kebab-case ASCII), false for emoji/other */
+export function isPhosphorName(name: string): boolean {
+  return /^[a-z][a-z0-9-]*$/.test(name);
+}
+
 /** Strip dangerous elements/attributes from SVG strings */
 function sanitizeSvg(raw: string): string {
   const parser = new DOMParser();
@@ -99,9 +104,15 @@ const styles = css`
   }
 
   span[role='img'] {
-    display: inline-block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: var(--icon-size);
     height: var(--icon-size);
+    font-size: calc(var(--icon-size) * 0.75);
+    line-height: 1;
+    overflow: hidden;
+    opacity: var(--we-icon-emoji-opacity, 1);
   }
 `;
 
@@ -177,7 +188,14 @@ export default class Icon extends LayoutElement {
   }
 
   willUpdate(props: Map<string, unknown>) {
-    if (props.has('name') || props.has('weight')) this.loadIcon();
+    if (props.has('name') || props.has('weight')) {
+      if (this.name && isPhosphorName(this.name)) {
+        this.loadIcon();
+      } else {
+        this.svg = undefined;
+        this.error = false;
+      }
+    }
   }
 
   updated(props: Map<string, unknown>) {
@@ -192,6 +210,7 @@ export default class Icon extends LayoutElement {
   }
 
   render() {
+    if (this.name && !isPhosphorName(this.name)) return html`<span role="img" aria-label="icon">${this.name}</span>`;
     if (this.error) return html`<span role="img" aria-label="icon error"></span>`;
     if (!this.svg) return html`<span role="img" aria-label="icon loading"></span>`;
     return html`<span aria-hidden="true">${unsafeHTML(this.svg)}</span>`;
