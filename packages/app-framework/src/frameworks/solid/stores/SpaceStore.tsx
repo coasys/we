@@ -195,7 +195,13 @@ export function SpaceStoreProvider(props: ParentProps) {
   }): Promise<void> {
     const p = perspective();
     if (!p) return;
-    await SignalType.create(p, config);
+    // Fixed ranges for modes where the user doesn't configure them
+    const rangeOverrides: Record<string, { rangeMin: number; rangeMax: number }> = {
+      toggle: { rangeMin: 0, rangeMax: 1 },
+      vote: { rangeMin: -1, rangeMax: 1 },
+    };
+    const normalised = rangeOverrides[config.mode] ? { ...config, ...rangeOverrides[config.mode] } : config;
+    await SignalType.create(p, normalised);
   }
 
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {

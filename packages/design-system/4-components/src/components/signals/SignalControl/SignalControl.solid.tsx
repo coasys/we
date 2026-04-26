@@ -57,7 +57,7 @@ export function SignalControl(props: SignalControlProps) {
             <we-button
               variant={value() !== null && value()! > 0 ? 'primary' : 'ghost'}
               disabled={isDisabled()}
-              onClick={() => signal(value() !== null && value()! > 0 ? 0 : props.signalType.rangeMax)}
+              onClick={() => signal(value() !== null && value()! > 0 ? 0 : 1)}
             >
               {renderIcon(props.signalType.icon)}
             </we-button>
@@ -65,7 +65,7 @@ export function SignalControl(props: SignalControlProps) {
             <we-button
               variant={value() !== null && value()! < 0 ? 'primary' : 'ghost'}
               disabled={isDisabled()}
-              onClick={() => signal(value() !== null && value()! < 0 ? 0 : props.signalType.rangeMin)}
+              onClick={() => signal(value() !== null && value()! < 0 ? 0 : -1)}
             >
               {renderIcon(props.signalType.iconSecondary || props.signalType.icon)}
             </we-button>
@@ -74,9 +74,9 @@ export function SignalControl(props: SignalControlProps) {
 
         {/* ── rating ─────────────────────────────────────────────────────────── */}
         <Match when={props.signalType.mode === 'rating'}>
-          <div class="signal-control__rating">
+          <Row class="signal-control__rating" ay="center" gap="400">
             {/* Icon row: one icon per integer step between rangeMin and rangeMax */}
-            <div class="signal-control__rating-icons">
+            <Row class="signal-control__rating-icons" ay="center" gap="100">
               <For
                 each={Array.from({ length: props.signalType.rangeMax - props.signalType.rangeMin }, (_, i) => i + 1)}
               >
@@ -103,20 +103,20 @@ export function SignalControl(props: SignalControlProps) {
                       class={`signal-icon-stack${isDisabled() ? ' is-disabled' : ''}`}
                       onClick={isDisabled() ? undefined : handleClick}
                     >
-                      {/* Background (empty) icon */}
-                      {renderIcon(props.signalType.icon, 'regular')}
-                      {/* Foreground (filled) icon, clipped to show only the filled fraction */}
+                      {/* Background (empty) icon — muted colour via CSS */}
+                      {renderIcon(props.signalType.icon)}
+                      {/* Foreground (filled) icon — primary colour via CSS, clipped to fraction */}
                       <span
                         class="signal-icon-stack__fill"
                         style={{ 'clip-path': `inset(0 ${(1 - fraction()) * 100}% 0 0)` }}
                       >
-                        {renderIcon(props.signalType.icon, 'fill')}
+                        {renderIcon(props.signalType.icon)}
                       </span>
                     </span>
                   );
                 }}
               </For>
-            </div>
+            </Row>
             {/* Number input for precise value entry */}
             <we-number-input
               class="signal-control__rating-input"
@@ -127,7 +127,7 @@ export function SignalControl(props: SignalControlProps) {
               disabled={isDisabled()}
               onChange={(e: Event) => signal((e as CustomEvent<number>).detail)}
             />
-          </div>
+          </Row>
         </Match>
 
         {/* ── slider ───────────────────────────────────────────────────────── */}
