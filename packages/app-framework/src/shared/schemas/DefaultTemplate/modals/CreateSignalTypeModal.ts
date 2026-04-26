@@ -164,12 +164,13 @@ export const createSignalTypeModal = {
     // Live preview
     {
       type: 'Column',
-      props: { gap: '200', ax: 'center', border: '1px solid neutral-200', p: '300', r: '500' },
+      props: { gap: '200', my: '400', ax: 'center', border: '1px solid neutral-200', p: '300', r: '500' },
       children: [
         { type: 'we-text', props: { color: 'neutral-500' }, children: ['Preview'] },
         {
           type: 'SignalControl',
           props: {
+            preview: true,
             signalType: {
               icon: { $local: 'newIcon' },
               iconSecondary: { $local: 'newIconSecondary' },
@@ -178,7 +179,6 @@ export const createSignalTypeModal = {
               rangeMax: { $local: 'newRangeMax' },
               step: { $local: 'newStep' },
             },
-            aggregate: 0,
           },
         },
       ],

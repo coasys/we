@@ -1,0 +1,41 @@
+// ── SignalControl ──────────────────────────────────────────────────────────────
+
+.signal-control__rating {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.signal-control__rating-icons {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+}
+
+// Stacked icon pair used for partial-fill star/heart/etc. ratings
+.signal-icon-stack {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  line-height: 1;
+
+  &.is-disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+}
+
+.signal-icon-stack__fill {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  // clip-path applied inline per-icon to show the filled fraction
+  overflow: hidden;
+  color: var(--we-color-primary-500, #6366f1);
+}

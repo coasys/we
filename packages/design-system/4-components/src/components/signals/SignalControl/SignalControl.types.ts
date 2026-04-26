@@ -13,11 +13,16 @@ export interface SignalTypeData {
 export interface SignalControlProps {
   signalType: SignalTypeData;
   /** The authenticated user's current signal value, or null if not yet signalled */
-  myValue: number | null;
+  myValue?: number | null;
   /** Pre-computed aggregate value to display (count, sum, mean, etc.) */
-  aggregate: number;
-  onSignal: (value: number) => void;
+  aggregate?: number;
+  onSignal?: (value: number) => void;
   disabled?: boolean;
+  /**
+   * When true the component manages its own internal value state so it can be
+   * used as a standalone interactive preview without wiring up myValue/onSignal.
+   */
+  preview?: boolean;
   class?: string;
   styles?: Record<string, string | number>;
 }
