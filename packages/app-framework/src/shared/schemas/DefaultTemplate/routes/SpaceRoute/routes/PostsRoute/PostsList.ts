@@ -13,10 +13,17 @@ export const postsList: SchemaNode = {
             where: { type: 'root' },
             subscribe: true,
             include: {
-              $totalLikeCount: { from: 'signals', where: { signalTypeId: 'ybkqrvtstqargzzuucqamwje' }, count: true },
+              $totalLikeCount: {
+                from: 'signals',
+                where: { signalTypeId: { $store: 'spaceStore.signalTypesBySlug.like.id' } },
+                count: true,
+              },
               $myLikeSignal: {
                 from: 'signals',
-                where: { signalTypeId: 'ybkqrvtstqargzzuucqamwje', author: { $store: 'adamStore.me.did' } },
+                where: {
+                  signalTypeId: { $store: 'spaceStore.signalTypesBySlug.like.id' },
+                  author: { $store: 'adamStore.me.did' },
+                },
                 limit: 1,
               },
             },
@@ -43,14 +50,20 @@ export const postsList: SchemaNode = {
               props: { mt: '400', ay: 'center', gap: '300' },
               children: [
                 {
-                  type: 'SignalControl',
+                  type: '$if',
                   props: {
-                    signalType: { icon: '❤️', mode: 'toggle', rangeMin: 0, rangeMax: 1 },
-                    myValue: '$post.$myLikeSignal.value',
-                    aggregate: '$post.$totalLikeCount',
-                    onSignal: {
-                      $action: 'spaceStore.upsertSignal',
-                      args: ['$post.id', 'ybkqrvtstqargzzuucqamwje', '$arg'],
+                    condition: { $store: 'spaceStore.signalTypesBySlug.like' },
+                    then: {
+                      type: 'SignalControl',
+                      props: {
+                        signalType: { $store: 'spaceStore.signalTypesBySlug.like' },
+                        myValue: '$post.$myLikeSignal.value',
+                        aggregate: '$post.$totalLikeCount',
+                        onSignal: {
+                          $action: 'spaceStore.upsertSignal',
+                          args: ['$post.id', { $store: 'spaceStore.signalTypesBySlug.like.id' }, '$arg'],
+                        },
+                      },
                     },
                   },
                 },

@@ -721,6 +721,7 @@ Signal extends Ad4mModel:
 SignalType extends Ad4mModel:
   Fields:
   - name: string [we://name]
+  - slug: string [we://slug]
   - description: string [we://description]
   - icon: string [we://icon]
   - iconSecondary: string [we://icon_secondary]
@@ -806,7 +807,7 @@ VideoBlock extends WeNode:
 WeNode extends Ad4mModel:
   Relations:
   - comments: HasMany [we://has_comments]
-  - signals: HasMany [we://has_signals]
+  - signals: HasMany → Signal [we://has_signals]
 
 ---
 
@@ -874,15 +875,18 @@ SpaceStore:
   - spaceId: string (current space id)
   - perspective: PerspectiveProxy | null
   - space: Partial<Space> (current space object)
-  - posts: array of Post objects
+  - signalTypes: array of SignalType objects (community-created reaction/vote types)
+  - signalTypesBySlug: Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID
   - loading: boolean
 - Actions:
   - setSpaceId(id: string): sets the current space id
   - getSpace(): loads space data
-  - getPosts(perspective: PerspectiveProxy): loads posts for a space
-  - createPost(): unknown
+  - createPost(editorState: unknown): creates a new post
   - updateSpaceImage(): unknown
   - updateSpaceCoverImage(): unknown
+  - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
+  - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
+  - deriveSlug(name: string) => string: converts a name to a URL-safe slug (lowercase, hyphens)
 
 AiStore:
 - State:
@@ -1068,6 +1072,77 @@ Boolean toggle (show/hide, expand/collapse):
     { "type": "$if", "props": { "condition": { "$local": "showDetails" }, "then": { "type": "we-text", "children": ["Details content here"] } } }
   ]
 }
+
+Signal types (community-specific reactions/votes):
+Signal types are created per-community by the user. Never hardcode signal type UUIDs in schemas.
+Instead reference them by slug through spaceStore.signalTypesBySlug.
+
+ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
+Then use that slug in the pattern below.
+
+Pattern — live wired SignalControl (inside a $each over a model with $query include):
+{
+  "type": "$each",
+  "props": {
+    "items": {
+      "$query": {
+        "model": "MyBlock",
+        "include": {
+          "$totalLikeCount": {
+            "from": "signals",
+            "where": { "signalTypeId": { "$store": "spaceStore.signalTypesBySlug.like.id" } },
+            "count": true
+          },
+          "$myLikeSignal": {
+            "from": "signals",
+            "where": {
+              "signalTypeId": { "$store": "spaceStore.signalTypesBySlug.like.id" },
+              "author": { "$store": "adamStore.me.did" }
+            },
+            "limit": 1
+          }
+        }
+      }
+    },
+    "as": "item"
+  },
+  "children": [
+    {
+      "type": "$if",
+      "props": {
+        "condition": { "$store": "spaceStore.signalTypesBySlug.like" },
+        "then": {
+          "type": "SignalControl",
+          "props": {
+            "signalType": { "$store": "spaceStore.signalTypesBySlug.like" },
+            "myValue": "$item.$myLikeSignal.value",
+            "aggregate": "$item.$totalLikeCount",
+            "onSignal": {
+              "$action": "spaceStore.upsertSignal",
+              "args": ["$item.id", { "$store": "spaceStore.signalTypesBySlug.like.id" }, "$arg"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}
+
+Notes:
+- The $if guard hides SignalControl if the community hasn't created a signal type with that slug.
+- Replace "like" with the user's slug throughout (in $store paths and args).
+- $query include adds $totalLikeCount and $myLikeSignal as computed properties on each item.
+- signalType prop accepts the full SignalType object (provides icon, mode, range to the UI component).
+
+Preview / mockup mode (static, no store wiring):
+{
+  "type": "SignalControl",
+  "props": {
+    "preview": true,
+    "signalType": { "icon": "❤️", "mode": "toggle", "rangeMin": 0, "rangeMax": 1 }
+  }
+}
+Use preview: true when sketching a layout without real data. Remove it (and add the full wiring above) when going live.
 
 ---
 

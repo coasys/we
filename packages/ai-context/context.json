@@ -5315,6 +5315,12 @@
           "required": false
         },
         {
+          "name": "slug",
+          "type": "string",
+          "predicate": "we://slug",
+          "required": false
+        },
+        {
           "name": "description",
           "type": "string",
           "predicate": "we://description",
@@ -5748,7 +5754,8 @@
         {
           "name": "signals",
           "kind": "HasMany",
-          "predicate": "we://has_signals"
+          "predicate": "we://has_signals",
+          "target": "Signal"
         }
       ]
     }
@@ -6127,15 +6134,38 @@
           "type": "object",
           "properties": ["uuid", "name", "description", "url", "visibility", "image", "thumbnail"]
         },
-        "posts": {
+        "signalTypes": {
           "type": "array",
-          "properties": ["id", "author", "timestamp", "content"]
+          "properties": [
+            "id",
+            "name",
+            "slug",
+            "description",
+            "icon",
+            "iconSecondary",
+            "mode",
+            "rangeMin",
+            "rangeMax",
+            "step"
+          ]
+        },
+        "signalTypesBySlug": {
+          "type": "object"
         },
         "loading": {
           "type": "boolean"
         }
       },
-      "actions": ["setSpaceId", "getSpace", "getPosts", "createPost", "updateSpaceImage", "updateSpaceCoverImage"]
+      "actions": [
+        "setSpaceId",
+        "getSpace",
+        "createPost",
+        "updateSpaceImage",
+        "updateSpaceCoverImage",
+        "createSignalType",
+        "upsertSignal",
+        "deriveSlug"
+      ]
     },
     {
       "name": "aiStore",

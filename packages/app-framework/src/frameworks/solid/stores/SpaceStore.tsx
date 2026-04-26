@@ -13,7 +13,7 @@ import {
   Space,
   TextBlock,
 } from '@we/models';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 export interface SpaceStore {
   // State
@@ -21,6 +21,8 @@ export interface SpaceStore {
   perspective: Accessor<PerspectiveProxy | null>;
   space: Accessor<Partial<Space | null>>;
   loading: Accessor<boolean>;
+  signalTypes: Accessor<SignalType[]>;
+  signalTypesBySlug: Accessor<Record<string, SignalType>>;
 
   // Layer visibility
   showUserLocations: Accessor<boolean>;
@@ -44,6 +46,7 @@ export interface SpaceStore {
   updateSpaceCoverImage: (imageFile: File) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
+  deriveSlug: (name: string) => string;
 }
 
 const SpaceContext = createContext<SpaceStore>();
@@ -64,6 +67,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [perspective, setPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [space, setSpace] = createSignal<Partial<Space | null>>(null);
   const [loading, setLoading] = createSignal(true);
+
+  // Signal types
+  const [signalTypes, setSignalTypes] = createSignal<SignalType[]>([]);
+  const signalTypesBySlug = createMemo(() => Object.fromEntries(signalTypes().map((st) => [st.slug, st])));
 
   // Layer visibility state
   const [showUserLocations, setShowUserLocations] = createSignal(true);
@@ -136,9 +143,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       console.log('[SpaceStore] getSpace loaded space:', spaceModel);
       setSpace(spaceModel);
 
-      // log out signals
-      const signals = await SignalType.findAll(spacePerspective);
-      console.log('[SpaceStore] getSpace loaded signals:', signals);
+      const signalTypeModels = await SignalType.findAll(spacePerspective);
+      setSignalTypes(signalTypeModels);
+      console.log('[SpaceStore] getSpace loaded signalTypes:', signalTypeModels);
     } catch (error) {
       console.error('SpaceStore: getSpace error', error);
     } finally {
@@ -186,9 +193,21 @@ export function SpaceStoreProvider(props: ParentProps) {
       toggle: { rangeMin: 0, rangeMax: 1 },
       vote: { rangeMin: -1, rangeMax: 1 },
     };
+    const slugFromName = config.name ? deriveSlug(config.name) : '';
+    const effectiveSlug = config.slug ? config.slug : slugFromName;
+    const withSlug = { ...config, slug: effectiveSlug };
     const normalised =
-      config.mode && rangeOverrides[config.mode] ? { ...config, ...rangeOverrides[config.mode] } : config;
-    await SignalType.create(p, normalised);
+      withSlug.mode && rangeOverrides[withSlug.mode] ? { ...withSlug, ...rangeOverrides[withSlug.mode] } : withSlug;
+    const created = await SignalType.create(p, normalised);
+    setSignalTypes((prev) => [...prev, created]);
+  }
+
+  function deriveSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-');
   }
 
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
@@ -203,7 +222,10 @@ export function SpaceStoreProvider(props: ParentProps) {
       const [existing] = await Signal.findAll(p, { where: { id: link.data.target, signalTypeId } });
       if (existing) {
         if (value === 0) {
-          // Toggle off — delete the signal node and its links
+          // Remove the has_signals link FIRST (triggers subscription re-run so UI
+          // de-highlights immediately), then delete the orphaned Signal node.
+          // Pass the full LinkExpression (not link.data) so p.remove() can match it.
+          await p.remove(link);
           await existing.delete();
         } else {
           existing.value = value;
@@ -233,6 +255,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     perspective,
     space,
     loading,
+    signalTypes,
+    signalTypesBySlug,
 
     // Layer visibility
     showUserLocations,
@@ -256,6 +280,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceCoverImage,
     createSignalType,
     upsertSignal,
+    deriveSlug,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

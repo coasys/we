@@ -12,6 +12,9 @@ export class SignalType extends Ad4mModel {
   @Property({ through: 'we://name' })
   name: string = '';
 
+  @Property({ through: 'we://slug' })
+  slug: string = '';
+
   @Property({ through: 'we://description' })
   description: string = '';
 

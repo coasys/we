@@ -145,4 +145,75 @@ Boolean toggle (show/hide, expand/collapse):
     { "type": "$if", "props": { "condition": { "$local": "showDetails" }, "then": { "type": "we-text", "children": ["Details content here"] } } }
   ]
 }
+
+Signal types (community-specific reactions/votes):
+Signal types are created per-community by the user. Never hardcode signal type UUIDs in schemas.
+Instead reference them by slug through spaceStore.signalTypesBySlug.
+
+ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
+Then use that slug in the pattern below.
+
+Pattern — live wired SignalControl (inside a $each over a model with $query include):
+{
+  "type": "$each",
+  "props": {
+    "items": {
+      "$query": {
+        "model": "MyBlock",
+        "include": {
+          "$totalLikeCount": {
+            "from": "signals",
+            "where": { "signalTypeId": { "$store": "spaceStore.signalTypesBySlug.like.id" } },
+            "count": true
+          },
+          "$myLikeSignal": {
+            "from": "signals",
+            "where": {
+              "signalTypeId": { "$store": "spaceStore.signalTypesBySlug.like.id" },
+              "author": { "$store": "adamStore.me.did" }
+            },
+            "limit": 1
+          }
+        }
+      }
+    },
+    "as": "item"
+  },
+  "children": [
+    {
+      "type": "$if",
+      "props": {
+        "condition": { "$store": "spaceStore.signalTypesBySlug.like" },
+        "then": {
+          "type": "SignalControl",
+          "props": {
+            "signalType": { "$store": "spaceStore.signalTypesBySlug.like" },
+            "myValue": "$item.$myLikeSignal.value",
+            "aggregate": "$item.$totalLikeCount",
+            "onSignal": {
+              "$action": "spaceStore.upsertSignal",
+              "args": ["$item.id", { "$store": "spaceStore.signalTypesBySlug.like.id" }, "$arg"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}
+
+Notes:
+- The $if guard hides SignalControl if the community hasn't created a signal type with that slug.
+- Replace "like" with the user's slug throughout (in $store paths and args).
+- $query include adds $totalLikeCount and $myLikeSignal as computed properties on each item.
+- signalType prop accepts the full SignalType object (provides icon, mode, range to the UI component).
+
+Preview / mockup mode (static, no store wiring):
+{
+  "type": "SignalControl",
+  "props": {
+    "preview": true,
+    "signalType": { "icon": "❤️", "mode": "toggle", "rangeMin": 0, "rangeMax": 1 }
+  }
+}
+Use preview: true when sketching a layout without real data. Remove it (and add the full wiring above) when going live.
 `;

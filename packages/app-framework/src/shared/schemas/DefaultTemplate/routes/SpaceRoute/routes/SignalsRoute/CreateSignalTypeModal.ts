@@ -3,6 +3,7 @@ export const createSignalTypeModal = {
   props: { close: { $setLocal: 'createOpen', value: false }, maxWidth: '500px', width: '100%' },
   $localState: {
     name: { type: 'string', initial: '' },
+    slug: { type: 'string', initial: '' },
     description: { type: 'string', initial: '' },
     icon: { type: 'string', initial: '❤️' },
     iconSecondary: { type: 'string', initial: '' },
@@ -31,6 +32,22 @@ export const createSignalTypeModal = {
             placeholder: 'e.g. Like',
             value: { $local: 'name' },
             onInput: { $setLocal: 'name', from: '$event.detail' },
+          },
+        },
+      ],
+    },
+
+    // Slug
+    {
+      type: 'we-form-field',
+      props: { label: 'Slug', helpText: 'Auto-generated from name. Used in schemas to reference this signal type.' },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            placeholder: 'e.g. like',
+            value: { $local: 'slug' },
+            onInput: { $setLocal: 'slug', from: '$event.detail' },
           },
         },
       ],
@@ -217,6 +234,7 @@ export const createSignalTypeModal = {
                 args: [
                   {
                     name: { $local: 'name' },
+                    slug: { $local: 'slug' },
                     description: { $local: 'description' },
                     icon: { $local: 'icon' },
                     iconSecondary: { $local: 'iconSecondary' },
