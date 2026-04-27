@@ -29,9 +29,8 @@ export const webAdapter: PlatformAdapter = {
       return `http://${host}:${port}`;
     }
 
-    // Production mode: For web, return the dist path directly
-    // This can be an external URL (https://...) or a relative path for bundled apps
-    return app.paths.dist;
+    // Production mode: use webUrl if configured, otherwise fall back to dist path
+    return app.paths.webUrl ?? app.paths.dist;
   },
 
   isDesktop: false,

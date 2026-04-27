@@ -98,6 +98,8 @@ export interface WeSeedFile {
         /** Host address */
         host?: string;
       };
+      /** URL used when running on the web platform (e.g. deployed Netlify URL) */
+      webUrl?: string;
     };
   }>;
 }

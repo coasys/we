@@ -10,6 +10,7 @@ export interface AppConfig {
       port: number;
       host?: string;
     };
+    webUrl?: string;
   };
 }
 
