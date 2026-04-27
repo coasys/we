@@ -2,7 +2,8 @@ import { spawn } from 'child_process';
 import { app, BrowserWindow, desktopCapturer, ipcMain } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
-import { existsSync } from 'fs';
+import { existsSync, rmSync } from 'fs';
+import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
@@ -56,33 +57,36 @@ function findFreePort(startPort, endPort) {
   });
 }
 
-// Wait for a port to be listening
-function waitForPort(port, maxAttempts = 60, interval = 500) {
-  return new Promise((resolve, reject) => {
-    let attempts = 0;
+// Wait for the GraphQL server to be fully ready (not just TCP port open).
+// Polls the /graphql HTTP endpoint — any HTTP response (even 400) means GraphQL is up.
+async function waitForGraphQL(port, maxAttempts = 120, interval = 500) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const ready = await new Promise((resolve) => {
+      const req = http.request(
+        {
+          method: 'POST',
+          hostname: '127.0.0.1',
+          port,
+          path: '/graphql',
+          headers: { 'Content-Type': 'application/json' },
+        },
+        (res) => {
+          res.resume(); // discard response body
+          resolve(true);
+        },
+      );
+      req.on('error', () => resolve(false));
+      req.write(JSON.stringify({ query: '{ __typename }' }));
+      req.end();
+    });
 
-    function checkPort() {
-      attempts++;
-
-      const client = net.createConnection({ port, host: '127.0.0.1' });
-
-      client.on('connect', () => {
-        client.end();
-        console.log(`Port ${port} is now listening`);
-        resolve();
-      });
-
-      client.on('error', () => {
-        if (attempts >= maxAttempts) {
-          reject(new Error(`Port ${port} not ready after ${maxAttempts} attempts`));
-        } else {
-          setTimeout(checkPort, interval);
-        }
-      });
+    if (ready) {
+      console.log(`GraphQL server on port ${port} is ready`);
+      return;
     }
-
-    checkPort();
-  });
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  throw new Error(`GraphQL server on port ${port} not ready after ${maxAttempts} attempts`);
 }
 
 // Start the AD4M executor
@@ -96,6 +100,19 @@ async function startExecutor() {
 
     // Get AD4M data directory
     const ad4mDataPath = join(homedir(), '.ad4m');
+
+    // Clean up stale lair-keystore socket file — if a previous run crashed without
+    // killing child processes, this socket stays on disk and causes lair-keystore
+    // to fail on the next agent.unlock(), which crashes the executor.
+    const keychainSocketPath = join(ad4mDataPath, 'ad4m', 'h', 'c', 'ks', 'socket');
+    if (existsSync(keychainSocketPath)) {
+      console.log('[main] Removing stale lair-keystore socket:', keychainSocketPath);
+      try {
+        rmSync(keychainSocketPath);
+      } catch (e) {
+        console.warn('[main] Could not remove socket:', e.message);
+      }
+    }
 
     console.log('Starting AD4M executor...');
     console.log('Port:', ad4mPort);
@@ -127,9 +144,14 @@ async function startExecutor() {
         'true', // Enable holochain connection
       ],
       {
+        detached: true, // Create a new process group so we can kill the entire tree
         stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout/stderr instead of inherit
       },
     );
+
+    // Detach from the parent — lets Node.js exit without waiting for the child,
+    // and is required for process.kill(-pid) group-kill to work.
+    executorProcess.unref();
 
     // Forward executor output to console (prevents EPIPE errors)
     executorProcess.stdout?.on('data', (data) => {
@@ -144,14 +166,17 @@ async function startExecutor() {
       console.error('Failed to start executor:', err);
     });
 
-    executorProcess.on('exit', (code) => {
-      console.log('Executor exited with code:', code);
+    executorProcess.on('exit', (code, signal) => {
+      const msg = `[main] Executor exited — code: ${code}, signal: ${signal}`;
+      console.log(msg);
+      // Notify the renderer so it shows in DevTools even in packaged builds
+      mainWindow?.webContents.executeJavaScript(`console.error(${JSON.stringify(msg)})`).catch(() => {});
     });
 
     console.log('AD4M executor process started, waiting for GraphQL server...');
 
-    // Wait for the executor to be ready
-    await waitForPort(ad4mPort);
+    // Wait for the GraphQL server to be fully ready (not just TCP port open)
+    await waitForGraphQL(ad4mPort);
 
     console.log('AD4M executor ready');
   } catch (error) {
@@ -280,11 +305,28 @@ app.whenReady().then(async () => {
   });
 });
 
-app.on('window-all-closed', () => {
-  // Kill the executor process
-  if (executorProcess) {
-    executorProcess.kill();
+// Kill the executor AND its entire process group (holochain, lair-keystore, etc.)
+function killExecutor() {
+  if (!executorProcess) return;
+  try {
+    if (process.platform !== 'win32') {
+      // Negative PID kills the entire process group spawned with detached: true
+      process.kill(-executorProcess.pid, 'SIGKILL');
+    } else {
+      executorProcess.kill();
+    }
+  } catch (err) {
+    // Process may already be dead
+    console.warn('killExecutor: could not kill process group:', err.message);
   }
+  executorProcess = null;
+}
+
+// Kill before Electron quits (covers Cmd+Q, app.quit(), etc.)
+app.on('before-quit', () => killExecutor());
+
+app.on('window-all-closed', () => {
+  killExecutor();
 
   if (process.platform !== 'darwin') {
     app.quit();

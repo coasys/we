@@ -47,6 +47,11 @@ export async function buildAd4mClientWithApollo(
   const clientParams = {
     url: server,
     connectionParams: { headers: { authorization: token } },
+    // Retry on any disconnect (handles executor not ready yet at startup)
+    shouldRetry: () => true,
+    retryAttempts: Infinity,
+    // Send a ping every 10s to keep the connection alive and detect stale sockets
+    keepAlive: 10_000,
   };
   const link = new GraphQLWsLink(createClient(clientParams));
   const cache = new InMemoryCache({ resultCaching: false });
