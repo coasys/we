@@ -59,10 +59,10 @@ export class SeedProcessor {
   generateRoutes(): Array<{ path: string; component: string }> {
     const routes: Array<{ path: string; component: string }> = [];
 
-    // Routes from apps
+    // Routes from apps (path derived from app ID)
     this.seed.apps.forEach((app) => {
       routes.push({
-        path: app.route,
+        path: `/${app.id}`,
         component: 'main',
       });
     });
@@ -145,7 +145,6 @@ export const ${variableName}Routes = ${JSON.stringify(routes, null, 2)};
       apps: this.seed.apps.map((app) => ({
         id: app.id,
         name: app.name,
-        route: app.route,
         capabilities: app.capabilities,
       })),
       capabilities: allCapabilities,

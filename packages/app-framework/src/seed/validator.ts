@@ -49,8 +49,8 @@ export function validateSeed(seed: unknown): SeedValidationResult {
       if (!app.name) {
         errors.push({ path: `${prefix}.name`, message: 'App name is required' });
       }
-      if (!app.route) {
-        errors.push({ path: `${prefix}.route`, message: 'App route is required' });
+      if (!app.icon) {
+        errors.push({ path: `${prefix}.icon`, message: 'App icon is required' });
       }
 
       // Validate paths
@@ -62,21 +62,6 @@ export function validateSeed(seed: unknown): SeedValidationResult {
         }
         if (!app.paths.dist) {
           errors.push({ path: `${prefix}.paths.dist`, message: 'Distribution path is required' });
-        }
-      }
-
-      // Validate commands
-      if (!app.commands) {
-        errors.push({ path: `${prefix}.commands`, message: 'App commands are required' });
-      } else {
-        if (!app.commands.install) {
-          errors.push({ path: `${prefix}.commands.install`, message: 'Install command is required' });
-        }
-        if (!app.commands.build) {
-          errors.push({ path: `${prefix}.commands.build`, message: 'Build command is required' });
-        }
-        if (!app.commands.dev) {
-          errors.push({ path: `${prefix}.commands.dev`, message: 'Development command is required' });
         }
       }
 

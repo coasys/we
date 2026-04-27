@@ -17,12 +17,21 @@
     "basePort": 8080
   },
 
-  "host": {
-    "ui": {
-      "enableTemplateSwitching": true,
-      "defaultTemplate": "weNative"
+  "apps": [
+    {
+      "id": "flux",
+      "name": "Flux",
+      "icon": "camera",
+      "description": "Social web3 toolkit for communities",
+      "capabilities": ["perspectives", "languages", "agents"],
+      "paths": {
+        "projectRoot": "../flux/app",
+        "dist": "../flux/app/dist",
+        "devServer": {
+          "port": 3030,
+          "host": "localhost"
+        }
+      }
     }
-  },
-
-  "apps": []
+  ]
 }

@@ -1,8 +1,8 @@
 /**
  * WE Seed File System
  *
- * Allows external applications to define integration configurations
- * that can be used to embed their apps into WE launchers.
+ * Defines the shape of we-seed.json — the single source of truth for
+ * project metadata, platform paths, and which apps are embedded in the shell.
  */
 
 import type { SchemaNode } from '@we/schema-shared';
@@ -24,7 +24,7 @@ export interface WeSeedFile {
     license?: string;
   };
 
-  /** Host app customization (WE shell) */
+  /** Host app customization (WE shell) — optional white-labeling */
   host?: {
     /** Theme overrides for the host */
     theme?: {
@@ -35,12 +35,6 @@ export interface WeSeedFile {
     ui?: {
       /** Custom boot screen schema (replaces default) */
       bootScreen?: SchemaNode;
-      /** Custom app settings schema (replaces default) */
-      appSettings?: SchemaNode;
-      /** Enable/disable template switching in settings */
-      enableTemplateSwitching?: boolean;
-      /** Default template for native app mode */
-      defaultTemplate?: string;
     };
   };
 
@@ -70,22 +64,30 @@ export interface WeSeedFile {
     };
   };
 
-  /** Embedded applications */
+  /** Electron-specific configuration */
+  electron?: {
+    /** Path to the built app dist (relative to we-electron) */
+    appDistPath?: string;
+    /** Base port for Express servers serving embedded app bundles */
+    basePort?: number;
+  };
+
+  /** Embedded applications shown in the shell sidebar */
   apps: Array<{
-    /** Unique app identifier (e.g., "flux", "chat") */
+    /** Unique app identifier (e.g., "flux") */
     id: string;
-    /** Display name */
+    /** Display name shown in sidebar */
     name: string;
-    /** Route path (e.g., "/", "/flux", "/chat") */
-    route: string;
-    /** Entry point file (relative to dist) */
-    entry?: string;
+    /** Phosphor icon name for the sidebar button */
+    icon: string;
+    /** Brief description */
+    description?: string;
     /** AD4M capabilities/permissions this app requires */
     capabilities: Array<'perspectives' | 'languages' | 'agents' | 'filesystem' | 'network'>;
 
-    /** File paths and build configuration */
+    /** File paths — used by generate-seed-config.cjs and resolveAppUrl */
     paths: {
-      /** Root directory of the app (relative to seed file) */
+      /** Root directory of the app (relative to workspace root) */
       projectRoot: string;
       /** Distribution/build output directory */
       dist: string;
@@ -97,47 +99,25 @@ export interface WeSeedFile {
         host?: string;
       };
     };
-
-    /** Build and development commands */
-    commands: {
-      /** Install dependencies (e.g., "yarn install", "pnpm install") */
-      install: string;
-      /** Production build command */
-      build: string;
-      /** Development server command */
-      dev: string;
-      /** Cleanup command (optional) */
-      clean?: string;
-    };
   }>;
 }
 
 /**
- * Validation result for seed files
+ * Validation result returned by the seed CLI validator.
  */
 export interface SeedValidationResult {
   valid: boolean;
-  errors?: Array<{
-    path: string;
-    message: string;
-  }>;
-  warnings?: Array<{
-    path: string;
-    message: string;
-  }>;
+  errors?: Array<{ path: string; message: string }>;
+  warnings?: Array<{ path: string; message: string }>;
 }
 
 /**
- * Metadata generated during seed processing
+ * Metadata returned by the seed processor (legacy code-generation tooling).
  */
 export interface SeedMetadata {
-  /** Original seed file */
   seed: WeSeedFile;
-  /** Timestamp of processing */
   processedAt: string;
-  /** Generated integration ID */
   integrationId: string;
-  /** Output paths */
   outputPaths: {
     schema: string;
     components: string;

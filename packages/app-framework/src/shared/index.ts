@@ -2,6 +2,7 @@
 export * from './platform';
 
 // Registries
+export * from './registries/appRegistry';
 export * from './registries/modelRegistry';
 export * from './registries/templateRegistry';
 export * from './registries/themeRegistry';
@@ -10,10 +11,8 @@ export * from './registries/themeRegistry';
 export * from './schemas';
 
 // Integration system
-export * from './integrationLoader';
 export * from './integrationComposer';
 export * from './initializeIntegrations';
-export * from './seedLoader';
 
 // Utils
 export * from './utils';
