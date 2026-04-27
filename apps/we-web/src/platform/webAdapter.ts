@@ -18,8 +18,12 @@ export const webAdapter: PlatformAdapter = {
     return client;
   },
 
-  // Web doesn't expose connection details (handled internally by ad4m-connect)
-  // getConnectionDetails is optional, so we don't implement it
+  async getConnectionDetails(): Promise<{ port: number; token: string }> {
+    const token = localStorage.getItem('ad4m-token');
+    const port = parseInt(localStorage.getItem('ad4m-port') ?? '12000');
+    if (!token) throw new Error('AD4M token not found in localStorage — is ad4m-connect authenticated?');
+    return { port, token };
+  },
 
   resolveAppUrl(app: AppConfig, isDevelopment: boolean): string {
     // Development mode: Use devServer configuration from seed
