@@ -5,8 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@coasys/ad4m': file:../ad4m/core
-  '@coasys/ad4m-connect': file:../ad4m/connect
+  '@coasys/ad4m': 0.13.0-test-2
+  '@coasys/ad4m-connect': 0.13.0-test-2
 
 importers:
 
@@ -52,11 +52,11 @@ importers:
   apps/playgrounds/react/ad4m-model-testing:
     dependencies:
       '@coasys/ad4m':
-        specifier: file:../../../../../ad4m/core
-        version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+        specifier: 0.13.0-test-2
+        version: 0.13.0-test-2(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@coasys/ad4m-connect':
-        specifier: file:../../../../../ad4m/connect
-        version: file:../ad4m/connect(esbuild@0.27.7)
+        specifier: 0.13.0-test-2
+        version: 0.13.0-test-2(esbuild@0.27.7)
       '@we/models':
         specifier: workspace:*
         version: link:../../../../packages/models
@@ -168,8 +168,8 @@ importers:
         specifier: ^3.7.10
         version: 3.14.1(@types/react@19.2.14)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@coasys/ad4m':
-        specifier: file:../../../ad4m/core
-        version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.13.0-test-2
+        version: 0.13.0-test-2(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.12)
@@ -232,8 +232,8 @@ importers:
         specifier: ^3.7.10
         version: 3.14.1(@types/react@19.2.14)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@coasys/ad4m':
-        specifier: file:../../../ad4m/core
-        version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.13.0-test-2
+        version: 0.13.0-test-2(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.12)
@@ -278,11 +278,11 @@ importers:
   apps/we-web:
     dependencies:
       '@coasys/ad4m':
-        specifier: file:../../../ad4m/core
-        version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.13.0-test-2
+        version: 0.13.0-test-2(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@coasys/ad4m-connect':
-        specifier: file:../../../ad4m/connect
-        version: file:../ad4m/connect(esbuild@0.27.7)
+        specifier: 0.13.0-test-2
+        version: 0.13.0-test-2(esbuild@0.27.7)
       '@we/app-framework':
         specifier: workspace:*
         version: link:../../packages/app-framework
@@ -320,7 +320,7 @@ importers:
         version: 25.0.1
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
       tsx:
         specifier: ^4.19.3
         version: 4.21.0
@@ -331,8 +331,8 @@ importers:
   packages/app-framework:
     dependencies:
       '@coasys/ad4m':
-        specifier: file:../../../ad4m/core
-        version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.13.0-test-2
+        version: 0.13.0-test-2(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.12)
@@ -402,7 +402,7 @@ importers:
         version: link:../cli
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
       vitest:
         specifier: ^4.0.15
         version: 4.1.5(@types/node@22.19.17)(@vitest/coverage-v8@4.1.5)(happy-dom@20.9.0)(jsdom@27.4.0)(vite@7.3.2(@types/node@22.19.17)(sass@1.99.0)(tsx@4.21.0)(yaml@2.8.3))
@@ -410,8 +410,8 @@ importers:
   packages/block-system/frameworks/solid:
     dependencies:
       '@coasys/ad4m':
-        specifier: file:../../../../../ad4m/core
-        version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.13.0-test-2
+        version: 0.13.0-test-2(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@lexical/list':
         specifier: ^0.30.0
         version: 0.30.0
@@ -454,13 +454,13 @@ importers:
         version: 1.9.12
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
 
   packages/block-system/shared:
     dependencies:
       '@coasys/ad4m':
-        specifier: file:../../../../ad4m/core
-        version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.13.0-test-2
+        version: 0.13.0-test-2(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@we/design-types':
         specifier: workspace:*
         version: link:../../design-system/types
@@ -473,7 +473,7 @@ importers:
         version: link:../../cli
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
 
   packages/cesium-layers:
     dependencies:
@@ -495,7 +495,7 @@ importers:
         version: link:../cli
       tsup:
         specifier: ^8.0.0
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
       typescript:
         specifier: ^5.3.3
         version: 5.9.3
@@ -507,7 +507,7 @@ importers:
         version: 24.12.2
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
 
   packages/design-system/1-tokens:
     devDependencies:
@@ -519,7 +519,7 @@ importers:
         version: link:../../cli
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
 
   packages/design-system/2-themes:
     dependencies:
@@ -532,13 +532,13 @@ importers:
         version: link:../../cli
       postcss:
         specifier: ^8.4.23
-        version: 8.5.11
+        version: 8.5.12
       postcss-cli:
         specifier: ^10.1.0
-        version: 10.1.0(postcss@8.5.11)
+        version: 10.1.0(postcss@8.5.12)
       postcss-import:
         specifier: ^15.1.0
-        version: 15.1.0(postcss@8.5.11)
+        version: 15.1.0(postcss@8.5.12)
       rimraf:
         specifier: ^6.0.1
         version: 6.1.3
@@ -605,7 +605,7 @@ importers:
         version: 8.4.6(prettier@3.8.3)
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
       tsx:
         specifier: ^4.19.3
         version: 4.21.0
@@ -639,13 +639,13 @@ importers:
         version: 1.9.12
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
 
   packages/design-system/5-widgets:
     dependencies:
       '@coasys/ad4m':
-        specifier: file:../../../../ad4m/core
-        version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.13.0-test-2
+        version: 0.13.0-test-2(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       cesium:
         specifier: ^1.136.0
         version: 1.140.0
@@ -688,7 +688,7 @@ importers:
         version: 1.9.12
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
       vite-plugin-cesium:
         specifier: ^1.2.23
         version: 1.2.23(cesium@1.140.0)(rollup@4.60.2)(vite@7.3.2(@types/node@24.12.2)(sass@1.99.0)(tsx@4.21.0)(yaml@2.8.3))
@@ -724,20 +724,20 @@ importers:
         version: 1.9.12
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
 
   packages/models:
     dependencies:
       '@coasys/ad4m':
-        specifier: file:../../../ad4m/core
-        version: file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: 0.13.0-test-2
+        version: 0.13.0-test-2(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
     devDependencies:
       '@we/cli':
         specifier: workspace:*
         version: link:../cli
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
 
   packages/schema-system/frameworks/solid:
     dependencies:
@@ -765,7 +765,7 @@ importers:
         version: 1.9.12
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
       vite-plugin-solid:
         specifier: ^2.11.11
         version: 2.11.12(solid-js@1.9.12)(vite@7.3.2(@types/node@24.12.2)(sass@1.99.0)(tsx@4.21.0)(yaml@2.8.3))
@@ -799,7 +799,7 @@ importers:
         version: 27.4.0
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -814,7 +814,7 @@ importers:
         version: link:../cli
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
 
 packages:
 
@@ -1058,11 +1058,11 @@ packages:
     resolution: {integrity: sha512-h/hKVooXyOtUQJUtrfyBFGMIXb+Q3RLwqE6FzXfzyC0JQuuThLXCz8nRzCPbyiRuAR/aAYT/jbbhQrUxfiWqhQ==}
     engines: {node: '>=20.19.0'}
 
-  '@coasys/ad4m-connect@file:../ad4m/connect':
-    resolution: {directory: ../ad4m/connect, type: directory}
+  '@coasys/ad4m-connect@0.13.0-test-2':
+    resolution: {integrity: sha512-6xFMOpBmczbUMCQsGJn9wvTep9V927DL639n+dfPPT7kG79x02Fas32edZrZYi6iKd1oKhNZJeae+JknwADs8g==}
 
-  '@coasys/ad4m@file:../ad4m/core':
-    resolution: {directory: ../ad4m/core, type: directory}
+  '@coasys/ad4m@0.13.0-test-2':
+    resolution: {integrity: sha512-dmLG2bouheIQqZNtmxyhcLoLW0GklEvxyABfn+/3NKXMv6S3bFX0ZcItgPV/CNy1lUg7+/fiaYNaVv8iTRKvPQ==}
 
   '@csstools/color-helpers@6.0.2':
     resolution: {integrity: sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q==}
@@ -2850,8 +2850,8 @@ packages:
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
 
-  baseline-browser-mapping@2.10.22:
-    resolution: {integrity: sha512-6qruVrb5rse6WylFkU0FhBKKGuecWseqdpQfhkawn6ztyk2QlfwSRjsDxMCLJrkfmfN21qvhl9ABgaMeRkuwww==}
+  baseline-browser-mapping@2.10.23:
+    resolution: {integrity: sha512-xwVXGqevyKPsiuQdLj+dZMVjidjJV508TBqexND5HrF89cGdCYCJFB3qhcxRHSeMctdCfbR1jrxBajhDy7o29g==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
@@ -3979,8 +3979,8 @@ packages:
   hookified@1.15.1:
     resolution: {integrity: sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg==}
 
-  hookified@2.1.1:
-    resolution: {integrity: sha512-AHb76R16GB5EsPBE2J7Ko5kiEyXwviB9P5SMrAKcuAu4vJPZttViAbj9+tZeaQE5zjDme+1vcHP78Yj/WoAveA==}
+  hookified@2.2.0:
+    resolution: {integrity: sha512-p/LgFzRN5FeoD3DLS6bkUapeye6E4SI6yJs6KetENd18S+FBthqYq2amJUWpt5z0EQwwHemidjY5OqJGEKm5uA==}
 
   hosted-git-info@4.1.0:
     resolution: {integrity: sha512-kyCuEOWjJqZuDbRHzL8V93NzQhwIB71oFWSyzVo+KPZI+pnQPPxucdkrOZvkLRnrf5URsQM+IJ09Dw29cRALIA==}
@@ -4973,8 +4973,8 @@ packages:
   postcss-value-parser@4.2.0:
     resolution: {integrity: sha512-1NNCs6uurfkVbeXG4S8JFT9t19m45ICnif8zWLd5oPSZ50QnwMfK+H3jv408d4jw/7Bttv5axS5IiHoLaVNHeQ==}
 
-  postcss@8.5.11:
-    resolution: {integrity: sha512-5dDj8+lmvA8XB78SmzGI8NlQoksv7IfutGWeVZxiixHbO+p4LDPT3wuG/D9sM/wrjZZ9I+Siy/e117vbFPxSZg==}
+  postcss@8.5.12:
+    resolution: {integrity: sha512-W62t/Se6rA0Az3DfCL0AqJwXuKwBeYg6nOaIgzP+xZ7N5BFCI7DYi1qs6ygUYT6rvfi6t9k65UMLJC+PHZpDAA==}
     engines: {node: ^10 || ^12 || >=14}
 
   prelude-ls@1.2.1:
@@ -6504,7 +6504,7 @@ snapshots:
       '@cesium/engine': 24.0.0
       nosleep.js: 0.12.0
 
-  '@coasys/ad4m-connect@file:../ad4m/connect(esbuild@0.27.7)':
+  '@coasys/ad4m-connect@0.13.0-test-2(esbuild@0.27.7)':
     dependencies:
       '@undecaf/barcode-detector-polyfill': 0.9.23
       '@undecaf/zbar-wasm': 0.9.16
@@ -6515,7 +6515,7 @@ snapshots:
     transitivePeerDependencies:
       - esbuild
 
-  '@coasys/ad4m@file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@coasys/ad4m@0.13.0-test-2(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@apollo/client': 3.7.10(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@holochain/client': 0.16.0
@@ -6534,7 +6534,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@coasys/ad4m@file:../ad4m/core(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
+  '@coasys/ad4m@0.13.0-test-2(graphql-ws@5.12.0(graphql@15.7.2))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)':
     dependencies:
       '@apollo/client': 3.7.10(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@holochain/client': 0.16.0
@@ -8255,7 +8255,7 @@ snapshots:
 
   base64-js@1.5.1: {}
 
-  baseline-browser-mapping@2.10.22: {}
+  baseline-browser-mapping@2.10.23: {}
 
   better-opn@3.0.2:
     dependencies:
@@ -8336,7 +8336,7 @@ snapshots:
 
   browserslist@4.28.2:
     dependencies:
-      baseline-browser-mapping: 2.10.22
+      baseline-browser-mapping: 2.10.23
       caniuse-lite: 1.0.30001791
       electron-to-chromium: 1.5.344
       node-releases: 2.0.38
@@ -9656,7 +9656,7 @@ snapshots:
 
   hookified@1.15.1: {}
 
-  hookified@2.1.1: {}
+  hookified@2.2.0: {}
 
   hosted-git-info@4.1.0:
     dependencies:
@@ -10557,7 +10557,7 @@ snapshots:
 
   possible-typed-array-names@1.1.0: {}
 
-  postcss-cli@10.1.0(postcss@8.5.11):
+  postcss-cli@10.1.0(postcss@8.5.12):
     dependencies:
       chokidar: 3.6.0
       dependency-graph: 0.11.0
@@ -10565,9 +10565,9 @@ snapshots:
       get-stdin: 9.0.0
       globby: 13.2.2
       picocolors: 1.1.1
-      postcss: 8.5.11
-      postcss-load-config: 4.0.2(postcss@8.5.11)
-      postcss-reporter: 7.1.0(postcss@8.5.11)
+      postcss: 8.5.12
+      postcss-load-config: 4.0.2(postcss@8.5.12)
+      postcss-reporter: 7.1.0(postcss@8.5.12)
       pretty-hrtime: 1.0.3
       read-cache: 1.0.0
       slash: 5.1.0
@@ -10575,39 +10575,39 @@ snapshots:
     transitivePeerDependencies:
       - ts-node
 
-  postcss-import@15.1.0(postcss@8.5.11):
+  postcss-import@15.1.0(postcss@8.5.12):
     dependencies:
-      postcss: 8.5.11
+      postcss: 8.5.12
       postcss-value-parser: 4.2.0
       read-cache: 1.0.0
       resolve: 1.22.12
 
-  postcss-load-config@4.0.2(postcss@8.5.11):
+  postcss-load-config@4.0.2(postcss@8.5.12):
     dependencies:
       lilconfig: 3.1.3
       yaml: 2.8.3
     optionalDependencies:
-      postcss: 8.5.11
+      postcss: 8.5.12
 
-  postcss-load-config@6.0.1(postcss@8.5.11)(tsx@4.21.0)(yaml@2.8.3):
+  postcss-load-config@6.0.1(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.3):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
-      postcss: 8.5.11
+      postcss: 8.5.12
       tsx: 4.21.0
       yaml: 2.8.3
 
-  postcss-reporter@7.1.0(postcss@8.5.11):
+  postcss-reporter@7.1.0(postcss@8.5.12):
     dependencies:
       picocolors: 1.1.1
-      postcss: 8.5.11
+      postcss: 8.5.12
       thenby: 1.4.1
 
   postcss-resolve-nested-selector@0.1.6: {}
 
-  postcss-safe-parser@7.0.1(postcss@8.5.11):
+  postcss-safe-parser@7.0.1(postcss@8.5.12):
     dependencies:
-      postcss: 8.5.11
+      postcss: 8.5.12
 
   postcss-selector-parser@7.1.1:
     dependencies:
@@ -10616,7 +10616,7 @@ snapshots:
 
   postcss-value-parser@4.2.0: {}
 
-  postcss@8.5.11:
+  postcss@8.5.12:
     dependencies:
       nanoid: 3.3.11
       picocolors: 1.1.1
@@ -10698,7 +10698,7 @@ snapshots:
 
   qified@0.9.1:
     dependencies:
-      hookified: 2.1.1
+      hookified: 2.2.0
 
   qs@6.11.0:
     dependencies:
@@ -11293,9 +11293,9 @@ snapshots:
       micromatch: 4.0.8
       normalize-path: 3.0.0
       picocolors: 1.1.1
-      postcss: 8.5.11
+      postcss: 8.5.12
       postcss-resolve-nested-selector: 0.1.6
-      postcss-safe-parser: 7.0.1(postcss@8.5.11)
+      postcss-safe-parser: 7.0.1(postcss@8.5.12)
       postcss-selector-parser: 7.1.1
       postcss-value-parser: 4.2.0
       resolve-from: 5.0.0
@@ -11461,7 +11461,7 @@ snapshots:
 
   tslib@2.8.1: {}
 
-  tsup@8.5.1(postcss@8.5.11)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3):
+  tsup@8.5.1(postcss@8.5.12)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.27.7)
       cac: 6.7.14
@@ -11472,7 +11472,7 @@ snapshots:
       fix-dts-default-cjs-exports: 1.0.1
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(postcss@8.5.11)(tsx@4.21.0)(yaml@2.8.3)
+      postcss-load-config: 6.0.1(postcss@8.5.12)(tsx@4.21.0)(yaml@2.8.3)
       resolve-from: 5.0.0
       rollup: 4.60.2
       source-map: 0.7.6
@@ -11481,7 +11481,7 @@ snapshots:
       tinyglobby: 0.2.16
       tree-kill: 1.2.2
     optionalDependencies:
-      postcss: 8.5.11
+      postcss: 8.5.12
       typescript: 5.9.3
     transitivePeerDependencies:
       - jiti
@@ -11669,7 +11669,7 @@ snapshots:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.4)
       picomatch: 4.0.4
-      postcss: 8.5.11
+      postcss: 8.5.12
       rollup: 4.60.2
       tinyglobby: 0.2.16
     optionalDependencies:
@@ -11684,7 +11684,7 @@ snapshots:
       esbuild: 0.25.12
       fdir: 6.5.0(picomatch@4.0.4)
       picomatch: 4.0.4
-      postcss: 8.5.11
+      postcss: 8.5.12
       rollup: 4.60.2
       tinyglobby: 0.2.16
     optionalDependencies:
@@ -11699,7 +11699,7 @@ snapshots:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
       picomatch: 4.0.4
-      postcss: 8.5.11
+      postcss: 8.5.12
       rollup: 4.60.2
       tinyglobby: 0.2.16
     optionalDependencies:
@@ -11714,7 +11714,7 @@ snapshots:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
       picomatch: 4.0.4
-      postcss: 8.5.11
+      postcss: 8.5.12
       rollup: 4.60.2
       tinyglobby: 0.2.16
     optionalDependencies:
