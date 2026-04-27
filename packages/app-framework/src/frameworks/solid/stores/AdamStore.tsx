@@ -109,7 +109,8 @@ export function AdamStoreProvider(props: ParentProps) {
     try {
       // Desktop platforms: set up iframe message listener FIRST (before any delays)
       // This ensures the listener is ready when embedded apps send REQUEST_AD4M_CONFIG
-      if (platform.getConnectionDetails) {
+      // (On desktop the executor is already running so credentials are available immediately)
+      if (platform.isDesktop && platform.getConnectionDetails) {
         const { port, token } = await platform.getConnectionDetails();
         setAd4mPort(port);
         setAd4mToken(token);
@@ -126,6 +127,14 @@ export function AdamStoreProvider(props: ParentProps) {
       // Build the Ad4m client using platform adapter
       const client = await platform.buildAd4mClient();
       setAdamClient(client);
+
+      // Web platform: credentials are only available after ad4m-connect auth completes
+      if (!platform.isDesktop && platform.getConnectionDetails) {
+        const { port, token } = await platform.getConnectionDetails();
+        setAd4mPort(port);
+        setAd4mToken(token);
+        setupMessageListener(port, token);
+      }
 
       // Get agent status
       const status = await client.agent.status();

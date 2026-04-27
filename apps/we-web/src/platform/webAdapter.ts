@@ -1,11 +1,13 @@
 import type { Ad4mClient } from '@coasys/ad4m';
-import { getAd4mClient } from '@coasys/ad4m-connect';
+import { getAd4mConnect } from '@coasys/ad4m-connect';
 import type { AppConfig, PlatformAdapter } from '@we/app-framework/shared';
+
+let ad4mCore: Awaited<ReturnType<typeof getAd4mConnect>>['core'] | null = null;
 
 export const webAdapter: PlatformAdapter = {
   async buildAd4mClient(): Promise<Ad4mClient> {
     // TODO: update with new ad4m connect logic
-    const client = await getAd4mClient({
+    const { core, client } = getAd4mConnect({
       appInfo: {
         name: 'WE',
         description: 'Social media for the new internet',
@@ -14,15 +16,13 @@ export const webAdapter: PlatformAdapter = {
       },
       capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
     });
-
+    ad4mCore = core;
     return client;
   },
 
   async getConnectionDetails(): Promise<{ port: number; token: string }> {
-    const token = localStorage.getItem('ad4m-token');
-    const port = parseInt(localStorage.getItem('ad4m-port') ?? '12000');
-    if (!token) throw new Error('AD4M token not found in localStorage — is ad4m-connect authenticated?');
-    return { port, token };
+    if (!ad4mCore?.token) throw new Error('AD4M not authenticated — call buildAd4mClient first');
+    return { port: ad4mCore.port, token: ad4mCore.token };
   },
 
   resolveAppUrl(app: AppConfig, isDevelopment: boolean): string {
