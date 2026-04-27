@@ -17,12 +17,5 @@
     "basePort": 8080
   },
 
-  "host": {
-    "ui": {
-      "enableTemplateSwitching": true,
-      "defaultTemplate": "weNative"
-    }
-  },
-
   "apps": []
 }

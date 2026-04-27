@@ -1,57 +1,46 @@
 # Seed Configuration Examples
 
-This directory contains example seed configurations for different WE launcher setups.
+This directory contains example seed configurations for different WE deployments.
 
 ## Usage
 
-1. Copy the example you want to use:
+1. Copy the example closest to your needs:
 
    ```bash
-   cp seed-examples/native-we-app.seed.json we-seed.json
+   cp seed-examples/we-native.seed.json we-seed.json
    ```
 
-2. Edit paths in `we-seed.json` to match your setup
+2. Edit paths in `we-seed.json` to match your local setup
 
 3. Run setup:
    ```bash
-   pnpm setup
+   pnpm setup-workspace
    ```
 
 ## Available Examples
 
-### `native-we-app.seed.json`
+### `we-native.seed.json`
 
-**Pure WE application** built with the design system and schema renderer.
+**Pure WE app** — no embedded external apps.
 
-- No embedded external apps
-- Template switching enabled
-- Build UIs from WE components and schemas
-- Ideal for: Building decentralized apps from scratch
+- WE shell with templates only (sidebar, spaces, settings, etc.)
+- Build UIs entirely from WE components and schemas
+- Ideal for: building decentralized apps natively inside the WE design system
 
-### `multi-app.seed.json`
+### `we-with-apps.seed.json`
 
-**Multi-app launcher** with sidebar navigation.
+**WE + embedded apps** — external apps alongside templates.
 
-- Multiple external apps (Flux + Playground)
-- Sidebar navigation with iframe embedding
-- Template switching disabled
-- Ideal for: Bundling multiple existing apps
-
-### `flux-only.seed.json`
-
-**Single external app** in full-screen mode.
-
-- Just Flux, no sidebar
-- 100% viewport coverage
-- Template switching disabled
-- Ideal for: Dedicated launcher for one app
+- WE shell with sidebar showing both templates and app icons
+- Each app runs in a persistent iframe (CSS-toggled, never unmounted)
+- Switching templates does not destroy app state / WebRTC sessions
+- Ideal for: bundling one or more existing web apps (e.g. Flux) into the WE shell
 
 ## Creating Your Own
 
 1. Start with an example that's closest to your needs
-2. Modify the `project` section (name, description, author)
-3. Adjust `ad4m.dataPath` to avoid conflicts
-4. Add/remove apps as needed
-5. Customize `host.ui` for white-labeling
+2. Update the `project` section (name, description, author)
+3. Change `ad4m.dataPath` to avoid collisions with other WE instances
+4. Add apps to the `apps` array — each needs `id`, `name`, `icon`, `paths.dist`, and `paths.devServer`
 
-See [SEED-SYSTEM.md](../SEED-SYSTEM.md) for complete documentation.
+See the [seed type definitions](../packages/app-framework/src/types/seed.ts) for the full schema.
