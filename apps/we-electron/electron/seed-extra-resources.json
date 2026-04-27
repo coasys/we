@@ -7,5 +7,10 @@
   {
     "from": "../../../ad4m/target/release/ad4m-executor",
     "to": "ad4m-executor"
+  },
+  {
+    "from": "../../../flux/app/dist",
+    "to": "flux",
+    "filter": ["**/*"]
   }
 ]

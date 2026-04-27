@@ -22,4 +22,3 @@ export const launcherUIRegistry = {
 };
 
 export type LauncherUIRegistry = typeof launcherUIRegistry;
-

@@ -147,7 +147,7 @@ async function main() {
     } else {
       allDepsReady = false;
       log(`   To build ${app.name}:`, 'yellow');
-      log(`   cd ${app.paths.projectRoot} && ${app.commands.build}`, 'yellow');
+      log(`   cd ${app.paths.projectRoot} && pnpm build`, 'yellow');
     }
   }
 

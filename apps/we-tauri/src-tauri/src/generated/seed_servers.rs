@@ -25,20 +25,4 @@ pub fn setup_seed_servers(resource_path: PathBuf) {
     } else {
         eprintln!("⚠️  Flux directory not found at {:?}", app_flux_dir);
     }
-
-    // Playground (playground)
-    let app_playground_dir = resource_path.join("playground");
-    if app_playground_dir.exists() {
-        println!("📦 Starting Playground server on port 8081");
-        std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .thread_name(String::from("app_server_playground"))
-                .enable_all()
-                .build()
-                .unwrap();
-            runtime.block_on(serve_static_app(8081, app_playground_dir));
-        });
-    } else {
-        eprintln!("⚠️  Playground directory not found at {:?}", app_playground_dir);
-    }
 }

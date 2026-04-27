@@ -154,17 +154,25 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
-  function sendAdamConfigToIframe(port: number, token: string) {
-    // Find the we-iframe element
-    const weIframe = document.querySelector('we-iframe') as HTMLElement & {
-      postMessage: (data: Record<string, unknown>, origin: string) => void;
-    };
+  // Track if an iframe requested AD4M_CONFIG while the agent was still locked
+  let pendingConfigRequest = false;
 
-    // Pass the port and token to the iframe
-    if (weIframe && typeof weIframe.postMessage === 'function') {
-      weIframe.postMessage({ type: 'AD4M_CONFIG', port, token }, '*');
-    } else {
-      console.warn('AdamStore: we-iframe element not found or postMessage not available');
+  function sendAdamConfigToIframe(port: number, token: string) {
+    // Send to ALL mounted we-iframe elements (there may be multiple apps)
+    const weIframes = document.querySelectorAll('we-iframe') as NodeListOf<
+      HTMLElement & { postMessage: (data: Record<string, unknown>, origin: string) => void }
+    >;
+
+    let sent = 0;
+    weIframes.forEach((el) => {
+      if (typeof el.postMessage === 'function') {
+        el.postMessage({ type: 'AD4M_CONFIG', port, token }, '*');
+        sent++;
+      }
+    });
+
+    if (sent === 0) {
+      console.warn('AdamStore: no we-iframe elements found to send AD4M_CONFIG');
     }
   }
 
@@ -172,7 +180,13 @@ export function AdamStoreProvider(props: ParentProps) {
     // Listen for requests from iframes asking for AD4M config
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'REQUEST_AD4M_CONFIG') {
-        sendAdamConfigToIframe(port, token);
+        if (bootState() === 'ready') {
+          // Agent is unlocked — respond immediately
+          sendAdamConfigToIframe(port, token);
+        } else {
+          // Agent is still locked — queue the request; the createEffect above will flush it
+          pendingConfigRequest = true;
+        }
       }
     };
 
@@ -408,6 +422,16 @@ export function AdamStoreProvider(props: ParentProps) {
   }
 
   createEffect(initialiseStore);
+
+  // When the agent transitions to ready, send AD4M_CONFIG to any iframes that requested it while locked
+  createEffect(() => {
+    const port = ad4mPort();
+    const token = ad4mToken();
+    if (bootState() === 'ready' && pendingConfigRequest && port !== undefined && token !== undefined) {
+      pendingConfigRequest = false;
+      sendAdamConfigToIframe(port, token);
+    }
+  });
 
   const store: AdamStore = {
     // State

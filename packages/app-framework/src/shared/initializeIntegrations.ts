@@ -46,4 +46,3 @@ export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
     console.error('❌ Failed to initialize integrations:', error);
   }
 }
-

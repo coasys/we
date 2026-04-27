@@ -69,7 +69,18 @@ export function resolveMapProp(
           const resolved = resolveSelectValue(value, item, stores, context, memo, resolvePropFn);
           // Unwrap reactive accessors (signals/memos from $if, $eq, etc.) but leave
           // plain functions (e.g. $action handlers) intact so they remain callable.
-          result[key] = typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved ? resolved() : resolved;
+          const unwrapped = typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved ? resolved() : resolved;
+          // Compose event handler arrays (e.g. onClick: [fn1, fn2]) into a single callable,
+          // matching the same behaviour as SchemaRenderer and the dispatcher's on* handling.
+          if (Array.isArray(unwrapped) && key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase()) {
+            result[key] = (...args: unknown[]) => {
+              for (const fn of unwrapped) {
+                if (typeof fn === 'function') fn(...args);
+              }
+            };
+          } else {
+            result[key] = unwrapped;
+          }
         }
         return result;
       };
