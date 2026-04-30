@@ -3,15 +3,27 @@ import { registerModel } from '@shared/registries/modelRegistry';
 import { useAdamStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';
 import {
+  AudioBlock,
   blobToDataURL,
+  CalloutBlock,
+  CodeBlock,
   CollectionBlock,
+  DividerBlock,
+  EmbedBlock,
+  EventBlock,
+  FileBlock,
   FileData,
   ImageBlock,
+  LinkBlock,
+  LocationBlock,
   resizeImage,
   Signal,
   SignalType,
   Space,
+  TagBlock,
+  TaskBlock,
   TextBlock,
+  VideoBlock,
 } from '@we/models';
 import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
@@ -51,12 +63,33 @@ export interface SpaceStore {
 
 const SpaceContext = createContext<SpaceStore>();
 
-// Register JS classes for $query model resolution
-registerModel('CollectionBlock', CollectionBlock as any);
-registerModel('TextBlock', TextBlock as any);
-registerModel('ImageBlock', ImageBlock as any);
-registerModel('Signal', Signal as any);
-registerModel('SignalType', SignalType as any);
+const SPACE_MODELS = [
+  AudioBlock,
+  CalloutBlock,
+  CodeBlock,
+  CollectionBlock,
+  DividerBlock,
+  EmbedBlock,
+  EventBlock,
+  FileBlock,
+  ImageBlock,
+  LinkBlock,
+  LocationBlock,
+  Signal,
+  SignalType,
+  TagBlock,
+  TaskBlock,
+  TextBlock,
+  VideoBlock,
+] as const;
+
+// Register JS classes for $query model resolution (runs once at module load)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+for (const M of SPACE_MODELS) registerModel(M.name, M as any);
+
+async function installSpaceSdna(p: PerspectiveProxy): Promise<void> {
+  await Promise.all(SPACE_MODELS.map((M) => M.register(p)));
+}
 
 export function SpaceStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
@@ -249,13 +282,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         // perspective permanently, so we must not do it for external perspectives.
         const [spaceModel] = await Space.findAll(p);
         if (spaceModel) {
-          await Promise.all([
-            CollectionBlock.register(p),
-            TextBlock.register(p),
-            ImageBlock.register(p),
-            Signal.register(p),
-            SignalType.register(p),
-          ]);
+          await installSpaceSdna(p);
           await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
         }
 
