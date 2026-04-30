@@ -76,6 +76,7 @@ Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the local perspective for model instances. Always returns an array.
 Options: model (required), where, order, limit, offset, include, parent, subscribe (default true).
+Use perspectiveStore (e.g. "spaceStore.perspective") to query a different perspective than the default space perspective.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
@@ -822,6 +823,8 @@ AdamStore:
   - adamClient: Ad4mClient | undefined
   - me: Agent | undefined
   - allPerspectives: array of PerspectiveProxy objects (all AD4M perspectives)
+  - currentPerspective: PerspectiveProxy | null (the perspective currently being viewed)
+  - currentPerspectiveModels: ModelManifestEntry[] (non-WE SHACL models from the current perspective; injected as externalModels into AI messages)
   - personalSpaces: array of Space objects (local/personal spaces)
   - sharedSpaces: array of Space objects (shared/neighbourhood spaces)
   - bootState: string
@@ -833,6 +836,7 @@ AdamStore:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
   - createSpace(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup
+  - setCurrentPerspective(uuid: string): sets the current perspective, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels
   - removePerspective(): unknown
   - login(password: string): logs in the agent with password
   - logout(): locks the agent and returns to login screen

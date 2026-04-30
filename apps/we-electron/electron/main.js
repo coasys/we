@@ -1,8 +1,8 @@
-import { spawn } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { app, BrowserWindow, desktopCapturer, ipcMain } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
-import { existsSync, rmSync } from 'fs';
+import { existsSync, readdirSync, rmSync } from 'fs';
 import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
@@ -101,6 +101,19 @@ async function startExecutor() {
     // Get AD4M data directory
     const ad4mDataPath = join(homedir(), '.ad4m');
 
+    // Kill any surviving ad4m-executor from a previous detached run (survives Ctrl+C).
+    // Must happen BEFORE the lair socket / LOCK cleanups so the old process releases
+    // its file handles before we delete them — otherwise it just re-acquires them.
+    if (process.platform !== 'win32') {
+      try {
+        execSync('pkill -SIGKILL -f ad4m-executor', { stdio: 'ignore' });
+        // Give the OS a moment to release RocksDB / lair file handles
+        await new Promise((r) => setTimeout(r, 800));
+      } catch {
+        // pkill exits with code 1 when no matching process is found — not an error
+      }
+    }
+
     // Clean up stale lair-keystore socket file — if a previous run crashed without
     // killing child processes, this socket stays on disk and causes lair-keystore
     // to fail on the next agent.unlock(), which crashes the executor.
@@ -111,6 +124,24 @@ async function startExecutor() {
         rmSync(keychainSocketPath);
       } catch (e) {
         console.warn('[main] Could not remove socket:', e.message);
+      }
+    }
+
+    // Clean up stale RocksDB LOCK files left by a detached executor that survived
+    // a Ctrl+C / forced quit. Without this, the next launch panics with
+    // "Resource temporarily unavailable" on every perspective's SPARQL store.
+    const perspectivesDir = join(ad4mDataPath, 'perspectives');
+    if (existsSync(perspectivesDir)) {
+      try {
+        for (const uuid of readdirSync(perspectivesDir)) {
+          const lockFile = join(perspectivesDir, uuid, 'sparql_store', 'LOCK');
+          if (existsSync(lockFile)) {
+            console.log('[main] Removing stale SPARQL LOCK:', lockFile);
+            rmSync(lockFile);
+          }
+        }
+      } catch (e) {
+        console.warn('[main] Could not clean SPARQL LOCK files:', e.message);
       }
     }
 
@@ -152,6 +183,11 @@ async function startExecutor() {
     // Detach from the parent — lets Node.js exit without waiting for the child,
     // and is required for process.kill(-pid) group-kill to work.
     executorProcess.unref();
+    // Also unref the stdio streams — without this, the piped stdout/stderr keep
+    // Electron's event loop alive after the executor is killed, causing a second
+    // Ctrl+C to be needed to return to the terminal prompt.
+    executorProcess.stdout?.unref();
+    executorProcess.stderr?.unref();
 
     // Forward executor output to console (prevents EPIPE errors)
     executorProcess.stdout?.on('data', (data) => {
