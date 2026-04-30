@@ -6028,6 +6028,13 @@
           "type": "array",
           "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
         },
+        "currentPerspective": {
+          "type": "object",
+          "properties": ["uuid", "name", "sharedUrl"]
+        },
+        "currentPerspectiveModels": {
+          "type": "array"
+        },
         "personalSpaces": {
           "type": "array",
           "properties": ["uuid", "name", "description", "url", "visibility"]
@@ -6057,6 +6064,7 @@
         "navigate",
         "addNewSpace",
         "createSpace",
+        "setCurrentPerspective",
         "removePerspective",
         "login",
         "logout",

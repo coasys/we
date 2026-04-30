@@ -73,6 +73,7 @@ Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the local perspective for model instances. Always returns an array.
 Options: model (required), where, order, limit, offset, include, parent, subscribe (default true).
+Use perspectiveStore (e.g. "spaceStore.perspective") to query a different perspective than the default space perspective.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }

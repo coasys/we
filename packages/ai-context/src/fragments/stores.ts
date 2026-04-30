@@ -14,6 +14,8 @@ export const storeEntries: StoreEntry[] = [
       adamClient: { type: 'object' },
       me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
       allPerspectives: { type: 'array', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
+      currentPerspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
+      currentPerspectiveModels: { type: 'array' },
       personalSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
       sharedSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
       bootState: { type: 'string' },
@@ -29,6 +31,7 @@ export const storeEntries: StoreEntry[] = [
       'navigate',
       'addNewSpace',
       'createSpace',
+      'setCurrentPerspective',
       'removePerspective',
       'login',
       'logout',
@@ -173,6 +176,9 @@ function generateStoresText(entries: StoreEntry[]): string {
         adamClient: 'Ad4mClient | undefined',
         me: 'Agent | undefined',
         allPerspectives: 'array of PerspectiveProxy objects (all AD4M perspectives)',
+        currentPerspective: 'PerspectiveProxy | null (the perspective currently being viewed)',
+        currentPerspectiveModels:
+          'ModelManifestEntry[] (non-WE SHACL models from the current perspective; injected as externalModels into AI messages)',
         personalSpaces: 'array of Space objects (local/personal spaces)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces)',
         bootState: 'string',
@@ -186,6 +192,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         addNewSpace: '(space: Space): adds a new space',
         createSpace:
           '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
+        setCurrentPerspective:
+          '(uuid: string): sets the current perspective, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels',
         login: '(password: string): logs in the agent with password',
         logout: '(): locks the agent and returns to login screen',
         updateAgentProfile:
