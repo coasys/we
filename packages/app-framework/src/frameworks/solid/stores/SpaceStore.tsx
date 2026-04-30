@@ -233,21 +233,36 @@ export function SpaceStoreProvider(props: ParentProps) {
         const uuid = p.uuid;
         setSpaceId(uuid);
 
-        // Register WE SHACL schemas so block models can be queried
-        await Promise.all([
-          CollectionBlock.register(p),
-          TextBlock.register(p),
-          ImageBlock.register(p),
-          Signal.register(p),
-          SignalType.register(p),
-        ]);
-        await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
+        // Skip block-model registration for we-root — it is never a WE space and
+        // writing SHACL shapes to it permanently contaminates the model manifest.
+        const rootUuid = adamStore.rootPerspective()?.uuid;
+        if (uuid === rootUuid) {
+          setPerspective(p);
+          setSpace(null);
+          setSignalTypes([]);
+          console.log('[SpaceStore] skipped block registration for we-root');
+          return;
+        }
 
+        // Confirm this perspective is actually a WE space before registering
+        // block-model SHACL shapes. Registering them writes links to the
+        // perspective permanently, so we must not do it for external perspectives.
         const [spaceModel] = await Space.findAll(p);
+        if (spaceModel) {
+          await Promise.all([
+            CollectionBlock.register(p),
+            TextBlock.register(p),
+            ImageBlock.register(p),
+            Signal.register(p),
+            SignalType.register(p),
+          ]);
+          await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
+        }
+
         setPerspective(p);
         setSpace(spaceModel ?? null);
 
-        const signalTypeModels = await SignalType.findAll(p);
+        const signalTypeModels = spaceModel ? await SignalType.findAll(p) : [];
         setSignalTypes(signalTypeModels);
         console.log('[SpaceStore] hydrated perspective', uuid, 'space:', spaceModel ?? null);
       } catch (error) {
