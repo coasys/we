@@ -1,5 +1,5 @@
 import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
-import { getModel } from '@shared/registries/modelRegistry';
+import { getModel, getModelForPerspective } from '@shared/registries/modelRegistry';
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
@@ -193,6 +193,7 @@ export default function TemplateProvider() {
     testStore,
     model: modelStore,
     $getModel: getModel, // Used by SchemaRenderer for $query descriptor → model class lookup
+    $getModelForPerspective: getModelForPerspective, // UUID-aware fallback for dynamically-registered external models
   };
 
   // Get the current template schema and build its routes

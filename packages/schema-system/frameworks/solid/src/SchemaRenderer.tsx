@@ -109,7 +109,9 @@ function createQuerySignal(
   getModel: (name: string) => unknown,
 ): () => unknown[] {
   const [items, setItems] = createSignal<unknown[]>([]);
-  const ModelClass = getModel(descriptor.model) as Record<string, (...args: unknown[]) => unknown>;
+  const getModelForPerspective = (stores as Record<string, unknown>).$getModelForPerspective as
+    | ((name: string, uuid?: string) => unknown)
+    | undefined;
 
   createEffect(() => {
     let p: unknown = null;
@@ -127,6 +129,11 @@ function createQuerySignal(
       setItems([]);
       return;
     }
+
+    // UUID-aware model lookup: prefer perspective-specific dynamic model, fall back to global registry
+    const perspectiveUuid = (p as Record<string, unknown>).uuid as string | undefined;
+    const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.model, perspectiveUuid) : undefined;
+    const ModelClass = (dynamicCls ?? getModel(descriptor.model)) as Record<string, (...args: unknown[]) => unknown>;
 
     const resolvedParams = deepResolveTokens(descriptor.params, stores as Record<string, unknown>, {}) as Record<
       string,
