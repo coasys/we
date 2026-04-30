@@ -135,7 +135,10 @@ describe('buildValidationContext', () => {
 
     const adamMembers = c.storeMembers.get('adamStore')!;
     expect(adamMembers.has('loading')).toBe(true);
-    expect(adamMembers.has('navigate')).toBe(true);
+    expect(adamMembers.has('login')).toBe(true);
+
+    const routeMembers = c.storeMembers.get('routeStore')!;
+    expect(routeMembers.has('navigate')).toBe(true);
   });
 
   it('builds model names', () => {
