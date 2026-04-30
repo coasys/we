@@ -50,7 +50,8 @@ Patches are applied sequentially — if you remove a node, later patches in the 
 Each user message is a JSON object:
 {
   "request": "<user's natural language request>",
-  "currentSchema": { ... current TemplateSchema with id fields on every node ... }
+  "currentSchema": { ... current TemplateSchema with id fields on every node ... },
+  "externalModels": "<optional — present when the active perspective has non-WE SHACL models; lists available models and their properties for $query usage>"
 }
 
 ---

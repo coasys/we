@@ -22,13 +22,25 @@ import {
   validateStructure,
 } from '@we/schema-shared';
 import type { ChatMessage } from '@we/widgets/solid';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, untrack, useContext } from 'solid-js';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  ParentProps,
+  untrack,
+  useContext,
+} from 'solid-js';
+
+import type { ModelManifestEntry } from './AdamStore';
 
 // Re-export for convenience
 export type { ChatMessage } from '@we/widgets/solid';
 
-// Build validation context once at module level from the generated context data
-const validationCtx = buildValidationContext(contextData);
+// Base validation context built once from the static generated context data.
+// External perspective models are merged in reactively inside AiStoreProvider.
+const baseValidationCtx = buildValidationContext(contextData);
 
 export interface AiStore {
   // --- Existing: AD4M AI state ---
@@ -176,6 +188,27 @@ const updateSchemaTool = {
   },
 };
 
+/**
+ * Format a model manifest into a human-readable text block for the AI system prompt.
+ * Each model entry lists its properties with type/cardinality annotations.
+ */
+function formatManifestForPrompt(manifest: ModelManifestEntry[]): string {
+  if (!manifest.length) return '';
+  const lines: string[] = ['## External Perspective Models', ''];
+  for (const entry of manifest) {
+    lines.push(`### ${entry.name}`);
+    for (const prop of entry.properties) {
+      const flags: string[] = [prop.type];
+      if (prop.required) flags.push('required');
+      if (prop.isCollection) flags.push('collection');
+      const relatedNote = prop.relatedModel ? ` → ${prop.relatedModel}` : '';
+      lines.push(`- ${prop.name}${relatedNote} (${flags.join(', ')})`);
+    }
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
 let msgIdCounter = 0;
 function createMessage(role: ChatMessage['role'], content: string, status?: ChatMessage['status']): ChatMessage {
   return {
@@ -214,6 +247,18 @@ const starterTemplate: SchemaNode = {
 export function AiStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
   const templateStore = useTemplateStore();
+
+  // Reactive validation context — extends the static base with any external
+  // perspective models that are currently in scope (e.g. Flux SHACL models).
+  // This prevents the validator from rejecting $query nodes that reference
+  // legitimate model names discovered from the active perspective's SHACL shapes.
+  const getValidationCtx = createMemo(() => {
+    const externalModels = adamStore.currentPerspectiveModels();
+    if (externalModels.length === 0) return baseValidationCtx;
+    const extendedModelNames = new Set(baseValidationCtx.modelNames);
+    for (const m of externalModels) extendedModelNames.add(m.name);
+    return { ...baseValidationCtx, modelNames: extendedModelNames };
+  });
 
   // --- AD4M AI state (existing) ---
   const [models, setModels] = createSignal<Model[]>([]);
@@ -892,7 +937,7 @@ export function AiStoreProvider(props: ParentProps) {
       let accumulatedSchema: SchemaNode = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
 
       // Capture baseline validation issues so we only reject patches that introduce NEW problems
-      const baselineSemantic = validateSemantic(accumulatedSchema as TemplateSchema, validationCtx);
+      const baselineSemantic = validateSemantic(accumulatedSchema as TemplateSchema, getValidationCtx());
       const baselineIssueKeys = new Set(baselineSemantic.errors.map((e) => `${e.severity}|${e.path}|${e.message}`));
       let allPatchesValid = true;
 
@@ -1072,7 +1117,7 @@ export function AiStoreProvider(props: ParentProps) {
 
           // Step 2: Semantic validation (component/prop/store checks)
           // Only fail on NEW issues introduced by the patch, not pre-existing ones
-          const semantic = validateSemantic(mergedTemplate, validationCtx);
+          const semantic = validateSemantic(mergedTemplate, getValidationCtx());
           const newIssues = semantic.errors.filter(
             (e) => !baselineIssueKeys.has(`${e.severity}|${e.path}|${e.message}`),
           );
@@ -1169,12 +1214,17 @@ export function AiStoreProvider(props: ParentProps) {
 
     // Add current message with latest schema (with node IDs for ID-based patching)
     const schemaWithIds = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
+    const manifest = adamStore.currentPerspectiveModels();
+    const payload: Record<string, unknown> = {
+      request: latestText,
+      currentSchema: schemaWithIds,
+    };
+    if (manifest.length > 0) {
+      payload.externalModels = formatManifestForPrompt(manifest);
+    }
     history.push({
       role: 'user',
-      content: JSON.stringify({
-        request: latestText,
-        currentSchema: schemaWithIds,
-      }),
+      content: JSON.stringify(payload),
     });
 
     return history;
