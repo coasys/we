@@ -1,6 +1,6 @@
 import { Ad4mClient, Agent, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
 import { usePlatform } from '@shared/platform';
-import { getRegisteredModelNames, type ModelClass, registerDynamicModels } from '@shared/registries/modelRegistry';
+import { type ModelClass, registerDynamicModels } from '@shared/registries/modelRegistry';
 import type { FileData } from '@we/models';
 import {
   AgentProfile,
@@ -65,8 +65,10 @@ export interface AdamStore {
   /** The currently focused perspective (universal signal — set for all navigation). */
   currentPerspective: Accessor<PerspectiveProxy | null>;
   /**
-   * Non-WE model classes found in the current perspective.
-   * Populated by `setCurrentPerspective`; empty when no external models are present.
+   * All model classes found in the current perspective (WE + external).
+   * Populated by `setCurrentPerspective`; empty until a perspective is set.
+   * WE models are included so the AI validator can narrow its allowlist to
+   * what is actually registered in this perspective.
    */
   currentPerspectiveModels: Accessor<ModelManifestEntry[]>;
 
@@ -80,8 +82,10 @@ export interface AdamStore {
    * Set the active perspective by UUID.
    * - Fetches the PerspectiveProxy via byUUID
    * - Synthesises Ad4mModel classes from the perspective's SHACL shapes and
-   *   caches them in the per-perspective model registry
-   * - Populates currentPerspectiveModels with non-WE models for AI context injection
+   *   caches them in the per-perspective model registry (WE models filtered out
+   *   to avoid shadowing the real implementations)
+   * - Populates currentPerspectiveModels with the full manifest (WE + external)
+   *   so the AI validator can narrow its allowlist to what is actually registered
    * - Sets the currentPerspective signal (SpaceStore reacts to this)
    */
   setCurrentPerspective: (uuid: string) => Promise<void>;
@@ -548,11 +552,12 @@ export function AdamStoreProvider(props: ParentProps) {
         console.warn('AdamStore: getModelClasses failed (ad4m version too old?)', err);
       }
 
-      // Populate currentPerspectiveModels with non-WE entries for AI context.
+      // Populate currentPerspectiveModels with the full manifest (WE + external).
+      // The full list lets AiStore build a perspective-accurate validator allowlist
+      // while still filtering WE names out of the dynamic model registry below.
       try {
         const manifest: ModelManifestEntry[] = (await ext.getModelManifest?.()) ?? [];
-        const weNames = new Set(getRegisteredModelNames());
-        setCurrentPerspectiveModels(manifest.filter((m) => !weNames.has(m.name)));
+        setCurrentPerspectiveModels(manifest);
       } catch (err) {
         console.warn('AdamStore: getModelManifest failed (ad4m version too old?)', err);
         setCurrentPerspectiveModels([]);

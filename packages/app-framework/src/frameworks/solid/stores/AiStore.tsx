@@ -189,10 +189,12 @@ const updateSchemaTool = {
 };
 
 /**
- * Format a model manifest into a human-readable text block for the AI system prompt.
- * Each model entry lists its properties with type/cardinality annotations.
+ * Format external (non-WE) manifest entries into a human-readable text block.
+ * WE models are already described in schemaContext so only their names are sent;
+ * external models need full property descriptions because the AI has no other
+ * knowledge of their structure.
  */
-function formatManifestForPrompt(manifest: ModelManifestEntry[]): string {
+function formatExternalManifestForPrompt(manifest: ModelManifestEntry[]): string {
   if (!manifest.length) return '';
   const lines: string[] = ['## External Perspective Models', ''];
   for (const entry of manifest) {
@@ -248,16 +250,16 @@ export function AiStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
   const templateStore = useTemplateStore();
 
-  // Reactive validation context — extends the static base with any external
-  // perspective models that are currently in scope (e.g. Flux SHACL models).
-  // This prevents the validator from rejecting $query nodes that reference
-  // legitimate model names discovered from the active perspective's SHACL shapes.
+  // Reactive validation context — perspective-accurate model allowlist.
+  // When a perspective is active its full manifest (WE + external) is used to
+  // narrow modelNames to only what is actually registered there.  WE models
+  // not present in the manifest (e.g. CollectionBlock in we-root) are excluded.
+  // Falls back to the all-WE base context when no perspective is set.
   const getValidationCtx = createMemo(() => {
-    const externalModels = adamStore.currentPerspectiveModels();
-    if (externalModels.length === 0) return baseValidationCtx;
-    const extendedModelNames = new Set(baseValidationCtx.modelNames);
-    for (const m of externalModels) extendedModelNames.add(m.name);
-    return { ...baseValidationCtx, modelNames: extendedModelNames };
+    const manifest = adamStore.currentPerspectiveModels();
+    if (manifest.length === 0) return baseValidationCtx;
+    const perspectiveModelNames = new Set(manifest.map((m) => m.name));
+    return { ...baseValidationCtx, modelNames: perspectiveModelNames };
   });
 
   // --- AD4M AI state (existing) ---
@@ -1220,7 +1222,14 @@ export function AiStoreProvider(props: ParentProps) {
       currentSchema: schemaWithIds,
     };
     if (manifest.length > 0) {
-      payload.externalModels = formatManifestForPrompt(manifest);
+      const weModelNames = new Set(baseValidationCtx.modelNames);
+      const weInPerspective = manifest.filter((m) => weModelNames.has(m.name)).map((m) => m.name);
+      const externalInPerspective = manifest.filter((m) => !weModelNames.has(m.name));
+      // WE models: send only names — AI already has their full structure in schemaContext
+      if (weInPerspective.length > 0) payload.availableWeModels = weInPerspective;
+      // External models: send full property descriptions — AI has no other knowledge of them
+      if (externalInPerspective.length > 0)
+        payload.externalModels = formatExternalManifestForPrompt(externalInPerspective);
     }
     history.push({
       role: 'user',
