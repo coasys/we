@@ -1,6 +1,6 @@
 import { LinkQuery, PerspectiveProxy } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
-import { useAdamStore, useRouteStore } from '@solid/stores';
+import { useAdamStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';
 import {
   blobToDataURL,
@@ -59,7 +59,6 @@ registerModel('Signal', Signal as any);
 registerModel('SignalType', SignalType as any);
 
 export function SpaceStoreProvider(props: ParentProps) {
-  const routeStore = useRouteStore();
   const adamStore = useAdamStore();
 
   // State
@@ -120,37 +119,13 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   // Actions
+  /**
+   * @deprecated SpaceStore now self-hydrates reactively when `adamStore.currentPerspective`
+   * changes. Call `adamStore.setCurrentPerspective(uuid)` to trigger hydration.
+   * This shim is kept for backwards compatibility with any direct callers.
+   */
   async function getSpace(): Promise<void> {
-    try {
-      console.log('[SpaceStore] getSpace called with spaceId:', spaceId());
-      setLoading(true);
-      if (!adamStore.adamClient() || !spaceId()) return;
-      const spacePerspective = await adamStore.adamClient()!.perspective.byUUID(spaceId());
-      if (!spacePerspective) return;
-
-      // Register SHACL schemas on perspective so block models can be queried
-      await Promise.all([
-        CollectionBlock.register(spacePerspective),
-        TextBlock.register(spacePerspective),
-        ImageBlock.register(spacePerspective),
-        Signal.register(spacePerspective),
-        SignalType.register(spacePerspective),
-      ]);
-      await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
-
-      const [spaceModel] = await Space.findAll(spacePerspective);
-      setPerspective(spacePerspective);
-      console.log('[SpaceStore] getSpace loaded space:', spaceModel);
-      setSpace(spaceModel);
-
-      const signalTypeModels = await SignalType.findAll(spacePerspective);
-      setSignalTypes(signalTypeModels);
-      console.log('[SpaceStore] getSpace loaded signalTypes:', signalTypeModels);
-    } catch (error) {
-      console.error('SpaceStore: getSpace error', error);
-    } finally {
-      setLoading(false);
-    }
+    console.warn('[SpaceStore] getSpace() is deprecated — call adamStore.setCurrentPerspective(uuid) instead');
   }
 
   async function createPost(json: unknown): Promise<void> {
@@ -240,13 +215,47 @@ export function SpaceStoreProvider(props: ParentProps) {
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://has_signals' } });
   }
 
-  // Listen for route changes and get space data when spaceId changes
+  // Watch adamStore.currentPerspective() and hydrate the WE space layer on top.
+  // For a WE space: Space.findAll returns a result, space chrome renders normally.
+  // For a raw external perspective: Space.findAll returns [], setSpace(null) — space chrome hides.
+  // For a mixed perspective: both layers hydrate simultaneously.
   createEffect(() => {
-    const [page, pageId] = routeStore.currentPath().split('/').filter(Boolean);
-    if (page === 'space' && pageId && pageId !== spaceId()) {
-      setSpaceId(pageId);
-      getSpace();
+    const p = adamStore.currentPerspective();
+    if (!p) {
+      setPerspective(null);
+      setSpace(null);
+      setSignalTypes([]);
+      return;
     }
+    void (async () => {
+      try {
+        setLoading(true);
+        const uuid = p.uuid;
+        setSpaceId(uuid);
+
+        // Register WE SHACL schemas so block models can be queried
+        await Promise.all([
+          CollectionBlock.register(p),
+          TextBlock.register(p),
+          ImageBlock.register(p),
+          Signal.register(p),
+          SignalType.register(p),
+        ]);
+        await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
+
+        const [spaceModel] = await Space.findAll(p);
+        setPerspective(p);
+        setSpace(spaceModel ?? null);
+
+        const signalTypeModels = await SignalType.findAll(p);
+        setSignalTypes(signalTypeModels);
+        console.log('[SpaceStore] hydrated perspective', uuid, 'space:', spaceModel ?? null);
+      } catch (error) {
+        console.error('SpaceStore: perspective hydration error', error);
+      } finally {
+        setLoading(false);
+      }
+    })();
   });
 
   const store: SpaceStore = {
