@@ -76,10 +76,13 @@ export const homeRoute: RouteSchema = {
                         gap: '200',
                         width: '200px',
                         cursor: 'pointer',
-                        onClick: {
-                          $action: 'routeStore.navigate',
-                          args: [{ $concat: ['/space/', '$space.uuid'] }],
-                        },
+                        onClick: [
+                          { $action: 'adamStore.setCurrentPerspective', args: ['$space.uuid'] },
+                          {
+                            $action: 'routeStore.navigate',
+                            args: [{ $concat: ['/space/', '$space.uuid'] }],
+                          },
+                        ],
                       },
                       children: [
                         {
@@ -156,17 +159,23 @@ export const homeRoute: RouteSchema = {
                         gap: '200',
                         width: '200px',
                         cursor: 'pointer',
-                        onClick: {
-                          $action: 'routeStore.navigate',
-                          args: [
-                            {
-                              $concat: [
-                                '/space/',
-                                { $if: { condition: '$space.url', then: '$space.url', else: '$space.uuid' } },
-                              ],
-                            },
-                          ],
-                        },
+                        onClick: [
+                          {
+                            $action: 'adamStore.setCurrentPerspective',
+                            args: [{ $if: { condition: '$space.url', then: '$space.uuid', else: '$space.uuid' } }],
+                          },
+                          {
+                            $action: 'routeStore.navigate',
+                            args: [
+                              {
+                                $concat: [
+                                  '/space/',
+                                  { $if: { condition: '$space.url', then: '$space.url', else: '$space.uuid' } },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
                       },
                       children: [
                         {

@@ -155,17 +155,20 @@ export const weTemplate: TemplateSchema = {
                   id: { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
                   label: '$item.name',
                   avatar: { src: '$item.thumbnail', name: '$item.name' },
-                  onClick: {
-                    $action: 'routeStore.navigate',
-                    args: [
-                      {
-                        $concat: [
-                          '/space/',
-                          { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
-                        ],
-                      },
-                    ],
-                  },
+                  onClick: [
+                    { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
+                    {
+                      $action: 'routeStore.navigate',
+                      args: [
+                        {
+                          $concat: [
+                            '/space/',
+                            { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
                 },
               },
             },
@@ -184,17 +187,20 @@ export const weTemplate: TemplateSchema = {
                   id: { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
                   label: '$item.name',
                   avatar: { src: '$item.thumbnail', name: '$item.name' },
-                  onClick: {
-                    $action: 'routeStore.navigate',
-                    args: [
-                      {
-                        $concat: [
-                          '/space/',
-                          { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
-                        ],
-                      },
-                    ],
-                  },
+                  onClick: [
+                    { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
+                    {
+                      $action: 'routeStore.navigate',
+                      args: [
+                        {
+                          $concat: [
+                            '/space/',
+                            { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
                 },
               },
             },

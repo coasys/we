@@ -27,12 +27,30 @@ export const sidebar: SchemaNode = {
           {
             type: 'item',
             id: 'current-space',
-            icon: 'map-pin-area',
+            icon: {
+              $if: {
+                condition: { $store: 'spaceStore.space' },
+                then: 'map-pin-area',
+                else: {
+                  $if: {
+                    condition: { $store: 'adamStore.currentPerspective' },
+                    then: 'intersect-three',
+                    else: 'house-line',
+                  },
+                },
+              },
+            },
             label: {
               $if: {
                 condition: { $store: 'spaceStore.space' },
                 then: { $store: 'spaceStore.space.name' },
-                else: 'Root',
+                else: {
+                  $if: {
+                    condition: { $store: 'adamStore.currentPerspective' },
+                    then: { $store: 'adamStore.currentPerspective.name' },
+                    else: 'Home',
+                  },
+                },
               },
             },
             onClick: [
@@ -49,6 +67,15 @@ export const sidebar: SchemaNode = {
                     $action: 'routeStore.navigate',
                     args: [{ $concat: ['/space/', { $store: 'spaceStore.space.uuid' }] }],
                   },
+                  else: {
+                    $if: {
+                      condition: { $store: 'adamStore.currentPerspective' },
+                      then: {
+                        $action: 'routeStore.navigate',
+                        args: [{ $concat: ['/space/', { $store: 'adamStore.currentPerspective.uuid' }] }],
+                      },
+                    },
+                  },
                 },
               },
             ],
@@ -59,6 +86,35 @@ export const sidebar: SchemaNode = {
             id: 'debug-route',
             icon: 'link-simple',
             label: { $store: 'routeStore.currentPath' },
+          },
+
+          // --- All AD4M perspectives ---
+          {
+            type: 'group',
+            id: 'perspectives',
+            label: 'Perspectives',
+            collapsed: true,
+            items: {
+              $map: {
+                items: { $store: 'adamStore.allPerspectives' },
+                select: {
+                  id: '$item.uuid',
+                  icon: {
+                    $if: {
+                      condition: '$item.sharedUrl',
+                      then: 'globe',
+                      else: 'intersect-three',
+                    },
+                  },
+                  label: '$item.name',
+                  active: { $eq: ['$item.uuid', { $store: 'adamStore.currentPerspective.uuid' }] },
+                  onClick: [
+                    { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
+                    { $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$item.uuid'] }] },
+                  ],
+                },
+              },
+            },
           },
 
           // --- Template switching ---
