@@ -53,6 +53,34 @@ Recommended pattern — header above tabs (routes on ROOT, $routes outlet nested
 }
 Note: "routes" is on the root Column, NOT on a child. The $routes outlet is a child — that's fine. Only the routes array placement matters.
 
+WRONG — two common mistakes that produce empty tabs (validator will catch both):
+{
+  // MISTAKE 1: routes defined on an inner child node, not the root.
+  // The router never inspects children for routes arrays — this routes array is invisible.
+  "type": "Column",
+  "children": [
+    { "type": "we-tabs", "children": ["...tabs..."] },
+    {
+      "type": "Column",
+      "routes": [                          // ← WRONG: router never reads this
+        { "path": "/posts", "type": "Column", "children": ["..."] }
+      ],
+      "children": [{ "type": "$routes" }]  // ← outlet here does nothing without a live routes array
+    }
+  ]
+}
+
+{
+  // MISTAKE 2: using { type: "$routes" } as a route entry's component type.
+  // $routes is an outlet slot marker — as a leaf route entry it has no children injected,
+  // so it returns null. Every tab navigates to a route that renders nothing.
+  "type": "Column",
+  "routes": [
+    { "path": "/posts", "type": "$routes" }  // ← WRONG: renders null, use a real component
+  ],
+  "children": [{ "type": "$routes" }]
+}
+
 Alternative: single onChange on we-tabs (fires with $event.detail.value = selected key):
 { "onChange": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/", "$arg.detail.value"] }] } }
 This replaces all per-tab onClick handlers but requires $concat to build the path.

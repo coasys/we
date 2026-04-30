@@ -305,6 +305,10 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 interface WalkState {
   localScope: Set<string> | null; // null = no $localState in scope
   hasRoutesAncestor: boolean;
+  /** True only for the root template node and for route entry nodes — the positions the router
+   *  actually reads routes arrays from. Child nodes that are not route entries must never own
+   *  a routes array; if they do, nothing will render (the router never sees it). */
+  isRouteEligible: boolean;
 }
 
 function walkNode(
@@ -800,6 +804,20 @@ function checkRoutes(
   const routes = n.routes as unknown[] | undefined;
   if (!Array.isArray(routes)) return;
 
+  // Guard: routes array on a non-root, non-route child node is dead — the router only reads
+  // routes from the root template node and from route entry nodes themselves. Placing routes
+  // on a regular child (e.g. a Column inside children[]) means the router never finds them
+  // and nothing will render.
+  if (!state.isRouteEligible) {
+    errors.push({
+      path: `${path}.routes`,
+      message:
+        'routes array on a non-root, non-route child node — the router never reads routes from here and nothing will render. ' +
+        'Move the routes array to the root template node or a route entry.',
+      severity: 'error',
+    });
+  }
+
   // Check for duplicate route paths
   const paths = new Map<string, number[]>();
   for (let i = 0; i < routes.length; i++) {
@@ -823,6 +841,24 @@ function checkRoutes(
     }
   }
 
+  // Guard: route entry whose component type is "$routes".
+  // $routes is a slot marker for the router's injected JSX children. As a leaf route entry
+  // it has no children injected, so it returns null — every navigation to that path renders
+  // nothing. A route entry's type should be a real layout/content component.
+  for (let i = 0; i < routes.length; i++) {
+    const route = routes[i] as Record<string, unknown> | undefined;
+    if (route && typeof route === 'object' && route.type === '$routes') {
+      errors.push({
+        path: `${path}.routes[${i}].type`,
+        message:
+          `Route at "${(route.path as string | undefined) ?? `[${i}]`}" uses type "$routes" — this renders null as a leaf route. ` +
+          "A route entry's type is the component displayed when that path is active; " +
+          'use a layout component (e.g. "Column") and put the content in children.',
+        severity: 'error',
+      });
+    }
+  }
+
   // Check that children contain a $routes outlet
   if (!hasRoutesOutlet(n)) {
     errors.push({
@@ -832,8 +868,8 @@ function checkRoutes(
     });
   }
 
-  // Walk route nodes with hasRoutesAncestor = true
-  const routeState = { ...state, hasRoutesAncestor: true };
+  // Walk route nodes. isRouteEligible = true so route entries themselves may define sub-routes.
+  const routeState = { ...state, hasRoutesAncestor: true, isRouteEligible: true };
   for (let i = 0; i < routes.length; i++) {
     walkNode(routes[i], `${path}.routes[${i}]`, ctx, routeState, errors);
   }
@@ -865,8 +901,11 @@ function walkChildren(
   state: WalkState,
   errors: ValidationError[],
 ): void {
-  // Update local scope before walking children
-  const childState = updateLocalScope(n, state);
+  // Update local scope before walking children.
+  // Children walked here are layout/content nodes, not route entries, so they must not
+  // define routes arrays (isRouteEligible = false). Route entries are walked directly by
+  // checkRoutes with isRouteEligible = true.
+  const childState = { ...updateLocalScope(n, state), isRouteEligible: false };
 
   // Children
   const children = n.children as unknown[] | undefined;
@@ -942,7 +981,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   }
 
   const errors: ValidationError[] = [];
-  const state: WalkState = { localScope: null, hasRoutesAncestor: false };
+  const state: WalkState = { localScope: null, hasRoutesAncestor: false, isRouteEligible: true };
 
   walkNode(schema, '', context, state, errors);
 
