@@ -13,6 +13,7 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Navigate, Route, Router, useLocation, useNavigate } from '@solidjs/router';
+import { toastService } from '@we/components/solid';
 import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
@@ -194,6 +195,7 @@ export default function TemplateProvider() {
     model: modelStore,
     $getModel: getModel, // Used by SchemaRenderer for $query descriptor → model class lookup
     $getModelForPerspective: getModelForPerspective, // UUID-aware fallback for dynamically-registered external models
+    $onError: (msg: string) => toastService.error(msg),
   };
 
   // Get the current template schema and build its routes

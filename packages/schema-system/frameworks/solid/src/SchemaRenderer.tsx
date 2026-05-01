@@ -133,7 +133,15 @@ function createQuerySignal(
     // UUID-aware model lookup: prefer perspective-specific dynamic model, fall back to global registry
     const perspectiveUuid = (p as Record<string, unknown>).uuid as string | undefined;
     const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.model, perspectiveUuid) : undefined;
-    const ModelClass = (dynamicCls ?? getModel(descriptor.model)) as Record<string, (...args: unknown[]) => unknown>;
+    let ModelClass: Record<string, (...args: unknown[]) => unknown>;
+    try {
+      ModelClass = (dynamicCls ?? getModel(descriptor.model)) as Record<string, (...args: unknown[]) => unknown>;
+    } catch {
+      const onError = (stores as Record<string, unknown>).$onError as ((msg: string) => void) | undefined;
+      onError?.(`Model "${descriptor.model}" is not available in this perspective`);
+      setItems([]);
+      return;
+    }
 
     const resolvedParams = deepResolveTokens(descriptor.params, stores as Record<string, unknown>, {}) as Record<
       string,
