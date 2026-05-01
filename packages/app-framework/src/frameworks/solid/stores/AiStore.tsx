@@ -1,7 +1,4 @@
-import { Ad4mClient, AITask } from '@coasys/ad4m';
-import { Model } from '@coasys/ad4m/lib/src/ai/AIResolver';
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
-import { schemaPromptExamples } from '@shared/prompts/schemaExamples';
 import { deepClone } from '@shared/utils';
 import { useAdamStore, useTemplateStore } from '@solid/stores';
 import { contextData, schemaContext } from '@we/ai-context';
@@ -43,11 +40,6 @@ export type { ChatMessage } from '@we/widgets/solid';
 const baseValidationCtx = buildValidationContext(contextData);
 
 export interface AiStore {
-  // --- Existing: AD4M AI state ---
-  models: Accessor<Model[]>;
-  tasks: Accessor<AITask[]>;
-  handleSchemaPrompt: (prompt: string) => Promise<string | undefined>;
-
   // --- Chat state ---
   messages: Accessor<ChatMessage[]>;
   isOpen: Accessor<boolean>;
@@ -106,17 +98,6 @@ export interface AiStore {
 }
 
 const AiContext = createContext<AiStore>();
-
-const schemaTask: AITask = {
-  taskId: 'we-schema-generation',
-  name: 'WE Schema Generation',
-  modelId: 'gpt-4',
-  systemPrompt: schemaContext,
-  promptExamples: schemaPromptExamples,
-  metaData: 'Generates UI JSON schema based on user requirements',
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
 
 // Build the full system prompt for Claude chat
 const chatSystemPrompt = chatSystemPreamble + schemaContext;
@@ -199,12 +180,22 @@ function formatExternalManifestForPrompt(manifest: ModelManifestEntry[]): string
   const lines: string[] = ['## External Perspective Models', ''];
   for (const entry of manifest) {
     lines.push(`### ${entry.name}`);
-    for (const prop of entry.properties) {
+    // A HasMany relation is a collection of IRIs (type === 'uri' && isCollection).
+    // Scalar properties are everything else (strings, numbers, booleans, or single IRIs).
+    const dataProps = entry.properties.filter((p) => !(p.isCollection && p.type === 'uri'));
+    const relations = entry.properties.filter((p) => p.isCollection && p.type === 'uri');
+    for (const prop of dataProps) {
       const flags: string[] = [prop.type];
       if (prop.required) flags.push('required');
       if (prop.isCollection) flags.push('collection');
-      const relatedNote = prop.relatedModel ? ` → ${prop.relatedModel}` : '';
-      lines.push(`- ${prop.name}${relatedNote} (${flags.join(', ')})`);
+      lines.push(`- ${prop.name} (${flags.join(', ')})`);
+    }
+    if (relations.length > 0) {
+      lines.push('HasMany relations (query children with: $query { model, parent: { id, relation } }):');
+      for (const rel of relations) {
+        const target = rel.relatedModel ? ` → ${rel.relatedModel}` : ' (untyped)';
+        lines.push(`- ${rel.name}${target}`);
+      }
     }
     lines.push('');
   }
@@ -261,10 +252,6 @@ export function AiStoreProvider(props: ParentProps) {
     const perspectiveModelNames = new Set(manifest.map((m) => m.name));
     return { ...baseValidationCtx, modelNames: perspectiveModelNames };
   });
-
-  // --- AD4M AI state (existing) ---
-  const [models, setModels] = createSignal<Model[]>([]);
-  const [tasks, setTasks] = createSignal<AITask[]>([]);
 
   // --- Chat state ---
   const [messages, setMessages] = createSignal<ChatMessage[]>([]);
@@ -534,62 +521,6 @@ export function AiStoreProvider(props: ParentProps) {
   }
 
   // ----------------------------------------------------------------
-  // AD4M AI initialisation (unchanged)
-  // ----------------------------------------------------------------
-  async function initialiseStore(client: Ad4mClient): Promise<void> {
-    try {
-      setModels(await client.ai.getModels());
-      setTasks(await client.ai.tasks());
-
-      const existingSchemaTask = tasks().find((r) => r.name === schemaTask.name);
-      if (!existingSchemaTask) {
-        console.log('Creating schema task');
-        await client.ai.addTask(schemaTask.name, 'default', schemaTask.systemPrompt, schemaTask.promptExamples);
-        setTasks(await client.ai.tasks());
-        console.log('Schema task created', { tasks: tasks() });
-      }
-    } catch (error) {
-      console.error('AdamStore: getMyAI error', error);
-    }
-  }
-
-  // ----------------------------------------------------------------
-  // AD4M AI one-shot prompt (existing — kept as fallback)
-  // ----------------------------------------------------------------
-  async function handleSchemaPrompt(textPrompt: string) {
-    const client = adamStore.adamClient();
-    if (!client) return;
-
-    const fullPrompt = `{ "request": "${textPrompt}", "currentSchema": ${JSON.stringify(templateStore.currentTemplate)} }`;
-
-    const existingSchemaTask = tasks().find((t) => t.name === schemaTask.name);
-    const taskId = existingSchemaTask ? existingSchemaTask.taskId : null;
-
-    if (!taskId) {
-      console.error('Schema task not found');
-      return;
-    }
-
-    const result = await client.ai.prompt(taskId, fullPrompt);
-    console.log('Schema generation result', result);
-
-    try {
-      const parsedResult = JSON.parse(result || '{}');
-      const updatedSchema = parsedResult.updatedSchema;
-      const response = parsedResult.response;
-
-      if (updatedSchema) {
-        console.log('Updating template schema in store');
-        templateStore.updateTemplate(updatedSchema);
-      }
-      return response;
-    } catch (e) {
-      console.error('Failed to parse schema generation result', e);
-      return 'Failed to parse schema generation result';
-    }
-  }
-
-  // ----------------------------------------------------------------
   // Panel control
   // ----------------------------------------------------------------
   function toggle() {
@@ -705,11 +636,7 @@ export function AiStoreProvider(props: ParentProps) {
     setStreamingContent('<span class="shimmer">*Thinking...*</span>');
 
     try {
-      if (apiKeyConfigured()) {
-        await sendViaClaude(text);
-      } else {
-        await sendViaAd4m(text);
-      }
+      await sendViaClaude(text);
     } catch (err) {
       console.error('[AiStore] sendMessage caught error:', err);
       const errorText = err instanceof Error ? err.message : 'Unknown error';
@@ -1239,18 +1166,6 @@ export function AiStoreProvider(props: ParentProps) {
     return history;
   }
 
-  // ----------------------------------------------------------------
-  // AD4M AI fallback path
-  // ----------------------------------------------------------------
-  async function sendViaAd4m(text: string) {
-    const response = await handleSchemaPrompt(text);
-    const assistantContent = response ?? 'No response from AI';
-
-    // For AD4M path the schema is already applied inside handleSchemaPrompt,
-    // so just show the text response in chat
-    setMessages((prev) => [...prev, createMessage('assistant', assistantContent)]);
-  }
-
   /** Update or create the assistant message, then persist to AD4M */
   function updateAssistantMessage(streamMsgId: string | undefined, content: string) {
     if (streamMsgId) {
@@ -1302,14 +1217,6 @@ export function AiStoreProvider(props: ParentProps) {
   }
 
   // ----------------------------------------------------------------
-  // Initialise AD4M AI when client is ready
-  // ----------------------------------------------------------------
-  createEffect(() => {
-    const client = adamStore.adamClient();
-    if (client) initialiseStore(client);
-  });
-
-  // ----------------------------------------------------------------
   // Load sessions when template changes
   // ----------------------------------------------------------------
   createEffect(() => {
@@ -1345,11 +1252,6 @@ export function AiStoreProvider(props: ParentProps) {
   // Store object
   // ----------------------------------------------------------------
   const store: AiStore = {
-    // AD4M AI (existing)
-    models,
-    tasks,
-    handleSchemaPrompt,
-
     // Chat state
     messages,
     isOpen,
