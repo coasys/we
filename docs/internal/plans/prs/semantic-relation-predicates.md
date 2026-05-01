@@ -92,13 +92,16 @@ Returns a flat array of mixed instances ordered by timestamp, implemented as a S
 ### `ad4m/core` (Phase 1 — non-breaking, adds deprecation warning)
 
 **`decorators.ts`**
+
 - When `@HasMany` is called without `through`, emit a `console.warn` deprecation: `"@HasMany on <ClassName>.<fieldName> has no 'through' predicate. This will become a hard error in a future version. Use { through: 'ad4m://has_child' } if you need generic containment, or a semantic predicate like { through: 'myns://has_conversation' }."`
 - Store `predicate: 'ad4m://has_child'` as the runtime default (preserving existing behaviour while warning)
 
 **`shacl-gen.ts`**
+
 - Change `if (!relMeta.predicate) continue` to pass through relations with `predicate === 'ad4m://has_child'` but tag their SHACL property with `sh:description "shared-predicate"` or an equivalent annotation, so `getModelManifest()` can set a `sharedPredicate: true` flag on those entries
 
 **`PerspectiveProxy.getModelManifest()`**
+
 - For relations with `sharedPredicate: true`, include them in the manifest output with `relatedModel` set and `implicit: true` flag
 - This makes them visible to the AI as "exists but has_child — parent only, no include"
 
@@ -116,16 +119,16 @@ Add explicit `through` predicates to all `@HasMany` decorators that currently om
 
 Suggested semantic predicates for Flux's Channel (using existing `community` constants where available, or defining new ones):
 
-| Field | Predicate |
-|---|---|
-| `messages` | `flux://has_message` |
-| `conversations` | `flux://has_conversation` |
-| `childChannels` | `flux://has_child_channel` |
-| `boards` | `flux://has_board` |
-| `taskColumns` | `flux://has_task_column` |
-| `tasks` | `flux://has_task` |
-| `posts` | `flux://has_post` |
-| `views` | `ad4m://has_child` (intentional — app views are implementation detail) |
+| Field           | Predicate                                                              |
+| --------------- | ---------------------------------------------------------------------- |
+| `messages`      | `flux://has_message`                                                   |
+| `conversations` | `flux://has_conversation`                                              |
+| `childChannels` | `flux://has_child_channel`                                             |
+| `boards`        | `flux://has_board`                                                     |
+| `taskColumns`   | `flux://has_task_column`                                               |
+| `tasks`         | `flux://has_task`                                                      |
+| `posts`         | `flux://has_post`                                                      |
+| `views`         | `ad4m://has_child` (intentional — app views are implementation detail) |
 
 **Data migration:** Existing perspectives store `has_child` links. During the transition, a dual-query shim in the SPARQL builder can match either the old `has_child` OR the new semantic predicate:
 
@@ -138,12 +141,14 @@ This shim can be removed once existing perspectives are considered stale.
 ### `we/packages/app-framework` (`AiStore.tsx`)
 
 **`formatExternalManifestForPrompt`**
+
 - Relations with `implicit: true` (shared `has_child`) labelled: `- conversations → Conversation (parent query only — shared has_child predicate, no include)`
 - Relations with full semantic predicates labelled: `- conversations → Conversation (include or parent)`
 
 ### `we/packages/ai-context`
 
 Update `schema-operators.ts` and `store-patterns.ts` once Flux predicates are explicit:
+
 - Remove the caveat that Flux relations are unavailable for `parent` queries
 - Add Flux-specific examples using `parent` and `include` for Channel relations
 
@@ -172,7 +177,7 @@ Semantic predicates are **complementary** to structural matching, not in conflic
 - **Overlapping models still work.** If two model classes both structurally match the same node, the predicate used to reach it provides context — "this node arrived via `flux://has_conversation`, so it's being used as a Conversation here." With `has_child` you'd have the same ambiguity but with no routing hint at all.
 - **`@Flag` entries (like Flux's `entry_type`) become optional for discrimination.** The predicate alone is sufficient for the query system to find the right nodes. `@Flag` remains useful as a data integrity constraint or for human-readable graph inspection, but is no longer load-bearing for query correctness.
 
-In short: structural matching handles *what a node is*; semantic predicates handle *how you got to it*. The two mechanisms operate at different layers and reinforce each other.
+In short: structural matching handles _what a node is_; semantic predicates handle _how you got to it_. The two mechanisms operate at different layers and reinforce each other.
 
 ---
 
