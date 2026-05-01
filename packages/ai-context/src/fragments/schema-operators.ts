@@ -101,7 +101,10 @@ Single-item projection — add a derived field that resolves to one instance or 
 { "$query": { "model": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": { "$store": "adamStore.me.did" } }, "limit": 1 } } } }
 With limit: 1 the field unwraps to T | null instead of an array.
 
-Prefer include over separate queries whenever you need related data alongside a list.
+include only works with typed relations — ones where the target model class is known.
+For WE models this is always the case. For external models, check the externalModels listing:
+relations marked "→ ModelName" are typed (safe for include); relations marked "parent query only"
+are untyped and will crash at runtime if used with include — use parent instead.
 
 Relational queries — fetch children by parent id (drill-down navigation):
 { "$query": { "model": "Conversation", "parent": { "id": "$channel.id", "relation": "conversations" } } }

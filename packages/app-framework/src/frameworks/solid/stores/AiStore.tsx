@@ -191,10 +191,13 @@ function formatExternalManifestForPrompt(manifest: ModelManifestEntry[]): string
       lines.push(`- ${prop.name} (${flags.join(', ')})`);
     }
     if (relations.length > 0) {
-      lines.push('HasMany relations (query children with: $query { model, parent: { id, relation } }):');
+      lines.push('HasMany relations — typed (→ Model) support both include and parent; untyped support parent only:');
       for (const rel of relations) {
-        const target = rel.relatedModel ? ` → ${rel.relatedModel}` : ' (untyped)';
-        lines.push(`- ${rel.name}${target}`);
+        if (rel.relatedModel) {
+          lines.push(`- ${rel.name} → ${rel.relatedModel} (include or parent)`);
+        } else {
+          lines.push(`- ${rel.name} (untyped — parent query only, do NOT use with include)`);
+        }
       }
     }
     lines.push('');

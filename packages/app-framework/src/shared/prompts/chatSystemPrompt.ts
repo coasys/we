@@ -25,6 +25,9 @@ Do NOT invent IDs for new nodes — the system assigns them automatically.
   - Keys ABSENT from the patch are PRESERVED (e.g. existing children stay).
   - Keys set to null are REMOVED (e.g. { "props": { "color": null } } deletes color).
   - To replace children/routes entirely, include them. To leave them unchanged, omit them.
+  - **IMPORTANT**: if you include children/routes in a node patch, the array is fully replaced —
+    do NOT also add separate remove patches for the old children. They no longer exist after the
+    replacement and the remove will fail with "node not found".
 
 **Insert** a child or route (targetId = PARENT to insert into):
   { "targetId": "n1", "insert": { "children": { "node": { ... } } } }                 — append to n1's children
