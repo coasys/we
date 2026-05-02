@@ -64,6 +64,11 @@ Equality / inequality checks:
 { "$eq": [a, b] } — strict equality
 { "$ne": [a, b] } — strict inequality
 
+Set membership:
+{ "$in": [value, array] } — true if array contains value (false if second operand is not an array)
+Example: { "$in": [{ "$store": "spaceStore.uuid" }, { "$store": "adamStore.systemPerspectiveUuids" }] }
+Example: { "$in": ["$item.role", ["admin", "moderator"]] }
+
 Boolean logic:
 { "$and": [a, b, ...] } — all truthy
 { "$or": [a, b, ...] } — any truthy

@@ -59,6 +59,8 @@ export interface AdamStore {
   ad4mToken: Accessor<string | undefined>;
   isDevelopment: Accessor<boolean>;
   rootPerspective: Accessor<PerspectiveProxy | null>;
+  /** UUIDs of all internal WE system perspectives (names starting with 'we-'). */
+  systemPerspectiveUuids: Accessor<string[]>;
   agentSettings: Accessor<AgentSettings | null>;
   agentProfile: Accessor<AgentProfile | null>;
   creatingSpace: Accessor<boolean>;
@@ -120,6 +122,13 @@ export function AdamStoreProvider(props: ParentProps) {
   const [creatingSpace, setCreatingSpace] = createSignal(false);
   const [currentPerspective, setCurrentPerspectiveSignal] = createSignal<PerspectiveProxy | null>(null);
   const [currentPerspectiveModels, setCurrentPerspectiveModels] = createSignal<ModelManifestEntry[]>([]);
+
+  // Derived: perspectives with we-* names are internal WE system perspectives
+  const systemPerspectiveUuids = createMemo(() =>
+    allPerspectives()
+      .filter((p) => p.name.startsWith('we-'))
+      .map((p) => p.uuid),
+  );
 
   // Derived: personal and shared spaces
   const personalSpaces = createMemo(() => mySpaces().filter((s) => s.visibility !== 'shared'));
@@ -183,6 +192,7 @@ export function AdamStoreProvider(props: ParentProps) {
     try {
       const perspectives = await client.perspective.all();
       setAllPerspectives(perspectives);
+      console.log('all perspectives', perspectives);
       const spaces = await Promise.all(perspectives.map(async (perspective) => await Space.findOne(perspective)));
       const filteredSpaces = spaces
         .filter((s): s is Space => !!s)
@@ -595,6 +605,7 @@ export function AdamStoreProvider(props: ParentProps) {
     ad4mToken,
     isDevelopment,
     rootPerspective,
+    systemPerspectiveUuids,
     agentSettings,
     agentProfile,
     creatingSpace,

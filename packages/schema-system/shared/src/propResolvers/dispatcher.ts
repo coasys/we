@@ -4,6 +4,7 @@ import {
   resolveAndProp,
   resolveEqProp,
   resolveGtProp,
+  resolveInProp,
   resolveLtProp,
   resolveNeProp,
   resolveNotProp,
@@ -83,6 +84,7 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$gt', 'array')) return resolveGtProp(value, stores, context, memo, resolveProp);
     if (hasToken(value, '$and', 'array')) return resolveAndProp(value, stores, context, memo, resolveProp);
     if (hasToken(value, '$or', 'array')) return resolveOrProp(value, stores, context, memo, resolveProp);
+    if (hasToken(value, '$in', 'array')) return resolveInProp(value, stores, context, memo, resolveProp);
   }
 
   // Recursively resolve arrays

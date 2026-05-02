@@ -114,17 +114,17 @@ export const sidebar: SchemaNode = {
                 items: { $store: 'adamStore.allPerspectives' },
                 select: {
                   id: '$item.uuid',
-                  // System perspective (we-root) gets a gear icon; others get initials avatar
+                  // System perspectives (we-root, we-test, …) get a gear icon; others get initials avatar
                   icon: {
                     $if: {
-                      condition: { $eq: ['$item.uuid', { $store: 'adamStore.rootPerspective.uuid' }] },
-                      then: 'gear',
+                      condition: { $in: ['$item.uuid', { $store: 'adamStore.systemPerspectiveUuids' }] },
+                      then: 'user-circle-gear',
                       else: null,
                     },
                   },
                   avatar: {
                     $if: {
-                      condition: { $eq: ['$item.uuid', { $store: 'adamStore.rootPerspective.uuid' }] },
+                      condition: { $in: ['$item.uuid', { $store: 'adamStore.systemPerspectiveUuids' }] },
                       then: null,
                       else: { src: '', name: '$item.name' },
                     },

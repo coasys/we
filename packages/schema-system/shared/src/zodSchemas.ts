@@ -63,6 +63,7 @@ const zEqToken = z.object({ $eq: z.array(z.unknown()).length(2) }).strict();
 const zNeToken = z.object({ $ne: z.array(z.unknown()).length(2) }).strict();
 const zLtToken = z.object({ $lt: z.array(z.unknown()).length(2) }).strict();
 const zGtToken = z.object({ $gt: z.array(z.unknown()).length(2) }).strict();
+const zInToken = z.object({ $in: z.array(z.unknown()).length(2) }).strict();
 const zNotToken = z.object({ $not: zDefined }).strict();
 const zAndToken = z.object({ $and: z.array(z.unknown()) }).strict();
 const zOrToken = z.object({ $or: z.array(z.unknown()) }).strict();
@@ -133,6 +134,7 @@ const zPropToken = z.union([
   zNeToken,
   zLtToken,
   zGtToken,
+  zInToken,
   zNotToken,
   zAndToken,
   zOrToken,

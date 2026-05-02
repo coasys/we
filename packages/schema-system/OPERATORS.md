@@ -25,7 +25,7 @@ The schema system has **two categories** of operators:
 
 **Prop-level operators** (resolved by `resolveProp` in `@we/schema-shared`) — these appear inside `props` and produce a value:
 
-- `$store`, `$concat`, `$action`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$not`, `$and`, `$or`
+- `$store`, `$concat`, `$action`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$in`, `$not`, `$and`, `$or`
 - Context reference strings: `$item.name`, `$space.uuid` (resolved inline by the dispatcher)
 
 **Renderer-level operators** (handled by the framework-specific renderer) — these appear as the `type` field and control rendering structure:
@@ -497,6 +497,44 @@ Not equal comparison.
   }
 }
 ```
+
+---
+
+### `$in`
+
+Set membership — returns `true` if a value is present in an array.
+
+**Syntax:**
+
+```typescript
+{ $in: [<value>, <array>] }
+```
+
+The first element is the value to search for; the second is the array to search in. Both are resolved before the check.
+
+**Examples:**
+
+```typescript
+// Check whether the current perspective UUID is a system perspective
+{
+  condition: {
+    $in: [{ $store: 'spaceStore.uuid' }, { $store: 'adamStore.systemPerspectiveUuids' }];
+  }
+}
+
+// Check whether the user's role is one of several privileged roles
+{
+  condition: {
+    $in: [{ $store: 'userStore.role' }, ['admin', 'moderator', 'owner']];
+  }
+}
+```
+
+**Notes:**
+
+- Returns `false` (not an error) if the second operand is not an array
+- Uses strict equality (`===`) for membership checks
+- Both operands can be tokens, store references, context refs, or literals
 
 ---
 
