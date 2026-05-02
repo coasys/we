@@ -27,15 +27,30 @@ export const sidebar: SchemaNode = {
           {
             type: 'item',
             id: 'current-space',
+            // Show house-line icon only when on home (no space, no perspective)
             icon: {
               $if: {
                 condition: { $store: 'spaceStore.space' },
-                then: 'map-pin-area',
+                then: null,
                 else: {
                   $if: {
                     condition: { $store: 'adamStore.currentPerspective' },
-                    then: 'intersect-three',
+                    then: null,
                     else: 'house-line',
+                  },
+                },
+              },
+            },
+            // Show avatar (with image or initials) when a space/perspective is active
+            avatar: {
+              $if: {
+                condition: { $store: 'spaceStore.space' },
+                then: { src: { $store: 'spaceStore.space.image' }, name: { $store: 'spaceStore.space.name' } },
+                else: {
+                  $if: {
+                    condition: { $store: 'adamStore.currentPerspective' },
+                    then: { src: '', name: { $store: 'adamStore.currentPerspective.name' } },
+                    else: null,
                   },
                 },
               },
@@ -99,11 +114,19 @@ export const sidebar: SchemaNode = {
                 items: { $store: 'adamStore.allPerspectives' },
                 select: {
                   id: '$item.uuid',
+                  // System perspective (we-root) gets a gear icon; others get initials avatar
                   icon: {
                     $if: {
-                      condition: '$item.sharedUrl',
-                      then: 'globe',
-                      else: 'intersect-three',
+                      condition: { $eq: ['$item.uuid', { $store: 'adamStore.rootPerspective.uuid' }] },
+                      then: 'gear',
+                      else: null,
+                    },
+                  },
+                  avatar: {
+                    $if: {
+                      condition: { $eq: ['$item.uuid', { $store: 'adamStore.rootPerspective.uuid' }] },
+                      then: null,
+                      else: { src: '', name: '$item.name' },
                     },
                   },
                   label: '$item.name',
@@ -160,7 +183,7 @@ export const sidebar: SchemaNode = {
                 items: { $store: 'appStore.apps' },
                 select: {
                   id: '$item.id',
-                  icon: '$item.icon',
+                  avatar: { src: '$item.image', name: '$item.name' },
                   label: '$item.name',
                   active: { $eq: ['$item.id', { $store: 'appStore.activeAppId' }] },
                   onClick: { $action: 'appStore.activateApp', args: ['$item.id'] },

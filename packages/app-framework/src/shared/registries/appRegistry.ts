@@ -16,6 +16,8 @@ export interface RegisteredApp {
   name: string;
   /** Phosphor icon name for the sidebar button */
   icon: string;
+  /** Optional image URL for the sidebar avatar */
+  image?: string;
   /** Fully-resolved iframe URL (determined at init time) */
   url: string;
   /** iframe allow attribute value */

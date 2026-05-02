@@ -80,6 +80,8 @@ export interface WeSeedFile {
     name: string;
     /** Phosphor icon name for the sidebar button */
     icon: string;
+    /** Optional image URL for the sidebar avatar */
+    image?: string;
     /** Brief description */
     description?: string;
     /** AD4M capabilities/permissions this app requires */
