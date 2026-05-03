@@ -59,8 +59,12 @@ export interface AdamStore {
   ad4mToken: Accessor<string | undefined>;
   isDevelopment: Accessor<boolean>;
   rootPerspective: Accessor<PerspectiveProxy | null>;
+  /** The we-test perspective used by testStore for $query testing. Always populated after boot. */
+  testPerspective: Accessor<PerspectiveProxy | null>;
   /** UUIDs of all internal WE system perspectives (names starting with 'we-'). */
   systemPerspectiveUuids: Accessor<string[]>;
+  /** Perspectives sorted by user-defined order (falls back to load order). */
+  orderedPerspectives: Accessor<PerspectiveProxy[]>;
   agentSettings: Accessor<AgentSettings | null>;
   agentProfile: Accessor<AgentProfile | null>;
   creatingSpace: Accessor<boolean>;
@@ -95,6 +99,7 @@ export interface AdamStore {
   updateAgentProfile: (updates: Partial<AgentProfile>) => Promise<void>;
   updateProfileImage: (imageFile: File) => Promise<void>;
   updateCoverImage: (imageFile: File) => Promise<void>;
+  reorderPerspectives: (newOrder: string[]) => Promise<void>;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -115,6 +120,7 @@ export function AdamStoreProvider(props: ParentProps) {
   const [ad4mPort, setAd4mPort] = createSignal<number | undefined>(undefined);
   const [ad4mToken, setAd4mToken] = createSignal<string | undefined>(undefined);
   const [rootPerspective, setRootPerspective] = createSignal<PerspectiveProxy | null>(null);
+  const [testPerspective, setTestPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
   const [agentProfile, setAgentProfile] = createSignal<AgentProfile | null>(null, { equals: false });
   const [allPerspectives, setAllPerspectives] = createSignal<PerspectiveProxy[]>([]);
@@ -129,6 +135,31 @@ export function AdamStoreProvider(props: ParentProps) {
       .filter((p) => p.name.startsWith('we-'))
       .map((p) => p.uuid),
   );
+
+  function getPerspectiveOrder(): string[] {
+    const json = agentSettings()?.perspectiveOrder;
+    if (!json) return [];
+    try {
+      return JSON.parse(json);
+    } catch {
+      return [];
+    }
+  }
+
+  // Derived: perspectives sorted by user-defined order (falls back to load order)
+  const orderedPerspectives = createMemo(() => {
+    const all = allPerspectives();
+    const order = getPerspectiveOrder();
+    if (order.length === 0) return all;
+    const byUuid = new Map(all.map((p) => [p.uuid, p]));
+    const ordered = order.flatMap((uuid) => {
+      const p = byUuid.get(uuid);
+      return p ? [p] : [];
+    });
+    const inOrder = new Set(order);
+    const appended = all.filter((p) => !inOrder.has(p.uuid));
+    return [...ordered, ...appended];
+  });
 
   // Derived: personal and shared spaces
   const personalSpaces = createMemo(() => mySpaces().filter((s) => s.visibility !== 'shared'));
@@ -154,6 +185,7 @@ export function AdamStoreProvider(props: ParentProps) {
       client.perspective.byUUID(handle.uuid).then((perspective) => {
         if (!perspective) return;
         setAllPerspectives((prev) => [...prev, perspective]);
+        reorderPerspectives([...getPerspectiveOrder(), perspective.uuid]).catch(console.error);
         Space.findOne(perspective).then((space) => {
           if (space && !mySpaces().some((s) => s.uuid === handle.uuid)) {
             setMySpaces((prev) => [...prev, space].sort((a, b) => Number(a.createdAt) - Number(b.createdAt)));
@@ -184,6 +216,7 @@ export function AdamStoreProvider(props: ParentProps) {
     client.perspective.addPerspectiveRemovedListener((uuid) => {
       setAllPerspectives((prev) => prev.filter((p) => p.uuid !== uuid));
       setMySpaces((prev) => prev.filter((s) => s.uuid !== uuid));
+      reorderPerspectives(getPerspectiveOrder().filter((id) => id !== uuid)).catch(console.error);
       return null;
     });
   }
@@ -192,12 +225,26 @@ export function AdamStoreProvider(props: ParentProps) {
     try {
       const perspectives = await client.perspective.all();
       setAllPerspectives(perspectives);
-      console.log('all perspectives', perspectives);
       const spaces = await Promise.all(perspectives.map(async (perspective) => await Space.findOne(perspective)));
       const filteredSpaces = spaces
         .filter((s): s is Space => !!s)
         .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
       setMySpaces(filteredSpaces);
+      // Bootstrap perspective order on first load (when no order has been saved yet)
+      if (!agentSettings()?.perspectiveOrder) {
+        const systemOrder = ['we-root', 'we-test'];
+        const initialOrder = [...allPerspectives()]
+          .sort((a, b) => {
+            const ai = systemOrder.indexOf(a.name);
+            const bi = systemOrder.indexOf(b.name);
+            if (ai === -1 && bi === -1) return 0;
+            if (ai === -1) return 1;
+            if (bi === -1) return -1;
+            return ai - bi;
+          })
+          .map((p) => p.uuid);
+        await reorderPerspectives(initialOrder);
+      }
     } catch (error) {
       console.error('AdamStore: getMySpaces error', error);
     }
@@ -249,8 +296,12 @@ export function AdamStoreProvider(props: ParentProps) {
         return;
       }
 
-      // Agent is ready - load user data
-      await Promise.all([getMe(client), getMySpaces(client), getOrCreateRootPerspective(client)]);
+      // Agent is ready - load user data.
+      // initSystemPerspectives must complete before getMySpaces so that the
+      // perspective.all() snapshot in getMySpaces always includes we-root and we-test
+      // — even on first boot when they don't exist yet and have to be created.
+      await Promise.all([getMe(client), initSystemPerspectives(client)]);
+      await getMySpaces(client);
       subscribeToPerspectiveChanges(client);
       setBootState('ready');
 
@@ -304,8 +355,8 @@ export function AdamStoreProvider(props: ParentProps) {
     return () => window.removeEventListener('message', handleMessage);
   }
 
-  /** Find or create the root perspective containing AgentSettings */
-  async function getOrCreateRootPerspective(client: Ad4mClient): Promise<void> {
+  /** Find or create the root perspective and all other system perspectives */
+  async function initSystemPerspectives(client: Ad4mClient): Promise<void> {
     try {
       const perspectives = await client.perspective.all();
       const existing = perspectives.find((p) => p.name === 'we-root');
@@ -325,6 +376,15 @@ export function AdamStoreProvider(props: ParentProps) {
         if (settings) setAgentSettings(settings);
         if (profile) setAgentProfile(profile);
         console.log('AdamStore: Found root perspective', existing.uuid);
+
+        // Find or create we-test system perspective (uses same snapshot)
+        const existingTest = perspectives.find((p) => p.name === 'we-test');
+        if (existingTest) {
+          setTestPerspective(existingTest);
+        } else {
+          const testP = await client.perspective.add('we-test');
+          setTestPerspective(testP);
+        }
         return;
       }
 
@@ -354,8 +414,18 @@ export function AdamStoreProvider(props: ParentProps) {
       setAgentSettings(settings);
       setAgentProfile(profile);
       console.log('AdamStore: Created root perspective', perspective.uuid);
+
+      // Find or create we-test system perspective
+      const allPersp = await client.perspective.all();
+      const existingTest = allPersp.find((p: PerspectiveProxy) => p.name === 'we-test');
+      if (existingTest) {
+        setTestPerspective(existingTest);
+      } else {
+        const testP = await client.perspective.add('we-test');
+        setTestPerspective(testP);
+      }
     } catch (error) {
-      console.error('AdamStore: getOrCreateRootPerspective error', error);
+      console.error('AdamStore: initSystemPerspectives error', error);
     }
   }
 
@@ -364,6 +434,14 @@ export function AdamStoreProvider(props: ParentProps) {
     if (!settings) return;
 
     Object.assign(settings, updates);
+    await settings.save();
+    setAgentSettings(settings);
+  }
+
+  async function reorderPerspectives(newOrder: string[]): Promise<void> {
+    const settings = agentSettings();
+    if (!settings) return;
+    settings.perspectiveOrder = JSON.stringify(newOrder);
     await settings.save();
     setAgentSettings(settings);
   }
@@ -414,8 +492,9 @@ export function AdamStoreProvider(props: ParentProps) {
     try {
       await client.agent.unlock(password, true);
 
-      // Load user data after unlock
-      await Promise.all([getMe(client), getMySpaces(client), getOrCreateRootPerspective(client)]);
+      // Load user data after unlock — same serialization as initialiseStore
+      await Promise.all([getMe(client), initSystemPerspectives(client)]);
+      await getMySpaces(client);
       subscribeToPerspectiveChanges(client);
       setBootState('ready');
 
@@ -599,12 +678,14 @@ export function AdamStoreProvider(props: ParentProps) {
     adamClient,
     me,
     allPerspectives,
+    orderedPerspectives,
     personalSpaces,
     sharedSpaces,
     ad4mPort,
     ad4mToken,
     isDevelopment,
     rootPerspective,
+    testPerspective,
     systemPerspectiveUuids,
     agentSettings,
     agentProfile,
@@ -623,6 +704,7 @@ export function AdamStoreProvider(props: ParentProps) {
     updateAgentProfile,
     updateProfileImage,
     updateCoverImage,
+    reorderPerspectives,
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;

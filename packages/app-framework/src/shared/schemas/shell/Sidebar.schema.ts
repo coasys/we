@@ -16,6 +16,8 @@ export const sidebar: SchemaNode = {
     then: {
       type: 'CollapsibleSidebar',
       props: {
+        // defaultExpanded: true,
+        // expandOnHover: false,
         side: 'left',
         position: 'fixed',
         zIndex: 10,
@@ -35,7 +37,7 @@ export const sidebar: SchemaNode = {
                 else: {
                   $if: {
                     condition: { $store: 'adamStore.currentPerspective' },
-                    then: null,
+                    then: 'map-pin-area',
                     else: 'house-line',
                   },
                 },
@@ -109,9 +111,11 @@ export const sidebar: SchemaNode = {
             id: 'perspectives',
             label: 'Perspectives',
             collapsed: true,
+            reorderable: true,
+            onReorder: { $action: 'adamStore.reorderPerspectives' },
             items: {
               $map: {
-                items: { $store: 'adamStore.allPerspectives' },
+                items: { $store: 'adamStore.orderedPerspectives' },
                 select: {
                   id: '$item.uuid',
                   // System perspectives (we-root, we-test, …) get a gear icon; others get initials avatar
