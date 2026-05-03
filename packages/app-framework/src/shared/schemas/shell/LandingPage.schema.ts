@@ -4,7 +4,7 @@ import type { TemplateSchema } from '@we/schema-shared';
  * Landing Page — Shell template that pitches WE to newcomers.
  *
  * Accessible via clicking the WE logo in the sidebar header.
- * Uses FlipCard components (hover/tap to reveal solution back).
+ * Uses FlipCard components (tap to reveal solution back).
  */
 
 const CARDS = [
@@ -163,23 +163,67 @@ export const landingPageTemplate: TemplateSchema = {
         // ── Card grid ─────────────────────────────────────────────────────
         {
           type: 'Row',
-          props: { wrap: true, gap: '400' },
+          props: { ax: 'center', wrap: true, gap: '400' },
           children: CARDS.map((card) => ({
             type: 'Column',
-            props: {
-              styles: {
-                flex: '1 1 300px',
-                'min-width': '280px',
-                'max-width': '380px',
-              },
-            },
+            props: { flex: '1 1 300px', minWidth: '280px', maxWidth: '380px' },
             children: [
               {
                 type: 'FlipCard',
-                props: {
-                  front: card.front,
-                  back: card.back,
-                  height: '310px',
+                props: { height: '310px', wobbleDegree: 20 },
+                slots: {
+                  front: {
+                    type: 'Column',
+                    props: {
+                      gap: '300',
+                      p: '500',
+                      r: 'lg',
+                      bg: 'neutral-100',
+                      styles: { height: '100%', border: '1px solid var(--we-color-neutral-200)', overflow: 'hidden' },
+                    },
+                    children: [
+                      { type: 'we-icon', props: { name: card.front.icon, size: 'xl', color: 'primary-500' } },
+                      {
+                        type: 'we-text',
+                        props: {
+                          tag: 'span',
+                          fontSize: '600',
+                          fontWeight: 'semibold',
+                          color: 'neutral-900',
+                          styles: { 'line-height': '1.3', 'flex-shrink': '0' },
+                        },
+                        children: [card.front.title],
+                      },
+                      {
+                        type: 'we-text',
+                        props: { tag: 'span', fontSize: '400', color: 'neutral-600', styles: { 'line-height': '1.6' } },
+                        children: [card.front.body],
+                      },
+                      {
+                        type: 'we-text',
+                        props: { tag: 'span', fontSize: '300', color: 'neutral-400', styles: { 'margin-top': 'auto' } },
+                        children: ['tap to flip →'],
+                      },
+                    ],
+                  },
+                  back: {
+                    type: 'Column',
+                    props: {
+                      gap: '300',
+                      p: '500',
+                      r: 'lg',
+                      ay: 'center',
+                      styles: { height: '100%', background: 'var(--we-gradient-primary)', overflow: 'hidden' },
+                    },
+                    children: [
+                      { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'primary-100' } },
+                      {
+                        type: 'we-text',
+                        props: { tag: 'span', fontSize: '400', color: 'primary-100', styles: { 'line-height': '1.6' } },
+                        children: [card.back.body],
+                      },
+                    ],
+                  },
                 },
               },
             ],
