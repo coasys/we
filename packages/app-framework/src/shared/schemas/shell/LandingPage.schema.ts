@@ -98,13 +98,11 @@ export const landingPageTemplate: TemplateSchema = {
       props: { px: '500', py: '800', gap: '800', maxWidth: '1100px', width: '100%' },
       children: [
         // ── Hero ──────────────────────────────────────────────────────────
-        // {
-        //   type: 'Scene1',
-        // },
         {
           type: 'Column',
           props: { gap: '400', ax: 'center', ay: 'center' },
           children: [
+            { type: 'WeCube', props: { width: '250px', height: '250px', rotationSpeed: 0.2, variant: 'lit-primary' } },
             {
               type: 'we-image',
               props: {
