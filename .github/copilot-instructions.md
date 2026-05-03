@@ -311,6 +311,12 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
   Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
+- we-sortable (DesignSystemElement) — Drag-to-reorder container primitive.
+
+Usage: wrap a list of elements that each have a `data-we-id` attribute.
+Fires a `we-reorder` CustomEvent<string[]> on drop with the new ordered
+array of IDs.
+  Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = ''
 - we-spinner (LayoutElement)
   Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', color: string = ''
 - we-switch (DesignSystemElement)
@@ -650,6 +656,7 @@ AgentSettings extends Ad4mModel:
   - defaultTemplateId: string = 'default' [we://default_template]
   - currentThemeId: string = 'default' [we://current_theme]
   - claudeApiKey: string [we://claude_api_key]
+  - perspectiveOrder: string [we://perspective_order]
   Relations:
   - installedTemplates: HasMany → Template [we://installed_template]
   - installedThemes: HasMany → Theme [we://installed_theme]

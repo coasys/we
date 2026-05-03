@@ -470,6 +470,17 @@ export const contextData: ContextData = {
       ],
     },
     {
+      tagName: 'we-sortable',
+      className: 'Sortable',
+      description:
+        'Drag-to-reorder container primitive.\n\nUsage: wrap a list of elements that each have a `data-we-id` attribute.\nFires a `we-reorder` CustomEvent<string[]> on drop with the new ordered\narray of IDs.',
+      superclass: 'DesignSystemElement',
+      ownProps: [
+        { name: 'direction', type: "'vertical' | 'horizontal'", optional: false, default: "'vertical'" },
+        { name: 'gap', type: 'string', optional: false, default: "''" },
+      ],
+    },
+    {
       tagName: 'we-spinner',
       className: 'Spinner',
       superclass: 'LayoutElement',
@@ -1565,6 +1576,7 @@ export const contextData: ContextData = {
           default: "'default'",
         },
         { name: 'claudeApiKey', type: 'string', predicate: 'we://claude_api_key', required: false },
+        { name: 'perspectiveOrder', type: 'string', predicate: 'we://perspective_order', required: false },
       ],
       relations: [
         { name: 'installedTemplates', kind: 'HasMany', predicate: 'we://installed_template', target: 'Template' },
