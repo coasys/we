@@ -41,4 +41,7 @@ export default defineConfig(async () => ({
     },
   },
   assetsInclude: ['**/*.glb'],
+  // Never pre-bundle local file: deps — hard links break on rebuild, causing
+  // Vite's dep optimizer cache to serve stale content after restart.
+  optimizeDeps: { exclude: ['@coasys/ad4m'] },
 }));

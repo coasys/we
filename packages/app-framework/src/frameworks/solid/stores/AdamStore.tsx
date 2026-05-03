@@ -1,5 +1,6 @@
 import { Ad4mClient, Agent, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
 import { usePlatform } from '@shared/platform';
+import { type ModelClass, registerDynamicModels } from '@shared/registries/modelRegistry';
 import type { FileData } from '@we/models';
 import {
   AgentProfile,
@@ -22,6 +23,28 @@ import { useRouteStore } from './RouteStore';
 
 export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 
+/**
+ * Normalised description of a model class from a perspective's SHACL shapes.
+ * Mirrors ModelManifestEntry from @coasys/ad4m (defined locally until the package
+ * is built and linked with the new version).
+ */
+export interface ModelManifestProperty {
+  name: string;
+  predicate: string;
+  type: 'string' | 'number' | 'boolean' | 'uri';
+  isCollection: boolean;
+  required: boolean;
+  writable: boolean;
+  resolveLanguage?: string;
+  relatedModel?: string;
+}
+
+export interface ModelManifestEntry {
+  name: string;
+  targetClass: string;
+  properties: ModelManifestProperty[];
+}
+
 export interface AdamStore {
   // State
   bootState: Accessor<BootState>;
@@ -36,9 +59,24 @@ export interface AdamStore {
   ad4mToken: Accessor<string | undefined>;
   isDevelopment: Accessor<boolean>;
   rootPerspective: Accessor<PerspectiveProxy | null>;
+  /** The we-test perspective used by testStore for $query testing. Always populated after boot. */
+  testPerspective: Accessor<PerspectiveProxy | null>;
+  /** UUIDs of all internal WE system perspectives (names starting with 'we-'). */
+  systemPerspectiveUuids: Accessor<string[]>;
+  /** Perspectives sorted by user-defined order (falls back to load order). */
+  orderedPerspectives: Accessor<PerspectiveProxy[]>;
   agentSettings: Accessor<AgentSettings | null>;
   agentProfile: Accessor<AgentProfile | null>;
   creatingSpace: Accessor<boolean>;
+  /** The currently focused perspective (universal signal — set for all navigation). */
+  currentPerspective: Accessor<PerspectiveProxy | null>;
+  /**
+   * All model classes found in the current perspective (WE + external).
+   * Populated by `setCurrentPerspective`; empty until a perspective is set.
+   * WE models are included so the AI validator can narrow its allowlist to
+   * what is actually registered in this perspective.
+   */
+  currentPerspectiveModels: Accessor<ModelManifestEntry[]>;
 
   // Actions
   login: (password: string) => Promise<void>;
@@ -46,10 +84,22 @@ export interface AdamStore {
   addNewSpace: (space: Space) => void;
   createSpace: (name: string, description: string, shared: boolean, imageFile?: File) => Promise<void>;
   removePerspective: (uuid: string) => Promise<void>;
+  /**
+   * Set the active perspective by UUID.
+   * - Fetches the PerspectiveProxy via byUUID
+   * - Synthesises Ad4mModel classes from the perspective's SHACL shapes and
+   *   caches them in the per-perspective model registry (WE models filtered out
+   *   to avoid shadowing the real implementations)
+   * - Populates currentPerspectiveModels with the full manifest (WE + external)
+   *   so the AI validator can narrow its allowlist to what is actually registered
+   * - Sets the currentPerspective signal (SpaceStore reacts to this)
+   */
+  setCurrentPerspective: (uuid: string) => Promise<void>;
   updateAgentSettings: (updates: Partial<AgentSettings>) => Promise<void>;
   updateAgentProfile: (updates: Partial<AgentProfile>) => Promise<void>;
   updateProfileImage: (imageFile: File) => Promise<void>;
   updateCoverImage: (imageFile: File) => Promise<void>;
+  reorderPerspectives: (newOrder: string[]) => Promise<void>;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -70,11 +120,46 @@ export function AdamStoreProvider(props: ParentProps) {
   const [ad4mPort, setAd4mPort] = createSignal<number | undefined>(undefined);
   const [ad4mToken, setAd4mToken] = createSignal<string | undefined>(undefined);
   const [rootPerspective, setRootPerspective] = createSignal<PerspectiveProxy | null>(null);
+  const [testPerspective, setTestPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
   const [agentProfile, setAgentProfile] = createSignal<AgentProfile | null>(null, { equals: false });
   const [allPerspectives, setAllPerspectives] = createSignal<PerspectiveProxy[]>([]);
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [creatingSpace, setCreatingSpace] = createSignal(false);
+  const [currentPerspective, setCurrentPerspectiveSignal] = createSignal<PerspectiveProxy | null>(null);
+  const [currentPerspectiveModels, setCurrentPerspectiveModels] = createSignal<ModelManifestEntry[]>([]);
+
+  // Derived: perspectives with we-* names are internal WE system perspectives
+  const systemPerspectiveUuids = createMemo(() =>
+    allPerspectives()
+      .filter((p) => p.name.startsWith('we-'))
+      .map((p) => p.uuid),
+  );
+
+  function getPerspectiveOrder(): string[] {
+    const json = agentSettings()?.perspectiveOrder;
+    if (!json) return [];
+    try {
+      return JSON.parse(json);
+    } catch {
+      return [];
+    }
+  }
+
+  // Derived: perspectives sorted by user-defined order (falls back to load order)
+  const orderedPerspectives = createMemo(() => {
+    const all = allPerspectives();
+    const order = getPerspectiveOrder();
+    if (order.length === 0) return all;
+    const byUuid = new Map(all.map((p) => [p.uuid, p]));
+    const ordered = order.flatMap((uuid) => {
+      const p = byUuid.get(uuid);
+      return p ? [p] : [];
+    });
+    const inOrder = new Set(order);
+    const appended = all.filter((p) => !inOrder.has(p.uuid));
+    return [...ordered, ...appended];
+  });
 
   // Derived: personal and shared spaces
   const personalSpaces = createMemo(() => mySpaces().filter((s) => s.visibility !== 'shared'));
@@ -91,6 +176,51 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
+  function subscribeToPerspectiveChanges(client: Ad4mClient): void {
+    // perspectiveAdded fires for any client that adds a perspective (WE, Flux, CLI, etc.)
+    // For WE-created spaces the Space model isn't saved yet when this fires, so
+    // findOne returns null and createSpace()'s addNewSpace() handles mySpaces.
+    client.perspective.addPerspectiveAddedListener((handle) => {
+      if (allPerspectives().some((p) => p.uuid === handle.uuid)) return null;
+      client.perspective.byUUID(handle.uuid).then((perspective) => {
+        if (!perspective) return;
+        setAllPerspectives((prev) => [...prev, perspective]);
+        reorderPerspectives([...getPerspectiveOrder(), perspective.uuid]).catch(console.error);
+        Space.findOne(perspective).then((space) => {
+          if (space && !mySpaces().some((s) => s.uuid === handle.uuid)) {
+            setMySpaces((prev) => [...prev, space].sort((a, b) => Number(a.createdAt) - Number(b.createdAt)));
+          }
+        });
+      });
+      return null;
+    });
+
+    // perspectiveUpdated fires on renames and neighbourhood sync-state transitions — not on link changes
+    client.perspective.addPerspectiveUpdatedListener((handle) => {
+      client.perspective.byUUID(handle.uuid).then((perspective) => {
+        if (!perspective) return;
+        setAllPerspectives((prev) => prev.map((p) => (p.uuid === handle.uuid ? perspective : p)));
+        Space.findOne(perspective).then((space) => {
+          if (!space) return;
+          setMySpaces((prev) => {
+            const exists = prev.some((s) => s.uuid === handle.uuid);
+            if (exists) return prev.map((s) => (s.uuid === handle.uuid ? space : s));
+            return [...prev, space].sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
+          });
+        });
+      });
+      return null;
+    });
+
+    // perspectiveRemoved fires for deletions from any client
+    client.perspective.addPerspectiveRemovedListener((uuid) => {
+      setAllPerspectives((prev) => prev.filter((p) => p.uuid !== uuid));
+      setMySpaces((prev) => prev.filter((s) => s.uuid !== uuid));
+      reorderPerspectives(getPerspectiveOrder().filter((id) => id !== uuid)).catch(console.error);
+      return null;
+    });
+  }
+
   async function getMySpaces(client: Ad4mClient): Promise<void> {
     try {
       const perspectives = await client.perspective.all();
@@ -100,6 +230,21 @@ export function AdamStoreProvider(props: ParentProps) {
         .filter((s): s is Space => !!s)
         .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
       setMySpaces(filteredSpaces);
+      // Bootstrap perspective order on first load (when no order has been saved yet)
+      if (!agentSettings()?.perspectiveOrder) {
+        const systemOrder = ['we-root', 'we-test'];
+        const initialOrder = [...allPerspectives()]
+          .sort((a, b) => {
+            const ai = systemOrder.indexOf(a.name);
+            const bi = systemOrder.indexOf(b.name);
+            if (ai === -1 && bi === -1) return 0;
+            if (ai === -1) return 1;
+            if (bi === -1) return -1;
+            return ai - bi;
+          })
+          .map((p) => p.uuid);
+        await reorderPerspectives(initialOrder);
+      }
     } catch (error) {
       console.error('AdamStore: getMySpaces error', error);
     }
@@ -151,8 +296,13 @@ export function AdamStoreProvider(props: ParentProps) {
         return;
       }
 
-      // Agent is ready - load user data
-      await Promise.all([getMe(client), getMySpaces(client), getOrCreateRootPerspective(client)]);
+      // Agent is ready - load user data.
+      // initSystemPerspectives must complete before getMySpaces so that the
+      // perspective.all() snapshot in getMySpaces always includes we-root and we-test
+      // — even on first boot when they don't exist yet and have to be created.
+      await Promise.all([getMe(client), initSystemPerspectives(client)]);
+      await getMySpaces(client);
+      subscribeToPerspectiveChanges(client);
       setBootState('ready');
 
       // Navigate to root route when ready
@@ -205,8 +355,8 @@ export function AdamStoreProvider(props: ParentProps) {
     return () => window.removeEventListener('message', handleMessage);
   }
 
-  /** Find or create the root perspective containing AgentSettings */
-  async function getOrCreateRootPerspective(client: Ad4mClient): Promise<void> {
+  /** Find or create the root perspective and all other system perspectives */
+  async function initSystemPerspectives(client: Ad4mClient): Promise<void> {
     try {
       const perspectives = await client.perspective.all();
       const existing = perspectives.find((p) => p.name === 'we-root');
@@ -226,6 +376,15 @@ export function AdamStoreProvider(props: ParentProps) {
         if (settings) setAgentSettings(settings);
         if (profile) setAgentProfile(profile);
         console.log('AdamStore: Found root perspective', existing.uuid);
+
+        // Find or create we-test system perspective (uses same snapshot)
+        const existingTest = perspectives.find((p) => p.name === 'we-test');
+        if (existingTest) {
+          setTestPerspective(existingTest);
+        } else {
+          const testP = await client.perspective.add('we-test');
+          setTestPerspective(testP);
+        }
         return;
       }
 
@@ -255,8 +414,18 @@ export function AdamStoreProvider(props: ParentProps) {
       setAgentSettings(settings);
       setAgentProfile(profile);
       console.log('AdamStore: Created root perspective', perspective.uuid);
+
+      // Find or create we-test system perspective
+      const allPersp = await client.perspective.all();
+      const existingTest = allPersp.find((p: PerspectiveProxy) => p.name === 'we-test');
+      if (existingTest) {
+        setTestPerspective(existingTest);
+      } else {
+        const testP = await client.perspective.add('we-test');
+        setTestPerspective(testP);
+      }
     } catch (error) {
-      console.error('AdamStore: getOrCreateRootPerspective error', error);
+      console.error('AdamStore: initSystemPerspectives error', error);
     }
   }
 
@@ -265,6 +434,14 @@ export function AdamStoreProvider(props: ParentProps) {
     if (!settings) return;
 
     Object.assign(settings, updates);
+    await settings.save();
+    setAgentSettings(settings);
+  }
+
+  async function reorderPerspectives(newOrder: string[]): Promise<void> {
+    const settings = agentSettings();
+    if (!settings) return;
+    settings.perspectiveOrder = JSON.stringify(newOrder);
     await settings.save();
     setAgentSettings(settings);
   }
@@ -315,8 +492,10 @@ export function AdamStoreProvider(props: ParentProps) {
     try {
       await client.agent.unlock(password, true);
 
-      // Load user data after unlock
-      await Promise.all([getMe(client), getMySpaces(client), getOrCreateRootPerspective(client)]);
+      // Load user data after unlock — same serialization as initialiseStore
+      await Promise.all([getMe(client), initSystemPerspectives(client)]);
+      await getMySpaces(client);
+      subscribeToPerspectiveChanges(client);
       setBootState('ready');
 
       // Navigate to root route after successful login
@@ -409,6 +588,7 @@ export function AdamStoreProvider(props: ParentProps) {
 
       // Update sidebar and navigate
       addNewSpace(space);
+      await setCurrentPerspective(spacePerspective.uuid);
       routeStore.navigate(`/space/${space.url || space.uuid}`);
     } catch (error) {
       console.error('AdamStore: createSpace error', error);
@@ -427,6 +607,54 @@ export function AdamStoreProvider(props: ParentProps) {
       setMySpaces((prev) => prev.filter((s) => s.uuid !== uuid));
     } catch (error) {
       console.error('AdamStore: removePerspective error', error);
+    }
+  }
+
+  async function setCurrentPerspective(uuid: string): Promise<void> {
+    const client = adamClient();
+    if (!client) return;
+
+    /**
+     * Cast to access methods added in the next ad4m release.
+     * Remove once @coasys/ad4m is updated and the types are available.
+     */
+    type PerspectiveWithExtensions = PerspectiveProxy & {
+      getModelClasses?: () => Promise<Record<string, ModelClass>>;
+      getModelManifest?: () => Promise<ModelManifestEntry[]>;
+    };
+
+    try {
+      const perspective = await client.perspective.byUUID(uuid);
+      if (!perspective) return;
+
+      const ext = perspective as unknown as PerspectiveWithExtensions;
+
+      // Synthesise Ad4mModel classes from SHACL shapes and register them.
+      // getModelClasses() is a new method on PerspectiveProxy — gracefully skip
+      // if the installed @coasys/ad4m version doesn't have it yet.
+      try {
+        const classes = await ext.getModelClasses?.();
+        if (classes) {
+          registerDynamicModels(uuid, classes);
+        }
+      } catch (err) {
+        console.warn('AdamStore: getModelClasses failed (ad4m version too old?)', err);
+      }
+
+      // Populate currentPerspectiveModels with the full manifest (WE + external).
+      // The full list lets AiStore build a perspective-accurate validator allowlist
+      // while still filtering WE names out of the dynamic model registry below.
+      try {
+        const manifest: ModelManifestEntry[] = (await ext.getModelManifest?.()) ?? [];
+        setCurrentPerspectiveModels(manifest);
+      } catch (err) {
+        console.warn('AdamStore: getModelManifest failed (ad4m version too old?)', err);
+        setCurrentPerspectiveModels([]);
+      }
+
+      setCurrentPerspectiveSignal(perspective);
+    } catch (error) {
+      console.error('AdamStore: setCurrentPerspective error', error);
     }
   }
 
@@ -450,15 +678,20 @@ export function AdamStoreProvider(props: ParentProps) {
     adamClient,
     me,
     allPerspectives,
+    orderedPerspectives,
     personalSpaces,
     sharedSpaces,
     ad4mPort,
     ad4mToken,
     isDevelopment,
     rootPerspective,
+    testPerspective,
+    systemPerspectiveUuids,
     agentSettings,
     agentProfile,
     creatingSpace,
+    currentPerspective,
+    currentPerspectiveModels,
 
     // Actions
     login,
@@ -466,10 +699,12 @@ export function AdamStoreProvider(props: ParentProps) {
     addNewSpace,
     createSpace,
     removePerspective,
+    setCurrentPerspective,
     updateAgentSettings,
     updateAgentProfile,
     updateProfileImage,
     updateCoverImage,
+    reorderPerspectives,
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;

@@ -16,7 +16,7 @@ All operator resolution logic lives in `shared/` — the renderer layer (`solid/
 All operators use the `$` prefix followed by a **single lowercase word**:
 
 ```
-$store  $action  $concat  $map  $pick  $if  $not  $eq  $ne  $and  $or  $each  $routes
+$store  $action  $concat  $map  $pick  $if  $not  $eq  $ne  $in  $and  $or  $each  $routes
 ```
 
 **Rules:**
@@ -42,6 +42,7 @@ Resolved by the dispatcher during prop resolution. Each has a dedicated resolver
 | `$if`     | `conditional.ts` | Conditional value (ternary)           |
 | `$eq`     | `comparisons.ts` | Equality check                        |
 | `$ne`     | `comparisons.ts` | Inequality check                      |
+| `$in`     | `comparisons.ts` | Set membership check                  |
 | `$not`    | `comparisons.ts` | Boolean negation                      |
 | `$and`    | `comparisons.ts` | Short-circuit AND                     |
 | `$or`     | `comparisons.ts` | Short-circuit OR                      |

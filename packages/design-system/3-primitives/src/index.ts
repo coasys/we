@@ -34,6 +34,7 @@ import './primitives/scroll-area';
 import './primitives/select';
 import './primitives/skeleton';
 import './primitives/slider';
+import './primitives/sortable';
 import './primitives/spinner';
 import './primitives/switch';
 import './primitives/tag';

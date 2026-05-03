@@ -52,6 +52,108 @@ Querying model data:
   "$query": { "model": "TaskBlock", "where": { "status": "todo" } }
 }
 
+Eager-loading relations with include (most common relational pattern):
+When you need related data displayed alongside a list, use include to hydrate relations in one query.
+
+Example — Channel list with conversation count and latest conversation:
+{
+  "type": "$each",
+  "props": {
+    "items": {
+      "$query": {
+        "model": "Channel",
+        "perspectiveStore": "spaceStore.perspective",
+        "include": {
+          "$conversationCount": { "from": "conversations", "count": true },
+          "$latestConversation": { "from": "conversations", "order": { "createdAt": "desc" }, "limit": 1 }
+        }
+      }
+    },
+    "as": "channel"
+  },
+  "children": [{
+    "type": "Row",
+    "children": [
+      { "type": "we-text", "children": ["$channel.name"] },
+      { "type": "we-text", "children": ["$channel.$conversationCount"] }
+    ]
+  }]
+}
+
+Example — Nested include (Conversations with their messages):
+{
+  "$query": {
+    "model": "Conversation",
+    "perspectiveStore": "spaceStore.perspective",
+    "include": {
+      "messages": {
+        "order": { "createdAt": "desc" },
+        "limit": 20
+      }
+    }
+  }
+}
+Each conversation in the result has a messages array of hydrated Message instances.
+Nesting works to any depth: "include": { "messages": { "include": { "reactions": true } } }
+
+Relational drill-down (master-detail navigation across model relations):
+Use routes + $query parent when you navigate to a detail route and need only that record's children.
+The relation name must match a HasMany relation listed for that model in the externalModels description.
+routeStore.segments.N extracts the Nth dynamic path segment (segments splits currentPath by "/").
+
+Example — Channel list → Conversation list:
+{
+  "routes": [
+    {
+      "path": "/",
+      "type": "Column",
+      "props": { "gap": "300", "p": "400" },
+      "children": [{
+        "type": "$each",
+        "props": {
+          "items": { "$query": { "model": "Channel", "perspectiveStore": "spaceStore.perspective" } },
+          "as": "channel"
+        },
+        "children": [{
+          "type": "we-button",
+          "props": {
+            "variant": "ghost",
+            "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/channels/", "$channel.id"] }] }
+          },
+          "children": ["$channel.name"]
+        }]
+      }]
+    },
+    {
+      "path": "/channels/:channelId",
+      "type": "Column",
+      "props": { "gap": "300", "p": "400" },
+      "children": [{
+        "type": "$each",
+        "props": {
+          "items": {
+            "$query": {
+              "model": "Conversation",
+              "parent": { "id": { "$store": "routeStore.segments.1" }, "relation": "conversations" },
+              "perspectiveStore": "spaceStore.perspective"
+            }
+          },
+          "as": "convo"
+        },
+        "children": [{
+          "type": "we-text",
+          "children": ["$convo.conversationName"]
+        }]
+      }]
+    }
+  ]
+}
+Notes:
+- Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
+- Use parent when you're on a detail route and want only children belonging to the current record.
+- perspectiveStore must point to the perspective that holds the data. For external apps (e.g. Flux) opened as a WE space, use "spaceStore.perspective".
+- The relation name (in include or parent.relation) is the HasMany field name on the parent model class.
+
 Local state (form with validation):
 {
   "type": "Column",

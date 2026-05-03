@@ -108,6 +108,24 @@ export function resolveLtProp(
   return Number(resolvedA) < Number(resolvedB);
 }
 
+// Resolves $in (membership) props: { $in: [value, array] } → array.includes(value)
+export function resolveInProp(
+  value: unknown,
+  stores: Props,
+  context: Props,
+  memo: Memo,
+  resolvePropFn: typeof resolveProp,
+): unknown {
+  const [item, collection] = (value as { $in: [unknown, unknown] }).$in;
+  let resolvedItem = resolvePropFn(item, stores, context, memo);
+  let resolvedCollection = resolvePropFn(collection, stores, context, memo);
+
+  if (typeof resolvedItem === 'function') resolvedItem = resolvedItem();
+  if (typeof resolvedCollection === 'function') resolvedCollection = resolvedCollection();
+
+  return Array.isArray(resolvedCollection) && resolvedCollection.includes(resolvedItem);
+}
+
 // Resolves $gt (greater than) props: { $gt: [a, b] } → a > b
 export function resolveGtProp(
   value: unknown,

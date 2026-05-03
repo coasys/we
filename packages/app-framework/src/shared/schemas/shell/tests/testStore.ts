@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Ad4mClient, PerspectiveProxy } from '@coasys/ad4m';
+import type { PerspectiveProxy } from '@coasys/ad4m';
 import { Ad4mModel, Model, Property } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { type Accessor, createEffect, createSignal } from 'solid-js';
@@ -21,7 +21,7 @@ export class TestItem extends Ad4mModel {
 // Store factory — test-oriented signals for integration test template
 // ---------------------------------------------------------------------------
 
-export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefined>) {
+export function createTestStore(testPerspective: Accessor<PerspectiveProxy | null>) {
   registerModel('TestItem', TestItem as any);
 
   // ---- Known values (for $store / assertion tests) ----
@@ -189,7 +189,6 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
 
   // ---- AD4M perspective (lazy init for $query testing) ----
   const [perspective, setPerspective] = createSignal<PerspectiveProxy | null>(null);
-  let perspectiveInitStarted = false;
 
   const seedItems = [
     { name: 'Alpha', status: 'active', category: 'A' },
@@ -198,37 +197,23 @@ export function createTestStore(adamClient: Accessor<Ad4mClient | null | undefin
   ];
 
   createEffect(() => {
-    const client = adamClient();
-    if (!client || perspectiveInitStarted) return;
-    perspectiveInitStarted = true;
+    const p = testPerspective();
+    if (!p) return;
 
     (async () => {
       try {
-        const perspectives = await client.perspective.all();
-        let testPerspective = perspectives.find((p: PerspectiveProxy) => p.name === 'we-test') ?? null;
+        await p.ensureSDNASubjectClass(TestItem);
 
-        if (!testPerspective) {
-          testPerspective = await client.perspective.add('we-test');
-          await testPerspective.ensureSDNASubjectClass(TestItem);
+        // Ensure seed data exists
+        const existing = await TestItem.findAll(p);
+        if (!existing || existing.length === 0) {
           await new Promise((r) => setTimeout(r, 500));
-
           for (const item of seedItems) {
-            await TestItem.create(testPerspective, item);
-          }
-        } else {
-          await testPerspective.ensureSDNASubjectClass(TestItem);
-
-          // Ensure seed data exists even if perspective was created on a previous run
-          const existing = await TestItem.findAll(testPerspective);
-          if (!existing || existing.length === 0) {
-            await new Promise((r) => setTimeout(r, 500));
-            for (const item of seedItems) {
-              await TestItem.create(testPerspective, item);
-            }
+            await TestItem.create(p, item);
           }
         }
 
-        setPerspective(testPerspective);
+        setPerspective(p);
       } catch (err) {
         console.error('TestStore: failed to init perspective', err);
       }

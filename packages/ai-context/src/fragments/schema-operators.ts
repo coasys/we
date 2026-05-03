@@ -64,6 +64,11 @@ Equality / inequality checks:
 { "$eq": [a, b] } — strict equality
 { "$ne": [a, b] } — strict inequality
 
+Set membership:
+{ "$in": [value, array] } — true if array contains value (false if second operand is not an array)
+Example: { "$in": [{ "$store": "spaceStore.uuid" }, { "$store": "adamStore.systemPerspectiveUuids" }] }
+Example: { "$in": ["$item.role", ["admin", "moderator"]] }
+
 Boolean logic:
 { "$and": [a, b, ...] } — all truthy
 { "$or": [a, b, ...] } — any truthy
@@ -72,7 +77,46 @@ Boolean logic:
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the local perspective for model instances. Always returns an array.
-Options: model (required), where, order, limit, offset, include, parent, subscribe (default true).
+Options: model (required), where, order, limit, offset, include, parent, perspectiveStore, subscribe (default true).
+By default $query targets the current WE space's perspective. Use perspectiveStore to query a different perspective —
+required when reading models from an external app (e.g. Flux) that is open as a WE space:
+{ "$query": { "model": "Channel", "perspectiveStore": "spaceStore.perspective" } }
+spaceStore.perspective resolves to the AD4M Perspective instance of the currently active space.
+
+Eager-loading relations with include (most common relational pattern):
+include hydrates related model instances in the same query — no extra fetches needed.
+Relation names come from the HasMany relations listed for each model in externalModels.
+
+Simple include — hydrate all related instances:
+{ "$query": { "model": "Channel", "include": { "conversations": true } } }
+Each item in the result will have a conversations array of hydrated Conversation objects.
+
+Sub-query include — filter, sort, or limit the related records:
+{ "$query": { "model": "Channel", "include": { "conversations": { "order": { "createdAt": "desc" }, "limit": 10 } } } }
+
+Nested include — hydrate relations of relations:
+{ "$query": { "model": "Channel", "include": { "conversations": { "include": { "messages": true } } } } }
+Nesting can go as deep as needed. Each level adds one batched fetch (not N+1).
+
+Count projection — add a derived numeric field:
+{ "$query": { "model": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
+The $-prefixed key becomes a new field on each result item (e.g. item.$likeCount = 42).
+
+Single-item projection — add a derived field that resolves to one instance or null:
+{ "$query": { "model": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": { "$store": "adamStore.me.did" } }, "limit": 1 } } } }
+With limit: 1 the field unwraps to T | null instead of an array.
+
+include only works with typed relations — ones where the target model class is known.
+For WE models this is always the case. For external models, check the externalModels listing:
+relations marked "→ ModelName" are typed (safe for include); relations marked "parent query only"
+are untyped and will crash at runtime if used with include — use parent instead.
+
+Relational queries — fetch children by parent id (drill-down navigation):
+{ "$query": { "model": "Conversation", "parent": { "id": "$channel.id", "relation": "conversations" } } }
+The parent.id is the id of the parent record (typically from a $each context variable or a route segment).
+The parent.relation name matches the HasMany relation listed for that model in externalModels.
+Use this pattern when navigating to a detail route and loading only that record's children.
+For external-app perspectives, always add perspectiveStore: "spaceStore.perspective".
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }

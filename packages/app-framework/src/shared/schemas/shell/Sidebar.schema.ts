@@ -16,6 +16,8 @@ export const sidebar: SchemaNode = {
     then: {
       type: 'CollapsibleSidebar',
       props: {
+        // defaultExpanded: true,
+        // expandOnHover: false,
         side: 'left',
         position: 'fixed',
         zIndex: 10,
@@ -27,12 +29,45 @@ export const sidebar: SchemaNode = {
           {
             type: 'item',
             id: 'current-space',
-            icon: 'map-pin-area',
+            // Show house-line icon only when on home (no space, no perspective)
+            icon: {
+              $if: {
+                condition: { $store: 'spaceStore.space' },
+                then: null,
+                else: {
+                  $if: {
+                    condition: { $store: 'adamStore.currentPerspective' },
+                    then: 'map-pin-area',
+                    else: 'house-line',
+                  },
+                },
+              },
+            },
+            // Show avatar (with image or initials) when a space/perspective is active
+            avatar: {
+              $if: {
+                condition: { $store: 'spaceStore.space' },
+                then: { src: { $store: 'spaceStore.space.image' }, name: { $store: 'spaceStore.space.name' } },
+                else: {
+                  $if: {
+                    condition: { $store: 'adamStore.currentPerspective' },
+                    then: { src: '', name: { $store: 'adamStore.currentPerspective.name' } },
+                    else: null,
+                  },
+                },
+              },
+            },
             label: {
               $if: {
                 condition: { $store: 'spaceStore.space' },
                 then: { $store: 'spaceStore.space.name' },
-                else: 'Root',
+                else: {
+                  $if: {
+                    condition: { $store: 'adamStore.currentPerspective' },
+                    then: { $store: 'adamStore.currentPerspective.name' },
+                    else: 'Home',
+                  },
+                },
               },
             },
             onClick: [
@@ -49,6 +84,15 @@ export const sidebar: SchemaNode = {
                     $action: 'routeStore.navigate',
                     args: [{ $concat: ['/space/', { $store: 'spaceStore.space.uuid' }] }],
                   },
+                  else: {
+                    $if: {
+                      condition: { $store: 'adamStore.currentPerspective' },
+                      then: {
+                        $action: 'routeStore.navigate',
+                        args: [{ $concat: ['/space/', { $store: 'adamStore.currentPerspective.uuid' }] }],
+                      },
+                    },
+                  },
                 },
               },
             ],
@@ -59,6 +103,45 @@ export const sidebar: SchemaNode = {
             id: 'debug-route',
             icon: 'link-simple',
             label: { $store: 'routeStore.currentPath' },
+          },
+
+          // --- All AD4M perspectives ---
+          {
+            type: 'group',
+            id: 'perspectives',
+            label: 'Perspectives',
+            collapsed: true,
+            reorderable: true,
+            onReorder: { $action: 'adamStore.reorderPerspectives' },
+            items: {
+              $map: {
+                items: { $store: 'adamStore.orderedPerspectives' },
+                select: {
+                  id: '$item.uuid',
+                  // System perspectives (we-root, we-test, …) get a gear icon; others get initials avatar
+                  icon: {
+                    $if: {
+                      condition: { $in: ['$item.uuid', { $store: 'adamStore.systemPerspectiveUuids' }] },
+                      then: 'user-circle-gear',
+                      else: null,
+                    },
+                  },
+                  avatar: {
+                    $if: {
+                      condition: { $in: ['$item.uuid', { $store: 'adamStore.systemPerspectiveUuids' }] },
+                      then: null,
+                      else: { src: '', name: '$item.name' },
+                    },
+                  },
+                  label: '$item.name',
+                  active: { $eq: ['$item.uuid', { $store: 'adamStore.currentPerspective.uuid' }] },
+                  onClick: [
+                    { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
+                    { $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$item.uuid'] }] },
+                  ],
+                },
+              },
+            },
           },
 
           // --- Template switching ---
@@ -104,7 +187,7 @@ export const sidebar: SchemaNode = {
                 items: { $store: 'appStore.apps' },
                 select: {
                   id: '$item.id',
-                  icon: '$item.icon',
+                  avatar: { src: '$item.image', name: '$item.name' },
                   label: '$item.name',
                   active: { $eq: ['$item.id', { $store: 'appStore.activeAppId' }] },
                   onClick: { $action: 'appStore.activateApp', args: ['$item.id'] },

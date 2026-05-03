@@ -135,7 +135,10 @@ describe('buildValidationContext', () => {
 
     const adamMembers = c.storeMembers.get('adamStore')!;
     expect(adamMembers.has('loading')).toBe(true);
-    expect(adamMembers.has('navigate')).toBe(true);
+    expect(adamMembers.has('login')).toBe(true);
+
+    const routeMembers = c.storeMembers.get('routeStore')!;
+    expect(routeMembers.has('navigate')).toBe(true);
   });
 
   it('builds model names', () => {
@@ -530,6 +533,79 @@ describe('route validation', () => {
       ctx(),
     );
     const routeErrors = result.errors.filter((e) => e.message.includes('routes') || e.message.includes('$routes'));
+    expect(routeErrors).toHaveLength(0);
+  });
+
+  it('errors when routes array is on a non-root child node', () => {
+    // The AI mistake: routes defined on an inner Column child instead of the root.
+    // The router never reads routes from arbitrary children — they are dead code.
+    const result = validateSemantic(
+      {
+        type: 'Column',
+        children: [
+          {
+            type: 'Column',
+            routes: [{ type: 'div', path: '/posts' }],
+            children: [{ type: '$routes' }],
+          },
+        ],
+      },
+      ctx(),
+    );
+    expect(
+      result.errors.some(
+        (e) =>
+          e.severity === 'error' &&
+          e.message.includes('non-root, non-route child node') &&
+          e.message.includes('routes'),
+      ),
+    ).toBe(true);
+  });
+
+  it('errors when a route entry uses type "$routes"', () => {
+    // The AI mistake: { "path": "/posts", "type": "$routes" } renders null as a leaf route.
+    const result = validateSemantic(
+      {
+        type: 'Column',
+        routes: [
+          { type: '$routes', path: '/posts' },
+          { type: 'div', path: '/home' },
+        ],
+        children: [{ type: '$routes' }],
+      },
+      ctx(),
+    );
+    expect(
+      result.errors.some(
+        (e) =>
+          e.severity === 'error' && e.message.includes('renders null as a leaf route') && e.message.includes('/posts'),
+      ),
+    ).toBe(true);
+  });
+
+  it('passes for nested routes on a route entry', () => {
+    // A route entry itself (not a plain child) is allowed to have its own routes array.
+    const result = validateSemantic(
+      {
+        type: 'Column',
+        routes: [
+          {
+            type: 'Row',
+            path: '/space',
+            routes: [
+              { type: 'div', path: '/' },
+              { type: 'div', path: '/posts' },
+            ],
+            children: [{ type: '$routes' }],
+          },
+        ],
+        children: [{ type: '$routes' }],
+      },
+      ctx(),
+    );
+    const routeErrors = result.errors.filter(
+      (e) => e.message.includes('non-root') || e.message.includes('renders null'),
+    );
     expect(routeErrors).toHaveLength(0);
   });
 });

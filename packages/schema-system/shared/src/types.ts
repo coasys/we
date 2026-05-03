@@ -75,6 +75,7 @@ export type EqToken = { $eq: unknown[] };
 export type NeToken = { $ne: unknown[] };
 export type LtToken = { $lt: unknown[] };
 export type GtToken = { $gt: unknown[] };
+export type InToken = { $in: unknown[] };
 export type NotToken = { $not: unknown };
 export type AndToken = { $and: unknown[] };
 export type OrToken = { $or: unknown[] };
@@ -142,6 +143,7 @@ export type OperatorToken =
   | NeToken
   | LtToken
   | GtToken
+  | InToken
   | NotToken
   | AndToken
   | OrToken

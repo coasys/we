@@ -19,4 +19,3 @@ export * from './utils';
 
 // Prompts
 // schemaContext is now provided by @we/ai-context
-export * from './prompts/schemaExamples';

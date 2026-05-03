@@ -8,12 +8,12 @@ For current token inventory and architecture, see the [schema system shared laye
 
 ## Current Token Taxonomy
 
-| Category         | Tokens                                                                        |
-| ---------------- | ----------------------------------------------------------------------------- |
-| **Data sources** | `$store`, `$query` (PR #5c), context refs (`$item.name`)                      |
-| **Transforms**   | `$concat`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$not`, `$and`, `$or` |
-| **Control flow** | `$each`, `$if` (node), `$routes`                                              |
-| **Side effects** | `$action`                                                                     |
+| Category         | Tokens                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------ |
+| **Data sources** | `$store`, `$query` (PR #5c), context refs (`$item.name`)                             |
+| **Transforms**   | `$concat`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$in`, `$not`, `$and`, `$or` |
+| **Control flow** | `$each`, `$if` (node), `$routes`                                                     |
+| **Side effects** | `$action`                                                                            |
 
 ---
 

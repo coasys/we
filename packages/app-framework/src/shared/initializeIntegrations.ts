@@ -36,6 +36,7 @@ export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
         id: app.id,
         name: app.name,
         icon: app.icon,
+        image: app.image,
         url,
         allow: generateIframePermissions(app.capabilities),
       });

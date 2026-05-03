@@ -1,3 +1,4 @@
+import type { DesignSystemProps } from '@we/design-types';
 import { toSvg } from 'jdenticon';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
@@ -7,6 +8,10 @@ import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
 import { LayoutElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import type { SizeValue } from '../types';
+
+const DEFAULT_PROPS: Partial<DesignSystemProps> = {
+  flex: '0 0 auto',
+};
 
 const styles = css`
   :host {
@@ -18,7 +23,6 @@ const styles = css`
     --we-avatar-border: none;
     --we-avatar-color: var(--we-color-black);
     --we-avatar-bg: var(--we-color-neutral-100);
-    flex-shrink: 0;
   }
   :host([src]) {
     --we-avatar-bg: transparent;
@@ -93,6 +97,10 @@ const styles = css`
 @customElement('we-avatar')
 export default class Avatar extends LayoutElement {
   static styles = [sharedStyles, styles];
+
+  static getDefaultProps(): Partial<DesignSystemProps> {
+    return DEFAULT_PROPS;
+  }
 
   @property({ type: String, reflect: true }) image = '';
   @property({ type: String, reflect: true }) hash = '';

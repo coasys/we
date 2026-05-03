@@ -272,6 +272,20 @@ const neTest = section('$ne', 'Not-equal comparison', [
   boolCheck('$ne("same", "same") → false', { $not: { $ne: ['same', 'same'] } }),
 ]);
 
+const inTest = section('$in', 'Set membership — value in array', [
+  boolCheck('$in("hello", ["hello", "world"]) → true', { $in: ['hello', ['hello', 'world']] }),
+  boolCheck('$in("missing", ["hello", "world"]) → false', { $not: { $in: ['missing', ['hello', 'world']] } }),
+  boolCheck('$in($store.stringValue, ["hello", "world"]) → true', {
+    $in: [{ $store: 'testStore.stringValue' }, ['hello', 'world']],
+  }),
+  boolCheck('$in($store.numberValue, [1, 42, 100]) → true', {
+    $in: [{ $store: 'testStore.numberValue' }, [1, 42, 100]],
+  }),
+  boolCheck('$in("hello", "not-an-array") → false (non-array second operand)', {
+    $not: { $in: ['hello', 'not-an-array'] },
+  }),
+]);
+
 const notTest = section('$not', 'Boolean negation', [
   boolCheck('$not(false) → true', { $not: { $store: 'testStore.boolFalse' } }),
   boolCheck('$not(true) → false', { $not: { $not: { $store: 'testStore.boolTrue' } } }),
@@ -1549,7 +1563,12 @@ const namedThemeTest: SchemaNode = {
 const groups: { key: string; label: string; path: string; children: SchemaNode[] }[] = [
   { key: 'data-access', label: 'Data Access', path: '/data-access', children: [storeTest, concatTest] },
   { key: 'actions', label: 'Actions', path: '/actions', children: [actionTest, argTest] },
-  { key: 'operators', label: 'Operators', path: '/operators', children: [eqTest, neTest, notTest, andTest, orTest] },
+  {
+    key: 'operators',
+    label: 'Operators',
+    path: '/operators',
+    children: [eqTest, neTest, inTest, notTest, andTest, orTest],
+  },
   {
     key: 'control-flow',
     label: 'Control Flow',

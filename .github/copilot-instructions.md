@@ -67,6 +67,11 @@ Equality / inequality checks:
 { "$eq": [a, b] } — strict equality
 { "$ne": [a, b] } — strict inequality
 
+Set membership:
+{ "$in": [value, array] } — true if array contains value (false if second operand is not an array)
+Example: { "$in": [{ "$store": "spaceStore.uuid" }, { "$store": "adamStore.systemPerspectiveUuids" }] }
+Example: { "$in": ["$item.role", ["admin", "moderator"]] }
+
 Boolean logic:
 { "$and": [a, b, ...] } — all truthy
 { "$or": [a, b, ...] } — any truthy
@@ -75,7 +80,46 @@ Boolean logic:
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the local perspective for model instances. Always returns an array.
-Options: model (required), where, order, limit, offset, include, parent, subscribe (default true).
+Options: model (required), where, order, limit, offset, include, parent, perspectiveStore, subscribe (default true).
+By default $query targets the current WE space's perspective. Use perspectiveStore to query a different perspective —
+required when reading models from an external app (e.g. Flux) that is open as a WE space:
+{ "$query": { "model": "Channel", "perspectiveStore": "spaceStore.perspective" } }
+spaceStore.perspective resolves to the AD4M Perspective instance of the currently active space.
+
+Eager-loading relations with include (most common relational pattern):
+include hydrates related model instances in the same query — no extra fetches needed.
+Relation names come from the HasMany relations listed for each model in externalModels.
+
+Simple include — hydrate all related instances:
+{ "$query": { "model": "Channel", "include": { "conversations": true } } }
+Each item in the result will have a conversations array of hydrated Conversation objects.
+
+Sub-query include — filter, sort, or limit the related records:
+{ "$query": { "model": "Channel", "include": { "conversations": { "order": { "createdAt": "desc" }, "limit": 10 } } } }
+
+Nested include — hydrate relations of relations:
+{ "$query": { "model": "Channel", "include": { "conversations": { "include": { "messages": true } } } } }
+Nesting can go as deep as needed. Each level adds one batched fetch (not N+1).
+
+Count projection — add a derived numeric field:
+{ "$query": { "model": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
+The $-prefixed key becomes a new field on each result item (e.g. item.$likeCount = 42).
+
+Single-item projection — add a derived field that resolves to one instance or null:
+{ "$query": { "model": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": { "$store": "adamStore.me.did" } }, "limit": 1 } } } }
+With limit: 1 the field unwraps to T | null instead of an array.
+
+include only works with typed relations — ones where the target model class is known.
+For WE models this is always the case. For external models, check the externalModels listing:
+relations marked "→ ModelName" are typed (safe for include); relations marked "parent query only"
+are untyped and will crash at runtime if used with include — use parent instead.
+
+Relational queries — fetch children by parent id (drill-down navigation):
+{ "$query": { "model": "Conversation", "parent": { "id": "$channel.id", "relation": "conversations" } } }
+The parent.id is the id of the parent record (typically from a $each context variable or a route segment).
+The parent.relation name matches the HasMany relation listed for that model in externalModels.
+Use this pattern when navigating to a detail route and loading only that record's children.
+For external-app perspectives, always add perspectiveStore: "spaceStore.perspective".
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
@@ -267,6 +311,12 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
   Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
+- we-sortable (DesignSystemElement) — Drag-to-reorder container primitive.
+
+Usage: wrap a list of elements that each have a `data-we-id` attribute.
+Fires a `we-reorder` CustomEvent<string[]> on drop with the new ordered
+array of IDs.
+  Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = ''
 - we-spinner (LayoutElement)
   Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', color: string = ''
 - we-switch (DesignSystemElement)
@@ -606,6 +656,7 @@ AgentSettings extends Ad4mModel:
   - defaultTemplateId: string = 'default' [we://default_template]
   - currentThemeId: string = 'default' [we://current_theme]
   - claudeApiKey: string [we://claude_api_key]
+  - perspectiveOrder: string [we://perspective_order]
   Relations:
   - installedTemplates: HasMany → Template [we://installed_template]
   - installedThemes: HasMany → Theme [we://installed_theme]
@@ -822,6 +873,8 @@ AdamStore:
   - adamClient: Ad4mClient | undefined
   - me: Agent | undefined
   - allPerspectives: array of PerspectiveProxy objects (all AD4M perspectives)
+  - currentPerspective: PerspectiveProxy | null (the perspective currently being viewed)
+  - currentPerspectiveModels: ModelManifestEntry[] (non-WE SHACL models from the current perspective; injected as externalModels into AI messages)
   - personalSpaces: array of Space objects (local/personal spaces)
   - sharedSpaces: array of Space objects (shared/neighbourhood spaces)
   - bootState: string
@@ -833,6 +886,7 @@ AdamStore:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
   - createSpace(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup
+  - setCurrentPerspective(uuid: string): sets the current perspective, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels
   - removePerspective(): unknown
   - login(password: string): logs in the agent with password
   - logout(): locks the agent and returns to login screen
@@ -978,6 +1032,108 @@ Querying model data:
 {
   "$query": { "model": "TaskBlock", "where": { "status": "todo" } }
 }
+
+Eager-loading relations with include (most common relational pattern):
+When you need related data displayed alongside a list, use include to hydrate relations in one query.
+
+Example — Channel list with conversation count and latest conversation:
+{
+  "type": "$each",
+  "props": {
+    "items": {
+      "$query": {
+        "model": "Channel",
+        "perspectiveStore": "spaceStore.perspective",
+        "include": {
+          "$conversationCount": { "from": "conversations", "count": true },
+          "$latestConversation": { "from": "conversations", "order": { "createdAt": "desc" }, "limit": 1 }
+        }
+      }
+    },
+    "as": "channel"
+  },
+  "children": [{
+    "type": "Row",
+    "children": [
+      { "type": "we-text", "children": ["$channel.name"] },
+      { "type": "we-text", "children": ["$channel.$conversationCount"] }
+    ]
+  }]
+}
+
+Example — Nested include (Conversations with their messages):
+{
+  "$query": {
+    "model": "Conversation",
+    "perspectiveStore": "spaceStore.perspective",
+    "include": {
+      "messages": {
+        "order": { "createdAt": "desc" },
+        "limit": 20
+      }
+    }
+  }
+}
+Each conversation in the result has a messages array of hydrated Message instances.
+Nesting works to any depth: "include": { "messages": { "include": { "reactions": true } } }
+
+Relational drill-down (master-detail navigation across model relations):
+Use routes + $query parent when you navigate to a detail route and need only that record's children.
+The relation name must match a HasMany relation listed for that model in the externalModels description.
+routeStore.segments.N extracts the Nth dynamic path segment (segments splits currentPath by "/").
+
+Example — Channel list → Conversation list:
+{
+  "routes": [
+    {
+      "path": "/",
+      "type": "Column",
+      "props": { "gap": "300", "p": "400" },
+      "children": [{
+        "type": "$each",
+        "props": {
+          "items": { "$query": { "model": "Channel", "perspectiveStore": "spaceStore.perspective" } },
+          "as": "channel"
+        },
+        "children": [{
+          "type": "we-button",
+          "props": {
+            "variant": "ghost",
+            "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/channels/", "$channel.id"] }] }
+          },
+          "children": ["$channel.name"]
+        }]
+      }]
+    },
+    {
+      "path": "/channels/:channelId",
+      "type": "Column",
+      "props": { "gap": "300", "p": "400" },
+      "children": [{
+        "type": "$each",
+        "props": {
+          "items": {
+            "$query": {
+              "model": "Conversation",
+              "parent": { "id": { "$store": "routeStore.segments.1" }, "relation": "conversations" },
+              "perspectiveStore": "spaceStore.perspective"
+            }
+          },
+          "as": "convo"
+        },
+        "children": [{
+          "type": "we-text",
+          "children": ["$convo.conversationName"]
+        }]
+      }]
+    }
+  ]
+}
+Notes:
+- Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
+- Use parent when you're on a detail route and want only children belonging to the current record.
+- perspectiveStore must point to the perspective that holds the data. For external apps (e.g. Flux) opened as a WE space, use "spaceStore.perspective".
+- The relation name (in include or parent.relation) is the HasMany field name on the parent model class.
 
 Local state (form with validation):
 {
@@ -1194,6 +1350,34 @@ Recommended pattern — header above tabs (routes on ROOT, $routes outlet nested
   ]
 }
 Note: "routes" is on the root Column, NOT on a child. The $routes outlet is a child — that's fine. Only the routes array placement matters.
+
+WRONG — two common mistakes that produce empty tabs (validator will catch both):
+{
+  // MISTAKE 1: routes defined on an inner child node, not the root.
+  // The router never inspects children for routes arrays — this routes array is invisible.
+  "type": "Column",
+  "children": [
+    { "type": "we-tabs", "children": ["...tabs..."] },
+    {
+      "type": "Column",
+      "routes": [                          // ← WRONG: router never reads this
+        { "path": "/posts", "type": "Column", "children": ["..."] }
+      ],
+      "children": [{ "type": "$routes" }]  // ← outlet here does nothing without a live routes array
+    }
+  ]
+}
+
+{
+  // MISTAKE 2: using { type: "$routes" } as a route entry's component type.
+  // $routes is an outlet slot marker — as a leaf route entry it has no children injected,
+  // so it returns null. Every tab navigates to a route that renders nothing.
+  "type": "Column",
+  "routes": [
+    { "path": "/posts", "type": "$routes" }  // ← WRONG: renders null, use a real component
+  ],
+  "children": [{ "type": "$routes" }]
+}
 
 Alternative: single onChange on we-tabs (fires with $event.detail.value = selected key):
 { "onChange": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/", "$arg.detail.value"] }] } }

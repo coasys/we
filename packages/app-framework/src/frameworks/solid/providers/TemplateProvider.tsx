@@ -1,5 +1,5 @@
 import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
-import { getModel } from '@shared/registries/modelRegistry';
+import { getModel, getModelForPerspective } from '@shared/registries/modelRegistry';
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
@@ -13,6 +13,7 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Navigate, Route, Router, useLocation, useNavigate } from '@solidjs/router';
+import { toastService } from '@we/components/solid';
 import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
@@ -153,7 +154,7 @@ export default function TemplateProvider() {
   const routeStore = useRouteStore();
 
   // Test store — isolated mock data + test perspective for test templates
-  const testStore = createTestStore(adamStore.adamClient);
+  const testStore = createTestStore(adamStore.testPerspective);
   testStore.benchSetNavigate((to: string) => routeStore.navigate(to));
 
   // Console store for debugging actions in schema
@@ -193,6 +194,8 @@ export default function TemplateProvider() {
     testStore,
     model: modelStore,
     $getModel: getModel, // Used by SchemaRenderer for $query descriptor → model class lookup
+    $getModelForPerspective: getModelForPerspective, // UUID-aware fallback for dynamically-registered external models
+    $onError: (msg: string) => toastService.error(msg),
   };
 
   // Get the current template schema and build its routes

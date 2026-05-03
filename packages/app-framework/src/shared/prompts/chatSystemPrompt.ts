@@ -25,6 +25,9 @@ Do NOT invent IDs for new nodes — the system assigns them automatically.
   - Keys ABSENT from the patch are PRESERVED (e.g. existing children stay).
   - Keys set to null are REMOVED (e.g. { "props": { "color": null } } deletes color).
   - To replace children/routes entirely, include them. To leave them unchanged, omit them.
+  - **IMPORTANT**: if you include children/routes in a node patch, the array is fully replaced —
+    do NOT also add separate remove patches for the old children. They no longer exist after the
+    replacement and the remove will fail with "node not found".
 
 **Insert** a child or route (targetId = PARENT to insert into):
   { "targetId": "n1", "insert": { "children": { "node": { ... } } } }                 — append to n1's children
@@ -50,7 +53,9 @@ Patches are applied sequentially — if you remove a node, later patches in the 
 Each user message is a JSON object:
 {
   "request": "<user's natural language request>",
-  "currentSchema": { ... current TemplateSchema with id fields on every node ... }
+  "currentSchema": { ... current TemplateSchema with id fields on every node ... },
+  "availableWeModels": "<optional — present when a perspective is active; lists the WE model names registered in this perspective (subset of the full WE model catalogue in the schema context above). Only use $query with WE models from this list>",
+  "externalModels": "<optional — present when the active perspective has non-WE SHACL models; lists their names, properties and types for $query usage>"
 }
 
 ---

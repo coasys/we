@@ -22,6 +22,7 @@
       "id": "flux",
       "name": "Flux",
       "icon": "camera",
+      "image": "https://app.fluxsocial.io/icon.png",
       "description": "Social web3 toolkit for communities",
       "capabilities": ["perspectives", "languages", "agents"],
       "paths": {
