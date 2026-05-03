@@ -132,6 +132,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
         disabled={isDisabled()}
         height="auto"
         size="lg"
+        width="100%"
         p={props.itemPadding ?? '300'}
         ax="start"
         direction={side() === 'left' ? 'row' : 'row-reverse'}
@@ -155,7 +156,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
             class="we-collapsible-sidebar__item-avatar"
             image={item.avatar!.src}
             initials={item.avatar!.name?.slice(0, 2)}
-            size="26px"
+            // size="26px"
             // status={item.avatar!.status}
           />
         </Show>
@@ -227,8 +228,33 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
             transition: `grid-template-rows ${transitionDuration()}ms ease-in-out, opacity ${transitionDuration() * 0.6}ms ease-in-out`,
           }}
         >
-          <div style={{ overflow: 'hidden', display: 'flex', 'flex-direction': 'column', gap: 'var(--sidebar-gap)' }}>
-            <Index each={groupItems()}>{(getItem) => renderEntry(getItem)}</Index>
+          <div
+            style={{
+              overflow: 'hidden',
+              display: 'flex',
+              'flex-direction': 'column',
+              gap: group.reorderable ? undefined : 'var(--sidebar-gap)',
+            }}
+          >
+            <Show
+              when={group.reorderable}
+              fallback={<Index each={groupItems()}>{(getItem) => renderEntry(getItem)}</Index>}
+            >
+              <we-sortable
+                direction="vertical"
+                gap="var(--sidebar-gap)"
+                width="100%"
+                on:reorder={(e: CustomEvent<string[]>) => group.onReorder?.(e.detail)}
+              >
+                <Index each={groupItems()}>
+                  {(getItem) => (
+                    <div data-we-id={getItem().id} style={{ width: '100%' }}>
+                      {renderEntry(getItem)}
+                    </div>
+                  )}
+                </Index>
+              </we-sortable>
+            </Show>
           </div>
         </div>
       </div>

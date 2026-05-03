@@ -38,6 +38,10 @@ export interface SidebarGroup extends SidebarItemBase {
   collapsible?: boolean;
   collapsed?: boolean;
   items: CollapsibleSidebarItem[];
+  /** Enables drag-to-reorder within this group via `we-sortable`. */
+  reorderable?: boolean;
+  /** Called when the user completes a drag — receives new ordered array of item IDs. */
+  onReorder?: (ids: string[]) => void;
 }
 
 /**
