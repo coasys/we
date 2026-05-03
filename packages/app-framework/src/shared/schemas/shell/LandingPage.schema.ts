@@ -1,6 +1,4 @@
 import type { TemplateSchema } from '@we/schema-shared';
-import { lineHeight } from '@we/tokens/font';
-import { text } from 'stream/consumers';
 
 /**
  * Landing Page — Shell template that pitches WE to newcomers.
@@ -179,7 +177,7 @@ export const landingPageTemplate: TemplateSchema = {
                       fontWeight: 'semibold',
                       textAlign: 'center',
                       color: 'neutral-900',
-                      lineHeight: '1.6',
+                      lineHeight: '1.4',
                     },
                     children: [card.front.title],
                   },
@@ -204,7 +202,7 @@ export const landingPageTemplate: TemplateSchema = {
                   { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'primary-100' } },
                   {
                     type: 'we-text',
-                    props: { tag: 'span', fontSize: '400', color: 'primary-100' },
+                    props: { lineHeight: '1.6', fontSize: '400', color: 'primary-100' },
                     children: [card.back.body],
                   },
                 ],
