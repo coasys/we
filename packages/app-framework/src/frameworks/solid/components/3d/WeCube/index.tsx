@@ -7,116 +7,52 @@ import wecubeModel from '../../../../../shared/assets/wecube-2.glb';
 // Ensure Three.js treats hex/CSS colors as sRGB (not raw linear), matching the browser.
 THREE.ColorManagement.enabled = true;
 
-// ─── Variant system ──────────────────────────────────────────────────────────
+// ─── Scene setup ─────────────────────────────────────────────────────────────
 
-export type WeCubeVariant = 'glass' | 'lit-primary' | 'solid' | 'wireframe';
-
-function readPrimaryColor(): THREE.Color {
-  const css = getComputedStyle(document.documentElement).getPropertyValue('--we-color-primary').trim();
-  const c = new THREE.Color();
-  try {
-    c.setStyle(css || '#5d4fff'); // setStyle respects ColorManagement: parses as sRGB, stores as linear
-  } catch {
-    c.setStyle('#5d4fff');
-  }
-  return c;
-}
-
-// function hslShifted(base: THREE.Color, hueDelta: number): THREE.Color {
-//   const hsl = { h: 0, s: 0, l: 0 };
-//   base.getHSL(hsl);
-//   return new THREE.Color().setHSL((((hsl.h + hueDelta) % 1) + 1) % 1, hsl.s, Math.min(0.85, hsl.l + 0.1));
-// }
-
-function setupVariant(
-  variant: WeCubeVariant,
-  scene: THREE.Scene,
-): {
-  material?: THREE.Material;
-  // For variants that need to manipulate geometry (e.g. edges-only wireframe)
-  patchMesh?: (mesh: THREE.Mesh, container: THREE.Object3D) => void;
-  // Optional renderer configuration (e.g. tone mapping)
-  configureRenderer?: (renderer: THREE.WebGLRenderer) => void;
-  updateColors?: () => void;
+function setupScene(scene: THREE.Scene): {
+  patchMesh: (mesh: THREE.Mesh, container: THREE.Object3D) => void;
+  updateColors: () => void;
 } {
-  switch (variant) {
-    case 'glass': {
-      scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-      const keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
-      keyLight.position.set(10, 20, 15);
-      scene.add(keyLight);
-      const fillLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      fillLight.position.set(-10, 5, -10);
-      scene.add(fillLight);
-      return {
-        material: new THREE.MeshPhysicalMaterial({
-          color: 0xffffff,
-          metalness: 0.0,
-          roughness: 0.0,
-          transmission: 1.0,
-          transparent: true,
-          ior: 2,
-          thickness: 5,
-          envMapIntensity: 1.0,
-          side: THREE.DoubleSide,
-          clearcoat: 0.1,
-          clearcoatRoughness: 0.0,
-          attenuationDistance: 0.5,
-          attenuationColor: new THREE.Color(0.9, 0.9, 1.0),
-        }),
-      };
-    }
-
-    case 'lit-primary': {
-      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-      scene.add(new THREE.DirectionalLight(0xff69b4, 2.0));
-      const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-      const updateColors = () => {
-        mat.color.copy(readPrimaryColor());
-      };
-      updateColors();
-      return { material: mat, updateColors };
-    }
-
-    case 'solid': {
-      // Flat primary colour on the material itself, neutral white lighting
-      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-      const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
-      keyLight.position.set(10, 20, 15);
-      scene.add(keyLight);
-      const rimLight = new THREE.DirectionalLight(0xffffff, 0.6);
-      rimLight.position.set(-8, -5, -10);
-      scene.add(rimLight);
-      const mat = new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.1 });
-      const updateColors = () => {
-        mat.color.copy(readPrimaryColor());
-      };
-      updateColors();
-      return { material: mat, updateColors };
-    }
-
-    case 'wireframe': {
-      // Use EdgesGeometry so only real silhouette edges are drawn, not internal triangle diagonals.
-      const lineMat = new THREE.LineBasicMaterial();
-      const updateColors = () => {
-        lineMat.color.copy(readPrimaryColor());
-      };
-      updateColors();
-      return {
-        patchMesh: (mesh, container) => {
-          mesh.visible = false; // hide solid mesh, show edges only
-          const edgesGeo = new THREE.EdgesGeometry(mesh.geometry, 0.1); // 5° threshold — catches bevel edges, still drops coplanar face diagonals
-          const lines = new THREE.LineSegments(edgesGeo, lineMat);
-          lines.position.copy(mesh.position);
-          lines.rotation.copy(mesh.rotation);
-          lines.scale.copy(mesh.scale);
-          container.add(lines);
-        },
-        updateColors,
-      };
-    }
-  }
+  // Semi-transparent purple fill + edge lines.
+  // polygonOffset pushes face geometry back in depth so edges render without z-fighting.
+  scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+  const faceMat = new THREE.MeshLambertMaterial({
+    color: '#6d3aed',
+    transparent: true,
+    opacity: 0.7,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1,
+  });
+  const lineMat = new THREE.LineBasicMaterial();
+  const updateColors = () => {
+    lineMat.color = new THREE.Color('#6d3aed');
+  };
+  updateColors();
+  return {
+    patchMesh: (mesh, container) => {
+      mesh.material = faceMat;
+      const edgesGeo = new THREE.EdgesGeometry(mesh.geometry, 1); // drop coplanar triangulation diagonals, keep the 12 cube edges
+      const lines = new THREE.LineSegments(edgesGeo, lineMat);
+      lines.position.copy(mesh.position);
+      lines.rotation.copy(mesh.rotation);
+      lines.scale.copy(mesh.scale);
+      container.add(lines);
+    },
+    updateColors,
+  };
 }
+
+// ─── Scene constants ────────────────────────────────────────────────────────
+
+// Higher = cube appears larger in frame (divides the orthographic frustum size).
+const CUBE_ZOOM = 0.9;
+
+// Size of the background glow relative to the container. 1.0 = same size as the
+// container, 0.5 = half, 1.5 = 50% larger than the container (overflows, ambient).
+const GLOW_SIZE = 2.0;
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -124,14 +60,10 @@ interface WeCubeProps {
   width?: string;
   height?: string;
   rotationSpeed?: number; // radians per second; 0 to disable auto-rotation
-  variant?: WeCubeVariant;
 }
 
 export function WeCube(rawProps: WeCubeProps) {
-  const props = mergeProps(
-    { width: '200px', height: '200px', rotationSpeed: 0.6, variant: 'lit-primary' as WeCubeVariant },
-    rawProps,
-  );
+  const props = mergeProps({ width: '200px', height: '200px', rotationSpeed: 0.6 }, rawProps);
   let containerRef: HTMLDivElement | undefined;
 
   onMount(() => {
@@ -143,9 +75,10 @@ export function WeCube(rawProps: WeCubeProps) {
     // Scene
     const scene = new THREE.Scene();
 
-    // Camera — frustumSize tuned so the cube has breathing room on all sides
+    // Camera — frustumSize tuned so the cube has breathing room on all sides.
+    // Divide by CUBE_ZOOM: higher zoom → smaller frustum → cube fills more of the frame.
     const aspect = width / height;
-    const frustumSize = 6;
+    const frustumSize = 6 / CUBE_ZOOM;
     const camera = new THREE.OrthographicCamera(
       (-frustumSize * aspect) / 2,
       (frustumSize * aspect) / 2,
@@ -164,9 +97,8 @@ export function WeCube(rawProps: WeCubeProps) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     containerRef.appendChild(renderer.domElement);
 
-    // Material + lighting for this variant
-    const { material, patchMesh, configureRenderer, updateColors } = setupVariant(props.variant, scene);
-    configureRenderer?.(renderer);
+    // Scene lighting + materials
+    const { patchMesh, updateColors } = setupScene(scene);
 
     // Watch for theme changes (e.g. data-theme attr on <html>) and re-derive colours
     let observer: MutationObserver | undefined;
@@ -182,11 +114,7 @@ export function WeCube(rawProps: WeCubeProps) {
       const model = gltf.scene;
       const mesh = model.children[0] as THREE.Mesh;
       if (mesh) {
-        if (patchMesh) {
-          patchMesh(mesh, model);
-        } else if (material) {
-          mesh.material = material;
-        }
+        patchMesh(mesh, model);
       }
 
       const box = new THREE.Box3().setFromObject(model);
@@ -197,6 +125,32 @@ export function WeCube(rawProps: WeCubeProps) {
       scene.add(pivotGroup);
       pivotGroup.add(model);
       model.position.set(-center.x, -center.y, -center.z);
+
+      // Particle cloud — dots scattered in a shell around the cube, co-rotating
+      // with pivotGroup so the rotation of space is visually readable.
+      // PARTICLE_DISTANCE is the outer shell radius. Orthographic frustum half-size = 3,
+      // so keep this below ~2.9 to avoid clipping at the canvas edges.
+      const PARTICLE_DISTANCE = 4;
+      const PARTICLE_COUNT = 100;
+      const positions = new Float32Array(PARTICLE_COUNT * 3);
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const r = 1.6 + Math.random() * (PARTICLE_DISTANCE - 1.6); // shell from just past the cube to PARTICLE_DISTANCE
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        positions[i * 3 + 2] = r * Math.cos(phi);
+      }
+      const particleGeo = new THREE.BufferGeometry();
+      particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const particleMat = new THREE.PointsMaterial({
+        color: '#6d3aed', // 0xffffff,
+        size: 2,
+        sizeAttenuation: false,
+        transparent: true,
+        opacity: 0.5,
+      });
+      pivotGroup.add(new THREE.Points(particleGeo, particleMat));
     });
 
     // Snap view presets — YXZ order: y = horizontal spin, x = vertical tilt.
@@ -342,7 +296,27 @@ export function WeCube(rawProps: WeCubeProps) {
     });
   });
 
-  return <div ref={containerRef} style={{ width: props.width, height: props.height, cursor: 'grab' }} />;
+  return (
+    <div style={{ position: 'relative', width: props.width, height: props.height }}>
+      {/* Glow layer — sits behind the Three.js canvas. Size controlled by GLOW_SIZE. */}
+      <div
+        style={{
+          position: 'absolute',
+          width: `${GLOW_SIZE * 100}%`,
+          height: `${GLOW_SIZE * 100}%`,
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          background:
+            'linear-gradient(135deg, rgba(58, 73, 237, 0.6) 0%, rgba(121, 50, 220, 0.3) 60%, transparent 100%)',
+          '-webkit-mask-image': 'radial-gradient(circle closest-side at 50% 50%, black 0%, transparent 75%)',
+          'mask-image': 'radial-gradient(circle closest-side at 50% 50%, black 0%, transparent 75%)',
+          'pointer-events': 'none',
+        }}
+      />
+      <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%', cursor: 'grab' }} />
+    </div>
+  );
 }
 
 export default WeCube;

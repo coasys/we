@@ -102,7 +102,7 @@ export const landingPageTemplate: TemplateSchema = {
           type: 'Column',
           props: { gap: '400', ax: 'center', ay: 'center' },
           children: [
-            { type: 'WeCube', props: { width: '350px', height: '350px', rotationSpeed: 0.2, variant: 'wireframe' } },
+            { type: 'WeCube', props: { width: '500px', height: '400px', rotationSpeed: 0.2 } },
             // {
             //   type: 'we-image',
             //   props: {
