@@ -108,8 +108,8 @@ export const sidebar: SchemaNode = {
           // --- All AD4M perspectives ---
           {
             type: 'group',
-            id: 'perspectives',
-            label: 'Perspectives',
+            id: 'spaces',
+            label: 'Spaces',
             collapsed: true,
             reorderable: true,
             onReorder: { $action: 'adamStore.reorderPerspectives' },
