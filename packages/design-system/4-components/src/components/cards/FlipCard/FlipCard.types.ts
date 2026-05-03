@@ -5,6 +5,8 @@ export interface FlipCardProps {
   front?: JSX.Element;
   /** Rendered into the back face — pass schema content via the `slots.back` field */
   back?: JSX.Element;
+  /** Card width — defaults to '100%' */
+  width?: string;
   /** Card height — defaults to '220px' */
   height?: string;
   /** Flip on hover instead of click (default: false) */

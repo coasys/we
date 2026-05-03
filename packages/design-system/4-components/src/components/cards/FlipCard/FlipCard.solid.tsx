@@ -7,6 +7,7 @@ export function FlipCard(props: FlipCardProps) {
   const [flipped, setFlipped] = createSignal(false);
 
   const height = () => props.height ?? '220px';
+  const width = () => props.width ?? '100%';
   const flipOnHover = () => props.flipOnHover ?? false;
   const wobbleOnHover = () => props.wobbleOnHover ?? true;
   const wobbleDegree = () => props.wobbleDegree ?? 10;
@@ -43,7 +44,7 @@ export function FlipCard(props: FlipCardProps) {
       style={
         {
           height: height(),
-          width: '100%',
+          width: width(),
           ...(props.flipDuration ? { '--we-flip-card-duration': props.flipDuration } : {}),
           ...props.styles,
         } as Record<string, string | number>

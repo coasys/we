@@ -125,6 +125,8 @@ function isRawCSSValue(value: string): boolean {
   // multi-value shorthands (number followed by space, e.g. "0 0 2px 2px ..."),
   // and CSS keywords (transparent, currentColor, inherit, initial, unset, revert).
   if (/^(transparent|currentcolor|inherit|initial|unset|revert)$/i.test(value)) return true;
+  // Bare decimal numbers (e.g. line-height ratios like 1.6) — NOT integers, which are token scale keys
+  if (/^\d+\.\d+$/.test(value)) return true;
   return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|\s))/.test(value);
 }
 

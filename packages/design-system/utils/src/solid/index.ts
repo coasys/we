@@ -33,7 +33,13 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
   };
 
   // Colors
-  if (props.bg) style['background-color'] = tokenVar('color', props.bg);
+  if (props.bg) {
+    if (props.bg.startsWith('gradient-')) {
+      style['background'] = `var(--we-gradient-${props.bg.slice(9)})`;
+    } else {
+      style['background-color'] = tokenVar('color', props.bg);
+    }
+  }
   if (props.color) style.color = tokenVar('color', props.color);
 
   // Visual Effects
