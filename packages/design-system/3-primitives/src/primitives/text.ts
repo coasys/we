@@ -37,6 +37,14 @@ const styles = css`
   :host([tag='p']) {
     --we-text-margin: 0 0 1em 0;
   }
+
+  :host([gradient]:not([gradient=''])) [part='base'] {
+    background: var(--we-text-gradient) !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    color: transparent !important;
+  }
 `;
 
 const tagTemplates: Record<string, (content: unknown, styles: Record<string, string | number | undefined>) => unknown> =
@@ -66,7 +74,18 @@ export default class Text extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) inline = false;
   @property({ type: Boolean, reflect: true }) uppercase = false;
   @property({ type: Boolean, reflect: true }) italic = false;
+  @property({ type: String, reflect: true }) gradient = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
+
+  override updated(changedProperties: Map<string, unknown>) {
+    super.updated(changedProperties);
+    if (this.gradient) {
+      const resolved = this.gradient.includes('(') ? this.gradient : `var(--we-gradient-${this.gradient})`;
+      this.style.setProperty('--we-text-gradient', resolved);
+    } else {
+      this.style.removeProperty('--we-text-gradient');
+    }
+  }
 
   override getInstanceProps() {
     const ctor = this.constructor as typeof Text & { __dsLayers: readonly DSLayer[] };

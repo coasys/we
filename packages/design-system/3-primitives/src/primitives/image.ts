@@ -100,12 +100,13 @@ export default class Image extends LayoutVisualElement {
   render() {
     // If gradient is provided, use SVG as a mask with gradient background
     if (this.gradient) {
+      const resolved = this.gradient.includes('(') ? this.gradient : `var(--we-gradient-${this.gradient})`;
       const maskStyle = `
         -webkit-mask: url(${this._resolvedSrc}) no-repeat center;
         mask: url(${this._resolvedSrc}) no-repeat center;
         -webkit-mask-size: contain;
         mask-size: contain;
-        background: ${this.gradient};
+        background: ${resolved};
         width: 100%;
         height: 100%;
       `;

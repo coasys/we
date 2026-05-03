@@ -110,7 +110,7 @@ export const landingPageTemplate: TemplateSchema = {
             //     alt: 'WE',
             //     width: '60px',
             //     height: '60px',
-            //     gradient: 'var(--we-gradient-primary)',
+            //     gradient: 'primary', // 'var(--we-gradient-primary)',
             //   },
             // },
             {
@@ -167,7 +167,7 @@ export const landingPageTemplate: TemplateSchema = {
                   border: '1px solid var(--we-color-neutral-200)',
                 },
                 children: [
-                  { type: 'we-icon', props: { name: card.front.icon, size: 'xl', color: 'primary-500' } },
+                  { type: 'we-icon', props: { name: card.front.icon, size: 'xl', gradient: 'primary' } },
                   {
                     type: 'we-text',
                     props: {
