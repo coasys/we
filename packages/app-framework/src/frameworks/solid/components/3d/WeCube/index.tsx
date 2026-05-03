@@ -2,7 +2,7 @@ import { mergeProps, onCleanup, onMount } from 'solid-js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-import wecubeModel from '../../../../../shared/assets/wecube-beveled.glb';
+import wecubeModel from '../../../../../shared/assets/wecube-2.glb';
 
 // Ensure Three.js treats hex/CSS colors as sRGB (not raw linear), matching the browser.
 THREE.ColorManagement.enabled = true;
@@ -22,11 +22,11 @@ function readPrimaryColor(): THREE.Color {
   return c;
 }
 
-function hslShifted(base: THREE.Color, hueDelta: number): THREE.Color {
-  const hsl = { h: 0, s: 0, l: 0 };
-  base.getHSL(hsl);
-  return new THREE.Color().setHSL((((hsl.h + hueDelta) % 1) + 1) % 1, hsl.s, Math.min(0.85, hsl.l + 0.1));
-}
+// function hslShifted(base: THREE.Color, hueDelta: number): THREE.Color {
+//   const hsl = { h: 0, s: 0, l: 0 };
+//   base.getHSL(hsl);
+//   return new THREE.Color().setHSL((((hsl.h + hueDelta) % 1) + 1) % 1, hsl.s, Math.min(0.85, hsl.l + 0.1));
+// }
 
 function setupVariant(
   variant: WeCubeVariant,
@@ -193,25 +193,60 @@ export function WeCube(rawProps: WeCubeProps) {
       const center = box.getCenter(new THREE.Vector3());
 
       pivotGroup = new THREE.Group();
+      pivotGroup.rotation.order = 'YXZ'; // spin Y (world-up) first, then tilt X — standard turntable convention
       scene.add(pivotGroup);
       pivotGroup.add(model);
       model.position.set(-center.x, -center.y, -center.z);
-
-      // Initial isometric-friendly orientation
-      pivotGroup.rotation.set(THREE.MathUtils.degToRad(55), THREE.MathUtils.degToRad(0), THREE.MathUtils.degToRad(-45));
     });
+
+    // Snap view presets — YXZ order: y = horizontal spin, x = vertical tilt.
+    // Camera at (10,10,10) → view direction (1,1,1)/√3.
+    // GLB is clean (no baked rotation), cube faces align with world axes.
+    // Solve R_Y(y)*R_X(x)*n̂ = (1,1,1)/√3 for each face/corner normal n̂.
+    //
+    // Note: +X and -X faces are unreachable — R_Y*R_X*(±1,0,0) always has Y=0,
+    // which can never match the camera's Y component (1/√3 ≠ 0).
+    const deg = THREE.MathUtils.degToRad;
+    const TOP_FACE = Math.acos(1 / Math.sqrt(3)); // ≈ 54.74° — +Y face
+    const BOTTOM_FACE = TOP_FACE - Math.PI; // ≈-125.26° — -Y face (cube flips)
+    const FRONT_FACE = -Math.asin(1 / Math.sqrt(3)); // ≈-35.26° — +Z face
+    const BACK_FACE = Math.asin(1 / Math.sqrt(3)); // ≈ 35.26° — -Z face
+    const snapViews = [
+      // 4 upper corners (top diagonal faces camera) ──
+      { x: 0, y: 0 }, // corner +X+Y+Z  (default)
+      { x: 0, y: deg(90) }, // corner -X+Y+Z
+      { x: 0, y: deg(180) }, // corner -X+Y-Z
+      { x: 0, y: deg(-90) }, // corner +X+Y-Z
+      // 4 lower corners (bottom diagonal faces camera) ──
+      { x: deg(-90), y: 0 }, // corner +X-Y+Z
+      { x: deg(-90), y: deg(90) }, // corner -X-Y+Z
+      { x: deg(90), y: deg(180) }, // corner -X-Y-Z
+      { x: deg(90), y: deg(-90) }, // corner +X-Y-Z
+      // 4 reachable flat faces ──
+      { x: TOP_FACE, y: deg(45) }, // top face    (+Y)
+      { x: BOTTOM_FACE, y: deg(45) }, // bottom face (-Y, cube flips over)
+      { x: FRONT_FACE, y: deg(45) }, // front face  (+Z)
+      { x: BACK_FACE, y: deg(-135) }, // back face   (-Z)
+    ];
+    let snapIndex = 0;
 
     // Drag-to-rotate state
     let isDragging = false;
+    let isSnapping = false;
+    let snapTargetX = 0;
+    let snapTargetY = 0;
     let prevMouse = { x: 0, y: 0 };
-    let dragRotX = 0; // accumulated vertical drag offset
-    let autoRotY = THREE.MathUtils.degToRad(-45); // single Y angle, advanced by auto-rotation and horizontal drag
+    let pointerDownPos = { x: 0, y: 0 };
+    let dragRotX = 0; // starts at isometric corner A (x=0, y=0)
+    let autoRotY = 0;
 
     const canvas = renderer.domElement;
 
     const onPointerDown = (e: PointerEvent) => {
       isDragging = true;
+      isSnapping = false;
       prevMouse = { x: e.clientX, y: e.clientY };
+      pointerDownPos = { x: e.clientX, y: e.clientY };
       canvas.setPointerCapture(e.pointerId);
     };
 
@@ -227,8 +262,18 @@ export function WeCube(rawProps: WeCubeProps) {
     };
 
     const onPointerUp = (e: PointerEvent) => {
+      const totalMoved = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
       isDragging = false;
       canvas.releasePointerCapture(e.pointerId);
+
+      // Treat as a click if the pointer barely moved — snap to next preset view
+      if (totalMoved < 6) {
+        const view = snapViews[snapIndex];
+        snapTargetX = view.x;
+        snapTargetY = view.y;
+        isSnapping = true;
+        snapIndex = (snapIndex + 1) % snapViews.length;
+      }
     };
 
     canvas.addEventListener('pointerdown', onPointerDown);
@@ -246,10 +291,20 @@ export function WeCube(rawProps: WeCubeProps) {
       const delta = clock.getDelta();
 
       if (pivotGroup) {
-        if (!isDragging) {
+        if (isSnapping) {
+          // Exponential ease toward snap target — speed 6 gives ~0.5s settle time
+          const t = 1 - Math.exp(-6 * delta);
+          autoRotY += (snapTargetY - autoRotY) * t;
+          dragRotX += (snapTargetX - dragRotX) * t;
+          if (Math.abs(snapTargetY - autoRotY) < 0.001 && Math.abs(snapTargetX - dragRotX) < 0.001) {
+            autoRotY = snapTargetY;
+            dragRotX = snapTargetX;
+            isSnapping = false;
+          }
+        } else if (!isDragging) {
           autoRotY += delta * props.rotationSpeed;
         }
-        pivotGroup.rotation.x = THREE.MathUtils.degToRad(55) + dragRotX;
+        pivotGroup.rotation.x = dragRotX;
         pivotGroup.rotation.y = autoRotY;
       }
 

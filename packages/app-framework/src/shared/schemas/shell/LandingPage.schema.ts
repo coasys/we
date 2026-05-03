@@ -102,17 +102,17 @@ export const landingPageTemplate: TemplateSchema = {
           type: 'Column',
           props: { gap: '400', ax: 'center', ay: 'center' },
           children: [
-            { type: 'WeCube', props: { width: '250px', height: '250px', rotationSpeed: 0.2, variant: 'lit-primary' } },
-            {
-              type: 'we-image',
-              props: {
-                src: '/we-text.svg',
-                alt: 'WE',
-                width: '60px',
-                height: '60px',
-                gradient: 'var(--we-gradient-primary)',
-              },
-            },
+            { type: 'WeCube', props: { width: '350px', height: '350px', rotationSpeed: 0.2, variant: 'wireframe' } },
+            // {
+            //   type: 'we-image',
+            //   props: {
+            //     src: '/we-text.svg',
+            //     alt: 'WE',
+            //     width: '60px',
+            //     height: '60px',
+            //     gradient: 'var(--we-gradient-primary)',
+            //   },
+            // },
             {
               type: 'we-text',
               props: { fontSize: '900', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
