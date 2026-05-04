@@ -42,6 +42,7 @@ import {
 
 import ComplexWeCube from '../components/3d/ComplexWeCube';
 import WeCube from '../components/3d/WeCube';
+import WeNetwork from '../components/3d/WeNetwork';
 import { BenchmarkTimer } from '../components/BenchmarkTimer';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -96,6 +97,7 @@ export const componentRegistry: ComponentRegistry = {
   // 3D
   WeCube,
   ComplexWeCube,
+  WeNetwork,
 };
 
 // Ideas:

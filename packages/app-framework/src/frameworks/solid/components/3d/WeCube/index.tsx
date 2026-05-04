@@ -48,7 +48,7 @@ function setupScene(scene: THREE.Scene): {
 // ─── Scene constants ────────────────────────────────────────────────────────
 
 // Higher = cube appears larger in frame (divides the orthographic frustum size).
-const CUBE_ZOOM = 0.9;
+const CUBE_ZOOM = 0.85;
 
 // Size of the background glow relative to the container. 1.0 = same size as the
 // container, 0.5 = half, 1.5 = 50% larger than the container (overflows, ambient).

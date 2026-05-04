@@ -103,6 +103,7 @@ export const landingPageTemplate: TemplateSchema = {
           props: { gap: '400', ax: 'center', ay: 'center' },
           children: [
             { type: 'WeCube', props: { width: '500px', height: '400px', rotationSpeed: 0.2 } },
+            // { type: 'WeNetwork', props: { width: '500px', height: '400px', rotationSpeed: 0.3 } },
             // {
             //   type: 'we-image',
             //   props: {
