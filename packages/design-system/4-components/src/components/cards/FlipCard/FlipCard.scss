@@ -1,36 +1,31 @@
 .we-flip-card {
   perspective: 1000px;
   cursor: pointer;
+  user-select: none;
 
   &__inner {
     position: relative;
     width: 100%;
     height: 100%;
-    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform var(--we-flip-card-duration, 0.5s) cubic-bezier(0.4, 0, 0.2, 1);
     transform-style: preserve-3d;
   }
 
-  // Hover: tilt to hint the card is flippable
-  &:hover &__inner {
-    transform: rotateY(20deg);
-  }
-
-  // Click: full flip to reveal back face
-  &--flipped &__inner {
+  // Click-to-flip state / hover-to-flip mode
+  &--flipped &__inner,
+  &--hover-flip:hover &__inner {
     transform: rotateY(180deg);
   }
 
-  // Tilt back toward front when hovering the flipped card
-  &--flipped:hover &__inner {
-    transform: rotateY(160deg);
+  // Face wrapper — handles 3D positioning; content is slotted in via props.front / props.back
+  &__face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
   }
 
-  // Face layout is handled by Column + styles prop (position: absolute, inset: 0)
-  // Colors, padding, radius, typography are handled by design system props on Column / we-text
-
-  &__flip-hint {
-    display: flex;
-    align-items: center;
-    gap: var(--we-spacing-100);
+  &__back {
+    transform: rotateY(180deg);
   }
 }

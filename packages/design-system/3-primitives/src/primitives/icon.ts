@@ -126,6 +126,7 @@ export default class Icon extends LayoutElement {
   @property({ type: String, reflect: true }) color = '';
   @property({ type: String, reflect: true }) size: IconSize = '';
   @property({ type: String, reflect: true }) weight: IconWeight = 'regular';
+  @property({ type: String, reflect: true }) gradient = '';
 
   @state() private svg: string | undefined = undefined;
   @state() private error: boolean = false;
@@ -213,6 +214,21 @@ export default class Icon extends LayoutElement {
     if (this.name && !isPhosphorName(this.name)) return html`<span role="img" aria-label="icon">${this.name}</span>`;
     if (this.error) return html`<span role="img" aria-label="icon error"></span>`;
     if (!this.svg) return html`<span role="img" aria-label="icon loading"></span>`;
+    if (this.gradient) {
+      const resolved = this.gradient.includes('(') ? this.gradient : `var(--we-gradient-${this.gradient})`;
+      const dataUri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(this.svg);
+      const maskStyle = `
+        display: block;
+        -webkit-mask: url(${dataUri}) no-repeat center;
+        mask: url(${dataUri}) no-repeat center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        background: ${resolved};
+        width: var(--icon-size);
+        height: var(--icon-size);
+      `;
+      return html`<span aria-hidden="true" style=${maskStyle}></span>`;
+    }
     return html`<span aria-hidden="true">${unsafeHTML(this.svg)}</span>`;
   }
 }

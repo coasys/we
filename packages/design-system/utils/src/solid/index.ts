@@ -8,6 +8,8 @@ import {
   getRadiusValues,
   mapFlexAxes,
   parseBorder,
+  resolveFontWeight,
+  resolveLineHeight,
   tokenVar,
   zIndexVar,
 } from '../index';
@@ -33,7 +35,13 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
   };
 
   // Colors
-  if (props.bg) style['background-color'] = tokenVar('color', props.bg);
+  if (props.bg) {
+    if (props.bg.startsWith('gradient-')) {
+      style['background'] = `var(--we-gradient-${props.bg.slice(9)})`;
+    } else {
+      style['background-color'] = tokenVar('color', props.bg);
+    }
+  }
   if (props.color) style.color = tokenVar('color', props.color);
 
   // Visual Effects
@@ -55,9 +63,9 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
   // Typography
   if (props.textAlign) style['text-align'] = props.textAlign;
   if (props.fontFamily) style['font-family'] = props.fontFamily;
-  if (props.fontWeight) style['font-weight'] = props.fontWeight;
+  if (props.fontWeight) style['font-weight'] = resolveFontWeight(props.fontWeight);
   if (props.fontSize) style['font-size'] = tokenVar('font', props.fontSize);
-  if (props.lineHeight) style['line-height'] = props.lineHeight;
+  if (props.lineHeight) style['line-height'] = resolveLineHeight(props.lineHeight);
   if (props.letterSpacing) style['letter-spacing'] = props.letterSpacing;
   if (props.textDecoration) style['text-decoration'] = props.textDecoration;
   if (props.textTransform) style['text-transform'] = props.textTransform;

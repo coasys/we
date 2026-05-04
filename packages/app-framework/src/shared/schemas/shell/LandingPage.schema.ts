@@ -4,7 +4,7 @@ import type { TemplateSchema } from '@we/schema-shared';
  * Landing Page — Shell template that pitches WE to newcomers.
  *
  * Accessible via clicking the WE logo in the sidebar header.
- * Uses FlipCard components (hover/tap to reveal solution back).
+ * Uses FlipCard components (tap to reveal solution back).
  */
 
 const CARDS = [
@@ -98,32 +98,25 @@ export const landingPageTemplate: TemplateSchema = {
       props: { px: '500', py: '800', gap: '800', maxWidth: '1100px', width: '100%' },
       children: [
         // ── Hero ──────────────────────────────────────────────────────────
-        // {
-        //   type: 'Scene1',
-        // },
         {
           type: 'Column',
           props: { gap: '400', ax: 'center', ay: 'center' },
           children: [
-            {
-              type: 'we-image',
-              props: {
-                src: '/we-text.svg',
-                alt: 'WE',
-                width: '60px',
-                height: '60px',
-                gradient: 'var(--we-gradient-primary)',
-              },
-            },
+            { type: 'WeCube', props: { width: '500px', height: '400px', rotationSpeed: 0.2 } },
+            // { type: 'WeNetwork', props: { width: '500px', height: '400px', rotationSpeed: 0.3 } },
+            // {
+            //   type: 'we-image',
+            //   props: {
+            //     src: '/we-text.svg',
+            //     alt: 'WE',
+            //     width: '60px',
+            //     height: '60px',
+            //     gradient: 'primary', // 'var(--we-gradient-primary)',
+            //   },
+            // },
             {
               type: 'we-text',
-              props: {
-                tag: 'h1',
-                fontSize: '900',
-                fontWeight: 'bold',
-                color: 'neutral-900',
-                styles: { 'text-align': 'center', 'line-height': '1.15' },
-              },
+              props: { fontSize: '900', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
               children: ['The social layer humanity needs'],
             },
             {
@@ -150,11 +143,7 @@ export const landingPageTemplate: TemplateSchema = {
           children: [
             {
               type: 'we-text',
-              props: {
-                fontSize: '400',
-                color: 'neutral-500',
-                styles: { 'text-align': 'center', 'letter-spacing': '0.08em', 'text-transform': 'uppercase' },
-              },
+              props: { fontSize: '400', color: 'neutral-500', textAlign: 'center' },
               children: ['Tap a card to see the solution'],
             },
           ],
@@ -163,26 +152,61 @@ export const landingPageTemplate: TemplateSchema = {
         // ── Card grid ─────────────────────────────────────────────────────
         {
           type: 'Row',
-          props: { wrap: true, gap: '400' },
+          props: { wrap: true, ax: 'center', gap: '400' },
           children: CARDS.map((card) => ({
-            type: 'Column',
-            props: {
-              styles: {
-                flex: '1 1 300px',
-                'min-width': '280px',
-                'max-width': '380px',
+            type: 'FlipCard',
+            props: { width: '340px', height: '310px', wobbleDegree: 20 },
+            slots: {
+              front: {
+                type: 'Column',
+                props: {
+                  gap: '300',
+                  p: '500',
+                  r: '400',
+                  bg: 'neutral-100',
+                  height: '100%',
+                  border: '1px solid var(--we-color-neutral-200)',
+                },
+                children: [
+                  { type: 'we-icon', props: { name: card.front.icon, size: 'xl', gradient: 'primary' } },
+                  {
+                    type: 'we-text',
+                    props: {
+                      fontSize: '600',
+                      fontWeight: 'semibold',
+                      textAlign: 'center',
+                      color: 'neutral-900',
+                      lineHeight: '1.4',
+                    },
+                    children: [card.front.title],
+                  },
+                  {
+                    type: 'we-text',
+                    props: { fontSize: '400', textAlign: 'center', color: 'neutral-600', lineHeight: '1.6' },
+                    children: [card.front.body],
+                  },
+                ],
+              },
+              back: {
+                type: 'Column',
+                props: {
+                  gap: '300',
+                  p: '500',
+                  r: '400',
+                  ay: 'center',
+                  bg: 'gradient-primary',
+                  height: '100%',
+                },
+                children: [
+                  { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'primary-100' } },
+                  {
+                    type: 'we-text',
+                    props: { lineHeight: '1.6', fontSize: '400', color: 'primary-100' },
+                    children: [card.back.body],
+                  },
+                ],
               },
             },
-            children: [
-              {
-                type: 'FlipCard',
-                props: {
-                  front: card.front,
-                  back: card.back,
-                  height: '310px',
-                },
-              },
-            ],
           })),
         },
 
@@ -194,30 +218,24 @@ export const landingPageTemplate: TemplateSchema = {
             p: '700',
             r: 'lg',
             bg: 'neutral-100',
-            styles: { border: '1px solid var(--we-color-neutral-200)' },
+            border: '1px solid var(--we-color-neutral-200)',
           },
           children: [
             {
               type: 'we-text',
-              props: {
-                tag: 'h2',
-                fontSize: '700',
-                fontWeight: 'bold',
-                color: 'neutral-900',
-                styles: { 'line-height': '1.3' },
-              },
+              props: { tag: 'h2', fontSize: '700', fontWeight: 'bold', color: 'neutral-900' },
               children: ['What this adds up to'],
             },
             {
               type: 'we-text',
-              props: { fontSize: '500', color: 'neutral-700', styles: { 'line-height': '1.7' } },
+              props: { fontSize: '500', color: 'neutral-700', lineHeight: '1.7' },
               children: [
                 'Most communities today are socially alive but structurally constrained — capable of growing, creating, and self-organising, but unable to evolve the software conditions they live inside.',
               ],
             },
             {
               type: 'we-text',
-              props: { fontSize: '500', color: 'neutral-700', styles: { 'line-height': '1.7' } },
+              props: { fontSize: '500', color: 'neutral-700', lineHeight: '1.7' },
               children: [
                 'WE is an attempt to change that. Not by building a better platform, but by giving communities a shared environment where the tools themselves become something that can be owned, shaped, and passed on.',
               ],
@@ -228,7 +246,8 @@ export const landingPageTemplate: TemplateSchema = {
                 fontSize: '500',
                 color: 'neutral-700',
                 fontWeight: 'medium',
-                styles: { 'line-height': '1.7', 'font-style': 'italic' },
+                lineHeight: '1.7',
+                fontStyle: 'italic',
               },
               children: [
                 'The deeper bet: given the right infrastructure, communities will discover forms of coordination and collective intelligence that no platform team would have designed for them. And those discoveries will spread.',

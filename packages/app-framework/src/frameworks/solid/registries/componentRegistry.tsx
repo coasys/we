@@ -18,6 +18,7 @@ import {
   DropdownMenu,
   EditableImage,
   FlipCard,
+  Grid,
   IconLabelButton,
   List,
   PostCard,
@@ -39,7 +40,9 @@ import {
   SpaceSidebarWidget,
 } from '@we/widgets/solid';
 
-import Scene1 from '../components/3js/Scene1';
+import ComplexWeCube from '../components/3d/ComplexWeCube';
+import WeCube from '../components/3d/WeCube';
+import WeNetwork from '../components/3d/WeNetwork';
 import { BenchmarkTimer } from '../components/BenchmarkTimer';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -65,6 +68,7 @@ export const componentRegistry: ComponentRegistry = {
   DropdownMenu,
   EditableImage,
   FlipCard,
+  Grid,
   IconLabelButton,
   List,
   PostCard,
@@ -91,7 +95,9 @@ export const componentRegistry: ComponentRegistry = {
   RerenderLog,
 
   // 3D
-  Scene1,
+  WeCube,
+  ComplexWeCube,
+  WeNetwork,
 };
 
 // Ideas:

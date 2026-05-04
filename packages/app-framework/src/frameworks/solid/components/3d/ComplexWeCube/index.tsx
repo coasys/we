@@ -11,7 +11,7 @@ import styles from './index.module.scss';
 
 type MaterialType = 'gold' | 'white' | 'glass';
 
-export function Scene1() {
+export function ComplexWeCube() {
   let containerRef: HTMLDivElement | undefined;
   let floatingLights: { pointCloud: THREE.Points; animateParticles: (time: number) => void } | undefined;
   let glowingLights: { pointCloud: THREE.Points; animateParticles: (time: number) => void } | undefined;
@@ -1863,4 +1863,4 @@ export function Scene1() {
   );
 }
 
-export default Scene1;
+export default ComplexWeCube;

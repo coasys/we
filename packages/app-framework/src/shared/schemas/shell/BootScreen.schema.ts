@@ -26,9 +26,10 @@ export const bootScreen: SchemaNode = {
             alt: 'WE Logo',
             width: '150px',
             height: '75px',
-            gradient: 'var(--we-gradient-primary)',
+            gradient: 'primary',
           },
         },
+        // { type: 'WeCube', props: { width: '500px', height: '400px', rotationSpeed: 0.2 } },
         // Initialising state
         {
           type: '$if',

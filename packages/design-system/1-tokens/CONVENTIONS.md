@@ -107,7 +107,9 @@ The `scripts/generate-css.ts` script runs as a post-build hook (via tsup). It:
 
 ## Runtime Consumption
 
-Tokens are consumed at runtime via `tokenVar()` from `@we/design-utils`:
+Tokens are consumed at runtime via two mechanisms in `@we/design-utils`:
+
+### `tokenVar()` — for most props
 
 ```ts
 tokenVar('space', '300'); // → 'var(--we-space-300)'
@@ -115,4 +117,33 @@ tokenVar('color', '#ff0000'); // → '#ff0000' (raw CSS passthrough)
 tokenVar('space', undefined); // → '0' (fallback)
 ```
 
-Raw CSS values (hex, px, rem, %, rgba, etc.) are detected by `isRawCSSValue()` and passed through unchanged. Named tokens become CSS variable references.
+Raw CSS values (hex, px, rem, %, rgba, `auto`, `none`, etc.) are detected by `isRawCSSValue()` and passed through unchanged. Named tokens become CSS variable references.
+
+Use `tokenVar()` when raw CSS values for that prop are **syntactically distinguishable** from token keys — i.e. they contain units, `#`, `var()`, or known keywords. This covers `color`, `space`, `fontSize`, `radius`, `letterSpacing`, `shadow`, etc.
+
+### `makeTokenResolver()` — for ambiguous props
+
+Some props have token keys that are syntactically identical to valid raw CSS values (bare numbers, CSS keywords without units). `isRawCSSValue()` cannot distinguish them, so `tokenVar()` would silently generate a non-existent CSS variable.
+
+For these props, use `makeTokenResolver()` to build a dedicated resolver that checks the exact set of valid token keys:
+
+```ts
+// In utils/src/index.ts:
+const resolveLineHeight = makeTokenResolver(
+  new Set(['none', 'tight', 'snug', 'normal', 'relaxed', 'loose']),
+  'line-height',
+);
+// resolveLineHeight('normal')  → 'var(--we-line-height-normal)'
+// resolveLineHeight('1.6')     → '1.6'   (raw passthrough)
+// resolveLineHeight('2')       → '2'     (raw passthrough — works, unlike tokenVar)
+// resolveLineHeight('24px')    → '24px'  (raw passthrough)
+```
+
+**Current props using `makeTokenResolver`:**
+
+| Prop         | Token keys                                            | Why not tokenVar?                                                              |
+| ------------ | ----------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `lineHeight` | `none`, `tight`, `snug`, `normal`, `relaxed`, `loose` | Bare number ratios (`1.6`, `2`) are indistinguishable from integer token keys  |
+| `fontWeight` | `'100'`–`'900'`                                       | CSS keywords (`bold`, `normal`, `bolder`, `lighter`) are strings without units |
+
+**Rule:** Any new token prop whose raw CSS escape hatch values are bare strings or numbers (no units, no `#`, no `var()`) should use `makeTokenResolver` instead of `tokenVar`.

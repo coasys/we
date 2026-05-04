@@ -123,10 +123,42 @@ const flexCrossAxisMap = { start: 'flex-start', center: 'center', end: 'flex-end
 function isRawCSSValue(value: string): boolean {
   // Check for raw CSS values: var(), px, rem, em, %, vh, vw, rgba, rgb, hsl, negative values,
   // multi-value shorthands (number followed by space, e.g. "0 0 2px 2px ..."),
-  // and CSS keywords (transparent, currentColor, inherit, initial, unset, revert).
-  if (/^(transparent|currentcolor|inherit|initial|unset|revert)$/i.test(value)) return true;
+  // and CSS keywords (transparent, currentColor, inherit, initial, unset, revert, auto, none).
+  if (/^(transparent|currentcolor|inherit|initial|unset|revert|auto|none)$/i.test(value)) return true;
   return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|\s))/.test(value);
 }
+
+/**
+ * Creates a typed token resolver for props whose raw CSS values are syntactically
+ * indistinguishable from token keys (e.g. bare numbers, CSS keywords without units).
+ *
+ * Use this instead of tokenVar() when isRawCSSValue() cannot reliably differentiate
+ * between a token key and a raw CSS value for that property.
+ *
+ * @param tokens - Set of valid token keys for this prop
+ * @param cssVarPrefix - The CSS variable prefix, e.g. 'line-height' → var(--we-line-height-*)
+ */
+function makeTokenResolver(tokens: Set<string>, cssVarPrefix: string) {
+  return (value?: string): string | undefined => {
+    if (!value) return undefined;
+    return tokens.has(value) ? `var(--we-${cssVarPrefix}-${value})` : value;
+  };
+}
+
+/** Resolves lineHeight: named tokens → CSS var, bare ratios/px/etc. → passthrough. */
+export const resolveLineHeight = makeTokenResolver(
+  new Set(['none', 'tight', 'snug', 'normal', 'relaxed', 'loose']),
+  'line-height',
+);
+
+/**
+ * Resolves fontWeight: numeric tokens ('100'–'900') → CSS var,
+ * CSS keywords (bold, normal, bolder, lighter) → passthrough.
+ */
+export const resolveFontWeight = makeTokenResolver(
+  new Set(['100', '200', '300', '400', '500', '600', '700', '800', '900']),
+  'font-weight',
+);
 
 export function tokenVar(prefix: string, token?: string, fallback = '0') {
   // If no token, return fallback

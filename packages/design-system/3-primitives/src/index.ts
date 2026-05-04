@@ -12,7 +12,6 @@ import './primitives/divider';
 import './primitives/drawer';
 import './primitives/file-upload';
 import './primitives/form-field';
-import './primitives/grid';
 import './primitives/icon';
 import './primitives/icon-picker';
 import './primitives/iframe';
