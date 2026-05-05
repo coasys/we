@@ -2,7 +2,7 @@
 
 ## The Core Argument
 
-Flux uses `ad4m://has_child` as the implicit predicate for all `@HasMany` relations. The original reasoning was sound: if every parent–child link uses the same predicate, walking the full model tree is trivial — one query, no schema knowledge required. This document argues that wildcard SPARQL queries make that reasoning obsolete, and that replacing `has_child` with semantic predicates gives you everything tree-walking needs *plus* selective querying and graph readability that `has_child` can't provide.
+Flux uses `ad4m://has_child` as the implicit predicate for all `@HasMany` relations. The original reasoning was sound: if every parent–child link uses the same predicate, walking the full model tree is trivial — one query, no schema knowledge required. This document argues that wildcard SPARQL queries make that reasoning obsolete, and that replacing `has_child` with semantic predicates gives you everything tree-walking needs _plus_ selective querying and graph readability that `has_child` can't provide.
 
 ---
 
@@ -38,7 +38,7 @@ SELECT ?pred ?child WHERE {
 }
 ```
 
-The predicate list can be derived from `getRelationsMetadata(Model)` — no hardcoding. These queries return the same child nodes as the `has_child` version, but also return `?pred` — so you immediately know what *type* of child each node is without a secondary lookup. The `has_child` approach requires fetching each child's properties and matching against SHACL shapes to determine type. The wildcard approach gives you type for free, in the same query.
+The predicate list can be derived from `getRelationsMetadata(Model)` — no hardcoding. These queries return the same child nodes as the `has_child` version, but also return `?pred` — so you immediately know what _type_ of child each node is without a secondary lookup. The `has_child` approach requires fetching each child's properties and matching against SHACL shapes to determine type. The wildcard approach gives you type for free, in the same query.
 
 **The wildcard is strictly more informative than `has_child`, with no extra cost.**
 
@@ -126,7 +126,7 @@ const channel = await Channel.get(id, { includeAll: true });
 // As a collection query — limit applies to Channel instances, not their children:
 const channels = await Channel.all({
   includeAll: true,
-  limit: 10,  // 10 Channels; each has all relations fully hydrated
+  limit: 10, // 10 Channels; each has all relations fully hydrated
 });
 // channels[0].messages, channels[0].conversations, channels[0].tasks — all populated
 ```
@@ -136,10 +136,10 @@ To cap children per relation, use `include` with sub-query options instead:
 ```typescript
 const channel = await Channel.get(id, {
   include: {
-    messages:      { limit: 50, order: { createdAt: 'DESC' } },
+    messages: { limit: 50, order: { createdAt: 'DESC' } },
     conversations: { limit: 20 },
-    tasks:         { limit: 20 },
-  }
+    tasks: { limit: 20 },
+  },
 });
 ```
 
@@ -153,15 +153,15 @@ Remove the default and warn; throw instead.
 
 Add explicit `through` predicates to all `@HasMany` decorators in the API package:
 
-| Field           | Predicate                  | Note                                               |
-| --------------- | -------------------------- | -------------------------------------------------- |
-| `messages`      | `flux://has_message`       |                                                    |
-| `conversations` | `flux://has_conversation`  |                                                    |
-| `childChannels` | `flux://has_child_channel` |                                                    |
-| `boards`        | `flux://has_board`         |                                                    |
-| `taskColumns`   | `flux://has_task_column`   |                                                    |
-| `tasks`         | `flux://has_task`          |                                                    |
-| `posts`         | `flux://has_post`          |                                                    |
+| Field           | Predicate                  | Note                                                 |
+| --------------- | -------------------------- | ---------------------------------------------------- |
+| `messages`      | `flux://has_message`       |                                                      |
+| `conversations` | `flux://has_conversation`  |                                                      |
+| `childChannels` | `flux://has_child_channel` |                                                      |
+| `boards`        | `flux://has_board`         |                                                      |
+| `taskColumns`   | `flux://has_task_column`   |                                                      |
+| `tasks`         | `flux://has_task`          |                                                      |
+| `posts`         | `flux://has_post`          |                                                      |
 | `views`         | `ad4m://has_child`         | Intentional — app views are an implementation detail |
 
 **Data migration:** Existing perspectives store `has_child` links. During transition, the SPARQL builder queries both:
