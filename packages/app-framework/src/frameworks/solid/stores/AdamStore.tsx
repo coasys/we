@@ -88,7 +88,12 @@ export interface AdamStore {
   login: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   addNewSpace: (space: Space) => void;
-  createSpace: (name: string, description: string, shared: boolean, imageFile?: File) => Promise<void>;
+  createSpace: (
+    name: string,
+    description: string,
+    visibility: 'personal' | 'shared' | 'public',
+    imageFile?: File,
+  ) => Promise<void>;
   removePerspective: (uuid: string) => Promise<void>;
   /**
    * Set the active perspective by UUID.
@@ -107,6 +112,8 @@ export interface AdamStore {
   updateCoverImage: (imageFile: File) => Promise<void>;
   reorderPerspectives: (newOrder: string[]) => Promise<void>;
   joinGlobalSpace: () => Promise<void>;
+  /** Removes a Space copy from the global perspective. Used when visibility drops from 'public'. */
+  removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -552,6 +559,14 @@ export function AdamStoreProvider(props: ParentProps) {
     Object.assign(profile, updates);
     await profile.save();
     setAgentProfile(profile);
+
+    // Sync to global perspective when the agent has joined
+    const globalP = globalPerspective();
+    if (agentSettings()?.globalSpaceJoined && globalP) {
+      syncAgentProfileToGlobal(profile, globalP).catch((err) =>
+        console.error('AdamStore: syncAgentProfileToGlobal failed', err),
+      );
+    }
   }
 
   async function updateProfileImage(imageFile: File): Promise<void> {
@@ -631,7 +646,74 @@ export function AdamStoreProvider(props: ParentProps) {
     setMySpaces((prev) => [...prev, space]);
   }
 
-  async function createSpace(name: string, description: string, shared: boolean, imageFile?: File): Promise<void> {
+  // --- Global-perspective sync helpers ---
+
+  async function syncSpaceToGlobal(space: Space, globalP: PerspectiveProxy): Promise<void> {
+    const all = await Space.findAll(globalP);
+    const existing = all.find((s) => s.uuid === space.uuid);
+    if (existing) {
+      existing.url = space.url;
+      existing.name = space.name;
+      existing.description = space.description;
+      existing.visibility = space.visibility;
+      existing.image = space.image;
+      existing.thumbnail = space.thumbnail;
+      await existing.save();
+    } else {
+      await Space.create(globalP, {
+        uuid: space.uuid,
+        url: space.url,
+        name: space.name,
+        description: space.description,
+        visibility: space.visibility,
+        image: space.image,
+        thumbnail: space.thumbnail,
+      });
+    }
+  }
+
+  /** Removes a Space entry from the global perspective (called when visibility drops back from 'public'). */
+  async function removeSpaceFromGlobal(spaceUuid: string, globalP: PerspectiveProxy): Promise<void> {
+    const all = await Space.findAll(globalP);
+    const existing = all.find((s) => s.uuid === spaceUuid);
+    if (existing) await existing.delete();
+  }
+
+  async function syncAgentProfileToGlobal(profile: AgentProfile, globalP: PerspectiveProxy): Promise<void> {
+    const all = await AgentProfile.findAll(globalP);
+    // Keyed by handle — unique per agent in normal usage. TODO: key by DID once AgentProfile.did is added.
+    const existing = all.find((p) => p.handle === profile.handle);
+    if (existing) {
+      existing.firstName = profile.firstName;
+      existing.lastName = profile.lastName;
+      existing.handle = profile.handle;
+      existing.bio = profile.bio;
+      existing.profileImage = profile.profileImage;
+      existing.coverImage = profile.coverImage;
+      await existing.save();
+    } else {
+      await AgentProfile.create(globalP, {
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        handle: profile.handle,
+        bio: profile.bio,
+        profileImage: profile.profileImage,
+        coverImage: profile.coverImage,
+      });
+    }
+  }
+
+  async function createSpace(
+    name: string,
+    description: string,
+    visibility: 'personal' | 'shared' | 'public',
+    imageFile?: File,
+  ): Promise<void> {
+    // Runtime coercion: JSON schema callers may pass a boolean from the legacy `shared` local state.
+    // TODO(commit-5): remove once CreateSpaceModal sends a visibility string.
+    const vis: 'personal' | 'shared' | 'public' =
+      (visibility as unknown) === true ? 'shared' : (visibility as unknown) === false ? 'personal' : visibility;
+
     const client = adamClient();
     if (!client) return;
 
@@ -647,8 +729,8 @@ export function AdamStoreProvider(props: ParentProps) {
       // HACK: Model.register resolves before the SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // If shared, publish as neighbourhood
-      if (shared) {
+      // If shared or public, publish as neighbourhood
+      if (vis !== 'personal') {
         const uid = crypto.randomUUID();
         const langs = await client.runtime.knownLinkLanguageTemplates();
         const templateAddress = langs?.[0];
@@ -662,29 +744,39 @@ export function AdamStoreProvider(props: ParentProps) {
         );
       }
 
-      // Create and save Space model
-      const space = new Space(spacePerspective);
-      space.uuid = spacePerspective.uuid;
-      if (spacePerspective.sharedUrl) space.url = spacePerspective.sharedUrl;
-      space.name = name;
-      space.description = description;
-      space.visibility = shared ? 'shared' : 'personal';
-
       // Process image if provided
+      let thumbnailData: FileData | undefined;
+      let imageData: FileData | undefined;
       if (imageFile) {
         const thumbnailBlob = await resizeImage(imageFile, 0.3);
         const compressedBlob = await resizeImage(imageFile, 0.6);
-        const thumbnailBase64 = await blobToDataURL(thumbnailBlob);
-        const imageBase64 = await blobToDataURL(compressedBlob);
-        space.thumbnail = {
-          data_base64: thumbnailBase64,
+        thumbnailData = {
+          data_base64: await blobToDataURL(thumbnailBlob),
           name: 'space-thumbnail',
           file_type: 'image/png',
         } as FileData;
-        space.image = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData;
+        imageData = {
+          data_base64: await blobToDataURL(compressedBlob),
+          name: 'space-image',
+          file_type: 'image/png',
+        } as FileData;
       }
 
-      await space.save();
+      // Create Space model
+      const space = await Space.create(spacePerspective, {
+        uuid: spacePerspective.uuid,
+        url: spacePerspective.sharedUrl ?? undefined,
+        name,
+        description,
+        visibility: vis,
+        ...(imageData && { image: imageData, thumbnail: thumbnailData }),
+      });
+
+      // If public and the global neighbourhood is joined, mirror the space there
+      const globalP = globalPerspective();
+      if (vis === 'public' && agentSettings()?.globalSpaceJoined && globalP) {
+        syncSpaceToGlobal(space, globalP).catch((err) => console.error('AdamStore: syncSpaceToGlobal failed', err));
+      }
 
       // Update sidebar and navigate
       addNewSpace(space);
@@ -799,6 +891,11 @@ export function AdamStoreProvider(props: ParentProps) {
     updateCoverImage,
     reorderPerspectives,
     joinGlobalSpace,
+    removeSpaceFromGlobal: (spaceUuid) => {
+      const globalP = globalPerspective();
+      if (!globalP) return Promise.resolve();
+      return removeSpaceFromGlobal(spaceUuid, globalP);
+    },
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;
