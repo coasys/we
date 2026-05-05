@@ -122,6 +122,81 @@ export const createSpaceModal = {
       ],
     },
 
+    // Location picker — only shown when listed globally (a globe pin needs coords)
+    {
+      type: '$if',
+      props: {
+        condition: { $and: [{ $local: 'shared' }, { $local: 'listedGlobally' }] },
+        then: {
+          type: 'Column',
+          props: { gap: '300' },
+          children: [
+            {
+              type: 'we-form-field',
+              props: { label: 'Space location' },
+              children: [
+                {
+                  type: 'we-location-picker',
+                  props: {
+                    latitude: { $local: 'locationLat' },
+                    longitude: { $local: 'locationLng' },
+                    placeholder: 'Pin your space on the globe…',
+                    onChange: [
+                      { $setLocal: 'locationLat', from: '$event.detail.latitude' },
+                      { $setLocal: 'locationLng', from: '$event.detail.longitude' },
+                      { $setLocal: 'locationCity', from: '$event.detail.city' },
+                      { $setLocal: 'locationCountry', from: '$event.detail.country' },
+                      { $setLocal: 'locationCountryCode', from: '$event.detail.countryCode' },
+                    ],
+                  },
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $local: 'locationLat' },
+                then: {
+                  type: 'Row',
+                  props: { gap: '300' },
+                  children: [
+                    {
+                      type: 'we-form-field',
+                      props: { label: 'City', flex: '1' },
+                      children: [
+                        {
+                          type: 'we-input',
+                          props: {
+                            value: { $local: 'locationCity' },
+                            placeholder: 'City…',
+                            onInput: { $setLocal: 'locationCity', from: '$event.detail' },
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-form-field',
+                      props: { label: 'Country', flex: '1' },
+                      children: [
+                        {
+                          type: 'we-input',
+                          props: {
+                            value: { $local: 'locationCountry' },
+                            placeholder: 'Country…',
+                            onInput: { $setLocal: 'locationCountry', from: '$event.detail' },
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+
     // Action buttons
     {
       type: 'Row',
@@ -168,6 +243,11 @@ export const createSpaceModal = {
                         },
                       },
                       { $local: 'thumbnail' },
+                      { $local: 'locationLat' },
+                      { $local: 'locationLng' },
+                      { $local: 'locationCity' },
+                      { $local: 'locationCountry' },
+                      { $local: 'locationCountryCode' },
                     ],
                   },
                 },

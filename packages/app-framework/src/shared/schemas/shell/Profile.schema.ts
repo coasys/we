@@ -226,17 +226,82 @@ export const profileTemplate: TemplateSchema = {
               props: { label: 'Location' },
               children: [
                 {
-                  type: 'we-input',
+                  type: 'we-location-picker',
                   props: {
-                    placeholder: 'City, Country',
-                    value: { $store: 'adamStore.agentProfile.location' },
+                    latitude: { $store: 'adamStore.agentProfile.location.latitude' },
+                    longitude: { $store: 'adamStore.agentProfile.location.longitude' },
+                    placeholder: 'Pin your location on the globe…',
                     onChange: {
-                      $action: 'adamStore.updateAgentProfile',
-                      args: [{ location: '$arg.detail' }],
+                      $action: 'adamStore.updateAgentLocation',
+                      args: [
+                        '$arg.detail.latitude',
+                        '$arg.detail.longitude',
+                        '$arg.detail.city',
+                        '$arg.detail.country',
+                        '$arg.detail.countryCode',
+                      ],
                     },
                   },
                 },
               ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $store: 'adamStore.agentProfile.location' },
+                then: {
+                  type: 'Row',
+                  props: { gap: '300', wrap: true },
+                  children: [
+                    {
+                      type: 'we-form-field',
+                      props: { label: 'City', flex: '1' },
+                      children: [
+                        {
+                          type: 'we-input',
+                          props: {
+                            placeholder: 'City',
+                            value: { $store: 'adamStore.agentProfile.location.city' },
+                            onChange: {
+                              $action: 'adamStore.updateAgentLocation',
+                              args: [
+                                { $store: 'adamStore.agentProfile.location.latitude' },
+                                { $store: 'adamStore.agentProfile.location.longitude' },
+                                '$arg.detail',
+                                { $store: 'adamStore.agentProfile.location.country' },
+                                { $store: 'adamStore.agentProfile.location.countryCode' },
+                              ],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-form-field',
+                      props: { label: 'Country', flex: '1' },
+                      children: [
+                        {
+                          type: 'we-input',
+                          props: {
+                            placeholder: 'Country',
+                            value: { $store: 'adamStore.agentProfile.location.country' },
+                            onChange: {
+                              $action: 'adamStore.updateAgentLocation',
+                              args: [
+                                { $store: 'adamStore.agentProfile.location.latitude' },
+                                { $store: 'adamStore.agentProfile.location.longitude' },
+                                { $store: 'adamStore.agentProfile.location.city' },
+                                '$arg.detail',
+                                { $store: 'adamStore.agentProfile.location.countryCode' },
+                              ],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
             },
           ],
         },

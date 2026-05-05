@@ -93,6 +93,11 @@ export interface AdamStore {
     description: string,
     visibility: 'personal' | 'shared' | 'public',
     imageFile?: File,
+    latitude?: number,
+    longitude?: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
   ) => Promise<void>;
   removePerspective: (uuid: string) => Promise<void>;
   /**
@@ -114,6 +119,14 @@ export interface AdamStore {
   joinGlobalSpace: () => Promise<void>;
   /** Removes a Space copy from the global perspective. Used when visibility drops from 'public'. */
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
+  /** Creates or replaces the agent's LocationBlock in the root perspective (and syncs to global if joined). */
+  updateAgentLocation: (
+    latitude: number,
+    longitude: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
+  ) => Promise<void>;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -473,6 +486,7 @@ export function AdamStoreProvider(props: ParentProps) {
           ChatMessage.register(existing),
           ChatSession.register(existing),
           Template.register(existing),
+          LocationBlock.register(existing),
         ]);
         setRootPerspective(existing);
         const [settings, profile] = await Promise.all([
@@ -504,6 +518,7 @@ export function AdamStoreProvider(props: ParentProps) {
         ChatSession.register(perspective),
         Template.register(perspective),
         Theme.register(perspective),
+        LocationBlock.register(perspective),
       ]);
       // Model.register resolves before SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -703,11 +718,53 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
+  async function updateAgentLocation(
+    latitude: number,
+    longitude: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
+  ): Promise<void> {
+    const profile = agentProfile();
+    const rootP = rootPerspective();
+    if (!profile || !rootP) return;
+
+    const name = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
+    // Create a new LocationBlock (replace logic: delete old link first via setLocation)
+    const loc = await LocationBlock.create(rootP, {
+      latitude,
+      longitude,
+      ...(name && { name }),
+      ...(city && { city }),
+      ...(country && { country }),
+      ...(countryCode && { countryCode }),
+    });
+    // HasOne generates setLocation — links the new block, removes any prior link
+    await (profile as unknown as { setLocation: (v: LocationBlock) => Promise<void> }).setLocation(loc);
+    // Re-read to get hydrated location
+    const updated = await AgentProfile.findOne(rootP);
+    if (updated) {
+      setAgentProfile(updated);
+      // Sync location to global perspective if joined
+      const globalP = globalPerspective();
+      if (agentSettings()?.globalSpaceJoined && globalP) {
+        syncAgentProfileToGlobal(updated, globalP).catch((err) =>
+          console.error('AdamStore: syncAgentProfileToGlobal (location) failed', err),
+        );
+      }
+    }
+  }
+
   async function createSpace(
     name: string,
     description: string,
     visibility: 'personal' | 'shared' | 'public',
     imageFile?: File,
+    latitude?: number,
+    longitude?: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
   ): Promise<void> {
     // Runtime coercion: JSON schema callers may pass a boolean from the legacy `shared` local state.
     // TODO(commit-5): remove once CreateSpaceModal sends a visibility string.
@@ -771,6 +828,20 @@ export function AdamStoreProvider(props: ParentProps) {
         visibility: vis,
         ...(imageData && { image: imageData, thumbnail: thumbnailData }),
       });
+
+      // Attach a location pin if coordinates were provided
+      if (latitude != null && longitude != null) {
+        const locationName = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
+        const loc = await LocationBlock.create(spacePerspective, {
+          latitude,
+          longitude,
+          ...(locationName && { name: locationName }),
+          ...(city && { city }),
+          ...(country && { country }),
+          ...(countryCode && { countryCode }),
+        });
+        await space.addLocations(loc);
+      }
 
       // If public and the global neighbourhood is joined, mirror the space there
       const globalP = globalPerspective();
@@ -891,6 +962,7 @@ export function AdamStoreProvider(props: ParentProps) {
     updateCoverImage,
     reorderPerspectives,
     joinGlobalSpace,
+    updateAgentLocation,
     removeSpaceFromGlobal: (spaceUuid) => {
       const globalP = globalPerspective();
       if (!globalP) return Promise.resolve();
