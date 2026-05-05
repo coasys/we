@@ -1,6 +1,6 @@
 import { Ad4mClient, Agent, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
 import { usePlatform } from '@shared/platform';
-import { type ModelClass, registerDynamicModels } from '@shared/registries/modelRegistry';
+import { registerDynamicModels } from '@shared/registries/modelRegistry';
 import type { FileData } from '@we/models';
 import {
   AgentProfile,
@@ -19,6 +19,7 @@ import {
 } from '@we/models';
 import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
+import { getModelClasses, getModelManifest } from './perspectiveHelpers';
 import { useRouteStore } from './RouteStore';
 
 export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
@@ -614,41 +615,25 @@ export function AdamStoreProvider(props: ParentProps) {
     const client = adamClient();
     if (!client) return;
 
-    /**
-     * Cast to access methods added in the next ad4m release.
-     * Remove once @coasys/ad4m is updated and the types are available.
-     */
-    type PerspectiveWithExtensions = PerspectiveProxy & {
-      getModelClasses?: () => Promise<Record<string, ModelClass>>;
-      getModelManifest?: () => Promise<ModelManifestEntry[]>;
-    };
-
     try {
       const perspective = await client.perspective.byUUID(uuid);
       if (!perspective) return;
 
-      const ext = perspective as unknown as PerspectiveWithExtensions;
-
       // Synthesise Ad4mModel classes from SHACL shapes and register them.
-      // getModelClasses() is a new method on PerspectiveProxy — gracefully skip
-      // if the installed @coasys/ad4m version doesn't have it yet.
       try {
-        const classes = await ext.getModelClasses?.();
-        if (classes) {
-          registerDynamicModels(uuid, classes);
-        }
+        const classes = await getModelClasses(perspective);
+        registerDynamicModels(uuid, classes);
       } catch (err) {
-        console.warn('AdamStore: getModelClasses failed (ad4m version too old?)', err);
+        console.warn('AdamStore: getModelClasses failed', err);
       }
 
       // Populate currentPerspectiveModels with the full manifest (WE + external).
-      // The full list lets AiStore build a perspective-accurate validator allowlist
-      // while still filtering WE names out of the dynamic model registry below.
+      // The full list lets AiStore build a perspective-accurate validator allowlist.
       try {
-        const manifest: ModelManifestEntry[] = (await ext.getModelManifest?.()) ?? [];
+        const manifest = await getModelManifest(perspective);
         setCurrentPerspectiveModels(manifest);
       } catch (err) {
-        console.warn('AdamStore: getModelManifest failed (ad4m version too old?)', err);
+        console.warn('AdamStore: getModelManifest failed', err);
         setCurrentPerspectiveModels([]);
       }
 
