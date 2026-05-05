@@ -1,11 +1,13 @@
 import { BlockComposer, BlockRenderer } from '@we/block-solid';
 import {
+  agentLocationsLayer,
   countryOutlinesLayer,
   h3HexagonsLayer,
   type LayerFactory,
   proceduralStarsLayer,
   skyboxLayer,
   solarSystemLayer,
+  spaceLocationsLayer,
   userLocationsLayer,
 } from '@we/cesium-layers';
 import {
@@ -51,6 +53,8 @@ export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
   userLocationsLayer,
   countryOutlinesLayer,
   h3HexagonsLayer,
+  spaceLocationsLayer,
+  agentLocationsLayer,
   // Background layers
   skyboxLayer,
   proceduralStarsLayer,

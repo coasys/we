@@ -1,5 +1,12 @@
 export { type AdamStore, useAdamStore, AdamStoreProvider } from './AdamStore';
-export { type GlobalStore, type GlobalEntity, useGlobalStore, GlobalStoreProvider } from './GlobalStore';
+export {
+  type GlobalStore,
+  type SelectedGlobalEntity,
+  type SpacePin,
+  type AgentPin,
+  useGlobalStore,
+  GlobalStoreProvider,
+} from './GlobalStore';
 export { type SpaceStore, useSpaceStore, SpaceStoreProvider } from './SpaceStore';
 export { type ThemeStore, useThemeStore, ThemeStoreProvider } from './ThemeStore';
 export { type TemplateStore, useTemplateStore, TemplateStoreProvider } from './TemplateStore';
