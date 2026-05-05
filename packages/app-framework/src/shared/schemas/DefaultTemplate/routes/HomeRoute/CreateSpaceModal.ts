@@ -64,12 +64,59 @@ export const createSpaceModal = {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
       children: [
-        { type: 'we-text', props: { fontSize: '400' }, children: ['Shared with network'] },
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { fontSize: '400', fontWeight: 'medium' }, children: ['Shared with network'] },
+            {
+              type: 'we-text',
+              props: { fontSize: '300', color: 'neutral-400' },
+              children: ['Publish as a joinable neighbourhood'],
+            },
+          ],
+        },
         {
           type: 'we-switch',
           props: {
             checked: { $local: 'shared' },
             onChange: { $setLocal: 'shared', from: '$event.detail' },
+          },
+        },
+      ],
+    },
+
+    // Listed in Global Discovery toggle (only active when shared)
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            {
+              type: 'we-text',
+              props: {
+                fontSize: '400',
+                fontWeight: 'medium',
+                color: { $if: { condition: { $local: 'shared' }, then: 'neutral-800', else: 'neutral-400' } },
+              },
+              children: ['Listed in Global Discovery'],
+            },
+            {
+              type: 'we-text',
+              props: { fontSize: '300', color: 'neutral-400' },
+              children: ['Appear on the WE discovery globe'],
+            },
+          ],
+        },
+        {
+          type: 'we-switch',
+          props: {
+            checked: { $local: 'listedGlobally' },
+            disabled: { $not: { $local: 'shared' } },
+            onChange: { $setLocal: 'listedGlobally', from: '$event.detail' },
           },
         },
       ],
@@ -107,7 +154,19 @@ export const createSpaceModal = {
                     args: [
                       { $local: 'name' },
                       { $local: 'description' },
-                      { $local: 'shared' },
+                      {
+                        $if: {
+                          condition: { $and: [{ $local: 'shared' }, { $local: 'listedGlobally' }] },
+                          then: 'public',
+                          else: {
+                            $if: {
+                              condition: { $local: 'shared' },
+                              then: 'shared',
+                              else: 'personal',
+                            },
+                          },
+                        },
+                      },
                       { $local: 'thumbnail' },
                     ],
                   },

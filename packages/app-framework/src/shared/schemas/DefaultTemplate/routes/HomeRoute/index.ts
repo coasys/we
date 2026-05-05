@@ -22,7 +22,9 @@ export const homeRoute: RouteSchema = {
     },
     description: { type: 'string', initial: '' },
     shared: { type: 'boolean', initial: false },
+    listedGlobally: { type: 'boolean', initial: false },
     thumbnail: { type: 'file', initial: null },
+    globalPromptDismissed: { type: 'boolean', initial: false },
   },
   children: [
     // Header
@@ -37,6 +39,76 @@ export const homeRoute: RouteSchema = {
           children: ['Your perspectives and spaces'],
         },
       ],
+    },
+
+    // ── Global Space join prompt (shown until joined or dismissed) ──
+    {
+      type: '$if',
+      props: {
+        condition: {
+          $and: [
+            { $not: { $store: 'adamStore.agentSettings.globalSpaceJoined' } },
+            { $not: { $local: 'globalPromptDismissed' } },
+          ],
+        },
+        then: {
+          type: 'Row',
+          props: {
+            gap: '400',
+            ay: 'center',
+            p: '400',
+            r: '400',
+            bg: 'primary-50',
+            border: '1px solid primary-200',
+          },
+          children: [
+            { type: 'we-icon', props: { name: 'globe', color: 'primary-500', size: '28px' } },
+            {
+              type: 'Column',
+              props: { gap: '100', flex: '1' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { fontSize: '500', fontWeight: 'semibold' },
+                  children: ['Discover the WE Global Space'],
+                },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '300', color: 'neutral-500' },
+                  children: [
+                    'Connect with communities and people around the world. Spaces you make public will appear on the global discovery globe.',
+                  ],
+                },
+              ],
+            },
+            {
+              type: 'Row',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'ghost',
+                    text: 'Maybe Later',
+                    height: '36px',
+                    onClick: { $setLocal: 'globalPromptDismissed', value: true },
+                  },
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Join Global Space',
+                    bg: 'primary-500',
+                    color: 'neutral-0',
+                    height: '36px',
+                    onClick: { $action: 'adamStore.joinGlobalSpace', args: [] },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
     },
 
     // ── Shared Spaces ──

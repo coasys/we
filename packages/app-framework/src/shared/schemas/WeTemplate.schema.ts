@@ -1499,6 +1499,7 @@ export const weTemplate: TemplateSchema = {
         name: { type: 'string', initial: '', validate: [{ rule: 'required', message: 'Name is required' }] },
         description: { type: 'string', initial: '' },
         shared: { type: 'boolean', initial: false },
+        listedGlobally: { type: 'boolean', initial: false },
         thumbnail: { type: 'file', initial: null },
       },
       children: [
@@ -1658,7 +1659,19 @@ export const weTemplate: TemplateSchema = {
                         args: [
                           { $local: 'name' },
                           { $local: 'description' },
-                          { $local: 'shared' },
+                          {
+                            $if: {
+                              condition: { $and: [{ $local: 'shared' }, { $local: 'listedGlobally' }] },
+                              then: 'public',
+                              else: {
+                                $if: {
+                                  condition: { $local: 'shared' },
+                                  then: 'shared',
+                                  else: 'personal',
+                                },
+                              },
+                            },
+                          },
                           { $local: 'thumbnail' },
                         ],
                       },
