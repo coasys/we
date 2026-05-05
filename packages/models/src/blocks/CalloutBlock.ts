@@ -1,9 +1,12 @@
-import { Model, Property } from '@coasys/ad4m';
+import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'CalloutBlock' })
 export class CalloutBlock extends WeNode {
+  @Flag({ through: 'we://flag', value: 'we://callout_block' })
+  flag: string = '';
+
   @Property({ through: 'we://text' })
   text: string = '';
 

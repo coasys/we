@@ -8,8 +8,8 @@ export type SignalSemantic = 'approval' | 'quality' | 'relevance' | 'agreement' 
 
 @Model({ name: 'SignalType' })
 export class SignalType extends WeNode {
-  @Flag({ through: 'we://type', value: 'we://signal_type' })
-  type: string = '';
+  @Flag({ through: 'we://flag', value: 'we://signal_type' })
+  flag: string = '';
 
   @Property({ through: 'we://name' })
   name: string = '';

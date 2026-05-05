@@ -5,8 +5,8 @@ import { ChatMessage } from './ChatMessage';
 
 @Model({ name: 'ChatSession' })
 export class ChatSession extends WeNode {
-  @Flag({ through: 'we://type', value: 'we://chat_session' })
-  type: string = '';
+  @Flag({ through: 'we://flag', value: 'we://chat_session' })
+  flag: string = '';
 
   @Property({ through: 'we://name' })
   name: string = '';

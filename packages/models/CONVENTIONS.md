@@ -99,11 +99,28 @@ These are always present on every model instance but are only surfaced in the UI
 All `@Property` predicates use the `we://` namespace. Use snake_case for multi-word predicates:
 
 ```ts
-@Property({ through: 'we://has_name' })
+@Property({ through: 'we://name' })
 @Property({ through: 'we://start_date' })
 ```
 
-Avoid generic predicates that could clash across models (e.g. `we://name` is used by `LocationBlock` — prefer `we://has_name` for new properties).
+**Prefer generic, reusable predicates.** When two models share the same semantic concept (e.g. `name`, `description`, `url`), use the same predicate — this enables cross-model graph pattern queries. For example, querying `?node we://name ?name` returns names from `LocationBlock`, `Theme`, `ChatSession`, `TagBlock`, and any future model without knowing the type in advance.
+
+---
+
+## Type Discriminators (`@Flag`)
+
+Every model must have a `@Flag` as its first property. The `@Flag` decorator writes a constant triple that uniquely identifies the model type — essential for filtering mixed graph results.
+
+```ts
+@Flag({ through: 'we://flag', value: 'we://location_block' })
+flag: string = '';
+```
+
+Rules:
+- Always use `we://flag` as the `through` predicate — **never `we://type`** (that is a content property on some models)
+- The `value` follows the pattern `we://<snake_case_model_name>`
+- The TypeScript property must be named `flag` to avoid clashing with content `type` properties
+- Always the **first property** in the class, before any `@Property` or `@HasMany`
 
 ---
 

@@ -1,9 +1,12 @@
-import { Model, Property } from '@coasys/ad4m';
+import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'AudioBlock' })
 export class AudioBlock extends WeNode {
+  @Flag({ through: 'we://flag', value: 'we://audio_block' })
+  flag: string = '';
+
   @Property({ through: 'we://title', required: true })
   title: string = '';
 

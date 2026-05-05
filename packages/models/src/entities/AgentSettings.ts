@@ -5,8 +5,8 @@ import { Theme } from './Theme';
 
 @Model({ name: 'AgentSettings' })
 export class AgentSettings extends Ad4mModel {
-  @Flag({ through: 'we://type', value: 'we://root' })
-  type: string = '';
+  @Flag({ through: 'we://flag', value: 'we://root' })
+  flag: string = '';
 
   @Property({ through: 'we://current_template' })
   currentTemplateId: string = 'default';
