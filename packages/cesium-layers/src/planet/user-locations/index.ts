@@ -8,6 +8,8 @@ export interface UserLocation {
   latitude: number;
   longitude: number;
   color?: string;
+  /** Total number of signals on this entity — used to scale the globe pin size. */
+  signalEnergy?: number;
 }
 
 export interface UserLocationsOptions {

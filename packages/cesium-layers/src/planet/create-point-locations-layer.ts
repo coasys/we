@@ -45,7 +45,7 @@ export function createPointLocationsLayer(
           id: `${layerName}-${loc.id}`,
           position: Cartesian3.fromDegrees(loc.longitude, loc.latitude),
           point: {
-            pixelSize: markerSize,
+            pixelSize: markerSize + Math.min(Math.round((loc.signalEnergy ?? 0) * 1.5), 18),
             color: loc.color ? Color.fromCssColorString(loc.color) : Color.fromCssColorString(defaultColor),
             outlineColor: Color.WHITE,
             outlineWidth: 2,

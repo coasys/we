@@ -64,6 +64,31 @@ export const globalEntityModal = {
             // Actions
             {
               type: 'Row',
+              props: { gap: '200', ay: 'center', wrap: true, mb: '200' },
+              children: [
+                {
+                  type: '$each',
+                  props: { items: { $store: 'globalStore.selectedEntitySignalData' }, as: 'sig' },
+                  children: [
+                    {
+                      type: 'SignalControl',
+                      props: {
+                        signalType: '$sig.signalType',
+                        myValue: '$sig.myValue',
+                        aggregate: '$sig.totalValue',
+                        onSignal: {
+                          $action: 'globalStore.upsertGlobalSignal',
+                          args: ['$sig.nodeId', '$sig.signalType.id', '$arg'],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+            // Actions
+            {
+              type: 'Row',
               props: { gap: '300', ax: 'end', mt: '200' },
               children: [
                 {
@@ -188,6 +213,31 @@ export const globalEntityModal = {
                   children: [{ $store: 'globalStore.selectedGlobalEntity.bio' }],
                 },
               },
+            },
+            // React bar
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'center', wrap: true, mt: '200' },
+              children: [
+                {
+                  type: '$each',
+                  props: { items: { $store: 'globalStore.selectedEntitySignalData' }, as: 'sig' },
+                  children: [
+                    {
+                      type: 'SignalControl',
+                      props: {
+                        signalType: '$sig.signalType',
+                        myValue: '$sig.myValue',
+                        aggregate: '$sig.totalValue',
+                        onSignal: {
+                          $action: 'globalStore.upsertGlobalSignal',
+                          args: ['$sig.nodeId', '$sig.signalType.id', '$arg'],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
             },
             // Close button
             {

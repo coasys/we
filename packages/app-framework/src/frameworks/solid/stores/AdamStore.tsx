@@ -131,6 +131,67 @@ export interface AdamStore {
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
 
+const DEFAULT_GLOBAL_SIGNAL_TYPES: Partial<SignalType>[] = [
+  {
+    name: 'Like',
+    slug: 'like',
+    icon: '👍',
+    mode: 'toggle',
+    aggregate: 'count',
+    semantic: 'approval',
+    rangeMin: 0,
+    rangeMax: 1,
+  },
+  {
+    name: 'Vibe',
+    slug: 'vibe',
+    icon: '⚡',
+    mode: 'toggle',
+    aggregate: 'count',
+    semantic: 'relevance',
+    rangeMin: 0,
+    rangeMax: 1,
+  },
+  {
+    name: 'Quality',
+    slug: 'quality',
+    icon: '⭐',
+    mode: 'rating',
+    aggregate: 'mean',
+    semantic: 'quality',
+    rangeMin: 1,
+    rangeMax: 5,
+    step: 1,
+  },
+];
+
+const DEFAULT_GLOBAL_SPACES = [
+  {
+    name: 'Open Source Collective',
+    city: 'Berlin',
+    countryCode: 'DE',
+    country: 'Germany',
+    latitude: 52.52,
+    longitude: 13.405,
+  },
+  {
+    name: 'Web3 Builders',
+    city: 'Lisbon',
+    countryCode: 'PT',
+    country: 'Portugal',
+    latitude: 38.717,
+    longitude: -9.142,
+  },
+  {
+    name: 'Decentralised Arts',
+    city: 'Tokyo',
+    countryCode: 'JP',
+    country: 'Japan',
+    latitude: 35.676,
+    longitude: 139.65,
+  },
+];
+
 const AdamContext = createContext<AdamStore>();
 
 export function AdamStoreProvider(props: ParentProps) {
@@ -385,33 +446,12 @@ export function AdamStoreProvider(props: ParentProps) {
   }
 
   async function seedGlobalPerspective(perspective: PerspectiveProxy): Promise<void> {
-    const seeds = [
-      {
-        name: 'Open Source Collective',
-        city: 'Berlin',
-        countryCode: 'DE',
-        country: 'Germany',
-        latitude: 52.52,
-        longitude: 13.405,
-      },
-      {
-        name: 'Web3 Builders',
-        city: 'Lisbon',
-        countryCode: 'PT',
-        country: 'Portugal',
-        latitude: 38.717,
-        longitude: -9.142,
-      },
-      {
-        name: 'Decentralised Arts',
-        city: 'Tokyo',
-        countryCode: 'JP',
-        country: 'Japan',
-        latitude: 35.676,
-        longitude: 139.65,
-      },
-    ];
-    for (const seed of seeds) {
+    // Seed default signal types so the react bar is immediately populated
+    for (const st of DEFAULT_GLOBAL_SIGNAL_TYPES) {
+      await SignalType.create(perspective, st);
+    }
+
+    for (const seed of DEFAULT_GLOBAL_SPACES) {
       const space = await Space.create(perspective, {
         uuid: crypto.randomUUID(),
         name: seed.name,
