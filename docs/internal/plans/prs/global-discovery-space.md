@@ -18,11 +18,11 @@ Currently users can create spaces (AD4M perspectives) and view their own in the 
 
 The current `visibility` field on `Space` is a plain string, so the model change is minimal. Proposed semantics:
 
-| Value | Meaning |
-|---|---|
-| `personal` | Local perspective only, not published |
-| `shared` | Published as neighbourhood, discoverable via direct link |
-| `public` | Published as neighbourhood + mirrored entry in global neighbourhood |
+| Value      | Meaning                                                             |
+| ---------- | ------------------------------------------------------------------- |
+| `personal` | Local perspective only, not published                               |
+| `shared`   | Published as neighbourhood, discoverable via direct link            |
+| `public`   | Published as neighbourhood + mirrored entry in global neighbourhood |
 
 `public` is a strict superset of `shared` — it creates a neighbourhood AND registers the space in the global discovery layer. The `CreateSpaceModal` uses **two dependent toggles**:
 
@@ -77,6 +77,7 @@ For PR 2, a `LocationPicker` component (click-to-place pin on a simplified globe
 ### Privacy / Consent
 
 When a user joins the global neighbourhood, their full `AgentProfile` instance (including name, handle, images, bio, coordinates) is written into the global perspective. This must be:
+
 - Explicitly confirmed at time of joining, not implicit
 - Reversible: leaving the global space removes their `AgentProfile` entry from the global perspective
 
@@ -162,18 +163,18 @@ _Isolated prep commit. Touches existing functionality; easiest to revert if regr
 
 ## Affected Files (preliminary)
 
-| File | Change |
-|---|---|
-| `packages/models/src/blocks/LocationBlock.ts` | Add `city?`, `country?` properties |
-| `packages/models/src/entities/Space.ts` | Type `locations` HasMany as `LocationBlock` |
-| `packages/models/src/entities/AgentProfile.ts` | Migrate to `extends WeNode`; add `location` `HasOne` (`LocationBlock`) |
-| `packages/models/src/entities/SignalType.ts` | Migrate to `extends WeNode` |
-| `packages/models/src/entities/AgentSettings.ts` | Add `globalSpaceJoined`, `globalSpaceUrl` |
-| `packages/app-framework/src/frameworks/solid/stores/AdamStore.tsx` | `joinGlobalSpace`, extend `createSpace`, `initSystemPerspectives` |
-| `packages/app-framework/src/frameworks/solid/stores/GlobalStore.tsx` | New store |
-| `packages/app-framework/src/shared/schemas/DefaultTemplate/routes/HomeRoute/index.ts` | Join prompt card |
-| `packages/app-framework/src/shared/schemas/DefaultTemplate/routes/HomeRoute/CreateSpaceModal.ts` | Three-way visibility |
-| `packages/app-framework/src/shared/schemas/shell/Profile.schema.ts` | Location fields |
-| `packages/app-framework/src/shared/schemas/WeTemplate.schema.ts` | Globe wired to globalStore |
-| `packages/cesium-layers/src/` | New layer factories |
-| `we-seed.json` | `globalSpaceUrl` constant |
+| File                                                                                             | Change                                                                 |
+| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `packages/models/src/blocks/LocationBlock.ts`                                                    | Add `city?`, `country?` properties                                     |
+| `packages/models/src/entities/Space.ts`                                                          | Type `locations` HasMany as `LocationBlock`                            |
+| `packages/models/src/entities/AgentProfile.ts`                                                   | Migrate to `extends WeNode`; add `location` `HasOne` (`LocationBlock`) |
+| `packages/models/src/entities/SignalType.ts`                                                     | Migrate to `extends WeNode`                                            |
+| `packages/models/src/entities/AgentSettings.ts`                                                  | Add `globalSpaceJoined`, `globalSpaceUrl`                              |
+| `packages/app-framework/src/frameworks/solid/stores/AdamStore.tsx`                               | `joinGlobalSpace`, extend `createSpace`, `initSystemPerspectives`      |
+| `packages/app-framework/src/frameworks/solid/stores/GlobalStore.tsx`                             | New store                                                              |
+| `packages/app-framework/src/shared/schemas/DefaultTemplate/routes/HomeRoute/index.ts`            | Join prompt card                                                       |
+| `packages/app-framework/src/shared/schemas/DefaultTemplate/routes/HomeRoute/CreateSpaceModal.ts` | Three-way visibility                                                   |
+| `packages/app-framework/src/shared/schemas/shell/Profile.schema.ts`                              | Location fields                                                        |
+| `packages/app-framework/src/shared/schemas/WeTemplate.schema.ts`                                 | Globe wired to globalStore                                             |
+| `packages/cesium-layers/src/`                                                                    | New layer factories                                                    |
+| `we-seed.json`                                                                                   | `globalSpaceUrl` constant                                              |

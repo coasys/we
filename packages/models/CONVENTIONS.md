@@ -22,8 +22,9 @@ Entities are **first-class application objects with independent identity and lif
 Examples: `Space`, `AgentProfile`, `Signal`, `ChatSession`, `ChatMessage`
 
 Rules:
+
 - No `version` property — they are not collaboratively edited in a CRDT sense
-- If they need to appear *inside* a document composition, they are referenced **by pointer** via `EmbedBlock` (not embedded directly)
+- If they need to appear _inside_ a document composition, they are referenced **by pointer** via `EmbedBlock` (not embedded directly)
 - Typically managed by stores (`AdamStore`, `SpaceStore`, etc.)
 
 ### Blocks (`blocks/`)
@@ -33,6 +34,7 @@ Blocks are **composable content nodes** that can be created fresh and dropped di
 Examples: `TextBlock`, `ImageBlock`, `LocationBlock`, `EventBlock`, `TaskBlock`, `AudioBlock`
 
 Rules:
+
 - Always have a `version: number` property for CRDT conflict resolution in collaborative editing
 - Can appear as direct children of `CollectionBlock`
 - Can also be used standalone (e.g. `LocationBlock` referenced via `Space.locations` HasMany, `TaskBlock` in a task board view) — this does not make them entities
@@ -44,7 +46,7 @@ Rules:
 - **Yes** → it's a block (`blocks/`)
 - **No** → it's an entity (`entities/`)
 
-`Space` is the canonical borderline example: a space *could* theoretically be created from a document, but doing so has infrastructure consequences (registering SDNA models, creating a perspective, optionally publishing a neighbourhood) that make inline authoring impractical. It is therefore an entity.
+`Space` is the canonical borderline example: a space _could_ theoretically be created from a document, but doing so has infrastructure consequences (registering SDNA models, creating a perspective, optionally publishing a neighbourhood) that make inline authoring impractical. It is therefore an entity.
 
 ### EmbedBlock — the bridge
 
@@ -77,6 +79,7 @@ Valid `targetType` values: `'space'` | `'agent'` | `'block'`
 All models — both entities and blocks — extend `WeNode`, which in turn extends `Ad4mModel`.
 
 `WeNode` provides:
+
 - `comments: string[]` — HasMany relation for comment IDs
 - `signals: string[]` — HasMany relation for signal IDs
 
@@ -86,10 +89,10 @@ These are always present on every model instance but are only surfaced in the UI
 
 ## Naming Conventions
 
-| Type | Suffix | Example |
-|---|---|---|
-| Block | `*Block` | `LocationBlock`, `TaskBlock` |
-| Entity | none | `Space`, `AgentProfile` |
+| Type             | Suffix    | Example                          |
+| ---------------- | --------- | -------------------------------- |
+| Block            | `*Block`  | `LocationBlock`, `TaskBlock`     |
+| Entity           | none      | `Space`, `AgentProfile`          |
 | Utility function | camelCase | `resizeImage`, `normalizeSignal` |
 
 ---
@@ -117,6 +120,7 @@ flag: string = '';
 ```
 
 Rules:
+
 - Always use `we://flag` as the `through` predicate — **never `we://type`** (that is a content property on some models)
 - The `value` follows the pattern `we://<snake_case_model_name>`
 - The TypeScript property must be named `flag` to avoid clashing with content `type` properties

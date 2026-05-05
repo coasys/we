@@ -445,6 +445,12 @@
           "type": "'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone'",
           "optional": false,
           "default": "'regular'"
+        },
+        {
+          "name": "gradient",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         }
       ]
     },
@@ -1380,6 +1386,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "gradient",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         }
       ]
     },
@@ -5113,52 +5125,52 @@
     {
       "name": "AgentProfile",
       "className": "AgentProfile",
-      "extends": "Ad4mModel",
+      "extends": "WeNode",
       "fields": [
         {
           "name": "firstName",
           "type": "string",
-          "predicate": "we://has_first_name",
+          "predicate": "we://first_name",
           "required": false
         },
         {
           "name": "lastName",
           "type": "string",
-          "predicate": "we://has_last_name",
+          "predicate": "we://last_name",
           "required": false
         },
         {
           "name": "handle",
           "type": "string",
-          "predicate": "we://has_handle",
+          "predicate": "we://handle",
           "required": false
         },
         {
           "name": "bio",
           "type": "string",
-          "predicate": "we://has_bio",
-          "required": false
-        },
-        {
-          "name": "location",
-          "type": "string",
-          "predicate": "we://has_location",
+          "predicate": "we://bio",
           "required": false
         },
         {
           "name": "profileImage",
           "type": "string | FileData",
-          "predicate": "we://has_profile_image",
+          "predicate": "we://profile_image",
           "required": false
         },
         {
           "name": "coverImage",
           "type": "string | FileData",
-          "predicate": "we://has_cover_image",
+          "predicate": "we://cover_image",
           "required": false
         }
       ],
-      "relations": []
+      "relations": [
+        {
+          "name": "location",
+          "kind": "HasOne",
+          "predicate": "we://location"
+        }
+      ]
     },
     {
       "name": "AgentSettings",
@@ -5196,6 +5208,19 @@
           "name": "perspectiveOrder",
           "type": "string",
           "predicate": "we://perspective_order",
+          "required": false
+        },
+        {
+          "name": "globalSpaceJoined",
+          "type": "boolean",
+          "predicate": "we://global_space_joined",
+          "required": false,
+          "default": "false"
+        },
+        {
+          "name": "globalSpaceUrl",
+          "type": "string",
+          "predicate": "we://global_space_url",
           "required": false
         }
       ],
@@ -5688,6 +5713,24 @@
           "required": false
         },
         {
+          "name": "city",
+          "type": "string",
+          "predicate": "we://city",
+          "required": false
+        },
+        {
+          "name": "countryCode",
+          "type": "string",
+          "predicate": "we://country_code",
+          "required": false
+        },
+        {
+          "name": "country",
+          "type": "string",
+          "predicate": "we://country",
+          "required": false
+        },
+        {
           "name": "version",
           "type": "number",
           "predicate": "we://version",
@@ -5719,7 +5762,7 @@
     {
       "name": "SignalType",
       "className": "SignalType",
-      "extends": "Ad4mModel",
+      "extends": "WeNode",
       "fields": [
         {
           "name": "name",
@@ -5824,43 +5867,43 @@
         {
           "name": "uuid",
           "type": "string",
-          "predicate": "we://has_uuid",
+          "predicate": "we://uuid",
           "required": false
         },
         {
           "name": "url",
           "type": "string",
-          "predicate": "we://has_url",
+          "predicate": "we://url",
           "required": false
         },
         {
           "name": "name",
           "type": "string",
-          "predicate": "we://has_name",
+          "predicate": "we://name",
           "required": true
         },
         {
           "name": "description",
           "type": "string",
-          "predicate": "we://has_description",
+          "predicate": "we://description",
           "required": true
         },
         {
           "name": "visibility",
           "type": "string",
-          "predicate": "we://has_visibility",
+          "predicate": "we://visibility",
           "required": false
         },
         {
           "name": "image",
           "type": "string | FileData",
-          "predicate": "we://has_image",
+          "predicate": "we://image",
           "required": false
         },
         {
           "name": "thumbnail",
           "type": "string | FileData",
-          "predicate": "we://has_thumbnail",
+          "predicate": "we://thumbnail",
           "required": false
         }
       ],
@@ -5868,7 +5911,8 @@
         {
           "name": "locations",
           "kind": "HasMany",
-          "predicate": "we://has_location"
+          "predicate": "we://location",
+          "target": "LocationBlock"
         }
       ]
     },
@@ -6162,12 +6206,12 @@
         {
           "name": "comments",
           "kind": "HasMany",
-          "predicate": "we://has_comments"
+          "predicate": "we://comment"
         },
         {
           "name": "signals",
           "kind": "HasMany",
-          "predicate": "we://has_signals",
+          "predicate": "we://signal",
           "target": "Signal"
         }
       ]

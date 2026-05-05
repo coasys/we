@@ -12,6 +12,8 @@
     "repoPath": "../ad4m"
   },
 
+  "globalSpaceUrl": "",
+
   "electron": {
     "appDistPath": "dist",
     "basePort": 8080

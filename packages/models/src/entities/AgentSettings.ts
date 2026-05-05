@@ -23,6 +23,12 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://perspective_order' })
   perspectiveOrder: string = '';
 
+  @Property({ through: 'we://global_space_joined' })
+  globalSpaceJoined: boolean = false;
+
+  @Property({ through: 'we://global_space_url' })
+  globalSpaceUrl: string = '';
+
   @HasMany(() => Template, { through: 'we://installed_template' })
   installedTemplates: Template[] = [];
 

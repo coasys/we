@@ -263,7 +263,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-form-field (DesignSystemElement)
   Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-icon (LayoutElement)
-  Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular'
+  Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular', gradient: string = ''
 - we-icon-picker (DesignSystemElement)
   Props: value: string = '', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', placeholder: string = 'Pick icon'
 - we-iframe (LayoutVisualElement)
@@ -326,7 +326,7 @@ array of IDs.
 - we-tag (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false
+  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, gradient: string = ''
 - we-textarea (DesignSystemElement)
   Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute
@@ -640,15 +640,16 @@ zIndex: 'dropdown', 'sticky', 'modal', 'popover', 'toast', 'tooltip'
 
 Available data models for $query and store data:
 
-AgentProfile extends Ad4mModel:
+AgentProfile extends WeNode:
   Fields:
-  - firstName: string [we://has_first_name]
-  - lastName: string [we://has_last_name]
-  - handle: string [we://has_handle]
-  - bio: string [we://has_bio]
-  - location: string [we://has_location]
-  - profileImage: string | FileData [we://has_profile_image]
-  - coverImage: string | FileData [we://has_cover_image]
+  - firstName: string [we://first_name]
+  - lastName: string [we://last_name]
+  - handle: string [we://handle]
+  - bio: string [we://bio]
+  - profileImage: string | FileData [we://profile_image]
+  - coverImage: string | FileData [we://cover_image]
+  Relations:
+  - location: HasOne [we://location]
 
 AgentSettings extends Ad4mModel:
   Fields:
@@ -657,6 +658,8 @@ AgentSettings extends Ad4mModel:
   - currentThemeId: string = 'default' [we://current_theme]
   - claudeApiKey: string [we://claude_api_key]
   - perspectiveOrder: string [we://perspective_order]
+  - globalSpaceJoined: boolean = false [we://global_space_joined]
+  - globalSpaceUrl: string [we://global_space_url]
   Relations:
   - installedTemplates: HasMany → Template [we://installed_template]
   - installedThemes: HasMany → Theme [we://installed_theme]
@@ -762,6 +765,9 @@ LocationBlock extends WeNode:
   - latitude: number (required) [we://latitude]
   - longitude: number (required) [we://longitude]
   - address: string [we://address]
+  - city: string [we://city]
+  - countryCode: string [we://country_code]
+  - country: string [we://country]
   - version: number [we://version]
 
 Signal extends Ad4mModel:
@@ -769,7 +775,7 @@ Signal extends Ad4mModel:
   - signalTypeId: string [we://signal_type_id]
   - value: number [we://value]
 
-SignalType extends Ad4mModel:
+SignalType extends WeNode:
   Fields:
   - name: string [we://name]
   - slug: string [we://slug]
@@ -788,15 +794,15 @@ SignalType extends Ad4mModel:
 
 Space extends WeNode:
   Fields:
-  - uuid: string [we://has_uuid]
-  - url: string [we://has_url]
-  - name: string (required) [we://has_name]
-  - description: string (required) [we://has_description]
-  - visibility: string [we://has_visibility]
-  - image: string | FileData [we://has_image]
-  - thumbnail: string | FileData [we://has_thumbnail]
+  - uuid: string [we://uuid]
+  - url: string [we://url]
+  - name: string (required) [we://name]
+  - description: string (required) [we://description]
+  - visibility: string [we://visibility]
+  - image: string | FileData [we://image]
+  - thumbnail: string | FileData [we://thumbnail]
   Relations:
-  - locations: HasMany [we://has_location]
+  - locations: HasMany → LocationBlock [we://location]
 
 TagBlock extends WeNode:
   Fields:
@@ -857,8 +863,8 @@ VideoBlock extends WeNode:
 
 WeNode extends Ad4mModel:
   Relations:
-  - comments: HasMany [we://has_comments]
-  - signals: HasMany → Signal [we://has_signals]
+  - comments: HasMany [we://comment]
+  - signals: HasMany → Signal [we://signal]
 
 ---
 
@@ -1485,3 +1491,83 @@ After creating or modifying a `.schema.ts` file, always run validation to catch:
 - `$routes` outlet without a `routes` array on an ancestor
 - Orphan `$local` / `$setLocal` references without a `$localState` ancestor
 - DS layer consistency (mixing props from layers the component doesn't support)
+
+---
+
+## Developer Patterns (codebase work — not for JSON schema authoring)
+
+These patterns apply to TypeScript code in stores, services, tests, and scripts
+that work directly with AD4M model classes. They do NOT apply to JSON template schemas.
+
+---
+
+### Package Conventions
+
+Each package may have a `CONVENTIONS.md` at its root with package-specific rules.
+Always read `CONVENTIONS.md` before creating or modifying files in that package.
+
+Key packages with conventions files:
+- `packages/models/CONVENTIONS.md` — model authoring: entities vs blocks, predicates, @Flag, WeNode, Model.create() pattern
+
+---
+
+### Model CRUD Patterns
+
+Use the static factory method for creation. **Never** use `new Model() + manual property assignment + save()`.
+
+**Create**
+```ts
+const space = await Space.create(perspective, {
+  uuid: crypto.randomUUID(),
+  name: 'My Space',
+  description: 'A description',
+  visibility: 'public',
+});
+```
+
+**Read all**
+```ts
+const spaces = await Space.findAll(perspective);
+```
+
+**Read one** (first match)
+```ts
+const space = await Space.findOne(perspective, { name: 'My Space' });
+```
+
+**Read by id**
+```ts
+const space = await Space.findById(perspective, id);
+```
+
+**Update**
+```ts
+space.name = 'New Name';
+await space.save();
+```
+
+**Delete**
+```ts
+await space.delete();
+```
+
+**HasMany relations**
+```ts
+await space.addLocations(locationBlock);     // add<RelationName>(instance)
+const locs = await space.getLocations();     // get<RelationName>()
+await space.removeLocations(locationBlock);  // remove<RelationName>(instance)
+```
+
+Accessor names derive from the `@HasMany` property name: e.g. `locations` → `addLocations` / `getLocations` / `removeLocations`.
+
+**Anti-pattern — do not use:**
+```ts
+// ❌ Wrong
+const space = new Space(perspective);
+space.uuid = crypto.randomUUID();
+space.name = 'My Space';
+await space.save();
+
+// ✅ Correct
+const space = await Space.create(perspective, { uuid: crypto.randomUUID(), name: 'My Space' });
+```
