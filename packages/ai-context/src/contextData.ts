@@ -265,6 +265,18 @@ export const contextData: ContextData = {
       ],
     },
     {
+      tagName: 'we-location-picker',
+      className: 'LocationPicker',
+      superclass: 'DesignSystemElement',
+      ownProps: [
+        { name: 'latitude', type: 'number | undefined', optional: true },
+        { name: 'longitude', type: 'number | undefined', optional: true },
+        { name: 'placeholder', type: 'string', optional: false, default: "'Set location…'" },
+        { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
+        { name: 'reverseGeocode', type: 'boolean', optional: false, default: 'true' },
+      ],
+    },
+    {
       tagName: 'we-markdown',
       className: 'Markdown',
       superclass: 'DesignSystemElement',

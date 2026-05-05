@@ -274,6 +274,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', disabled: boolean = false
+- we-location-picker (DesignSystemElement)
+  Props: latitude?: number | undefined, longitude?: number | undefined, placeholder: string = 'Set location…', disabled: boolean = false, reverseGeocode: boolean = true
 - we-markdown (DesignSystemElement)
   Props: content: string = '', markdownGap: string = ''
 - we-menu (DesignSystemElement) — Vertical list container for menu items inside a popover.
