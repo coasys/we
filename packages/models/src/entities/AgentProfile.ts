@@ -1,10 +1,11 @@
-import { Ad4mModel, Flag, Model, Property } from '@coasys/ad4m';
+import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { FILE_STORAGE_LANGUAGE } from '../constants';
 import type { FileData } from '../utils/imageHelpers';
+import { WeNode } from '../WeNode';
 
 @Model({ name: 'AgentProfile' })
-export class AgentProfile extends Ad4mModel {
+export class AgentProfile extends WeNode {
   @Flag({ through: 'we://type', value: 'we://agent_profile' })
   type: string = '';
 

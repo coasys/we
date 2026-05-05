@@ -82,10 +82,6 @@ All models — both entities and blocks — extend `WeNode`, which in turn exten
 
 These are always present on every model instance but are only surfaced in the UI where contextually appropriate (e.g. a `LocationBlock` pin on a map might not show a comments thread, but the data is there if needed in future).
 
-### `Ad4mModel` exception
-
-`AgentProfile` is the one entity that extends `Ad4mModel` directly (not `WeNode`). This is because it uses the `@Flag` decorator for type discrimination and has a different identity model rooted in the agent's DID rather than a generated UUID. Keep this exception in mind — `AgentProfile` cannot be registered in arbitrary perspectives the same way `WeNode`-based models can without confirmation that `Ad4mModel` registration works in that context.
-
 ---
 
 ## Naming Conventions
