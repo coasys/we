@@ -478,6 +478,7 @@ export function AdamStoreProvider(props: ParentProps) {
         await Promise.all([
           Space.register(existing),
           AgentProfile.register(existing),
+          LocationBlock.register(existing),
           SignalType.register(existing),
           Signal.register(existing),
         ]);
@@ -490,6 +491,7 @@ export function AdamStoreProvider(props: ParentProps) {
       await Promise.all([
         Space.register(globalP),
         AgentProfile.register(globalP),
+        LocationBlock.register(globalP),
         SignalType.register(globalP),
         Signal.register(globalP),
         WeNode.register(globalP),

@@ -163,7 +163,7 @@ async function startExecutor() {
       executorPath,
       [
         'run', // The 'run' subcommand
-        '--gql-port',
+        '--port',
         ad4mPort.toString(),
         '--admin-credential',
         ad4mToken,
