@@ -5,6 +5,18 @@ export const createSpaceModal = {
     maxWidth: '560px',
     width: '100%',
   },
+  $localState: {
+    name: {
+      type: 'string',
+      initial: '',
+      validate: [{ rule: 'required', message: 'Name is required' }],
+    },
+    description: { type: 'string', initial: '' },
+    shared: { type: 'boolean', initial: false },
+    listedGlobally: { type: 'boolean', initial: false },
+    thumbnail: { type: 'file', initial: null },
+    globalPromptDismissed: { type: 'boolean', initial: false },
+  },
   children: [
     { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create a New Space'] },
 

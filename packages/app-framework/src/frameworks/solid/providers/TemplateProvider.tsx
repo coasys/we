@@ -36,7 +36,7 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
     createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
 
     const aiRightMargin = () => (stores.aiStore.isOpen() ? '400px' : '0');
-    const contentWidth = () => (stores.aiStore.isOpen() ? 'calc(100% - 66px - 400px)' : 'calc(100% - 66px)');
+    const contentWidth = () => (stores.aiStore.isOpen() ? 'calc(100% - 72px - 400px)' : 'calc(100% - 72px)');
 
     return (
       <>
@@ -48,7 +48,7 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
           style={{
             position: 'fixed',
             top: '0',
-            left: '66px',
+            left: '72px',
             right: aiRightMargin(),
             width: contentWidth(),
             height: '100vh',

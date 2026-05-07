@@ -23,128 +23,136 @@ export const sidebar: SchemaNode = {
         zIndex: 10,
         border: '0',
         itemPadding: '12px',
-        centerItems: false,
+        centerItems: true,
         items: [
-          // --- Current space / perspective ---
+          // // Current space / perspective
+          // {
+          //   type: 'item',
+          //   id: 'current-space',
+          //   // Show house-line icon only when on home (no space, no perspective)
+          //   icon: {
+          //     $if: {
+          //       condition: { $store: 'spaceStore.space' },
+          //       then: null,
+          //       else: {
+          //         $if: {
+          //           condition: { $store: 'adamStore.currentPerspective' },
+          //           then: 'map-pin-area',
+          //           else: 'house-line',
+          //         },
+          //       },
+          //     },
+          //   },
+          //   // Show avatar (with image or initials) when a space/perspective is active
+          //   avatar: {
+          //     $if: {
+          //       condition: { $store: 'spaceStore.space' },
+          //       then: { src: { $store: 'spaceStore.space.image' }, name: { $store: 'spaceStore.space.name' } },
+          //       else: {
+          //         $if: {
+          //           condition: { $store: 'adamStore.currentPerspective' },
+          //           then: { src: '', name: { $store: 'adamStore.currentPerspective.name' } },
+          //           else: null,
+          //         },
+          //       },
+          //     },
+          //   },
+          //   label: {
+          //     $if: {
+          //       condition: { $store: 'spaceStore.space' },
+          //       then: { $store: 'spaceStore.space.name' },
+          //       else: {
+          //         $if: {
+          //           condition: { $store: 'adamStore.currentPerspective' },
+          //           then: { $store: 'adamStore.currentPerspective.name' },
+          //           else: 'Home',
+          //         },
+          //       },
+          //     },
+          //   },
+          //   onClick: [
+          //     {
+          //       $if: {
+          //         condition: { $store: 'spaceStore.space' },
+          //         then: { $action: 'templateStore.switchTemplate', args: ['default'] },
+          //       },
+          //     },
+          //     {
+          //       $if: {
+          //         condition: { $store: 'spaceStore.space' },
+          //         then: {
+          //           $action: 'routeStore.navigate',
+          //           args: [{ $concat: ['/space/', { $store: 'spaceStore.space.uuid' }] }],
+          //         },
+          //         else: {
+          //           $if: {
+          //             condition: { $store: 'adamStore.currentPerspective' },
+          //             then: {
+          //               $action: 'routeStore.navigate',
+          //               args: [{ $concat: ['/space/', { $store: 'adamStore.currentPerspective.uuid' }] }],
+          //             },
+          //           },
+          //         },
+          //       },
+          //     },
+          //   ],
+          // },
+
+          // Current route
+          // {
+          //   type: 'item',
+          //   id: 'debug-route',
+          //   icon: 'link-simple',
+          //   label: { $store: 'routeStore.currentPath' },
+          // },
+
+          // Profile
           {
-            type: 'item',
-            id: 'current-space',
-            // Show house-line icon only when on home (no space, no perspective)
-            icon: {
-              $if: {
-                condition: { $store: 'spaceStore.space' },
-                then: null,
-                else: {
+            id: 'profile',
+            icon: 'user',
+            label: 'Profile',
+            active: {
+              $eq: [
+                {
                   $if: {
-                    condition: { $store: 'adamStore.currentPerspective' },
-                    then: 'map-pin-area',
-                    else: 'house-line',
+                    condition: { $store: 'appStore.activeAppId' },
+                    then: null,
+                    else: { $store: 'templateStore.currentTemplate.id' },
                   },
                 },
-              },
-            },
-            // Show avatar (with image or initials) when a space/perspective is active
-            avatar: {
-              $if: {
-                condition: { $store: 'spaceStore.space' },
-                then: { src: { $store: 'spaceStore.space.image' }, name: { $store: 'spaceStore.space.name' } },
-                else: {
-                  $if: {
-                    condition: { $store: 'adamStore.currentPerspective' },
-                    then: { src: '', name: { $store: 'adamStore.currentPerspective.name' } },
-                    else: null,
-                  },
-                },
-              },
-            },
-            label: {
-              $if: {
-                condition: { $store: 'spaceStore.space' },
-                then: { $store: 'spaceStore.space.name' },
-                else: {
-                  $if: {
-                    condition: { $store: 'adamStore.currentPerspective' },
-                    then: { $store: 'adamStore.currentPerspective.name' },
-                    else: 'Home',
-                  },
-                },
-              },
+                'profile',
+              ],
             },
             onClick: [
-              {
-                $if: {
-                  condition: { $store: 'spaceStore.space' },
-                  then: { $action: 'templateStore.switchTemplate', args: ['default'] },
-                },
-              },
-              {
-                $if: {
-                  condition: { $store: 'spaceStore.space' },
-                  then: {
-                    $action: 'routeStore.navigate',
-                    args: [{ $concat: ['/space/', { $store: 'spaceStore.space.uuid' }] }],
-                  },
-                  else: {
-                    $if: {
-                      condition: { $store: 'adamStore.currentPerspective' },
-                      then: {
-                        $action: 'routeStore.navigate',
-                        args: [{ $concat: ['/space/', { $store: 'adamStore.currentPerspective.uuid' }] }],
-                      },
-                    },
-                  },
-                },
-              },
+              { $action: 'appStore.deactivateApp' },
+              { $action: 'templateStore.switchTemplate', args: ['profile'] },
             ],
           },
-          // --- Debug: current route ---
-          {
-            type: 'item',
-            id: 'debug-route',
-            icon: 'link-simple',
-            label: { $store: 'routeStore.currentPath' },
-          },
 
-          // --- All AD4M perspectives ---
+          // Settings
           {
-            type: 'group',
-            id: 'spaces',
-            label: 'Spaces',
-            collapsed: true,
-            reorderable: true,
-            onReorder: { $action: 'adamStore.reorderPerspectives' },
-            items: {
-              $map: {
-                items: { $store: 'adamStore.orderedPerspectives' },
-                select: {
-                  id: '$item.uuid',
-                  // System perspectives (we-root, we-test, …) get a gear icon; others get initials avatar
-                  icon: {
-                    $if: {
-                      condition: { $in: ['$item.uuid', { $store: 'adamStore.systemPerspectiveUuids' }] },
-                      then: 'user-circle-gear',
-                      else: null,
-                    },
+            id: 'settings',
+            icon: 'gear',
+            label: 'Settings',
+            active: {
+              $eq: [
+                {
+                  $if: {
+                    condition: { $store: 'appStore.activeAppId' },
+                    then: null,
+                    else: { $store: 'templateStore.currentTemplate.id' },
                   },
-                  avatar: {
-                    $if: {
-                      condition: { $in: ['$item.uuid', { $store: 'adamStore.systemPerspectiveUuids' }] },
-                      then: null,
-                      else: { src: '', name: '$item.name' },
-                    },
-                  },
-                  label: '$item.name',
-                  active: { $eq: ['$item.uuid', { $store: 'adamStore.currentPerspective.uuid' }] },
-                  onClick: [
-                    { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
-                    { $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$item.uuid'] }] },
-                  ],
                 },
-              },
+                'settings',
+              ],
             },
+            onClick: [
+              { $action: 'appStore.deactivateApp' },
+              { $action: 'templateStore.switchTemplate', args: ['settings'] },
+            ],
           },
 
-          // --- Template switching ---
+          // Templates
           {
             type: 'group',
             id: 'templates',
@@ -177,7 +185,7 @@ export const sidebar: SchemaNode = {
             },
           },
 
-          // --- Installed apps ---
+          // Apps
           {
             type: 'group',
             id: 'apps',
@@ -195,52 +203,48 @@ export const sidebar: SchemaNode = {
               },
             },
           },
+
+          // Spaces
+          {
+            type: 'group',
+            id: 'spaces',
+            label: 'Spaces',
+            reorderable: true,
+            onReorder: { $action: 'adamStore.reorderPerspectives' },
+            items: {
+              $map: {
+                items: { $store: 'adamStore.orderedPerspectives' },
+                select: {
+                  id: '$item.uuid',
+                  // System perspectives (we-root, we-test, …) get a gear icon; others get initials avatar
+                  icon: {
+                    $if: {
+                      condition: { $in: ['$item.uuid', { $store: 'adamStore.systemPerspectiveUuids' }] },
+                      then: 'user-circle-gear',
+                      else: null,
+                    },
+                  },
+                  avatar: {
+                    $if: {
+                      condition: { $in: ['$item.uuid', { $store: 'adamStore.systemPerspectiveUuids' }] },
+                      then: null,
+                      else: { src: '', name: '$item.name' },
+                    },
+                  },
+                  label: '$item.name',
+                  active: { $eq: ['$item.uuid', { $store: 'adamStore.currentPerspective.uuid' }] },
+                  onClick: [
+                    { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
+                    { $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$item.uuid'] }] },
+                  ],
+                },
+              },
+            },
+          },
         ],
 
         // Footer: settings, profile, logout
         footerItems: [
-          {
-            id: 'profile',
-            icon: 'user',
-            label: 'Profile',
-            active: {
-              $eq: [
-                {
-                  $if: {
-                    condition: { $store: 'appStore.activeAppId' },
-                    then: null,
-                    else: { $store: 'templateStore.currentTemplate.id' },
-                  },
-                },
-                'profile',
-              ],
-            },
-            onClick: [
-              { $action: 'appStore.deactivateApp' },
-              { $action: 'templateStore.switchTemplate', args: ['profile'] },
-            ],
-          },
-          {
-            id: 'settings',
-            icon: 'gear',
-            label: 'Settings',
-            active: {
-              $eq: [
-                {
-                  $if: {
-                    condition: { $store: 'appStore.activeAppId' },
-                    then: null,
-                    else: { $store: 'templateStore.currentTemplate.id' },
-                  },
-                },
-                'settings',
-              ],
-            },
-            onClick: [
-              { $action: 'appStore.deactivateApp' },
-              { $action: 'templateStore.switchTemplate', args: ['settings'] },
-            ],
-          },
           {
             id: 'schema-tests',
             icon: 'flask',
