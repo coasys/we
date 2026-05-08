@@ -342,9 +342,29 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
       }
     }
 
-    // Mount new layers
+    // Mount new layers or update already-mounted ones
     for (const { config, instance, layerKey } of enabledResolved) {
       if (mountedLayers.has(layerKey)) {
+        // Layer is already mounted — call onUpdate with the new options if supported
+        const mounted = mountedLayers.get(layerKey)!;
+        if (mounted.instance.onUpdate) {
+          mounted.config = config;
+          try {
+            const result = mounted.instance.onUpdate({
+              viewer: viewer!,
+              events: events!,
+              store: store!,
+              options: config.options,
+              id: layerKey,
+              onCleanup: (fn) => cleanupFunctions!.get(layerKey)?.push(fn),
+            });
+            if (result instanceof Promise) {
+              result.catch((err) => console.error(`Error updating layer "${layerKey}":`, err));
+            }
+          } catch (err) {
+            console.error(`Error updating layer "${layerKey}":`, err);
+          }
+        }
         continue;
       }
 

@@ -1,4 +1,4 @@
-import { Cartesian2, Cartesian3, Color, defined, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium';
+import { Cartesian2, Cartesian3, Color, defined, ScreenSpaceEventHandler, ScreenSpaceEventType, Viewer } from 'cesium';
 
 import type { LayerContext, LayerFactory } from '../../types';
 
@@ -28,35 +28,40 @@ export interface PointLocationsOptions {
  * Generic point-marker layer for displaying named lat/lng pins on the globe.
  * Use the same factory multiple times with different `layerName` + `locations`
  * to render distinct sets of pins (e.g. spaces vs agents) without ID collisions.
+ *
+ * Implements `onUpdate` so CesiumGlobe can reactively refresh pins when `locations`
+ * data arrives asynchronously (e.g. from a store) without remounting the layer.
  */
-export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (options?: PointLocationsOptions) => ({
-  name: 'point-locations',
+export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initialOptions?: PointLocationsOptions) => {
+  // Shared state across mount/update so click handler always uses the latest callback
+  let entityIds: string[] = [];
+  let onLocationClick: ((location: UserLocation) => void) | undefined = initialOptions?.onLocationClick;
 
-  metadata: {
-    requiresIonAccount: false,
-    description: 'Display named point location markers with labels and click interactions.',
-  },
-
-  onMount: (context: LayerContext) => {
-    const { viewer, events, id: layerKey, onCleanup } = context;
-    const { locations = [], markerSize = 15, defaultColor = '#00ffff', onLocationClick } = options || {};
-
-    // Resolve locations — function accessor, JSON string, or plain array
-    const raw = typeof locations === 'function' ? locations() : locations;
-
-    let parsedLocations: UserLocation[] = [];
+  function resolveLocations(opts: PointLocationsOptions | undefined): UserLocation[] {
+    const raw = typeof opts?.locations === 'function' ? opts.locations() : (opts?.locations ?? []);
     if (typeof raw === 'string') {
       try {
-        parsedLocations = JSON.parse(raw);
+        return JSON.parse(raw) as UserLocation[];
       } catch (error) {
-        console.error(`[${layerKey}] Failed to parse locations JSON:`, error);
-        return;
+        console.error('Failed to parse locations JSON:', error);
+        return [];
       }
-    } else if (Array.isArray(raw)) {
-      parsedLocations = raw;
     }
+    return Array.isArray(raw) ? raw : [];
+  }
 
-    const entityIds: string[] = [];
+  function clearEntities(viewer: Viewer): void {
+    entityIds.forEach((id) => {
+      const entity = viewer.entities.getById(id);
+      if (entity) viewer.entities.remove(entity);
+    });
+    entityIds = [];
+  }
+
+  function renderEntities(viewer: Viewer, layerKey: string, opts: PointLocationsOptions | undefined): void {
+    const parsedLocations = resolveLocations(opts);
+    const markerSize = opts?.markerSize ?? 15;
+    const defaultColor = opts?.defaultColor ?? '#00ffff';
 
     parsedLocations.forEach((loc: UserLocation) => {
       const entity = viewer.entities.add({
@@ -82,30 +87,53 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (options
       });
       entityIds.push(entity.id);
     });
+  }
 
-    const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
-    handler.setInputAction((click: { position: Cartesian2 }) => {
-      const pickedObject = viewer.scene.pick(click.position);
-      if (defined(pickedObject) && pickedObject.id) {
-        const entity = pickedObject.id;
-        if (entity.properties?.locationData) {
-          const locationData = entity.properties.locationData.getValue();
-          events.emit('location-clicked', locationData);
-          onLocationClick?.(locationData);
+  return {
+    name: 'point-locations',
+
+    metadata: {
+      requiresIonAccount: false,
+      description: 'Display named point location markers with labels and click interactions.',
+    },
+
+    onMount: (context: LayerContext) => {
+      const { viewer, events, id: layerKey, onCleanup } = context;
+      const opts = (context.options as PointLocationsOptions | undefined) ?? initialOptions;
+      onLocationClick = opts?.onLocationClick;
+
+      renderEntities(viewer, layerKey, opts);
+
+      const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+      handler.setInputAction((click: { position: Cartesian2 }) => {
+        const pickedObject = viewer.scene.pick(click.position);
+        if (defined(pickedObject) && pickedObject.id) {
+          const entity = pickedObject.id;
+          if (entity.properties?.locationData) {
+            const locationData = entity.properties.locationData.getValue();
+            events.emit('location-clicked', locationData);
+            onLocationClick?.(locationData);
+          }
         }
-      }
-    }, ScreenSpaceEventType.LEFT_CLICK);
+      }, ScreenSpaceEventType.LEFT_CLICK);
 
-    onCleanup(() => {
-      handler.destroy();
-      entityIds.forEach((id) => {
-        const entity = viewer.entities.getById(id);
-        if (entity) viewer.entities.remove(entity);
+      onCleanup(() => {
+        handler.destroy();
+        clearEntities(viewer);
       });
-    });
-  },
+    },
 
-  onUnmount: () => {
-    // Cleanup handled by onCleanup callbacks
-  },
-});
+    onUpdate: (context: LayerContext) => {
+      const { viewer, id: layerKey } = context;
+      const opts = context.options as PointLocationsOptions | undefined;
+      // Keep the click callback in sync with the latest options
+      onLocationClick = opts?.onLocationClick;
+      clearEntities(viewer);
+      renderEntities(viewer, layerKey, opts);
+    },
+
+    onUnmount: () => {
+      // Cleanup handled by onCleanup callbacks registered in onMount
+    },
+  };
+};

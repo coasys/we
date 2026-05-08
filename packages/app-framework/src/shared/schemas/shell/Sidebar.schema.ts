@@ -24,62 +24,62 @@ export const sidebar: SchemaNode = {
         border: '0',
         itemPadding: '12px',
         centerItems: true,
-        expandedWidth: '800px',
+        // expandedWidth: '800px',
         items: [
           // // Current space / perspective
-          {
-            type: 'item',
-            id: 'current-space',
-            // Show house-line icon only when on home (no space, no perspective)
-            icon: {
-              $if: {
-                condition: { $store: 'spaceStore.space' },
-                then: null,
-                else: {
-                  $if: {
-                    condition: { $store: 'adamStore.currentPerspective' },
-                    then: 'map-pin-area',
-                    else: 'house-line',
-                  },
-                },
-              },
-            },
-            // Show avatar (with image or initials) when a space/perspective is active
-            avatar: {
-              $if: {
-                condition: { $store: 'spaceStore.space' },
-                then: { src: { $store: 'spaceStore.space.image' }, name: { $store: 'spaceStore.space.name' } },
-                else: {
-                  $if: {
-                    condition: { $store: 'adamStore.currentPerspective' },
-                    then: { src: '', name: { $store: 'adamStore.currentPerspective.name' } },
-                    else: null,
-                  },
-                },
-              },
-            },
-            label: {
-              $if: {
-                condition: { $store: 'spaceStore.space' },
-                then: { $store: 'spaceStore.space.name' },
-                else: {
-                  $if: {
-                    condition: { $store: 'adamStore.currentPerspective' },
-                    then: { $store: 'adamStore.currentPerspective.name' },
-                    else: 'No space or perspective',
-                  },
-                },
-              },
-            },
-          },
+          // {
+          //   type: 'item',
+          //   id: 'current-space',
+          //   // Show house-line icon only when on home (no space, no perspective)
+          //   icon: {
+          //     $if: {
+          //       condition: { $store: 'spaceStore.space' },
+          //       then: null,
+          //       else: {
+          //         $if: {
+          //           condition: { $store: 'adamStore.currentPerspective' },
+          //           then: 'map-pin-area',
+          //           else: 'house-line',
+          //         },
+          //       },
+          //     },
+          //   },
+          //   // Show avatar (with image or initials) when a space/perspective is active
+          //   avatar: {
+          //     $if: {
+          //       condition: { $store: 'spaceStore.space' },
+          //       then: { src: { $store: 'spaceStore.space.image' }, name: { $store: 'spaceStore.space.name' } },
+          //       else: {
+          //         $if: {
+          //           condition: { $store: 'adamStore.currentPerspective' },
+          //           then: { src: '', name: { $store: 'adamStore.currentPerspective.name' } },
+          //           else: null,
+          //         },
+          //       },
+          //     },
+          //   },
+          //   label: {
+          //     $if: {
+          //       condition: { $store: 'spaceStore.space' },
+          //       then: { $store: 'spaceStore.space.name' },
+          //       else: {
+          //         $if: {
+          //           condition: { $store: 'adamStore.currentPerspective' },
+          //           then: { $store: 'adamStore.currentPerspective.name' },
+          //           else: 'No space or perspective',
+          //         },
+          //       },
+          //     },
+          //   },
+          // },
 
-          // Current route
-          {
-            type: 'item',
-            id: 'debug-route',
-            icon: 'link-simple',
-            label: { $store: 'routeStore.currentPath' },
-          },
+          // // Current route
+          // {
+          //   type: 'item',
+          //   id: 'debug-route',
+          //   icon: 'link-simple',
+          //   label: { $store: 'routeStore.currentPath' },
+          // },
 
           // Profile
           {
@@ -154,8 +154,6 @@ export const sidebar: SchemaNode = {
                   onClick: [
                     { $action: 'appStore.deactivateApp' },
                     { $action: 'templateStore.switchTemplate', args: ['$item.id'] },
-                    // { $action: 'adamStore.activateGlobalPerspective' },
-                    // { $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$item.uuid'] }] },
                   ],
                 },
               },

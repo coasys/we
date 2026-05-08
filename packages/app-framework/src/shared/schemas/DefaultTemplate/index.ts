@@ -25,6 +25,7 @@ export const defaultTemplate: TemplateSchema = {
         {
           type: 'CollapsibleSidebar',
           props: {
+            defaultExpanded: true,
             bg: 'neutral-25',
             side: 'left',
             position: 'absolute',
