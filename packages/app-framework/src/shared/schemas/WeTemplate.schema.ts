@@ -1304,7 +1304,7 @@ export const weTemplate: TemplateSchema = {
           ],
         },
 
-        // Globe — wired to globalStore
+        // Globe — wired to spaceStore
         {
           type: 'CesiumGlobe',
           props: {
@@ -1335,20 +1335,20 @@ export const weTemplate: TemplateSchema = {
                 factory: 'spaceLocationsLayer',
                 enabled: true,
                 options: {
-                  locations: { $store: 'globalStore.spaceLocationPins' },
+                  locations: { $store: 'spaceStore.spaceLocationPins' },
                   markerSize: 18,
                   defaultColor: '#a855f7',
-                  onLocationClick: { $action: 'globalStore.setSelectedSpaceById', args: ['$arg.id'] },
+                  onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },
                 },
               },
               {
                 factory: 'agentLocationsLayer',
                 enabled: true,
                 options: {
-                  locations: { $store: 'globalStore.agentLocationPins' },
+                  locations: { $store: 'spaceStore.memberLocationPins' },
                   markerSize: 14,
                   defaultColor: '#f97316',
-                  onLocationClick: { $action: 'globalStore.setSelectedAgentById', args: ['$arg.id'] },
+                  onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },
                 },
               },
               {
@@ -1364,7 +1364,7 @@ export const weTemplate: TemplateSchema = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'globalStore.selectedGlobalEntity' },
+            condition: { $store: 'spaceStore.selectedPin' },
             then: globalEntityModal,
           },
         },

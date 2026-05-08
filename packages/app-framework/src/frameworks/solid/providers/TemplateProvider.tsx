@@ -130,9 +130,13 @@ function flattenRoutes(
       }, leaf) as JSX.Element;
     };
 
-    // Redirect routes don't render content — they navigate immediately
+    // Redirect routes don't render content — they navigate immediately.
+    // Relative redirects (starting with ./ or ../) are passed through as-is so SolidJS
+    // resolves them against the actual runtime URL (which has the real param values).
+    // Absolute-style redirects are prefixed with parentPath as before.
     if (route.redirect) {
-      const target = parentPath + route.redirect;
+      const isRelative = route.redirect.startsWith('./') || route.redirect.startsWith('../');
+      const target = isRelative ? route.redirect : parentPath + route.redirect;
       return [{ path: fullPath, component: () => <Navigate href={target} />, redirect: target }];
     }
 

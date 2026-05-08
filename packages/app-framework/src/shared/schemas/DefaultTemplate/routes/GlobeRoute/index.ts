@@ -21,75 +21,75 @@ export const globeRoute: RouteSchema = {
       type: 'Column',
       props: { width: 'calc(100% - 72px)', p: '400', gap: '400', position: 'absolute', zIndex: 5 },
       children: [
-        // ── Global Space join prompt (shown until joined or dismissed) ──
-        {
-          type: '$if',
-          props: {
-            condition: {
-              $and: [
-                { $not: { $store: 'adamStore.agentSettings.globalSpaceJoined' } },
-                { $not: { $local: 'globalPromptDismissed' } },
-              ],
-            },
-            then: {
-              type: 'Row',
-              props: {
-                gap: '400',
-                ay: 'center',
-                p: '400',
-                r: '400',
-                bg: 'primary-50',
-                border: '1px solid primary-200',
-              },
-              children: [
-                { type: 'we-icon', props: { name: 'globe', color: 'primary-500', size: '28px' } },
-                {
-                  type: 'Column',
-                  props: { gap: '100', flex: '1' },
-                  children: [
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '500', fontWeight: 'semibold' },
-                      children: ['Discover the WE Global Space'],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '300', color: 'neutral-500' },
-                      children: [
-                        'Connect with communities and people around the world. Spaces you make public will appear on the global discovery globe.',
-                      ],
-                    },
-                  ],
-                },
-                {
-                  type: 'Row',
-                  props: { gap: '200' },
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: {
-                        variant: 'ghost',
-                        text: 'Maybe Later',
-                        height: '36px',
-                        onClick: { $setLocal: 'globalPromptDismissed', value: true },
-                      },
-                    },
-                    {
-                      type: 'we-button',
-                      props: {
-                        text: 'Join Global Space',
-                        bg: 'primary-500',
-                        color: 'neutral-0',
-                        height: '36px',
-                        onClick: { $action: 'adamStore.joinGlobalSpace', args: [] },
-                      },
-                    },
-                  ],
-                },
-              ],
-            },
-          },
-        },
+        // // ── Global Space join prompt (shown until joined or dismissed) ──
+        // {
+        //   type: '$if',
+        //   props: {
+        //     condition: {
+        //       $and: [
+        //         { $not: { $store: 'adamStore.agentSettings.globalSpaceJoined' } },
+        //         { $not: { $local: 'globalPromptDismissed' } },
+        //       ],
+        //     },
+        //     then: {
+        //       type: 'Row',
+        //       props: {
+        //         gap: '400',
+        //         ay: 'center',
+        //         p: '400',
+        //         r: '400',
+        //         bg: 'primary-50',
+        //         border: '1px solid primary-200',
+        //       },
+        //       children: [
+        //         { type: 'we-icon', props: { name: 'globe', color: 'primary-500', size: '28px' } },
+        //         {
+        //           type: 'Column',
+        //           props: { gap: '100', flex: '1' },
+        //           children: [
+        //             {
+        //               type: 'we-text',
+        //               props: { fontSize: '500', fontWeight: 'semibold' },
+        //               children: ['Discover the WE Global Space'],
+        //             },
+        //             {
+        //               type: 'we-text',
+        //               props: { fontSize: '300', color: 'neutral-500' },
+        //               children: [
+        //                 'Connect with communities and people around the world. Spaces you make public will appear on the global discovery globe.',
+        //               ],
+        //             },
+        //           ],
+        //         },
+        //         {
+        //           type: 'Row',
+        //           props: { gap: '200' },
+        //           children: [
+        //             {
+        //               type: 'we-button',
+        //               props: {
+        //                 variant: 'ghost',
+        //                 text: 'Maybe Later',
+        //                 height: '36px',
+        //                 onClick: { $setLocal: 'globalPromptDismissed', value: true },
+        //               },
+        //             },
+        //             {
+        //               type: 'we-button',
+        //               props: {
+        //                 text: 'Join Global Space',
+        //                 bg: 'primary-500',
+        //                 color: 'neutral-0',
+        //                 height: '36px',
+        //                 onClick: { $action: 'adamStore.joinGlobalSpace', args: [] },
+        //               },
+        //             },
+        //           ],
+        //         },
+        //       ],
+        //     },
+        //   },
+        // },
         {
           type: 'Row',
           props: { gap: '400' },
@@ -227,13 +227,23 @@ export const globeRoute: RouteSchema = {
         ],
         planetLayers: [
           {
-            factory: 'userLocationsLayer',
+            factory: 'spaceLocationsLayer',
             enabled: { $store: 'spaceStore.showUserLocations' },
             options: {
-              locations: { $store: 'spaceStore.space.userLocations' },
+              locations: { $store: 'spaceStore.spaceLocationPins' },
               markerSize: 15,
-              defaultColor: '#00ffff',
-              onLocationClick: { $action: 'consoleStore.log', args: ['Location clicked:', '$arg'] },
+              defaultColor: '#a855f7',
+              onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },
+            },
+          },
+          {
+            factory: 'agentLocationsLayer',
+            enabled: { $store: 'spaceStore.showUserLocations' },
+            options: {
+              locations: { $store: 'spaceStore.memberLocationPins' },
+              markerSize: 12,
+              defaultColor: '#f97316',
+              onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },
             },
           },
           {
