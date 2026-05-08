@@ -217,8 +217,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       allTemplates().find((t) => t.id === newTemplateId) || shellTemplates.find((t) => t.id === newTemplateId);
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
-      // Default template is always space-rooted; ensure we start at /space/global
-      routeStore.navigate(newTemplateId === 'default' ? '/space/global' : '/');
+      // Always land on '/' — the template's own routes handle any redirect from there
+      routeStore.navigate('/');
       // Persist choice to Ad4m
       adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });
     } else {

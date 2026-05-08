@@ -1,7 +1,9 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
+import { cardsRoute } from './routes/CardsRoute';
 import { globeRoute } from './routes/GlobeRoute';
-import { spaceRoute } from './routes/SpaceRoute';
+import { graphRoute } from './routes/GraphRoute';
+import { homeRoute } from './routes/HomeRoute';
 
 export const defaultTemplate: TemplateSchema = {
   meta: {
@@ -28,32 +30,32 @@ export const defaultTemplate: TemplateSchema = {
             id: 'home',
             icon: 'house',
             label: 'Home',
-            onClick: { $action: 'routeStore.navigate', args: ['/'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/'] },
+            onClick: { $action: 'routeStore.navigate', args: ['./home'] },
+            active: { $eq: [{ $store: 'routeStore.segments.0' }, 'home'] },
           },
           {
             type: 'item',
             id: 'globe',
             icon: 'globe-hemisphere-west',
             label: 'Globe',
-            onClick: { $action: 'routeStore.navigate', args: ['/globe'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/globe'] },
+            onClick: { $action: 'routeStore.navigate', args: ['./globe'] },
+            active: { $eq: [{ $store: 'routeStore.segments.0' }, 'globe'] },
           },
           {
             type: 'item',
             id: 'graph',
             icon: 'graph',
             label: 'Graph',
-            onClick: { $action: 'routeStore.navigate', args: ['/graph'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/graph'] },
+            onClick: { $action: 'routeStore.navigate', args: ['./graph'] },
+            active: { $eq: [{ $store: 'routeStore.segments.0' }, 'graph'] },
           },
           {
             type: 'item',
             id: 'cards',
             icon: 'cards-three',
             label: 'Cards',
-            onClick: { $action: 'routeStore.navigate', args: ['/cards'] },
-            active: { $eq: [{ $store: 'routeStore.currentPath' }, '/cards'] },
+            onClick: { $action: 'routeStore.navigate', args: ['./cards'] },
+            active: { $eq: [{ $store: 'routeStore.segments.0' }, 'cards'] },
           },
         ],
       },
@@ -120,5 +122,5 @@ export const defaultTemplate: TemplateSchema = {
       },
     },
   ],
-  routes: [globeRoute, spaceRoute],
+  routes: [{ path: '/', redirect: './home' }, homeRoute, globeRoute, graphRoute, cardsRoute],
 };
