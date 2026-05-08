@@ -348,11 +348,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     if (!segs[1]) return null;
-    // Suppress gate flicker while async hydration is in progress
-    if (loading()) return null;
 
     const p = perspective();
     const s = space();
+
+    // While async hydration is in progress: if we already have a perspective loaded
+    // (e.g. re-clicking the current space or switching spaces), keep it visible as
+    // joined so the gate doesn't flash. Only hold off (return null) when there is
+    // genuinely nothing loaded yet — that prevents showing "not joined" prematurely
+    // on the very first navigation to an unknown perspective.
+    if (loading()) {
+      if (p) return { perspective: p, space: s as Space | null, isJoined: true };
+      return null;
+    }
+
     if (p) return { perspective: p, space: s as Space | null, isJoined: true };
     // Perspective not found locally — not yet joined
     return { perspective: null, space: null, isJoined: false };

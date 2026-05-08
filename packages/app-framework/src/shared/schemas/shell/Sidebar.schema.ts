@@ -73,13 +73,13 @@ export const sidebar: SchemaNode = {
           //   },
           // },
 
-          // // Current route
-          // {
-          //   type: 'item',
-          //   id: 'debug-route',
-          //   icon: 'link-simple',
-          //   label: { $store: 'routeStore.currentPath' },
-          // },
+          // Current route
+          {
+            type: 'item',
+            id: 'debug-route',
+            icon: 'link-simple',
+            label: { $store: 'routeStore.currentPath' },
+          },
 
           // Profile
           {

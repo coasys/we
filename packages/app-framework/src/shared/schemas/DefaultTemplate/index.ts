@@ -12,7 +12,7 @@ export const defaultTemplate: TemplateSchema = {
     icon: 'layout',
   },
   type: 'Row',
-  props: { ml: '72px', height: '100vh' },
+  props: { height: '100vh' },
   children: [{ type: '$routes' }],
   routes: [
     { path: '/', redirect: '/space/global' },
@@ -23,51 +23,72 @@ export const defaultTemplate: TemplateSchema = {
       path: '/space/:spaceId',
       children: [
         {
-          type: 'CollapsibleSidebar',
+          type: 'Column',
           props: {
-            defaultExpanded: true,
+            flex: '0 0 300px',
+            height: '100%',
+            gap: '200',
+            p: '400',
             bg: 'neutral-25',
-            side: 'left',
-            position: 'absolute',
-            zIndex: 10,
-            border: '0',
-            itemPadding: '12px',
-            centerItems: true,
-            items: [
-              {
-                type: 'item',
-                id: 'home',
-                icon: 'house',
-                label: 'Home',
-                onClick: { $action: 'routeStore.navigate', args: ['./home'] },
-                active: { $eq: [{ $store: 'routeStore.segments.2' }, 'home'] },
-              },
-              {
-                type: 'item',
-                id: 'globe',
-                icon: 'globe-hemisphere-west',
-                label: 'Globe',
-                onClick: { $action: 'routeStore.navigate', args: ['./globe'] },
-                active: { $eq: [{ $store: 'routeStore.segments.2' }, 'globe'] },
-              },
-              {
-                type: 'item',
-                id: 'graph',
-                icon: 'graph',
-                label: 'Graph',
-                onClick: { $action: 'routeStore.navigate', args: ['./graph'] },
-                active: { $eq: [{ $store: 'routeStore.segments.2' }, 'graph'] },
-              },
-              {
-                type: 'item',
-                id: 'cards',
-                icon: 'cards-three',
-                label: 'Cards',
-                onClick: { $action: 'routeStore.navigate', args: ['./cards'] },
-                active: { $eq: [{ $store: 'routeStore.segments.2' }, 'cards'] },
-              },
-            ],
           },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                text: 'Home',
+                variant: {
+                  $if: {
+                    condition: { $eq: [{ $store: 'routeStore.segments.2' }, 'home'] },
+                    then: 'primary',
+                    else: 'secondary',
+                  },
+                },
+                onClick: { $action: 'routeStore.navigate', args: ['./home'] },
+              },
+            },
+            {
+              type: 'we-button',
+              props: {
+                text: 'Globe',
+                variant: {
+                  $if: {
+                    condition: { $eq: [{ $store: 'routeStore.segments.2' }, 'globe'] },
+                    then: 'primary',
+                    else: 'secondary',
+                  },
+                },
+                onClick: { $action: 'routeStore.navigate', args: ['./globe'] },
+              },
+            },
+            {
+              type: 'we-button',
+              props: {
+                text: 'Graph',
+                variant: {
+                  $if: {
+                    condition: { $eq: [{ $store: 'routeStore.segments.2' }, 'graph'] },
+                    then: 'primary',
+                    else: 'secondary',
+                  },
+                },
+                onClick: { $action: 'routeStore.navigate', args: ['./graph'] },
+              },
+            },
+            {
+              type: 'we-button',
+              props: {
+                text: 'Cards',
+                variant: {
+                  $if: {
+                    condition: { $eq: [{ $store: 'routeStore.segments.2' }, 'cards'] },
+                    then: 'primary',
+                    else: 'secondary',
+                  },
+                },
+                onClick: { $action: 'routeStore.navigate', args: ['./cards'] },
+              },
+            },
+          ],
         },
         {
           // Gate: show routes when the current space is joined.

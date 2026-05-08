@@ -24,8 +24,11 @@ export function RouteStoreProvider(props: ParentProps) {
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
 
   function navigate(to: string, options?: Record<string, unknown>) {
-    // Skip if already on target path
-    if (window.location.pathname === to) return;
+    // Skip if already on the target path or already drilling into a sub-route of it.
+    // e.g. clicking the "global" space while at /space/global/globe should be a no-op
+    // so the CesiumGlobe doesn't unmount/remount unnecessarily.
+    const current = window.location.pathname;
+    if (current === to || current.startsWith(to + '/')) return;
 
     const nav = navigateFunction();
     if (nav) nav(to, options);

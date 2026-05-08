@@ -211,6 +211,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   function switchTemplate(newTemplateId: string) {
+    // No-op if already on this template
+    if (currentTemplate.id === newTemplateId) return;
     // If user manually switches before the boot restore fires, skip the restore
     initialRestoreDone = true;
     const newTemplate =
@@ -218,7 +220,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
       // For now always land on '/' — the template's own routes handle any redirect from there
-      routeStore.navigate('/');
+      // routeStore.navigate('/');
       // Persist choice to Ad4m
       adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });
     } else {
