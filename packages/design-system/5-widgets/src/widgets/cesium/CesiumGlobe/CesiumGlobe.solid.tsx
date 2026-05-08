@@ -280,6 +280,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
           store: store!,
           options: config.options,
           id: layerKey,
+          zIndex: config.zIndex,
           onCleanup: (fn) => cleanups.push(fn),
         });
 
@@ -356,6 +357,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
               store: store!,
               options: config.options,
               id: layerKey,
+              zIndex: config.zIndex,
               onCleanup: (fn) => cleanupFunctions!.get(layerKey)?.push(fn),
             });
             if (result instanceof Promise) {
@@ -380,6 +382,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
           store: store!,
           options: config.options,
           id: layerKey,
+          zIndex: config.zIndex,
           onCleanup: (fn) => cleanups.push(fn),
         });
 

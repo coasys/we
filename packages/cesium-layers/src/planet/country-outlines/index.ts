@@ -101,6 +101,11 @@ export const countryOutlinesLayer: LayerFactory<CountryOutlinesOptions> = (optio
                   positions,
                   width,
                   material: polylineColor,
+                  // Drape the line on the ellipsoid surface using GroundPolylinePrimitive.
+                  // Ground-clamped polylines render in a dedicated surface-decal pass
+                  // that is always sorted behind any entity with a positive height,
+                  // regardless of entity creation order or depth-buffer precision.
+                  clampToGround: true,
                 },
               });
               entities.push(entity.id);

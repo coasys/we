@@ -2,6 +2,13 @@ import { Cartesian2, Cartesian3, Color, defined, ScreenSpaceEventHandler, Screen
 
 import type { LayerContext, LayerFactory } from '../../types';
 
+/**
+ * Metres of altitude added per zIndex level.
+ * Keeps point markers above ground-level layers (borders, hexagons, etc.)
+ * while remaining visually imperceptible from typical globe zoom levels.
+ */
+const METERS_PER_Z_LEVEL = 5_000;
+
 export interface UserLocation {
   id: string;
   name: string;
@@ -58,20 +65,32 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
     entityIds = [];
   }
 
-  function renderEntities(viewer: Viewer, layerKey: string, opts: PointLocationsOptions | undefined): void {
+  function renderEntities(
+    viewer: Viewer,
+    layerKey: string,
+    opts: PointLocationsOptions | undefined,
+    zIndex?: number,
+  ): void {
     const parsedLocations = resolveLocations(opts);
     const markerSize = opts?.markerSize ?? 15;
     const defaultColor = opts?.defaultColor ?? '#00ffff';
+    // Elevate points above ground-level layers so pick rays hit them first.
+    // Default to zIndex 1 when callers omit it so pins clear borders/hexagons.
+    const height = (zIndex ?? 1) * METERS_PER_Z_LEVEL;
 
     parsedLocations.forEach((loc: UserLocation) => {
       const entity = viewer.entities.add({
         id: `${layerKey}-${loc.id}`,
-        position: Cartesian3.fromDegrees(loc.longitude, loc.latitude),
+        position: Cartesian3.fromDegrees(loc.longitude, loc.latitude, height),
         point: {
           pixelSize: markerSize + Math.min(Math.round((loc.signalEnergy ?? 0) * 1.5), 18),
           color: loc.color ? Color.fromCssColorString(loc.color) : Color.fromCssColorString(defaultColor),
           outlineColor: Color.WHITE,
           outlineWidth: 2,
+          // Do NOT disable depth test here — the planet's depth buffer correctly
+          // hides dots on the far side of the globe. The 5 km altitude offset
+          // (from zIndex) is enough to ensure the dot clears overlapping
+          // ground-level polylines (outlines, hexagons) on the visible hemisphere.
         },
         label: {
           text: loc.name,
@@ -102,7 +121,7 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
       const opts = (context.options as PointLocationsOptions | undefined) ?? initialOptions;
       onLocationClick = opts?.onLocationClick;
 
-      renderEntities(viewer, layerKey, opts);
+      renderEntities(viewer, layerKey, opts, context.zIndex);
 
       const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
       handler.setInputAction((click: { position: Cartesian2 }) => {
@@ -129,7 +148,7 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
       // Keep the click callback in sync with the latest options
       onLocationClick = opts?.onLocationClick;
       clearEntities(viewer);
-      renderEntities(viewer, layerKey, opts);
+      renderEntities(viewer, layerKey, opts, context.zIndex);
     },
 
     onUnmount: () => {
