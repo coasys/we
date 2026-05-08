@@ -1,10 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { css, html } from 'lit';
+import { css, html, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
+import { leafletCss } from './leaflet-css';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
@@ -145,7 +146,7 @@ const styles = css`
 
 @customElement('we-location-picker')
 export default class LocationPicker extends DesignSystemElement {
-  static styles = [sharedStyles, styles];
+  static styles = [sharedStyles, styles, unsafeCSS(leafletCss)];
 
   @property({ type: Number }) latitude?: number;
   @property({ type: Number }) longitude?: number;
@@ -200,15 +201,6 @@ export default class LocationPicker extends DesignSystemElement {
     if (this._map || !this._mapDiv) return;
 
     const L = await import('leaflet');
-
-    // Inject Leaflet CSS once
-    if (!document.getElementById('we-leaflet-css')) {
-      const link = document.createElement('link');
-      link.id = 'we-leaflet-css';
-      link.rel = 'stylesheet';
-      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      document.head.appendChild(link);
-    }
 
     const initialLat = this.latitude ?? 20;
     const initialLng = this.longitude ?? 0;
