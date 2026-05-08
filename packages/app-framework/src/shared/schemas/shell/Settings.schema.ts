@@ -263,7 +263,7 @@ export const settingsTemplate: TemplateSchema = {
           ],
         },
 
-        // ── All Perspectives ──
+        // All Perspectives
         {
           type: 'Column',
           props: { gap: '300' },
@@ -356,42 +356,168 @@ export const settingsTemplate: TemplateSchema = {
           ],
         },
 
-        // Spaces
+        // Shared Spaces
         {
-          type: '$each',
-          props: { items: { $store: 'adamStore.sharedSpaces' }, as: 'space' },
+          type: 'Column',
+          props: { gap: '300' },
           children: [
             {
-              type: 'Column',
-              props: {
-                p: '400',
-                r: '400',
-                bg: 'neutral-50',
-                gap: '100',
-                width: '200px',
-                border: '1px solid neutral-200',
-              },
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
               children: [
-                {
+                { type: 'we-icon', props: { name: 'globe', color: 'primary-500', size: '20px' } },
+                { type: 'we-text', props: { fontSize: '600', fontWeight: 'semibold' }, children: ['Shared Spaces'] },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $store: 'adamStore.sharedSpaces.length' },
+                then: {
                   type: 'Row',
-                  props: { gap: '200', ay: 'center' },
+                  props: { gap: '300', wrap: true },
                   children: [
                     {
-                      type: 'we-icon',
-                      props: {
-                        name: 'globe',
-                        color: 'neutral-400',
-                        size: '16px',
-                      },
-                    },
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '400', fontWeight: 'medium' },
-                      children: ['$space.name'],
+                      type: '$each',
+                      props: { items: { $store: 'adamStore.sharedSpaces' }, as: 'space' },
+                      children: [
+                        {
+                          type: 'Column',
+                          props: {
+                            p: '400',
+                            r: '400',
+                            bg: 'neutral-50',
+                            gap: '200',
+                            width: '200px',
+                            cursor: 'pointer',
+                            onClick: [
+                              { $action: 'adamStore.setCurrentPerspective', args: ['$space.uuid'] },
+                              {
+                                $action: 'routeStore.navigate',
+                                args: [{ $concat: ['/space/', '$space.uuid'] }],
+                              },
+                            ],
+                          },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center' },
+                              children: [
+                                { type: 'we-icon', props: { name: 'globe', color: 'primary-400', size: '16px' } },
+                                {
+                                  type: 'we-text',
+                                  props: { fontSize: '400', fontWeight: 'medium' },
+                                  children: ['$space.name'],
+                                },
+                              ],
+                            },
+                            {
+                              type: 'we-text',
+                              props: { fontSize: '300', color: 'neutral-400' },
+                              children: ['$space.description'],
+                            },
+                          ],
+                        },
+                      ],
                     },
                   ],
                 },
+                else: {
+                  type: 'we-text',
+                  props: { fontSize: '300', color: 'neutral-400', italic: true },
+                  children: ['No shared spaces yet'],
+                },
+              },
+            },
+          ],
+        },
+
+        // Personal Spaces
+        {
+          type: 'Column',
+          props: { gap: '300' },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                { type: 'we-icon', props: { name: 'folder', color: 'primary-500', size: '20px' } },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '600', fontWeight: 'semibold' },
+                  children: ['Personal Spaces'],
+                },
               ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $store: 'adamStore.personalSpaces.length' },
+                then: {
+                  type: 'Row',
+                  props: { gap: '300', wrap: true },
+                  children: [
+                    {
+                      type: '$each',
+                      props: { items: { $store: 'adamStore.personalSpaces' }, as: 'space' },
+                      children: [
+                        {
+                          type: 'Column',
+                          props: {
+                            p: '400',
+                            r: '400',
+                            bg: 'neutral-50',
+                            gap: '200',
+                            width: '200px',
+                            cursor: 'pointer',
+                            onClick: [
+                              {
+                                $action: 'adamStore.setCurrentPerspective',
+                                args: [{ $if: { condition: '$space.url', then: '$space.uuid', else: '$space.uuid' } }],
+                              },
+                              {
+                                $action: 'routeStore.navigate',
+                                args: [
+                                  {
+                                    $concat: [
+                                      '/space/',
+                                      { $if: { condition: '$space.url', then: '$space.url', else: '$space.uuid' } },
+                                    ],
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center' },
+                              children: [
+                                { type: 'we-icon', props: { name: 'folder', color: 'primary-400', size: '16px' } },
+                                {
+                                  type: 'we-text',
+                                  props: { fontSize: '400', fontWeight: 'medium' },
+                                  children: ['$space.name'],
+                                },
+                              ],
+                            },
+                            {
+                              type: 'we-text',
+                              props: { fontSize: '300', color: 'neutral-400' },
+                              children: ['$space.description'],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+                else: {
+                  type: 'we-text',
+                  props: { fontSize: '300', color: 'neutral-400', italic: true },
+                  children: ['No personal spaces yet'],
+                },
+              },
             },
           ],
         },

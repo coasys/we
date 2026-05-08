@@ -30,10 +30,9 @@ export interface DiscoveryData {
  * Works for the global root, community spaces, or any holarchy node.
  */
 export async function buildDiscoveryData(p: PerspectiveProxy): Promise<DiscoveryData> {
-  const signalCountInclude = { $signalCount: { from: 'signals', count: true as const } };
   const [spaces, agents, signalTypes] = await Promise.all([
-    Space.findAll(p, { include: signalCountInclude }),
-    AgentProfile.findAll(p, { include: signalCountInclude }),
+    Space.findAll(p, { include: { locations: true } }),
+    AgentProfile.findAll(p, { include: { location: true } }),
     SignalType.findAll(p),
   ]);
   return { spaces, agents, signalTypes };

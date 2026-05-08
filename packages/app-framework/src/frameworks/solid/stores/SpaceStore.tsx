@@ -60,16 +60,6 @@ export interface SpaceStore {
   clearSelectedPin: () => void;
   upsertEntitySignal: (signalTypeId: string, value: number) => Promise<void>;
 
-  // Layer visibility
-  showUserLocations: Accessor<boolean>;
-  showCountryOutlines: Accessor<boolean>;
-  showH3Hexagons: Accessor<boolean>;
-
-  // Background visibility
-  showSkybox: Accessor<boolean>;
-  showStars: Accessor<boolean>;
-  showSolarSystem: Accessor<boolean>;
-
   // Holarchy
   /** Full path from the global root down to the currently-viewed node. */
   holarchyPath: Accessor<HolarchyNode[]>;
@@ -86,8 +76,8 @@ export interface SpaceStore {
   // Actions
   getSpace: () => Promise<void>;
   createPost: (json: unknown) => Promise<void>;
-  toggleLayer: (layerName: string) => void;
-  toggleBackground: (backgroundName: string) => void;
+  // toggleLayer: (layerName: string) => void;
+  // toggleBackground: (backgroundName: string) => void;
   updateSpaceImage: (imageFile: File) => Promise<void>;
   updateSpaceCoverImage: (imageFile: File) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
@@ -170,46 +160,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   const selectedAgent = createMemo<AgentProfile | null>(() =>
     selectedPin()?.kind === 'agent' ? (members().find((a) => a.id === selectedPin()!.id) ?? null) : null,
   );
-
-  // Layer visibility state
-  const [showUserLocations, setShowUserLocations] = createSignal(true);
-  const [showCountryOutlines, setShowCountryOutlines] = createSignal(true);
-  const [showH3Hexagons, setShowH3Hexagons] = createSignal(false);
-
-  // Background visibility state
-  const [showSkybox, setShowSkybox] = createSignal(true);
-  const [showStars, setShowStars] = createSignal(true);
-  const [showSolarSystem, setShowSolarSystem] = createSignal(false);
-
-  // Toggle layer visibility
-  function toggleLayer(layerName: string) {
-    switch (layerName) {
-      case 'userLocations':
-        setShowUserLocations(!showUserLocations());
-        break;
-      case 'countryOutlines':
-        setShowCountryOutlines(!showCountryOutlines());
-        break;
-      case 'h3Hexagons':
-        setShowH3Hexagons(!showH3Hexagons());
-        break;
-    }
-  }
-
-  // Toggle background visibility
-  function toggleBackground(backgroundName: string) {
-    switch (backgroundName) {
-      case 'skybox':
-        setShowSkybox(!showSkybox());
-        break;
-      case 'stars':
-        setShowStars(!showStars());
-        break;
-      case 'solarSystem':
-        setShowSolarSystem(!showSolarSystem());
-        break;
-    }
-  }
 
   // Actions
   /**
@@ -457,7 +407,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   // For a mixed perspective: both layers hydrate simultaneously.
   createEffect(() => {
     const p = adamStore.currentPerspective();
-    console.log('SpaceStore: currentPerspective changed', p?.uuid);
+    // console.log('SpaceStore: currentPerspective changed', p?.uuid);
     if (!p) {
       setPerspective(null);
       setSpace(null);
@@ -475,11 +425,10 @@ export function SpaceStoreProvider(props: ParentProps) {
         const uuid = p.uuid;
         setSpaceId(uuid);
 
-        // Skip block-model registration for we-root — it is never a WE space and
-        // writing SHACL shapes to it permanently contaminates the model manifest.
+        // Skip block-model registration for system perspectives (we-root, we-test)
         const rootUuid = adamStore.rootPerspective()?.uuid;
         const systemUuids = adamStore.systemPerspectiveUuids();
-        console.log('systemUuids', systemUuids, 'rootUuid', rootUuid);
+        // console.log('systemUuids', systemUuids, 'rootUuid', rootUuid);
         if (systemUuids.includes(uuid)) {
           setPerspective(p);
           setSpace(null);
@@ -514,6 +463,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
         if (spaceModel) {
           const discovery = await buildDiscoveryData(p);
+          console.log('discovery', discovery);
           setChildSpaces(discovery.spaces);
           setMembers(discovery.agents);
           setSignalTypes(discovery.signalTypes);
@@ -522,7 +472,7 @@ export function SpaceStoreProvider(props: ParentProps) {
           setMembers([]);
           setSignalTypes([]);
         }
-        console.log('[SpaceStore] hydrated perspective', uuid, 'space:', spaceModel ?? null);
+        // console.log('[SpaceStore] hydrated perspective', uuid, 'space:', spaceModel ?? null);
       } catch (error) {
         console.error('SpaceStore: perspective hydration error', error);
       } finally {
@@ -539,16 +489,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     loading,
     signalTypes,
     signalTypesBySlug,
-
-    // Layer visibility
-    showUserLocations,
-    showCountryOutlines,
-    showH3Hexagons,
-
-    // Background visibility
-    showSkybox,
-    showStars,
-    showSolarSystem,
 
     // Discovery
     childSpaces,
@@ -575,8 +515,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Actions
     getSpace,
     createPost,
-    toggleLayer,
-    toggleBackground,
+    // toggleLayer,
+    // toggleBackground,
     updateSpaceImage,
     updateSpaceCoverImage,
     createSignalType,

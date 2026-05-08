@@ -7,13 +7,20 @@
 import type { RouteSchema } from '@we/schema-shared';
 
 import { createSpaceModal } from './CreateSpaceModal';
+import { globalEntityModal } from './GlobalEntityModal';
 
 export const globeRoute: RouteSchema = {
   path: '/globe',
   type: 'Column',
   $localState: {
     createSpaceOpen: { type: 'boolean', initial: false },
-    globalPromptDismissed: { type: 'boolean', initial: false },
+    showSkybox: { type: 'boolean', initial: true },
+    showStars: { type: 'boolean', initial: true },
+    showSolarSystem: { type: 'boolean', initial: false },
+    showUserLocations: { type: 'boolean', initial: true },
+    showSpaceLocations: { type: 'boolean', initial: true },
+    showCountryOutlines: { type: 'boolean', initial: true },
+    showH3Hexagons: { type: 'boolean', initial: false },
   },
   children: [
     // Header
@@ -44,31 +51,55 @@ export const globeRoute: RouteSchema = {
                         id: 'skybox',
                         label: 'Skybox',
                         icon: 'image',
-                        checked: { $store: 'spaceStore.showSkybox' },
-                        onToggle: { $action: 'spaceStore.toggleBackground', args: ['skybox'] },
+                        checked: { $local: 'showSkybox' },
+                        onToggle: { $toggleLocal: 'showSkybox' },
                       },
                       {
                         type: 'toggle',
                         id: 'stars',
                         label: 'Procedural Stars',
                         icon: 'sparkle',
-                        checked: { $store: 'spaceStore.showStars' },
-                        onToggle: { $action: 'spaceStore.toggleBackground', args: ['stars'] },
+                        checked: { $local: 'showStars' },
+                        onToggle: { $toggleLocal: 'showStars' },
                       },
                       {
                         type: 'toggle',
                         id: 'solar-system',
                         label: 'Solar System',
                         icon: 'atom',
-                        checked: { $store: 'spaceStore.showSolarSystem' },
-                        onToggle: { $action: 'spaceStore.toggleBackground', args: ['solarSystem'] },
+                        checked: { $local: 'showSolarSystem' },
+                        onToggle: { $toggleLocal: 'showSolarSystem' },
                       },
                     ],
                   },
                   {
                     type: 'group',
                     id: 'planet-surface',
-                    label: 'Planet Surface',
+                    label: 'Planet',
+                    collapsible: true,
+                    items: [
+                      {
+                        type: 'toggle',
+                        id: 'countries',
+                        label: 'Country Outlines',
+                        icon: 'flag',
+                        checked: { $local: 'showCountryOutlines' },
+                        onToggle: { $toggleLocal: 'showCountryOutlines' },
+                      },
+                      {
+                        type: 'toggle',
+                        id: 'h3',
+                        label: 'H3 Hexagons',
+                        icon: 'hexagon',
+                        checked: { $local: 'showH3Hexagons' },
+                        onToggle: { $toggleLocal: 'showH3Hexagons' },
+                      },
+                    ],
+                  },
+                  {
+                    type: 'group',
+                    id: 'content',
+                    label: 'Content',
                     collapsible: true,
                     items: [
                       {
@@ -76,24 +107,16 @@ export const globeRoute: RouteSchema = {
                         id: 'user-locations',
                         label: 'User Locations',
                         icon: 'map-pin',
-                        checked: { $store: 'spaceStore.showUserLocations' },
-                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['userLocations'] },
+                        checked: { $local: 'showUserLocations' },
+                        onToggle: { $toggleLocal: 'showUserLocations' },
                       },
                       {
                         type: 'toggle',
-                        id: 'countries',
-                        label: 'Country Outlines',
-                        icon: 'flag',
-                        checked: { $store: 'spaceStore.showCountryOutlines' },
-                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['countryOutlines'] },
-                      },
-                      {
-                        type: 'toggle',
-                        id: 'h3',
-                        label: 'H3 Hexagons',
-                        icon: 'hexagon',
-                        checked: { $store: 'spaceStore.showH3Hexagons' },
-                        onToggle: { $action: 'spaceStore.toggleLayer', args: ['h3Hexagons'] },
+                        id: 'space-locations',
+                        label: 'Space Locations',
+                        icon: 'map-pin',
+                        checked: { $local: 'showSpaceLocations' },
+                        onToggle: { $toggleLocal: 'showSpaceLocations' },
                       },
                     ],
                   },
@@ -123,12 +146,12 @@ export const globeRoute: RouteSchema = {
         backgroundLayers: [
           {
             factory: 'skyboxLayer',
-            enabled: { $store: 'spaceStore.showSkybox' },
+            enabled: { $local: 'showSkybox' },
             options: { textureSet: 'tycho2-4k' },
           },
           {
             factory: 'proceduralStarsLayer',
-            enabled: { $store: 'spaceStore.showStars' },
+            enabled: { $local: 'showStars' },
             options: {
               count: 2000,
               minDistance: 10000,
@@ -143,7 +166,7 @@ export const globeRoute: RouteSchema = {
           },
           {
             factory: 'solarSystemLayer',
-            enabled: { $store: 'spaceStore.showSolarSystem' },
+            enabled: { $local: 'showSolarSystem' },
             options: {
               planets: ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'],
               showSun: true,
@@ -159,7 +182,7 @@ export const globeRoute: RouteSchema = {
         planetLayers: [
           {
             factory: 'spaceLocationsLayer',
-            enabled: { $store: 'spaceStore.showUserLocations' },
+            enabled: { $local: 'showSpaceLocations' },
             options: {
               locations: { $store: 'spaceStore.spaceLocationPins' },
               markerSize: 15,
@@ -169,7 +192,7 @@ export const globeRoute: RouteSchema = {
           },
           {
             factory: 'agentLocationsLayer',
-            enabled: { $store: 'spaceStore.showUserLocations' },
+            enabled: { $local: 'showUserLocations' },
             options: {
               locations: { $store: 'spaceStore.memberLocationPins' },
               markerSize: 12,
@@ -179,12 +202,12 @@ export const globeRoute: RouteSchema = {
           },
           {
             factory: 'countryOutlinesLayer',
-            enabled: { $store: 'spaceStore.showCountryOutlines' },
+            enabled: { $local: 'showCountryOutlines' },
             options: { color: '#ffffff', opacity: 0.5, width: 2 },
           },
           {
             factory: 'h3HexagonsLayer',
-            enabled: { $store: 'spaceStore.showH3Hexagons' },
+            enabled: { $local: 'showH3Hexagons' },
             options: {
               maxResolution: 8,
               color: '#3388ff',
@@ -199,190 +222,16 @@ export const globeRoute: RouteSchema = {
       },
     },
 
-    // // Header
-    // {
-    //   type: 'Column',
-    //   props: { gap: '200' },
-    //   children: [
-    //     { type: 'we-text', props: { fontSize: '800', fontWeight: 'bold' }, children: ['Welcome to WE'] },
-    //     {
-    //       type: 'we-text',
-    //       props: { fontSize: '400', color: 'neutral-500' },
-    //       children: ['Your perspectives and spaces'],
-    //     },
-    //   ],
-    // },
-
-    // // ── Shared Spaces ──
-    // {
-    //   type: 'Column',
-    //   props: { gap: '300' },
-    //   children: [
-    //     {
-    //       type: 'Row',
-    //       props: { gap: '200', ay: 'center' },
-    //       children: [
-    //         { type: 'we-icon', props: { name: 'globe', color: 'primary-500', size: '20px' } },
-    //         { type: 'we-text', props: { fontSize: '600', fontWeight: 'semibold' }, children: ['Shared Spaces'] },
-    //       ],
-    //     },
-    //     {
-    //       type: '$if',
-    //       props: {
-    //         condition: { $store: 'adamStore.sharedSpaces.length' },
-    //         then: {
-    //           type: 'Row',
-    //           props: { gap: '300', wrap: true },
-    //           children: [
-    //             {
-    //               type: '$each',
-    //               props: { items: { $store: 'adamStore.sharedSpaces' }, as: 'space' },
-    //               children: [
-    //                 {
-    //                   type: 'Column',
-    //                   props: {
-    //                     p: '400',
-    //                     r: '400',
-    //                     bg: 'neutral-50',
-    //                     gap: '200',
-    //                     width: '200px',
-    //                     cursor: 'pointer',
-    //                     onClick: [
-    //                       { $action: 'adamStore.setCurrentPerspective', args: ['$space.uuid'] },
-    //                       {
-    //                         $action: 'routeStore.navigate',
-    //                         args: [{ $concat: ['/space/', '$space.uuid'] }],
-    //                       },
-    //                     ],
-    //                   },
-    //                   children: [
-    //                     {
-    //                       type: 'Row',
-    //                       props: { gap: '200', ay: 'center' },
-    //                       children: [
-    //                         { type: 'we-icon', props: { name: 'globe', color: 'primary-400', size: '16px' } },
-    //                         {
-    //                           type: 'we-text',
-    //                           props: { fontSize: '400', fontWeight: 'medium' },
-    //                           children: ['$space.name'],
-    //                         },
-    //                       ],
-    //                     },
-    //                     {
-    //                       type: 'we-text',
-    //                       props: { fontSize: '300', color: 'neutral-400' },
-    //                       children: ['$space.description'],
-    //                     },
-    //                   ],
-    //                 },
-    //               ],
-    //             },
-    //           ],
-    //         },
-    //         else: {
-    //           type: 'we-text',
-    //           props: { fontSize: '300', color: 'neutral-400', italic: true },
-    //           children: ['No shared spaces yet'],
-    //         },
-    //       },
-    //     },
-    //   ],
-    // },
-
-    // // ── Personal Spaces ──
-    // {
-    //   type: 'Column',
-    //   props: { gap: '300' },
-    //   children: [
-    //     {
-    //       type: 'Row',
-    //       props: { gap: '200', ay: 'center' },
-    //       children: [
-    //         { type: 'we-icon', props: { name: 'folder', color: 'primary-500', size: '20px' } },
-    //         {
-    //           type: 'we-text',
-    //           props: { fontSize: '600', fontWeight: 'semibold' },
-    //           children: ['Personal Spaces'],
-    //         },
-    //       ],
-    //     },
-    //     {
-    //       type: '$if',
-    //       props: {
-    //         condition: { $store: 'adamStore.personalSpaces.length' },
-    //         then: {
-    //           type: 'Row',
-    //           props: { gap: '300', wrap: true },
-    //           children: [
-    //             {
-    //               type: '$each',
-    //               props: { items: { $store: 'adamStore.personalSpaces' }, as: 'space' },
-    //               children: [
-    //                 {
-    //                   type: 'Column',
-    //                   props: {
-    //                     p: '400',
-    //                     r: '400',
-    //                     bg: 'neutral-50',
-    //                     gap: '200',
-    //                     width: '200px',
-    //                     cursor: 'pointer',
-    //                     onClick: [
-    //                       {
-    //                         $action: 'adamStore.setCurrentPerspective',
-    //                         args: [{ $if: { condition: '$space.url', then: '$space.uuid', else: '$space.uuid' } }],
-    //                       },
-    //                       {
-    //                         $action: 'routeStore.navigate',
-    //                         args: [
-    //                           {
-    //                             $concat: [
-    //                               '/space/',
-    //                               { $if: { condition: '$space.url', then: '$space.url', else: '$space.uuid' } },
-    //                             ],
-    //                           },
-    //                         ],
-    //                       },
-    //                     ],
-    //                   },
-    //                   children: [
-    //                     {
-    //                       type: 'Row',
-    //                       props: { gap: '200', ay: 'center' },
-    //                       children: [
-    //                         { type: 'we-icon', props: { name: 'folder', color: 'primary-400', size: '16px' } },
-    //                         {
-    //                           type: 'we-text',
-    //                           props: { fontSize: '400', fontWeight: 'medium' },
-    //                           children: ['$space.name'],
-    //                         },
-    //                       ],
-    //                     },
-    //                     {
-    //                       type: 'we-text',
-    //                       props: { fontSize: '300', color: 'neutral-400' },
-    //                       children: ['$space.description'],
-    //                     },
-    //                   ],
-    //                 },
-    //               ],
-    //             },
-    //           ],
-    //         },
-    //         else: {
-    //           type: 'we-text',
-    //           props: { fontSize: '300', color: 'neutral-400', italic: true },
-    //           children: ['No personal spaces yet'],
-    //         },
-    //       },
-    //     },
-    //   ],
-    // },
-
     // ── Create Space Modal ──
     {
       type: '$if',
       props: { condition: { $local: 'createSpaceOpen' }, then: createSpaceModal },
+    },
+
+    // ── Entity Modal (shown when a globe pin is clicked) ──
+    {
+      type: '$if',
+      props: { condition: { $store: 'spaceStore.selectedPin' }, then: globalEntityModal },
     },
   ],
 };

@@ -7,7 +7,7 @@
 
 import type { TemplateSchema } from '@we/schema-shared';
 
-import { globalEntityModal } from './GlobalEntityModal';
+import { globalEntityModal } from './DefaultTemplate/routes/GlobeRoute/GlobalEntityModal';
 
 export const weTemplate: TemplateSchema = {
   meta: {

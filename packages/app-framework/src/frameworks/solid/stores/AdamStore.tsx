@@ -175,6 +175,54 @@ const DEFAULT_GLOBAL_SIGNAL_TYPES: Partial<SignalType>[] = [
   },
 ];
 
+interface SeedLocation {
+  city: string;
+  countryCode: string;
+  country: string;
+  latitude: number;
+  longitude: number;
+}
+interface SeedAgent extends Omit<Partial<AgentProfile>, 'location'> {
+  location: SeedLocation;
+}
+const DEFAULT_GLOBAL_AGENTS: SeedAgent[] = [
+  {
+    firstName: 'Aria',
+    lastName: 'Chen',
+    handle: 'aria_chen',
+    bio: 'Building decentralised tools for collaborative research. Interested in knowledge graphs and open science.',
+    location: { city: 'Taipei', countryCode: 'TW', country: 'Taiwan', latitude: 25.033, longitude: 121.565 },
+  },
+  {
+    firstName: 'Marcus',
+    lastName: 'Osei',
+    handle: 'marcus_osei',
+    bio: 'P2P protocol enthusiast and distributed systems engineer. Contributing to open infrastructure.',
+    location: { city: 'Accra', countryCode: 'GH', country: 'Ghana', latitude: 5.603, longitude: -0.187 },
+  },
+  {
+    firstName: 'Lena',
+    lastName: 'Vogt',
+    handle: 'lena_vogt',
+    bio: 'Digital artist exploring generative design and on-chain provenance. Based in Vienna.',
+    location: { city: 'Vienna', countryCode: 'AT', country: 'Austria', latitude: 48.208, longitude: 16.373 },
+  },
+  {
+    firstName: 'Tomás',
+    lastName: 'Rivera',
+    handle: 'tomas_rivera',
+    bio: 'Community organiser and cooperatives advocate. Working on solidarity economy tooling.',
+    location: { city: 'Buenos Aires', countryCode: 'AR', country: 'Argentina', latitude: -34.603, longitude: -58.381 },
+  },
+  {
+    firstName: 'Priya',
+    lastName: 'Nair',
+    handle: 'priya_nair',
+    bio: 'Researcher in decentralised governance and participatory decision-making systems.',
+    location: { city: 'Bangalore', countryCode: 'IN', country: 'India', latitude: 12.972, longitude: 77.594 },
+  },
+];
+
 const DEFAULT_GLOBAL_SPACES = [
   {
     name: 'Open Source Collective',
@@ -458,6 +506,15 @@ export function AdamStoreProvider(props: ParentProps) {
     // Seed default signal types so the react bar is immediately populated
     for (const st of DEFAULT_GLOBAL_SIGNAL_TYPES) {
       await SignalType.create(perspective, st);
+    }
+
+    for (const { location: seedLoc, ...profileFields } of DEFAULT_GLOBAL_AGENTS) {
+      const profile = await AgentProfile.create(perspective, profileFields);
+      const loc = await LocationBlock.create(perspective, {
+        name: seedLoc.city,
+        ...seedLoc,
+      });
+      await profile.setLocation(loc);
     }
 
     for (const seed of DEFAULT_GLOBAL_SPACES) {

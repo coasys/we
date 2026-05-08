@@ -110,7 +110,7 @@ export const defaultTemplate: TemplateSchema = {
           },
         },
       ],
-      routes: [{ path: '/', redirect: './home' }, homeRoute, globeRoute, graphRoute, cardsRoute],
+      routes: [{ path: '/', redirect: './globe' }, homeRoute, globeRoute, graphRoute, cardsRoute],
     },
   ],
 };
