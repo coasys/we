@@ -227,16 +227,27 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     const currentLayers = props.backgroundLayers || [];
     const mountedLayers = viewer._weMountedBackgroundLayers;
 
-    // Get enabled layers
     const enabledLayers = currentLayers.filter((config) => config.enabled !== false);
 
-    const enabledFactoryNames = new Set(enabledLayers.map((c) => String(c.factory)));
+    // Resolve instances upfront to get their names for stable keying
+    type ResolvedBgLayer = { config: LayerConfig; instance: CesiumLayer; layerKey: string };
+    const enabledResolved: ResolvedBgLayer[] = [];
+    for (const config of enabledLayers) {
+      try {
+        const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
+        const instance = factory(config.options);
+        enabledResolved.push({ config, instance, layerKey: config.id ?? instance.name });
+      } catch (err) {
+        console.error(`Error resolving background layer factory:`, err);
+      }
+    }
+
+    const enabledKeys = new Set(enabledResolved.map((r) => r.layerKey));
 
     // Unmount layers no longer enabled
-    for (const factoryName of Array.from(mountedLayers.keys())) {
-      if (!enabledFactoryNames.has(factoryName)) {
-        // Call cleanup functions
-        const cleanups = cleanupFunctions!.get(`bg-${factoryName}`);
+    for (const layerKey of Array.from(mountedLayers.keys())) {
+      if (!enabledKeys.has(layerKey)) {
+        const cleanups = cleanupFunctions!.get(`bg-${layerKey}`);
         if (cleanups) {
           cleanups.forEach((fn) => {
             try {
@@ -245,27 +256,22 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
               console.error(`Error cleaning up background layer:`, err);
             }
           });
-          cleanupFunctions.delete(`bg-${factoryName}`);
+          cleanupFunctions.delete(`bg-${layerKey}`);
         }
-
-        mountedLayers.delete(factoryName);
+        mountedLayers.delete(layerKey);
       }
     }
 
     // Mount new layers
-    for (const config of enabledLayers) {
-      const factoryName = String(config.factory);
-
-      if (mountedLayers.has(factoryName)) {
+    for (const { config, instance, layerKey } of enabledResolved) {
+      if (mountedLayers.has(layerKey)) {
         continue;
       }
 
-      const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
-      const instance = factory(config.options);
       const cleanups: Array<() => void> = [];
 
-      mountedLayers.set(factoryName, { config, instance });
-      cleanupFunctions!.set(`bg-${factoryName}`, cleanups);
+      mountedLayers.set(layerKey, { config, instance });
+      cleanupFunctions!.set(`bg-${layerKey}`, cleanups);
 
       try {
         const result = instance.onMount?.({
@@ -273,6 +279,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
           events: events!,
           store: store!,
           options: config.options,
+          id: layerKey,
           onCleanup: (fn) => cleanups.push(fn),
         });
 
@@ -281,8 +288,8 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         }
       } catch (err) {
         console.error(`Error mounting background layer:`, err);
-        mountedLayers.delete(factoryName);
-        cleanupFunctions.delete(`bg-${factoryName}`);
+        mountedLayers.delete(layerKey);
+        cleanupFunctions.delete(`bg-${layerKey}`);
       }
     }
   });
@@ -301,16 +308,26 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     const currentLayers = props.planetLayers || [];
     const mountedLayers = viewer._weMountedLayers;
 
-    // Get enabled layers
-    const enabledLayers = currentLayers.filter((config) => config.enabled !== false);
+    // Resolve instances upfront so we can key by config.id ?? instance.name.
+    // This lets the same factory be used multiple times with distinct ids.
+    type ResolvedLayer = { config: LayerConfig; instance: CesiumLayer; layerKey: string };
+    const enabledResolved: ResolvedLayer[] = [];
+    for (const config of currentLayers.filter((c) => c.enabled !== false)) {
+      try {
+        const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
+        const instance = factory(config.options);
+        enabledResolved.push({ config, instance, layerKey: config.id ?? instance.name });
+      } catch (err) {
+        console.error(`Error resolving layer factory:`, err);
+      }
+    }
 
-    const enabledFactoryNames = new Set(enabledLayers.map((c) => String(c.factory)));
+    const enabledLayerKeys = new Set(enabledResolved.map((r) => r.layerKey));
 
     // Unmount layers no longer enabled
-    for (const factoryName of Array.from(mountedLayers.keys())) {
-      if (!enabledFactoryNames.has(factoryName)) {
-        // Call cleanup functions
-        const cleanups = cleanupFunctions!.get(factoryName);
+    for (const layerKey of Array.from(mountedLayers.keys())) {
+      if (!enabledLayerKeys.has(layerKey)) {
+        const cleanups = cleanupFunctions!.get(layerKey);
         if (cleanups) {
           cleanups.forEach((fn) => {
             try {
@@ -319,27 +336,22 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
               console.error(`Error cleaning up layer:`, err);
             }
           });
-          cleanupFunctions.delete(factoryName);
+          cleanupFunctions.delete(layerKey);
         }
-
-        mountedLayers.delete(factoryName);
+        mountedLayers.delete(layerKey);
       }
     }
 
     // Mount new layers
-    for (const config of enabledLayers) {
-      const factoryName = String(config.factory);
-
-      if (mountedLayers.has(factoryName)) {
+    for (const { config, instance, layerKey } of enabledResolved) {
+      if (mountedLayers.has(layerKey)) {
         continue;
       }
 
-      const factory = resolveLayerFactory(config.factory, props.layerFactoryRegistry);
-      const instance = factory(config.options);
       const cleanups: Array<() => void> = [];
 
-      mountedLayers.set(factoryName, { config, instance });
-      cleanupFunctions!.set(factoryName, cleanups);
+      mountedLayers.set(layerKey, { config, instance });
+      cleanupFunctions!.set(layerKey, cleanups);
 
       try {
         const result = instance.onMount?.({
@@ -347,6 +359,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
           events: events!,
           store: store!,
           options: config.options,
+          id: layerKey,
           onCleanup: (fn) => cleanups.push(fn),
         });
 
@@ -355,8 +368,8 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         }
       } catch (err) {
         console.error(`Error mounting layer:`, err);
-        mountedLayers.delete(factoryName);
-        cleanupFunctions.delete(factoryName);
+        mountedLayers.delete(layerKey);
+        cleanupFunctions.delete(layerKey);
       }
     }
   });

@@ -13,12 +13,6 @@ export interface UserLocation {
 }
 
 export interface PointLocationsOptions {
-  /**
-   * Unique name for this layer instance.
-   * Used to namespace Cesium entity IDs — prevents collisions when the same
-   * factory is mounted multiple times (e.g. spaces + agents on the same globe).
-   */
-  layerName: string;
   locations: UserLocation[] | string | (() => UserLocation[] | string);
   /** Marker size in pixels (base, before signalEnergy scaling) */
   markerSize?: number;
@@ -36,7 +30,7 @@ export interface PointLocationsOptions {
  * to render distinct sets of pins (e.g. spaces vs agents) without ID collisions.
  */
 export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (options?: PointLocationsOptions) => ({
-  name: options?.layerName ?? 'point-locations',
+  name: 'point-locations',
 
   metadata: {
     requiresIonAccount: false,
@@ -44,14 +38,8 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (options
   },
 
   onMount: (context: LayerContext) => {
-    const { viewer, events, onCleanup } = context;
-    const {
-      layerName = 'point-locations',
-      locations = [],
-      markerSize = 15,
-      defaultColor = '#00ffff',
-      onLocationClick,
-    } = options || {};
+    const { viewer, events, id: layerKey, onCleanup } = context;
+    const { locations = [], markerSize = 15, defaultColor = '#00ffff', onLocationClick } = options || {};
 
     // Resolve locations — function accessor, JSON string, or plain array
     const raw = typeof locations === 'function' ? locations() : locations;
@@ -61,7 +49,7 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (options
       try {
         parsedLocations = JSON.parse(raw);
       } catch (error) {
-        console.error(`[${layerName}] Failed to parse locations JSON:`, error);
+        console.error(`[${layerKey}] Failed to parse locations JSON:`, error);
         return;
       }
     } else if (Array.isArray(raw)) {
@@ -72,7 +60,7 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (options
 
     parsedLocations.forEach((loc: UserLocation) => {
       const entity = viewer.entities.add({
-        id: `${layerName}-${loc.id}`,
+        id: `${layerKey}-${loc.id}`,
         position: Cartesian3.fromDegrees(loc.longitude, loc.latitude),
         point: {
           pixelSize: markerSize + Math.min(Math.round((loc.signalEnergy ?? 0) * 1.5), 18),
