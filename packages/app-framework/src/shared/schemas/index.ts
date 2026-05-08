@@ -1,7 +1,6 @@
 // Templates
 export { defaultTemplate } from './DefaultTemplate';
 export { twitterTemplate } from './TwitterTemplate.schema';
-export { weTemplate } from './WeTemplate.schema';
 
 // Shell
 export {

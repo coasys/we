@@ -48,7 +48,7 @@ export const sidebar: SchemaNode = {
           //   avatar: {
           //     $if: {
           //       condition: { $store: 'spaceStore.space' },
-          //       then: { src: { $store: 'spaceStore.space.image' }, name: { $store: 'spaceStore.space.name' } },
+          //       then: { src: { $store: 'spaceStore.space.avatar' }, name: { $store: 'spaceStore.space.name' } },
           //       else: {
           //         $if: {
           //           condition: { $store: 'adamStore.currentPerspective' },
@@ -170,7 +170,7 @@ export const sidebar: SchemaNode = {
                 items: { $store: 'appStore.apps' },
                 select: {
                   id: '$item.id',
-                  avatar: { src: '$item.image', name: '$item.name' },
+                  avatar: { src: '$item.avatar', name: '$item.name' },
                   label: '$item.name',
                   active: { $eq: ['$item.id', { $store: 'appStore.activeAppId' }] },
                   onClick: { $action: 'appStore.activateApp', args: ['$item.id'] },

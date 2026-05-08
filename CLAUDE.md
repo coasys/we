@@ -648,7 +648,7 @@ AgentProfile extends WeNode:
   - lastName: string [we://last_name]
   - handle: string [we://handle]
   - bio: string [we://bio]
-  - profileImage: string | FileData [we://profile_image]
+  - avatar: string | FileData [we://profile_image]
   - coverImage: string | FileData [we://cover_image]
   Relations:
   - location: HasOne [we://location]
@@ -801,8 +801,8 @@ Space extends WeNode:
   - name: string (required) [we://name]
   - description: string (required) [we://description]
   - visibility: string [we://visibility]
-  - image: string | FileData [we://image]
-  - thumbnail: string | FileData [we://thumbnail]
+  - avatar: string | FileData [we://image]
+  - coverImage: string | FileData [we://thumbnail]
   Relations:
   - locations: HasMany → LocationBlock [we://location]
 
@@ -899,7 +899,7 @@ AdamStore:
   - login(password: string): logs in the agent with password
   - logout(): locks the agent and returns to login screen
   - updateAgentProfile(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)
-  - updateProfileImage(imageFile: File): uploads and sets the profile image
+  - updateAvatarImage(imageFile: File): uploads and sets the profile image
   - updateCoverImage(imageFile: File): uploads and sets the cover image
 
 RouteStore:
@@ -944,7 +944,7 @@ SpaceStore:
   - setSpaceId(id: string): sets the current space id
   - getSpace(): loads space data
   - createPost(editorState: unknown): creates a new post
-  - updateSpaceImage(): unknown
+  - updateSpaceAvatar(): unknown
   - updateSpaceCoverImage(): unknown
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it

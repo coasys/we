@@ -33,7 +33,7 @@ export class AgentProfile extends WeNode {
         ? `data:${data?.file_type || 'image/png'};base64,${data?.data_base64}`
         : data,
   })
-  profileImage?: string | FileData;
+  avatar?: string | FileData;
 
   @Property({
     through: 'we://cover_image',

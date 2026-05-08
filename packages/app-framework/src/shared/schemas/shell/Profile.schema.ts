@@ -36,7 +36,7 @@ export const profileTemplate: TemplateSchema = {
         {
           type: 'EditableImage',
           props: {
-            src: { $store: 'adamStore.agentProfile.profileImage' },
+            src: { $store: 'adamStore.agentProfile.avatar' },
             alt: 'Profile picture',
             fit: 'cover',
             width: '120px',
@@ -44,7 +44,7 @@ export const profileTemplate: TemplateSchema = {
             r: '300',
             ring: '0 0 0 3px var(--we-color-neutral-500)',
             placeholderIcon: 'user',
-            onImageChange: { $action: 'adamStore.updateProfileImage', args: ['$arg'] },
+            onImageChange: { $action: 'adamStore.updateAvatarImage', args: ['$arg'] },
           },
         },
 

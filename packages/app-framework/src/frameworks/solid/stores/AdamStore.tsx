@@ -114,7 +114,7 @@ export interface AdamStore {
   setCurrentPerspective: (uuid: string) => Promise<void>;
   updateAgentSettings: (updates: Partial<AgentSettings>) => Promise<void>;
   updateAgentProfile: (updates: Partial<AgentProfile>) => Promise<void>;
-  updateProfileImage: (imageFile: File) => Promise<void>;
+  updateAvatarImage: (imageFile: File) => Promise<void>;
   updateCoverImage: (imageFile: File) => Promise<void>;
   reorderPerspectives: (newOrder: string[]) => Promise<void>;
   joinGlobalSpace: () => Promise<void>;
@@ -656,13 +656,13 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
-  async function updateProfileImage(imageFile: File): Promise<void> {
+  async function updateAvatarImage(imageFile: File): Promise<void> {
     const profile = agentProfile();
     if (!profile) return;
 
     const compressedBlob = await resizeImage(imageFile, 0.6);
     const imageBase64 = await blobToDataURL(compressedBlob);
-    profile.profileImage = { data_base64: imageBase64, name: 'profile-image', file_type: 'image/png' } as FileData;
+    profile.avatar = { data_base64: imageBase64, name: 'profile-image', file_type: 'image/png' } as FileData;
     await profile.save();
     setAgentProfile(profile);
   }
@@ -1035,7 +1035,7 @@ export function AdamStoreProvider(props: ParentProps) {
     setCurrentPerspective,
     updateAgentSettings,
     updateAgentProfile,
-    updateProfileImage,
+    updateAvatarImage,
     updateCoverImage,
     reorderPerspectives,
     joinGlobalSpace,

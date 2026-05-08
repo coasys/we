@@ -50,8 +50,8 @@ export async function syncSpaceToParent(space: Space, targetP: PerspectiveProxy)
     existing.name = space.name;
     existing.description = space.description;
     existing.visibility = space.visibility;
-    existing.image = space.image;
-    existing.thumbnail = space.thumbnail;
+    existing.avatar = space.avatar;
+    existing.coverImage = space.coverImage;
     await existing.save();
   } else {
     await Space.create(targetP, {
@@ -60,8 +60,8 @@ export async function syncSpaceToParent(space: Space, targetP: PerspectiveProxy)
       name: space.name,
       description: space.description,
       visibility: space.visibility,
-      image: space.image,
-      thumbnail: space.thumbnail,
+      avatar: space.avatar,
+      coverImage: space.coverImage,
     });
   }
 }
@@ -89,7 +89,7 @@ export async function syncAgentProfileToParent(profile: AgentProfile, targetP: P
     existing.lastName = profile.lastName;
     existing.handle = profile.handle;
     existing.bio = profile.bio;
-    existing.profileImage = profile.profileImage;
+    existing.avatar = profile.avatar;
     existing.coverImage = profile.coverImage;
     await existing.save();
   } else {
@@ -98,7 +98,7 @@ export async function syncAgentProfileToParent(profile: AgentProfile, targetP: P
       lastName: profile.lastName,
       handle: profile.handle,
       bio: profile.bio,
-      profileImage: profile.profileImage,
+      avatar: profile.avatar,
       coverImage: profile.coverImage,
     });
   }

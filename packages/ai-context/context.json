@@ -5187,7 +5187,7 @@
           "required": false
         },
         {
-          "name": "profileImage",
+          "name": "avatar",
           "type": "string | FileData",
           "predicate": "we://profile_image",
           "required": false
@@ -5930,13 +5930,13 @@
           "required": false
         },
         {
-          "name": "image",
+          "name": "avatar",
           "type": "string | FileData",
           "predicate": "we://image",
           "required": false
         },
         {
-          "name": "thumbnail",
+          "name": "coverImage",
           "type": "string | FileData",
           "predicate": "we://thumbnail",
           "required": false
@@ -6549,7 +6549,7 @@
         },
         "agentProfile": {
           "type": "object",
-          "properties": ["firstName", "lastName", "handle", "bio", "location", "profileImage", "coverImage"]
+          "properties": ["firstName", "lastName", "handle", "bio", "location", "avatar", "coverImage"]
         }
       },
       "actions": [
@@ -6561,7 +6561,7 @@
         "login",
         "logout",
         "updateAgentProfile",
-        "updateProfileImage",
+        "updateAvatarImage",
         "updateCoverImage"
       ]
     },
@@ -6632,7 +6632,7 @@
         },
         "space": {
           "type": "object",
-          "properties": ["uuid", "name", "description", "url", "visibility", "image", "thumbnail"]
+          "properties": ["uuid", "name", "description", "url", "visibility", "avatar", "coverImage"]
         },
         "signalTypes": {
           "type": "array",
@@ -6660,7 +6660,7 @@
         "setSpaceId",
         "getSpace",
         "createPost",
-        "updateSpaceImage",
+        "updateSpaceAvatar",
         "updateSpaceCoverImage",
         "createSignalType",
         "upsertSignal",

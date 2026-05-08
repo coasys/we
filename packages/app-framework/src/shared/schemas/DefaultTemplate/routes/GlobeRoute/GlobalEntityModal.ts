@@ -30,11 +30,11 @@ export const globalEntityModal = {
             {
               type: '$if',
               props: {
-                condition: { $store: 'spaceStore.selectedSpace.thumbnail' },
+                condition: { $store: 'spaceStore.selectedSpace.coverImage' },
                 then: {
                   type: 'we-image',
                   props: {
-                    src: { $store: 'spaceStore.selectedSpace.thumbnail' },
+                    src: { $store: 'spaceStore.selectedSpace.coverImage' },
                     width: '100%',
                     height: '160px',
                     fit: 'cover',
@@ -114,11 +114,11 @@ export const globalEntityModal = {
             {
               type: '$if',
               props: {
-                condition: { $store: 'spaceStore.selectedAgent.coverImage' },
+                condition: { $store: 'spaceStore.selectedAgent.avatar' },
                 then: {
                   type: 'we-image',
                   props: {
-                    src: { $store: 'spaceStore.selectedAgent.coverImage' },
+                    src: { $store: 'spaceStore.selectedAgent.avatar' },
                     width: '100%',
                     height: '140px',
                     fit: 'cover',
@@ -134,11 +134,11 @@ export const globalEntityModal = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $store: 'spaceStore.selectedAgent.profileImage' },
+                    condition: { $store: 'spaceStore.selectedAgent.avatar' },
                     then: {
                       type: 'we-image',
                       props: {
-                        src: { $store: 'spaceStore.selectedAgent.profileImage' },
+                        src: { $store: 'spaceStore.selectedAgent.avatar' },
                         width: '60px',
                         height: '60px',
                         fit: 'cover',

@@ -78,7 +78,7 @@ export interface SpaceStore {
   createPost: (json: unknown) => Promise<void>;
   // toggleLayer: (layerName: string) => void;
   // toggleBackground: (backgroundName: string) => void;
-  updateSpaceImage: (imageFile: File) => Promise<void>;
+  updateSpaceAvatar: (imageFile: File) => Promise<void>;
   updateSpaceCoverImage: (imageFile: File) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
@@ -177,7 +177,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     await createBlocks(p, json);
   }
 
-  async function updateSpaceImage(imageFile: File): Promise<void> {
+  async function updateSpaceAvatar(imageFile: File): Promise<void> {
     const currentSpace = space();
     const currentPerspective = perspective();
     if (!currentSpace || !currentPerspective) return;
@@ -185,9 +185,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     const imageBase64 = await blobToDataURL(compressedBlob);
     const [spaceModel] = await Space.findAll(currentPerspective, { where: { uuid: currentPerspective.uuid } });
     if (!spaceModel) return;
-    spaceModel.image = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData;
+    spaceModel.avatar = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData;
     await spaceModel.save();
-    setSpace({ ...currentSpace, image: spaceModel.image });
+    setSpace({ ...currentSpace, avatar: spaceModel.avatar });
   }
 
   async function updateSpaceCoverImage(imageFile: File): Promise<void> {
@@ -198,9 +198,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     const imageBase64 = await blobToDataURL(compressedBlob);
     const [spaceModel] = await Space.findAll(currentPerspective, { where: { uuid: currentPerspective.uuid } });
     if (!spaceModel) return;
-    spaceModel.thumbnail = { data_base64: imageBase64, name: 'space-cover', file_type: 'image/png' } as FileData;
+    spaceModel.coverImage = { data_base64: imageBase64, name: 'space-cover', file_type: 'image/png' } as FileData;
     await spaceModel.save();
-    setSpace({ ...currentSpace, thumbnail: spaceModel.thumbnail });
+    setSpace({ ...currentSpace, coverImage: spaceModel.coverImage });
   }
 
   async function createSignalType(config: Partial<SignalType>): Promise<void> {
@@ -526,7 +526,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     createPost,
     // toggleLayer,
     // toggleBackground,
-    updateSpaceImage,
+    updateSpaceAvatar,
     updateSpaceCoverImage,
     createSignalType,
     upsertSignal,

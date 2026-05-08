@@ -33,7 +33,7 @@ export class Space extends WeNode {
         ? `data:${data?.file_type || 'image/png'};base64,${data?.data_base64}`
         : data,
   })
-  image?: string | FileData;
+  avatar?: string | FileData;
 
   @Property({
     through: 'we://thumbnail',
@@ -43,7 +43,7 @@ export class Space extends WeNode {
         ? `data:${data?.file_type || 'image/png'};base64,${data?.data_base64}`
         : data,
   })
-  thumbnail?: string | FileData;
+  coverImage?: string | FileData;
 
   @HasMany(() => LocationBlock, { through: 'we://location' })
   locations: LocationBlock[] = [];

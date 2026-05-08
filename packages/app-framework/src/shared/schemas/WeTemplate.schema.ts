@@ -164,7 +164,7 @@ export const weTemplate: TemplateSchema = {
                 select: {
                   id: { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
                   label: '$item.name',
-                  avatar: { src: '$item.thumbnail', name: '$item.name' },
+                  avatar: { src: '$item.avatar', name: '$item.name' },
                   onClick: [
                     { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
                     {
@@ -196,7 +196,7 @@ export const weTemplate: TemplateSchema = {
                 select: {
                   id: { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
                   label: '$item.name',
-                  avatar: { src: '$item.thumbnail', name: '$item.name' },
+                  avatar: { src: '$item.avatar', name: '$item.name' },
                   onClick: [
                     { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
                     {
