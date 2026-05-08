@@ -355,6 +355,46 @@ export const settingsTemplate: TemplateSchema = {
             },
           ],
         },
+
+        // Spaces
+        {
+          type: '$each',
+          props: { items: { $store: 'adamStore.sharedSpaces' }, as: 'space' },
+          children: [
+            {
+              type: 'Column',
+              props: {
+                p: '400',
+                r: '400',
+                bg: 'neutral-50',
+                gap: '100',
+                width: '200px',
+                border: '1px solid neutral-200',
+              },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center' },
+                  children: [
+                    {
+                      type: 'we-icon',
+                      props: {
+                        name: 'globe',
+                        color: 'neutral-400',
+                        size: '16px',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400', fontWeight: 'medium' },
+                      children: ['$space.name'],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       ],
     },
   ],

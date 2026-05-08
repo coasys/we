@@ -121,6 +121,12 @@ export interface AdamStore {
   /** Generic join action. For the global root this is identical to joinGlobalSpace; community-space
    * neighbourhood joining is a future TODO. */
   joinSpace: (spaceUuid: string) => Promise<void>;
+  /**
+   * If the global space has been joined and no perspective is currently active,
+   * sets the global perspective as the current perspective.
+   * If globalPerspective is not yet set, this is a no-op — the template handles joining.
+   */
+  // activateGlobalPerspective: () => Promise<void>;
   /** Removes a Space copy from the global perspective. Used when visibility drops from 'public'. */
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   /** Creates or replaces the agent's LocationBlock in the root perspective (and syncs to global if joined). */
@@ -225,7 +231,7 @@ export function AdamStoreProvider(props: ParentProps) {
   // Derived: perspectives with we-* names are internal WE system perspectives
   const systemPerspectiveUuids = createMemo(() =>
     allPerspectives()
-      .filter((p) => p.name.startsWith('we-'))
+      .filter((p) => ['we-root', 'we-test'].includes(p.name))
       .map((p) => p.uuid),
   );
 
@@ -812,6 +818,7 @@ export function AdamStoreProvider(props: ParentProps) {
   }
 
   async function joinSpace(spaceUuid: string): Promise<void> {
+    console.log('joining space', spaceUuid);
     // 'global' is the well-known sentinel for the root global space
     if (spaceUuid === 'global') {
       await joinGlobalSpace();
@@ -833,8 +840,11 @@ export function AdamStoreProvider(props: ParentProps) {
     const client = adamClient();
     if (!client) return;
 
+    console.log('joining global space');
+
     try {
       if (isDevelopment()) {
+        console.log('AdamStore: joinGlobalSpace dev path - creating local we-global perspective with sample data');
         // Dev: create a local we-global perspective and seed with sample data.
         // Model registration (installSpaceSdna) happens in SpaceStore when the
         // perspective is navigated to — register is idempotent so seeding below
@@ -844,12 +854,14 @@ export function AdamStoreProvider(props: ParentProps) {
         await new Promise((resolve) => setTimeout(resolve, 500));
 
         // Create root Space node representing the global space itself (holonic pattern)
-        await Space.create(globalP, {
+        const space = await Space.create(globalP, {
           uuid: globalP.uuid,
           name: 'WE Global',
           description: 'The global discovery space',
           visibility: 'public',
         });
+
+        console.log('AdamStore: Created we-global space', space);
 
         // Seed synthetic spaces, agents, and signals so the globe is populated in dev
         await seedGlobalPerspective(globalP);
@@ -866,6 +878,15 @@ export function AdamStoreProvider(props: ParentProps) {
       console.error('AdamStore: joinGlobalSpace error', error);
     }
   }
+
+  // async function activateGlobalPerspective(): Promise<void> {
+  //   if (currentPerspective()) return;
+  //   const globalP = globalPerspective();
+  //   if (globalP) {
+  //     console.log('AdamStore: Activating global perspective on app load', globalP.uuid);
+  //     setCurrentPerspective(globalP.uuid);
+  //   }
+  // }
 
   async function removePerspective(uuid: string): Promise<void> {
     const client = adamClient();
@@ -962,6 +983,7 @@ export function AdamStoreProvider(props: ParentProps) {
     reorderPerspectives,
     joinGlobalSpace,
     joinSpace,
+    // activateGlobalPerspective,
     updateAgentLocation,
     removeSpaceFromGlobal: (spaceUuid) => {
       const globalP = globalPerspective();

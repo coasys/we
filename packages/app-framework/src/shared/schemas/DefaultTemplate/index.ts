@@ -13,114 +13,104 @@ export const defaultTemplate: TemplateSchema = {
   },
   type: 'Row',
   props: { ml: '72px', height: '100vh' },
-  children: [
+  children: [{ type: '$routes' }],
+  routes: [
+    { path: '/', redirect: '/space/global' },
     {
-      type: 'CollapsibleSidebar',
-      props: {
-        bg: 'neutral-25',
-        side: 'left',
-        position: 'absolute',
-        zIndex: 10,
-        border: '0',
-        itemPadding: '12px',
-        centerItems: true,
-        items: [
-          {
-            type: 'item',
-            id: 'home',
-            icon: 'house',
-            label: 'Home',
-            onClick: { $action: 'routeStore.navigate', args: ['./home'] },
-            active: { $eq: [{ $store: 'routeStore.segments.0' }, 'home'] },
-          },
-          {
-            type: 'item',
-            id: 'globe',
-            icon: 'globe-hemisphere-west',
-            label: 'Globe',
-            onClick: { $action: 'routeStore.navigate', args: ['./globe'] },
-            active: { $eq: [{ $store: 'routeStore.segments.0' }, 'globe'] },
-          },
-          {
-            type: 'item',
-            id: 'graph',
-            icon: 'graph',
-            label: 'Graph',
-            onClick: { $action: 'routeStore.navigate', args: ['./graph'] },
-            active: { $eq: [{ $store: 'routeStore.segments.0' }, 'graph'] },
-          },
-          {
-            type: 'item',
-            id: 'cards',
-            icon: 'cards-three',
-            label: 'Cards',
-            onClick: { $action: 'routeStore.navigate', args: ['./cards'] },
-            active: { $eq: [{ $store: 'routeStore.segments.0' }, 'cards'] },
-          },
-        ],
-      },
-    },
-    {
-      // Gate screen: show routes when the current space (or global space) is joined.
-      // Fires when: on a /space/:id route that isn't joined, OR not on a space route and global isn't joined yet.
-      type: '$if',
-      props: {
-        condition: {
-          $or: [
-            { $store: 'spaceStore.currentNode.isJoined' },
-            { $and: [{ $not: { $store: 'spaceStore.currentNode' } }, { $store: 'adamStore.globalPerspective' }] },
-          ],
-        },
-        then: { type: '$routes' },
-        else: {
-          type: 'Column',
-          props: { flex: '1', height: '100%', ax: 'center', ai: 'center', gap: '400', p: '600' },
-          children: [
-            {
-              type: 'we-icon',
-              props: { name: 'lock', size: 'xl' },
-            },
-            {
-              type: 'we-text',
-              props: { fontSize: '700', fontWeight: 'bold' },
-              children: ['Join this Space'],
-            },
-            {
-              type: 'we-text',
-              props: { fontSize: '400', color: 'neutral-500', textAlign: 'center', maxWidth: '400px' },
-              children: ["You haven't joined this space yet. Click below to connect and start collaborating."],
-            },
-            {
-              type: 'we-button',
-              props: {
-                text: 'Join Space',
-                variant: 'primary',
-                onClick: {
-                  $action: 'adamStore.joinSpace',
-                  args: [
-                    {
-                      $if: {
-                        condition: { $store: 'routeStore.segments.1' },
-                        then: { $store: 'routeStore.segments.1' },
-                        else: 'global',
-                      },
-                    },
-                  ],
-                },
+      // Layout route: all space views live under /space/:spaceId/*
+      // The sidebar and gate are rendered here so they share the same $nav context
+      // as the sub-routes, making ./home, ./globe etc. relative navigation work correctly.
+      path: '/space/:spaceId',
+      children: [
+        {
+          type: 'CollapsibleSidebar',
+          props: {
+            bg: 'neutral-25',
+            side: 'left',
+            position: 'absolute',
+            zIndex: 10,
+            border: '0',
+            itemPadding: '12px',
+            centerItems: true,
+            items: [
+              {
+                type: 'item',
+                id: 'home',
+                icon: 'house',
+                label: 'Home',
+                onClick: { $action: 'routeStore.navigate', args: ['./home'] },
+                active: { $eq: [{ $store: 'routeStore.segments.2' }, 'home'] },
               },
-            },
-            // {
-            //   type: 'we-button',
-            //   props: {
-            //     text: '← Back',
-            //     variant: 'ghost',
-            //     onClick: { $action: 'routeStore.navigate', args: ['/'] },
-            //   },
-            // },
-          ],
+              {
+                type: 'item',
+                id: 'globe',
+                icon: 'globe-hemisphere-west',
+                label: 'Globe',
+                onClick: { $action: 'routeStore.navigate', args: ['./globe'] },
+                active: { $eq: [{ $store: 'routeStore.segments.2' }, 'globe'] },
+              },
+              {
+                type: 'item',
+                id: 'graph',
+                icon: 'graph',
+                label: 'Graph',
+                onClick: { $action: 'routeStore.navigate', args: ['./graph'] },
+                active: { $eq: [{ $store: 'routeStore.segments.2' }, 'graph'] },
+              },
+              {
+                type: 'item',
+                id: 'cards',
+                icon: 'cards-three',
+                label: 'Cards',
+                onClick: { $action: 'routeStore.navigate', args: ['./cards'] },
+                active: { $eq: [{ $store: 'routeStore.segments.2' }, 'cards'] },
+              },
+            ],
+          },
         },
-      },
+        {
+          // Gate: show routes when the current space is joined.
+          // spaceStore.currentNode is non-null whenever segments[0] === 'space',
+          // so this gate fires correctly for all /space/:spaceId/* paths.
+          type: '$if',
+          props: {
+            condition: { $store: 'spaceStore.currentNode.isJoined' },
+            then: { type: '$routes' },
+            else: {
+              type: 'Column',
+              props: { flex: '1', height: '100%', ax: 'center', ai: 'center', gap: '400', p: '600' },
+              children: [
+                {
+                  type: 'we-icon',
+                  props: { name: 'lock', size: 'xl' },
+                },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '700', fontWeight: 'bold' },
+                  children: ['Join this Space'],
+                },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '400', color: 'neutral-500', textAlign: 'center', maxWidth: '400px' },
+                  children: ["You haven't joined this space yet. Click below to connect and start collaborating."],
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Join Space',
+                    variant: 'primary',
+                    onClick: {
+                      $action: 'adamStore.joinSpace',
+                      args: [{ $store: 'routeStore.segments.1' }],
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+      routes: [{ path: '/', redirect: './home' }, homeRoute, globeRoute, graphRoute, cardsRoute],
     },
   ],
-  routes: [{ path: '/', redirect: './home' }, homeRoute, globeRoute, graphRoute, cardsRoute],
 };

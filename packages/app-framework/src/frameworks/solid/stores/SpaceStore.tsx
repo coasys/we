@@ -233,7 +233,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!currentSpace || !currentPerspective) return;
     const compressedBlob = await resizeImage(imageFile, 0.6);
     const imageBase64 = await blobToDataURL(compressedBlob);
-    const [spaceModel] = await Space.findAll(currentPerspective);
+    const [spaceModel] = await Space.findAll(currentPerspective, { where: { uuid: currentPerspective.uuid } });
     if (!spaceModel) return;
     spaceModel.image = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData;
     await spaceModel.save();
@@ -246,7 +246,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!currentSpace || !currentPerspective) return;
     const compressedBlob = await resizeImage(imageFile, 0.6);
     const imageBase64 = await blobToDataURL(compressedBlob);
-    const [spaceModel] = await Space.findAll(currentPerspective);
+    const [spaceModel] = await Space.findAll(currentPerspective, { where: { uuid: currentPerspective.uuid } });
     if (!spaceModel) return;
     spaceModel.thumbnail = { data_base64: imageBase64, name: 'space-cover', file_type: 'image/png' } as FileData;
     await spaceModel.save();
@@ -457,6 +457,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   // For a mixed perspective: both layers hydrate simultaneously.
   createEffect(() => {
     const p = adamStore.currentPerspective();
+    console.log('SpaceStore: currentPerspective changed', p?.uuid);
     if (!p) {
       setPerspective(null);
       setSpace(null);
@@ -478,6 +479,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         // writing SHACL shapes to it permanently contaminates the model manifest.
         const rootUuid = adamStore.rootPerspective()?.uuid;
         const systemUuids = adamStore.systemPerspectiveUuids();
+        console.log('systemUuids', systemUuids, 'rootUuid', rootUuid);
         if (systemUuids.includes(uuid)) {
           setPerspective(p);
           setSpace(null);
@@ -502,7 +504,10 @@ export function SpaceStoreProvider(props: ParentProps) {
         // register() is idempotent — safe to call unconditionally.
         await installSpaceSdna(p);
         await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
-        const [spaceModel] = await Space.findAll(p);
+        // Filter by uuid === perspective.uuid so we get only the root Space for this
+        // perspective. Perspectives like we-global contain multiple Space entries
+        // (itself + seeded children) and SPARQL order is non-deterministic.
+        const [spaceModel] = await Space.findAll(p, { where: { uuid: p.uuid } });
 
         setPerspective(p);
         setSpace(spaceModel ?? null);

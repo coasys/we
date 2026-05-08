@@ -217,7 +217,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       allTemplates().find((t) => t.id === newTemplateId) || shellTemplates.find((t) => t.id === newTemplateId);
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
-      // Always land on '/' — the template's own routes handle any redirect from there
+      // For now always land on '/' — the template's own routes handle any redirect from there
       routeStore.navigate('/');
       // Persist choice to Ad4m
       adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });
