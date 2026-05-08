@@ -12,59 +12,70 @@ export interface UserLocation {
   signalEnergy?: number;
 }
 
-export interface UserLocationsOptions {
+export interface PointLocationsOptions {
+  /**
+   * Unique name for this layer instance.
+   * Used to namespace Cesium entity IDs — prevents collisions when the same
+   * factory is mounted multiple times (e.g. spaces + agents on the same globe).
+   */
+  layerName: string;
   locations: UserLocation[] | string | (() => UserLocation[] | string);
-  /** Marker size in pixels */
+  /** Marker size in pixels (base, before signalEnergy scaling) */
   markerSize?: number;
   /** Default marker color if not specified per location */
   defaultColor?: string;
-  /** Callback when a location is clicked */
+  /** Callback when a location marker is clicked */
   onLocationClick?: (location: UserLocation) => void;
 }
 
 /**
- * User Locations Layer
+ * Point Locations Layer
  *
- * Displays user location markers with labels on the globe.
- * Supports click interactions.
+ * Generic point-marker layer for displaying named lat/lng pins on the globe.
+ * Use the same factory multiple times with different `layerName` + `locations`
+ * to render distinct sets of pins (e.g. spaces vs agents) without ID collisions.
  */
-export const userLocationsLayer: LayerFactory<UserLocationsOptions> = (options?: UserLocationsOptions) => ({
-  name: 'user-locations',
+export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (options?: PointLocationsOptions) => ({
+  name: options?.layerName ?? 'point-locations',
 
   metadata: {
     requiresIonAccount: false,
-    description: 'Display user location markers with labels and click interactions.',
+    description: 'Display named point location markers with labels and click interactions.',
   },
 
   onMount: (context: LayerContext) => {
     const { viewer, events, onCleanup } = context;
-    const { locations = [], markerSize = 15, defaultColor = '#00ffff', onLocationClick } = options || {};
+    const {
+      layerName = 'point-locations',
+      locations = [],
+      markerSize = 15,
+      defaultColor = '#00ffff',
+      onLocationClick,
+    } = options || {};
 
-    // Resolve the locations value - could be a signal accessor, string, or array
-    let locationsValue = typeof locations === 'function' ? locations() : locations;
+    // Resolve locations — function accessor, JSON string, or plain array
+    const raw = typeof locations === 'function' ? locations() : locations;
 
-    // Parse locations if it's a JSON string
     let parsedLocations: UserLocation[] = [];
-    if (typeof locationsValue === 'string') {
+    if (typeof raw === 'string') {
       try {
-        parsedLocations = JSON.parse(locationsValue);
+        parsedLocations = JSON.parse(raw);
       } catch (error) {
-        console.error('[user-locations] Failed to parse locations JSON:', error);
+        console.error(`[${layerName}] Failed to parse locations JSON:`, error);
         return;
       }
-    } else if (Array.isArray(locationsValue)) {
-      parsedLocations = locationsValue;
+    } else if (Array.isArray(raw)) {
+      parsedLocations = raw;
     }
 
     const entityIds: string[] = [];
 
-    // Add location markers
     parsedLocations.forEach((loc: UserLocation) => {
       const entity = viewer.entities.add({
-        id: `user-location-${loc.id}`,
+        id: `${layerName}-${loc.id}`,
         position: Cartesian3.fromDegrees(loc.longitude, loc.latitude),
         point: {
-          pixelSize: markerSize,
+          pixelSize: markerSize + Math.min(Math.round((loc.signalEnergy ?? 0) * 1.5), 18),
           color: loc.color ? Color.fromCssColorString(loc.color) : Color.fromCssColorString(defaultColor),
           outlineColor: Color.WHITE,
           outlineWidth: 2,
@@ -79,46 +90,34 @@ export const userLocationsLayer: LayerFactory<UserLocationsOptions> = (options?:
           pixelOffset: new Cartesian3(0, 20, 0),
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
-        properties: {
-          locationData: loc,
-        },
+        properties: { locationData: loc },
       });
-
       entityIds.push(entity.id);
     });
 
-    // Set up click handler
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
     handler.setInputAction((click: { position: Cartesian2 }) => {
       const pickedObject = viewer.scene.pick(click.position);
-
       if (defined(pickedObject) && pickedObject.id) {
         const entity = pickedObject.id;
-        if (entity.properties && entity.properties.locationData) {
+        if (entity.properties?.locationData) {
           const locationData = entity.properties.locationData.getValue();
-
-          // Emit event
           events.emit('location-clicked', locationData);
-
-          // Call callback if provided
           onLocationClick?.(locationData);
         }
       }
     }, ScreenSpaceEventType.LEFT_CLICK);
 
-    // Register cleanup
     onCleanup(() => {
       handler.destroy();
       entityIds.forEach((id) => {
         const entity = viewer.entities.getById(id);
-        if (entity) {
-          viewer.entities.remove(entity);
-        }
+        if (entity) viewer.entities.remove(entity);
       });
     });
   },
 
   onUnmount: () => {
-    // Cleanup is handled by onCleanup callbacks
+    // Cleanup handled by onCleanup callbacks
   },
 });

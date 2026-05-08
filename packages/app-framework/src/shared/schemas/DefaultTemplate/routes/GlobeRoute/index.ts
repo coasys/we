@@ -181,9 +181,10 @@ export const globeRoute: RouteSchema = {
         ],
         planetLayers: [
           {
-            factory: 'spaceLocationsLayer',
+            factory: 'pointLocationsLayer',
             enabled: { $local: 'showSpaceLocations' },
             options: {
+              layerName: 'space-locations',
               locations: { $store: 'spaceStore.spaceLocationPins' },
               markerSize: 15,
               defaultColor: '#a855f7',
@@ -191,9 +192,10 @@ export const globeRoute: RouteSchema = {
             },
           },
           {
-            factory: 'agentLocationsLayer',
+            factory: 'pointLocationsLayer',
             enabled: { $local: 'showUserLocations' },
             options: {
+              layerName: 'agent-locations',
               locations: { $store: 'spaceStore.memberLocationPins' },
               markerSize: 12,
               defaultColor: '#f97316',

@@ -1332,9 +1332,10 @@ export const weTemplate: TemplateSchema = {
             ],
             planetLayers: [
               {
-                factory: 'spaceLocationsLayer',
+                factory: 'pointLocationsLayer',
                 enabled: true,
                 options: {
+                  layerName: 'space-locations',
                   locations: { $store: 'spaceStore.spaceLocationPins' },
                   markerSize: 18,
                   defaultColor: '#a855f7',
@@ -1342,9 +1343,10 @@ export const weTemplate: TemplateSchema = {
                 },
               },
               {
-                factory: 'agentLocationsLayer',
+                factory: 'pointLocationsLayer',
                 enabled: true,
                 options: {
+                  layerName: 'agent-locations',
                   locations: { $store: 'spaceStore.memberLocationPins' },
                   markerSize: 14,
                   defaultColor: '#f97316',
@@ -1501,9 +1503,10 @@ export const weTemplate: TemplateSchema = {
             ],
             planetLayers: [
               {
-                factory: 'userLocationsLayer',
+                factory: 'pointLocationsLayer',
                 enabled: { $store: 'spaceStore.showUserLocations' },
                 options: {
+                  layerName: 'user-locations',
                   locations: { $store: 'spaceStore.space.userLocations' },
                   markerSize: 15,
                   defaultColor: '#00ffff',
