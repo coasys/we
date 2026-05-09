@@ -18,6 +18,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  on,
   onCleanup,
   ParentProps,
   useContext,
@@ -149,19 +150,21 @@ export function SpaceStoreProvider(props: ParentProps) {
   type WithSignalCount = { $signalCount?: number };
 
   const spaceLocationPins = createMemo<GlobePin[]>(() =>
-    childSpaces().flatMap((s) =>
-      (s.locations ?? [])
-        .filter((loc) => loc.latitude != null && loc.longitude != null)
-        .map((loc) => ({
-          id: s.id,
-          kind: 'space' as const,
-          name: s.name,
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          avatar: typeof s.avatar === 'string' ? s.avatar : undefined,
-          signalEnergy: (s as unknown as WithSignalCount).$signalCount ?? 0,
-        })),
-    ),
+    childSpaces()
+      .filter((s) => s.uuid !== spaceId())
+      .flatMap((s) =>
+        (s.locations ?? [])
+          .filter((loc) => loc.latitude != null && loc.longitude != null)
+          .map((loc) => ({
+            id: s.id,
+            kind: 'space' as const,
+            name: s.name,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            avatar: typeof s.avatar === 'string' ? s.avatar : undefined,
+            signalEnergy: (s as unknown as WithSignalCount).$signalCount ?? 0,
+          })),
+      ),
   );
 
   const memberLocationPins = createMemo<GlobePin[]>(() =>
@@ -427,6 +430,27 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSelectedPin(null);
   });
 
+  // When a space finishes being created, atomically refresh discovery data for
+  // the current perspective without clearing — this adds the new child space pin
+  // immediately with no flash.
+  createEffect(
+    on(
+      adamStore.creatingSpace,
+      (creating) => {
+        if (creating) return;
+        const p = perspective();
+        if (!p) return;
+        void buildDiscoveryData(p).then((discovery) => {
+          if (perspective()?.uuid !== p.uuid) return; // navigated away while fetching
+          setChildSpaces(discovery.spaces);
+          setMembers(discovery.agents);
+          setSignalTypes(discovery.signalTypes);
+        });
+      },
+      { defer: true },
+    ),
+  );
+
   /**
    * The node currently shown at `/space/:id`.
    * Returns null when not on a `/space/...` route.
@@ -515,6 +539,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   // Watch adamStore.currentPerspective() and hydrate the WE space layer on top.
   // For a raw external perspective: Space.findAll returns [], setSpace(null) — space chrome hides.
   // For a mixed perspective: both layers hydrate simultaneously.
+  let _lastHydratedUuid = '';
   createEffect(() => {
     const p = adamStore.currentPerspective();
 
@@ -525,6 +550,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     });
 
     if (!p) {
+      _lastHydratedUuid = '';
       setPerspective(null);
       setSpace(null);
       setSignalTypes([]);
@@ -536,16 +562,20 @@ export function SpaceStoreProvider(props: ParentProps) {
       return;
     }
 
-    // Clear discovery data synchronously so stale pins from the previous
-    // perspective don't linger while the new perspective is hydrating.
-    setChildSpaces([]);
-    setMembers([]);
-    setSignalTypes([]);
+    // Only clear discovery data when switching to a DIFFERENT perspective so that
+    // pins don't flash out on re-hydrations of the same perspective (e.g. after
+    // SHACL registration or when an AD4M event causes a re-run).
+    if (p.uuid !== _lastHydratedUuid) {
+      setChildSpaces([]);
+      setMembers([]);
+      setSignalTypes([]);
+    }
     setLoading(true);
 
     void (async () => {
       try {
         const uuid = p.uuid;
+        _lastHydratedUuid = uuid;
         setSpaceId(uuid);
 
         // Skip block-model registration for system perspectives (we-root, we-test)

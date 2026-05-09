@@ -131,22 +131,6 @@ export const agentModal = {
             },
           ],
         },
-
-        // ── Close button ────────────────────────────────────
-        {
-          type: 'Row',
-          props: { ax: 'end' },
-          children: [
-            {
-              type: 'we-button',
-              props: {
-                variant: 'ghost',
-                text: 'Close',
-                onClick: { $action: 'spaceStore.clearSelectedPin', args: [] },
-              },
-            },
-          ],
-        },
       ],
     },
   ],

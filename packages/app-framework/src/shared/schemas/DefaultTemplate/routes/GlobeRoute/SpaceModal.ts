@@ -128,7 +128,7 @@ export const spaceModal = {
               { $action: 'adamStore.setCurrentPerspective', args: [{ $store: 'spaceStore.selectedSpace.uuid' }] },
               {
                 $action: 'routeStore.navigate',
-                args: [{ $concat: ['/space/', { $store: 'spaceStore.selectedSpace.uuid' }] }],
+                args: [{ $concat: ['/space/', { $store: 'spaceStore.selectedSpace.uuid' }, '/globe'] }],
               },
             ],
           },
