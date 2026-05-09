@@ -293,9 +293,9 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
-  // Derived: perspectives sorted by user-defined order (falls back to load order)
+  // Derived: perspectives sorted by user-defined order (falls back to load order), system perspectives excluded
   const orderedPerspectives = createMemo(() => {
-    const all = allPerspectives();
+    const all = allPerspectives().filter((p) => !['we-root', 'we-test'].includes(p.name));
     const order = getPerspectiveOrder();
     if (order.length === 0) return all;
     const byUuid = new Map(all.map((p) => [p.uuid, p]));

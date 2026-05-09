@@ -42,7 +42,7 @@ export const defaultTemplate: TemplateSchema = {
             },
             {
               type: 'Column',
-              props: { mt: '-60px', width: '100%', ax: 'center' },
+              props: { mt: '-65px', width: '100%', ax: 'center' },
               children: [
                 // Profile picture
                 {
