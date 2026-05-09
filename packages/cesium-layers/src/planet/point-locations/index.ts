@@ -28,8 +28,12 @@ const BILLBOARD_HOVER_SCALE = 1.3;
  * 0.2 ≈ 3-4 frames to reach 90% of target — feels snappy but not jarring.
  */
 const LERP_SPEED = 0.2;
-/** White border width in pixels drawn on the avatar canvas. */
-const AVATAR_BORDER_PX = 3;
+/**
+ * Outline/border width in CSS pixels — matches the point entity's `outlineWidth` so that
+ * avatar billboards and plain-color points render to the same total outer diameter.
+ * Total visual diameter for both: markerSize + OUTLINE_WIDTH * 2.
+ */
+const OUTLINE_WIDTH = 2;
 
 export interface UserLocation {
   id: string;
@@ -63,14 +67,25 @@ interface EntityMeta {
 
 /**
  * Draws a circular avatar with a white border ring onto a canvas and returns a data-URL.
- * The rendered canvas is sized at 4× the display size for crispness on HiDPI screens.
- * Falls back to `null` if the image fails to load (network error, CORS, etc.).
+ *
+ * @param url         Source image URL.
+ * @param displaySize CSS pixel size the billboard will be displayed at.
+ *                    Pass `markerSize + OUTLINE_WIDTH * 2` so the white ring matches
+ *                    the visual weight of a plain-color point's `outlineWidth`.
+ *
+ * The canvas is rendered at 4× the display size for HiDPI sharpness.
+ * The white ring is exactly OUTLINE_WIDTH display pixels thick per side.
  */
-function buildAvatarDataUrl(url: string, diameter: number): Promise<string | null> {
+function buildAvatarDataUrl(url: string, displaySize: number): Promise<string | null> {
+  // 4× oversample; billboard is displayed at `displaySize` CSS pixels.
+  const canvasSize = displaySize * 4;
+  // Border width in canvas pixels = OUTLINE_WIDTH display px × 4 canvas px per display px.
+  const borderPx = OUTLINE_WIDTH * 4;
+
   return new Promise((resolve) => {
     const canvas = document.createElement('canvas');
-    canvas.width = diameter;
-    canvas.height = diameter;
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       resolve(null);
@@ -79,25 +94,22 @@ function buildAvatarDataUrl(url: string, diameter: number): Promise<string | nul
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      const cx = diameter / 2;
-      const cy = diameter / 2;
-      const outerR = diameter / 2;
-      // Scale border to canvas resolution (canvas is 4× display size).
-      const borderR = AVATAR_BORDER_PX * 4;
+      const cx = canvasSize / 2;
+      const cy = canvasSize / 2;
+      const outerR = canvasSize / 2;
 
-      // White outer ring (the "border").
+      // White outer ring.
       ctx.beginPath();
       ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
       ctx.fill();
 
-      // Clip to inner circle, then draw the image.
+      // Clip to inner circle and draw the image.
       ctx.save();
       ctx.beginPath();
-      ctx.arc(cx, cy, outerR - borderR, 0, Math.PI * 2);
+      ctx.arc(cx, cy, outerR - borderPx, 0, Math.PI * 2);
       ctx.clip();
-      const inset = borderR;
-      ctx.drawImage(img, inset, inset, diameter - inset * 2, diameter - inset * 2);
+      ctx.drawImage(img, borderPx, borderPx, canvasSize - borderPx * 2, canvasSize - borderPx * 2);
       ctx.restore();
 
       resolve(canvas.toDataURL());
@@ -213,11 +225,15 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
     const defaultColor = opts?.defaultColor ?? '#00ffff';
     const height = (zIndex ?? 1) * METERS_PER_Z_LEVEL;
 
+    // Total display size for avatar billboards.
+    // A plain-color point with pixelSize N and outlineWidth W renders a total visual
+    // diameter of N + W*2.  We match that on the billboard so both look identical.
+    const avatarDisplaySize = markerSize + OUTLINE_WIDTH * 2;
+
     // Build avatar canvases in parallel before touching the entity collection.
     const avatarUrls = await Promise.all(
       parsedLocations.map((loc) =>
-        // 4× the display pixel size for HiDPI sharpness
-        loc.avatar ? buildAvatarDataUrl(loc.avatar, markerSize * 4) : Promise.resolve(null),
+        loc.avatar ? buildAvatarDataUrl(loc.avatar, avatarDisplaySize) : Promise.resolve(null),
       ),
     );
 
@@ -229,20 +245,19 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
       if (viewer.entities.getById(entityId)) return;
 
       const avatarDataUrl = avatarUrls[idx];
-      const basePixelSize = markerSize + Math.min(Math.round((loc.signalEnergy ?? 0) * 1.5), 18);
 
       if (avatarDataUrl) {
-        // Billboard entity — circular avatar image, same display size as a point.
+        // Billboard entity — displayed at avatarDisplaySize so the total outer diameter
+        // (image + white ring) matches the plain-color point's visual diameter.
         try {
           const entity = viewer.entities.add({
             id: entityId,
             position: Cartesian3.fromDegrees(loc.longitude, loc.latitude, height),
             billboard: {
               image: avatarDataUrl,
-              // Match point size: basePixelSize IS the diameter in Cesium (pixelSize).
-              width: basePixelSize,
-              height: basePixelSize,
-              // Animate via scale so width/height stay as the base reference.
+              width: avatarDisplaySize,
+              height: avatarDisplaySize,
+              // Scale is animated; keep width/height as the fixed base reference.
               scale: 1.0,
               verticalOrigin: VerticalOrigin.CENTER,
               horizontalOrigin: HorizontalOrigin.CENTER,
@@ -255,7 +270,7 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
               outlineColor: Color.BLACK,
               outlineWidth: 2,
               style: 0, // FILL_AND_OUTLINE
-              pixelOffset: new Cartesian3(0, basePixelSize / 2 + 8, 0),
+              pixelOffset: new Cartesian3(0, avatarDisplaySize / 2 + 8, 0),
               verticalOrigin: VerticalOrigin.TOP,
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
             },
@@ -272,10 +287,12 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
             id: entityId,
             position: Cartesian3.fromDegrees(loc.longitude, loc.latitude, height),
             point: {
-              pixelSize: basePixelSize,
+              // pixelSize = filled-circle diameter; outlineWidth adds OUTLINE_WIDTH px on each
+              // side → total visual diameter = markerSize + OUTLINE_WIDTH * 2 = avatarDisplaySize.
+              pixelSize: markerSize,
               color: loc.color ? Color.fromCssColorString(loc.color) : Color.fromCssColorString(defaultColor),
               outlineColor: Color.WHITE,
-              outlineWidth: 2,
+              outlineWidth: OUTLINE_WIDTH,
             },
             label: {
               text: loc.name,
@@ -284,7 +301,8 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
               outlineColor: Color.BLACK,
               outlineWidth: 2,
               style: 0, // FILL_AND_OUTLINE
-              pixelOffset: new Cartesian3(0, 20, 0),
+              // Offset by half the total visual diameter (same as avatar) for alignment.
+              pixelOffset: new Cartesian3(0, avatarDisplaySize / 2 + 8, 0),
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
             },
             properties: { locationData: loc },
@@ -292,9 +310,9 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
           entityIds.push(entity.id);
           entityMeta.set(entity.id, {
             type: 'point',
-            baseSize: basePixelSize,
-            currentSize: basePixelSize,
-            targetSize: basePixelSize,
+            baseSize: markerSize,
+            currentSize: markerSize,
+            targetSize: markerSize,
           });
         } catch {
           // Guard against race.

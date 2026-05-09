@@ -120,14 +120,17 @@ export const spaceModal = {
         {
           type: 'we-button',
           props: {
-            text: 'Join Space',
+            text: 'Enter Space',
             bg: 'primary-500',
             color: 'neutral-0',
             height: '40px',
-            onClick: {
-              $action: 'routeStore.navigate',
-              args: [{ $concat: ['/join/', { $store: 'spaceStore.selectedSpace.url' }] }],
-            },
+            onClick: [
+              { $action: 'adamStore.setCurrentPerspective', args: [{ $store: 'spaceStore.selectedSpace.uuid' }] },
+              {
+                $action: 'routeStore.navigate',
+                args: [{ $concat: ['/space/', { $store: 'spaceStore.selectedSpace.uuid' }] }],
+              },
+            ],
           },
         },
       ],

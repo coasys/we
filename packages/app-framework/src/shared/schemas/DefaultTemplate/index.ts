@@ -87,7 +87,7 @@ export const defaultTemplate: TemplateSchema = {
                   type: '$each',
                   props: {
                     items: [
-                      { label: 'Globe', icon: 'globe', segment: 'globe', path: './globe' },
+                      { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
                       { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
                       { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
                       { label: 'Signals', icon: 'heart', segment: 'signals', path: './signals' },

@@ -24,7 +24,7 @@ export const sidebar: SchemaNode = {
         border: '0',
         itemPadding: '12px',
         centerItems: true,
-        // expandedWidth: '800px',
+        expandedWidth: '800px',
         items: [
           // // Current space / perspective
           // {
@@ -74,12 +74,12 @@ export const sidebar: SchemaNode = {
           // },
 
           // // Current route
-          // {
-          //   type: 'item',
-          //   id: 'debug-route',
-          //   icon: 'link-simple',
-          //   label: { $store: 'routeStore.currentPath' },
-          // },
+          {
+            type: 'item',
+            id: 'debug-route',
+            icon: 'link-simple',
+            label: { $store: 'routeStore.currentPath' },
+          },
 
           // Profile
           {

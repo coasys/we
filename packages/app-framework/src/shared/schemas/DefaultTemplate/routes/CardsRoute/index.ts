@@ -8,7 +8,7 @@ import { postsList } from './PostsList';
 export const cardsRoute: RouteSchema = {
   path: '/cards',
   type: 'Column',
-  props: { gap: '400' },
+  props: { gap: '400', p: '600' },
   $localState: {
     createPostOpen: { type: 'boolean', initial: false },
     viewMode: { type: 'string', initial: 'posts' },

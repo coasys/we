@@ -131,10 +131,8 @@ export const globeRoute: RouteSchema = {
               type: 'we-button',
               props: {
                 text: 'Create New Space',
-                bg: 'primary-500',
-                color: 'neutral-0',
+                variant: 'primary',
                 height: '40px',
-                width: 'fit-content',
                 onClick: { $setLocal: 'createSpaceOpen', value: true },
               },
             },
@@ -143,10 +141,8 @@ export const globeRoute: RouteSchema = {
               type: 'we-button',
               props: {
                 text: 'Add Agent Profile',
-                bg: 'neutral-700',
-                color: 'neutral-0',
+                variant: 'primary',
                 height: '40px',
-                width: 'fit-content',
                 onClick: { $setLocal: 'createAgentProfileOpen', value: true },
               },
             },
@@ -201,7 +197,7 @@ export const globeRoute: RouteSchema = {
             enabled: { $local: 'showSpaceLocations' },
             options: {
               locations: { $store: 'spaceStore.spaceLocationPins' },
-              markerSize: 15,
+              markerSize: 20,
               defaultColor: '#a855f7',
               onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },
             },
@@ -212,7 +208,7 @@ export const globeRoute: RouteSchema = {
             enabled: { $local: 'showUserLocations' },
             options: {
               locations: { $store: 'spaceStore.memberLocationPins' },
-              markerSize: 12,
+              markerSize: 30,
               defaultColor: '#f97316',
               onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },
             },
