@@ -73,13 +73,13 @@ export const sidebar: SchemaNode = {
           //   },
           // },
 
-          // Current route
-          {
-            type: 'item',
-            id: 'debug-route',
-            icon: 'link-simple',
-            label: { $store: 'routeStore.currentPath' },
-          },
+          // // Current route
+          // {
+          //   type: 'item',
+          //   id: 'debug-route',
+          //   icon: 'link-simple',
+          //   label: { $store: 'routeStore.currentPath' },
+          // },
 
           // Profile
           {
@@ -125,6 +125,15 @@ export const sidebar: SchemaNode = {
               { $action: 'appStore.deactivateApp' },
               { $action: 'templateStore.switchTemplate', args: ['settings'] },
             ],
+          },
+
+          // AI Chat
+          {
+            id: 'ai-chat',
+            icon: 'robot',
+            label: 'AI Chat',
+            active: { $store: 'aiStore.isOpen' },
+            onClick: { $action: 'aiStore.toggle' },
           },
 
           // Templates
@@ -188,7 +197,7 @@ export const sidebar: SchemaNode = {
             onReorder: { $action: 'adamStore.reorderPerspectives' },
             items: {
               $map: {
-                items: { $store: 'adamStore.orderedPerspectives' },
+                items: { $store: 'adamStore.orderedSpaces' },
                 select: {
                   id: '$item.uuid',
                   avatar: { src: '$item.avatar', name: '$item.name' },
@@ -249,13 +258,6 @@ export const sidebar: SchemaNode = {
               { $action: 'appStore.deactivateApp' },
               { $action: 'templateStore.switchTemplate', args: ['schema-tests'] },
             ],
-          },
-          {
-            id: 'ai-chat',
-            icon: 'robot',
-            label: 'AI Chat',
-            active: { $store: 'aiStore.isOpen' },
-            onClick: { $action: 'aiStore.toggle' },
           },
           {
             id: 'logout',

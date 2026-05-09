@@ -1,4 +1,14 @@
-import { Cartesian2, Cartesian3, Color, defined, ScreenSpaceEventHandler, ScreenSpaceEventType, Viewer } from 'cesium';
+import {
+  Cartesian2,
+  Cartesian3,
+  Color,
+  defined,
+  HorizontalOrigin,
+  ScreenSpaceEventHandler,
+  ScreenSpaceEventType,
+  VerticalOrigin,
+  Viewer,
+} from 'cesium';
 
 import type { LayerContext, LayerFactory } from '../../types';
 
@@ -9,12 +19,26 @@ import type { LayerContext, LayerFactory } from '../../types';
  */
 const METERS_PER_Z_LEVEL = 5_000;
 
+/** How much the marker expands on hover (multiplied by base pixel size). */
+const HOVER_SCALE = 1.4;
+/** How much a billboard avatar scales up on hover. */
+const BILLBOARD_HOVER_SCALE = 1.3;
+/**
+ * Fraction of the distance to close per frame (~60 fps).
+ * 0.2 ≈ 3-4 frames to reach 90% of target — feels snappy but not jarring.
+ */
+const LERP_SPEED = 0.2;
+/** White border width in pixels drawn on the avatar canvas. */
+const AVATAR_BORDER_PX = 3;
+
 export interface UserLocation {
   id: string;
   name: string;
   latitude: number;
   longitude: number;
   color?: string;
+  /** URL for the avatar image — displayed as a circular pin when provided. */
+  avatar?: string;
   /** Total number of signals on this entity — used to scale the globe pin size. */
   signalEnergy?: number;
 }
@@ -29,6 +53,60 @@ export interface PointLocationsOptions {
   onLocationClick?: (location: UserLocation) => void;
 }
 
+/** Per-entity animation + type state used by the hover handler and animation loop. */
+interface EntityMeta {
+  type: 'point' | 'billboard';
+  baseSize: number; // pixelSize (point) or scale 1.0 (billboard)
+  currentSize: number; // animated current value, updated each rAF frame
+  targetSize: number; // what currentSize is lerping toward
+}
+
+/**
+ * Draws a circular avatar with a white border ring onto a canvas and returns a data-URL.
+ * The rendered canvas is sized at 4× the display size for crispness on HiDPI screens.
+ * Falls back to `null` if the image fails to load (network error, CORS, etc.).
+ */
+function buildAvatarDataUrl(url: string, diameter: number): Promise<string | null> {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = diameter;
+    canvas.height = diameter;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      resolve(null);
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const cx = diameter / 2;
+      const cy = diameter / 2;
+      const outerR = diameter / 2;
+      // Scale border to canvas resolution (canvas is 4× display size).
+      const borderR = AVATAR_BORDER_PX * 4;
+
+      // White outer ring (the "border").
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      // Clip to inner circle, then draw the image.
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerR - borderR, 0, Math.PI * 2);
+      ctx.clip();
+      const inset = borderR;
+      ctx.drawImage(img, inset, inset, diameter - inset * 2, diameter - inset * 2);
+      ctx.restore();
+
+      resolve(canvas.toDataURL());
+    };
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
 /**
  * Point Locations Layer
  *
@@ -38,11 +116,68 @@ export interface PointLocationsOptions {
  *
  * Implements `onUpdate` so CesiumGlobe can reactively refresh pins when `locations`
  * data arrives asynchronously (e.g. from a store) without remounting the layer.
+ *
+ * Features:
+ *  - Hover: marker smoothly scales up (lerped via rAF) and cursor becomes a pointer.
+ *  - Avatar: when `location.avatar` is provided the pin is rendered as a
+ *    circular image billboard with a white ring border instead of a plain colored dot.
  */
 export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initialOptions?: PointLocationsOptions) => {
-  // Shared state across mount/update so click handler always uses the latest callback
   let entityIds: string[] = [];
   let onLocationClick: ((location: UserLocation) => void) | undefined = initialOptions?.onLocationClick;
+  const entityMeta = new Map<string, EntityMeta>();
+  let renderGeneration = 0;
+  // rAF-based animation state
+  let animFrameId: number | null = null;
+  let activeViewer: Viewer | null = null;
+
+  // ─── helpers ────────────────────────────────────────────────────────────────
+
+  function applyEntitySize(entityId: string, meta: EntityMeta): void {
+    if (!activeViewer) return;
+    const entity = activeViewer.entities.getById(entityId);
+    if (!entity) return;
+    if (meta.type === 'point' && entity.point) {
+      (entity.point.pixelSize as unknown as { setValue: (v: number) => void }).setValue(meta.currentSize);
+    } else if (meta.type === 'billboard' && entity.billboard) {
+      (entity.billboard.scale as unknown as { setValue: (v: number) => void }).setValue(meta.currentSize);
+    }
+  }
+
+  /**
+   * Kick off the rAF animation loop. Stops automatically once all entities
+   * have settled at their target size. Forces a Cesium render each tick so
+   * the scene actually redraws even if nothing else is moving.
+   */
+  function startAnimLoop(): void {
+    if (animFrameId !== null) return;
+    function tick() {
+      let anyAnimating = false;
+      entityMeta.forEach((meta, entityId) => {
+        const diff = meta.targetSize - meta.currentSize;
+        if (Math.abs(diff) < 0.05) {
+          if (meta.currentSize !== meta.targetSize) {
+            meta.currentSize = meta.targetSize;
+            applyEntitySize(entityId, meta);
+          }
+          return;
+        }
+        anyAnimating = true;
+        meta.currentSize += diff * LERP_SPEED;
+        applyEntitySize(entityId, meta);
+      });
+      activeViewer?.scene.requestRender();
+      animFrameId = anyAnimating ? requestAnimationFrame(tick) : null;
+    }
+    animFrameId = requestAnimationFrame(tick);
+  }
+
+  function stopAnimLoop(): void {
+    if (animFrameId !== null) {
+      cancelAnimationFrame(animFrameId);
+      animFrameId = null;
+    }
+  }
 
   function resolveLocations(opts: PointLocationsOptions | undefined): UserLocation[] {
     const raw = typeof opts?.locations === 'function' ? opts.locations() : (opts?.locations ?? []);
@@ -63,50 +198,112 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
       if (entity) viewer.entities.remove(entity);
     });
     entityIds = [];
+    entityMeta.clear();
   }
 
-  function renderEntities(
+  async function renderEntities(
     viewer: Viewer,
     layerKey: string,
     opts: PointLocationsOptions | undefined,
     zIndex?: number,
-  ): void {
+    generation?: number,
+  ): Promise<void> {
     const parsedLocations = resolveLocations(opts);
     const markerSize = opts?.markerSize ?? 15;
     const defaultColor = opts?.defaultColor ?? '#00ffff';
-    // Elevate points above ground-level layers so pick rays hit them first.
-    // Default to zIndex 1 when callers omit it so pins clear borders/hexagons.
     const height = (zIndex ?? 1) * METERS_PER_Z_LEVEL;
 
-    parsedLocations.forEach((loc: UserLocation) => {
-      const entity = viewer.entities.add({
-        id: `${layerKey}-${loc.id}`,
-        position: Cartesian3.fromDegrees(loc.longitude, loc.latitude, height),
-        point: {
-          pixelSize: markerSize + Math.min(Math.round((loc.signalEnergy ?? 0) * 1.5), 18),
-          color: loc.color ? Color.fromCssColorString(loc.color) : Color.fromCssColorString(defaultColor),
-          outlineColor: Color.WHITE,
-          outlineWidth: 2,
-          // Do NOT disable depth test here — the planet's depth buffer correctly
-          // hides dots on the far side of the globe. The 5 km altitude offset
-          // (from zIndex) is enough to ensure the dot clears overlapping
-          // ground-level polylines (outlines, hexagons) on the visible hemisphere.
-        },
-        label: {
-          text: loc.name,
-          font: '14px sans-serif',
-          fillColor: Color.WHITE,
-          outlineColor: Color.BLACK,
-          outlineWidth: 2,
-          style: 0, // FILL_AND_OUTLINE
-          pixelOffset: new Cartesian3(0, 20, 0),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        properties: { locationData: loc },
-      });
-      entityIds.push(entity.id);
+    // Build avatar canvases in parallel before touching the entity collection.
+    const avatarUrls = await Promise.all(
+      parsedLocations.map((loc) =>
+        // 4× the display pixel size for HiDPI sharpness
+        loc.avatar ? buildAvatarDataUrl(loc.avatar, markerSize * 4) : Promise.resolve(null),
+      ),
+    );
+
+    // If a newer render started while we were awaiting avatars, abort.
+    if (generation !== undefined && generation !== renderGeneration) return;
+
+    parsedLocations.forEach((loc: UserLocation, idx: number) => {
+      const entityId = `${layerKey}-${loc.id}`;
+      if (viewer.entities.getById(entityId)) return;
+
+      const avatarDataUrl = avatarUrls[idx];
+      const basePixelSize = markerSize + Math.min(Math.round((loc.signalEnergy ?? 0) * 1.5), 18);
+
+      if (avatarDataUrl) {
+        // Billboard entity — circular avatar image, same display size as a point.
+        try {
+          const entity = viewer.entities.add({
+            id: entityId,
+            position: Cartesian3.fromDegrees(loc.longitude, loc.latitude, height),
+            billboard: {
+              image: avatarDataUrl,
+              // Match point size: basePixelSize IS the diameter in Cesium (pixelSize).
+              width: basePixelSize,
+              height: basePixelSize,
+              // Animate via scale so width/height stay as the base reference.
+              scale: 1.0,
+              verticalOrigin: VerticalOrigin.CENTER,
+              horizontalOrigin: HorizontalOrigin.CENTER,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+            label: {
+              text: loc.name,
+              font: '14px sans-serif',
+              fillColor: Color.WHITE,
+              outlineColor: Color.BLACK,
+              outlineWidth: 2,
+              style: 0, // FILL_AND_OUTLINE
+              pixelOffset: new Cartesian3(0, basePixelSize / 2 + 8, 0),
+              verticalOrigin: VerticalOrigin.TOP,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+            properties: { locationData: loc },
+          });
+          entityIds.push(entity.id);
+          entityMeta.set(entity.id, { type: 'billboard', baseSize: 1.0, currentSize: 1.0, targetSize: 1.0 });
+        } catch {
+          // Guard against race where entity was added between our check and add.
+        }
+      } else {
+        try {
+          const entity = viewer.entities.add({
+            id: entityId,
+            position: Cartesian3.fromDegrees(loc.longitude, loc.latitude, height),
+            point: {
+              pixelSize: basePixelSize,
+              color: loc.color ? Color.fromCssColorString(loc.color) : Color.fromCssColorString(defaultColor),
+              outlineColor: Color.WHITE,
+              outlineWidth: 2,
+            },
+            label: {
+              text: loc.name,
+              font: '14px sans-serif',
+              fillColor: Color.WHITE,
+              outlineColor: Color.BLACK,
+              outlineWidth: 2,
+              style: 0, // FILL_AND_OUTLINE
+              pixelOffset: new Cartesian3(0, 20, 0),
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+            properties: { locationData: loc },
+          });
+          entityIds.push(entity.id);
+          entityMeta.set(entity.id, {
+            type: 'point',
+            baseSize: basePixelSize,
+            currentSize: basePixelSize,
+            targetSize: basePixelSize,
+          });
+        } catch {
+          // Guard against race.
+        }
+      }
     });
   }
+
+  // ─── layer factory ──────────────────────────────────────────────────────────
 
   return {
     name: 'point-locations',
@@ -116,39 +313,79 @@ export const pointLocationsLayer: LayerFactory<PointLocationsOptions> = (initial
       description: 'Display named point location markers with labels and click interactions.',
     },
 
-    onMount: (context: LayerContext) => {
+    onMount: async (context: LayerContext) => {
       const { viewer, events, id: layerKey, onCleanup } = context;
       const opts = (context.options as PointLocationsOptions | undefined) ?? initialOptions;
       onLocationClick = opts?.onLocationClick;
+      activeViewer = viewer;
 
-      renderEntities(viewer, layerKey, opts, context.zIndex);
+      const gen = ++renderGeneration;
+      await renderEntities(viewer, layerKey, opts, context.zIndex, gen);
 
       const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+
+      // Click handler
       handler.setInputAction((click: { position: Cartesian2 }) => {
-        const pickedObject = viewer.scene.pick(click.position);
-        if (defined(pickedObject) && pickedObject.id) {
-          const entity = pickedObject.id;
-          if (entity.properties?.locationData) {
-            const locationData = entity.properties.locationData.getValue();
-            events.emit('location-clicked', locationData);
-            onLocationClick?.(locationData);
-          }
+        const drillPicked = viewer.scene.drillPick(click.position);
+        const hit = drillPicked.find((p) => defined(p.id) && p.id?.properties?.locationData);
+        if (hit) {
+          const locationData = hit.id.properties.locationData.getValue();
+          events.emit('location-clicked', locationData);
+          onLocationClick?.(locationData);
         }
       }, ScreenSpaceEventType.LEFT_CLICK);
 
+      // Hover handler — update targetSize then kick the rAF loop.
+      // Use drillPick to reliably hit billboards which may sit behind the globe
+      // surface in the pick buffer despite rendering on top visually.
+      let hoveredEntityId: string | null = null;
+
+      handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
+        const drillPicked = viewer.scene.drillPick(movement.endPosition);
+        const hit = drillPicked.find((p) => defined(p.id) && p.id?.properties?.locationData);
+        const hitEntityId: string | null = hit ? (hit.id.id as string) : null;
+
+        if (hoveredEntityId === hitEntityId) return; // nothing changed
+
+        // Restore previous hover target
+        if (hoveredEntityId !== null) {
+          const meta = entityMeta.get(hoveredEntityId);
+          if (meta) meta.targetSize = meta.baseSize;
+          hoveredEntityId = null;
+          viewer.scene.canvas.style.cursor = '';
+        }
+
+        // Apply new hover target
+        if (hitEntityId !== null) {
+          const meta = entityMeta.get(hitEntityId);
+          if (meta) {
+            meta.targetSize =
+              meta.type === 'billboard' ? meta.baseSize * BILLBOARD_HOVER_SCALE : meta.baseSize * HOVER_SCALE;
+            hoveredEntityId = hitEntityId;
+            viewer.scene.canvas.style.cursor = 'pointer';
+          }
+        }
+
+        startAnimLoop();
+      }, ScreenSpaceEventType.MOUSE_MOVE);
+
       onCleanup(() => {
         handler.destroy();
+        stopAnimLoop();
+        activeViewer = null;
+        viewer.scene.canvas.style.cursor = '';
         clearEntities(viewer);
       });
     },
 
-    onUpdate: (context: LayerContext) => {
+    onUpdate: async (context: LayerContext) => {
       const { viewer, id: layerKey } = context;
       const opts = context.options as PointLocationsOptions | undefined;
-      // Keep the click callback in sync with the latest options
       onLocationClick = opts?.onLocationClick;
+      activeViewer = viewer;
+      const gen = ++renderGeneration;
       clearEntities(viewer);
-      renderEntities(viewer, layerKey, opts, context.zIndex);
+      await renderEntities(viewer, layerKey, opts, context.zIndex, gen);
     },
 
     onUnmount: () => {

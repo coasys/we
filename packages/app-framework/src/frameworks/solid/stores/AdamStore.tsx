@@ -8,23 +8,18 @@ import {
   blobToDataURL,
   ChatMessage,
   ChatSession,
-  CollectionBlock,
-  ImageBlock,
   LocationBlock,
   resizeImage,
-  SignalType,
   Space,
   Template,
-  TextBlock,
   Theme,
-  WeNode,
 } from '@we/models';
 import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { getModelClasses, getModelManifest } from './perspectiveHelpers';
 import { useRouteStore } from './RouteStore';
 import { installSpaceSdna } from './spaceModels';
-import { removeSpaceFromParent, syncAgentProfileToParent, syncSpaceToParent } from './syncHelpers';
+import { removeSpaceFromParent, syncAgentProfileToParent } from './syncHelpers';
 
 export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 
@@ -72,6 +67,8 @@ export interface AdamStore {
   systemPerspectiveUuids: Accessor<string[]>;
   /** Perspectives sorted by user-defined order (falls back to load order). */
   orderedPerspectives: Accessor<PerspectiveProxy[]>;
+  /** Spaces sorted by user-defined perspective order (falls back to load order). Use this instead of orderedPerspectives when you need Space model data (e.g. avatar). */
+  orderedSpaces: Accessor<Space[]>;
   agentSettings: Accessor<AgentSettings | null>;
   agentProfile: Accessor<AgentProfile | null>;
   creatingSpace: Accessor<boolean>;
@@ -93,7 +90,8 @@ export interface AdamStore {
     name: string,
     description: string,
     visibility: 'personal' | 'shared' | 'public',
-    imageFile?: File,
+    avatarFile?: File,
+    coverImageFile?: File,
     latitude?: number,
     longitude?: number,
     city?: string,
@@ -140,115 +138,6 @@ export interface AdamStore {
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
-
-const DEFAULT_GLOBAL_SIGNAL_TYPES: Partial<SignalType>[] = [
-  {
-    name: 'Like',
-    slug: 'like',
-    icon: '👍',
-    mode: 'toggle',
-    aggregate: 'count',
-    semantic: 'approval',
-    rangeMin: 0,
-    rangeMax: 1,
-  },
-  {
-    name: 'Vibe',
-    slug: 'vibe',
-    icon: '⚡',
-    mode: 'toggle',
-    aggregate: 'count',
-    semantic: 'relevance',
-    rangeMin: 0,
-    rangeMax: 1,
-  },
-  {
-    name: 'Quality',
-    slug: 'quality',
-    icon: '⭐',
-    mode: 'rating',
-    aggregate: 'mean',
-    semantic: 'quality',
-    rangeMin: 1,
-    rangeMax: 5,
-    step: 1,
-  },
-];
-
-interface SeedLocation {
-  city: string;
-  countryCode: string;
-  country: string;
-  latitude: number;
-  longitude: number;
-}
-interface SeedAgent extends Omit<Partial<AgentProfile>, 'location'> {
-  location: SeedLocation;
-}
-const DEFAULT_GLOBAL_AGENTS: SeedAgent[] = [
-  {
-    firstName: 'Aria',
-    lastName: 'Chen',
-    handle: 'aria_chen',
-    bio: 'Building decentralised tools for collaborative research. Interested in knowledge graphs and open science.',
-    location: { city: 'Taipei', countryCode: 'TW', country: 'Taiwan', latitude: 25.033, longitude: 121.565 },
-  },
-  {
-    firstName: 'Marcus',
-    lastName: 'Osei',
-    handle: 'marcus_osei',
-    bio: 'P2P protocol enthusiast and distributed systems engineer. Contributing to open infrastructure.',
-    location: { city: 'Accra', countryCode: 'GH', country: 'Ghana', latitude: 5.603, longitude: -0.187 },
-  },
-  {
-    firstName: 'Lena',
-    lastName: 'Vogt',
-    handle: 'lena_vogt',
-    bio: 'Digital artist exploring generative design and on-chain provenance. Based in Vienna.',
-    location: { city: 'Vienna', countryCode: 'AT', country: 'Austria', latitude: 48.208, longitude: 16.373 },
-  },
-  {
-    firstName: 'Tomás',
-    lastName: 'Rivera',
-    handle: 'tomas_rivera',
-    bio: 'Community organiser and cooperatives advocate. Working on solidarity economy tooling.',
-    location: { city: 'Buenos Aires', countryCode: 'AR', country: 'Argentina', latitude: -34.603, longitude: -58.381 },
-  },
-  {
-    firstName: 'Priya',
-    lastName: 'Nair',
-    handle: 'priya_nair',
-    bio: 'Researcher in decentralised governance and participatory decision-making systems.',
-    location: { city: 'Bangalore', countryCode: 'IN', country: 'India', latitude: 12.972, longitude: 77.594 },
-  },
-];
-
-const DEFAULT_GLOBAL_SPACES = [
-  {
-    name: 'Open Source Collective',
-    city: 'Berlin',
-    countryCode: 'DE',
-    country: 'Germany',
-    latitude: 52.52,
-    longitude: 13.405,
-  },
-  {
-    name: 'Web3 Builders',
-    city: 'Lisbon',
-    countryCode: 'PT',
-    country: 'Portugal',
-    latitude: 38.717,
-    longitude: -9.142,
-  },
-  {
-    name: 'Decentralised Arts',
-    city: 'Tokyo',
-    countryCode: 'JP',
-    country: 'Japan',
-    latitude: 35.676,
-    longitude: 139.65,
-  },
-];
 
 const AdamContext = createContext<AdamStore>();
 
@@ -306,6 +195,15 @@ export function AdamStoreProvider(props: ParentProps) {
     const inOrder = new Set(order);
     const appended = all.filter((p) => !inOrder.has(p.uuid));
     return [...ordered, ...appended];
+  });
+
+  // Derived: spaces in user-defined perspective order (carries Space model data like avatar)
+  const orderedSpaces = createMemo(() => {
+    const spaceByUuid = new Map(mySpaces().map((s) => [s.uuid, s]));
+    return orderedPerspectives().flatMap((p) => {
+      const s = spaceByUuid.get(p.uuid);
+      return s ? [s] : [];
+    });
   });
 
   // Derived: personal and shared spaces
@@ -500,40 +398,6 @@ export function AdamStoreProvider(props: ParentProps) {
 
     // Cleanup function
     return () => window.removeEventListener('message', handleMessage);
-  }
-
-  async function seedGlobalPerspective(perspective: PerspectiveProxy): Promise<void> {
-    // Seed default signal types so the react bar is immediately populated
-    for (const st of DEFAULT_GLOBAL_SIGNAL_TYPES) {
-      await SignalType.create(perspective, st);
-    }
-
-    for (const { location: seedLoc, ...profileFields } of DEFAULT_GLOBAL_AGENTS) {
-      const profile = await AgentProfile.create(perspective, profileFields);
-      const loc = await LocationBlock.create(perspective, {
-        name: seedLoc.city,
-        ...seedLoc,
-      });
-      await profile.setLocation(loc);
-    }
-
-    for (const seed of DEFAULT_GLOBAL_SPACES) {
-      const space = await Space.create(perspective, {
-        uuid: crypto.randomUUID(),
-        name: seed.name,
-        description: `A community in ${seed.city}`,
-        visibility: 'public',
-      });
-      const loc = await LocationBlock.create(perspective, {
-        name: seed.city,
-        city: seed.city,
-        countryCode: seed.countryCode,
-        country: seed.country,
-        latitude: seed.latitude,
-        longitude: seed.longitude,
-      });
-      await space.addLocations(loc);
-    }
   }
 
   /** Find or create the root perspective and all other system perspectives.
@@ -773,38 +637,35 @@ export function AdamStoreProvider(props: ParentProps) {
     name: string,
     description: string,
     visibility: 'personal' | 'shared' | 'public',
-    imageFile?: File,
+    avatarFile?: File,
+    coverImageFile?: File,
     latitude?: number,
     longitude?: number,
     city?: string,
     country?: string,
     countryCode?: string,
   ): Promise<void> {
-    // Runtime coercion: JSON schema callers may pass a boolean from the legacy `shared` local state.
-    // TODO(commit-5): remove once CreateSpaceModal sends a visibility string.
-    const vis: 'personal' | 'shared' | 'public' =
-      (visibility as unknown) === true ? 'shared' : (visibility as unknown) === false ? 'personal' : visibility;
-
     const client = adamClient();
     if (!client) return;
-
+    // Capture the active perspective now — it becomes the parent once the new space is created
+    const parentPerspective = currentPerspective();
     setCreatingSpace(true);
+
     try {
       // Create the perspective
       const spacePerspective = await client.perspective.add(name);
 
-      // Register SDNA models
-      const models = [Space, WeNode, ImageBlock, TextBlock, CollectionBlock];
-      await Promise.all(models.map((model) => model.register(spacePerspective)));
+      // Register SDNA models (full set, same as SpaceStore uses)
+      await installSpaceSdna(spacePerspective);
 
       // HACK: Model.register resolves before the SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       // If shared or public, publish as neighbourhood
-      if (vis !== 'personal') {
+      if (visibility !== 'personal') {
         const uid = crypto.randomUUID();
-        const langs = await client.runtime.knownLinkLanguageTemplates();
-        const templateAddress = langs?.[0];
+        const languages = await client.runtime.knownLinkLanguageTemplates();
+        const templateAddress = languages?.[0];
         if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
         const templateData = JSON.stringify({ uid, name: `${name}-link-language` });
         const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
@@ -815,58 +676,79 @@ export function AdamStoreProvider(props: ParentProps) {
         );
       }
 
-      // Process image if provided
-      let thumbnailData: FileData | undefined;
-      let imageData: FileData | undefined;
-      if (imageFile) {
-        const thumbnailBlob = await resizeImage(imageFile, 0.3);
-        const compressedBlob = await resizeImage(imageFile, 0.6);
-        thumbnailData = {
-          data_base64: await blobToDataURL(thumbnailBlob),
-          name: 'space-thumbnail',
-          file_type: 'image/png',
-        } as FileData;
-        imageData = {
-          data_base64: await blobToDataURL(compressedBlob),
-          name: 'space-image',
+      // Process avatar image if provided
+      let avatarData: FileData | undefined;
+      if (avatarFile) {
+        const resized = await resizeImage(avatarFile, 0.6);
+        avatarData = {
+          data_base64: await blobToDataURL(resized),
+          name: 'space-avatar',
           file_type: 'image/png',
         } as FileData;
       }
 
-      // Create Space model
-      const space = await Space.create(spacePerspective, {
+      // Process cover image if provided
+      let coverImageData: FileData | undefined;
+      if (coverImageFile) {
+        const resized = await resizeImage(coverImageFile, 0.6);
+        coverImageData = {
+          data_base64: await blobToDataURL(resized),
+          name: 'space-cover',
+          file_type: 'image/png',
+        } as FileData;
+      }
+
+      // Assemble Space + optional location data once — used for both own and parent perspectives
+      const spaceData = {
         uuid: spacePerspective.uuid,
         url: spacePerspective.sharedUrl ?? undefined,
         name,
         description,
-        visibility: vis,
-        ...(imageData && { image: imageData, thumbnail: thumbnailData }),
-      });
+        visibility,
+        ...(avatarData && { avatar: avatarData }),
+        ...(coverImageData && { coverImage: coverImageData }),
+      };
+      const locationName = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
+      const locationData =
+        latitude != null && longitude != null
+          ? {
+              latitude,
+              longitude,
+              ...(locationName && { name: locationName }),
+              ...(city && { city }),
+              ...(country && { country }),
+              ...(countryCode && { countryCode }),
+            }
+          : null;
 
-      // Attach a location pin if coordinates were provided
-      if (latitude != null && longitude != null) {
-        const locationName = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
-        const loc = await LocationBlock.create(spacePerspective, {
-          latitude,
-          longitude,
-          ...(locationName && { name: locationName }),
-          ...(city && { city }),
-          ...(country && { country }),
-          ...(countryCode && { countryCode }),
-        });
-        await space.addLocations(loc);
-      }
+      // Write a Space (plus optional LocationBlock) into any perspective.
+      // Avoids a re-fetch after addLocations() — the same raw data is written directly
+      // to both the space's own perspective and any parent that should mirror it.
+      const writeSpaceInto = async (p: PerspectiveProxy) => {
+        const s = await Space.create(p, spaceData);
+        if (locationData) {
+          await LocationBlock.register(p); // idempotent — ensures model is ready on target
+          const loc = await LocationBlock.create(p, locationData);
+          await s.addLocations(loc);
+        }
+        return s;
+      };
 
-      // If public and the global neighbourhood is joined, mirror the space there
-      const globalP = globalPerspective();
-      if (vis === 'public' && globalP) {
-        syncSpaceToParent(space, globalP).catch((err) => console.error('AdamStore: syncSpaceToGlobal failed', err));
+      // Write to own perspective
+      const spaceModel = await writeSpaceInto(spacePerspective);
+      console.log('AdamStore: Created space model for new perspective', spaceModel);
+
+      // Mirror into parent perspective — no re-fetch or findAll needed for a fresh creation
+      if (parentPerspective && parentPerspective.uuid !== spacePerspective.uuid) {
+        await writeSpaceInto(parentPerspective).catch((err) =>
+          console.error('AdamStore: mirror space to parent failed', err),
+        );
       }
 
       // Update sidebar and navigate
-      addNewSpace(space);
-      await setCurrentPerspective(spacePerspective.uuid);
-      routeStore.navigate(`/space/${space.url || space.uuid}`);
+      addNewSpace(spaceModel);
+      // await setCurrentPerspective(spacePerspective.uuid);
+      // routeStore.navigate(`/space/${spaceModel.uuid}/globe`);
     } catch (error) {
       console.error('AdamStore: createSpace error', error);
     } finally {
@@ -919,9 +801,6 @@ export function AdamStoreProvider(props: ParentProps) {
         });
 
         console.log('AdamStore: Created we-global space', space);
-
-        // Seed synthetic spaces, agents, and signals so the globe is populated in dev
-        await seedGlobalPerspective(globalP);
 
         setGlobalPerspective(globalP);
         await setCurrentPerspective(globalP.uuid);
@@ -1011,6 +890,7 @@ export function AdamStoreProvider(props: ParentProps) {
     me,
     allPerspectives,
     orderedPerspectives,
+    orderedSpaces,
     personalSpaces,
     sharedSpaces,
     ad4mPort,

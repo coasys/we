@@ -2,8 +2,26 @@ import { LinkQuery, PerspectiveProxy } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { useAdamStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';
-import { AgentProfile, blobToDataURL, FileData, resizeImage, Signal, SignalType, Space } from '@we/models';
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  AgentProfile,
+  blobToDataURL,
+  FileData,
+  LocationBlock,
+  resizeImage,
+  Signal,
+  SignalType,
+  Space,
+} from '@we/models';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  ParentProps,
+  useContext,
+} from 'solid-js';
 
 import { useRouteStore } from './RouteStore';
 import { installSpaceSdna, SPACE_MODELS } from './spaceModels';
@@ -82,6 +100,19 @@ export interface SpaceStore {
   updateSpaceCoverImage: (imageFile: File) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
+  createAgentProfile: (
+    firstName: string,
+    lastName: string,
+    handle: string,
+    bio: string,
+    avatarFile?: File,
+    coverImageFile?: File,
+    latitude?: number,
+    longitude?: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
+  ) => Promise<void>;
   deriveSlug: (name: string) => string;
   /**
    * Navigate into a child space by UUID (extends holarchyPath).
@@ -127,6 +158,7 @@ export function SpaceStoreProvider(props: ParentProps) {
           name: s.name,
           latitude: loc.latitude,
           longitude: loc.longitude,
+          avatar: typeof s.avatar === 'string' ? s.avatar : undefined,
           signalEnergy: (s as unknown as WithSignalCount).$signalCount ?? 0,
         })),
     ),
@@ -143,6 +175,7 @@ export function SpaceStoreProvider(props: ParentProps) {
           name: [a.firstName, a.lastName].filter(Boolean).join(' ') || a.handle,
           latitude: loc.latitude,
           longitude: loc.longitude,
+          avatar: typeof a.avatar === 'string' ? a.avatar : undefined,
           signalEnergy: (a as unknown as WithSignalCount).$signalCount ?? 0,
         },
       ];
@@ -226,6 +259,71 @@ export function SpaceStoreProvider(props: ParentProps) {
       .replace(/[^a-z0-9\s-]/g, '')
       .trim()
       .replace(/\s+/g, '-');
+  }
+
+  async function createAgentProfile(
+    firstName: string,
+    lastName: string,
+    handle: string,
+    bio: string,
+    avatarFile?: File,
+    coverImageFile?: File,
+    latitude?: number,
+    longitude?: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
+  ): Promise<void> {
+    const p = perspective();
+    if (!p) return;
+
+    let avatarData: FileData | undefined;
+    if (avatarFile) {
+      const resized = await resizeImage(avatarFile, 0.6);
+      avatarData = {
+        data_base64: await blobToDataURL(resized),
+        name: 'agent-avatar',
+        file_type: 'image/png',
+      } as FileData;
+    }
+
+    let coverImageData: FileData | undefined;
+    if (coverImageFile) {
+      const resized = await resizeImage(coverImageFile, 0.6);
+      coverImageData = {
+        data_base64: await blobToDataURL(resized),
+        name: 'agent-cover',
+        file_type: 'image/png',
+      } as FileData;
+    }
+
+    const profile = await AgentProfile.create(p, {
+      firstName,
+      lastName,
+      handle,
+      bio,
+      ...(avatarData && { avatar: avatarData }),
+      ...(coverImageData && { coverImage: coverImageData }),
+    });
+
+    if (latitude != null && longitude != null) {
+      await LocationBlock.register(p);
+      const locationName = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
+      const loc = await LocationBlock.create(p, {
+        latitude,
+        longitude,
+        ...(locationName && { name: locationName }),
+        ...(city && { city }),
+        ...(country && { country }),
+        ...(countryCode && { countryCode }),
+      });
+      await profile.setLocation(loc);
+      // setLocation writes only to the AD4M graph; hydrate the in-memory
+      // property so memberLocationPins memo picks up the new agent immediately.
+      profile.location = loc;
+    }
+
+    setMembers((prev) => [...prev, profile]);
   }
 
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
@@ -419,7 +517,13 @@ export function SpaceStoreProvider(props: ParentProps) {
   // For a mixed perspective: both layers hydrate simultaneously.
   createEffect(() => {
     const p = adamStore.currentPerspective();
-    // console.log('SpaceStore: currentPerspective changed', p?.uuid);
+
+    // Cancel any in-flight hydration from a previous run of this effect.
+    let cancelled = false;
+    onCleanup(() => {
+      cancelled = true;
+    });
+
     if (!p) {
       setPerspective(null);
       setSpace(null);
@@ -431,64 +535,57 @@ export function SpaceStoreProvider(props: ParentProps) {
       setSelectedEntitySignals([]);
       return;
     }
+
+    // Clear discovery data synchronously so stale pins from the previous
+    // perspective don't linger while the new perspective is hydrating.
+    setChildSpaces([]);
+    setMembers([]);
+    setSignalTypes([]);
+    setLoading(true);
+
     void (async () => {
       try {
-        setLoading(true);
         const uuid = p.uuid;
         setSpaceId(uuid);
 
         // Skip block-model registration for system perspectives (we-root, we-test)
         const rootUuid = adamStore.rootPerspective()?.uuid;
         const systemUuids = adamStore.systemPerspectiveUuids();
-        // console.log('systemUuids', systemUuids, 'rootUuid', rootUuid);
         if (systemUuids.includes(uuid)) {
+          if (cancelled) return;
           setPerspective(p);
           setSpace(null);
-          setSignalTypes([]);
-          setChildSpaces([]);
-          setMembers([]);
           setSelectedPin(null);
           setSelectedEntitySignalData([]);
           setSelectedEntitySignals([]);
-          console.log('[SpaceStore] skipped block registration for system perspective', uuid);
-          // we-root guard kept for clarity but covered above
           void rootUuid;
           return;
         }
 
-        // Confirm this perspective is actually a WE space before registering
-        // block-model SHACL shapes. Registering them writes links to the
-        // perspective permanently, so we must not do it for external perspectives.
-        //
-        // For a fresh global perspective (Space.findAll returns []) installSpaceSdna
-        // must still run first so models are ready before Space.create is called.
-        // register() is idempotent — safe to call unconditionally.
         await installSpaceSdna(p);
         await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
+        if (cancelled) return;
+
         // Filter by uuid === perspective.uuid so we get only the root Space for this
         // perspective. Perspectives like we-global contain multiple Space entries
         // (itself + seeded children) and SPARQL order is non-deterministic.
         const [spaceModel] = await Space.findAll(p, { where: { uuid: p.uuid } });
+        if (cancelled) return;
 
         setPerspective(p);
         setSpace(spaceModel ?? null);
 
         if (spaceModel) {
           const discovery = await buildDiscoveryData(p);
-          console.log('discovery', discovery);
+          if (cancelled) return;
           setChildSpaces(discovery.spaces);
           setMembers(discovery.agents);
           setSignalTypes(discovery.signalTypes);
-        } else {
-          setChildSpaces([]);
-          setMembers([]);
-          setSignalTypes([]);
         }
-        // console.log('[SpaceStore] hydrated perspective', uuid, 'space:', spaceModel ?? null);
       } catch (error) {
-        console.error('SpaceStore: perspective hydration error', error);
+        if (!cancelled) console.error('SpaceStore: perspective hydration error', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
   });
@@ -533,6 +630,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceCoverImage,
     createSignalType,
     upsertSignal,
+    createAgentProfile,
     deriveSlug,
     navigateInto,
     navigateUp,

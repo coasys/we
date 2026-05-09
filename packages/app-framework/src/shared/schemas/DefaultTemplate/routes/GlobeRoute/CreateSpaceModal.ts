@@ -14,24 +14,45 @@ export const createSpaceModal = {
     description: { type: 'string', initial: '' },
     shared: { type: 'boolean', initial: false },
     listedGlobally: { type: 'boolean', initial: false },
-    thumbnail: { type: 'file', initial: null },
+    avatar: { type: 'file', initial: null },
+    coverImage: { type: 'file', initial: null },
     globalPromptDismissed: { type: 'boolean', initial: false },
+    locationLat: { type: 'number', initial: null },
+    locationLng: { type: 'number', initial: null },
+    locationCity: { type: 'string', initial: '' },
+    locationCountry: { type: 'string', initial: '' },
+    locationCountryCode: { type: 'string', initial: '' },
   },
   children: [
     { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create a New Space'] },
 
-    // Space image
+    // Cover image (wide banner)
     {
       type: 'EditableImage',
       props: {
-        src: { $local: 'thumbnail' },
-        alt: 'Space image',
+        src: { $local: 'coverImage' },
+        alt: 'Cover image',
         fit: 'cover',
         width: '100%',
-        height: '160px',
+        height: '140px',
         r: '300',
+        placeholderIcon: 'panorama',
+        onImageChange: { $setLocal: 'coverImage', from: '$event' },
+      },
+    },
+
+    // Avatar image (circular)
+    {
+      type: 'EditableImage',
+      props: {
+        src: { $local: 'avatar' },
+        alt: 'Space avatar',
+        fit: 'cover',
+        width: '80px',
+        height: '80px',
+        r: 'full',
         placeholderIcon: 'image',
-        onImageChange: { $setLocal: 'thumbnail', from: '$event' },
+        onImageChange: { $setLocal: 'avatar', from: '$event' },
       },
     },
 
@@ -233,6 +254,7 @@ export const createSpaceModal = {
             disabled: { $not: { $formValid: '$scope' } },
             onClick: [
               { $touch: '$all' },
+              { $setLocal: 'createSpaceOpen', value: false },
               {
                 $if: {
                   condition: { $formValid: '$scope' },
@@ -254,7 +276,8 @@ export const createSpaceModal = {
                           },
                         },
                       },
-                      { $local: 'thumbnail' },
+                      { $local: 'avatar' },
+                      { $local: 'coverImage' },
                       { $local: 'locationLat' },
                       { $local: 'locationLng' },
                       { $local: 'locationCity' },

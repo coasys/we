@@ -186,6 +186,7 @@ export default class LocationPicker extends DesignSystemElement {
   private _onDocClick(e: Event) {
     if (!this.contains(e.target as Node)) {
       this._open = false;
+      this._destroyMap();
     }
   }
 
