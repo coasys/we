@@ -64,11 +64,11 @@ export interface SpaceStore {
   /** Full path from the global root down to the currently-viewed node. */
   holarchyPath: Accessor<HolarchyNode[]>;
   /**
-   * The node currently being viewed at `/space/:id`.
-   * - `null` when at the globe route (no specific space selected).
-   * - `isJoined === false` when the perspective does not exist locally (gate shows).
+   * Whether the current agent has joined the space at the current route.
+   * `true` for `/space/global` (always joined), `true` when a local perspective
+   * exists for the current `:spaceId`, `false` otherwise (join gate shows).
    */
-  currentNode: Accessor<HolarchyNode | null>;
+  hasJoined: Accessor<boolean>;
 
   // Setters
   setSpaceId: (id: string) => void;
@@ -401,6 +401,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     return nodes;
   });
 
+  /** Flat boolean derived from the internal currentNode memo. */
+  const hasJoined = createMemo<boolean>(() => currentNode()?.isJoined ?? false);
+
   // --- Holarchy navigation actions ---
 
   async function navigateInto(uuid: string): Promise<void> {
@@ -516,7 +519,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Holarchy
     holarchyPath,
-    currentNode,
+    hasJoined,
 
     // Setters
     setSpaceId,
