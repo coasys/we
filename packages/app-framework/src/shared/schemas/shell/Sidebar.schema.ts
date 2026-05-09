@@ -210,7 +210,30 @@ export const sidebar: SchemaNode = {
                   active: { $eq: ['$item.uuid', { $store: 'adamStore.currentPerspective.uuid' }] },
                   onClick: [
                     { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
-                    { $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$item.uuid'] }] },
+                    {
+                      $action: 'routeStore.navigate',
+                      args: [
+                        {
+                          $concat: [
+                            '/space/',
+                            '$item.uuid',
+                            '/',
+                            {
+                              $if: {
+                                condition: {
+                                  $and: [
+                                    { $eq: [{ $store: 'routeStore.segments.0' }, 'space'] },
+                                    { $store: 'routeStore.segments.2' },
+                                  ],
+                                },
+                                then: { $store: 'routeStore.segments.2' },
+                                else: 'globe',
+                              },
+                            },
+                          ],
+                        },
+                      ],
+                    },
                   ],
                 },
               },
