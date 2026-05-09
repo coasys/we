@@ -24,7 +24,7 @@ export const storeEntries: StoreEntry[] = [
       creatingSpace: { type: 'boolean' },
       agentProfile: {
         type: 'object',
-        properties: ['firstName', 'lastName', 'handle', 'bio', 'location', 'profileImage', 'coverImage'],
+        properties: ['firstName', 'lastName', 'handle', 'bio', 'location', 'avatar', 'coverImage'],
       },
     },
     actions: [
@@ -36,7 +36,7 @@ export const storeEntries: StoreEntry[] = [
       'login',
       'logout',
       'updateAgentProfile',
-      'updateProfileImage',
+      'updateAvatarImage',
       'updateCoverImage',
     ],
   },
@@ -81,7 +81,7 @@ export const storeEntries: StoreEntry[] = [
       perspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
       space: {
         type: 'object',
-        properties: ['uuid', 'name', 'description', 'url', 'visibility', 'image', 'thumbnail'],
+        properties: ['uuid', 'name', 'description', 'url', 'visibility', 'avatar', 'coverImage'],
       },
       signalTypes: {
         type: 'array',
@@ -107,7 +107,7 @@ export const storeEntries: StoreEntry[] = [
       'setSpaceId',
       'getSpace',
       'createPost',
-      'updateSpaceImage',
+      'updateSpaceAvatar',
       'updateSpaceCoverImage',
       'createSignalType',
       'upsertSignal',
@@ -198,7 +198,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         logout: '(): locks the agent and returns to login screen',
         updateAgentProfile:
           '(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)',
-        updateProfileImage: '(imageFile: File): uploads and sets the profile image',
+        updateAvatarImage: '(imageFile: File): uploads and sets the profile image',
         updateCoverImage: '(imageFile: File): uploads and sets the cover image',
       },
     },

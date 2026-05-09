@@ -1,4 +1,4 @@
-import { HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
+import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
 import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { decodeFileAsJson } from '../utils/fileTransforms';
@@ -6,6 +6,9 @@ import { WeNode } from '../WeNode';
 
 @Model({ name: 'CollectionBlock' })
 export class CollectionBlock extends WeNode {
+  @Flag({ through: 'we://flag', value: 'we://collection_block' })
+  flag: string = '';
+
   @HasMany({ through: 'we://children' })
   children: string[] = [];
 

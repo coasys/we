@@ -4,10 +4,10 @@ import { Signal } from './entities/Signal';
 
 @Model({ name: 'WeNode' })
 export class WeNode extends Ad4mModel {
-  @HasMany({ through: 'we://has_comments' })
+  @HasMany({ through: 'we://comment' })
   comments: string[] = [];
 
-  @HasMany(() => Signal, { through: 'we://has_signals' })
+  @HasMany(() => Signal, { through: 'we://signal' })
   signals: string[] = [];
 }
 

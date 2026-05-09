@@ -7,6 +7,8 @@
 
 import type { TemplateSchema } from '@we/schema-shared';
 
+import { globalEntityModal } from './DefaultTemplate/routes/GlobeRoute/GlobalEntityModal';
+
 export const weTemplate: TemplateSchema = {
   meta: {
     name: 'WE',
@@ -66,6 +68,14 @@ export const weTemplate: TemplateSchema = {
                 label: 'Globe',
                 onClick: { $action: 'routeStore.navigate', args: ['/globe'] },
                 active: { $eq: [{ $store: 'routeStore.currentPath' }, '/globe'] },
+              },
+              {
+                type: 'item',
+                id: 'discover',
+                icon: 'magnifying-glass-plus',
+                label: 'Discover',
+                onClick: { $action: 'routeStore.navigate', args: ['/discover'] },
+                active: { $eq: [{ $store: 'routeStore.currentPath' }, '/discover'] },
               },
               {
                 type: 'item',
@@ -154,7 +164,7 @@ export const weTemplate: TemplateSchema = {
                 select: {
                   id: { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
                   label: '$item.name',
-                  avatar: { src: '$item.thumbnail', name: '$item.name' },
+                  avatar: { src: '$item.avatar', name: '$item.name' },
                   onClick: [
                     { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
                     {
@@ -186,7 +196,7 @@ export const weTemplate: TemplateSchema = {
                 select: {
                   id: { $if: { condition: '$item.url', then: '$item.url', else: '$item.uuid' } },
                   label: '$item.name',
-                  avatar: { src: '$item.thumbnail', name: '$item.name' },
+                  avatar: { src: '$item.avatar', name: '$item.name' },
                   onClick: [
                     { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
                     {
@@ -1269,6 +1279,100 @@ export const weTemplate: TemplateSchema = {
       ],
     },
     {
+      path: '/discover',
+      type: 'Column',
+      props: { width: '100%', height: '100%', position: 'relative' },
+      children: [
+        // Header
+        {
+          type: 'Row',
+          props: {
+            width: '100%',
+            p: '400',
+            gap: '400',
+            position: 'absolute',
+            zIndex: 10,
+            ay: 'center',
+          },
+          children: [
+            { type: 'we-icon', props: { name: 'magnifying-glass-plus', color: 'neutral-0', size: '20px' } },
+            {
+              type: 'we-text',
+              props: { fontSize: '600', fontWeight: 'semibold', color: 'neutral-0' },
+              children: ['Discover'],
+            },
+          ],
+        },
+
+        // Globe — wired to spaceStore
+        {
+          type: 'CesiumGlobe',
+          props: {
+            backgroundLayers: [
+              {
+                factory: 'skyboxLayer',
+                enabled: true,
+                options: { textureSet: 'tycho2-4k' },
+              },
+              {
+                factory: 'proceduralStarsLayer',
+                enabled: true,
+                options: {
+                  count: 2000,
+                  minDistance: 10000,
+                  maxDistance: 100000000,
+                  minBrightness: 0.3,
+                  maxBrightness: 1.0,
+                  minSize: 1,
+                  maxSize: 3,
+                  color: '#ffffff',
+                  show: true,
+                },
+              },
+            ],
+            planetLayers: [
+              {
+                factory: 'pointLocationsLayer',
+                id: 'space-locations',
+                enabled: true,
+                options: {
+                  locations: { $store: 'spaceStore.spaceLocationPins' },
+                  markerSize: 18,
+                  defaultColor: '#a855f7',
+                  onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },
+                },
+              },
+              {
+                factory: 'pointLocationsLayer',
+                id: 'agent-locations',
+                enabled: true,
+                options: {
+                  locations: { $store: 'spaceStore.memberLocationPins' },
+                  markerSize: 14,
+                  defaultColor: '#f97316',
+                  onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },
+                },
+              },
+              {
+                factory: 'countryOutlinesLayer',
+                enabled: true,
+                options: { color: '#ffffff', opacity: 0.3, width: 1 },
+              },
+            ],
+          },
+        },
+
+        // Entity detail modal (shown when a pin is clicked)
+        {
+          type: '$if',
+          props: {
+            condition: { $store: 'spaceStore.selectedPin' },
+            then: globalEntityModal,
+          },
+        },
+      ],
+    },
+    {
       path: '/globe',
       type: 'Column',
       props: { width: '100%', height: '100%', position: 'relative' },
@@ -1399,7 +1503,8 @@ export const weTemplate: TemplateSchema = {
             ],
             planetLayers: [
               {
-                factory: 'userLocationsLayer',
+                factory: 'pointLocationsLayer',
+                id: 'user-locations',
                 enabled: { $store: 'spaceStore.showUserLocations' },
                 options: {
                   locations: { $store: 'spaceStore.space.userLocations' },
@@ -1499,6 +1604,7 @@ export const weTemplate: TemplateSchema = {
         name: { type: 'string', initial: '', validate: [{ rule: 'required', message: 'Name is required' }] },
         description: { type: 'string', initial: '' },
         shared: { type: 'boolean', initial: false },
+        listedGlobally: { type: 'boolean', initial: false },
         thumbnail: { type: 'file', initial: null },
       },
       children: [
@@ -1658,7 +1764,19 @@ export const weTemplate: TemplateSchema = {
                         args: [
                           { $local: 'name' },
                           { $local: 'description' },
-                          { $local: 'shared' },
+                          {
+                            $if: {
+                              condition: { $and: [{ $local: 'shared' }, { $local: 'listedGlobally' }] },
+                              then: 'public',
+                              else: {
+                                $if: {
+                                  condition: { $local: 'shared' },
+                                  then: 'shared',
+                                  else: 'personal',
+                                },
+                              },
+                            },
+                          },
                           { $local: 'thumbnail' },
                         ],
                       },

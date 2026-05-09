@@ -1,9 +1,12 @@
-import { Model, Property } from '@coasys/ad4m';
+import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'TaskBlock' })
 export class TaskBlock extends WeNode {
+  @Flag({ through: 'we://flag', value: 'we://task_block' })
+  flag: string = '';
+
   @Property({ through: 'we://title', required: true })
   title: string = '';
 

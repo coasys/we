@@ -55,6 +55,19 @@ export interface LayerContext<TOptions = unknown> {
   store: LayerStore;
   /** Layer-specific options/configuration */
   options?: TOptions;
+  /**
+   * Stable identity for this layer instance — sourced from `LayerConfig.id`.
+   * Use for namespacing entity IDs, log messages, etc.
+   * Falls back to the layer's own `name` if no `id` was provided in the config.
+   */
+  id: string;
+  /**
+   * Stacking / rendering order for this layer (from `LayerConfig.zIndex`).
+   * Higher values should appear visually above lower values.
+   * Layers that need 3-D elevation (e.g. point markers) use this to compute an
+   * altitude offset so that picking and depth-sorting work correctly.
+   */
+  zIndex?: number;
   /** Register cleanup function to be called when layer unmounts */
   onCleanup: (cleanup: () => void) => void;
 }
@@ -111,10 +124,25 @@ export type LayerFactory<TOptions = unknown> = (options?: TOptions) => CesiumLay
 export interface LayerConfig<TOptions = unknown> {
   /** Layer factory function or string name (resolved via registry) */
   factory: LayerFactory<TOptions> | string;
+  /**
+   * Stable identity for this layer instance.
+   * Required when the same factory is used more than once (e.g. two pointLocationsLayer
+   * entries). Used as the mount-map key and passed into LayerContext so factories can
+   * namespace their Cesium entity IDs without needing a separate option.
+   * Defaults to the layer instance's own `name` when omitted.
+   */
+  id?: string;
   /** Layer options */
   options?: TOptions;
   /** Whether layer is initially enabled */
   enabled?: boolean;
+  /**
+   * Stacking / rendering order. Higher values render on top of lower values.
+   * Passed through to `LayerContext.zIndex` so each layer can translate the
+   * priority into whatever Cesium mechanism it needs (elevation offset,
+   * primitive ordering, depth-test bypasses, etc.).
+   */
+  zIndex?: number;
 }
 
 /**

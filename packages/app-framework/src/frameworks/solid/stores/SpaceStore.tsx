@@ -3,29 +3,51 @@ import { registerModel } from '@shared/registries/modelRegistry';
 import { useAdamStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';
 import {
-  AudioBlock,
+  AgentProfile,
   blobToDataURL,
-  CalloutBlock,
-  CodeBlock,
-  CollectionBlock,
-  DividerBlock,
-  EmbedBlock,
-  EventBlock,
-  FileBlock,
   FileData,
-  ImageBlock,
-  LinkBlock,
   LocationBlock,
   resizeImage,
   Signal,
   SignalType,
   Space,
-  TagBlock,
-  TaskBlock,
-  TextBlock,
-  VideoBlock,
 } from '@we/models';
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  onCleanup,
+  ParentProps,
+  useContext,
+} from 'solid-js';
+
+import { useRouteStore } from './RouteStore';
+import { installSpaceSdna, SPACE_MODELS } from './spaceModels';
+import { buildDiscoveryData, type GlobePin } from './syncHelpers';
+
+/** Per-signal-type aggregate for the currently selected entity's react bar. **/
+export interface EntitySignalData {
+  nodeId: string;
+  signalType: SignalType;
+  totalValue: number;
+  myValue: number;
+}
+
+/**
+ * A single node in the holarchic navigation path.
+ * `isJoined` is true when the agent has a local perspective for this space.
+ * `perspective` is null when the agent has navigated to an unjoined space (gate shown).
+ */
+export interface HolarchyNode {
+  perspective: PerspectiveProxy | null;
+  space: Space | null;
+  isJoined: boolean;
+}
+
+export { type GlobePin } from './syncHelpers';
 
 export interface SpaceStore {
   // State
@@ -36,15 +58,36 @@ export interface SpaceStore {
   signalTypes: Accessor<SignalType[]>;
   signalTypesBySlug: Accessor<Record<string, SignalType>>;
 
-  // Layer visibility
-  showUserLocations: Accessor<boolean>;
-  showCountryOutlines: Accessor<boolean>;
-  showH3Hexagons: Accessor<boolean>;
+  // Discovery (per-space holonic data — mirrors GlobalStore's global-root data)
+  /** Child spaces found inside the current space's perspective. */
+  childSpaces: Accessor<Space[]>;
+  /** Agent profiles of members in the current space's perspective. */
+  members: Accessor<AgentProfile[]>;
+  /** Globe pins derived from child-space location blocks. */
+  spaceLocationPins: Accessor<GlobePin[]>;
+  /** Globe pins derived from member location blocks. */
+  memberLocationPins: Accessor<GlobePin[]>;
 
-  // Background visibility
-  showSkybox: Accessor<boolean>;
-  showStars: Accessor<boolean>;
-  showSolarSystem: Accessor<boolean>;
+  // Selection (which pin the user clicked on the globe)
+  selectedPin: Accessor<GlobePin | null>;
+  /** Space model for the selected pin (null when an agent pin is selected). */
+  selectedSpace: Accessor<Space | null>;
+  /** Agent model for the selected pin (null when a space pin is selected). */
+  selectedAgent: Accessor<AgentProfile | null>;
+  selectedEntitySignalData: Accessor<EntitySignalData[]>;
+  setSelectedPin: (pin: GlobePin) => void;
+  clearSelectedPin: () => void;
+  upsertEntitySignal: (signalTypeId: string, value: number) => Promise<void>;
+
+  // Holarchy
+  /** Full path from the global root down to the currently-viewed node. */
+  holarchyPath: Accessor<HolarchyNode[]>;
+  /**
+   * Whether the current agent has joined the space at the current route.
+   * `true` for `/space/global` (always joined), `true` when a local perspective
+   * exists for the current `:spaceId`, `false` otherwise (join gate shows).
+   */
+  hasJoined: Accessor<boolean>;
 
   // Setters
   setSpaceId: (id: string) => void;
@@ -52,47 +95,44 @@ export interface SpaceStore {
   // Actions
   getSpace: () => Promise<void>;
   createPost: (json: unknown) => Promise<void>;
-  toggleLayer: (layerName: string) => void;
-  toggleBackground: (backgroundName: string) => void;
-  updateSpaceImage: (imageFile: File) => Promise<void>;
+  // toggleLayer: (layerName: string) => void;
+  // toggleBackground: (backgroundName: string) => void;
+  updateSpaceAvatar: (imageFile: File) => Promise<void>;
   updateSpaceCoverImage: (imageFile: File) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
+  createAgentProfile: (
+    firstName: string,
+    lastName: string,
+    handle: string,
+    bio: string,
+    avatarFile?: File,
+    coverImageFile?: File,
+    latitude?: number,
+    longitude?: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
+  ) => Promise<void>;
   deriveSlug: (name: string) => string;
+  /**
+   * Navigate into a child space by UUID (extends holarchyPath).
+   * Calls `adamStore.setCurrentPerspective` and updates the path.
+   */
+  navigateInto: (uuid: string) => Promise<void>;
+  /** Pop one level from the holarchyPath (navigate up to parent). */
+  navigateUp: () => void;
 }
 
 const SpaceContext = createContext<SpaceStore>();
-
-const SPACE_MODELS = [
-  AudioBlock,
-  CalloutBlock,
-  CodeBlock,
-  CollectionBlock,
-  DividerBlock,
-  EmbedBlock,
-  EventBlock,
-  FileBlock,
-  ImageBlock,
-  LinkBlock,
-  LocationBlock,
-  Signal,
-  SignalType,
-  TagBlock,
-  TaskBlock,
-  TextBlock,
-  VideoBlock,
-] as const;
 
 // Register JS classes for $query model resolution (runs once at module load)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 for (const M of SPACE_MODELS) registerModel(M.name, M as any);
 
-async function installSpaceSdna(p: PerspectiveProxy): Promise<void> {
-  await Promise.all(SPACE_MODELS.map((M) => M.register(p)));
-}
-
 export function SpaceStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
+  const routeStore = useRouteStore();
 
   // State
   const [spaceId, setSpaceId] = createSignal('');
@@ -104,52 +144,58 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [signalTypes, setSignalTypes] = createSignal<SignalType[]>([]);
   const signalTypesBySlug = createMemo(() => Object.fromEntries(signalTypes().map((st) => [st.slug, st])));
 
-  // Layer visibility state
-  const [showUserLocations, setShowUserLocations] = createSignal(true);
-  const [showCountryOutlines, setShowCountryOutlines] = createSignal(true);
-  const [showH3Hexagons, setShowH3Hexagons] = createSignal(false);
+  // Discovery data (holonic: same shape as GlobalStore but for the current space)
+  const [childSpaces, setChildSpaces] = createSignal<Space[]>([]);
+  const [members, setMembers] = createSignal<AgentProfile[]>([]);
+  type WithSignalCount = { $signalCount?: number };
 
-  // Background visibility state
-  const [showSkybox, setShowSkybox] = createSignal(true);
-  const [showStars, setShowStars] = createSignal(true);
-  const [showSolarSystem, setShowSolarSystem] = createSignal(false);
+  const spaceLocationPins = createMemo<GlobePin[]>(() =>
+    childSpaces()
+      .filter((s) => s.uuid !== spaceId())
+      .flatMap((s) =>
+        (s.locations ?? [])
+          .filter((loc) => loc.latitude != null && loc.longitude != null)
+          .map((loc) => ({
+            id: s.id,
+            kind: 'space' as const,
+            name: s.name,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            avatar: typeof s.avatar === 'string' ? s.avatar : undefined,
+            signalEnergy: (s as unknown as WithSignalCount).$signalCount ?? 0,
+          })),
+      ),
+  );
 
-  // Toggle layer visibility
-  function toggleLayer(layerName: string) {
-    switch (layerName) {
-      case 'userLocations':
-        setShowUserLocations(!showUserLocations());
-        break;
-      case 'countryOutlines':
-        setShowCountryOutlines(!showCountryOutlines());
-        break;
-      case 'h3Hexagons':
-        setShowH3Hexagons(!showH3Hexagons());
-        break;
-    }
-  }
+  const memberLocationPins = createMemo<GlobePin[]>(() =>
+    members().flatMap((a) => {
+      const loc = a.location;
+      if (!loc || loc.latitude == null || loc.longitude == null) return [];
+      return [
+        {
+          id: a.id,
+          kind: 'agent' as const,
+          name: [a.firstName, a.lastName].filter(Boolean).join(' ') || a.handle,
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          avatar: typeof a.avatar === 'string' ? a.avatar : undefined,
+          signalEnergy: (a as unknown as WithSignalCount).$signalCount ?? 0,
+        },
+      ];
+    }),
+  );
 
-  // Toggle background visibility
-  function toggleBackground(backgroundName: string) {
-    console.log('[SpaceStore] toggleBackground called:', backgroundName);
-    switch (backgroundName) {
-      case 'skybox':
-        const newSkyboxValue = !showSkybox();
-        setShowSkybox(newSkyboxValue);
-        console.log('[SpaceStore] showSkybox toggled to:', newSkyboxValue);
-        break;
-      case 'stars':
-        const newStarsValue = !showStars();
-        setShowStars(newStarsValue);
-        console.log('[SpaceStore] showStars toggled to:', newStarsValue);
-        break;
-      case 'solarSystem':
-        const newSolarSystemValue = !showSolarSystem();
-        setShowSolarSystem(newSolarSystemValue);
-        console.log('[SpaceStore] showSolarSystem toggled to:', newSolarSystemValue);
-        break;
-    }
-  }
+  // Selection state
+  const [selectedPin, setSelectedPin] = createSignal<GlobePin | null>(null);
+  const [selectedEntitySignalData, setSelectedEntitySignalData] = createSignal<EntitySignalData[]>([]);
+  const [selectedEntitySignals, setSelectedEntitySignals] = createSignal<Signal[]>([]);
+
+  const selectedSpace = createMemo<Space | null>(() =>
+    selectedPin()?.kind === 'space' ? (childSpaces().find((s) => s.id === selectedPin()!.id) ?? null) : null,
+  );
+  const selectedAgent = createMemo<AgentProfile | null>(() =>
+    selectedPin()?.kind === 'agent' ? (members().find((a) => a.id === selectedPin()!.id) ?? null) : null,
+  );
 
   // Actions
   /**
@@ -167,17 +213,17 @@ export function SpaceStoreProvider(props: ParentProps) {
     await createBlocks(p, json);
   }
 
-  async function updateSpaceImage(imageFile: File): Promise<void> {
+  async function updateSpaceAvatar(imageFile: File): Promise<void> {
     const currentSpace = space();
     const currentPerspective = perspective();
     if (!currentSpace || !currentPerspective) return;
     const compressedBlob = await resizeImage(imageFile, 0.6);
     const imageBase64 = await blobToDataURL(compressedBlob);
-    const [spaceModel] = await Space.findAll(currentPerspective);
+    const [spaceModel] = await Space.findAll(currentPerspective, { where: { uuid: currentPerspective.uuid } });
     if (!spaceModel) return;
-    spaceModel.image = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData;
+    spaceModel.avatar = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData;
     await spaceModel.save();
-    setSpace({ ...currentSpace, image: spaceModel.image });
+    setSpace({ ...currentSpace, avatar: spaceModel.avatar });
   }
 
   async function updateSpaceCoverImage(imageFile: File): Promise<void> {
@@ -186,11 +232,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!currentSpace || !currentPerspective) return;
     const compressedBlob = await resizeImage(imageFile, 0.6);
     const imageBase64 = await blobToDataURL(compressedBlob);
-    const [spaceModel] = await Space.findAll(currentPerspective);
+    const [spaceModel] = await Space.findAll(currentPerspective, { where: { uuid: currentPerspective.uuid } });
     if (!spaceModel) return;
-    spaceModel.thumbnail = { data_base64: imageBase64, name: 'space-cover', file_type: 'image/png' } as FileData;
+    spaceModel.coverImage = { data_base64: imageBase64, name: 'space-cover', file_type: 'image/png' } as FileData;
     await spaceModel.save();
-    setSpace({ ...currentSpace, thumbnail: spaceModel.thumbnail });
+    setSpace({ ...currentSpace, coverImage: spaceModel.coverImage });
   }
 
   async function createSignalType(config: Partial<SignalType>): Promise<void> {
@@ -218,21 +264,83 @@ export function SpaceStoreProvider(props: ParentProps) {
       .replace(/\s+/g, '-');
   }
 
+  async function createAgentProfile(
+    firstName: string,
+    lastName: string,
+    handle: string,
+    bio: string,
+    avatarFile?: File,
+    coverImageFile?: File,
+    latitude?: number,
+    longitude?: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
+  ): Promise<void> {
+    const p = perspective();
+    if (!p) return;
+
+    let avatarData: FileData | undefined;
+    if (avatarFile) {
+      const resized = await resizeImage(avatarFile, 0.6);
+      avatarData = {
+        data_base64: await blobToDataURL(resized),
+        name: 'agent-avatar',
+        file_type: 'image/png',
+      } as FileData;
+    }
+
+    let coverImageData: FileData | undefined;
+    if (coverImageFile) {
+      const resized = await resizeImage(coverImageFile, 0.6);
+      coverImageData = {
+        data_base64: await blobToDataURL(resized),
+        name: 'agent-cover',
+        file_type: 'image/png',
+      } as FileData;
+    }
+
+    const profile = await AgentProfile.create(p, {
+      firstName,
+      lastName,
+      handle,
+      bio,
+      ...(avatarData && { avatar: avatarData }),
+      ...(coverImageData && { coverImage: coverImageData }),
+    });
+
+    if (latitude != null && longitude != null) {
+      await LocationBlock.register(p);
+      const locationName = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
+      const loc = await LocationBlock.create(p, {
+        latitude,
+        longitude,
+        ...(locationName && { name: locationName }),
+        ...(city && { city }),
+        ...(country && { country }),
+        ...(countryCode && { countryCode }),
+      });
+      await profile.setLocation(loc);
+      // setLocation writes only to the AD4M graph; hydrate the in-memory
+      // property so memberLocationPins memo picks up the new agent immediately.
+      profile.location = loc;
+    }
+
+    setMembers((prev) => [...prev, profile]);
+  }
+
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
     const p = perspective();
     const myDid = adamStore.me()?.did;
     if (!p || !myDid) return;
 
-    const nodeLinks = await p.get(new LinkQuery({ source: nodeId, predicate: 'we://has_signals' }));
+    const nodeLinks = await p.get(new LinkQuery({ source: nodeId, predicate: 'we://signal' }));
     const myLinks = nodeLinks.filter((l) => l.author === myDid);
 
     for (const link of myLinks) {
       const [existing] = await Signal.findAll(p, { where: { id: link.data.target, signalTypeId } });
       if (existing) {
         if (value === 0) {
-          // Remove the has_signals link FIRST (triggers subscription re-run so UI
-          // de-highlights immediately), then delete the orphaned Signal node.
-          // Pass the full LinkExpression (not link.data) so p.remove() can match it.
           await p.remove(link);
           await existing.delete();
         } else {
@@ -245,57 +353,269 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // No existing signal — create new (skip if value is 0)
     if (value === 0) return;
-    await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://has_signals' } });
+    await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
+  }
+
+  // --- Selection actions ---
+
+  async function loadEntitySignalData(pin: GlobePin | null, stypes: SignalType[], myDid?: string): Promise<void> {
+    const p = perspective();
+    if (!pin || !p || !stypes.length) {
+      setSelectedEntitySignalData([]);
+      setSelectedEntitySignals([]);
+      return;
+    }
+    const nodeId = pin.id;
+    const results =
+      pin.kind === 'space'
+        ? await Space.findAll(p, { where: { id: nodeId }, include: { signals: true } })
+        : await AgentProfile.findAll(p, { where: { id: nodeId }, include: { signals: true } });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sigs: Signal[] = (results[0] as any)?.signals ?? [];
+    setSelectedEntitySignals(sigs);
+    const signalsByType: Record<string, { count: number; sum: number; myValue: number }> = {};
+    for (const sig of sigs) {
+      const entry = signalsByType[sig.signalTypeId] ?? { count: 0, sum: 0, myValue: 0 };
+      entry.count++;
+      entry.sum += sig.value;
+      if (sig.author === myDid) entry.myValue = sig.value;
+      signalsByType[sig.signalTypeId] = entry;
+    }
+    const rows: EntitySignalData[] = stypes.map((st) => {
+      const entry = signalsByType[st.id] ?? { count: 0, sum: 0, myValue: 0 };
+      let totalValue = 0;
+      if (st.aggregate === 'count') totalValue = entry.count;
+      else if (st.aggregate === 'sum') totalValue = entry.sum;
+      else if (st.aggregate === 'mean') totalValue = entry.count ? entry.sum / entry.count : 0;
+      return { nodeId, signalType: st, totalValue, myValue: entry.myValue };
+    });
+    setSelectedEntitySignalData(rows);
+  }
+
+  function clearSelectedPin(): void {
+    setSelectedPin(null);
+    setSelectedEntitySignals([]);
+  }
+
+  async function upsertEntitySignal(signalTypeId: string, value: number): Promise<void> {
+    const p = perspective();
+    const myDid = adamStore.me()?.did;
+    const nodeId = selectedPin()?.id;
+    if (!p || !myDid || !nodeId) return;
+    const existing = selectedEntitySignals().find((s) => s.signalTypeId === signalTypeId && s.author === myDid);
+    if (existing) {
+      if (value === 0) {
+        await existing.delete();
+      } else {
+        existing.value = value;
+        await existing.save();
+      }
+    } else if (value !== 0) {
+      await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
+    }
+    void loadEntitySignalData(selectedPin(), signalTypes(), myDid);
+  }
+
+  // Reload signal data when selected pin or signal types change
+  createEffect(() => {
+    const pin = selectedPin();
+    const stypes = signalTypes();
+    const myDid = adamStore.me()?.did;
+    void loadEntitySignalData(pin, stypes, myDid);
+  });
+
+  // Also clear selection when perspective changes
+  createEffect(() => {
+    adamStore.currentPerspective();
+    setSelectedPin(null);
+  });
+
+  // When a space finishes being created, atomically refresh discovery data for
+  // the current perspective without clearing — this adds the new child space pin
+  // immediately with no flash.
+  createEffect(
+    on(
+      adamStore.creatingSpace,
+      (creating) => {
+        if (creating) return;
+        const p = perspective();
+        if (!p) return;
+        void buildDiscoveryData(p).then((discovery) => {
+          if (perspective()?.uuid !== p.uuid) return; // navigated away while fetching
+          setChildSpaces(discovery.spaces);
+          setMembers(discovery.agents);
+          setSignalTypes(discovery.signalTypes);
+        });
+      },
+      { defer: true },
+    ),
+  );
+
+  /**
+   * The node currently shown at `/space/:id`.
+   * Returns null when not on a `/space/...` route.
+   * `/space/global` is the well-known sentinel for the root global space — resolves
+   * directly from `adamStore.globalPerspective()` without the normal loading cycle.
+   * Returns `{ isJoined: false }` when the route points at an unjoined perspective.
+   */
+  const currentNode = createMemo<HolarchyNode | null>(() => {
+    const segs = routeStore.segments();
+    if (segs[0] !== 'space') return null;
+
+    // /space/global is the sentinel for the root global space
+    if (segs[1] === 'global') {
+      const globalP = adamStore.globalPerspective();
+      if (!globalP) return { perspective: null, space: null, isJoined: false };
+      return { perspective: globalP, space: null, isJoined: true };
+    }
+
+    if (!segs[1]) return null;
+
+    const p = perspective();
+    const s = space();
+
+    // While async hydration is in progress: if we already have a perspective loaded
+    // (e.g. re-clicking the current space or switching spaces), keep it visible as
+    // joined so the gate doesn't flash. Only hold off (return null) when there is
+    // genuinely nothing loaded yet — that prevents showing "not joined" prematurely
+    // on the very first navigation to an unknown perspective.
+    if (loading()) {
+      if (p) return { perspective: p, space: s as Space | null, isJoined: true };
+      return null;
+    }
+
+    if (p) return { perspective: p, space: s as Space | null, isJoined: true };
+    // Perspective not found locally — not yet joined
+    return { perspective: null, space: null, isJoined: false };
+  });
+
+  // When navigating to /space/global with the global perspective already joined,
+  // ensure setCurrentPerspective is called so SpaceStore hydrates correctly.
+  createEffect(() => {
+    const segs = routeStore.segments();
+    if (segs[0] !== 'space' || segs[1] !== 'global') return;
+    const globalP = adamStore.globalPerspective();
+    if (!globalP) return;
+    const current = adamStore.currentPerspective();
+    if (current?.uuid !== globalP.uuid) {
+      void adamStore.setCurrentPerspective(globalP.uuid);
+    }
+  });
+
+  /**
+   * Full path from the global root to the current node.
+   * `holarchyPath()[0]` is always the global root perspective (when joined).
+   * Used by GlobalStore to read the discovery perspective.
+   */
+  const holarchyPath = createMemo<HolarchyNode[]>(() => {
+    const nodes: HolarchyNode[] = [];
+
+    const globalP = adamStore.globalPerspective();
+    if (globalP) {
+      nodes.push({ perspective: globalP, space: null, isJoined: true });
+    }
+
+    const node = currentNode();
+    if (node && node.perspective && node.perspective.uuid !== globalP?.uuid) {
+      nodes.push(node);
+    }
+
+    return nodes;
+  });
+
+  /** Flat boolean derived from the internal currentNode memo. */
+  const hasJoined = createMemo<boolean>(() => currentNode()?.isJoined ?? false);
+
+  // --- Holarchy navigation actions ---
+
+  async function navigateInto(uuid: string): Promise<void> {
+    await adamStore.setCurrentPerspective(uuid);
+  }
+
+  function navigateUp(): void {
+    // TODO: navigate to parent perspective when deeper holarchies are supported
   }
 
   // Watch adamStore.currentPerspective() and hydrate the WE space layer on top.
-  // For a WE space: Space.findAll returns a result, space chrome renders normally.
   // For a raw external perspective: Space.findAll returns [], setSpace(null) — space chrome hides.
   // For a mixed perspective: both layers hydrate simultaneously.
+  let _lastHydratedUuid = '';
   createEffect(() => {
     const p = adamStore.currentPerspective();
+
+    // Cancel any in-flight hydration from a previous run of this effect.
+    let cancelled = false;
+    onCleanup(() => {
+      cancelled = true;
+    });
+
     if (!p) {
+      _lastHydratedUuid = '';
       setPerspective(null);
       setSpace(null);
       setSignalTypes([]);
+      setChildSpaces([]);
+      setMembers([]);
+      setSelectedPin(null);
+      setSelectedEntitySignalData([]);
+      setSelectedEntitySignals([]);
       return;
     }
+
+    // Only clear discovery data when switching to a DIFFERENT perspective so that
+    // pins don't flash out on re-hydrations of the same perspective (e.g. after
+    // SHACL registration or when an AD4M event causes a re-run).
+    if (p.uuid !== _lastHydratedUuid) {
+      setChildSpaces([]);
+      setMembers([]);
+      setSignalTypes([]);
+    }
+    setLoading(true);
+
     void (async () => {
       try {
-        setLoading(true);
         const uuid = p.uuid;
+        _lastHydratedUuid = uuid;
         setSpaceId(uuid);
 
-        // Skip block-model registration for we-root — it is never a WE space and
-        // writing SHACL shapes to it permanently contaminates the model manifest.
+        // Skip block-model registration for system perspectives (we-root, we-test)
         const rootUuid = adamStore.rootPerspective()?.uuid;
-        if (uuid === rootUuid) {
+        const systemUuids = adamStore.systemPerspectiveUuids();
+        if (systemUuids.includes(uuid)) {
+          if (cancelled) return;
           setPerspective(p);
           setSpace(null);
-          setSignalTypes([]);
-          console.log('[SpaceStore] skipped block registration for we-root');
+          setSelectedPin(null);
+          setSelectedEntitySignalData([]);
+          setSelectedEntitySignals([]);
+          void rootUuid;
           return;
         }
 
-        // Confirm this perspective is actually a WE space before registering
-        // block-model SHACL shapes. Registering them writes links to the
-        // perspective permanently, so we must not do it for external perspectives.
-        const [spaceModel] = await Space.findAll(p);
-        if (spaceModel) {
-          await installSpaceSdna(p);
-          await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
-        }
+        await installSpaceSdna(p);
+        await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
+        if (cancelled) return;
+
+        // Filter by uuid === perspective.uuid so we get only the root Space for this
+        // perspective. Perspectives like we-global contain multiple Space entries
+        // (itself + seeded children) and SPARQL order is non-deterministic.
+        const [spaceModel] = await Space.findAll(p, { where: { uuid: p.uuid } });
+        if (cancelled) return;
 
         setPerspective(p);
         setSpace(spaceModel ?? null);
 
-        const signalTypeModels = spaceModel ? await SignalType.findAll(p) : [];
-        setSignalTypes(signalTypeModels);
-        console.log('[SpaceStore] hydrated perspective', uuid, 'space:', spaceModel ?? null);
+        if (spaceModel) {
+          const discovery = await buildDiscoveryData(p);
+          if (cancelled) return;
+          setChildSpaces(discovery.spaces);
+          setMembers(discovery.agents);
+          setSignalTypes(discovery.signalTypes);
+        }
       } catch (error) {
-        console.error('SpaceStore: perspective hydration error', error);
+        if (!cancelled) console.error('SpaceStore: perspective hydration error', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
   });
@@ -309,15 +629,24 @@ export function SpaceStoreProvider(props: ParentProps) {
     signalTypes,
     signalTypesBySlug,
 
-    // Layer visibility
-    showUserLocations,
-    showCountryOutlines,
-    showH3Hexagons,
+    // Discovery
+    childSpaces,
+    members,
+    spaceLocationPins,
+    memberLocationPins,
 
-    // Background visibility
-    showSkybox,
-    showStars,
-    showSolarSystem,
+    // Selection
+    selectedPin,
+    selectedSpace,
+    selectedAgent,
+    selectedEntitySignalData,
+    setSelectedPin,
+    clearSelectedPin,
+    upsertEntitySignal,
+
+    // Holarchy
+    holarchyPath,
+    hasJoined,
 
     // Setters
     setSpaceId,
@@ -325,13 +654,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Actions
     getSpace,
     createPost,
-    toggleLayer,
-    toggleBackground,
-    updateSpaceImage,
+    // toggleLayer,
+    // toggleBackground,
+    updateSpaceAvatar,
     updateSpaceCoverImage,
     createSignalType,
     upsertSignal,
+    createAgentProfile,
     deriveSlug,
+    navigateInto,
+    navigateUp,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

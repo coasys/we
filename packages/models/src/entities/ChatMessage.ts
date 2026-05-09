@@ -4,8 +4,8 @@ import { WeNode } from '../WeNode';
 
 @Model({ name: 'ChatMessage' })
 export class ChatMessage extends WeNode {
-  @Flag({ through: 'we://type', value: 'we://chat_message' })
-  type: string = '';
+  @Flag({ through: 'we://flag', value: 'we://chat_message' })
+  flag: string = '';
 
   @Property({ through: 'we://role' })
   role: string = ''; // 'user' | 'assistant'

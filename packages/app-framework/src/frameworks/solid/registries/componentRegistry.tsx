@@ -3,10 +3,10 @@ import {
   countryOutlinesLayer,
   h3HexagonsLayer,
   type LayerFactory,
+  pointLocationsLayer,
   proceduralStarsLayer,
   skyboxLayer,
   solarSystemLayer,
-  userLocationsLayer,
 } from '@we/cesium-layers';
 import {
   Accordion,
@@ -48,7 +48,7 @@ import { BenchmarkTimer } from '../components/BenchmarkTimer';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
   // Planet layers
-  userLocationsLayer,
+  pointLocationsLayer,
   countryOutlinesLayer,
   h3HexagonsLayer,
   // Background layers

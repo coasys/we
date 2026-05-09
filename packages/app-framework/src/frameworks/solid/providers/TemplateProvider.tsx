@@ -36,7 +36,7 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
     createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
 
     const aiRightMargin = () => (stores.aiStore.isOpen() ? '400px' : '0');
-    const contentWidth = () => (stores.aiStore.isOpen() ? 'calc(100% - 66px - 400px)' : 'calc(100% - 66px)');
+    const contentWidth = () => (stores.aiStore.isOpen() ? 'calc(100% - 72px - 400px)' : 'calc(100% - 72px)');
 
     return (
       <>
@@ -48,7 +48,7 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
           style={{
             position: 'fixed',
             top: '0',
-            left: '66px',
+            left: '72px',
             right: aiRightMargin(),
             width: contentWidth(),
             height: '100vh',
@@ -130,9 +130,13 @@ function flattenRoutes(
       }, leaf) as JSX.Element;
     };
 
-    // Redirect routes don't render content — they navigate immediately
+    // Redirect routes don't render content — they navigate immediately.
+    // Relative redirects (starting with ./ or ../) are passed through as-is so SolidJS
+    // resolves them against the actual runtime URL (which has the real param values).
+    // Absolute-style redirects are prefixed with parentPath as before.
     if (route.redirect) {
-      const target = parentPath + route.redirect;
+      const isRelative = route.redirect.startsWith('./') || route.redirect.startsWith('../');
+      const target = isRelative ? route.redirect : parentPath + route.redirect;
       return [{ path: fullPath, component: () => <Navigate href={target} />, redirect: target }];
     }
 

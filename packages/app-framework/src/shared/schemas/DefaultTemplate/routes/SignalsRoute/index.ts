@@ -6,30 +6,31 @@ import { signalTypeCard } from './SignalTypeCard';
 export const signalsRoute: RouteSchema = {
   path: '/signals',
   type: 'Column',
-  props: { gap: '400' },
+  props: { p: '600', gap: '500', ax: 'start' },
   $localState: { createOpen: { type: 'boolean', initial: false } },
   children: [
-    // Header
+    // Title
+    { type: 'we-text', props: { fontSize: '600', fontWeight: 'bold' }, children: ['Signal Types'] },
+
+    // Description
     {
-      type: 'Row',
-      props: { ax: 'between', ay: 'center' },
-      children: [
-        { type: 'we-text', props: { fontSize: '600', fontWeight: 'bold' }, children: ['Signal Types'] },
-        {
-          type: 'we-button',
-          props: {
-            text: 'Add Signal Type',
-            bg: 'primary-500',
-            color: 'neutral-0',
-            height: '40px',
-            width: 'fit-content',
-            onClick: { $setLocal: 'createOpen', value: true },
-          },
-        },
-      ],
+      type: 'we-text',
+      props: { fontSize: '400', color: 'neutral-700', mb: '400' },
+      children: ['Create and manage custom signal types to categorize and enrich your signals.'],
     },
 
-    // Existing signal types (live from $query)
+    {
+      type: 'we-button',
+      props: {
+        text: 'Add Signal Type',
+        bg: 'primary-500',
+        color: 'neutral-0',
+        height: '40px',
+        onClick: { $setLocal: 'createOpen', value: true },
+      },
+    },
+
+    // Current Signal Types
     {
       type: '$each',
       props: { items: { $query: { model: 'SignalType', subscribe: true } }, as: 'signalType' },

@@ -1,48 +1,52 @@
-import { HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
+import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
+import { LocationBlock } from '../blocks/LocationBlock';
 import { FILE_STORAGE_LANGUAGE } from '../constants';
 import type { FileData } from '../utils/imageHelpers';
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'Space' })
 export class Space extends WeNode {
-  @Property({ through: 'we://has_uuid' })
+  @Flag({ through: 'we://flag', value: 'we://space' })
+  flag: string = '';
+
+  @Property({ through: 'we://uuid' })
   uuid: string = '';
 
-  @Property({ through: 'we://has_url' })
+  @Property({ through: 'we://url' })
   url?: string;
 
-  @Property({ through: 'we://has_name', required: true })
+  @Property({ through: 'we://name', required: true })
   name: string = '';
 
-  @Property({ through: 'we://has_description', required: true })
+  @Property({ through: 'we://description', required: true })
   description: string = '';
 
-  @Property({ through: 'we://has_visibility' })
+  @Property({ through: 'we://visibility' })
   visibility: string = '';
 
   @Property({
-    through: 'we://has_image',
+    through: 'we://image',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
     transform: (data: FileData | string | null | undefined) =>
       data && typeof data === 'object' && 'data_base64' in data
         ? `data:${data?.file_type || 'image/png'};base64,${data?.data_base64}`
         : data,
   })
-  image?: string | FileData;
+  avatar?: string | FileData;
 
   @Property({
-    through: 'we://has_thumbnail',
+    through: 'we://thumbnail',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
     transform: (data: FileData | string | null | undefined) =>
       data && typeof data === 'object' && 'data_base64' in data
         ? `data:${data?.file_type || 'image/png'};base64,${data?.data_base64}`
         : data,
   })
-  thumbnail?: string | FileData;
+  coverImage?: string | FileData;
 
-  @HasMany({ through: 'we://has_location' })
-  locations: string[] = [];
+  @HasMany(() => LocationBlock, { through: 'we://location' })
+  locations: LocationBlock[] = [];
 }
 
 export interface Space extends HasManyMethods<'locations'> {}

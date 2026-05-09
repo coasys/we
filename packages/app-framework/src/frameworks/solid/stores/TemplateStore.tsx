@@ -87,7 +87,10 @@ export function TemplateStoreProvider(props: ParentProps) {
   ];
 
   const initialTemplate = deepClone(
-    coreTemplates.find((t) => t.id === 'launcher') || coreTemplates[0] || emptyTemplate,
+    shellTemplates.find((t) => t.id === 'landing-page') ||
+      coreTemplates.find((t) => t.id === 'launcher') ||
+      coreTemplates[0] ||
+      emptyTemplate,
   );
 
   console.log(
@@ -180,13 +183,16 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (loading() || initialRestoreDone) return;
     // Use defaultTemplateId for boot, fall back to currentTemplateId for backward compat
     const bootId = prefs?.defaultTemplateId || prefs?.currentTemplateId;
-    if (bootId && bootId !== currentTemplate.id) {
+    // Always boot on the landing page — skip restore for 'default' (user reaches it after the gate).
+    // Only restore explicitly non-default templates (e.g. a custom template the user was editing).
+    if (bootId && bootId !== 'default' && bootId !== currentTemplate.id) {
       const persisted = templates().find((t) => t.id === bootId) || shellTemplates.find((t) => t.id === bootId);
       if (persisted) {
         setCurrentTemplate(reconcile(deepClone(persisted)));
         initialRestoreDone = true;
       }
     }
+    initialRestoreDone = true;
   });
 
   // Actions
@@ -205,13 +211,16 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   function switchTemplate(newTemplateId: string) {
+    // No-op if already on this template
+    if (currentTemplate.id === newTemplateId) return;
     // If user manually switches before the boot restore fires, skip the restore
     initialRestoreDone = true;
     const newTemplate =
       allTemplates().find((t) => t.id === newTemplateId) || shellTemplates.find((t) => t.id === newTemplateId);
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
-      routeStore.navigate('/');
+      // For now always land on '/' — the template's own routes handle any redirect from there
+      // routeStore.navigate('/');
       // Persist choice to Ad4m
       adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });
     } else {

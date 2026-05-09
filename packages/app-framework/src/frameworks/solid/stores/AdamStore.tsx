@@ -8,19 +8,18 @@ import {
   blobToDataURL,
   ChatMessage,
   ChatSession,
-  CollectionBlock,
-  ImageBlock,
+  LocationBlock,
   resizeImage,
   Space,
   Template,
-  TextBlock,
   Theme,
-  WeNode,
 } from '@we/models';
 import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { getModelClasses, getModelManifest } from './perspectiveHelpers';
 import { useRouteStore } from './RouteStore';
+import { installSpaceSdna } from './spaceModels';
+import { removeSpaceFromParent, syncAgentProfileToParent } from './syncHelpers';
 
 export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 
@@ -62,10 +61,16 @@ export interface AdamStore {
   rootPerspective: Accessor<PerspectiveProxy | null>;
   /** The we-test perspective used by testStore for $query testing. Always populated after boot. */
   testPerspective: Accessor<PerspectiveProxy | null>;
+  /** The we-global perspective for discovery. Always populated after boot (local in dev, networked in prod when joined). */
+  globalPerspective: Accessor<PerspectiveProxy | null>;
   /** UUIDs of all internal WE system perspectives (names starting with 'we-'). */
   systemPerspectiveUuids: Accessor<string[]>;
   /** Perspectives sorted by user-defined order (falls back to load order). */
   orderedPerspectives: Accessor<PerspectiveProxy[]>;
+  /** Spaces sorted by user-defined perspective order (falls back to load order). Use this instead of orderedPerspectives when you need Space model data (e.g. avatar). */
+  orderedSpaces: Accessor<Space[]>;
+  /** All non-system perspectives in user-defined order, enriched with Space avatar/name when available. Use this in the sidebar to show both WE spaces and external perspectives (e.g. Flux). */
+  orderedSidebarItems: Accessor<{ uuid: string; name: string; avatar?: string }[]>;
   agentSettings: Accessor<AgentSettings | null>;
   agentProfile: Accessor<AgentProfile | null>;
   creatingSpace: Accessor<boolean>;
@@ -83,7 +88,18 @@ export interface AdamStore {
   login: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   addNewSpace: (space: Space) => void;
-  createSpace: (name: string, description: string, shared: boolean, imageFile?: File) => Promise<void>;
+  createSpace: (
+    name: string,
+    description: string,
+    visibility: 'personal' | 'shared' | 'public',
+    avatarFile?: File,
+    coverImageFile?: File,
+    latitude?: number,
+    longitude?: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
+  ) => Promise<void>;
   removePerspective: (uuid: string) => Promise<void>;
   /**
    * Set the active perspective by UUID.
@@ -98,9 +114,29 @@ export interface AdamStore {
   setCurrentPerspective: (uuid: string) => Promise<void>;
   updateAgentSettings: (updates: Partial<AgentSettings>) => Promise<void>;
   updateAgentProfile: (updates: Partial<AgentProfile>) => Promise<void>;
-  updateProfileImage: (imageFile: File) => Promise<void>;
+  updateAvatarImage: (imageFile: File) => Promise<void>;
   updateCoverImage: (imageFile: File) => Promise<void>;
   reorderPerspectives: (newOrder: string[]) => Promise<void>;
+  joinGlobalSpace: () => Promise<void>;
+  /** Generic join action. For the global root this is identical to joinGlobalSpace; community-space
+   * neighbourhood joining is a future TODO. */
+  joinSpace: (spaceUuid: string) => Promise<void>;
+  /**
+   * If the global space has been joined and no perspective is currently active,
+   * sets the global perspective as the current perspective.
+   * If globalPerspective is not yet set, this is a no-op — the template handles joining.
+   */
+  // activateGlobalPerspective: () => Promise<void>;
+  /** Removes a Space copy from the global perspective. Used when visibility drops from 'public'. */
+  removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
+  /** Creates or replaces the agent's LocationBlock in the root perspective (and syncs to global if joined). */
+  updateAgentLocation: (
+    latitude: number,
+    longitude: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
+  ) => Promise<void>;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -122,6 +158,7 @@ export function AdamStoreProvider(props: ParentProps) {
   const [ad4mToken, setAd4mToken] = createSignal<string | undefined>(undefined);
   const [rootPerspective, setRootPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [testPerspective, setTestPerspective] = createSignal<PerspectiveProxy | null>(null);
+  const [globalPerspective, setGlobalPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
   const [agentProfile, setAgentProfile] = createSignal<AgentProfile | null>(null, { equals: false });
   const [allPerspectives, setAllPerspectives] = createSignal<PerspectiveProxy[]>([]);
@@ -133,7 +170,7 @@ export function AdamStoreProvider(props: ParentProps) {
   // Derived: perspectives with we-* names are internal WE system perspectives
   const systemPerspectiveUuids = createMemo(() =>
     allPerspectives()
-      .filter((p) => p.name.startsWith('we-'))
+      .filter((p) => ['we-root', 'we-test'].includes(p.name))
       .map((p) => p.uuid),
   );
 
@@ -147,9 +184,9 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
-  // Derived: perspectives sorted by user-defined order (falls back to load order)
+  // Derived: perspectives sorted by user-defined order (falls back to load order), system perspectives excluded
   const orderedPerspectives = createMemo(() => {
-    const all = allPerspectives();
+    const all = allPerspectives().filter((p) => !['we-root', 'we-test'].includes(p.name));
     const order = getPerspectiveOrder();
     if (order.length === 0) return all;
     const byUuid = new Map(all.map((p) => [p.uuid, p]));
@@ -160,6 +197,28 @@ export function AdamStoreProvider(props: ParentProps) {
     const inOrder = new Set(order);
     const appended = all.filter((p) => !inOrder.has(p.uuid));
     return [...ordered, ...appended];
+  });
+
+  // Derived: spaces in user-defined perspective order (carries Space model data like avatar)
+  const orderedSpaces = createMemo(() => {
+    const spaceByUuid = new Map(mySpaces().map((s) => [s.uuid, s]));
+    return orderedPerspectives().flatMap((p) => {
+      const s = spaceByUuid.get(p.uuid);
+      return s ? [s] : [];
+    });
+  });
+
+  // Derived: all non-system perspectives with Space avatar/name when available, plain perspective data otherwise
+  const orderedSidebarItems = createMemo(() => {
+    const spaceByUuid = new Map(mySpaces().map((s) => [s.uuid, s]));
+    return orderedPerspectives().map((p) => {
+      const s = spaceByUuid.get(p.uuid);
+      return {
+        uuid: p.uuid,
+        name: s?.name ?? p.name,
+        avatar: typeof s?.avatar === 'string' ? s.avatar : undefined,
+      };
+    });
   });
 
   // Derived: personal and shared spaces
@@ -233,7 +292,7 @@ export function AdamStoreProvider(props: ParentProps) {
       setMySpaces(filteredSpaces);
       // Bootstrap perspective order on first load (when no order has been saved yet)
       if (!agentSettings()?.perspectiveOrder) {
-        const systemOrder = ['we-root', 'we-test'];
+        const systemOrder = ['we-root', 'we-test', 'we-global'];
         const initialOrder = [...allPerspectives()]
           .sort((a, b) => {
             const ai = systemOrder.indexOf(a.name);
@@ -356,7 +415,8 @@ export function AdamStoreProvider(props: ParentProps) {
     return () => window.removeEventListener('message', handleMessage);
   }
 
-  /** Find or create the root perspective and all other system perspectives */
+  /** Find or create the root perspective and all other system perspectives.
+   * Also re-registers we-global models if the perspective already exists (previously joined). */
   async function initSystemPerspectives(client: Ad4mClient): Promise<void> {
     try {
       const perspectives = await client.perspective.all();
@@ -368,6 +428,7 @@ export function AdamStoreProvider(props: ParentProps) {
           ChatMessage.register(existing),
           ChatSession.register(existing),
           Template.register(existing),
+          LocationBlock.register(existing),
         ]);
         setRootPerspective(existing);
         const [settings, profile] = await Promise.all([
@@ -386,6 +447,15 @@ export function AdamStoreProvider(props: ParentProps) {
           const testP = await client.perspective.add('we-test');
           setTestPerspective(testP);
         }
+
+        // Restore we-global if previously joined — model registration is handled
+        // by SpaceStore.installSpaceSdna when the perspective is navigated to.
+        const existingGlobal = perspectives.find((p) => p.name === 'we-global');
+        if (existingGlobal) {
+          setGlobalPerspective(existingGlobal);
+          console.log('AdamStore: Restored we-global perspective', existingGlobal.uuid);
+        }
+
         return;
       }
 
@@ -399,6 +469,7 @@ export function AdamStoreProvider(props: ParentProps) {
         ChatSession.register(perspective),
         Template.register(perspective),
         Theme.register(perspective),
+        LocationBlock.register(perspective),
       ]);
       // Model.register resolves before SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -454,15 +525,23 @@ export function AdamStoreProvider(props: ParentProps) {
     Object.assign(profile, updates);
     await profile.save();
     setAgentProfile(profile);
+
+    // Sync to global perspective when the agent has joined
+    const globalP = globalPerspective();
+    if (globalP) {
+      syncAgentProfileToParent(profile, globalP).catch((err) =>
+        console.error('AdamStore: syncAgentProfileToGlobal failed', err),
+      );
+    }
   }
 
-  async function updateProfileImage(imageFile: File): Promise<void> {
+  async function updateAvatarImage(imageFile: File): Promise<void> {
     const profile = agentProfile();
     if (!profile) return;
 
     const compressedBlob = await resizeImage(imageFile, 0.6);
     const imageBase64 = await blobToDataURL(compressedBlob);
-    profile.profileImage = { data_base64: imageBase64, name: 'profile-image', file_type: 'image/png' } as FileData;
+    profile.avatar = { data_base64: imageBase64, name: 'profile-image', file_type: 'image/png' } as FileData;
     await profile.save();
     setAgentProfile(profile);
   }
@@ -532,27 +611,76 @@ export function AdamStoreProvider(props: ParentProps) {
     setMySpaces((prev) => [...prev, space]);
   }
 
-  async function createSpace(name: string, description: string, shared: boolean, imageFile?: File): Promise<void> {
+  async function updateAgentLocation(
+    latitude: number,
+    longitude: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
+  ): Promise<void> {
+    const profile = agentProfile();
+    const rootP = rootPerspective();
+    if (!profile || !rootP) return;
+
+    const name = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
+    // Create a new LocationBlock (replace logic: delete old link first via setLocation)
+    const loc = await LocationBlock.create(rootP, {
+      latitude,
+      longitude,
+      ...(name && { name }),
+      ...(city && { city }),
+      ...(country && { country }),
+      ...(countryCode && { countryCode }),
+    });
+    // HasOne generates setLocation — links the new block, removes any prior link
+    await (profile as unknown as { setLocation: (v: LocationBlock) => Promise<void> }).setLocation(loc);
+    // Re-read to get hydrated location
+    const updated = await AgentProfile.findOne(rootP);
+    if (updated) {
+      setAgentProfile(updated);
+      // Sync location to global perspective if joined
+      const globalP = globalPerspective();
+      if (globalP) {
+        syncAgentProfileToParent(updated, globalP).catch((err) =>
+          console.error('AdamStore: syncAgentProfileToGlobal (location) failed', err),
+        );
+      }
+    }
+  }
+
+  async function createSpace(
+    name: string,
+    description: string,
+    visibility: 'personal' | 'shared' | 'public',
+    avatarFile?: File,
+    coverImageFile?: File,
+    latitude?: number,
+    longitude?: number,
+    city?: string,
+    country?: string,
+    countryCode?: string,
+  ): Promise<void> {
     const client = adamClient();
     if (!client) return;
-
+    // Capture the active perspective now — it becomes the parent once the new space is created
+    const parentPerspective = currentPerspective();
     setCreatingSpace(true);
+
     try {
       // Create the perspective
       const spacePerspective = await client.perspective.add(name);
 
-      // Register SDNA models
-      const models = [Space, WeNode, ImageBlock, TextBlock, CollectionBlock];
-      await Promise.all(models.map((model) => model.register(spacePerspective)));
+      // Register SDNA models (full set, same as SpaceStore uses)
+      await installSpaceSdna(spacePerspective);
 
       // HACK: Model.register resolves before the SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // If shared, publish as neighbourhood
-      if (shared) {
+      // If shared or public, publish as neighbourhood
+      if (visibility !== 'personal') {
         const uid = crypto.randomUUID();
-        const langs = await client.runtime.knownLinkLanguageTemplates();
-        const templateAddress = langs?.[0];
+        const languages = await client.runtime.knownLinkLanguageTemplates();
+        const templateAddress = languages?.[0];
         if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
         const templateData = JSON.stringify({ uid, name: `${name}-link-language` });
         const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
@@ -563,40 +691,153 @@ export function AdamStoreProvider(props: ParentProps) {
         );
       }
 
-      // Create and save Space model
-      const space = new Space(spacePerspective);
-      space.uuid = spacePerspective.uuid;
-      if (spacePerspective.sharedUrl) space.url = spacePerspective.sharedUrl;
-      space.name = name;
-      space.description = description;
-      space.visibility = shared ? 'shared' : 'personal';
-
-      // Process image if provided
-      if (imageFile) {
-        const thumbnailBlob = await resizeImage(imageFile, 0.3);
-        const compressedBlob = await resizeImage(imageFile, 0.6);
-        const thumbnailBase64 = await blobToDataURL(thumbnailBlob);
-        const imageBase64 = await blobToDataURL(compressedBlob);
-        space.thumbnail = {
-          data_base64: thumbnailBase64,
-          name: 'space-thumbnail',
+      // Process avatar image if provided
+      let avatarData: FileData | undefined;
+      if (avatarFile) {
+        const resized = await resizeImage(avatarFile, 0.6);
+        avatarData = {
+          data_base64: await blobToDataURL(resized),
+          name: 'space-avatar',
           file_type: 'image/png',
         } as FileData;
-        space.image = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData;
       }
 
-      await space.save();
+      // Process cover image if provided
+      let coverImageData: FileData | undefined;
+      if (coverImageFile) {
+        const resized = await resizeImage(coverImageFile, 0.6);
+        coverImageData = {
+          data_base64: await blobToDataURL(resized),
+          name: 'space-cover',
+          file_type: 'image/png',
+        } as FileData;
+      }
+
+      // Assemble Space + optional location data once — used for both own and parent perspectives
+      const spaceData = {
+        uuid: spacePerspective.uuid,
+        url: spacePerspective.sharedUrl ?? undefined,
+        name,
+        description,
+        visibility,
+        ...(avatarData && { avatar: avatarData }),
+        ...(coverImageData && { coverImage: coverImageData }),
+      };
+      const locationName = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
+      const locationData =
+        latitude != null && longitude != null
+          ? {
+              latitude,
+              longitude,
+              ...(locationName && { name: locationName }),
+              ...(city && { city }),
+              ...(country && { country }),
+              ...(countryCode && { countryCode }),
+            }
+          : null;
+
+      // Write a Space (plus optional LocationBlock) into any perspective.
+      // Avoids a re-fetch after addLocations() — the same raw data is written directly
+      // to both the space's own perspective and any parent that should mirror it.
+      const writeSpaceInto = async (p: PerspectiveProxy) => {
+        const s = await Space.create(p, spaceData);
+        if (locationData) {
+          await LocationBlock.register(p); // idempotent — ensures model is ready on target
+          const loc = await LocationBlock.create(p, locationData);
+          await s.addLocations(loc);
+        }
+        return s;
+      };
+
+      // Write to own perspective
+      const spaceModel = await writeSpaceInto(spacePerspective);
+      console.log('AdamStore: Created space model for new perspective', spaceModel);
+
+      // Mirror into parent perspective — no re-fetch or findAll needed for a fresh creation
+      if (parentPerspective && parentPerspective.uuid !== spacePerspective.uuid) {
+        await writeSpaceInto(parentPerspective).catch((err) =>
+          console.error('AdamStore: mirror space to parent failed', err),
+        );
+      }
 
       // Update sidebar and navigate
-      addNewSpace(space);
-      await setCurrentPerspective(spacePerspective.uuid);
-      routeStore.navigate(`/space/${space.url || space.uuid}`);
+      addNewSpace(spaceModel);
+      // await setCurrentPerspective(spacePerspective.uuid);
+      // routeStore.navigate(`/space/${spaceModel.uuid}/globe`);
     } catch (error) {
       console.error('AdamStore: createSpace error', error);
     } finally {
       setCreatingSpace(false);
     }
   }
+
+  async function joinSpace(spaceUuid: string): Promise<void> {
+    console.log('joining space', spaceUuid);
+    // 'global' is the well-known sentinel for the root global space
+    if (spaceUuid === 'global') {
+      await joinGlobalSpace();
+      return;
+    }
+
+    // If a perspective with this UUID/URL already exists locally, just focus it.
+    const existing = allPerspectives().find((p) => p.uuid === spaceUuid || p.sharedUrl === spaceUuid);
+    if (existing) {
+      await setCurrentPerspective(existing.uuid);
+      return;
+    }
+
+    // Community-space neighbourhood joining not yet implemented.
+    console.warn('AdamStore: joinSpace community path not yet implemented', spaceUuid);
+  }
+
+  async function joinGlobalSpace(): Promise<void> {
+    const client = adamClient();
+    if (!client) return;
+
+    console.log('joining global space');
+
+    try {
+      if (isDevelopment()) {
+        console.log('AdamStore: joinGlobalSpace dev path - creating local we-global perspective with sample data');
+        // Dev: create a local we-global perspective and seed with sample data.
+        // Model registration (installSpaceSdna) happens in SpaceStore when the
+        // perspective is navigated to — register is idempotent so seeding below
+        // can call Space.create safely after navigating there.
+        const globalP = await client.perspective.add('we-global');
+        await installSpaceSdna(globalP);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Create root Space node representing the global space itself (holonic pattern)
+        const space = await Space.create(globalP, {
+          uuid: globalP.uuid,
+          name: 'WE Global',
+          description: 'The global discovery space',
+          visibility: 'public',
+        });
+
+        console.log('AdamStore: Created we-global space', space);
+
+        setGlobalPerspective(globalP);
+        await setCurrentPerspective(globalP.uuid);
+        console.log('AdamStore: Created and seeded we-global perspective', globalP.uuid);
+      } else {
+        // Prod: join the real global neighbourhood
+        // TODO: replace with well-known neighbourhood URL from seed file
+        console.warn('AdamStore: joinGlobalSpace prod path not yet implemented');
+      }
+    } catch (error) {
+      console.error('AdamStore: joinGlobalSpace error', error);
+    }
+  }
+
+  // async function activateGlobalPerspective(): Promise<void> {
+  //   if (currentPerspective()) return;
+  //   const globalP = globalPerspective();
+  //   if (globalP) {
+  //     console.log('AdamStore: Activating global perspective on app load', globalP.uuid);
+  //     setCurrentPerspective(globalP.uuid);
+  //   }
+  // }
 
   async function removePerspective(uuid: string): Promise<void> {
     const client = adamClient();
@@ -664,6 +905,8 @@ export function AdamStoreProvider(props: ParentProps) {
     me,
     allPerspectives,
     orderedPerspectives,
+    orderedSpaces,
+    orderedSidebarItems,
     personalSpaces,
     sharedSpaces,
     ad4mPort,
@@ -671,6 +914,7 @@ export function AdamStoreProvider(props: ParentProps) {
     isDevelopment,
     rootPerspective,
     testPerspective,
+    globalPerspective,
     systemPerspectiveUuids,
     agentSettings,
     agentProfile,
@@ -687,9 +931,18 @@ export function AdamStoreProvider(props: ParentProps) {
     setCurrentPerspective,
     updateAgentSettings,
     updateAgentProfile,
-    updateProfileImage,
+    updateAvatarImage,
     updateCoverImage,
     reorderPerspectives,
+    joinGlobalSpace,
+    joinSpace,
+    // activateGlobalPerspective,
+    updateAgentLocation,
+    removeSpaceFromGlobal: (spaceUuid) => {
+      const globalP = globalPerspective();
+      if (!globalP) return Promise.resolve();
+      return removeSpaceFromParent(spaceUuid, globalP);
+    },
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;

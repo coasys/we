@@ -5,8 +5,8 @@ import { Theme } from './Theme';
 
 @Model({ name: 'AgentSettings' })
 export class AgentSettings extends Ad4mModel {
-  @Flag({ through: 'we://type', value: 'we://root' })
-  type: string = '';
+  @Flag({ through: 'we://flag', value: 'we://root' })
+  flag: string = '';
 
   @Property({ through: 'we://current_template' })
   currentTemplateId: string = 'default';
@@ -22,6 +22,12 @@ export class AgentSettings extends Ad4mModel {
 
   @Property({ through: 'we://perspective_order' })
   perspectiveOrder: string = '';
+
+  @Property({ through: 'we://global_space_joined' })
+  globalSpaceJoined: boolean = false;
+
+  @Property({ through: 'we://global_space_url' })
+  globalSpaceUrl: string = '';
 
   @HasMany(() => Template, { through: 'we://installed_template' })
   installedTemplates: Template[] = [];

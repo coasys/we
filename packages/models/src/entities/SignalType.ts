@@ -1,13 +1,15 @@
-import { Ad4mModel, Flag, Model, Property } from '@coasys/ad4m';
+import { Flag, Model, Property } from '@coasys/ad4m';
+
+import { WeNode } from '../WeNode';
 
 export type SignalMode = 'toggle' | 'vote' | 'rating' | 'slider';
 export type SignalAggregate = 'count' | 'mean' | 'sum' | 'median';
 export type SignalSemantic = 'approval' | 'quality' | 'relevance' | 'agreement' | 'custom';
 
 @Model({ name: 'SignalType' })
-export class SignalType extends Ad4mModel {
-  @Flag({ through: 'we://type', value: 'we://signal_type' })
-  type: string = '';
+export class SignalType extends WeNode {
+  @Flag({ through: 'we://flag', value: 'we://signal_type' })
+  flag: string = '';
 
   @Property({ through: 'we://name' })
   name: string = '';

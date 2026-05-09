@@ -6,8 +6,8 @@ import { WeNode } from '../WeNode';
 
 @Model({ name: 'Theme' })
 export class Theme extends WeNode {
-  @Flag({ through: 'we://type', value: 'we://theme' })
-  type: string = '';
+  @Flag({ through: 'we://flag', value: 'we://theme' })
+  flag: string = '';
 
   @Property({ through: 'we://name' })
   name: string = '';

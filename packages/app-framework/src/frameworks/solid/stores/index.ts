@@ -1,5 +1,5 @@
 export { type AdamStore, useAdamStore, AdamStoreProvider } from './AdamStore';
-export { type SpaceStore, useSpaceStore, SpaceStoreProvider } from './SpaceStore';
+export { type SpaceStore, type GlobePin, type EntitySignalData, useSpaceStore, SpaceStoreProvider } from './SpaceStore';
 export { type ThemeStore, useThemeStore, ThemeStoreProvider } from './ThemeStore';
 export { type TemplateStore, useTemplateStore, TemplateStoreProvider } from './TemplateStore';
 export { type RouteStore, useRouteStore, RouteStoreProvider } from './RouteStore';
