@@ -69,6 +69,8 @@ export interface AdamStore {
   orderedPerspectives: Accessor<PerspectiveProxy[]>;
   /** Spaces sorted by user-defined perspective order (falls back to load order). Use this instead of orderedPerspectives when you need Space model data (e.g. avatar). */
   orderedSpaces: Accessor<Space[]>;
+  /** All non-system perspectives in user-defined order, enriched with Space avatar/name when available. Use this in the sidebar to show both WE spaces and external perspectives (e.g. Flux). */
+  orderedSidebarItems: Accessor<{ uuid: string; name: string; avatar?: string }[]>;
   agentSettings: Accessor<AgentSettings | null>;
   agentProfile: Accessor<AgentProfile | null>;
   creatingSpace: Accessor<boolean>;
@@ -203,6 +205,19 @@ export function AdamStoreProvider(props: ParentProps) {
     return orderedPerspectives().flatMap((p) => {
       const s = spaceByUuid.get(p.uuid);
       return s ? [s] : [];
+    });
+  });
+
+  // Derived: all non-system perspectives with Space avatar/name when available, plain perspective data otherwise
+  const orderedSidebarItems = createMemo(() => {
+    const spaceByUuid = new Map(mySpaces().map((s) => [s.uuid, s]));
+    return orderedPerspectives().map((p) => {
+      const s = spaceByUuid.get(p.uuid);
+      return {
+        uuid: p.uuid,
+        name: s?.name ?? p.name,
+        avatar: typeof s?.avatar === 'string' ? s.avatar : undefined,
+      };
     });
   });
 
@@ -891,6 +906,7 @@ export function AdamStoreProvider(props: ParentProps) {
     allPerspectives,
     orderedPerspectives,
     orderedSpaces,
+    orderedSidebarItems,
     personalSpaces,
     sharedSpaces,
     ad4mPort,

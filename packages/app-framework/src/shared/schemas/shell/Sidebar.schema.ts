@@ -179,7 +179,7 @@ export const sidebar: SchemaNode = {
                 items: { $store: 'appStore.apps' },
                 select: {
                   id: '$item.id',
-                  avatar: { src: '$item.avatar', name: '$item.name' },
+                  avatar: { src: '$item.image', name: '$item.name' },
                   label: '$item.name',
                   active: { $eq: ['$item.id', { $store: 'appStore.activeAppId' }] },
                   onClick: { $action: 'appStore.activateApp', args: ['$item.id'] },
@@ -197,7 +197,7 @@ export const sidebar: SchemaNode = {
             onReorder: { $action: 'adamStore.reorderPerspectives' },
             items: {
               $map: {
-                items: { $store: 'adamStore.orderedSpaces' },
+                items: { $store: 'adamStore.orderedSidebarItems' },
                 select: {
                   id: '$item.uuid',
                   avatar: { src: '$item.avatar', name: '$item.name' },
