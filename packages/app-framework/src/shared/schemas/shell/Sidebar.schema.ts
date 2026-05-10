@@ -24,7 +24,7 @@ export const sidebar: SchemaNode = {
         border: '0',
         itemPadding: '12px',
         centerItems: true,
-        expandedWidth: '800px',
+        // expandedWidth: '800px',
         items: [
           // // Current space / perspective
           // {

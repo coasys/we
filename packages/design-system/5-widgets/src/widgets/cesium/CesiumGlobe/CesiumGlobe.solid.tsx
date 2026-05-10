@@ -127,6 +127,7 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
   let store: SimpleStore | undefined;
   let cleanupFunctions: Map<string, Array<() => void>> | undefined;
   let updateResolution: (() => void) | undefined;
+  let resizeObserver: ResizeObserver | undefined;
 
   const [viewerReady, setViewerReady] = createSignal(false);
 
@@ -195,6 +196,15 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         }
       };
       window.addEventListener('resize', updateResolution);
+
+      // Force Cesium to re-measure its canvas whenever the container is resized
+      // or becomes visible again (e.g. parent transitions from display:none → display:block)
+      resizeObserver = new ResizeObserver(() => {
+        if (viewer && !viewer.isDestroyed()) {
+          viewer.resize();
+        }
+      });
+      resizeObserver.observe(containerRef);
 
       // Set initial camera (global view)
       viewer.camera.setView({
@@ -411,6 +421,11 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
         });
       }
       cleanupFunctions.clear();
+    }
+
+    // Disconnect container resize observer
+    if (resizeObserver) {
+      resizeObserver.disconnect();
     }
 
     // Then remove resize listener
