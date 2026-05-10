@@ -6,10 +6,15 @@
 
 import type { TemplateSchema } from '@we/schema-shared';
 
+import { createSpaceModal } from '../DefaultTemplate/routes/GlobeRoute/CreateSpaceModal';
+
 export const settingsTemplate: TemplateSchema = {
   meta: { name: 'Settings', description: 'Account settings', icon: 'gear' },
   type: 'Column',
   props: { width: '100%', minHeight: '100%', bg: 'neutral-50', ax: 'center' },
+  $localState: {
+    createSpaceOpen: { type: 'boolean', initial: false },
+  },
   children: [
     {
       type: 'Column',
@@ -285,8 +290,8 @@ export const settingsTemplate: TemplateSchema = {
               props: {
                 condition: { $store: 'adamStore.allPerspectives.length' },
                 then: {
-                  type: 'Row',
-                  props: { gap: '300', wrap: true },
+                  type: 'Column',
+                  props: { gap: '300' },
                   children: [
                     {
                       type: '$each',
@@ -297,9 +302,9 @@ export const settingsTemplate: TemplateSchema = {
                           props: {
                             p: '400',
                             r: '400',
+                            ax: 'start',
                             bg: 'neutral-50',
-                            gap: '100',
-                            width: '200px',
+                            gap: '300',
                             border: '1px solid neutral-200',
                           },
                           children: [
@@ -326,19 +331,29 @@ export const settingsTemplate: TemplateSchema = {
                             },
                             {
                               type: 'we-text',
-                              props: { fontSize: '200', color: 'neutral-400', fontFamily: 'mono' },
+                              props: { fontSize: '400', color: 'neutral-500' },
                               children: [{ $concat: ['UUID: ', '$perspective.uuid'] }],
+                            },
+                            {
+                              type: 'we-text',
+                              props: { fontSize: '400', color: 'neutral-500' },
+                              children: [{ $concat: ['URL: ', '$perspective.sharedUrl'] }],
                             },
                             {
                               type: 'we-button',
                               props: {
-                                variant: 'ghost',
-                                text: 'Delete',
-                                color: 'danger-500',
-                                height: '28px',
-                                width: 'fit-content',
+                                variant: 'danger',
+                                size: 'sm',
                                 onClick: { $action: 'adamStore.removePerspective', args: ['$perspective.uuid'] },
                               },
+                              children: [
+                                { type: 'we-icon', props: { name: 'trash', size: '16px' } },
+                                {
+                                  type: 'we-text',
+                                  props: { fontSize: '300' },
+                                  children: ['Delete'],
+                                },
+                              ],
                             },
                           ],
                         },
@@ -520,6 +535,21 @@ export const settingsTemplate: TemplateSchema = {
               },
             },
           ],
+        },
+
+        {
+          type: 'we-button',
+          props: {
+            text: 'Create New Space',
+            variant: 'primary',
+            height: '40px',
+            onClick: { $setLocal: 'createSpaceOpen', value: true },
+          },
+        },
+
+        {
+          type: '$if',
+          props: { condition: { $local: 'createSpaceOpen' }, then: createSpaceModal },
         },
       ],
     },

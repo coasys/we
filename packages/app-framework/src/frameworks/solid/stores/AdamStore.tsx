@@ -16,6 +16,8 @@ import {
 } from '@we/models';
 import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
+import weSeedFile from '../../../../../../we-seed.json';
+import type { WeSeedFile } from '../../../types/seed';
 import { getModelClasses, getModelManifest } from './perspectiveHelpers';
 import { useRouteStore } from './RouteStore';
 import { installSpaceSdna } from './spaceModels';
@@ -58,6 +60,8 @@ export interface AdamStore {
   ad4mPort: Accessor<number | undefined>;
   ad4mToken: Accessor<string | undefined>;
   isDevelopment: Accessor<boolean>;
+  /** True when a globalSpaceUrl is configured in we-seed.json. */
+  globalSpaceConfigured: Accessor<boolean>;
   rootPerspective: Accessor<PerspectiveProxy | null>;
   /** The we-test perspective used by testStore for $query testing. Always populated after boot. */
   testPerspective: Accessor<PerspectiveProxy | null>;
@@ -227,6 +231,7 @@ export function AdamStoreProvider(props: ParentProps) {
 
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
+  const globalSpaceConfigured = () => !!(weSeedFile as WeSeedFile).globalSpaceUrl;
 
   async function getMe(client: Ad4mClient): Promise<void> {
     try {
@@ -433,7 +438,7 @@ export function AdamStoreProvider(props: ParentProps) {
         setRootPerspective(existing);
         const [settings, profile] = await Promise.all([
           AgentSettings.findOne(existing),
-          AgentProfile.findOne(existing),
+          AgentProfile.findOne(existing, { include: { location: true } }),
         ]);
         if (settings) setAgentSettings(settings);
         if (profile) setAgentProfile(profile);
@@ -448,12 +453,20 @@ export function AdamStoreProvider(props: ParentProps) {
           setTestPerspective(testP);
         }
 
-        // Restore we-global if previously joined — model registration is handled
+        // Restore the global perspective if previously joined — model registration is handled
         // by SpaceStore.installSpaceSdna when the perspective is navigated to.
-        const existingGlobal = perspectives.find((p) => p.name === 'we-global');
+        const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
+        const existingGlobal = seedUrl ? perspectives.find((p) => p.sharedUrl === seedUrl) : undefined;
         if (existingGlobal) {
           setGlobalPerspective(existingGlobal);
-          console.log('AdamStore: Restored we-global perspective', existingGlobal.uuid);
+          console.log('AdamStore: Restored global perspective', existingGlobal.uuid);
+          // Sync profile on boot so the global space always has up-to-date data
+          const currentProfile = agentProfile();
+          if (currentProfile) {
+            syncAgentProfileToParent(currentProfile, existingGlobal).catch((err) =>
+              console.error('AdamStore: boot sync agentProfile to global failed', err),
+            );
+          }
         }
 
         return;
@@ -635,7 +648,7 @@ export function AdamStoreProvider(props: ParentProps) {
     // HasOne generates setLocation — links the new block, removes any prior link
     await (profile as unknown as { setLocation: (v: LocationBlock) => Promise<void> }).setLocation(loc);
     // Re-read to get hydrated location
-    const updated = await AgentProfile.findOne(rootP);
+    const updated = await AgentProfile.findOne(rootP, { include: { location: true } });
     if (updated) {
       setAgentProfile(updated);
       // Sync location to global perspective if joined
@@ -794,50 +807,34 @@ export function AdamStoreProvider(props: ParentProps) {
     const client = adamClient();
     if (!client) return;
 
-    console.log('joining global space');
+    const url = (weSeedFile as WeSeedFile).globalSpaceUrl;
+    if (!url) {
+      console.warn('AdamStore: globalSpaceUrl is not set in we-seed.json — cannot join global space');
+      return;
+    }
 
+    console.log('AdamStore: joining global space neighbourhood', url);
     try {
-      if (isDevelopment()) {
-        console.log('AdamStore: joinGlobalSpace dev path - creating local we-global perspective with sample data');
-        // Dev: create a local we-global perspective and seed with sample data.
-        // Model registration (installSpaceSdna) happens in SpaceStore when the
-        // perspective is navigated to — register is idempotent so seeding below
-        // can call Space.create safely after navigating there.
-        const globalP = await client.perspective.add('we-global');
-        await installSpaceSdna(globalP);
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // Create root Space node representing the global space itself (holonic pattern)
-        const space = await Space.create(globalP, {
-          uuid: globalP.uuid,
-          name: 'WE Global',
-          description: 'The global discovery space',
-          visibility: 'public',
-        });
-
-        console.log('AdamStore: Created we-global space', space);
-
-        setGlobalPerspective(globalP);
-        await setCurrentPerspective(globalP.uuid);
-        console.log('AdamStore: Created and seeded we-global perspective', globalP.uuid);
-      } else {
-        // Prod: join the real global neighbourhood
-        // TODO: replace with well-known neighbourhood URL from seed file
-        console.warn('AdamStore: joinGlobalSpace prod path not yet implemented');
+      const handle = await client.neighbourhood.joinFromUrl(url);
+      const globalP = await client.perspective.byUUID(handle.uuid);
+      if (!globalP) {
+        console.error('AdamStore: failed to get perspective proxy after joining global space');
+        return;
+      }
+      setGlobalPerspective(globalP);
+      await setCurrentPerspective(globalP.uuid);
+      console.log('AdamStore: joined global space', globalP.uuid);
+      // Sync the agent's profile into the global space immediately on join
+      const currentProfile = agentProfile();
+      if (currentProfile) {
+        syncAgentProfileToParent(currentProfile, globalP).catch((err) =>
+          console.error('AdamStore: post-join sync agentProfile to global failed', err),
+        );
       }
     } catch (error) {
       console.error('AdamStore: joinGlobalSpace error', error);
     }
   }
-
-  // async function activateGlobalPerspective(): Promise<void> {
-  //   if (currentPerspective()) return;
-  //   const globalP = globalPerspective();
-  //   if (globalP) {
-  //     console.log('AdamStore: Activating global perspective on app load', globalP.uuid);
-  //     setCurrentPerspective(globalP.uuid);
-  //   }
-  // }
 
   async function removePerspective(uuid: string): Promise<void> {
     const client = adamClient();
@@ -912,6 +909,7 @@ export function AdamStoreProvider(props: ParentProps) {
     ad4mPort,
     ad4mToken,
     isDevelopment,
+    globalSpaceConfigured,
     rootPerspective,
     testPerspective,
     globalPerspective,

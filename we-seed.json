@@ -12,7 +12,7 @@
     "repoPath": "../ad4m"
   },
 
-  "globalSpaceUrl": "",
+  "globalSpaceUrl": "neighbourhood://QmzSYwdbuZHcBskLDdrxL4CVJ7KB7QpH4hyyDt2F6kdEwtwVVqX",
 
   "electron": {
     "appDistPath": "dist",

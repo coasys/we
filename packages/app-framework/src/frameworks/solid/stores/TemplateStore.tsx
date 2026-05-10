@@ -220,7 +220,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
       // For now always land on '/' — the template's own routes handle any redirect from there
-      // routeStore.navigate('/');
+      routeStore.navigate('/');
       // Persist choice to Ad4m
       adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });
     } else {

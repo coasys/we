@@ -72,6 +72,13 @@ export interface WeSeedFile {
     basePort?: number;
   };
 
+  /**
+   * The neighbourhood URL of the global discovery space.
+   * When set, users who haven't joined will be prompted to join on first launch.
+   * Create this perspective locally, publish it as a neighbourhood, then paste its sharedUrl here.
+   */
+  globalSpaceUrl?: string;
+
   /** Embedded applications shown in the shell sidebar */
   apps: Array<{
     /** Unique app identifier (e.g., "flux") */

@@ -113,12 +113,12 @@ export async function removeSpaceFromParent(spaceUuid: string, targetP: Perspect
 
 /**
  * Upsert an AgentProfile record into `targetP`.
- * Keyed by `profile.handle` (unique per agent in practice).
- * TODO: re-key by DID once `AgentProfile.did` is added to the model.
+ * Keyed by the built-in `author` field (the creator's DID) — automatically
+ * populated by AD4M on every model instance, no explicit @Property needed.
  */
 export async function syncAgentProfileToParent(profile: AgentProfile, targetP: PerspectiveProxy): Promise<void> {
   const all = await AgentProfile.findAll(targetP);
-  const existing = all.find((p) => p.handle === profile.handle);
+  const existing = all.find((p) => p.author === profile.author);
   if (existing) {
     existing.firstName = profile.firstName;
     existing.lastName = profile.lastName;
