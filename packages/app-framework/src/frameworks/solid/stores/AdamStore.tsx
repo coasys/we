@@ -554,24 +554,54 @@ export function AdamStoreProvider(props: ParentProps) {
 
   async function updateAvatarImage(imageFile: File): Promise<void> {
     const profile = agentProfile();
-    if (!profile) return;
+    const rootP = rootPerspective();
+    if (!profile || !rootP) return;
 
     const compressedBlob = await resizeImage(imageFile, 0.6);
     const imageBase64 = await blobToDataURL(compressedBlob);
     profile.avatar = { data_base64: imageBase64, name: 'profile-image', file_type: 'image/png' } as FileData;
     await profile.save();
-    setAgentProfile(profile);
+
+    // Sync BEFORE re-fetching — at this point profile.avatar is still a FileData object
+    // that FILE_STORAGE_LANGUAGE can consume. After findOne() it becomes a data URL string.
+    const globalP = globalPerspective();
+    if (globalP) {
+      syncAgentProfileToParent(profile, globalP).catch((err) =>
+        console.error('AdamStore: syncAgentProfileToGlobal (avatar) failed', err),
+      );
+    }
+
+    // Re-fetch to restore the hydrated location relation that save() clears
+    const updated = await AgentProfile.findOne(rootP, { include: { location: true } });
+    if (updated) {
+      setAgentProfile(updated);
+    }
   }
 
   async function updateCoverImage(imageFile: File): Promise<void> {
     const profile = agentProfile();
-    if (!profile) return;
+    const rootP = rootPerspective();
+    if (!profile || !rootP) return;
 
     const compressedBlob = await resizeImage(imageFile, 0.6);
     const imageBase64 = await blobToDataURL(compressedBlob);
     profile.coverImage = { data_base64: imageBase64, name: 'cover-image', file_type: 'image/png' } as FileData;
     await profile.save();
-    setAgentProfile(profile);
+
+    // Sync BEFORE re-fetching — at this point profile.coverImage is still a FileData object
+    // that FILE_STORAGE_LANGUAGE can consume. After findOne() it becomes a data URL string.
+    const globalP = globalPerspective();
+    if (globalP) {
+      syncAgentProfileToParent(profile, globalP).catch((err) =>
+        console.error('AdamStore: syncAgentProfileToGlobal (coverImage) failed', err),
+      );
+    }
+
+    // Re-fetch to restore the hydrated location relation that save() clears
+    const updated = await AgentProfile.findOne(rootP, { include: { location: true } });
+    if (updated) {
+      setAgentProfile(updated);
+    }
   }
 
   async function login(password: string) {

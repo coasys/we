@@ -425,8 +425,12 @@ export function SpaceStoreProvider(props: ParentProps) {
         void buildDiscoveryData(p).then((discovery) => {
           if (perspective()?.uuid !== p.uuid) return; // navigated away while fetching
           setChildSpaces(discovery.spaces);
-          setMembers(discovery.agents);
           setSignalTypes(discovery.signalTypes);
+          const myDid = adamStore.me()?.did;
+          const myProfile = adamStore.agentProfile();
+          const patchedAgents =
+            myDid && myProfile ? discovery.agents.map((a) => (a.author === myDid ? myProfile : a)) : discovery.agents;
+          setMembers(patchedAgents);
         });
       },
       { defer: true },
@@ -564,8 +568,14 @@ export function SpaceStoreProvider(props: ParentProps) {
           const discovery = await buildDiscoveryData(p);
           if (cancelled) return;
           setChildSpaces(discovery.spaces);
-          setMembers(discovery.agents);
           setSignalTypes(discovery.signalTypes);
+          // Patch own profile with local agentProfile so the current user's pin always
+          // shows their up-to-date avatar, regardless of what the shared perspective has.
+          const myDid = adamStore.me()?.did;
+          const myProfile = adamStore.agentProfile();
+          const patchedAgents =
+            myDid && myProfile ? discovery.agents.map((a) => (a.author === myDid ? myProfile : a)) : discovery.agents;
+          setMembers(patchedAgents);
         }
       } catch (error) {
         if (!cancelled) console.error('SpaceStore: perspective hydration error', error);

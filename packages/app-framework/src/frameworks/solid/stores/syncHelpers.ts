@@ -126,8 +126,11 @@ export async function syncAgentProfileToParent(profile: AgentProfile, targetP: P
     existing.lastName = profile.lastName;
     existing.handle = profile.handle;
     existing.bio = profile.bio;
-    existing.avatar = profile.avatar;
-    existing.coverImage = profile.coverImage;
+    // Only assign image fields when they are raw FileData objects.
+    // After AgentProfile.findOne() the transform converts them to data URL strings,
+    // and FILE_STORAGE_LANGUAGE.create() cannot accept a string — it needs FileData.
+    if (profile.avatar && typeof profile.avatar !== 'string') existing.avatar = profile.avatar;
+    if (profile.coverImage && typeof profile.coverImage !== 'string') existing.coverImage = profile.coverImage;
     await existing.save();
     target = existing;
   } else {
@@ -136,8 +139,8 @@ export async function syncAgentProfileToParent(profile: AgentProfile, targetP: P
       lastName: profile.lastName,
       handle: profile.handle,
       bio: profile.bio,
-      avatar: profile.avatar,
-      coverImage: profile.coverImage,
+      ...(profile.avatar && typeof profile.avatar !== 'string' && { avatar: profile.avatar }),
+      ...(profile.coverImage && typeof profile.coverImage !== 'string' && { coverImage: profile.coverImage }),
     });
   }
 
