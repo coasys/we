@@ -112,13 +112,15 @@ export async function removeSpaceFromParent(spaceUuid: string, targetP: Perspect
 }
 
 /**
- * Upsert an AgentProfile record into `targetP`.
+ * Upsert an AgentProfile record into `targetP`, including location.
  * Keyed by the built-in `author` field (the creator's DID) — automatically
  * populated by AD4M on every model instance, no explicit @Property needed.
  */
 export async function syncAgentProfileToParent(profile: AgentProfile, targetP: PerspectiveProxy): Promise<void> {
-  const all = await AgentProfile.findAll(targetP);
+  const all = await AgentProfile.findAll(targetP, { include: { location: true } });
   const existing = all.find((p) => p.author === profile.author);
+
+  let target: AgentProfile;
   if (existing) {
     existing.firstName = profile.firstName;
     existing.lastName = profile.lastName;
@@ -127,8 +129,9 @@ export async function syncAgentProfileToParent(profile: AgentProfile, targetP: P
     existing.avatar = profile.avatar;
     existing.coverImage = profile.coverImage;
     await existing.save();
+    target = existing;
   } else {
-    await AgentProfile.create(targetP, {
+    target = await AgentProfile.create(targetP, {
       firstName: profile.firstName,
       lastName: profile.lastName,
       handle: profile.handle,
@@ -136,5 +139,26 @@ export async function syncAgentProfileToParent(profile: AgentProfile, targetP: P
       avatar: profile.avatar,
       coverImage: profile.coverImage,
     });
+  }
+
+  // Sync location block into the target perspective
+  const loc = profile.location;
+  if (loc && loc.latitude != null && loc.longitude != null) {
+    const existingLoc = existing?.location;
+    const locationChanged =
+      !existingLoc || existingLoc.latitude !== loc.latitude || existingLoc.longitude !== loc.longitude;
+
+    if (locationChanged) {
+      await LocationBlock.register(targetP);
+      const newLoc = await LocationBlock.create(targetP, {
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        ...(loc.name && { name: loc.name }),
+        ...(loc.city && { city: loc.city }),
+        ...(loc.country && { country: loc.country }),
+        ...(loc.countryCode && { countryCode: loc.countryCode }),
+      });
+      await (target as unknown as { setLocation: (l: LocationBlock) => Promise<void> }).setLocation(newLoc);
+    }
   }
 }
