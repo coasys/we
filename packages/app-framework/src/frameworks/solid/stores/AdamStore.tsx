@@ -533,18 +533,22 @@ export function AdamStoreProvider(props: ParentProps) {
 
   async function updateAgentProfile(updates: Partial<AgentProfile>): Promise<void> {
     const profile = agentProfile();
-    if (!profile) return;
+    const rootP = rootPerspective();
+    if (!profile || !rootP) return;
 
     Object.assign(profile, updates);
     await profile.save();
-    setAgentProfile(profile);
 
-    // Sync to global perspective when the agent has joined
-    const globalP = globalPerspective();
-    if (globalP) {
-      syncAgentProfileToParent(profile, globalP).catch((err) =>
-        console.error('AdamStore: syncAgentProfileToGlobal failed', err),
-      );
+    // Re-fetch to restore the hydrated location relation that save() clears
+    const updated = await AgentProfile.findOne(rootP, { include: { location: true } });
+    if (updated) {
+      setAgentProfile(updated);
+      const globalP = globalPerspective();
+      if (globalP) {
+        syncAgentProfileToParent(updated, globalP).catch((err) =>
+          console.error('AdamStore: syncAgentProfileToGlobal failed', err),
+        );
+      }
     }
   }
 
