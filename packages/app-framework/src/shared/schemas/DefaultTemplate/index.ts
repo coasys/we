@@ -1,6 +1,7 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
 import { cardsRoute } from './routes/CardsRoute';
+import { fluxRoute } from './routes/FluxRoute';
 import { globeRoute } from './routes/GlobeRoute';
 import { graphRoute } from './routes/GraphRoute';
 import { signalsRoute } from './routes/SignalsRoute';
@@ -100,9 +101,10 @@ export const defaultTemplate: TemplateSchema = {
                           props: {
                             items: [
                               { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
-                              { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
+                              // { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
                               { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
                               { label: 'Signals', icon: 'heart', segment: 'signals', path: './signals' },
+                              { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },
                             ],
                             as: 'view',
                           },
@@ -196,7 +198,7 @@ export const defaultTemplate: TemplateSchema = {
           },
         },
       ],
-      routes: [{ path: '/', redirect: './globe' }, globeRoute, graphRoute, cardsRoute, signalsRoute],
+      routes: [{ path: '/', redirect: './globe' }, globeRoute, cardsRoute, signalsRoute, fluxRoute],
     },
   ],
 };

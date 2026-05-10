@@ -560,6 +560,9 @@ importers:
       '@we/utils':
         specifier: workspace:*
         version: link:../../utils
+      dompurify:
+        specifier: ^3.2.4
+        version: 3.4.2
       jdenticon:
         specifier: 3.3.0
         version: 3.3.0

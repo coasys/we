@@ -13,6 +13,7 @@ import './primitives/drawer';
 import './primitives/file-upload';
 import './primitives/form-field';
 import './primitives/icon';
+import './primitives/html';
 import './primitives/icon-picker';
 import './primitives/iframe';
 import './primitives/image';
