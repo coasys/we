@@ -397,6 +397,21 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSelectedPin(null);
   });
 
+  // When the current agent's own profile changes, patch their entry in members so
+  // memberLocationPins updates immediately without a full re-fetch or reboot.
+  createEffect(() => {
+    const updated = adamStore.agentProfile();
+    const myDid = adamStore.me()?.did;
+    if (!updated || !myDid) return;
+    setMembers((prev) => {
+      const idx = prev.findIndex((m) => m.author === myDid);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      next[idx] = updated;
+      return next;
+    });
+  });
+
   // When a space finishes being created, atomically refresh discovery data for
   // the current perspective without clearing — this adds the new child space pin
   // immediately with no flash.
