@@ -55,11 +55,39 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
             transition: 'right 300ms ease, width 300ms ease',
           }}
         >
-          {/* Persistent app iframes — always mounted, CSS-toggled visible/hidden */}
+          {/* Template content area — always in layout so WebGL (Cesium) never loses its dimensions.
+               visibility:hidden keeps it laid out but invisible when an app is active. */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '0',
+              left: '0',
+              width: '100%',
+              height: '100%',
+              visibility: stores.appStore.activeAppId() ? 'hidden' : 'visible',
+              'pointer-events': stores.appStore.activeAppId() ? 'none' : 'auto',
+              'overflow-y': 'auto',
+              'scrollbar-gutter': 'stable',
+            }}
+          >
+            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+              <RenderSchema
+                node={stores.templateStore.currentTemplate}
+                stores={stores}
+                registry={registry}
+                children={props.children}
+              />
+            </Show>
+          </div>
+
+          {/* Persistent app iframes — always mounted, CSS-toggled, layered on top of template */}
           <For each={stores.appStore.apps()}>
             {(app) => (
               <div
                 style={{
+                  position: 'absolute',
+                  top: '0',
+                  left: '0',
                   display: stores.appStore.activeAppId() === app.id ? 'block' : 'none',
                   width: '100%',
                   height: '100%',
@@ -76,26 +104,6 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
               </div>
             )}
           </For>
-
-          {/* Template content area — hidden when an app is active */}
-          <div
-            style={{
-              display: stores.appStore.activeAppId() ? 'none' : 'block',
-              width: '100%',
-              height: '100%',
-              'overflow-y': 'auto',
-              'scrollbar-gutter': 'stable',
-            }}
-          >
-            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-              <RenderSchema
-                node={stores.templateStore.currentTemplate}
-                stores={stores}
-                registry={registry}
-                children={props.children}
-              />
-            </Show>
-          </div>
         </div>
       </>
     );

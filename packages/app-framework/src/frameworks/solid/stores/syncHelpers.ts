@@ -112,29 +112,56 @@ export async function removeSpaceFromParent(spaceUuid: string, targetP: Perspect
 }
 
 /**
- * Upsert an AgentProfile record into `targetP`.
- * Keyed by `profile.handle` (unique per agent in practice).
- * TODO: re-key by DID once `AgentProfile.did` is added to the model.
+ * Upsert an AgentProfile record into `targetP`, including location.
+ * Keyed by the built-in `author` field (the creator's DID) — automatically
+ * populated by AD4M on every model instance, no explicit @Property needed.
  */
 export async function syncAgentProfileToParent(profile: AgentProfile, targetP: PerspectiveProxy): Promise<void> {
-  const all = await AgentProfile.findAll(targetP);
-  const existing = all.find((p) => p.handle === profile.handle);
+  const all = await AgentProfile.findAll(targetP, { include: { location: true } });
+  const existing = all.find((p) => p.author === profile.author);
+
+  let target: AgentProfile;
   if (existing) {
     existing.firstName = profile.firstName;
     existing.lastName = profile.lastName;
     existing.handle = profile.handle;
     existing.bio = profile.bio;
-    existing.avatar = profile.avatar;
-    existing.coverImage = profile.coverImage;
+    // Only assign image fields when they are raw FileData objects.
+    // After AgentProfile.findOne() the transform converts them to data URL strings,
+    // and FILE_STORAGE_LANGUAGE.create() cannot accept a string — it needs FileData.
+    if (profile.avatar && typeof profile.avatar !== 'string') existing.avatar = profile.avatar;
+    if (profile.coverImage && typeof profile.coverImage !== 'string') existing.coverImage = profile.coverImage;
     await existing.save();
+    target = existing;
   } else {
-    await AgentProfile.create(targetP, {
+    target = await AgentProfile.create(targetP, {
       firstName: profile.firstName,
       lastName: profile.lastName,
       handle: profile.handle,
       bio: profile.bio,
-      avatar: profile.avatar,
-      coverImage: profile.coverImage,
+      ...(profile.avatar && typeof profile.avatar !== 'string' && { avatar: profile.avatar }),
+      ...(profile.coverImage && typeof profile.coverImage !== 'string' && { coverImage: profile.coverImage }),
     });
+  }
+
+  // Sync location block into the target perspective
+  const loc = profile.location;
+  if (loc && loc.latitude != null && loc.longitude != null) {
+    const existingLoc = existing?.location;
+    const locationChanged =
+      !existingLoc || existingLoc.latitude !== loc.latitude || existingLoc.longitude !== loc.longitude;
+
+    if (locationChanged) {
+      await LocationBlock.register(targetP);
+      const newLoc = await LocationBlock.create(targetP, {
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        ...(loc.name && { name: loc.name }),
+        ...(loc.city && { city: loc.city }),
+        ...(loc.country && { country: loc.country }),
+        ...(loc.countryCode && { countryCode: loc.countryCode }),
+      });
+      await (target as unknown as { setLocation: (l: LocationBlock) => Promise<void> }).setLocation(newLoc);
+    }
   }
 }

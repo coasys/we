@@ -112,7 +112,7 @@ export const profileTemplate: TemplateSchema = {
                 {
                   type: 'we-text',
                   props: { fontSize: '400', color: 'neutral-500' },
-                  children: [{ $store: 'adamStore.agentProfile.location' }],
+                  children: [{ $store: 'adamStore.agentProfile.location.name' }],
                 },
               ],
             },

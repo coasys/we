@@ -51,28 +51,20 @@ export { type GlobePin } from './syncHelpers';
 
 export interface SpaceStore {
   // State
-  spaceId: Accessor<string>;
   perspective: Accessor<PerspectiveProxy | null>;
+  spaceId: Accessor<string>;
   space: Accessor<Partial<Space | null>>;
   loading: Accessor<boolean>;
   signalTypes: Accessor<SignalType[]>;
   signalTypesBySlug: Accessor<Record<string, SignalType>>;
 
-  // Discovery (per-space holonic data — mirrors GlobalStore's global-root data)
-  /** Child spaces found inside the current space's perspective. */
   childSpaces: Accessor<Space[]>;
-  /** Agent profiles of members in the current space's perspective. */
   members: Accessor<AgentProfile[]>;
-  /** Globe pins derived from child-space location blocks. */
   spaceLocationPins: Accessor<GlobePin[]>;
-  /** Globe pins derived from member location blocks. */
   memberLocationPins: Accessor<GlobePin[]>;
 
-  // Selection (which pin the user clicked on the globe)
   selectedPin: Accessor<GlobePin | null>;
-  /** Space model for the selected pin (null when an agent pin is selected). */
   selectedSpace: Accessor<Space | null>;
-  /** Agent model for the selected pin (null when a space pin is selected). */
   selectedAgent: Accessor<AgentProfile | null>;
   selectedEntitySignalData: Accessor<EntitySignalData[]>;
   setSelectedPin: (pin: GlobePin) => void;
@@ -80,23 +72,13 @@ export interface SpaceStore {
   upsertEntitySignal: (signalTypeId: string, value: number) => Promise<void>;
 
   // Holarchy
-  /** Full path from the global root down to the currently-viewed node. */
-  holarchyPath: Accessor<HolarchyNode[]>;
-  /**
-   * Whether the current agent has joined the space at the current route.
-   * `true` for `/space/global` (always joined), `true` when a local perspective
-   * exists for the current `:spaceId`, `false` otherwise (join gate shows).
-   */
   hasJoined: Accessor<boolean>;
 
   // Setters
   setSpaceId: (id: string) => void;
 
   // Actions
-  getSpace: () => Promise<void>;
   createPost: (json: unknown) => Promise<void>;
-  // toggleLayer: (layerName: string) => void;
-  // toggleBackground: (backgroundName: string) => void;
   updateSpaceAvatar: (imageFile: File) => Promise<void>;
   updateSpaceCoverImage: (imageFile: File) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
@@ -115,13 +97,8 @@ export interface SpaceStore {
     countryCode?: string,
   ) => Promise<void>;
   deriveSlug: (name: string) => string;
-  /**
-   * Navigate into a child space by UUID (extends holarchyPath).
-   * Calls `adamStore.setCurrentPerspective` and updates the path.
-   */
+
   navigateInto: (uuid: string) => Promise<void>;
-  /** Pop one level from the holarchyPath (navigate up to parent). */
-  navigateUp: () => void;
 }
 
 const SpaceContext = createContext<SpaceStore>();
@@ -196,16 +173,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   const selectedAgent = createMemo<AgentProfile | null>(() =>
     selectedPin()?.kind === 'agent' ? (members().find((a) => a.id === selectedPin()!.id) ?? null) : null,
   );
-
-  // Actions
-  /**
-   * @deprecated SpaceStore now self-hydrates reactively when `adamStore.currentPerspective`
-   * changes. Call `adamStore.setCurrentPerspective(uuid)` to trigger hydration.
-   * This shim is kept for backwards compatibility with any direct callers.
-   */
-  async function getSpace(): Promise<void> {
-    console.warn('[SpaceStore] getSpace() is deprecated — call adamStore.setCurrentPerspective(uuid) instead');
-  }
 
   async function createPost(json: unknown): Promise<void> {
     const p = perspective();
@@ -430,6 +397,21 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSelectedPin(null);
   });
 
+  // When the current agent's own profile changes, patch their entry in members so
+  // memberLocationPins updates immediately without a full re-fetch or reboot.
+  createEffect(() => {
+    const updated = adamStore.agentProfile();
+    const myDid = adamStore.me()?.did;
+    if (!updated || !myDid) return;
+    setMembers((prev) => {
+      const idx = prev.findIndex((m) => m.author === myDid);
+      if (idx === -1) return prev;
+      const next = [...prev];
+      next[idx] = updated;
+      return next;
+    });
+  });
+
   // When a space finishes being created, atomically refresh discovery data for
   // the current perspective without clearing — this adds the new child space pin
   // immediately with no flash.
@@ -443,8 +425,12 @@ export function SpaceStoreProvider(props: ParentProps) {
         void buildDiscoveryData(p).then((discovery) => {
           if (perspective()?.uuid !== p.uuid) return; // navigated away while fetching
           setChildSpaces(discovery.spaces);
-          setMembers(discovery.agents);
           setSignalTypes(discovery.signalTypes);
+          const myDid = adamStore.me()?.did;
+          const myProfile = adamStore.agentProfile();
+          const patchedAgents =
+            myDid && myProfile ? discovery.agents.map((a) => (a.author === myDid ? myProfile : a)) : discovery.agents;
+          setMembers(patchedAgents);
         });
       },
       { defer: true },
@@ -502,38 +488,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   });
 
-  /**
-   * Full path from the global root to the current node.
-   * `holarchyPath()[0]` is always the global root perspective (when joined).
-   * Used by GlobalStore to read the discovery perspective.
-   */
-  const holarchyPath = createMemo<HolarchyNode[]>(() => {
-    const nodes: HolarchyNode[] = [];
-
-    const globalP = adamStore.globalPerspective();
-    if (globalP) {
-      nodes.push({ perspective: globalP, space: null, isJoined: true });
-    }
-
-    const node = currentNode();
-    if (node && node.perspective && node.perspective.uuid !== globalP?.uuid) {
-      nodes.push(node);
-    }
-
-    return nodes;
-  });
-
   /** Flat boolean derived from the internal currentNode memo. */
   const hasJoined = createMemo<boolean>(() => currentNode()?.isJoined ?? false);
 
-  // --- Holarchy navigation actions ---
-
   async function navigateInto(uuid: string): Promise<void> {
     await adamStore.setCurrentPerspective(uuid);
-  }
-
-  function navigateUp(): void {
-    // TODO: navigate to parent perspective when deeper holarchies are supported
   }
 
   // Watch adamStore.currentPerspective() and hydrate the WE space layer on top.
@@ -609,8 +568,14 @@ export function SpaceStoreProvider(props: ParentProps) {
           const discovery = await buildDiscoveryData(p);
           if (cancelled) return;
           setChildSpaces(discovery.spaces);
-          setMembers(discovery.agents);
           setSignalTypes(discovery.signalTypes);
+          // Patch own profile with local agentProfile so the current user's pin always
+          // shows their up-to-date avatar, regardless of what the shared perspective has.
+          const myDid = adamStore.me()?.did;
+          const myProfile = adamStore.agentProfile();
+          const patchedAgents =
+            myDid && myProfile ? discovery.agents.map((a) => (a.author === myDid ? myProfile : a)) : discovery.agents;
+          setMembers(patchedAgents);
         }
       } catch (error) {
         if (!cancelled) console.error('SpaceStore: perspective hydration error', error);
@@ -645,17 +610,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     upsertEntitySignal,
 
     // Holarchy
-    holarchyPath,
     hasJoined,
 
     // Setters
     setSpaceId,
 
     // Actions
-    getSpace,
     createPost,
-    // toggleLayer,
-    // toggleBackground,
     updateSpaceAvatar,
     updateSpaceCoverImage,
     createSignalType,
@@ -663,7 +624,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     createAgentProfile,
     deriveSlug,
     navigateInto,
-    navigateUp,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;
