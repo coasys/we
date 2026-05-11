@@ -30,9 +30,8 @@ const messageCard: SchemaNode = {
               children: ['$message.author'],
             },
             {
-              type: 'we-text',
-              props: { fontSize: '100', color: 'neutral-400', flex: '0 0 auto' },
-              children: ['$message.timestamp'],
+              type: 'we-timestamp',
+              props: { value: '$message.timestamp', dateStyle: 'short', timeStyle: 'short', color: 'neutral-300' }, // Color prop not working
             },
           ],
         },
@@ -56,10 +55,12 @@ export const channelList: SchemaNode = {
         {
           type: 'we-text',
           props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-700' },
-          children: ['Messages'],
+          children: ['All messages'],
         },
       ],
     },
+
+    // All messages across channels, sorted by timestamp desc (for now - eventually we'll want to group by channel and paginate)
     {
       type: '$each',
       props: {
@@ -86,86 +87,84 @@ export const channelList: SchemaNode = {
         },
       ],
     },
+
+    // Section header
+    {
+      type: 'Row',
+      props: { ay: 'center', gap: '200' },
+      children: [
+        { type: 'we-icon', props: { name: 'hash', size: 'sm', color: 'neutral-500' } },
+        {
+          type: 'we-text',
+          props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-700' },
+          children: ['Messages grouped by channel'],
+        },
+      ],
+    },
+
     // Channel cards
-    // {
-    //   type: '$each',
-    //   props: {
-    //     items: {
-    //       $query: {
-    //         model: 'Channel',
-    //         perspectiveStore: 'spaceStore.perspective',
-    //         include: {
-    //           messages: {
-    //             order: { timestamp: 'desc' },
-    //             limit: 5,
-    //           },
-    //         },
-    //       },
-    //     },
-    //     as: 'channel',
-    //   },
-    //   children: [
-    //     {
-    //       type: 'Column',
-    //       props: {
-    //         bg: 'neutral-0',
-    //         border: '1px solid neutral-200',
-    //         r: '400',
-    //         overflow: 'hidden',
-    //         mb: '300',
-    //       },
-    //       children: [
-    //         // Channel header
-    //         {
-    //           type: 'Row',
-    //           props: {
-    //             ay: 'center',
-    //             gap: '300',
-    //             p: '400',
-    //             bg: 'neutral-50',
-    //             borderBottom: '1px solid neutral-200',
-    //           },
-    //           children: [
-    //             { type: 'we-icon', props: { name: 'hash', size: 'sm', color: 'primary-500' } },
-    //             // {
-    //             //   type: 'Column',
-    //             //   props: { flex: '1', gap: '50' },
-    //             //   children: [
-    //             //     {
-    //             //       type: 'we-text',
-    //             //       props: { fontSize: '400', fontWeight: 'bold', color: 'neutral-900' },
-    //             //       children: ['$channel.name'],
-    //             //     },
-    //             //     {
-    //             //       type: '$if',
-    //             //       props: {
-    //             //         condition: '$channel.description',
-    //             //         then: {
-    //             //           type: 'we-text',
-    //             //           props: { fontSize: '200', color: 'neutral-500' },
-    //             //           children: ['$channel.description'],
-    //             //         },
-    //             //       },
-    //             //     },
-    //             //   ],
-    //             // },
-    //           ],
-    //         },
-    //         // Messages
-    //         {
-    //           type: 'Column',
-    //           props: { p: '400', gap: '200' },
-    //           children: [
-    //             {
-    //               type: '$each',
-    //               props: { items: '$channel.messages', as: 'message' },
-    //               children: [messageCard],
-    //             },
-    //           ],
-    //         },
-    //       ],
-    //     },
-    //   ],
-    // },
+    {
+      type: '$each',
+      props: {
+        items: {
+          $query: {
+            model: 'Channel',
+            perspectiveStore: 'spaceStore.perspective',
+            include: { messages: true, conversations: true },
+          },
+        },
+        as: 'channel',
+      },
+      children: [
+        {
+          type: 'Column',
+          props: { bg: 'neutral-0', border: '1px solid neutral-200', r: '400', overflow: 'hidden', mb: '300' },
+          children: [
+            // Channel header
+            {
+              type: 'Row',
+              props: { ay: 'center', gap: '300', p: '400', bg: 'neutral-50', borderBottom: '1px solid neutral-200' },
+              children: [
+                { type: 'we-icon', props: { name: 'hash', size: 'sm', color: 'primary-500' } },
+                {
+                  type: 'Column',
+                  props: { flex: '1', gap: '50' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400', fontWeight: 'bold', color: 'neutral-900' },
+                      children: ['$channel.conversations[0].conversationName'],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: '$channel.description',
+                        then: {
+                          type: 'we-text',
+                          props: { fontSize: '200', color: 'neutral-500' },
+                          children: ['$channel.description'],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+            // Messages
+            {
+              type: 'Column',
+              props: { p: '400', gap: '200' },
+              children: [
+                {
+                  type: '$each',
+                  props: { items: '$channel.messages', as: 'message' },
+                  children: [messageCard],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
   ],
 };

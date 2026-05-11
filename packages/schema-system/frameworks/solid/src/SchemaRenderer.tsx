@@ -147,16 +147,28 @@ function createQuerySignal(
       string,
       unknown
     >;
+    const queryOptions = {
+      ...resolvedParams,
+      ...(descriptor.include !== undefined && { include: descriptor.include }),
+    };
 
     if (descriptor.subscribe) {
-      const builder = ModelClass.query(p, resolvedParams) as {
+      const builder = ModelClass.query(p, queryOptions) as {
         subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
         dispose: () => void;
       };
-      builder.subscribe((results) => setItems(results)).then((initial) => setItems(initial));
+      builder
+        .subscribe((results) => {
+          setItems(results);
+        })
+        .then((initial) => {
+          setItems(initial);
+        });
       onCleanup(() => builder.dispose());
     } else {
-      (ModelClass.findAll(p, resolvedParams) as Promise<unknown[]>).then(setItems);
+      (ModelClass.findAll(p, queryOptions) as Promise<unknown[]>).then((results) => {
+        setItems(results);
+      });
     }
   });
 

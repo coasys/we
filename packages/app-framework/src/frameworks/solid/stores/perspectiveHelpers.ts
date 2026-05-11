@@ -40,13 +40,26 @@ function shaclClassToLocalName(classUri: string): string {
  * in the given perspective.  Calls `getAllShacl()` then `Ad4mModel.fromSHACL()`
  * for each entry.
  *
+ * A lazy class resolver is passed to `fromSHACL` so that collection relations
+ * with a `sh:class` URI get a proper `target` thunk wired up.  Because the
+ * resolver closes over the `result` object (which is still being populated
+ * during the loop), and `target` is only evaluated at query time, this
+ * correctly handles all cross-model references without ordering concerns.
+ *
  * The returned record can be passed directly to `registerDynamicModels()`.
  */
 export async function getModelClasses(perspective: PerspectiveProxy): Promise<Record<string, ModelClass>> {
   const shapes = await perspective.getAllShacl();
   const result: Record<string, ModelClass> = {};
+  // classResolver supports both "Message" and "MessageShape" keys so that
+  // sh:class URIs (which use nodeShapeUri = "flux://MessageShape") resolve correctly.
+  const classResolver = (localName: string) => result[localName] as typeof Ad4mModel | undefined;
   for (const { name, shape } of shapes) {
-    result[name] = Ad4mModel.fromSHACL(shape, name) as unknown as ModelClass;
+    const cls = Ad4mModel.fromSHACL(shape, name, classResolver) as unknown as ModelClass;
+    result[name] = cls;
+    // Also register under nodeShapeUri-style name (e.g. "MessageShape") so that
+    // sh:class URI local-names resolve even when they include the "Shape" suffix.
+    result[`${name}Shape`] = cls;
   }
   return result;
 }

@@ -33,6 +33,12 @@ export const fluxRoute: RouteSchema = {
       ],
     },
 
+    // {
+    //   type: 'we-button',
+    //   props: { onClick: { $action: 'spaceStore.queryFluxChannels' } },
+    //   children: ['Query flux channels'],
+    // },
+
     // Recent Conversations section
     conversationList,
 

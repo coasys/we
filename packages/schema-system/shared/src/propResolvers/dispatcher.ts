@@ -128,7 +128,14 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
       if (dotIndex === -1) return context[contextKey];
       const path = value.slice(dotIndex + 1).split('.');
       let current: unknown = context[contextKey];
-      for (const p of path) current = (current as Record<string, unknown>)?.[p];
+      for (const p of path) {
+        const arrayMatch = /^(.+)\[(\d+)\]$/.exec(p);
+        if (arrayMatch) {
+          current = ((current as Record<string, unknown>)?.[arrayMatch[1]] as unknown[])?.[Number(arrayMatch[2])];
+        } else {
+          current = (current as Record<string, unknown>)?.[p];
+        }
+      }
       return current;
     }
   }

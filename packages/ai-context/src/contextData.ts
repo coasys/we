@@ -174,6 +174,14 @@ export const contextData: ContextData = {
       ],
     },
     {
+      tagName: 'we-html',
+      className: 'Html',
+      description:
+        'Renders a raw HTML string safely via DOMPurify sanitization.\n\nUse this instead of `we-text` when content is stored as HTML (e.g. rich-text\neditor output such as Flux messages). The `content` prop accepts any HTML\nfragment; it is sanitized before rendering so XSS payloads are stripped.',
+      superclass: 'DesignSystemElement',
+      ownProps: [{ name: 'content', type: 'string', optional: false, default: "''" }],
+    },
+    {
       tagName: 'we-icon',
       className: 'Icon',
       superclass: 'LayoutElement',

@@ -262,6 +262,12 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
 - we-form-field (DesignSystemElement)
   Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+- we-html (DesignSystemElement) — Renders a raw HTML string safely via DOMPurify sanitization.
+
+Use this instead of `we-text` when content is stored as HTML (e.g. rich-text
+editor output such as Flux messages). The `content` prop accepts any HTML
+fragment; it is sanitized before rendering so XSS payloads are stripped.
+  Props: content: string = ''
 - we-icon (LayoutElement)
   Props: name: string = '', color: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', weight: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone' = 'regular', gradient: string = ''
 - we-icon-picker (DesignSystemElement)

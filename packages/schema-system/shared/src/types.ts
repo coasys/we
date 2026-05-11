@@ -129,6 +129,7 @@ export type QueryDescriptor = {
   params: Record<string, unknown>;
   subscribe: boolean;
   perspectiveStore?: string;
+  include?: Record<string, boolean | Record<string, unknown>>;
 };
 
 /** Union of all prop-level operator tokens */
