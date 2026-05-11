@@ -315,18 +315,22 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
+  // Capture the URL the user landed on before any boot-time navigation.
+  // Used to restore deep links after auth completes (e.g. refresh on /space/uuid/flux).
+  const initialPath = window.location.pathname;
+
   async function initialiseStore(): Promise<void> {
     try {
-      // Desktop platforms: set up iframe message listener FIRST (before any delays)
-      // This ensures the listener is ready when embedded apps send REQUEST_AD4M_CONFIG
-      // (On desktop the executor is already running so credentials are available immediately)
+      // Set up iframe message listener for ALL platforms BEFORE any async work.
+      // This ensures REQUEST_AD4M_CONFIG from embedded apps (e.g. Flux) is never dropped,
+      // including during the ad4m-connect auth flow on first load where auth can take many
+      // seconds and the embedded app's 30-second timeout would otherwise expire.
+      setupMessageListener();
+
       if (platform.isDesktop && platform.getConnectionDetails) {
         const { port, token } = await platform.getConnectionDetails();
         setAd4mPort(port);
         setAd4mToken(token);
-
-        // Set up listener immediately so it's ready for iframe requests
-        setupMessageListener(port, token);
       }
 
       // Small delay to ensure executor has time to start (desktop only)
@@ -343,7 +347,6 @@ export function AdamStoreProvider(props: ParentProps) {
         const { port, token } = await platform.getConnectionDetails();
         setAd4mPort(port);
         setAd4mToken(token);
-        setupMessageListener(port, token);
       }
 
       // Get agent status
@@ -370,8 +373,8 @@ export function AdamStoreProvider(props: ParentProps) {
       subscribeToPerspectiveChanges(client);
       setBootState('ready');
 
-      // Navigate to root route when ready
-      routeStore.navigate('/');
+      // Restore the original URL (e.g. a deep link opened via refresh), falling back to '/'
+      routeStore.navigate(initialPath || '/');
     } catch (error) {
       console.error('AdamStore: initialiseStore error', error);
       setBootState('error');
@@ -400,15 +403,27 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
-  function setupMessageListener(port: number, token: string) {
-    // Listen for requests from iframes asking for AD4M config
+  function setupMessageListener() {
+    // Listen for requests from iframes asking for AD4M config.
+    // Reads port/token from signals at call time so it works even when called before
+    // credentials are available (e.g. during the web auth flow on first load).
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'REQUEST_AD4M_CONFIG') {
-        if (bootState() === 'ready') {
-          // Agent is unlocked — respond immediately
+        // Immediately acknowledge so the embedded app knows the parent window is alive and
+        // its "parent not found" timeout can be safely cancelled. The actual AD4M_CONFIG
+        // follows as soon as credentials are available (possibly much later, after auth).
+        const sourceFrame = event.source as Window | null;
+        if (sourceFrame) {
+          sourceFrame.postMessage({ type: 'AD4M_CONFIG_ACK' }, '*');
+        }
+
+        const port = ad4mPort();
+        const token = ad4mToken();
+        if (port !== undefined && token !== undefined) {
+          // Credentials already available — respond immediately
           sendAdamConfigToIframe(port, token);
         } else {
-          // Agent is still locked — queue the request; the createEffect above will flush it
+          // Auth still in progress — queue; the createEffect below flushes once port+token are set
           pendingConfigRequest = true;
         }
       }
@@ -625,8 +640,8 @@ export function AdamStoreProvider(props: ParentProps) {
       subscribeToPerspectiveChanges(client);
       setBootState('ready');
 
-      // Navigate to root route after successful login
-      routeStore.navigate('/');
+      // Restore the original URL if the user was on a deep link before the login screen
+      routeStore.navigate(initialPath || '/');
     } catch (err) {
       console.error('AdamStore: Agent unlock failed', err);
       setPasswordError(true);
@@ -917,11 +932,15 @@ export function AdamStoreProvider(props: ParentProps) {
 
   createEffect(initialiseStore);
 
-  // When the agent transitions to ready, send AD4M_CONFIG to any iframes that requested it while locked
+  // As soon as port + token are available (immediately after auth completes, before the rest of
+  // the boot chain), send AD4M_CONFIG to any iframes that were waiting. Flux only needs these
+  // credentials to connect to the AD4M daemon — it doesn't need we-web's spaces/perspectives
+  // to have loaded. Gating on bootState === 'ready' would start the 30-second timeout clock
+  // in Flux before the we-web boot chain (getMySpaces, initSystemPerspectives, etc.) finishes.
   createEffect(() => {
     const port = ad4mPort();
     const token = ad4mToken();
-    if (bootState() === 'ready' && pendingConfigRequest && port !== undefined && token !== undefined) {
+    if (pendingConfigRequest && port !== undefined && token !== undefined) {
       pendingConfigRequest = false;
       sendAdamConfigToIframe(port, token);
     }
