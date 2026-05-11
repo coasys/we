@@ -1,39 +1,42 @@
 import type { RouteSchema } from '@we/schema-shared';
 
+import { channelList } from './ChannelList';
+import { conversationList } from './ConversationList';
+
 export const fluxRoute: RouteSchema = {
   path: '/flux',
   type: 'Column',
-  props: { p: '600', gap: '500', ax: 'start' },
-  $localState: { createOpen: { type: 'boolean', initial: false } },
+  props: { p: '600', gap: '600', bg: 'neutral-50' },
   children: [
-    // Title
-    { type: 'we-text', props: { fontSize: '600', fontWeight: 'bold' }, children: ['Flux'] },
-
+    // Header
     {
-      type: '$each',
-      props: {
-        items: {
-          $query: {
-            model: 'Message',
-            perspectiveStore: 'spaceStore.perspective',
-            order: { timestamp: 'desc' },
-            limit: 50,
-          },
-        },
-        as: 'message',
-      },
+      type: 'Row',
+      props: { ay: 'center', gap: '400', pb: '200' },
       children: [
+        { type: 'we-icon', props: { name: 'chat-circle-dots', size: 'lg', color: 'primary-500' } },
         {
           type: 'Column',
-          props: { bg: 'neutral-0', border: '1px solid neutral-200', r: '300', p: '400', gap: '200', mb: '200' },
+          props: { gap: '50' },
           children: [
             {
-              type: 'we-html',
-              props: { content: '$message.body' },
+              type: 'we-text',
+              props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900' },
+              children: ['Flux'],
+            },
+            {
+              type: 'we-text',
+              props: { fontSize: '300', color: 'neutral-500' },
+              children: ['Your community at a glance'],
             },
           ],
         },
       ],
     },
+
+    // Recent Conversations section
+    conversationList,
+
+    // Channels + Messages section
+    channelList,
   ],
 };
