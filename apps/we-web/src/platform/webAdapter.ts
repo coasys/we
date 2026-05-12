@@ -21,9 +21,12 @@ export const webAdapter: PlatformAdapter = {
     return client;
   },
 
-  async getConnectionDetails(): Promise<{ port: number; token: string }> {
+  async getConnectionDetails(): Promise<{ port: number; token: string; url?: string }> {
     if (!ad4mCore?.token) throw new Error('AD4M not authenticated — call buildAd4mClient first');
-    return { port: ad4mCore.port, token: ad4mCore.token };
+    // Use baseUrl (not url) so wss:// remote-host URLs are normalized to https:// before
+    // being forwarded in AD4M_CONFIG — the embedded app's startsWith('http') guard would
+    // otherwise reject raw wss:// URLs and fall back to localhost.
+    return { port: ad4mCore.port, token: ad4mCore.token, url: ad4mCore.baseUrl };
   },
 
   resolveAppUrl(app: AppConfig, isDevelopment: boolean): string {

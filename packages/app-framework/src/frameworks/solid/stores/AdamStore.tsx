@@ -328,7 +328,10 @@ export function AdamStoreProvider(props: ParentProps) {
       setupMessageListener();
 
       if (platform.isDesktop && platform.getConnectionDetails) {
-        const { port, token } = await platform.getConnectionDetails();
+        const { port, token, url } = await platform.getConnectionDetails();
+        // Set url BEFORE signals — createEffect fires synchronously when signals change,
+        // so url must be in place before setAd4mPort/setAd4mToken trigger the flush.
+        if (url) ad4mUrlValue = url;
         setAd4mPort(port);
         setAd4mToken(token);
       }
@@ -344,7 +347,10 @@ export function AdamStoreProvider(props: ParentProps) {
 
       // Web platform: credentials are only available after ad4m-connect auth completes
       if (!platform.isDesktop && platform.getConnectionDetails) {
-        const { port, token } = await platform.getConnectionDetails();
+        const { port, token, url } = await platform.getConnectionDetails();
+        // Set url BEFORE signals — createEffect fires synchronously when signals change,
+        // so url must be in place before setAd4mPort/setAd4mToken trigger the flush.
+        if (url) ad4mUrlValue = url;
         setAd4mPort(port);
         setAd4mToken(token);
       }
@@ -383,8 +389,9 @@ export function AdamStoreProvider(props: ParentProps) {
 
   // Track if an iframe requested AD4M_CONFIG while the agent was still locked
   let pendingConfigRequest = false;
+  let ad4mUrlValue: string | undefined = undefined;
 
-  function sendAdamConfigToIframe(port: number, token: string) {
+  function sendAdamConfigToIframe(port: number, token: string, url?: string) {
     // Send to ALL mounted we-iframe elements (there may be multiple apps)
     const weIframes = document.querySelectorAll('we-iframe') as NodeListOf<
       HTMLElement & { postMessage: (data: Record<string, unknown>, origin: string) => void }
@@ -393,7 +400,7 @@ export function AdamStoreProvider(props: ParentProps) {
     let sent = 0;
     weIframes.forEach((el) => {
       if (typeof el.postMessage === 'function') {
-        el.postMessage({ type: 'AD4M_CONFIG', port, token }, '*');
+        el.postMessage({ type: 'AD4M_CONFIG', port, token, ...(url ? { url } : {}) }, '*');
         sent++;
       }
     });
@@ -422,7 +429,7 @@ export function AdamStoreProvider(props: ParentProps) {
         const agentReady = !platform.isDesktop || bootState() === 'ready';
         if (port !== undefined && token !== undefined && agentReady) {
           // Credentials available and agent is unlocked — respond immediately
-          sendAdamConfigToIframe(port, token);
+          sendAdamConfigToIframe(port, token, ad4mUrlValue);
         } else {
           // Either credentials not yet available, or on desktop the agent is still locked.
           // Queue; the createEffect below flushes once conditions are met.
@@ -957,7 +964,7 @@ export function AdamStoreProvider(props: ParentProps) {
     if (!pendingConfigRequest || port === undefined || token === undefined) return;
     if (platform.isDesktop && state !== 'ready') return;
     pendingConfigRequest = false;
-    sendAdamConfigToIframe(port, token);
+    sendAdamConfigToIframe(port, token, ad4mUrlValue);
   });
 
   const store: AdamStore = {

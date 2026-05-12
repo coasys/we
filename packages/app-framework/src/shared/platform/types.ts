@@ -21,7 +21,7 @@ export interface PlatformAdapter {
 
   // Optional: Get raw connection details (for desktop platforms that need to pass to iframes)
   // Web platforms using ad4m-connect don't need this
-  getConnectionDetails?(): Promise<{ port: number; token: string }>;
+  getConnectionDetails?(): Promise<{ port: number; token: string; url?: string }>;
 
   // Resolve app URL for iframes (platform-specific)
   // - Dev mode: Returns devServer URL (http://localhost:PORT)
