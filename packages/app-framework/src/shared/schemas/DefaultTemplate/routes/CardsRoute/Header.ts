@@ -65,8 +65,18 @@ export const postsHeader: SchemaNode = {
         bg: 'primary-500',
         color: 'neutral-0',
         height: '40px',
-        width: 'fit-content',
         onClick: { $setLocal: 'createPostOpen', value: true },
+      },
+    },
+
+    {
+      type: 'we-button',
+      props: {
+        text: 'Get collection blocks',
+        bg: 'primary-500',
+        color: 'neutral-0',
+        height: '40px',
+        onClick: { $action: 'spaceStore.getCollectionBlocks' },
       },
     },
   ],

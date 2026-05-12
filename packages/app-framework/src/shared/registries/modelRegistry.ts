@@ -32,13 +32,21 @@ export function registerDynamicModels(perspectiveUuid: string, models: Record<st
 
 /**
  * UUID-aware model lookup.
- * Checks the per-perspective registry first, then falls back to the global registry.
+ * Prefers globally registered (WE-native) classes over per-perspective
+ * synthesised classes, because native classes carry full decorator metadata
+ * (transform functions etc.) that SHACL-synthesised classes can never have.
+ * Falls back to the per-perspective registry for genuinely external models
+ * (e.g. Flux models not known to WE at compile time).
  * Returns `undefined` (rather than throwing) so callers can fall back gracefully.
  */
 export function getModelForPerspective(name: string, perspectiveUuid?: string): ModelClass | undefined {
+  // Prefer globally registered native class first
+  const global = modelRegistry[name];
+  if (global) return global;
+
+  // Fall back to per-perspective synthesised class (external models)
   if (perspectiveUuid) {
-    const local = perspectiveModelRegistry.get(perspectiveUuid)?.[name];
-    if (local) return local;
+    return perspectiveModelRegistry.get(perspectiveUuid)?.[name];
   }
-  return modelRegistry[name];
+  return undefined;
 }

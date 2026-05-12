@@ -5,6 +5,7 @@ import { createBlocks } from '@we/block-shared';
 import {
   AgentProfile,
   blobToDataURL,
+  CollectionBlock,
   FileData,
   LocationBlock,
   resizeImage,
@@ -99,6 +100,8 @@ export interface SpaceStore {
   deriveSlug: (name: string) => string;
 
   navigateInto: (uuid: string) => Promise<void>;
+
+  getCollectionBlocks: () => Promise<void>;
 }
 
 const SpaceContext = createContext<SpaceStore>();
@@ -173,6 +176,40 @@ export function SpaceStoreProvider(props: ParentProps) {
   const selectedAgent = createMemo<AgentProfile | null>(() =>
     selectedPin()?.kind === 'agent' ? (members().find((a) => a.id === selectedPin()!.id) ?? null) : null,
   );
+
+  async function getCollectionBlocks() {
+    const p = perspective();
+    const did = adamStore.me()?.did;
+    if (!p || !did) return;
+    // const signalId = signalTypesBySlug().like.id;
+    console.log('signalTypesBySlug().like.id', signalTypesBySlug().like.id);
+    console.log('signaltype model: ', await SignalType.findAll(p, { where: { id: signalTypesBySlug().like.id } }));
+    console.log(
+      'signal model: ',
+      await Signal.findAll(p, { where: { id: 'literal:string:caweikvidtzjwfhthnpzthrn' } }),
+    );
+    console.log('author: ', did);
+    const blocks = await CollectionBlock.findAll(p, {
+      where: { type: 'root' },
+      include: {
+        signals: true,
+        $totalLikeCount: {
+          from: 'signals',
+          where: { signalTypeId: signalTypesBySlug().like.id },
+          count: true,
+        },
+        $myLikeSignal: {
+          from: 'signals',
+          where: {
+            signalTypeId: signalTypesBySlug().like.id,
+            author: did,
+          },
+          limit: 1,
+        },
+      },
+    });
+    console.log('fetched collection blocks', blocks);
+  }
 
   async function createPost(json: unknown): Promise<void> {
     const p = perspective();
@@ -297,12 +334,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
+    console.log('upserting signal', { nodeId, signalTypeId, value });
     const p = perspective();
     const myDid = adamStore.me()?.did;
     if (!p || !myDid) return;
 
     const nodeLinks = await p.get(new LinkQuery({ source: nodeId, predicate: 'we://signal' }));
     const myLinks = nodeLinks.filter((l) => l.author === myDid);
+
+    console.log('existing links for signal upsert', myLinks);
 
     for (const link of myLinks) {
       const [existing] = await Signal.findAll(p, { where: { id: link.data.target, signalTypeId } });
@@ -566,6 +606,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
         if (spaceModel) {
           const discovery = await buildDiscoveryData(p);
+          console.log('discovery data', discovery);
           if (cancelled) return;
           setChildSpaces(discovery.spaces);
           setSignalTypes(discovery.signalTypes);
@@ -624,6 +665,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     createAgentProfile,
     deriveSlug,
     navigateInto,
+
+    getCollectionBlocks,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

@@ -3,7 +3,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 import { cardsRoute } from './routes/CardsRoute';
 import { fluxRoute } from './routes/FluxRoute';
 import { globeRoute } from './routes/GlobeRoute';
-import { graphRoute } from './routes/GraphRoute';
+// import { graphRoute } from './routes/GraphRoute';
 import { signalsRoute } from './routes/SignalsRoute';
 
 export const defaultTemplate: TemplateSchema = {
@@ -68,7 +68,7 @@ export const defaultTemplate: TemplateSchema = {
                             height: '120px',
                             r: 'pill',
                             ring: '0 0 0 3px var(--we-color-neutral-500)',
-                            placeholderIcon: 'user',
+                            placeholderIcon: 'users-three',
                             onImageChange: { $action: 'spaceStore.updateSpaceAvatar', args: ['$arg'] },
                           },
                         },

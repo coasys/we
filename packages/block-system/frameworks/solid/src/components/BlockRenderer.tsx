@@ -20,6 +20,7 @@ function LoadPostForRenderer({ post }: { post?: SerializedBlockNode }) {
   const [editor] = useLexicalComposerContext();
 
   createEffect(() => {
+    console.log('post data for renderer', post);
     if (!post || !editor) return;
     try {
       const editorState = editor.parseEditorState({ root: post });

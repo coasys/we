@@ -136,6 +136,53 @@ export const sidebar: SchemaNode = {
             onClick: { $action: 'aiStore.toggle' },
           },
 
+          // Spaces
+          {
+            type: 'group',
+            id: 'spaces',
+            label: 'Spaces',
+            reorderable: true,
+            onReorder: { $action: 'adamStore.reorderPerspectives' },
+            items: {
+              $map: {
+                items: { $store: 'adamStore.orderedSidebarItems' },
+                select: {
+                  id: '$item.uuid',
+                  avatar: { src: '$item.avatar', name: '$item.name' },
+                  label: '$item.name',
+                  active: { $eq: ['$item.uuid', { $store: 'adamStore.currentPerspective.uuid' }] },
+                  onClick: [
+                    { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
+                    {
+                      $action: 'routeStore.navigate',
+                      args: [
+                        {
+                          $concat: [
+                            '/space/',
+                            '$item.uuid',
+                            '/',
+                            {
+                              $if: {
+                                condition: {
+                                  $and: [
+                                    { $eq: [{ $store: 'routeStore.segments.0' }, 'space'] },
+                                    { $store: 'routeStore.segments.2' },
+                                  ],
+                                },
+                                then: { $store: 'routeStore.segments.2' },
+                                else: 'globe',
+                              },
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+
           // Templates
           {
             type: 'group',
@@ -183,53 +230,6 @@ export const sidebar: SchemaNode = {
                   label: '$item.name',
                   active: { $eq: ['$item.id', { $store: 'appStore.activeAppId' }] },
                   onClick: { $action: 'appStore.activateApp', args: ['$item.id'] },
-                },
-              },
-            },
-          },
-
-          // Spaces
-          {
-            type: 'group',
-            id: 'spaces',
-            label: 'Spaces',
-            reorderable: true,
-            onReorder: { $action: 'adamStore.reorderPerspectives' },
-            items: {
-              $map: {
-                items: { $store: 'adamStore.orderedSidebarItems' },
-                select: {
-                  id: '$item.uuid',
-                  avatar: { src: '$item.avatar', name: '$item.name' },
-                  label: '$item.name',
-                  active: { $eq: ['$item.uuid', { $store: 'adamStore.currentPerspective.uuid' }] },
-                  onClick: [
-                    { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
-                    {
-                      $action: 'routeStore.navigate',
-                      args: [
-                        {
-                          $concat: [
-                            '/space/',
-                            '$item.uuid',
-                            '/',
-                            {
-                              $if: {
-                                condition: {
-                                  $and: [
-                                    { $eq: [{ $store: 'routeStore.segments.0' }, 'space'] },
-                                    { $store: 'routeStore.segments.2' },
-                                  ],
-                                },
-                                then: { $store: 'routeStore.segments.2' },
-                                else: 'globe',
-                              },
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
                 },
               },
             },

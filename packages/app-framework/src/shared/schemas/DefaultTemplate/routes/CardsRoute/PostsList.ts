@@ -11,7 +11,6 @@ export const postsList: SchemaNode = {
           $query: {
             model: 'CollectionBlock',
             where: { type: 'root' },
-            subscribe: true,
             include: {
               $totalLikeCount: {
                 from: 'signals',
@@ -45,6 +44,8 @@ export const postsList: SchemaNode = {
                 },
               ],
             },
+            // { type: 'we-text', props: { text: '$post.$totalLikeCount' } },
+            // { type: 'we-text', props: { text: '$post.$myLikeSignal' } },
             {
               type: 'Row',
               props: { mt: '400', ay: 'center', gap: '300' },
