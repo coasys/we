@@ -419,11 +419,13 @@ export function AdamStoreProvider(props: ParentProps) {
 
         const port = ad4mPort();
         const token = ad4mToken();
-        if (port !== undefined && token !== undefined) {
-          // Credentials already available — respond immediately
+        const agentReady = !platform.isDesktop || bootState() === 'ready';
+        if (port !== undefined && token !== undefined && agentReady) {
+          // Credentials available and agent is unlocked — respond immediately
           sendAdamConfigToIframe(port, token);
         } else {
-          // Auth still in progress — queue; the createEffect below flushes once port+token are set
+          // Either credentials not yet available, or on desktop the agent is still locked.
+          // Queue; the createEffect below flushes once conditions are met.
           pendingConfigRequest = true;
         }
       }
@@ -932,18 +934,30 @@ export function AdamStoreProvider(props: ParentProps) {
 
   createEffect(initialiseStore);
 
-  // As soon as port + token are available (immediately after auth completes, before the rest of
-  // the boot chain), send AD4M_CONFIG to any iframes that were waiting. Flux only needs these
-  // credentials to connect to the AD4M daemon — it doesn't need we-web's spaces/perspectives
-  // to have loaded. Gating on bootState === 'ready' would start the 30-second timeout clock
-  // in Flux before the we-web boot chain (getMySpaces, initSystemPerspectives, etc.) finishes.
+  // Send AD4M_CONFIG to iframes as soon as credentials are available AND the agent is unlocked.
+  //
+  // The two platforms have different timing:
+  //
+  // Web: port+token are set by getConnectionDetails() AFTER ad4m-connect's auth UI completes,
+  // so the agent is already unlocked at that point. We send immediately — no need to wait for
+  // the rest of the boot chain (getMySpaces etc.), which would add unnecessary delay against
+  // the ACK-cleared but still-finite wait in ad4m-connect.
+  //
+  // Desktop: port+token are set early (before buildAd4mClient) from stored credentials, while
+  // the agent may still be locked waiting for the user's password. Sending AD4M_CONFIG here
+  // would cause ad4m-connect's checkAuth() to fail with "Agent is locked". We must wait until
+  // bootState === 'ready' (set after login() completes) so the agent is unlocked first.
   createEffect(() => {
     const port = ad4mPort();
     const token = ad4mToken();
-    if (pendingConfigRequest && port !== undefined && token !== undefined) {
-      pendingConfigRequest = false;
-      sendAdamConfigToIframe(port, token);
-    }
+    // Always read bootState() before any early returns so SolidJS tracks it as a dependency.
+    // Without this, when pendingConfigRequest is false on the first run, bootState() would
+    // never be accessed and the effect would not re-run when the agent unlocks.
+    const state = bootState();
+    if (!pendingConfigRequest || port === undefined || token === undefined) return;
+    if (platform.isDesktop && state !== 'ready') return;
+    pendingConfigRequest = false;
+    sendAdamConfigToIframe(port, token);
   });
 
   const store: AdamStore = {

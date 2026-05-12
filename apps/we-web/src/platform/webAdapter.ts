@@ -14,6 +14,7 @@ export const webAdapter: PlatformAdapter = {
         url: 'ad4m.weco.io',
         iconPath: 'https://avatars.githubusercontent.com/u/34165012',
       },
+      hosting: true,
       capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
     });
     ad4mCore = core;
