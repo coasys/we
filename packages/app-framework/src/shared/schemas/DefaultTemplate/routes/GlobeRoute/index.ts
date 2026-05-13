@@ -146,6 +146,17 @@ export const globeRoute: RouteSchema = {
                 onClick: { $setLocal: 'createAgentProfileOpen', value: true },
               },
             },
+
+            // ── Get Spaces with Locations Button ──
+            {
+              type: 'we-button',
+              props: {
+                text: 'Get spaces with locations',
+                variant: 'primary',
+                height: '40px',
+                onClick: { $action: 'spaceStore.getSpaces' },
+              },
+            },
           ],
         },
       ],
@@ -201,7 +212,6 @@ export const globeRoute: RouteSchema = {
                   items: {
                     $query: {
                       model: 'Space',
-                      where: { location: { $ne: null } },
                       include: { location: true },
                       subscribe: true,
                     },
@@ -231,7 +241,6 @@ export const globeRoute: RouteSchema = {
                   items: {
                     $query: {
                       model: 'AgentProfile',
-                      where: { location: { $ne: null } },
                       include: { location: true },
                       subscribe: true,
                     },

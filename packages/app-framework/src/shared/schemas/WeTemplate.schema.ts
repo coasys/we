@@ -1341,7 +1341,6 @@ export const weTemplate: TemplateSchema = {
                       items: {
                         $query: {
                           model: 'Space',
-                          where: { location: { $ne: null } },
                           include: { location: true },
                           subscribe: true,
                         },
@@ -1371,7 +1370,6 @@ export const weTemplate: TemplateSchema = {
                       items: {
                         $query: {
                           model: 'AgentProfile',
-                          where: { location: { $ne: null } },
                           include: { location: true },
                           subscribe: true,
                         },

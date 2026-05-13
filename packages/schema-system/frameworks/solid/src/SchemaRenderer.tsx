@@ -54,6 +54,50 @@ function isEventProp(key: string): boolean {
 }
 
 /**
+ * Recursively scan a raw prop value for { $map: { items: { $query: ... } } } patterns.
+ * For each found, create a reactive query signal and substitute it in place.
+ * This "hoists" signal creation to component-init time (before any createMemo/createEffect),
+ * ensuring the subscription lifecycle is managed correctly even when the $map+$query is
+ * nested inside a complex structure like planetLayers[0].options.locations.
+ *
+ * Must be called during component setup, not inside a createMemo or createEffect.
+ */
+function hoistMapQuerySignals(value: unknown, stores: unknown, getModel: (name: string) => unknown): unknown {
+  if (!value || typeof value !== 'object') return value;
+
+  // Found $map with $query items — replace items with a live reactive signal
+  if (hasToken(value, '$map', 'object')) {
+    const mapSpec = (value as { $map: MapProp }).$map;
+    if (hasToken(mapSpec.items, '$query', 'object')) {
+      const descriptor = resolveQueryProp(mapSpec.items);
+      const signal = createQuerySignal(descriptor, stores, getModel);
+      return { $map: { ...mapSpec, items: signal } };
+    }
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    let changed = false;
+    const mapped = value.map((item) => {
+      const h = hoistMapQuerySignals(item, stores, getModel);
+      if (h !== item) changed = true;
+      return h;
+    });
+    return changed ? mapped : value;
+  }
+
+  // Plain object — recurse into all values
+  let changed = false;
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const h = hoistMapQuerySignals(v, stores, getModel);
+    result[k] = h;
+    if (h !== v) changed = true;
+  }
+  return changed ? result : value;
+}
+
+/**
  * Deep-walk query params and evaluate any $store/$local tokens to their current values.
  * Scoped to descriptor.params only — never touches the broader schema tree.
  * Must be called inside a Solid createEffect so that signal reads register as
@@ -490,7 +534,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         );
       }
     } else {
-      const raw = rawValue;
+      const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      const raw = getModel ? hoistMapQuerySignals(rawValue, stores, getModel) : rawValue;
       propMemos[key] = createMemo(() => {
         const resolved = resolveProp(raw, stores, effectiveContext, createMemo);
         return deepUnwrap(resolved);
