@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@coasys/ad4m': 0.13.0-test-7
+  '@coasys/ad4m': file:../ad4m/core
   '@coasys/ad4m-connect': 0.13.0-test-7
 
 importers:
@@ -52,8 +52,8 @@ importers:
   apps/playgrounds/react/ad4m-model-testing:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-7
-        version: 0.13.0-test-7
+        specifier: file:../../../../../ad4m/core
+        version: file:../ad4m/core
       '@coasys/ad4m-connect':
         specifier: 0.13.0-test-7
         version: 0.13.0-test-7
@@ -168,8 +168,8 @@ importers:
         specifier: ^3.7.10
         version: 3.14.1(@types/react@19.2.14)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@coasys/ad4m':
-        specifier: 0.13.0-test-7
-        version: 0.13.0-test-7
+        specifier: file:../../../ad4m/core
+        version: file:../ad4m/core
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.12)
@@ -232,8 +232,8 @@ importers:
         specifier: ^3.7.10
         version: 3.14.1(@types/react@19.2.14)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@coasys/ad4m':
-        specifier: 0.13.0-test-7
-        version: 0.13.0-test-7
+        specifier: file:../../../ad4m/core
+        version: file:../ad4m/core
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.12)
@@ -278,8 +278,8 @@ importers:
   apps/we-web:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-7
-        version: 0.13.0-test-7
+        specifier: file:../../../ad4m/core
+        version: file:../ad4m/core
       '@coasys/ad4m-connect':
         specifier: 0.13.0-test-7
         version: 0.13.0-test-7
@@ -331,8 +331,8 @@ importers:
   packages/app-framework:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-7
-        version: 0.13.0-test-7
+        specifier: file:../../../ad4m/core
+        version: file:../ad4m/core
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.12)
@@ -410,8 +410,8 @@ importers:
   packages/block-system/frameworks/solid:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-7
-        version: 0.13.0-test-7
+        specifier: file:../../../../../ad4m/core
+        version: file:../ad4m/core
       '@lexical/list':
         specifier: ^0.30.0
         version: 0.30.0
@@ -459,8 +459,8 @@ importers:
   packages/block-system/shared:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-7
-        version: 0.13.0-test-7
+        specifier: file:../../../../ad4m/core
+        version: file:../ad4m/core
       '@we/design-types':
         specifier: workspace:*
         version: link:../../design-system/types
@@ -562,7 +562,7 @@ importers:
         version: link:../../utils
       dompurify:
         specifier: ^3.2.4
-        version: 3.4.2
+        version: 3.4.3
       jdenticon:
         specifier: 3.3.0
         version: 3.3.0
@@ -653,8 +653,8 @@ importers:
   packages/design-system/5-widgets:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-7
-        version: 0.13.0-test-7
+        specifier: file:../../../../ad4m/core
+        version: file:../ad4m/core
       cesium:
         specifier: ^1.136.0
         version: 1.141.0
@@ -738,8 +738,8 @@ importers:
   packages/models:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-7
-        version: 0.13.0-test-7
+        specifier: file:../../../ad4m/core
+        version: file:../ad4m/core
     devDependencies:
       '@we/cli':
         specifier: workspace:*
@@ -1052,22 +1052,22 @@ packages:
   '@coasys/ad4m-connect@0.13.0-test-7':
     resolution: {integrity: sha512-GmuytEflKeg6cdH5TASlCHjNNVNPAfhGEUOzbqV+JTShsujF+5m1wNgNJpo/LpYgskWb4fCX4945BMrgNp+Tng==}
 
-  '@coasys/ad4m@0.13.0-test-7':
-    resolution: {integrity: sha512-XK2B2bYAZGK/y7D926difHiV/E0aYcL0Glfcu92zSe5aM7f63bBVp9IBeLsOC6fEJHTiWeMcmpH0djHn6RRGSA==}
+  '@coasys/ad4m@file:../ad4m/core':
+    resolution: {directory: ../ad4m/core, type: directory}
 
   '@csstools/color-helpers@6.0.2':
     resolution: {integrity: sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q==}
     engines: {node: '>=20.19.0'}
 
-  '@csstools/css-calc@3.2.0':
-    resolution: {integrity: sha512-bR9e6o2BDB12jzN/gIbjHa5wLJ4UjD1CB9pM7ehlc0ddk6EBz+yYS1EV2MF55/HUxrHcB/hehAyt5vhsA3hx7w==}
+  '@csstools/css-calc@3.2.1':
+    resolution: {integrity: sha512-DtdHlgXh5ZkA43cwBcAm+huzgJiwx3ZTWVjBs94kwz2xKqSimDA3lBgCjphYgwgVUMWatSM0pDd8TILB1yrVVg==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@csstools/css-parser-algorithms': ^4.0.0
       '@csstools/css-tokenizer': ^4.0.0
 
-  '@csstools/css-color-parser@4.1.0':
-    resolution: {integrity: sha512-U0KhLYmy2GVj6q4T3WaAe6NPuFYCPQoE3b0dRGxejWDgcPp8TP7S5rVdM5ZrFaqu4N67X8YaPBw14dQSYx3IyQ==}
+  '@csstools/css-color-parser@4.1.1':
+    resolution: {integrity: sha512-eZ5XOtyhK+mggRafYUWzA0tvaYOFgdY8AkgQiCJF9qNAePnUo/zmsqqYubBBb3sQ8uNUaSKTY9s9klfRaAXL0g==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@csstools/css-parser-algorithms': ^4.0.0
@@ -1085,8 +1085,8 @@ packages:
     peerDependencies:
       '@csstools/css-tokenizer': ^4.0.0
 
-  '@csstools/css-syntax-patches-for-csstree@1.1.3':
-    resolution: {integrity: sha512-SH60bMfrRCJF3morcdk57WklujF4Jr/EsQUzqkarfHXEFcAR1gg7fS/chAE922Sehgzc1/+Tz5H3Ypa1HiEKrg==}
+  '@csstools/css-syntax-patches-for-csstree@1.1.4':
+    resolution: {integrity: sha512-wgsqt92b7C7tQhIdPNxj0n9zuUbQlvAuI1exyzeNrOKOi62SD7ren8zqszmpVREjAOqg8cD2FqYhQfAuKjk4sw==}
     peerDependencies:
       css-tree: ^3.2.1
     peerDependenciesMeta:
@@ -2779,8 +2779,8 @@ packages:
     resolution: {integrity: sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ==}
     engines: {node: '>= 0.4'}
 
-  axios@1.16.0:
-    resolution: {integrity: sha512-6hp5CwvTPlN2A31g5dxnwAX0orzM7pmCRDLnZSX772mv8WDqICwFjowHuPs04Mc8deIld1+ejhtaMn5vp6b+1w==}
+  axios@1.16.1:
+    resolution: {integrity: sha512-caYkukvroVPO8KrzuJEb50Hm07KwfBZPEC3VeFHTsqWHvKTsy54hjJz9BS/cdaypROE2rH6xvm9mHX4fgWkr3A==}
 
   babel-plugin-jsx-dom-expressions@0.40.6:
     resolution: {integrity: sha512-v3P1MW46Lm7VMpAkq0QfyzLWWkC8fh+0aE5Km4msIgDx5kjenHU0pF2s+4/NH8CQn/kla6+Hvws+2AF7bfV5qQ==}
@@ -3077,6 +3077,10 @@ packages:
     resolution: {integrity: sha512-nTjqfcBFEipKdXCv4YDQWCfmcLZKm81ldF0pAopTvyrFGVbcR6P/VAAd5G7N+0tTr8QqiU0tFadD6FK4NtJwOA==}
     engines: {node: '>= 0.6'}
 
+  content-type@2.0.0:
+    resolution: {integrity: sha512-j/O/d7GcZCyNl7/hwZAb606rzqkyvaDctLmckbxLzHvFBzTJHuGEdodATcP3yIRoDrLHkIATJuvzbFlp/ki2cQ==}
+    engines: {node: '>=18'}
+
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
@@ -3268,8 +3272,8 @@ packages:
     resolution: {integrity: sha512-gYzvtM72ZtxQO0T048kd6HWSbbGCNOUwcnfQ01cqIJ4X2IYKFFHZ5mKvrQETcFXxsRObZulDaKmy//R7TPtsBg==}
     engines: {node: '>=20.19.0'}
 
-  dompurify@3.4.2:
-    resolution: {integrity: sha512-lHeS9SA/IKeIFFyYciHBr2n0v1VMPlSj843HdLOwjb2OxNwdq9Xykxqhk+FE42MzAdHvInbAolSE4mhahPpjXA==}
+  dompurify@3.4.3:
+    resolution: {integrity: sha512-VVwJidIJcp1hpg2OMXML3ZVRPYSZiq4aX7qBh83BSIpOaRDqI+qxhXjjIWnpzkOXhmp0L81lnoME1mnCc9H48A==}
 
   dotenv-expand@11.0.7:
     resolution: {integrity: sha512-zIHwmZPRshsCdpMDyVsqGmgyP0yT8GAgXUnkdAoJisxvf33k7yO6OuoKmcTGuXPWSsm8Oh88nZicRLA9Y0rUeA==}
@@ -3323,8 +3327,8 @@ packages:
   electron-publish@25.1.7:
     resolution: {integrity: sha512-+jbTkR9m39eDBMP4gfbqglDd6UvBC7RLh5Y0MhFSsc6UkGHj9Vj9TWobxevHYMMqmoujL11ZLjfPpMX+Pt6YEg==}
 
-  electron-to-chromium@1.5.353:
-    resolution: {integrity: sha512-kOrWphBi8TOZyiJZqsgqIle0lw+tzmnQK83pV9dZUd01Nm2POECSyFQMAuarzZdYqQW7FH9RaYOuaRo3h+bQ3w==}
+  electron-to-chromium@1.5.354:
+    resolution: {integrity: sha512-JaBHwWcfIdmSAfWM5l3uwjGd431j8YEMikZ+K/2nXVuBqJKyZ0f+2h4n4JY5AyNiZmnY9qQr2RU3v9DxDmHMNg==}
 
   electron@33.4.11:
     resolution: {integrity: sha512-xmdAs5QWRkInC7TpXGNvzo/7exojubk+72jn1oJL7keNeIlw7xNglf8TGtJtkR4rWC5FJq0oXiIXPS9BcK2Irg==}
@@ -4930,8 +4934,8 @@ packages:
   prop-types@15.8.1:
     resolution: {integrity: sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg==}
 
-  protobufjs@8.2.0:
-    resolution: {integrity: sha512-oI+GC9iPxrQEr6wragljFKH46/r3rNsm6eg7F2fp6kBUMnf6/mesDRdBuF4gK+OyaKJ8N4C1B9s9cCeYdqFikg==}
+  protobufjs@8.2.1:
+    resolution: {integrity: sha512-qD8KPh/2Zj/Kpx6nxhbCZ9TrXVhVBVkC/UNBVA2AWADc1JewcwIhNKUo+j0kiA6PqzTje8Ojc3D+hhmzy2+jkQ==}
     engines: {node: '>=12.0.0'}
 
   proxy-addr@2.0.7:
@@ -5599,9 +5603,9 @@ packages:
     resolution: {integrity: sha512-RAH822pAdBgcNMAfWnCBU3CFZcfZ/i1eZjwFU/dsLKumyuuP3niueg2UAukXYF0E2AAoc82ZSSf9J0WQBinzHA==}
     engines: {node: '>=12.20'}
 
-  type-is@2.0.1:
-    resolution: {integrity: sha512-OZs6gsjF4vMp32qrCbiVSkrFmXtG/AZhY3t0iAMrMBiAZyV9oALtXO8hsrHbMXF9x6L3grlFuwW2oAz7cav+Gw==}
-    engines: {node: '>= 0.6'}
+  type-is@2.1.0:
+    resolution: {integrity: sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==}
+    engines: {node: '>= 18'}
 
   typescript-eslint@8.59.3:
     resolution: {integrity: sha512-KgusgyDgG4LI8Ih/sWaCtZ06tckLAS5CvT5A4D1Q7bYVoAAyzwiZvE4BmwDHkhRVkvhRBepKeASoFzQetha7Fg==}
@@ -6036,8 +6040,8 @@ snapshots:
 
   '@asamuzakjp/css-color@4.1.2':
     dependencies:
-      '@csstools/css-calc': 3.2.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
-      '@csstools/css-color-parser': 4.1.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
+      '@csstools/css-calc': 3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
+      '@csstools/css-color-parser': 4.1.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
       lru-cache: 11.3.6
@@ -6298,7 +6302,7 @@ snapshots:
       '@zip.js/zip.js': 2.8.26
       autolinker: 4.1.5
       bitmap-sdf: 1.0.4
-      dompurify: 3.4.2
+      dompurify: 3.4.3
       draco3d: 1.5.7
       earcut: 3.0.2
       grapheme-splitter: 1.0.4
@@ -6309,7 +6313,7 @@ snapshots:
       mersenne-twister: 1.1.0
       meshoptimizer: 1.1.1
       pako: 2.1.0
-      protobufjs: 8.2.0
+      protobufjs: 8.2.1
       rbush: 4.0.1
       topojson-client: 3.1.0
       urijs: 1.19.11
@@ -6328,7 +6332,7 @@ snapshots:
       auto-bind: 5.0.1
       lit: 2.8.0
 
-  '@coasys/ad4m@0.13.0-test-7':
+  '@coasys/ad4m@file:../ad4m/core':
     dependencies:
       '@holochain/client': 0.16.0
       base64-js: 1.5.1
@@ -6339,15 +6343,15 @@ snapshots:
 
   '@csstools/color-helpers@6.0.2': {}
 
-  '@csstools/css-calc@3.2.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
+  '@csstools/css-calc@3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
     dependencies:
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
 
-  '@csstools/css-color-parser@4.1.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
+  '@csstools/css-color-parser@4.1.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
     dependencies:
       '@csstools/color-helpers': 6.0.2
-      '@csstools/css-calc': 3.2.0(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
+      '@csstools/css-calc': 3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-parser-algorithms': 4.0.0(@csstools/css-tokenizer@4.0.0)
       '@csstools/css-tokenizer': 4.0.0
 
@@ -6359,7 +6363,7 @@ snapshots:
     dependencies:
       '@csstools/css-tokenizer': 4.0.0
 
-  '@csstools/css-syntax-patches-for-csstree@1.1.3(css-tree@3.2.1)':
+  '@csstools/css-syntax-patches-for-csstree@1.1.4(css-tree@3.2.1)':
     optionalDependencies:
       css-tree: 3.2.1
 
@@ -7981,13 +7985,15 @@ snapshots:
     dependencies:
       possible-typed-array-names: 1.1.0
 
-  axios@1.16.0:
+  axios@1.16.1:
     dependencies:
       follow-redirects: 1.16.0
       form-data: 4.0.5
+      https-proxy-agent: 5.0.1
       proxy-from-env: 2.1.0
     transitivePeerDependencies:
       - debug
+      - supports-color
 
   babel-plugin-jsx-dom-expressions@0.40.6(@babel/core@7.29.0):
     dependencies:
@@ -8049,7 +8055,7 @@ snapshots:
       on-finished: 2.4.1
       qs: 6.15.1
       raw-body: 3.0.2
-      type-is: 2.0.1
+      type-is: 2.1.0
     transitivePeerDependencies:
       - supports-color
 
@@ -8079,7 +8085,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.10.29
       caniuse-lite: 1.0.30001792
-      electron-to-chromium: 1.5.353
+      electron-to-chromium: 1.5.354
       node-releases: 2.0.44
       update-browserslist-db: 1.2.3(browserslist@4.28.2)
 
@@ -8340,6 +8346,8 @@ snapshots:
 
   content-type@1.0.5: {}
 
+  content-type@2.0.0: {}
+
   convert-source-map@2.0.0: {}
 
   cookie-signature@1.2.2: {}
@@ -8390,7 +8398,7 @@ snapshots:
   cssstyle@5.3.7:
     dependencies:
       '@asamuzakjp/css-color': 4.1.2
-      '@csstools/css-syntax-patches-for-csstree': 1.1.3(css-tree@3.2.1)
+      '@csstools/css-syntax-patches-for-csstree': 1.1.4(css-tree@3.2.1)
       css-tree: 3.2.1
       lru-cache: 11.3.6
 
@@ -8515,7 +8523,7 @@ snapshots:
     dependencies:
       domelementtype: 3.0.0
 
-  dompurify@3.4.2:
+  dompurify@3.4.3:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
@@ -8597,7 +8605,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron-to-chromium@1.5.353: {}
+  electron-to-chromium@1.5.354: {}
 
   electron@33.4.11:
     dependencies:
@@ -8923,7 +8931,7 @@ snapshots:
       send: 1.2.1
       serve-static: 2.2.1
       statuses: 2.0.2
-      type-is: 2.0.1
+      type-is: 2.1.0
       vary: 1.1.2
     transitivePeerDependencies:
       - supports-color
@@ -10307,7 +10315,7 @@ snapshots:
       object-assign: 4.1.1
       react-is: 16.13.1
 
-  protobufjs@8.2.0:
+  protobufjs@8.2.1:
     dependencies:
       '@types/node': 24.12.4
       long: 5.3.2
@@ -10856,7 +10864,7 @@ snapshots:
   stylelint@16.26.1(typescript@5.9.3):
     dependencies:
       '@csstools/css-parser-algorithms': 3.0.5(@csstools/css-tokenizer@3.0.4)
-      '@csstools/css-syntax-patches-for-csstree': 1.1.3(css-tree@3.2.1)
+      '@csstools/css-syntax-patches-for-csstree': 1.1.4(css-tree@3.2.1)
       '@csstools/css-tokenizer': 3.0.4
       '@csstools/media-query-list-parser': 4.0.3(@csstools/css-parser-algorithms@3.0.5(@csstools/css-tokenizer@3.0.4))(@csstools/css-tokenizer@3.0.4)
       '@csstools/selector-specificity': 5.0.0(postcss-selector-parser@7.1.1)
@@ -11095,9 +11103,9 @@ snapshots:
 
   type-fest@2.19.0: {}
 
-  type-is@2.0.1:
+  type-is@2.1.0:
     dependencies:
-      content-type: 1.0.5
+      content-type: 2.0.0
       media-typer: 1.1.0
       mime-types: 3.0.2
 
@@ -11383,13 +11391,14 @@ snapshots:
 
   wait-on@8.0.5:
     dependencies:
-      axios: 1.16.0
+      axios: 1.16.1
       joi: 18.2.1
       lodash: 4.18.1
       minimist: 1.2.8
       rxjs: 7.8.2
     transitivePeerDependencies:
       - debug
+      - supports-color
 
   wcwidth@1.0.1:
     dependencies:
