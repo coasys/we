@@ -147,9 +147,16 @@ function createQuerySignal(
       string,
       unknown
     >;
+    const resolvedInclude =
+      descriptor.include !== undefined
+        ? (deepResolveTokens(descriptor.include, stores as Record<string, unknown>, {}) as Record<
+            string,
+            boolean | Record<string, unknown>
+          >)
+        : undefined;
     const queryOptions = {
       ...resolvedParams,
-      ...(descriptor.include !== undefined && { include: descriptor.include }),
+      ...(resolvedInclude !== undefined && { include: resolvedInclude }),
     };
 
     if (descriptor.subscribe) {
