@@ -1,5 +1,7 @@
+import { walkPath } from './path';
 import { markReactive } from './reactive';
-import type { Props } from './types';
+import type { Memo, Props } from './types';
+import { noMemo } from './types';
 
 // --- Types for $localMeta context ---
 
@@ -35,19 +37,26 @@ export function extractFromPath(event: unknown, from: string): unknown {
   return current;
 }
 
-/** Resolves $local tokens: { $local: "name" } → signal accessor from context.$local */
-export function resolveLocalProp(value: { $local: string }, context: Props): unknown {
+/** Resolves $local tokens: { $local: "name" } or { $local: "name.nested.path" } → signal accessor from context.$local */
+export function resolveLocalProp(value: { $local: string }, context: Props, memo: Memo = noMemo): unknown {
   const localState = context.$local as Record<string, () => unknown> | undefined;
   if (!localState) {
     console.warn(`Schema $local: no $localState in scope for "${value.$local}"`);
     return undefined;
   }
-  const accessor = localState[value.$local];
+
+  const [fieldName, ...nestedPath] = value.$local.split('.');
+  const accessor = localState[fieldName];
   if (!accessor) {
-    console.warn(`Schema $local: field "${value.$local}" not declared in $localState`);
+    console.warn(`Schema $local: field "${fieldName}" not declared in $localState`);
     return undefined;
   }
-  return markReactive(accessor);
+
+  // Simple single-level access — return the signal accessor directly
+  if (nestedPath.length === 0) return markReactive(accessor);
+
+  // Nested path: call the signal, then walk the remaining segments
+  return markReactive(memo(() => walkPath(accessor(), nestedPath)));
 }
 
 /** Resolves $setLocal tokens: { $setLocal: "name", from: "$event.target.value" } or { $setLocal: "name", value: <literal> } → event handler */

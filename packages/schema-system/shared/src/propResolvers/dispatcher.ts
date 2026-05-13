@@ -57,7 +57,7 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
   // Handle token objects (objects with $ keys)
   if (hasAnyToken(value)) {
     if (hasToken(value, '$store', 'string')) return resolveStoreProp(value, stores, memo);
-    if (hasToken(value, '$local', 'string')) return resolveLocalProp(value as { $local: string }, context);
+    if (hasToken(value, '$local', 'string')) return resolveLocalProp(value as { $local: string }, context, memo);
     if (hasToken(value, '$setLocal', 'string'))
       return resolveSetLocalProp(value as { $setLocal: string; from?: string; value?: unknown }, context);
     if (hasToken(value, '$error', 'string')) return resolveErrorProp(value as { $error: string }, context);
