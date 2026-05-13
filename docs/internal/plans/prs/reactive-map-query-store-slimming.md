@@ -143,6 +143,12 @@ Currently read `spaceStore.selectedSpace.*` — a computed memo populated by sea
 
 Note: `$each` is used here as a "maybe-bind" — it renders 0 or 1 times depending on whether the query returns a result.
 
+### `selectedPin` — kept in store (not moved to `$localState`)
+
+Although `$local` now supports dot-path navigation (`{ $local: 'selectedPin.kind' }`), `selectedPin` stays as a store signal. Moving it to `$localState` would break `loadEntitySignalData`, a `createEffect` in `SpaceStore` that reacts to `selectedPin()` to load signal controls whenever the selected entity changes. Since that imperative reaction cannot be expressed declaratively in the current schema system, `selectedPin` remains store-managed and `onLocationClick` keeps `{ $action: 'spaceStore.setSelectedPin', args: ['$arg'] }`.
+
+The `$local` dot-path feature is available for view state that has no store-side reactions (e.g. toggle flags, form state).
+
 ### `SpaceStore` after
 
 Signals/memos removed:
@@ -270,6 +276,11 @@ Remove:
 - The `creatingSpace` refresh effect
 - The own-profile patch effect (patching `members` — no longer needed)
 
+Keep:
+
+- `selectedPin` signal + `setSelectedPin` / `clearSelectedPin` — required for `loadEntitySignalData` effect
+- `selectedEntitySignalData` / `selectedEntitySignals` — required for signal controls in modals
+
 Update `SpaceStore` interface to remove the corresponding exported members.
 
 ### 7. `syncHelpers.ts` — update `Space` call sites
@@ -285,11 +296,11 @@ Update `SpaceStore` interface to remove the corresponding exported members.
 ## What Does NOT Change
 
 - `signalTypes` / `signalTypesBySlug` stay in the store — action logic depends on them
-- `selectedPin` stays — it's set imperatively by globe click, not derivable from a query
+- `selectedPin` stays in the store — `setSelectedPin` / `clearSelectedPin` actions kept; `loadEntitySignalData` is a `createEffect` in the store that depends on `selectedPin()` reactively
 - `selectedEntitySignalData` / `selectedEntitySignals` stay — loaded imperatively on pin selection
 - `upsertEntitySignal`, `upsertSignal`, `createSignalType` actions are untouched
 - `GlobeRoute` layer toggle controls and modal open/close logic are untouched
-- The `$eq`/`$ne`/`$store` condition on the outer `$if` that gates each modal is untouched
+- The `$eq`/`$store` condition on the outer `$if` that gates each modal is untouched (uses `$store: 'spaceStore.selectedPin.kind'`)
 
 ---
 

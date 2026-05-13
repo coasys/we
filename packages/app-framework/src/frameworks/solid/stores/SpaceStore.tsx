@@ -18,7 +18,6 @@ import {
   createEffect,
   createMemo,
   createSignal,
-  on,
   onCleanup,
   ParentProps,
   useContext,
@@ -26,7 +25,7 @@ import {
 
 import { useRouteStore } from './RouteStore';
 import { installSpaceSdna, SPACE_MODELS } from './spaceModels';
-import { buildDiscoveryData, type GlobePin } from './syncHelpers';
+import { type GlobePin } from './syncHelpers';
 
 /** Per-signal-type aggregate for the currently selected entity's react bar. **/
 export interface EntitySignalData {
@@ -47,7 +46,7 @@ export interface HolarchyNode {
   isJoined: boolean;
 }
 
-export { type GlobePin } from './syncHelpers';
+export type { GlobePin } from './syncHelpers';
 
 export interface SpaceStore {
   // State
@@ -58,14 +57,7 @@ export interface SpaceStore {
   signalTypes: Accessor<SignalType[]>;
   signalTypesBySlug: Accessor<Record<string, SignalType>>;
 
-  childSpaces: Accessor<Space[]>;
-  members: Accessor<AgentProfile[]>;
-  spaceLocationPins: Accessor<GlobePin[]>;
-  memberLocationPins: Accessor<GlobePin[]>;
-
   selectedPin: Accessor<GlobePin | null>;
-  selectedSpace: Accessor<Space | null>;
-  selectedAgent: Accessor<AgentProfile | null>;
   selectedEntitySignalData: Accessor<EntitySignalData[]>;
   setSelectedPin: (pin: GlobePin) => void;
   clearSelectedPin: () => void;
@@ -121,58 +113,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [signalTypes, setSignalTypes] = createSignal<SignalType[]>([]);
   const signalTypesBySlug = createMemo(() => Object.fromEntries(signalTypes().map((st) => [st.slug, st])));
 
-  // Discovery data (holonic: same shape as GlobalStore but for the current space)
-  const [childSpaces, setChildSpaces] = createSignal<Space[]>([]);
-  const [members, setMembers] = createSignal<AgentProfile[]>([]);
-  type WithSignalCount = { $signalCount?: number };
-
-  const spaceLocationPins = createMemo<GlobePin[]>(() =>
-    childSpaces()
-      .filter((s) => s.uuid !== spaceId())
-      .flatMap((s) =>
-        (s.locations ?? [])
-          .filter((loc) => loc.latitude != null && loc.longitude != null)
-          .map((loc) => ({
-            id: s.id,
-            kind: 'space' as const,
-            name: s.name,
-            latitude: loc.latitude,
-            longitude: loc.longitude,
-            avatar: typeof s.avatar === 'string' ? s.avatar : undefined,
-            signalEnergy: (s as unknown as WithSignalCount).$signalCount ?? 0,
-          })),
-      ),
-  );
-
-  const memberLocationPins = createMemo<GlobePin[]>(() =>
-    members().flatMap((a) => {
-      const loc = a.location;
-      if (!loc || loc.latitude == null || loc.longitude == null) return [];
-      return [
-        {
-          id: a.id,
-          kind: 'agent' as const,
-          name: [a.firstName, a.lastName].filter(Boolean).join(' ') || a.handle,
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          avatar: typeof a.avatar === 'string' ? a.avatar : undefined,
-          signalEnergy: (a as unknown as WithSignalCount).$signalCount ?? 0,
-        },
-      ];
-    }),
-  );
-
   // Selection state
   const [selectedPin, setSelectedPin] = createSignal<GlobePin | null>(null);
   const [selectedEntitySignalData, setSelectedEntitySignalData] = createSignal<EntitySignalData[]>([]);
   const [selectedEntitySignals, setSelectedEntitySignals] = createSignal<Signal[]>([]);
-
-  const selectedSpace = createMemo<Space | null>(() =>
-    selectedPin()?.kind === 'space' ? (childSpaces().find((s) => s.id === selectedPin()!.id) ?? null) : null,
-  );
-  const selectedAgent = createMemo<AgentProfile | null>(() =>
-    selectedPin()?.kind === 'agent' ? (members().find((a) => a.id === selectedPin()!.id) ?? null) : null,
-  );
 
   async function createPost(json: unknown): Promise<void> {
     const p = perspective();
@@ -288,12 +232,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         ...(countryCode && { countryCode }),
       });
       await profile.setLocation(loc);
-      // setLocation writes only to the AD4M graph; hydrate the in-memory
-      // property so memberLocationPins memo picks up the new agent immediately.
-      profile.location = loc;
     }
-
-    setMembers((prev) => [...prev, profile]);
   }
 
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
@@ -397,46 +336,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSelectedPin(null);
   });
 
-  // When the current agent's own profile changes, patch their entry in members so
-  // memberLocationPins updates immediately without a full re-fetch or reboot.
-  createEffect(() => {
-    const updated = adamStore.agentProfile();
-    const myDid = adamStore.me()?.did;
-    if (!updated || !myDid) return;
-    setMembers((prev) => {
-      const idx = prev.findIndex((m) => m.author === myDid);
-      if (idx === -1) return prev;
-      const next = [...prev];
-      next[idx] = updated;
-      return next;
-    });
-  });
-
-  // When a space finishes being created, atomically refresh discovery data for
-  // the current perspective without clearing — this adds the new child space pin
-  // immediately with no flash.
-  createEffect(
-    on(
-      adamStore.creatingSpace,
-      (creating) => {
-        if (creating) return;
-        const p = perspective();
-        if (!p) return;
-        void buildDiscoveryData(p).then((discovery) => {
-          if (perspective()?.uuid !== p.uuid) return; // navigated away while fetching
-          setChildSpaces(discovery.spaces);
-          setSignalTypes(discovery.signalTypes);
-          const myDid = adamStore.me()?.did;
-          const myProfile = adamStore.agentProfile();
-          const patchedAgents =
-            myDid && myProfile ? discovery.agents.map((a) => (a.author === myDid ? myProfile : a)) : discovery.agents;
-          setMembers(patchedAgents);
-        });
-      },
-      { defer: true },
-    ),
-  );
-
   /**
    * The node currently shown at `/space/:id`.
    * Returns null when not on a `/space/...` route.
@@ -513,20 +412,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       setPerspective(null);
       setSpace(null);
       setSignalTypes([]);
-      setChildSpaces([]);
-      setMembers([]);
       setSelectedPin(null);
       setSelectedEntitySignalData([]);
       setSelectedEntitySignals([]);
       return;
     }
 
-    // Only clear discovery data when switching to a DIFFERENT perspective so that
-    // pins don't flash out on re-hydrations of the same perspective (e.g. after
-    // SHACL registration or when an AD4M event causes a re-run).
+    // Only clear signal types when switching to a DIFFERENT perspective so that
+    // the UI doesn't flash on re-hydrations of the same perspective.
     if (p.uuid !== _lastHydratedUuid) {
-      setChildSpaces([]);
-      setMembers([]);
       setSignalTypes([]);
     }
     setLoading(true);
@@ -565,17 +459,9 @@ export function SpaceStoreProvider(props: ParentProps) {
         setSpace(spaceModel ?? null);
 
         if (spaceModel) {
-          const discovery = await buildDiscoveryData(p);
+          const [fetchedSignalTypes] = await Promise.all([SignalType.findAll(p)]);
           if (cancelled) return;
-          setChildSpaces(discovery.spaces);
-          setSignalTypes(discovery.signalTypes);
-          // Patch own profile with local agentProfile so the current user's pin always
-          // shows their up-to-date avatar, regardless of what the shared perspective has.
-          const myDid = adamStore.me()?.did;
-          const myProfile = adamStore.agentProfile();
-          const patchedAgents =
-            myDid && myProfile ? discovery.agents.map((a) => (a.author === myDid ? myProfile : a)) : discovery.agents;
-          setMembers(patchedAgents);
+          setSignalTypes(fetchedSignalTypes);
         }
       } catch (error) {
         if (!cancelled) console.error('SpaceStore: perspective hydration error', error);
@@ -594,16 +480,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     signalTypes,
     signalTypesBySlug,
 
-    // Discovery
-    childSpaces,
-    members,
-    spaceLocationPins,
-    memberLocationPins,
-
     // Selection
     selectedPin,
-    selectedSpace,
-    selectedAgent,
     selectedEntitySignalData,
     setSelectedPin,
     clearSelectedPin,
