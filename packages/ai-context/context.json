@@ -5958,10 +5958,9 @@
       ],
       "relations": [
         {
-          "name": "locations",
-          "kind": "HasMany",
-          "predicate": "we://location",
-          "target": "LocationBlock"
+          "name": "location",
+          "kind": "HasOne",
+          "predicate": "we://location"
         }
       ]
     },

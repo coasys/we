@@ -471,7 +471,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       } else {
         propMemos[key] = createQuerySignal(descriptor, stores, getModel);
       }
-    } else if (hasToken(rawValue, '$map', 'object') && hasToken((rawValue as { $map: MapProp }).$map.items, '$query', 'object')) {
+    } else if (
+      hasToken(rawValue, '$map', 'object') &&
+      hasToken((rawValue as { $map: MapProp }).$map.items, '$query', 'object')
+    ) {
       // $map with $query items: wire a reactive subscription for the items source,
       // then pass the live signal into resolveMapProp so it re-maps on every update.
       const mapSpec = (rawValue as { $map: MapProp }).$map;

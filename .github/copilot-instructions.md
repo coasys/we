@@ -810,7 +810,7 @@ Space extends WeNode:
   - avatar: string | FileData [we://image]
   - coverImage: string | FileData [we://thumbnail]
   Relations:
-  - locations: HasMany → LocationBlock [we://location]
+  - location: HasOne [we://location]
 
 TagBlock extends WeNode:
   Fields:

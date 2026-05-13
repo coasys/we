@@ -45,13 +45,14 @@ The projection-hydration PR (previous session) had to fix three independent gaps
 2. `includeAll` expansion missing from `prepareModelQueryParams`
 3. Projection IRIs not hydrated (shared via `hydrateProjections` as part of that fix)
 
-The first two existed *only* because `prepareModelQueryParams` was a copy that had gotten out of date. If `executeModelQuery` had delegated to `prepareModelQueryParams`, there would have been nothing to get out of sync.
+The first two existed _only_ because `prepareModelQueryParams` was a copy that had gotten out of date. If `executeModelQuery` had delegated to `prepareModelQueryParams`, there would have been nothing to get out of sync.
 
 ---
 
 ## Current State
 
 `prepareModelQueryParams` is fully correct and handles everything:
+
 - `parent` resolution with `resolveParentPredicate`
 - `$`-prefixed key splitting to `queryInput.projections` with target-shape enrichment
 - Normal include splitting with `enrichShapeForIncludes`
@@ -59,6 +60,7 @@ The first two existed *only* because `prepareModelQueryParams` was a copy that h
 - Conformance getter compilation and `whereFilter`/`wherePredicates` attachment
 
 `executeModelQuery` duplicates all of the above (~80 lines) and then additionally handles:
+
 - `includeAll` expansion (missing from `prepareModelQueryParams`)
 - The actual Rust RPC call (`perspective.modelQuery`)
 - `jsonToModelInstance` conversion
@@ -119,7 +121,7 @@ static async findAll<T>(perspective, query) {
 }
 ```
 
-**Important**: this is purely an *internal routing* change. The external API — nested JSON query objects (`{ where: { ... }, include: { ... } }`) — stays identical. `ModelQueryBuilder`'s constructor already accepts a full `Query` object, so `findAll(perspective, { where: { type: 'root' }, include: { $totalLikeCount: {...} } })` would still work exactly as before. The fluent chaining API (`.where(...).order(...)`) is just a convenience layer on top, not a replacement.
+**Important**: this is purely an _internal routing_ change. The external API — nested JSON query objects (`{ where: { ... }, include: { ... } }`) — stays identical. `ModelQueryBuilder`'s constructor already accepts a full `Query` object, so `findAll(perspective, { where: { type: 'root' }, include: { $totalLikeCount: {...} } })` would still work exactly as before. The fluent chaining API (`.where(...).order(...)`) is just a convenience layer on top, not a replacement.
 
 The benefit is zero divergence — everything routes through the same execution path. The downside is a slightly less direct call stack and marginal overhead for high-frequency one-shot calls that don't need subscription infrastructure. Defer until Phase 1 has been in production for a while.
 
@@ -129,13 +131,13 @@ The benefit is zero divergence — everything routes through the same execution 
 
 All changes are in `ad4m/core/src/model/Ad4mModel.ts`.
 
-| What | Detail |
-|------|--------|
-| Move `includeAll` expansion into `prepareModelQueryParams` | The expansion is a query normalisation step — it belongs with the other preparation, not scattered across both entry points |
-| Remove inline `queryInput` construction from `executeModelQuery` | ~80 lines replaced with a single `prepareModelQueryParams` call |
+| What                                                                                         | Detail                                                                                                                                    |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Move `includeAll` expansion into `prepareModelQueryParams`                                   | The expansion is a query normalisation step — it belongs with the other preparation, not scattered across both entry points               |
+| Remove inline `queryInput` construction from `executeModelQuery`                             | ~80 lines replaced with a single `prepareModelQueryParams` call                                                                           |
 | `executeModelQuery` receives `query.include` from the original `Query`, not from `queryJson` | The parsed `queryInput.include` currently used for `takeSnapshot` should be `query.include` (the pre-serialisation value) for consistency |
-| No changes to `ModelQueryBuilder` | It already calls `prepareModelQueryParams` |
-| No changes to Rust | Identical serialised JSON output |
+| No changes to `ModelQueryBuilder`                                                            | It already calls `prepareModelQueryParams`                                                                                                |
+| No changes to Rust                                                                           | Identical serialised JSON output                                                                                                          |
 
 **Risk**: Low. `prepareModelQueryParams` is already exercised by every subscribe call. Unit tests cover both paths. The only net behavioural change is that `includeAll` expansion now also applies on the subscribe path (it was missing before — this is a fix, not a regression).
 
