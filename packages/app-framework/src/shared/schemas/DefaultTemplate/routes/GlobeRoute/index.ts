@@ -196,7 +196,26 @@ export const globeRoute: RouteSchema = {
             id: 'space-locations',
             enabled: { $local: 'showSpaceLocations' },
             options: {
-              locations: { $store: 'spaceStore.spaceLocationPins' },
+              locations: {
+                $map: {
+                  items: {
+                    $query: {
+                      model: 'Space',
+                      where: { location: { $ne: null } },
+                      include: { location: true },
+                      subscribe: true,
+                    },
+                  },
+                  select: {
+                    id: '$item.id',
+                    kind: 'space',
+                    name: '$item.name',
+                    latitude: '$item.location.latitude',
+                    longitude: '$item.location.longitude',
+                    avatar: '$item.avatar',
+                  },
+                },
+              },
               markerSize: 20,
               defaultColor: '#a855f7',
               onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },
@@ -207,7 +226,26 @@ export const globeRoute: RouteSchema = {
             id: 'agent-locations',
             enabled: { $local: 'showUserLocations' },
             options: {
-              locations: { $store: 'spaceStore.memberLocationPins' },
+              locations: {
+                $map: {
+                  items: {
+                    $query: {
+                      model: 'AgentProfile',
+                      where: { location: { $ne: null } },
+                      include: { location: true },
+                      subscribe: true,
+                    },
+                  },
+                  select: {
+                    id: '$item.id',
+                    kind: 'agent',
+                    name: { $concat: ['$item.firstName', ' ', '$item.lastName'] },
+                    latitude: '$item.location.latitude',
+                    longitude: '$item.location.longitude',
+                    avatar: '$item.avatar',
+                  },
+                },
+              },
               markerSize: 30,
               defaultColor: '#f97316',
               onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },

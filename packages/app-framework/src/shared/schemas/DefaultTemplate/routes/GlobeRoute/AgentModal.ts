@@ -2,11 +2,11 @@
  * AgentModal
  *
  * Rendered when the user clicks an Agent pin on the discovery globe.
- * Reads `spaceStore.selectedAgent` (set when `selectedPin.kind === 'agent'`).
+ * Fetches the selected AgentProfile via $each+$query bound to `spaceStore.selectedPin.id`.
  *
  * Layout:
- *   • Optional cover-image banner  (selectedAgent.coverImage)
- *   • Row: circular avatar  (selectedAgent.avatar)  + name / handle
+ *   • Optional cover-image banner  ($item.coverImage)
+ *   • Row: circular avatar  ($item.avatar)  + name / handle
  *   • Optional bio
  *   • Signal controls row
  *   • Close button
@@ -20,112 +20,123 @@ export const agentModal = {
   },
   children: [
     {
-      type: 'Column',
-      props: { gap: '400' },
-      children: [
-        // ── Cover image banner ──────────────────────────────
-        {
-          type: '$if',
-          props: {
-            condition: { $store: 'spaceStore.selectedAgent.coverImage' },
-            then: {
-              type: 'we-image',
-              props: {
-                src: { $store: 'spaceStore.selectedAgent.coverImage' },
-                width: '100%',
-                height: '140px',
-                fit: 'cover',
-                r: '300',
-              },
-            },
+      type: '$each',
+      props: {
+        as: 'item',
+        items: {
+          $query: {
+            model: 'AgentProfile',
+            where: { id: { $store: 'spaceStore.selectedPin.id' } },
+            subscribe: false,
           },
         },
-
-        // ── Circular avatar + name / handle row ────────────
+      },
+      children: [
         {
-          type: 'Row',
-          props: { gap: '300', ay: 'center' },
+          type: 'Column',
+          props: { gap: '400' },
           children: [
+            // ── Cover image banner ──────────────────────────────
             {
               type: '$if',
               props: {
-                condition: { $store: 'spaceStore.selectedAgent.avatar' },
+                condition: '$item.coverImage',
                 then: {
                   type: 'we-image',
                   props: {
-                    src: { $store: 'spaceStore.selectedAgent.avatar' },
-                    width: '60px',
-                    height: '60px',
+                    src: '$item.coverImage',
+                    width: '100%',
+                    height: '140px',
                     fit: 'cover',
-                    r: 'full',
+                    r: '300',
                   },
-                },
-                else: {
-                  type: 'we-icon',
-                  props: { name: 'user-circle', size: '60px', color: 'neutral-400' },
                 },
               },
             },
+
+            // ── Circular avatar + name / handle row ────────────
             {
-              type: 'Column',
-              props: { gap: '100' },
+              type: 'Row',
+              props: { gap: '300', ay: 'center' },
               children: [
                 {
-                  type: 'we-text',
-                  props: { fontSize: '600', fontWeight: 'bold' },
+                  type: '$if',
+                  props: {
+                    condition: '$item.avatar',
+                    then: {
+                      type: 'we-image',
+                      props: {
+                        src: '$item.avatar',
+                        width: '60px',
+                        height: '60px',
+                        fit: 'cover',
+                        r: 'full',
+                      },
+                    },
+                    else: {
+                      type: 'we-icon',
+                      props: { name: 'user-circle', size: '60px', color: 'neutral-400' },
+                    },
+                  },
+                },
+                {
+                  type: 'Column',
+                  props: { gap: '100' },
                   children: [
                     {
-                      $concat: [
-                        { $store: 'spaceStore.selectedAgent.firstName' },
-                        ' ',
-                        { $store: 'spaceStore.selectedAgent.lastName' },
+                      type: 'we-text',
+                      props: { fontSize: '600', fontWeight: 'bold' },
+                      children: [
+                        {
+                          $concat: ['$item.firstName', ' ', '$item.lastName'],
+                        },
                       ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '300', color: 'neutral-400' },
+                      children: [{ $concat: ['@', '$item.handle'] }],
                     },
                   ],
                 },
-                {
-                  type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-400' },
-                  children: [{ $concat: ['@', { $store: 'spaceStore.selectedAgent.handle' }] }],
-                },
               ],
             },
-          ],
-        },
 
-        // ── Optional bio ────────────────────────────────────
-        {
-          type: '$if',
-          props: {
-            condition: { $store: 'spaceStore.selectedAgent.bio' },
-            then: {
-              type: 'we-text',
-              props: { fontSize: '400', color: 'neutral-600' },
-              children: [{ $store: 'spaceStore.selectedAgent.bio' }],
-            },
-          },
-        },
-
-        // ── Signal controls ─────────────────────────────────
-        {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', wrap: true },
-          children: [
+            // ── Optional bio ────────────────────────────────────
             {
-              type: '$each',
-              props: { items: { $store: 'spaceStore.selectedEntitySignalData' }, as: 'sig' },
+              type: '$if',
+              props: {
+                condition: '$item.bio',
+                then: {
+                  type: 'we-text',
+                  props: { fontSize: '400', color: 'neutral-600' },
+                  children: ['$item.bio'],
+                },
+              },
+            },
+
+            // ── Signal controls ─────────────────────────────────
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'center', wrap: true },
               children: [
                 {
-                  type: 'SignalControl',
-                  props: {
-                    signalType: '$sig.signalType',
-                    myValue: '$sig.myValue',
-                    aggregate: '$sig.totalValue',
-                    onSignal: {
-                      $action: 'spaceStore.upsertEntitySignal',
-                      args: ['$sig.signalType.id', '$arg'],
+                  type: '$each',
+                  props: { items: { $store: 'spaceStore.selectedEntitySignalData' }, as: 'sig' },
+                  children: [
+                    {
+                      type: 'SignalControl',
+                      props: {
+                        signalType: '$sig.signalType',
+                        myValue: '$sig.myValue',
+                        aggregate: '$sig.totalValue',
+                        onSignal: {
+                          $action: 'spaceStore.upsertEntitySignal',
+                          args: ['$sig.signalType.id', '$arg'],
+                        },
+                      },
                     },
-                  },
+                  ],
                 },
               ],
             },
