@@ -32,7 +32,7 @@ export interface DiscoveryData {
  */
 export async function buildDiscoveryData(p: PerspectiveProxy): Promise<DiscoveryData> {
   const [spaces, agents, signalTypes] = await Promise.all([
-    Space.findAll(p, { include: { locations: true } }),
+    Space.findAll(p, { include: { location: true } }),
     AgentProfile.findAll(p, { include: { location: true } }),
     SignalType.findAll(p),
   ]);
@@ -44,18 +44,11 @@ export async function buildDiscoveryData(p: PerspectiveProxy): Promise<Discovery
  * Keyed by `space.uuid` so re-running is idempotent.
  */
 export async function syncSpaceToParent(space: Space, targetP: PerspectiveProxy): Promise<void> {
-  const all = await Space.findAll(targetP, { include: { locations: true } });
+  const all = await Space.findAll(targetP, { include: { location: true } });
   const existing = all.find((s) => s.uuid === space.uuid);
 
-  // Load locations from the space's own perspective if not already hydrated
-  const locations: {
-    latitude: number;
-    longitude: number;
-    name?: string;
-    city?: string;
-    country?: string;
-    countryCode?: string;
-  }[] = (space.locations ?? []).filter((loc) => loc.latitude != null && loc.longitude != null);
+  // Load location from the space's own perspective if not already hydrated
+  const loc = space.location?.latitude != null && space.location?.longitude != null ? space.location : null;
 
   let target: Space;
   if (existing) {
@@ -79,25 +72,19 @@ export async function syncSpaceToParent(space: Space, targetP: PerspectiveProxy)
     });
   }
 
-  // Mirror location blocks into targetP (only add ones not already present).
+  // Mirror location block into targetP (only when not already set).
   // Register LocationBlock on the target first — idempotent and fast if already installed.
-  if (locations.length > 0) {
+  if (loc && !existing?.location) {
     await LocationBlock.register(targetP);
-  }
-  const existingLocs = existing?.locations ?? [];
-  for (const loc of locations) {
-    const alreadySynced = existingLocs.some((el) => el.latitude === loc.latitude && el.longitude === loc.longitude);
-    if (!alreadySynced) {
-      const newLoc = await LocationBlock.create(targetP, {
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-        ...(loc.name && { name: loc.name }),
-        ...(loc.city && { city: loc.city }),
-        ...(loc.country && { country: loc.country }),
-        ...(loc.countryCode && { countryCode: loc.countryCode }),
-      });
-      await (target as unknown as { addLocations: (l: LocationBlock) => Promise<void> }).addLocations(newLoc);
-    }
+    const newLoc = await LocationBlock.create(targetP, {
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      ...(loc.name && { name: loc.name }),
+      ...(loc.city && { city: loc.city }),
+      ...(loc.country && { country: loc.country }),
+      ...(loc.countryCode && { countryCode: loc.countryCode }),
+    });
+    await target.setLocation(newLoc);
   }
 }
 
