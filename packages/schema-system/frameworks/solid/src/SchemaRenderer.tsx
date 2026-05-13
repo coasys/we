@@ -1,4 +1,4 @@
-import type { LocalFieldMeta, LocalStateField, QueryDescriptor, ValidationRule } from '@we/schema-shared';
+import type { LocalFieldMeta, LocalStateField, MapProp, QueryDescriptor, ValidationRule } from '@we/schema-shared';
 import {
   hasToken,
   REACTIVE_ACCESSOR,
@@ -470,6 +470,21 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         propMemos[key] = () => [];
       } else {
         propMemos[key] = createQuerySignal(descriptor, stores, getModel);
+      }
+    } else if (hasToken(rawValue, '$map', 'object') && hasToken((rawValue as { $map: MapProp }).$map.items, '$query', 'object')) {
+      // $map with $query items: wire a reactive subscription for the items source,
+      // then pass the live signal into resolveMapProp so it re-maps on every update.
+      const mapSpec = (rawValue as { $map: MapProp }).$map;
+      const descriptor = resolveQueryProp(mapSpec.items);
+      const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      if (!getModel) {
+        console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
+        propMemos[key] = () => [];
+      } else {
+        const itemsSignal = createQuerySignal(descriptor, stores, getModel);
+        propMemos[key] = createMemo(() =>
+          deepUnwrap(resolveProp({ $map: { ...mapSpec, items: itemsSignal } }, stores, effectiveContext, createMemo)),
+        );
       }
     } else {
       const raw = rawValue;
