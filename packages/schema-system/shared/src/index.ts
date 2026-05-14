@@ -66,7 +66,7 @@ export type { ValidationError, ValidationResult } from './validators';
 export { NODE_OPERATORS } from './zodSchemas';
 export { findMutations, isLengthMutation } from './mutations';
 export { resolveProp, resolveProps, resolveQueryProp, splitProps, REACTIVE_ACCESSOR } from './propResolvers';
-export type { LocalFieldMeta, LocalMetaMap } from './propResolvers';
+export type { LocalFieldMeta, LocalMetaMap, MapProp } from './propResolvers';
 export { hasToken } from './predicates';
 export { themeToStyle } from './themeStyles';
 export { validateField } from './validation';

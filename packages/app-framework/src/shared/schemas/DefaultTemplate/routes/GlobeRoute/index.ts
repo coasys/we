@@ -7,7 +7,7 @@
 import type { RouteSchema } from '@we/schema-shared';
 
 import { agentModal } from './AgentModal';
-import { createAgentProfileModal } from './CreateAgentProfileModal';
+import { createAgentModal } from './CreateAgentModal';
 import { createSpaceModal } from './CreateSpaceModal';
 import { spaceModal } from './SpaceModal';
 
@@ -15,15 +15,19 @@ export const globeRoute: RouteSchema = {
   path: '/globe',
   type: 'Column',
   $localState: {
-    createSpaceOpen: { type: 'boolean', initial: false },
-    createAgentProfileOpen: { type: 'boolean', initial: false },
+    // Layer visibility toggles
     showSkybox: { type: 'boolean', initial: true },
     showStars: { type: 'boolean', initial: true },
     showSolarSystem: { type: 'boolean', initial: false },
-    showUserLocations: { type: 'boolean', initial: true },
-    showSpaceLocations: { type: 'boolean', initial: true },
     showCountryOutlines: { type: 'boolean', initial: true },
     showH3Hexagons: { type: 'boolean', initial: false },
+    showUserLocations: { type: 'boolean', initial: true },
+    showSpaceLocations: { type: 'boolean', initial: true },
+    // Currently selected pin (from clicking a location on the globe)
+    selectedPin: { type: 'object', initial: null },
+    // Modal open states
+    createSpaceModalOpen: { type: 'boolean', initial: false },
+    createAgentModalOpen: { type: 'boolean', initial: false },
   },
   children: [
     // Header
@@ -126,24 +130,35 @@ export const globeRoute: RouteSchema = {
                 ],
               },
             },
-            // ── Create Space Button ──
+            // Create Space Button
             {
               type: 'we-button',
               props: {
                 text: 'Create New Space',
                 variant: 'primary',
                 height: '40px',
-                onClick: { $setLocal: 'createSpaceOpen', value: true },
+                onClick: { $setLocal: 'createSpaceModalOpen', value: true },
               },
             },
-            // ── Create Agent Profile Button ──
+            // Create Agent Profile Button
             {
               type: 'we-button',
               props: {
                 text: 'Add Agent Profile',
                 variant: 'primary',
                 height: '40px',
-                onClick: { $setLocal: 'createAgentProfileOpen', value: true },
+                onClick: { $setLocal: 'createAgentModalOpen', value: true },
+              },
+            },
+
+            // Space store test button
+            {
+              type: 'we-button',
+              props: {
+                text: 'Test',
+                variant: 'primary',
+                height: '40px',
+                onClick: { $action: 'spaceStore.test' },
               },
             },
           ],
@@ -196,10 +211,28 @@ export const globeRoute: RouteSchema = {
             id: 'space-locations',
             enabled: { $local: 'showSpaceLocations' },
             options: {
-              locations: { $store: 'spaceStore.spaceLocationPins' },
+              locations: {
+                $map: {
+                  items: {
+                    $query: {
+                      model: 'Space',
+                      where: { id: { not: { $store: 'spaceStore.space.id' } } },
+                      include: { location: true },
+                    },
+                  },
+                  select: {
+                    id: '$item.id',
+                    kind: 'space',
+                    name: '$item.name',
+                    latitude: '$item.location.latitude',
+                    longitude: '$item.location.longitude',
+                    avatar: '$item.avatar',
+                  },
+                },
+              },
               markerSize: 20,
               defaultColor: '#a855f7',
-              onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },
+              onLocationClick: { $setLocal: 'selectedPin', from: '$event' },
             },
           },
           {
@@ -207,10 +240,27 @@ export const globeRoute: RouteSchema = {
             id: 'agent-locations',
             enabled: { $local: 'showUserLocations' },
             options: {
-              locations: { $store: 'spaceStore.memberLocationPins' },
+              locations: {
+                $map: {
+                  items: {
+                    $query: {
+                      model: 'AgentProfile',
+                      include: { location: true },
+                    },
+                  },
+                  select: {
+                    id: '$item.id',
+                    kind: 'agent',
+                    name: { $concat: ['$item.firstName', ' ', '$item.lastName'] },
+                    latitude: '$item.location.latitude',
+                    longitude: '$item.location.longitude',
+                    avatar: '$item.avatar',
+                  },
+                },
+              },
               markerSize: 30,
               defaultColor: '#f97316',
-              onLocationClick: { $action: 'spaceStore.setSelectedPin', args: ['$arg'] },
+              onLocationClick: { $setLocal: 'selectedPin', from: '$event' },
             },
           },
           {
@@ -235,34 +285,28 @@ export const globeRoute: RouteSchema = {
       },
     },
 
-    // ── Create Space Modal ──
+    // Create Space Modal
     {
       type: '$if',
-      props: { condition: { $local: 'createSpaceOpen' }, then: createSpaceModal },
+      props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal },
     },
 
-    // ── Create Agent Profile Modal ──
+    // Create Agent Profile Modal
     {
       type: '$if',
-      props: { condition: { $local: 'createAgentProfileOpen' }, then: createAgentProfileModal },
+      props: { condition: { $local: 'createAgentModalOpen' }, then: createAgentModal },
     },
 
-    // ── Space Modal (shown when a Space pin is clicked) ──
+    // Space Modal (shown when a Space pin is clicked)
     {
       type: '$if',
-      props: {
-        condition: { $eq: [{ $store: 'spaceStore.selectedPin.kind' }, 'space'] },
-        then: spaceModal,
-      },
+      props: { condition: { $eq: [{ $local: 'selectedPin.kind' }, 'space'] }, then: spaceModal },
     },
 
-    // ── Agent Modal (shown when an Agent pin is clicked) ──
+    // Agent Modal (shown when an Agent pin is clicked)
     {
       type: '$if',
-      props: {
-        condition: { $eq: [{ $store: 'spaceStore.selectedPin.kind' }, 'agent'] },
-        then: agentModal,
-      },
+      props: { condition: { $eq: [{ $local: 'selectedPin.kind' }, 'agent'] }, then: agentModal },
     },
   ],
 };

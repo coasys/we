@@ -808,14 +808,14 @@ export function AdamStoreProvider(props: ParentProps) {
           : null;
 
       // Write a Space (plus optional LocationBlock) into any perspective.
-      // Avoids a re-fetch after addLocations() — the same raw data is written directly
+      // Avoids a re-fetch after setLocation() — the same raw data is written directly
       // to both the space's own perspective and any parent that should mirror it.
       const writeSpaceInto = async (p: PerspectiveProxy) => {
         const s = await Space.create(p, spaceData);
         if (locationData) {
           await LocationBlock.register(p); // idempotent — ensures model is ready on target
           const loc = await LocationBlock.create(p, locationData);
-          await s.addLocations(loc);
+          await s.setLocation(loc);
         }
         return s;
       };

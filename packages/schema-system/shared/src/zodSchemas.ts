@@ -67,6 +67,30 @@ const zInToken = z.object({ $in: z.array(z.unknown()).length(2) }).strict();
 const zNotToken = z.object({ $not: zDefined }).strict();
 const zAndToken = z.object({ $and: z.array(z.unknown()) }).strict();
 const zOrToken = z.object({ $or: z.array(z.unknown()) }).strict();
+const zFilterToken = z
+  .object({
+    $filter: z.object({
+      items: zDefined,
+      where: z.record(z.string(), z.unknown()),
+    }),
+  })
+  .strict();
+const zCountToken = z
+  .object({
+    $count: z.object({
+      items: zDefined,
+    }),
+  })
+  .strict();
+const zFindToken = z
+  .object({
+    $find: z.object({
+      items: zDefined,
+      where: z.record(z.string(), z.unknown()).optional(),
+      select: z.string().optional(),
+    }),
+  })
+  .strict();
 const zQueryToken = z
   .object({
     $query: z.object({
@@ -78,6 +102,7 @@ const zQueryToken = z
       include: z.record(z.string(), z.unknown()).optional(),
       parent: z.record(z.string(), z.unknown()).optional(),
       subscribe: z.boolean().optional(),
+      perspectiveStore: z.string().optional(),
     }),
   })
   .strict();
@@ -149,10 +174,13 @@ const zPropToken = z.union([
   zResetLocalToken,
   zToggleLocalToken,
   zCallLocalToken,
+  zFilterToken,
+  zCountToken,
+  zFindToken,
 ]);
 
 const zLocalStateField = z.object({
-  type: z.enum(['string', 'boolean', 'number', 'file', 'function']),
+  type: z.enum(['string', 'boolean', 'number', 'file', 'function', 'object']),
   initial: z.union([z.string(), z.boolean(), z.number(), z.null()]),
   validate: z.array(zValidationRule).optional(),
 });

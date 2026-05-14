@@ -1917,7 +1917,7 @@ export const contextData: ContextData = {
         { name: 'avatar', type: 'string | FileData', predicate: 'we://image', required: false },
         { name: 'coverImage', type: 'string | FileData', predicate: 'we://thumbnail', required: false },
       ],
-      relations: [{ name: 'locations', kind: 'HasMany', predicate: 'we://location', target: 'LocationBlock' }],
+      relations: [{ name: 'location', kind: 'HasOne', predicate: 'we://location' }],
     },
     {
       name: 'TagBlock',

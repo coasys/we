@@ -12,6 +12,42 @@
 export const devPatterns = `
 ## Developer Patterns (codebase work — not for JSON schema authoring)
 
+---
+
+### Building the AD4M Executor Binary (CRITICAL)
+
+The ad4m repo has two artefacts with confusingly similar names:
+
+| Artefact | Cargo flag | Crate location | What it builds |
+|---|---|---|---|
+| \`ad4m-executor\` **library** | \`-p ad4m-executor\` | \`rust-executor/\` | Library only — **does NOT update the binary** |
+| \`ad4m-executor\` **binary** | \`--bin ad4m-executor\` | \`cli/\` (package \`ad4m\`) | The actual executable used by WE |
+
+**Always use \`--bin\` to rebuild the running binary:**
+\`\`\`sh
+cargo build --release --bin ad4m-executor
+\`\`\`
+
+Using \`-p ad4m-executor\` will appear to succeed (Cargo reports "Finished") but the
+binary at \`target/release/ad4m-executor\` will NOT be updated — any Rust changes
+(log lines, bug fixes) will be silently absent from the running app.
+
+After rebuilding, verify with:
+\`\`\`sh
+ls -la target/release/ad4m-executor   # timestamp must be fresh
+strings target/release/ad4m-executor | grep "your log string"
+\`\`\`
+
+**After modifying \`@coasys/ad4m\` TypeScript (e.g. \`core/src/model/Ad4mModel.ts\`):**
+\`\`\`sh
+cd ad4m/core && pnpm run build        # rebuild the lib/ bundle
+cd ../we && pnpm install && pnpm build  # pick up the new local override
+\`\`\`
+The WE monorepo uses \`"@coasys/ad4m": "file:../ad4m/core"\` as a pnpm override, so
+it reads from \`ad4m/core/lib/\` — the source \`.ts\` files are never used directly.
+
+---
+
 These patterns apply to TypeScript code in stores, services, tests, and scripts
 that work directly with AD4M model classes. They do NOT apply to JSON template schemas.
 

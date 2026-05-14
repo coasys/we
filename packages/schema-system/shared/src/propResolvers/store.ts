@@ -1,3 +1,4 @@
+import { walkPath } from './path';
 import { markReactive } from './reactive';
 import type { Memo, Props } from './types';
 import { noMemo } from './types';
@@ -14,19 +15,5 @@ export function resolveStoreProp(value: unknown, stores: Props, memo: Memo = noM
   if (propertyPath.length === 1) return markReactive((stores[storeName] as Props)[propertyPath[0]]);
 
   // Create a derived accessor for nested paths
-  return markReactive(
-    memo(() => {
-      // Walk down property path to get final value (userStore → userStore.profile → userStore.profile.name)
-      let current = stores[storeName];
-      for (const prop of propertyPath) {
-        if (current && typeof current === 'object' && prop in current) {
-          const propValue = (current as Props)[prop];
-          current = typeof propValue === 'function' ? propValue() : propValue;
-        } else {
-          return undefined;
-        }
-      }
-      return current;
-    }),
-  );
+  return markReactive(memo(() => walkPath(stores[storeName], propertyPath)));
 }

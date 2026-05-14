@@ -25,6 +25,19 @@ export const postsList: SchemaNode = {
                 },
                 limit: 1,
               },
+              $totalRatingCount: {
+                from: 'signals',
+                where: { signalTypeId: { $store: 'spaceStore.signalTypesBySlug.rating.id' } },
+                count: true,
+              },
+              $myRatingSignal: {
+                from: 'signals',
+                where: {
+                  signalTypeId: { $store: 'spaceStore.signalTypesBySlug.rating.id' },
+                  author: { $store: 'adamStore.me.did' },
+                },
+                limit: 1,
+              },
             },
           },
         },
@@ -63,6 +76,24 @@ export const postsList: SchemaNode = {
                         onSignal: {
                           $action: 'spaceStore.upsertSignal',
                           args: ['$post.id', { $store: 'spaceStore.signalTypesBySlug.like.id' }, '$arg'],
+                        },
+                      },
+                    },
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $store: 'spaceStore.signalTypesBySlug.rating' },
+                    then: {
+                      type: 'SignalControl',
+                      props: {
+                        signalType: { $store: 'spaceStore.signalTypesBySlug.rating' },
+                        myValue: '$post.$myRatingSignal.value',
+                        aggregate: '$post.$totalRatingCount',
+                        onSignal: {
+                          $action: 'spaceStore.upsertSignal',
+                          args: ['$post.id', { $store: 'spaceStore.signalTypesBySlug.rating.id' }, '$arg'],
                         },
                       },
                     },

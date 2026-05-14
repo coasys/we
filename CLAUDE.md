@@ -80,7 +80,8 @@ Boolean logic:
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the local perspective for model instances. Always returns an array.
-Options: model (required), where, order, limit, offset, include, parent, perspectiveStore, subscribe (default true).
+Options: model (required), where, order, limit, offset, include, parent, perspectiveStore, subscribe.
+subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
 By default $query targets the current WE space's perspective. Use perspectiveStore to query a different perspective —
 required when reading models from an external app (e.g. Flux) that is open as a WE space:
 { "$query": { "model": "Channel", "perspectiveStore": "spaceStore.perspective" } }
@@ -218,7 +219,7 @@ Block-level structures use "type" starting with "$" for dynamic rendering of sch
 
 Each loop:
 { "type": "$each", "props": { "items": { "$store": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
-Renders children once for each item. The "as" name becomes a context key.
+Renders children once for each item. The "as" name becomes a context key. Defaults to "item" — omit "as" unless you need a different name.
 
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
@@ -810,7 +811,7 @@ Space extends WeNode:
   - avatar: string | FileData [we://image]
   - coverImage: string | FileData [we://thumbnail]
   Relations:
-  - locations: HasMany → LocationBlock [we://location]
+  - location: HasOne [we://location]
 
 TagBlock extends WeNode:
   Fields:
@@ -1503,6 +1504,42 @@ After creating or modifying a `.schema.ts` file, always run validation to catch:
 ---
 
 ## Developer Patterns (codebase work — not for JSON schema authoring)
+
+---
+
+### Building the AD4M Executor Binary (CRITICAL)
+
+The ad4m repo has two artefacts with confusingly similar names:
+
+| Artefact | Cargo flag | Crate location | What it builds |
+|---|---|---|---|
+| `ad4m-executor` **library** | `-p ad4m-executor` | `rust-executor/` | Library only — **does NOT update the binary** |
+| `ad4m-executor` **binary** | `--bin ad4m-executor` | `cli/` (package `ad4m`) | The actual executable used by WE |
+
+**Always use `--bin` to rebuild the running binary:**
+```sh
+cargo build --release --bin ad4m-executor
+```
+
+Using `-p ad4m-executor` will appear to succeed (Cargo reports "Finished") but the
+binary at `target/release/ad4m-executor` will NOT be updated — any Rust changes
+(log lines, bug fixes) will be silently absent from the running app.
+
+After rebuilding, verify with:
+```sh
+ls -la target/release/ad4m-executor   # timestamp must be fresh
+strings target/release/ad4m-executor | grep "your log string"
+```
+
+**After modifying `@coasys/ad4m` TypeScript (e.g. `core/src/model/Ad4mModel.ts`):**
+```sh
+cd ad4m/core && pnpm run build        # rebuild the lib/ bundle
+cd ../we && pnpm install && pnpm build  # pick up the new local override
+```
+The WE monorepo uses `"@coasys/ad4m": "file:../ad4m/core"` as a pnpm override, so
+it reads from `ad4m/core/lib/` — the source `.ts` files are never used directly.
+
+---
 
 These patterns apply to TypeScript code in stores, services, tests, and scripts
 that work directly with AD4M model classes. They do NOT apply to JSON template schemas.

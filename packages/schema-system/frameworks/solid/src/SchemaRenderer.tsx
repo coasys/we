@@ -1,4 +1,4 @@
-import type { LocalFieldMeta, LocalStateField, QueryDescriptor, ValidationRule } from '@we/schema-shared';
+import type { LocalFieldMeta, LocalStateField, MapProp, QueryDescriptor, ValidationRule } from '@we/schema-shared';
 import {
   hasToken,
   REACTIVE_ACCESSOR,
@@ -51,6 +51,50 @@ function deepUnwrap(value: unknown, depth = 0): unknown {
 /** Check if a prop key is an event handler name (e.g. onClick, onInput, onKeyDown) */
 function isEventProp(key: string): boolean {
   return key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase();
+}
+
+/**
+ * Recursively scan a raw prop value for { $map: { items: { $query: ... } } } patterns.
+ * For each found, create a reactive query signal and substitute it in place.
+ * This "hoists" signal creation to component-init time (before any createMemo/createEffect),
+ * ensuring the subscription lifecycle is managed correctly even when the $map+$query is
+ * nested inside a complex structure like planetLayers[0].options.locations.
+ *
+ * Must be called during component setup, not inside a createMemo or createEffect.
+ */
+function hoistMapQuerySignals(value: unknown, stores: unknown, getModel: (name: string) => unknown): unknown {
+  if (!value || typeof value !== 'object') return value;
+
+  // Found $map with $query items — replace items with a live reactive signal
+  if (hasToken(value, '$map', 'object')) {
+    const mapSpec = (value as { $map: MapProp }).$map;
+    if (hasToken(mapSpec.items, '$query', 'object')) {
+      const descriptor = resolveQueryProp(mapSpec.items);
+      const signal = createQuerySignal(descriptor, stores, getModel);
+      return { $map: { ...mapSpec, items: signal } };
+    }
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    let changed = false;
+    const mapped = value.map((item) => {
+      const h = hoistMapQuerySignals(item, stores, getModel);
+      if (h !== item) changed = true;
+      return h;
+    });
+    return changed ? mapped : value;
+  }
+
+  // Plain object — recurse into all values
+  let changed = false;
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const h = hoistMapQuerySignals(v, stores, getModel);
+    result[k] = h;
+    if (h !== v) changed = true;
+  }
+  return changed ? result : value;
 }
 
 /**
@@ -107,6 +151,7 @@ function createQuerySignal(
   descriptor: QueryDescriptor,
   stores: unknown,
   getModel: (name: string) => unknown,
+  context: Record<string, unknown> = {},
 ): () => unknown[] {
   const [items, setItems] = createSignal<unknown[]>([]);
   const getModelForPerspective = (stores as Record<string, unknown>).$getModelForPerspective as
@@ -143,13 +188,20 @@ function createQuerySignal(
       return;
     }
 
-    const resolvedParams = deepResolveTokens(descriptor.params, stores as Record<string, unknown>, {}) as Record<
+    const resolvedParams = deepResolveTokens(descriptor.params, stores as Record<string, unknown>, context) as Record<
       string,
       unknown
     >;
+    const resolvedInclude =
+      descriptor.include !== undefined
+        ? (deepResolveTokens(descriptor.include, stores as Record<string, unknown>, context) as Record<
+            string,
+            boolean | Record<string, unknown>
+          >)
+        : undefined;
     const queryOptions = {
       ...resolvedParams,
-      ...(descriptor.include !== undefined && { include: descriptor.include }),
+      ...(resolvedInclude !== undefined && { include: resolvedInclude }),
     };
 
     if (descriptor.subscribe) {
@@ -366,7 +418,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
         itemsArray = () => [];
       } else {
-        itemsArray = createQuerySignal(descriptor, stores, getModel);
+        itemsArray = createQuerySignal(descriptor, stores, getModel, effectiveContext);
       }
     } else {
       itemsArray = createMemo(() => {
@@ -462,10 +514,29 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
         propMemos[key] = () => [];
       } else {
-        propMemos[key] = createQuerySignal(descriptor, stores, getModel);
+        propMemos[key] = createQuerySignal(descriptor, stores, getModel, effectiveContext);
+      }
+    } else if (
+      hasToken(rawValue, '$map', 'object') &&
+      hasToken((rawValue as { $map: MapProp }).$map.items, '$query', 'object')
+    ) {
+      // $map with $query items: wire a reactive subscription for the items source,
+      // then pass the live signal into resolveMapProp so it re-maps on every update.
+      const mapSpec = (rawValue as { $map: MapProp }).$map;
+      const descriptor = resolveQueryProp(mapSpec.items);
+      const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      if (!getModel) {
+        console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
+        propMemos[key] = () => [];
+      } else {
+        const itemsSignal = createQuerySignal(descriptor, stores, getModel, effectiveContext);
+        propMemos[key] = createMemo(() =>
+          deepUnwrap(resolveProp({ $map: { ...mapSpec, items: itemsSignal } }, stores, effectiveContext, createMemo)),
+        );
       }
     } else {
-      const raw = rawValue;
+      const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      const raw = getModel ? hoistMapQuerySignals(rawValue, stores, getModel) : rawValue;
       propMemos[key] = createMemo(() => {
         const resolved = resolveProp(raw, stores, effectiveContext, createMemo);
         return deepUnwrap(resolved);

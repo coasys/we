@@ -1,7 +1,7 @@
-export const createAgentProfileModal = {
+export const createAgentModal = {
   type: 'we-modal',
   props: {
-    close: { $setLocal: 'createAgentProfileOpen', value: false },
+    close: { $setLocal: 'createAgentModalOpen', value: false },
     maxWidth: '560px',
     width: '100%',
   },

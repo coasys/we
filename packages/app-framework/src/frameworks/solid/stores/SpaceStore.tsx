@@ -5,7 +5,6 @@ import { createBlocks } from '@we/block-shared';
 import {
   AgentProfile,
   blobToDataURL,
-  CollectionBlock,
   FileData,
   LocationBlock,
   resizeImage,
@@ -19,7 +18,6 @@ import {
   createEffect,
   createMemo,
   createSignal,
-  on,
   onCleanup,
   ParentProps,
   useContext,
@@ -27,15 +25,6 @@ import {
 
 import { useRouteStore } from './RouteStore';
 import { installSpaceSdna, SPACE_MODELS } from './spaceModels';
-import { buildDiscoveryData, type GlobePin } from './syncHelpers';
-
-/** Per-signal-type aggregate for the currently selected entity's react bar. **/
-export interface EntitySignalData {
-  nodeId: string;
-  signalType: SignalType;
-  totalValue: number;
-  myValue: number;
-}
 
 /**
  * A single node in the holarchic navigation path.
@@ -48,8 +37,6 @@ export interface HolarchyNode {
   isJoined: boolean;
 }
 
-export { type GlobePin } from './syncHelpers';
-
 export interface SpaceStore {
   // State
   perspective: Accessor<PerspectiveProxy | null>;
@@ -58,19 +45,6 @@ export interface SpaceStore {
   loading: Accessor<boolean>;
   signalTypes: Accessor<SignalType[]>;
   signalTypesBySlug: Accessor<Record<string, SignalType>>;
-
-  childSpaces: Accessor<Space[]>;
-  members: Accessor<AgentProfile[]>;
-  spaceLocationPins: Accessor<GlobePin[]>;
-  memberLocationPins: Accessor<GlobePin[]>;
-
-  selectedPin: Accessor<GlobePin | null>;
-  selectedSpace: Accessor<Space | null>;
-  selectedAgent: Accessor<AgentProfile | null>;
-  selectedEntitySignalData: Accessor<EntitySignalData[]>;
-  setSelectedPin: (pin: GlobePin) => void;
-  clearSelectedPin: () => void;
-  upsertEntitySignal: (signalTypeId: string, value: number) => Promise<void>;
 
   // Holarchy
   hasJoined: Accessor<boolean>;
@@ -101,7 +75,7 @@ export interface SpaceStore {
 
   navigateInto: (uuid: string) => Promise<void>;
 
-  getCollectionBlocks: () => Promise<void>;
+  test: () => Promise<void>;
 }
 
 const SpaceContext = createContext<SpaceStore>();
@@ -124,91 +98,27 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [signalTypes, setSignalTypes] = createSignal<SignalType[]>([]);
   const signalTypesBySlug = createMemo(() => Object.fromEntries(signalTypes().map((st) => [st.slug, st])));
 
-  // Discovery data (holonic: same shape as GlobalStore but for the current space)
-  const [childSpaces, setChildSpaces] = createSignal<Space[]>([]);
-  const [members, setMembers] = createSignal<AgentProfile[]>([]);
-  type WithSignalCount = { $signalCount?: number };
-
-  const spaceLocationPins = createMemo<GlobePin[]>(() =>
-    childSpaces()
-      .filter((s) => s.uuid !== spaceId())
-      .flatMap((s) =>
-        (s.locations ?? [])
-          .filter((loc) => loc.latitude != null && loc.longitude != null)
-          .map((loc) => ({
-            id: s.id,
-            kind: 'space' as const,
-            name: s.name,
-            latitude: loc.latitude,
-            longitude: loc.longitude,
-            avatar: typeof s.avatar === 'string' ? s.avatar : undefined,
-            signalEnergy: (s as unknown as WithSignalCount).$signalCount ?? 0,
-          })),
-      ),
-  );
-
-  const memberLocationPins = createMemo<GlobePin[]>(() =>
-    members().flatMap((a) => {
-      const loc = a.location;
-      if (!loc || loc.latitude == null || loc.longitude == null) return [];
-      return [
-        {
-          id: a.id,
-          kind: 'agent' as const,
-          name: [a.firstName, a.lastName].filter(Boolean).join(' ') || a.handle,
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          avatar: typeof a.avatar === 'string' ? a.avatar : undefined,
-          signalEnergy: (a as unknown as WithSignalCount).$signalCount ?? 0,
-        },
-      ];
-    }),
-  );
-
-  // Selection state
-  const [selectedPin, setSelectedPin] = createSignal<GlobePin | null>(null);
-  const [selectedEntitySignalData, setSelectedEntitySignalData] = createSignal<EntitySignalData[]>([]);
-  const [selectedEntitySignals, setSelectedEntitySignals] = createSignal<Signal[]>([]);
-
-  const selectedSpace = createMemo<Space | null>(() =>
-    selectedPin()?.kind === 'space' ? (childSpaces().find((s) => s.id === selectedPin()!.id) ?? null) : null,
-  );
-  const selectedAgent = createMemo<AgentProfile | null>(() =>
-    selectedPin()?.kind === 'agent' ? (members().find((a) => a.id === selectedPin()!.id) ?? null) : null,
-  );
-
-  async function getCollectionBlocks() {
+  async function test() {
     const p = perspective();
-    const did = adamStore.me()?.did;
-    if (!p || !did) return;
-    // const signalId = signalTypesBySlug().like.id;
-    console.log('signalTypesBySlug().like.id', signalTypesBySlug().like.id);
-    console.log('signaltype model: ', await SignalType.findAll(p, { where: { id: signalTypesBySlug().like.id } }));
-    console.log(
-      'signal model: ',
-      await Signal.findAll(p, { where: { id: 'literal:string:caweikvidtzjwfhthnpzthrn' } }),
-    );
-    console.log('author: ', did);
-    const blocks = await CollectionBlock.findAll(p, {
-      where: { type: 'root' },
-      include: {
-        signals: true,
-        $totalLikeCount: {
-          from: 'signals',
-          where: { signalTypeId: signalTypesBySlug().like.id },
-          count: true,
-        },
-        $myLikeSignal: {
-          from: 'signals',
-          where: {
-            signalTypeId: signalTypesBySlug().like.id,
-            author: did,
-          },
-          limit: 1,
-        },
-      },
-    });
-    console.log('fetched collection blocks', blocks);
+    if (!p) return;
+    const spaces = await Space.findAll(p, { include: { location: true } });
+    console.log('Spaces in perspective:', spaces);
+
+    console.log('spaceId: ', spaceId());
+    console.log('space: ', space());
+
+    // const posts = await CollectionBlock.findAll(p, {
+    //   where: { type: 'root' },
+    //   include: {
+    //     signals: true,
+    //     $mySignal: {
+    //       from: 'signals',
+    //       where: { signalTypeId: signalTypesBySlug().like.id, author: adamStore!.me().did },
+    //     },
+    //     $totalSignals: { from: 'signals', where: { signalTypeId: signalTypesBySlug().like.id }, count: true },
+    //   },
+    // });
+    // console.log('Posts in perspective:', posts);
   }
 
   async function createPost(json: unknown): Promise<void> {
@@ -325,24 +235,17 @@ export function SpaceStoreProvider(props: ParentProps) {
         ...(countryCode && { countryCode }),
       });
       await profile.setLocation(loc);
-      // setLocation writes only to the AD4M graph; hydrate the in-memory
-      // property so memberLocationPins memo picks up the new agent immediately.
-      profile.location = loc;
     }
-
-    setMembers((prev) => [...prev, profile]);
   }
 
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
-    console.log('upserting signal', { nodeId, signalTypeId, value });
     const p = perspective();
     const myDid = adamStore.me()?.did;
     if (!p || !myDid) return;
 
+    // TODO: simplify this - no need to query links, just get signals directly and use where to filter out my entires
     const nodeLinks = await p.get(new LinkQuery({ source: nodeId, predicate: 'we://signal' }));
     const myLinks = nodeLinks.filter((l) => l.author === myDid);
-
-    console.log('existing links for signal upsert', myLinks);
 
     for (const link of myLinks) {
       const [existing] = await Signal.findAll(p, { where: { id: link.data.target, signalTypeId } });
@@ -362,120 +265,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (value === 0) return;
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
-
-  // --- Selection actions ---
-
-  async function loadEntitySignalData(pin: GlobePin | null, stypes: SignalType[], myDid?: string): Promise<void> {
-    const p = perspective();
-    if (!pin || !p || !stypes.length) {
-      setSelectedEntitySignalData([]);
-      setSelectedEntitySignals([]);
-      return;
-    }
-    const nodeId = pin.id;
-    const results =
-      pin.kind === 'space'
-        ? await Space.findAll(p, { where: { id: nodeId }, include: { signals: true } })
-        : await AgentProfile.findAll(p, { where: { id: nodeId }, include: { signals: true } });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sigs: Signal[] = (results[0] as any)?.signals ?? [];
-    setSelectedEntitySignals(sigs);
-    const signalsByType: Record<string, { count: number; sum: number; myValue: number }> = {};
-    for (const sig of sigs) {
-      const entry = signalsByType[sig.signalTypeId] ?? { count: 0, sum: 0, myValue: 0 };
-      entry.count++;
-      entry.sum += sig.value;
-      if (sig.author === myDid) entry.myValue = sig.value;
-      signalsByType[sig.signalTypeId] = entry;
-    }
-    const rows: EntitySignalData[] = stypes.map((st) => {
-      const entry = signalsByType[st.id] ?? { count: 0, sum: 0, myValue: 0 };
-      let totalValue = 0;
-      if (st.aggregate === 'count') totalValue = entry.count;
-      else if (st.aggregate === 'sum') totalValue = entry.sum;
-      else if (st.aggregate === 'mean') totalValue = entry.count ? entry.sum / entry.count : 0;
-      return { nodeId, signalType: st, totalValue, myValue: entry.myValue };
-    });
-    setSelectedEntitySignalData(rows);
-  }
-
-  function clearSelectedPin(): void {
-    setSelectedPin(null);
-    setSelectedEntitySignals([]);
-  }
-
-  async function upsertEntitySignal(signalTypeId: string, value: number): Promise<void> {
-    const p = perspective();
-    const myDid = adamStore.me()?.did;
-    const nodeId = selectedPin()?.id;
-    if (!p || !myDid || !nodeId) return;
-    const existing = selectedEntitySignals().find((s) => s.signalTypeId === signalTypeId && s.author === myDid);
-    if (existing) {
-      if (value === 0) {
-        await existing.delete();
-      } else {
-        existing.value = value;
-        await existing.save();
-      }
-    } else if (value !== 0) {
-      await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
-    }
-    void loadEntitySignalData(selectedPin(), signalTypes(), myDid);
-  }
-
-  // Reload signal data when selected pin or signal types change
-  createEffect(() => {
-    const pin = selectedPin();
-    const stypes = signalTypes();
-    const myDid = adamStore.me()?.did;
-    void loadEntitySignalData(pin, stypes, myDid);
-  });
-
-  // Also clear selection when perspective changes
-  createEffect(() => {
-    adamStore.currentPerspective();
-    setSelectedPin(null);
-  });
-
-  // When the current agent's own profile changes, patch their entry in members so
-  // memberLocationPins updates immediately without a full re-fetch or reboot.
-  createEffect(() => {
-    const updated = adamStore.agentProfile();
-    const myDid = adamStore.me()?.did;
-    if (!updated || !myDid) return;
-    setMembers((prev) => {
-      const idx = prev.findIndex((m) => m.author === myDid);
-      if (idx === -1) return prev;
-      const next = [...prev];
-      next[idx] = updated;
-      return next;
-    });
-  });
-
-  // When a space finishes being created, atomically refresh discovery data for
-  // the current perspective without clearing — this adds the new child space pin
-  // immediately with no flash.
-  createEffect(
-    on(
-      adamStore.creatingSpace,
-      (creating) => {
-        if (creating) return;
-        const p = perspective();
-        if (!p) return;
-        void buildDiscoveryData(p).then((discovery) => {
-          if (perspective()?.uuid !== p.uuid) return; // navigated away while fetching
-          setChildSpaces(discovery.spaces);
-          setSignalTypes(discovery.signalTypes);
-          const myDid = adamStore.me()?.did;
-          const myProfile = adamStore.agentProfile();
-          const patchedAgents =
-            myDid && myProfile ? discovery.agents.map((a) => (a.author === myDid ? myProfile : a)) : discovery.agents;
-          setMembers(patchedAgents);
-        });
-      },
-      { defer: true },
-    ),
-  );
 
   /**
    * The node currently shown at `/space/:id`.
@@ -553,20 +342,12 @@ export function SpaceStoreProvider(props: ParentProps) {
       setPerspective(null);
       setSpace(null);
       setSignalTypes([]);
-      setChildSpaces([]);
-      setMembers([]);
-      setSelectedPin(null);
-      setSelectedEntitySignalData([]);
-      setSelectedEntitySignals([]);
       return;
     }
 
-    // Only clear discovery data when switching to a DIFFERENT perspective so that
-    // pins don't flash out on re-hydrations of the same perspective (e.g. after
-    // SHACL registration or when an AD4M event causes a re-run).
+    // Only clear signal types when switching to a DIFFERENT perspective so that
+    // the UI doesn't flash on re-hydrations of the same perspective.
     if (p.uuid !== _lastHydratedUuid) {
-      setChildSpaces([]);
-      setMembers([]);
       setSignalTypes([]);
     }
     setLoading(true);
@@ -584,9 +365,6 @@ export function SpaceStoreProvider(props: ParentProps) {
           if (cancelled) return;
           setPerspective(p);
           setSpace(null);
-          setSelectedPin(null);
-          setSelectedEntitySignalData([]);
-          setSelectedEntitySignals([]);
           void rootUuid;
           return;
         }
@@ -605,18 +383,9 @@ export function SpaceStoreProvider(props: ParentProps) {
         setSpace(spaceModel ?? null);
 
         if (spaceModel) {
-          const discovery = await buildDiscoveryData(p);
-          console.log('discovery data', discovery);
+          const [fetchedSignalTypes] = await Promise.all([SignalType.findAll(p)]);
           if (cancelled) return;
-          setChildSpaces(discovery.spaces);
-          setSignalTypes(discovery.signalTypes);
-          // Patch own profile with local agentProfile so the current user's pin always
-          // shows their up-to-date avatar, regardless of what the shared perspective has.
-          const myDid = adamStore.me()?.did;
-          const myProfile = adamStore.agentProfile();
-          const patchedAgents =
-            myDid && myProfile ? discovery.agents.map((a) => (a.author === myDid ? myProfile : a)) : discovery.agents;
-          setMembers(patchedAgents);
+          setSignalTypes(fetchedSignalTypes);
         }
       } catch (error) {
         if (!cancelled) console.error('SpaceStore: perspective hydration error', error);
@@ -635,21 +404,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     signalTypes,
     signalTypesBySlug,
 
-    // Discovery
-    childSpaces,
-    members,
-    spaceLocationPins,
-    memberLocationPins,
-
-    // Selection
-    selectedPin,
-    selectedSpace,
-    selectedAgent,
-    selectedEntitySignalData,
-    setSelectedPin,
-    clearSelectedPin,
-    upsertEntitySignal,
-
     // Holarchy
     hasJoined,
 
@@ -666,7 +420,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     deriveSlug,
     navigateInto,
 
-    getCollectionBlocks,
+    test,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

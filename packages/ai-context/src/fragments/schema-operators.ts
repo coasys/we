@@ -77,7 +77,8 @@ Boolean logic:
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the local perspective for model instances. Always returns an array.
-Options: model (required), where, order, limit, offset, include, parent, perspectiveStore, subscribe (default true).
+Options: model (required), where, order, limit, offset, include, parent, perspectiveStore, subscribe.
+subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
 By default $query targets the current WE space's perspective. Use perspectiveStore to query a different perspective —
 required when reading models from an external app (e.g. Flux) that is open as a WE space:
 { "$query": { "model": "Channel", "perspectiveStore": "spaceStore.perspective" } }
@@ -215,7 +216,7 @@ Block-level structures use "type" starting with "$" for dynamic rendering of sch
 
 Each loop:
 { "type": "$each", "props": { "items": { "$store": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
-Renders children once for each item. The "as" name becomes a context key.
+Renders children once for each item. The "as" name becomes a context key. Defaults to "item" — omit "as" unless you need a different name.
 
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }

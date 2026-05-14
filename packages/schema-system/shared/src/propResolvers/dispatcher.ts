@@ -1,5 +1,6 @@
 import { hasToken } from '../predicates';
 import { resolveActionProp } from './action';
+import { resolveCountProp, resolveFilterProp, resolveFindProp } from './arrayOps';
 import {
   resolveAndProp,
   resolveEqProp,
@@ -28,7 +29,7 @@ import { resolveMapProp } from './map';
 import { resolvePickProp } from './pick';
 import { REACTIVE_ACCESSOR } from './reactive';
 import { resolveStoreProp } from './store';
-import type { MapProp, Memo, PickProp, Props } from './types';
+import type { ConcatProp, CountProp, FilterProp, FindProp, MapProp, Memo, PickProp, Props } from './types';
 import { noMemo } from './types';
 
 /**
@@ -57,7 +58,7 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
   // Handle token objects (objects with $ keys)
   if (hasAnyToken(value)) {
     if (hasToken(value, '$store', 'string')) return resolveStoreProp(value, stores, memo);
-    if (hasToken(value, '$local', 'string')) return resolveLocalProp(value as { $local: string }, context);
+    if (hasToken(value, '$local', 'string')) return resolveLocalProp(value as { $local: string }, context, memo);
     if (hasToken(value, '$setLocal', 'string'))
       return resolveSetLocalProp(value as { $setLocal: string; from?: string; value?: unknown }, context);
     if (hasToken(value, '$error', 'string')) return resolveErrorProp(value as { $error: string }, context);
@@ -71,7 +72,7 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$callLocal', 'string')) return resolveCallLocalProp(value as { $callLocal: string }, context);
     if (hasToken(value, '$action', 'string')) return resolveActionProp(value, context, stores, memo, resolveProp);
     if (hasToken(value, '$concat', 'array'))
-      return resolveConcatProp((value as { $concat: unknown[] })['$concat'], stores, context, memo, resolveProp);
+      return resolveConcatProp((value as { $concat: ConcatProp }).$concat, stores, context, memo, resolveProp);
     if (hasToken(value, '$map', 'object'))
       return resolveMapProp(value['$map'] as MapProp, stores, context, memo, resolveProp);
     if (hasToken(value, '$pick', 'object'))
@@ -85,6 +86,12 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$and', 'array')) return resolveAndProp(value, stores, context, memo, resolveProp);
     if (hasToken(value, '$or', 'array')) return resolveOrProp(value, stores, context, memo, resolveProp);
     if (hasToken(value, '$in', 'array')) return resolveInProp(value, stores, context, memo, resolveProp);
+    if (hasToken(value, '$filter', 'object'))
+      return resolveFilterProp((value as { $filter: FilterProp }).$filter, stores, context, memo, resolveProp);
+    if (hasToken(value, '$count', 'object'))
+      return resolveCountProp((value as { $count: CountProp }).$count, stores, context, memo, resolveProp);
+    if (hasToken(value, '$find', 'object'))
+      return resolveFindProp((value as { $find: FindProp }).$find, stores, context, memo, resolveProp);
   }
 
   // Recursively resolve arrays
