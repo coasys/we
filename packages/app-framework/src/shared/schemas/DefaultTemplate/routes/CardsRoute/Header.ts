@@ -69,15 +69,15 @@ export const postsHeader: SchemaNode = {
       },
     },
 
-    {
-      type: 'we-button',
-      props: {
-        text: 'Get collection blocks',
-        bg: 'primary-500',
-        color: 'neutral-0',
-        height: '40px',
-        onClick: { $action: 'spaceStore.getCollectionBlocks' },
-      },
-    },
+    // {
+    //   type: 'we-button',
+    //   props: {
+    //     text: 'Get collection blocks',
+    //     bg: 'primary-500',
+    //     color: 'neutral-0',
+    //     height: '40px',
+    //     onClick: { $action: 'spaceStore.getCollectionBlocks' },
+    //   },
+    // },
   ],
 };
