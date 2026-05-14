@@ -151,6 +151,7 @@ function createQuerySignal(
   descriptor: QueryDescriptor,
   stores: unknown,
   getModel: (name: string) => unknown,
+  context: Record<string, unknown> = {},
 ): () => unknown[] {
   const [items, setItems] = createSignal<unknown[]>([]);
   const getModelForPerspective = (stores as Record<string, unknown>).$getModelForPerspective as
@@ -187,13 +188,13 @@ function createQuerySignal(
       return;
     }
 
-    const resolvedParams = deepResolveTokens(descriptor.params, stores as Record<string, unknown>, {}) as Record<
+    const resolvedParams = deepResolveTokens(descriptor.params, stores as Record<string, unknown>, context) as Record<
       string,
       unknown
     >;
     const resolvedInclude =
       descriptor.include !== undefined
-        ? (deepResolveTokens(descriptor.include, stores as Record<string, unknown>, {}) as Record<
+        ? (deepResolveTokens(descriptor.include, stores as Record<string, unknown>, context) as Record<
             string,
             boolean | Record<string, unknown>
           >)
@@ -417,7 +418,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
         itemsArray = () => [];
       } else {
-        itemsArray = createQuerySignal(descriptor, stores, getModel);
+        itemsArray = createQuerySignal(descriptor, stores, getModel, effectiveContext);
       }
     } else {
       itemsArray = createMemo(() => {
@@ -513,7 +514,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
         propMemos[key] = () => [];
       } else {
-        propMemos[key] = createQuerySignal(descriptor, stores, getModel);
+        propMemos[key] = createQuerySignal(descriptor, stores, getModel, effectiveContext);
       }
     } else if (
       hasToken(rawValue, '$map', 'object') &&
@@ -528,7 +529,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
         propMemos[key] = () => [];
       } else {
-        const itemsSignal = createQuerySignal(descriptor, stores, getModel);
+        const itemsSignal = createQuerySignal(descriptor, stores, getModel, effectiveContext);
         propMemos[key] = createMemo(() =>
           deepUnwrap(resolveProp({ $map: { ...mapSpec, items: itemsSignal } }, stores, effectiveContext, createMemo)),
         );
