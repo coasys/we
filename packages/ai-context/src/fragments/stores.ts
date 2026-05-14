@@ -77,7 +77,6 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'spaceStore',
     state: {
-      spaceId: { type: 'string' },
       perspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
       space: {
         type: 'object',
@@ -104,7 +103,6 @@ export const storeEntries: StoreEntry[] = [
       loading: { type: 'boolean' },
     },
     actions: [
-      'setSpaceId',
       'getSpace',
       'createPost',
       'updateSpaceAvatar',
@@ -234,7 +232,6 @@ function generateStoresText(entries: StoreEntry[]): string {
     },
     spaceStore: {
       state: {
-        spaceId: 'string (current space id)',
         perspective: 'PerspectiveProxy | null',
         space: 'Partial<Space> (current space object)',
         signalTypes: 'array of SignalType objects (community-created reaction/vote types)',
@@ -243,7 +240,6 @@ function generateStoresText(entries: StoreEntry[]): string {
         loading: 'boolean',
       },
       actions: {
-        setSpaceId: '(id: string): sets the current space id',
         getSpace: '(): loads space data',
         createPost: '(editorState: unknown): creates a new post',
         createSignalType:

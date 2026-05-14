@@ -2258,7 +2258,6 @@ export const contextData: ContextData = {
     {
       name: 'spaceStore',
       state: {
-        spaceId: { type: 'string' },
         perspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
         space: {
           type: 'object',
@@ -2283,7 +2282,6 @@ export const contextData: ContextData = {
         loading: { type: 'boolean' },
       },
       actions: [
-        'setSpaceId',
         'getSpace',
         'createPost',
         'updateSpaceAvatar',
