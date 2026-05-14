@@ -27,36 +27,38 @@ The `SpaceModal` and `AgentModal` iterate `spaceStore.selectedEntitySignalData` 
     "items": { "$query": { "model": "SignalType", "subscribe": true } },
     "as": "sig"
   },
-  "children": [{
-    "type": "SignalControl",
-    "props": {
-      "signalType": "$sig",
-      "aggregate": {
-        "$count": {
-          "items": {
-            "$filter": {
-              "items": "$item.signals",
-              "where": { "signalTypeId": "$sig.id" }
+  "children": [
+    {
+      "type": "SignalControl",
+      "props": {
+        "signalType": "$sig",
+        "aggregate": {
+          "$count": {
+            "items": {
+              "$filter": {
+                "items": "$item.signals",
+                "where": { "signalTypeId": "$sig.id" }
+              }
             }
           }
+        },
+        "myValue": {
+          "$find": {
+            "items": "$item.signals",
+            "where": {
+              "signalTypeId": "$sig.id",
+              "author": { "$store": "adamStore.me.did" }
+            },
+            "select": "value"
+          }
+        },
+        "onSignal": {
+          "$action": "spaceStore.upsertEntitySignal",
+          "args": ["$sig.id", "$arg"]
         }
-      },
-      "myValue": {
-        "$find": {
-          "items": "$item.signals",
-          "where": {
-            "signalTypeId": "$sig.id",
-            "author": { "$store": "adamStore.me.did" }
-          },
-          "select": "value"
-        }
-      },
-      "onSignal": {
-        "$action": "spaceStore.upsertEntitySignal",
-        "args": ["$sig.id", "$arg"]
       }
     }
-  }]
+  ]
 }
 ```
 
@@ -74,6 +76,7 @@ Signals are the first case, but the pattern is general. Any m:n relation accesse
 - Any aggregate over an included relation
 
 Option A (smart `SignalControl` that queries internally) was considered and rejected:
+
 - Breaks `SignalControl`'s pure rendering contract (currently it only accepts pre-computed `myValue`/`aggregate`)
 - Requires the component to know how to write signals too (upsert action coupling)
 - Doesn't generalise — every component that needs a similar pattern would need the same treatment
@@ -92,13 +95,14 @@ Returns a subset of an array where all conditions in `where` match.
 ```typescript
 interface FilterToken {
   $filter: {
-    items: SchemaProp;        // resolves to an array
-    where: Record<string, SchemaProp>;  // same predicate shape as $query.where
+    items: SchemaProp; // resolves to an array
+    where: Record<string, SchemaProp>; // same predicate shape as $query.where
   };
 }
 ```
 
 Example:
+
 ```json
 { "$filter": { "items": "$item.signals", "where": { "signalTypeId": "$sig.id" } } }
 ```
@@ -110,7 +114,7 @@ Returns the length of an array.
 ```typescript
 interface CountToken {
   $count: {
-    items: SchemaProp;        // resolves to an array
+    items: SchemaProp; // resolves to an array
   };
 }
 ```
@@ -126,12 +130,13 @@ interface FindToken {
   $find: {
     items: SchemaProp;
     where: Record<string, SchemaProp>;
-    select?: string;           // if present, returns item[select] instead of the item
+    select?: string; // if present, returns item[select] instead of the item
   };
 }
 ```
 
 Example — get my vote value:
+
 ```json
 {
   "$find": {
@@ -173,26 +178,32 @@ Add to `SchemaProp` union alongside `MapToken`, `PickToken`, etc.
 **File:** `packages/schema-system/shared/src/zodSchemas.ts`
 
 ```typescript
-const zFilterToken = z.object({
-  $filter: z.object({
-    items: zDefined,
-    where: z.record(z.string(), z.unknown()),
-  }),
-}).strict();
+const zFilterToken = z
+  .object({
+    $filter: z.object({
+      items: zDefined,
+      where: z.record(z.string(), z.unknown()),
+    }),
+  })
+  .strict();
 
-const zCountToken = z.object({
-  $count: z.object({
-    items: zDefined,
-  }),
-}).strict();
+const zCountToken = z
+  .object({
+    $count: z.object({
+      items: zDefined,
+    }),
+  })
+  .strict();
 
-const zFindToken = z.object({
-  $find: z.object({
-    items: zDefined,
-    where: z.record(z.string(), z.unknown()).optional(),
-    select: z.string().optional(),
-  }),
-}).strict();
+const zFindToken = z
+  .object({
+    $find: z.object({
+      items: zDefined,
+      where: z.record(z.string(), z.unknown()).optional(),
+      select: z.string().optional(),
+    }),
+  })
+  .strict();
 ```
 
 Add all three to `zPropToken` union.
@@ -209,7 +220,7 @@ if (hasToken(value, '$filter', 'object')) {
   const { items, where } = value.$filter;
   const arr = resolveProp(items, stores, context, createMemo) as unknown[];
   if (!Array.isArray(arr)) return [];
-  return arr.filter(item => matchesWhere(item, where, stores, context, createMemo));
+  return arr.filter((item) => matchesWhere(item, where, stores, context, createMemo));
 }
 
 // $count
@@ -223,13 +234,14 @@ if (hasToken(value, '$find', 'object')) {
   const { items, where, select } = value.$find;
   const arr = resolveProp(items, stores, context, createMemo) as unknown[];
   if (!Array.isArray(arr)) return undefined;
-  const match = where ? arr.find(item => matchesWhere(item, where, stores, context, createMemo)) : arr[0];
+  const match = where ? arr.find((item) => matchesWhere(item, where, stores, context, createMemo)) : arr[0];
   if (match === undefined) return undefined;
   return select ? (match as Record<string, unknown>)[select] : match;
 }
 ```
 
 The `matchesWhere` helper evaluates each key in the `where` record against the item's corresponding property. It must support:
+
 - Plain scalar values (strict equality)
 - `{ $store: '...' }` — resolved at call time via `resolveProp`
 - `{ $local: '...' }` — same
@@ -246,6 +258,7 @@ Add `zFilterToken`, `zCountToken`, `zFindToken` to the `zPropToken` union (same 
 ### 5. Update modals to use new operators
 
 **Files:**
+
 - `packages/app-framework/src/shared/schemas/DefaultTemplate/routes/GlobeRoute/SpaceModal.ts`
 - `packages/app-framework/src/shared/schemas/DefaultTemplate/routes/GlobeRoute/AgentModal.ts`
 
@@ -294,6 +307,7 @@ The minimum viable implementation only needs to support equality checks for the 
 That's: resolve each value (string context ref or `$store` token), compare to the item's field by strict equality.
 
 For completeness, operators worth supporting in v1:
+
 - Plain scalar (strict `===`)
 - `$store` / `$local` / `$item.*` context refs
 - `{ $ne: [a, b] }` — not-equal
