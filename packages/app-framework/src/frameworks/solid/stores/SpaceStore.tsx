@@ -1,5 +1,7 @@
 import { LinkQuery, PerspectiveProxy } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
+import { installSpaceSdna, SPACE_MODELS } from '@shared/spaceModels';
+import { deriveSlug } from '@shared/utils';
 import { useAdamStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';
 import {
@@ -24,7 +26,6 @@ import {
 } from 'solid-js';
 
 import { useRouteStore } from './RouteStore';
-import { installSpaceSdna, SPACE_MODELS } from './spaceModels';
 
 export type AgentProfileInput = Omit<Partial<AgentProfile>, 'avatar' | 'coverImage' | 'location'> & {
   avatar?: File | FileData | string;
@@ -48,7 +49,6 @@ export interface SpaceStore {
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   createAgentProfile: (config: AgentProfileInput) => Promise<void>;
-  deriveSlug: (name: string) => string;
 
   /** Navigate to a space by its spaceId (neighbourhood CID or local UUID), preserving the current sub-route view (falls back to 'globe'). */
   navigateToSpace: (spaceId: string) => void;
@@ -74,6 +74,8 @@ export function SpaceStoreProvider(props: ParentProps) {
   // Signal types
   const [signalTypes, setSignalTypes] = createSignal<SignalType[]>([]);
   const signalTypesBySlug = createMemo(() => Object.fromEntries(signalTypes().map((st) => [st.slug, st])));
+
+  const hasJoined = createMemo(() => perspective() !== null);
 
   async function test() {
     const p = perspective();
@@ -102,6 +104,12 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = perspective();
     if (!p) return;
     await createBlocks(p, json);
+  }
+
+  function navigateToSpace(spaceId: string): void {
+    const segs = routeStore.segments();
+    const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
+    routeStore.navigate('/space/' + spaceId + '/' + currentView);
   }
 
   async function updateSpaceAvatar(imageFile: File): Promise<void> {
@@ -145,14 +153,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       withSlug.mode && rangeOverrides[withSlug.mode] ? { ...withSlug, ...rangeOverrides[withSlug.mode] } : withSlug;
     const created = await SignalType.create(p, normalised);
     setSignalTypes((prev) => [...prev, created]);
-  }
-
-  function deriveSlug(name: string): string {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .trim()
-      .replace(/\s+/g, '-');
   }
 
   async function createAgentProfile(config: AgentProfileInput): Promise<void> {
@@ -252,14 +252,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (current?.uuid !== seg) void adamStore.setCurrentPerspective(seg);
   });
 
-  function navigateToSpace(spaceId: string): void {
-    const segs = routeStore.segments();
-    const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
-    routeStore.navigate('/space/' + spaceId + '/' + currentView);
-  }
-
-  const hasJoined = createMemo(() => perspective() !== null);
-
   // Watch adamStore.currentPerspective() and hydrate the WE space layer on top.
   // For a raw external perspective: Space.findAll returns [], setSpace(null) — space chrome hides.
   // For a mixed perspective: both layers hydrate simultaneously.
@@ -348,7 +340,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     createSignalType,
     upsertSignal,
     createAgentProfile,
-    deriveSlug,
 
     navigateToSpace,
 

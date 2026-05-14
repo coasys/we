@@ -1,6 +1,9 @@
 import { Ad4mClient, Agent, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
+import { getModelClasses, getModelManifest } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
+import { installSpaceSdna } from '@shared/spaceModels';
+import { removeSpaceFromParent, syncAgentProfileToParent } from '@shared/syncHelpers';
 import type { FileData } from '@we/models';
 import {
   AgentProfile,
@@ -18,10 +21,7 @@ import { Accessor, createContext, createEffect, createMemo, createSignal, Parent
 
 import weSeedFile from '../../../../../../we-seed.json';
 import type { WeSeedFile } from '../../../types/seed';
-import { getModelClasses, getModelManifest } from './perspectiveHelpers';
 import { useRouteStore } from './RouteStore';
-import { installSpaceSdna } from './spaceModels';
-import { removeSpaceFromParent, syncAgentProfileToParent } from './syncHelpers';
 
 export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 

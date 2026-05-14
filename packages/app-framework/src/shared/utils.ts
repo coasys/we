@@ -24,3 +24,11 @@ export function deepClone<T>(val: T): T {
   // if (typeof (globalThis as any).structuredClone === 'function') return (globalThis as any).structuredClone(val);
   return JSON.parse(JSON.stringify(val));
 }
+
+export function deriveSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+}
