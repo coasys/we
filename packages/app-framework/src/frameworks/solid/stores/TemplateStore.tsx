@@ -219,8 +219,24 @@ export function TemplateStoreProvider(props: ParentProps) {
       allTemplates().find((t) => t.id === newTemplateId) || shellTemplates.find((t) => t.id === newTemplateId);
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
-      // For now always land on '/' — the template's own routes handle any redirect from there
-      routeStore.navigate('/');
+      // Shell templates (profile, settings, etc.) always land on '/'.
+      // Space-capable templates (default/custom) resume the current space if one is active,
+      // otherwise fall back to '/' which renders the HomeRoute space-picker.
+      const isShell = shellTemplates.some((t) => t.id === newTemplateId);
+      if (!isShell) {
+        const p = adamStore.currentPerspective();
+        const segs = routeStore.segments();
+        // Preserve current sub-view (globe, cards, etc.) when switching back
+        const view = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
+        if (p) {
+          const spaceId = p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid;
+          routeStore.navigate('/space/' + spaceId + '/' + view);
+        } else {
+          routeStore.navigate('/');
+        }
+      } else {
+        routeStore.navigate('/');
+      }
       // Persist choice to Ad4m
       adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });
     } else {

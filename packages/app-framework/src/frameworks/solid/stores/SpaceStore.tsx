@@ -26,6 +26,7 @@ import {
 } from 'solid-js';
 
 import { useRouteStore } from './RouteStore';
+import { useTemplateStore } from './TemplateStore';
 
 export type AgentProfileInput = Omit<Partial<AgentProfile>, 'avatar' | 'coverImage' | 'location'> & {
   avatar?: File | FileData | string;
@@ -63,6 +64,7 @@ for (const M of SPACE_MODELS) registerModel(M.name, M as any);
 export function SpaceStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
   const routeStore = useRouteStore();
+  const templateStore = useTemplateStore();
 
   // State
   const [space, setSpace] = createSignal<Partial<Space | null>>(null);
@@ -104,7 +106,14 @@ export function SpaceStoreProvider(props: ParentProps) {
   function navigateToSpace(spaceId: string): void {
     const segs = routeStore.segments();
     const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
-    routeStore.navigate('/space/' + spaceId + '/' + currentView);
+    const targetPath = '/space/' + spaceId + '/' + currentView;
+    // If currently on a shell template (profile, settings, etc.), switch to the
+    // default template first so the space route is actually rendered.
+    const isShell = templateStore.shellTemplates.some((t) => t.id === templateStore.currentTemplate.id);
+    if (isShell) {
+      templateStore.switchTemplate(templateStore.defaultTemplateId());
+    }
+    routeStore.navigate(targetPath);
   }
 
   async function updateSpaceAvatar(imageFile: File): Promise<void> {

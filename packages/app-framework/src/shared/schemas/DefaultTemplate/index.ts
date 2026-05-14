@@ -4,6 +4,7 @@ import { cardsRoute } from './routes/CardsRoute';
 import { fluxRoute } from './routes/FluxRoute';
 import { globeRoute } from './routes/GlobeRoute';
 // import { graphRoute } from './routes/GraphRoute';
+import { homeRoute } from './routes/HomeRoute';
 import { signalsRoute } from './routes/SignalsRoute';
 import { spaceGate } from './SpaceGate';
 import { spaceSidebar } from './SpaceSidebar';
@@ -18,6 +19,7 @@ export const defaultTemplate: TemplateSchema = {
   props: { height: '100vh' },
   children: [{ type: '$routes' }],
   routes: [
+    homeRoute,
     {
       // Layout route: all space views live under /space/:spaceId/*
       // The sidebar and gate are rendered here so they share the same $nav context
