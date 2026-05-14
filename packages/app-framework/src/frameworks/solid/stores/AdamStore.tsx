@@ -74,7 +74,9 @@ export interface AdamStore {
   /** Spaces sorted by user-defined perspective order (falls back to load order). Use this instead of orderedPerspectives when you need Space model data (e.g. avatar). */
   orderedSpaces: Accessor<Space[]>;
   /** All non-system perspectives in user-defined order, enriched with Space avatar/name when available. Use this in the sidebar to show both WE spaces and external perspectives (e.g. Flux). */
-  orderedSidebarItems: Accessor<{ uuid: string; name: string; avatar?: string }[]>;
+  orderedSidebarItems: Accessor<{ uuid: string; name: string; avatar?: string; spaceId: string }[]>;
+  /** The URL path segment for the global space — the neighbourhood CID (with `neighbourhood://` stripped), or null if no global space is configured in we-seed.json. */
+  globalSpaceId: () => string | null;
   agentSettings: Accessor<AgentSettings | null>;
   agentProfile: Accessor<AgentProfile | null>;
   creatingSpace: Accessor<boolean>;
@@ -121,10 +123,9 @@ export interface AdamStore {
   updateAvatarImage: (imageFile: File) => Promise<void>;
   updateCoverImage: (imageFile: File) => Promise<void>;
   reorderPerspectives: (newOrder: string[]) => Promise<void>;
-  joinGlobalSpace: () => Promise<void>;
-  /** Generic join action. For the global root this is identical to joinGlobalSpace; community-space
-   * neighbourhood joining is a future TODO. */
-  joinSpace: (spaceUuid: string) => Promise<void>;
+  /** Join a space by its route segment (CID without `neighbourhood://` prefix), full neighbourhood URL, or local UUID.
+   * If already joined locally, just focuses the perspective. Otherwise joins the neighbourhood and syncs the agent profile. */
+  joinSpace: (id: string) => Promise<void>;
   /**
    * If the global space has been joined and no perspective is currently active,
    * sets the global perspective as the current perspective.
@@ -221,6 +222,8 @@ export function AdamStoreProvider(props: ParentProps) {
         uuid: p.uuid,
         name: s?.name ?? p.name,
         avatar: typeof s?.avatar === 'string' ? s.avatar : undefined,
+        // Use the stripped neighbourhood CID when available so routes are shareable and consistent across users
+        spaceId: p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid,
       };
     });
   });
@@ -842,57 +845,63 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
-  async function joinSpace(spaceUuid: string): Promise<void> {
-    console.log('joining space', spaceUuid);
-    // 'global' is the well-known sentinel for the root global space
-    if (spaceUuid === 'global') {
-      await joinGlobalSpace();
-      return;
-    }
+  async function joinSpace(id: string): Promise<void> {
+    const client = adamClient();
+    if (!client) return;
 
-    // If a perspective with this UUID/URL already exists locally, just focus it.
-    const existing = allPerspectives().find((p) => p.uuid === spaceUuid || p.sharedUrl === spaceUuid);
+    // Normalise the identifier to a full neighbourhood URL when appropriate:
+    //   - Full URL passed directly → use as-is
+    //   - CID (no hyphens, no '://') → prepend 'neighbourhood://'
+    //   - UUID (contains '-') → no neighbourhood URL; only local lookup
+    const neighbourhoodUrl = id.includes('://') ? id : !id.includes('-') ? 'neighbourhood://' + id : null;
+
+    // If already joined locally, just focus the perspective.
+    const existing = allPerspectives().find(
+      (p) => p.uuid === id || (neighbourhoodUrl && p.sharedUrl === neighbourhoodUrl),
+    );
     if (existing) {
       await setCurrentPerspective(existing.uuid);
       return;
     }
 
-    // Community-space neighbourhood joining not yet implemented.
-    console.warn('AdamStore: joinSpace community path not yet implemented', spaceUuid);
-  }
-
-  async function joinGlobalSpace(): Promise<void> {
-    const client = adamClient();
-    if (!client) return;
-
-    const url = (weSeedFile as WeSeedFile).globalSpaceUrl;
-    if (!url) {
-      console.warn('AdamStore: globalSpaceUrl is not set in we-seed.json — cannot join global space');
+    if (!neighbourhoodUrl) {
+      console.warn('AdamStore: joinSpace — cannot determine neighbourhood URL for', id);
       return;
     }
 
-    console.log('AdamStore: joining global space neighbourhood', url);
+    console.log('AdamStore: joining neighbourhood', neighbourhoodUrl);
     try {
-      const handle = await client.neighbourhood.joinFromUrl(url);
-      const globalP = await client.perspective.byUUID(handle.uuid);
-      if (!globalP) {
-        console.error('AdamStore: failed to get perspective proxy after joining global space');
+      const handle = await client.neighbourhood.joinFromUrl(neighbourhoodUrl);
+      const joinedP = await client.perspective.byUUID(handle.uuid);
+      if (!joinedP) {
+        console.error('AdamStore: failed to get perspective proxy after joining');
         return;
       }
-      setGlobalPerspective(globalP);
-      await setCurrentPerspective(globalP.uuid);
-      console.log('AdamStore: joined global space', globalP.uuid);
-      // Sync the agent's profile into the global space immediately on join
-      const currentProfile = agentProfile();
-      if (currentProfile) {
-        syncAgentProfileToParent(currentProfile, globalP).catch((err) =>
-          console.error('AdamStore: post-join sync agentProfile to global failed', err),
-        );
+
+      // If this is the configured global space, update globalPerspective and sync profile.
+      const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
+      if (neighbourhoodUrl === seedUrl) {
+        setGlobalPerspective(joinedP);
+        const currentProfile = agentProfile();
+        if (currentProfile) {
+          syncAgentProfileToParent(currentProfile, joinedP).catch((err) =>
+            console.error('AdamStore: post-join sync agentProfile to global failed', err),
+          );
+        }
       }
+
+      await setCurrentPerspective(joinedP.uuid);
+      console.log('AdamStore: joined space', joinedP.uuid);
     } catch (error) {
-      console.error('AdamStore: joinGlobalSpace error', error);
+      console.error('AdamStore: joinSpace error', error);
     }
   }
+
+  /** The neighbourhood CID (with `neighbourhood://` stripped) for the global space, or null if unconfigured. */
+  const globalSpaceId = (): string | null => {
+    const url = (weSeedFile as WeSeedFile).globalSpaceUrl;
+    return url ? url.replace('neighbourhood://', '') : null;
+  };
 
   async function removePerspective(uuid: string): Promise<void> {
     const client = adamClient();
@@ -984,6 +993,7 @@ export function AdamStoreProvider(props: ParentProps) {
     ad4mToken,
     isDevelopment,
     globalSpaceConfigured,
+    globalSpaceId,
     rootPerspective,
     testPerspective,
     globalPerspective,
@@ -1006,7 +1016,6 @@ export function AdamStoreProvider(props: ParentProps) {
     updateAvatarImage,
     updateCoverImage,
     reorderPerspectives,
-    joinGlobalSpace,
     joinSpace,
     // activateGlobalPerspective,
     updateAgentLocation,
