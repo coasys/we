@@ -71,8 +71,6 @@ export interface AdamStore {
   systemPerspectiveUuids: Accessor<string[]>;
   /** Perspectives sorted by user-defined order (falls back to load order). */
   orderedPerspectives: Accessor<PerspectiveProxy[]>;
-  /** Spaces sorted by user-defined perspective order (falls back to load order). Use this instead of orderedPerspectives when you need Space model data (e.g. avatar). */
-  orderedSpaces: Accessor<Space[]>;
   /** All non-system perspectives in user-defined order, enriched with Space avatar/name when available. Use this in the sidebar to show both WE spaces and external perspectives (e.g. Flux). */
   orderedSidebarItems: Accessor<{ uuid: string; name: string; avatar?: string; spaceId: string }[]>;
   /** The URL path segment for the global space — the neighbourhood CID (with `neighbourhood://` stripped), or null if no global space is configured in we-seed.json. */
@@ -93,7 +91,6 @@ export interface AdamStore {
   // Actions
   login: (password: string) => Promise<void>;
   logout: () => Promise<void>;
-  addNewSpace: (space: Space) => void;
   createSpace: (
     name: string,
     description: string,
@@ -172,7 +169,6 @@ export function AdamStoreProvider(props: ParentProps) {
   const [currentPerspective, setCurrentPerspectiveSignal] = createSignal<PerspectiveProxy | null>(null);
   const [currentPerspectiveModels, setCurrentPerspectiveModels] = createSignal<ModelManifestEntry[]>([]);
 
-  // Derived: perspectives with we-* names are internal WE system perspectives
   const systemPerspectiveUuids = createMemo(() =>
     allPerspectives()
       .filter((p) => ['we-root', 'we-test'].includes(p.name))
@@ -204,15 +200,6 @@ export function AdamStoreProvider(props: ParentProps) {
     return [...ordered, ...appended];
   });
 
-  // Derived: spaces in user-defined perspective order (carries Space model data like avatar)
-  const orderedSpaces = createMemo(() => {
-    const spaceByUuid = new Map(mySpaces().map((s) => [s.uuid, s]));
-    return orderedPerspectives().flatMap((p) => {
-      const s = spaceByUuid.get(p.uuid);
-      return s ? [s] : [];
-    });
-  });
-
   // Derived: all non-system perspectives with Space avatar/name when available, plain perspective data otherwise
   const orderedSidebarItems = createMemo(() => {
     const spaceByUuid = new Map(mySpaces().map((s) => [s.uuid, s]));
@@ -222,7 +209,6 @@ export function AdamStoreProvider(props: ParentProps) {
         uuid: p.uuid,
         name: s?.name ?? p.name,
         avatar: typeof s?.avatar === 'string' ? s.avatar : undefined,
-        // Use the stripped neighbourhood CID when available so routes are shareable and consistent across users
         spaceId: p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid,
       };
     });
@@ -247,7 +233,7 @@ export function AdamStoreProvider(props: ParentProps) {
   function subscribeToPerspectiveChanges(client: Ad4mClient): void {
     // perspectiveAdded fires for any client that adds a perspective (WE, Flux, CLI, etc.)
     // For WE-created spaces the Space model isn't saved yet when this fires, so
-    // findOne returns null and createSpace()'s addNewSpace() handles mySpaces.
+    // findOne returns null and createSpace() handles setMySpaces directly.
     client.perspective.addPerspectiveAddedListener((handle) => {
       if (allPerspectives().some((p) => p.uuid === handle.uuid)) return null;
       client.perspective.byUUID(handle.uuid).then((perspective) => {
@@ -264,18 +250,11 @@ export function AdamStoreProvider(props: ParentProps) {
     });
 
     // perspectiveUpdated fires on renames and neighbourhood sync-state transitions — not on link changes
+    // Space model data lives in links, so there's nothing to refresh here beyond the perspective handle
     client.perspective.addPerspectiveUpdatedListener((handle) => {
       client.perspective.byUUID(handle.uuid).then((perspective) => {
         if (!perspective) return;
         setAllPerspectives((prev) => prev.map((p) => (p.uuid === handle.uuid ? perspective : p)));
-        Space.findOne(perspective).then((space) => {
-          if (!space) return;
-          setMySpaces((prev) => {
-            const exists = prev.some((s) => s.uuid === handle.uuid);
-            if (exists) return prev.map((s) => (s.uuid === handle.uuid ? space : s));
-            return [...prev, space].sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
-          });
-        });
       });
       return null;
     });
@@ -681,10 +660,6 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
-  function addNewSpace(space: Space): void {
-    setMySpaces((prev) => [...prev, space]);
-  }
-
   async function updateAgentLocation(
     latitude: number,
     longitude: number,
@@ -720,6 +695,19 @@ export function AdamStoreProvider(props: ParentProps) {
         );
       }
     }
+  }
+
+  async function addSpaceToPerspective(
+    perspective: PerspectiveProxy,
+    space: Partial<Space>,
+    location?: Partial<LocationBlock>,
+  ): Promise<Space> {
+    const spaceModel = await Space.create(perspective, space);
+    if (location) {
+      const locationModel = await LocationBlock.create(perspective, location);
+      await spaceModel.setLocation(locationModel);
+    }
+    return spaceModel;
   }
 
   async function createSpace(
@@ -787,7 +775,7 @@ export function AdamStoreProvider(props: ParentProps) {
         } as FileData;
       }
 
-      // Assemble Space + optional location data once — used for both own and parent perspectives
+      // Assemble Space + optional location data — used for both own and parent perspectives
       const spaceData = {
         uuid: spacePerspective.uuid,
         url: spacePerspective.sharedUrl ?? undefined,
@@ -808,34 +796,21 @@ export function AdamStoreProvider(props: ParentProps) {
               ...(country && { country }),
               ...(countryCode && { countryCode }),
             }
-          : null;
-
-      // Write a Space (plus optional LocationBlock) into any perspective.
-      // Avoids a re-fetch after setLocation() — the same raw data is written directly
-      // to both the space's own perspective and any parent that should mirror it.
-      const writeSpaceInto = async (p: PerspectiveProxy) => {
-        const s = await Space.create(p, spaceData);
-        if (locationData) {
-          await LocationBlock.register(p); // idempotent — ensures model is ready on target
-          const loc = await LocationBlock.create(p, locationData);
-          await s.setLocation(loc);
-        }
-        return s;
-      };
+          : undefined;
 
       // Write to own perspective
-      const spaceModel = await writeSpaceInto(spacePerspective);
+      const spaceModel = await addSpaceToPerspective(spacePerspective, spaceData, locationData);
       console.log('AdamStore: Created space model for new perspective', spaceModel);
 
       // Mirror into parent perspective — no re-fetch or findAll needed for a fresh creation
       if (parentPerspective && parentPerspective.uuid !== spacePerspective.uuid) {
-        await writeSpaceInto(parentPerspective).catch((err) =>
+        await addSpaceToPerspective(parentPerspective, spaceData, locationData).catch((err) =>
           console.error('AdamStore: mirror space to parent failed', err),
         );
       }
 
       // Update sidebar and navigate
-      addNewSpace(spaceModel);
+      setMySpaces((prev) => [...prev, spaceModel]);
       // await setCurrentPerspective(spacePerspective.uuid);
       // routeStore.navigate(`/space/${spaceModel.uuid}/globe`);
     } catch (error) {
@@ -985,7 +960,6 @@ export function AdamStoreProvider(props: ParentProps) {
     me,
     allPerspectives,
     orderedPerspectives,
-    orderedSpaces,
     orderedSidebarItems,
     personalSpaces,
     sharedSpaces,
@@ -1007,7 +981,6 @@ export function AdamStoreProvider(props: ParentProps) {
     // Actions
     login,
     logout,
-    addNewSpace,
     createSpace,
     removePerspective,
     setCurrentPerspective,

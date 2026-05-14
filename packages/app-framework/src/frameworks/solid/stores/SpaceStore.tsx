@@ -1,4 +1,4 @@
-import { LinkQuery, PerspectiveProxy } from '@coasys/ad4m';
+import { PerspectiveProxy } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { installSpaceSdna, SPACE_MODELS } from '@shared/spaceModels';
 import { deriveSlug } from '@shared/utils';
@@ -65,6 +65,8 @@ for (const M of SPACE_MODELS) registerModel(M.name, M as any);
 export function SpaceStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
   const routeStore = useRouteStore();
+
+  let _lastHydratedUuid = '';
 
   // State
   const [perspective, setPerspective] = createSignal<PerspectiveProxy | null>(null);
@@ -204,27 +206,56 @@ export function SpaceStoreProvider(props: ParentProps) {
     const myDid = adamStore.me()?.did;
     if (!p || !myDid) return;
 
-    // TODO: simplify this - no need to query links, just get signals directly and use where to filter out my entires
-    const nodeLinks = await p.get(new LinkQuery({ source: nodeId, predicate: 'we://signal' }));
-    const myLinks = nodeLinks.filter((l) => l.author === myDid);
+    const existing = await Signal.findOne(p, {
+      parent: { id: nodeId, predicate: 'we://signal' },
+      where: { signalTypeId, author: myDid },
+    });
 
-    for (const link of myLinks) {
-      const [existing] = await Signal.findAll(p, { where: { id: link.data.target, signalTypeId } });
-      if (existing) {
-        if (value === 0) {
-          await p.remove(link);
-          await existing.delete();
-        } else {
-          existing.value = value;
-          await existing.save();
-        }
-        return;
+    if (existing) {
+      // Remove if value is 0 (deselected)
+      if (value === 0) await existing.delete();
+      // Otherwise update with the new value
+      else {
+        existing.value = value;
+        await existing.save();
       }
+      return;
     }
 
     // No existing signal — create new (skip if value is 0)
     if (value === 0) return;
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
+  }
+
+  async function hydratePerspective(p: PerspectiveProxy, isCancelled: () => boolean): Promise<void> {
+    const uuid = p.uuid;
+    _lastHydratedUuid = uuid;
+
+    // System perspectives (we-root, we-test) don't have a Space model — just set the perspective.
+    if (adamStore.systemPerspectiveUuids().includes(uuid)) {
+      if (!isCancelled()) {
+        setPerspective(p);
+        setSpace(null);
+      }
+      return;
+    }
+
+    await installSpaceSdna(p);
+    await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
+    if (isCancelled()) return;
+
+    // Filter by uuid so we get only the root Space for this perspective.
+    // Perspectives like we-global contain multiple Space entries and SPARQL order is non-deterministic.
+    const [spaceModel] = await Space.findAll(p, { where: { uuid: p.uuid } });
+    if (isCancelled()) return;
+
+    setPerspective(p);
+    setSpace(spaceModel ?? null);
+
+    if (spaceModel) {
+      const fetchedSignalTypes = await SignalType.findAll(p);
+      if (!isCancelled()) setSignalTypes(fetchedSignalTypes);
+    }
   }
 
   // Resolve the route segment to a local perspective whenever the route changes.
@@ -242,8 +273,13 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (p) {
         const current = adamStore.currentPerspective();
         if (current?.uuid !== p.uuid) void adamStore.setCurrentPerspective(p.uuid);
+      } else {
+        // No local perspective exists — clear SpaceStore state so hasJoined becomes
+        // false and the join gate is shown, regardless of which space was open before.
+        setPerspective(null);
+        setSpace(null);
+        setSignalTypes([]);
       }
-      // If no local perspective exists: hasJoined stays false → join gate is shown
       return;
     }
 
@@ -254,12 +290,9 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   // Watch adamStore.currentPerspective() and hydrate the WE space layer on top.
   // For a raw external perspective: Space.findAll returns [], setSpace(null) — space chrome hides.
-  // For a mixed perspective: both layers hydrate simultaneously.
-  let _lastHydratedUuid = '';
   createEffect(() => {
     const p = adamStore.currentPerspective();
 
-    // Cancel any in-flight hydration from a previous run of this effect.
     let cancelled = false;
     onCleanup(() => {
       cancelled = true;
@@ -273,53 +306,17 @@ export function SpaceStoreProvider(props: ParentProps) {
       return;
     }
 
-    // Only clear signal types when switching to a DIFFERENT perspective so that
-    // the UI doesn't flash on re-hydrations of the same perspective.
-    if (p.uuid !== _lastHydratedUuid) {
-      setSignalTypes([]);
-    }
+    // Only clear signal types when switching to a DIFFERENT perspective to avoid a flash.
+    if (p.uuid !== _lastHydratedUuid) setSignalTypes([]);
     setLoading(true);
 
-    void (async () => {
-      try {
-        const uuid = p.uuid;
-        _lastHydratedUuid = uuid;
-
-        // Skip block-model registration for system perspectives (we-root, we-test)
-        const rootUuid = adamStore.rootPerspective()?.uuid;
-        const systemUuids = adamStore.systemPerspectiveUuids();
-        if (systemUuids.includes(uuid)) {
-          if (cancelled) return;
-          setPerspective(p);
-          setSpace(null);
-          void rootUuid;
-          return;
-        }
-
-        await installSpaceSdna(p);
-        await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
-        if (cancelled) return;
-
-        // Filter by uuid === perspective.uuid so we get only the root Space for this
-        // perspective. Perspectives like we-global contain multiple Space entries
-        // (itself + seeded children) and SPARQL order is non-deterministic.
-        const [spaceModel] = await Space.findAll(p, { where: { uuid: p.uuid } });
-        if (cancelled) return;
-
-        setPerspective(p);
-        setSpace(spaceModel ?? null);
-
-        if (spaceModel) {
-          const [fetchedSignalTypes] = await Promise.all([SignalType.findAll(p)]);
-          if (cancelled) return;
-          setSignalTypes(fetchedSignalTypes);
-        }
-      } catch (error) {
+    hydratePerspective(p, () => cancelled)
+      .catch((error) => {
         if (!cancelled) console.error('SpaceStore: perspective hydration error', error);
-      } finally {
+      })
+      .finally(() => {
         if (!cancelled) setLoading(false);
-      }
-    })();
+      });
   });
 
   const store: SpaceStore = {
