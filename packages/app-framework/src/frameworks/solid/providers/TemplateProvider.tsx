@@ -182,15 +182,15 @@ export default function TemplateProvider() {
   const modelStore = {
     create: (modelName: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
       const Model = getModel(modelName);
-      return Model.create(spaceStore.perspective()!, data, options);
+      return Model.create(adamStore.currentPerspective()!, data, options);
     },
     update: (modelName: string, id: string, data: Record<string, unknown>) => {
       const Model = getModel(modelName);
-      return Model.update(spaceStore.perspective()!, id, data);
+      return Model.update(adamStore.currentPerspective()!, id, data);
     },
     delete: (modelName: string, id: string) => {
       const Model = getModel(modelName);
-      return Model.delete(spaceStore.perspective()!, id);
+      return Model.delete(adamStore.currentPerspective()!, id);
     },
   };
 

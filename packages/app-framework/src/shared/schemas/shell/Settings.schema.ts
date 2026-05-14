@@ -406,7 +406,7 @@ export const settingsTemplate: TemplateSchema = {
                             width: '200px',
                             cursor: 'pointer',
                             onClick: [
-                              { $action: 'adamStore.setCurrentPerspective', args: ['$space.uuid'] },
+                              { $action: 'adamStore.switchPerspective', args: ['$space.uuid'] },
                               {
                                 $action: 'routeStore.navigate',
                                 args: [{ $concat: ['/space/', '$space.uuid'] }],
@@ -487,7 +487,7 @@ export const settingsTemplate: TemplateSchema = {
                             cursor: 'pointer',
                             onClick: [
                               {
-                                $action: 'adamStore.setCurrentPerspective',
+                                $action: 'adamStore.switchPerspective',
                                 args: [{ $if: { condition: '$space.url', then: '$space.uuid', else: '$space.uuid' } }],
                               },
                               {

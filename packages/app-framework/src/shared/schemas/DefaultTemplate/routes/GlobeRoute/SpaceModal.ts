@@ -119,7 +119,7 @@ export const spaceModal = {
                 color: 'neutral-0',
                 height: '40px',
                 onClick: [
-                  { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
+                  { $action: 'adamStore.switchPerspective', args: ['$item.uuid'] },
                   { $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$item.uuid', '/globe'] }] },
                 ],
               },

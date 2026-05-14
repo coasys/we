@@ -28,7 +28,7 @@ export const conversationList: SchemaNode = {
             items: {
               $query: {
                 model: 'Conversation',
-                perspectiveStore: 'spaceStore.perspective',
+                perspectiveStore: 'adamStore.currentPerspective',
                 order: { timestamp: 'desc' },
                 limit: 10,
               },

@@ -35,7 +35,6 @@ export type AgentProfileInput = Omit<Partial<AgentProfile>, 'avatar' | 'coverIma
 
 export interface SpaceStore {
   // State
-  perspective: Accessor<PerspectiveProxy | null>;
   space: Accessor<Partial<Space | null>>;
   loading: Accessor<boolean>;
   signalTypes: Accessor<SignalType[]>;
@@ -66,10 +65,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
   const routeStore = useRouteStore();
 
-  let _lastHydratedUuid = '';
-
   // State
-  const [perspective, setPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [space, setSpace] = createSignal<Partial<Space | null>>(null);
   const [loading, setLoading] = createSignal(true);
 
@@ -77,15 +73,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [signalTypes, setSignalTypes] = createSignal<SignalType[]>([]);
   const signalTypesBySlug = createMemo(() => Object.fromEntries(signalTypes().map((st) => [st.slug, st])));
 
-  const hasJoined = createMemo(() => perspective() !== null);
+  const hasJoined = createMemo(() => adamStore.currentPerspective() !== null);
 
   async function test() {
-    const p = perspective();
+    const p = adamStore.currentPerspective();
     if (!p) return;
     const spaces = await Space.findAll(p, { include: { location: true } });
     console.log('Spaces in perspective:', spaces);
 
-    console.log('spaceId: ', perspective()?.uuid);
+    console.log('spaceId: ', p.uuid);
     console.log('space: ', space());
 
     // const posts = await CollectionBlock.findAll(p, {
@@ -103,7 +99,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function createPost(json: unknown): Promise<void> {
-    const p = perspective();
+    const p = adamStore.currentPerspective();
     if (!p) return;
     await createBlocks(p, json);
   }
@@ -116,7 +112,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   async function updateSpaceAvatar(imageFile: File): Promise<void> {
     const currentSpace = space();
-    const currentPerspective = perspective();
+    const currentPerspective = adamStore.currentPerspective();
     if (!currentSpace || !currentPerspective) return;
     const compressedBlob = await resizeImage(imageFile, 0.6);
     const imageBase64 = await blobToDataURL(compressedBlob);
@@ -129,7 +125,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   async function updateSpaceCoverImage(imageFile: File): Promise<void> {
     const currentSpace = space();
-    const currentPerspective = perspective();
+    const currentPerspective = adamStore.currentPerspective();
     if (!currentSpace || !currentPerspective) return;
     const compressedBlob = await resizeImage(imageFile, 0.6);
     const imageBase64 = await blobToDataURL(compressedBlob);
@@ -141,7 +137,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function createSignalType(config: Partial<SignalType>): Promise<void> {
-    const p = perspective();
+    const p = adamStore.currentPerspective();
     if (!p) return;
     // Fixed ranges for modes where the user doesn't configure them
     const rangeOverrides: Record<string, { rangeMin: number; rangeMax: number }> = {
@@ -158,7 +154,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function createAgentProfile(config: AgentProfileInput): Promise<void> {
-    const p = perspective();
+    const p = adamStore.currentPerspective();
     if (!p) return;
 
     const { firstName, lastName, handle, bio, avatar, coverImage, location } = config;
@@ -202,7 +198,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
-    const p = perspective();
+    const p = adamStore.currentPerspective();
     const myDid = adamStore.me()?.did;
     if (!p || !myDid) return;
 
@@ -228,91 +224,45 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function hydratePerspective(p: PerspectiveProxy, isCancelled: () => boolean): Promise<void> {
-    const uuid = p.uuid;
-    _lastHydratedUuid = uuid;
-
-    // System perspectives (we-root, we-test) don't have a Space model — just set the perspective.
-    if (adamStore.systemPerspectiveUuids().includes(uuid)) {
-      if (!isCancelled()) {
-        setPerspective(p);
-        setSpace(null);
-      }
-      return;
-    }
-
+    // Ensure the Space SDNA is installed
     await installSpaceSdna(p);
-    await new Promise((r) => setTimeout(r, 500)); // Delay needed after SHACL registration
     if (isCancelled()) return;
 
-    // Filter by uuid so we get only the root Space for this perspective.
-    // Perspectives like we-global contain multiple Space entries and SPARQL order is non-deterministic.
-    const [spaceModel] = await Space.findAll(p, { where: { uuid: p.uuid } });
+    // Get the Space model for the current perspective
+    const spaceModel = await Space.findOne(p, { where: { uuid: p.uuid } });
     if (isCancelled()) return;
-
-    setPerspective(p);
     setSpace(spaceModel ?? null);
 
+    // Get the SignalType models for the current perspective
     if (spaceModel) {
       const fetchedSignalTypes = await SignalType.findAll(p);
       if (!isCancelled()) setSignalTypes(fetchedSignalTypes);
     }
   }
 
-  // Resolve the route segment to a local perspective whenever the route changes.
-  // Two cases:
-  //   CID  — neighbourhood space (no hyphens, no '://'): look up by sharedUrl
-  //   UUID — local/private perspective (contains '-'): set directly by UUID
+  // Watch adamStore.currentPerspective() + currentPerspectiveModels and hydrate the WE space layer.
+  // Gate on 'we://Space' in models to avoid running installSpaceSdna on non-WE perspectives.
   createEffect(() => {
-    const segs = routeStore.segments();
-    if (segs[0] !== 'space' || !segs[1]) return;
-    const seg = segs[1];
+    const perspective = adamStore.currentPerspective();
+    const models = adamStore.currentPerspectiveModels();
+    const isWeSpace = models.some((m) => m.targetClass === 'we://Space');
 
-    // CID — neighbourhood space: find an already-joined local perspective by sharedUrl
-    if (!seg.includes('-')) {
-      const p = adamStore.allPerspectives().find((ap) => ap.sharedUrl === 'neighbourhood://' + seg);
-      if (p) {
-        const current = adamStore.currentPerspective();
-        if (current?.uuid !== p.uuid) void adamStore.setCurrentPerspective(p.uuid);
-      } else {
-        // No local perspective exists — clear SpaceStore state so hasJoined becomes
-        // false and the join gate is shown, regardless of which space was open before.
-        setPerspective(null);
-        setSpace(null);
-        setSignalTypes([]);
-      }
-      return;
-    }
-
-    // UUID — local/private perspective: set directly
-    const current = adamStore.currentPerspective();
-    if (current?.uuid !== seg) void adamStore.setCurrentPerspective(seg);
-  });
-
-  // Watch adamStore.currentPerspective() and hydrate the WE space layer on top.
-  // For a raw external perspective: Space.findAll returns [], setSpace(null) — space chrome hides.
-  createEffect(() => {
-    const p = adamStore.currentPerspective();
-
+    // Track cancellation to avoid setting stale state after a perspective switch
     let cancelled = false;
-    onCleanup(() => {
-      cancelled = true;
-    });
+    onCleanup(() => (cancelled = true));
 
-    if (!p) {
-      _lastHydratedUuid = '';
-      setPerspective(null);
+    // No perspective or not a WE space: reset to initial state
+    if (!perspective || !isWeSpace) {
       setSpace(null);
       setSignalTypes([]);
       return;
     }
 
-    // Only clear signal types when switching to a DIFFERENT perspective to avoid a flash.
-    if (p.uuid !== _lastHydratedUuid) setSignalTypes([]);
+    // Valid WE space perspective detected: hydrate it
     setLoading(true);
-
-    hydratePerspective(p, () => cancelled)
-      .catch((error) => {
-        if (!cancelled) console.error('SpaceStore: perspective hydration error', error);
+    hydratePerspective(perspective, () => cancelled)
+      .catch((err) => {
+        if (!cancelled) console.error('SpaceStore hydration error', err);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -321,7 +271,6 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const store: SpaceStore = {
     // State
-    perspective,
     space,
     loading,
     signalTypes,

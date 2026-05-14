@@ -79,10 +79,10 @@ Query (data retrieval):
 Queries the local perspective for model instances. Always returns an array.
 Options: model (required), where, order, limit, offset, include, parent, perspectiveStore, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
-By default $query targets the current WE space's perspective. Use perspectiveStore to query a different perspective —
+By default $query targets the current perspective (adamStore.currentPerspective). Use perspectiveStore to query a different perspective —
 required when reading models from an external app (e.g. Flux) that is open as a WE space:
-{ "$query": { "model": "Channel", "perspectiveStore": "spaceStore.perspective" } }
-spaceStore.perspective resolves to the AD4M Perspective instance of the currently active space.
+{ "$query": { "model": "Channel", "perspectiveStore": "adamStore.currentPerspective" } }
+adamStore.currentPerspective resolves to the AD4M Perspective instance of the currently active perspective.
 
 Eager-loading relations with include (most common relational pattern):
 include hydrates related model instances in the same query — no extra fetches needed.

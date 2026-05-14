@@ -74,7 +74,7 @@ export const channelList: SchemaNode = {
                 items: {
                   $query: {
                     model: 'Message',
-                    perspectiveStore: 'spaceStore.perspective',
+                    perspectiveStore: 'adamStore.currentPerspective',
                     order: { timestamp: 'desc' },
                     limit: 50,
                   },
@@ -129,7 +129,7 @@ export const channelList: SchemaNode = {
                 items: {
                   $query: {
                     model: 'Channel',
-                    perspectiveStore: 'spaceStore.perspective',
+                    perspectiveStore: 'adamStore.currentPerspective',
                     include: { messages: true, conversations: true },
                   },
                 },

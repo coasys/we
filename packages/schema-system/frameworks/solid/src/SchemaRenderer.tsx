@@ -166,9 +166,9 @@ function createQuerySignal(
       for (const part of parts) target = (target as Record<string, unknown>)?.[part];
       p = typeof target === 'function' ? (target as () => unknown)() : target;
     } else {
-      const perspective = ((stores as Record<string, unknown>).spaceStore as Record<string, unknown> | undefined)
-        ?.perspective;
-      p = typeof perspective === 'function' ? (perspective as () => unknown)() : null;
+      const currentPerspective = ((stores as Record<string, unknown>).adamStore as Record<string, unknown> | undefined)
+        ?.currentPerspective;
+      p = typeof currentPerspective === 'function' ? (currentPerspective as () => unknown)() : null;
     }
     if (!p) {
       setItems([]);

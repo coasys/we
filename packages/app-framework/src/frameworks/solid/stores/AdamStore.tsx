@@ -82,7 +82,7 @@ export interface AdamStore {
   currentPerspective: Accessor<PerspectiveProxy | null>;
   /**
    * All model classes found in the current perspective (WE + external).
-   * Populated by `setCurrentPerspective`; empty until a perspective is set.
+   * Populated by `switchPerspective`; empty until a perspective is set.
    * WE models are included so the AI validator can narrow its allowlist to
    * what is actually registered in this perspective.
    */
@@ -114,7 +114,7 @@ export interface AdamStore {
    *   so the AI validator can narrow its allowlist to what is actually registered
    * - Sets the currentPerspective signal (SpaceStore reacts to this)
    */
-  setCurrentPerspective: (uuid: string) => Promise<void>;
+  switchPerspective: (uuid: string) => Promise<void>;
   updateAgentSettings: (updates: Partial<AgentSettings>) => Promise<void>;
   updateAgentProfile: (updates: Partial<AgentProfile>) => Promise<void>;
   updateAvatarImage: (imageFile: File) => Promise<void>;
@@ -166,7 +166,7 @@ export function AdamStoreProvider(props: ParentProps) {
   const [allPerspectives, setAllPerspectives] = createSignal<PerspectiveProxy[]>([]);
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [creatingSpace, setCreatingSpace] = createSignal(false);
-  const [currentPerspective, setCurrentPerspectiveSignal] = createSignal<PerspectiveProxy | null>(null);
+  const [currentPerspective, setCurrentPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [currentPerspectiveModels, setCurrentPerspectiveModels] = createSignal<ModelManifestEntry[]>([]);
 
   const systemPerspectiveUuids = createMemo(() =>
@@ -835,7 +835,7 @@ export function AdamStoreProvider(props: ParentProps) {
       (p) => p.uuid === id || (neighbourhoodUrl && p.sharedUrl === neighbourhoodUrl),
     );
     if (existing) {
-      await setCurrentPerspective(existing.uuid);
+      await switchPerspective(existing.uuid);
       return;
     }
 
@@ -865,7 +865,7 @@ export function AdamStoreProvider(props: ParentProps) {
         }
       }
 
-      await setCurrentPerspective(joinedP.uuid);
+      await switchPerspective(joinedP.uuid);
       console.log('AdamStore: joined space', joinedP.uuid);
     } catch (error) {
       console.error('AdamStore: joinSpace error', error);
@@ -891,7 +891,7 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
-  async function setCurrentPerspective(uuid: string): Promise<void> {
+  async function switchPerspective(uuid: string): Promise<void> {
     const client = adamClient();
     if (!client) return;
 
@@ -917,13 +917,40 @@ export function AdamStoreProvider(props: ParentProps) {
         setCurrentPerspectiveModels([]);
       }
 
-      setCurrentPerspectiveSignal(perspective);
+      setCurrentPerspective(perspective);
     } catch (error) {
-      console.error('AdamStore: setCurrentPerspective error', error);
+      console.error('AdamStore: switchPerspective error', error);
     }
   }
 
   createEffect(initialiseStore);
+
+  // Resolve the route segment to a local perspective whenever the route changes.
+  // Two cases:
+  //   CID  — neighbourhood space (no hyphens, no '://'): look up by sharedUrl
+  //   UUID — local/private perspective (contains '-'): set directly by UUID
+  createEffect(() => {
+    const segs = routeStore.segments();
+    if (segs[0] !== 'space' || !segs[1]) return;
+    const seg = segs[1];
+
+    // CID — neighbourhood space: find an already-joined local perspective by sharedUrl
+    if (!seg.includes('-')) {
+      const p = allPerspectives().find((ap) => ap.sharedUrl === 'neighbourhood://' + seg);
+      if (p) {
+        const current = currentPerspective();
+        if (current?.uuid !== p.uuid) void switchPerspective(p.uuid);
+      } else {
+        // No local perspective exists — clear current perspective so the join gate shows.
+        setCurrentPerspective(null);
+      }
+      return;
+    }
+
+    // UUID — local/private perspective: set directly
+    const current = currentPerspective();
+    if (current?.uuid !== seg) void switchPerspective(seg);
+  });
 
   // Send AD4M_CONFIG to iframes as soon as credentials are available AND the agent is unlocked.
   //
@@ -983,7 +1010,7 @@ export function AdamStoreProvider(props: ParentProps) {
     logout,
     createSpace,
     removePerspective,
-    setCurrentPerspective,
+    switchPerspective,
     updateAgentSettings,
     updateAgentProfile,
     updateAvatarImage,
