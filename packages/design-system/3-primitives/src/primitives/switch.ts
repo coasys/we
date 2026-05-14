@@ -77,6 +77,29 @@ const styles = css`
     padding: 0;
     margin: -1px;
   }
+
+  [part='off-label'],
+  [part='on-label'] {
+    transition: opacity 0.15s ease;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  [part='off-label'] {
+    opacity: 1;
+  }
+
+  :host([checked]) [part='off-label'] {
+    opacity: 0.4;
+  }
+
+  [part='on-label'] {
+    opacity: 0.4;
+  }
+
+  :host([checked]) [part='on-label'] {
+    opacity: 1;
+  }
 `;
 
 @customElement('we-switch')
@@ -88,6 +111,8 @@ export default class Switch extends DesignSystemElement {
   @property({ type: String }) name = '';
   @property({ type: String }) value = '';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
+  @property({ type: String }) labelOff = '';
+  @property({ type: String }) labelOn = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
@@ -120,10 +145,11 @@ export default class Switch extends DesignSystemElement {
           ?disabled=${this.disabled}
           aria-checked=${this.checked ? 'true' : 'false'}
         />
+        ${this.labelOff ? html`<span part="off-label">${this.labelOff}</span>` : ''}
         <div part="track" style=${styleMap({ width: sizes.width, height: sizes.height })}>
           <div part="thumb" style=${styleMap({ width: sizes.thumb, height: sizes.thumb })}></div>
         </div>
-        <slot></slot>
+        ${this.labelOn ? html`<span part="on-label">${this.labelOn}</span>` : ''}
       </div>
     `;
   }
