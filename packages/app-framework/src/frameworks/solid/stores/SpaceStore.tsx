@@ -39,7 +39,6 @@ export interface SpaceStore {
   loading: Accessor<boolean>;
   signalTypes: Accessor<SignalType[]>;
   signalTypesBySlug: Accessor<Record<string, SignalType>>;
-  hasJoined: Accessor<boolean>;
 
   // Actions
   createPost: (json: unknown) => Promise<void>;
@@ -72,8 +71,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   // Signal types
   const [signalTypes, setSignalTypes] = createSignal<SignalType[]>([]);
   const signalTypesBySlug = createMemo(() => Object.fromEntries(signalTypes().map((st) => [st.slug, st])));
-
-  const hasJoined = createMemo(() => adamStore.currentPerspective() !== null);
 
   async function test() {
     const p = adamStore.currentPerspective();
@@ -240,8 +237,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  // Watch adamStore.currentPerspective() + currentPerspectiveModels and hydrate the WE space layer.
-  // Gate on 'we://Space' in models to avoid running installSpaceSdna on non-WE perspectives.
+  // Watch currentPerspective() + currentPerspectiveModels() in the adamStore to trigger hydration of the WE space layer
   createEffect(() => {
     const perspective = adamStore.currentPerspective();
     const models = adamStore.currentPerspectiveModels();
@@ -275,9 +271,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     loading,
     signalTypes,
     signalTypesBySlug,
-
-    // Holarchy
-    hasJoined,
 
     // Actions
     createPost,
