@@ -6636,9 +6636,6 @@
     {
       "name": "spaceStore",
       "state": {
-        "spaceId": {
-          "type": "string"
-        },
         "perspective": {
           "type": "object",
           "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
@@ -6670,7 +6667,6 @@
         }
       },
       "actions": [
-        "setSpaceId",
         "getSpace",
         "createPost",
         "updateSpaceAvatar",

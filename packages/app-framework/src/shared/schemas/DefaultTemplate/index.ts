@@ -16,7 +16,6 @@ export const defaultTemplate: TemplateSchema = {
   props: { height: '100vh' },
   children: [{ type: '$routes' }],
   routes: [
-    { path: '/', redirect: '/space/global' },
     {
       // Layout route: all space views live under /space/:spaceId/*
       // The sidebar and gate are rendered here so they share the same $nav context
@@ -25,8 +24,8 @@ export const defaultTemplate: TemplateSchema = {
       children: [
         {
           // Gate: show the full layout only when the current space is joined.
-          // spaceStore.hasJoined is true whenever the agent has a local perspective
-          // for the current :spaceId (or when on /space/global).
+          // spaceStore.hasJoined is true whenever the agent holds a local perspective
+          // for the current :spaceId.
           type: '$if',
           props: {
             condition: { $store: 'spaceStore.hasJoined' },

@@ -941,14 +941,12 @@ TemplateStore:
 
 SpaceStore:
 - State:
-  - spaceId: string (current space id)
   - perspective: PerspectiveProxy | null
   - space: Partial<Space> (current space object)
   - signalTypes: array of SignalType objects (community-created reaction/vote types)
   - signalTypesBySlug: Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID
   - loading: boolean
 - Actions:
-  - setSpaceId(id: string): sets the current space id
   - getSpace(): loads space data
   - createPost(editorState: unknown): creates a new post
   - updateSpaceAvatar(): unknown
