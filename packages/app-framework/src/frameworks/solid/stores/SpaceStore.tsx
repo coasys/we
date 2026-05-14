@@ -26,31 +26,20 @@ import {
 import { useRouteStore } from './RouteStore';
 import { installSpaceSdna, SPACE_MODELS } from './spaceModels';
 
-/**
- * A single node in the holarchic navigation path.
- * `isJoined` is true when the agent has a local perspective for this space.
- * `perspective` is null when the agent has navigated to an unjoined space (gate shown).
- */
-export interface HolarchyNode {
-  perspective: PerspectiveProxy | null;
-  space: Space | null;
-  isJoined: boolean;
-}
+export type AgentProfileInput = Omit<Partial<AgentProfile>, 'avatar' | 'coverImage' | 'location'> & {
+  avatar?: File | FileData | string;
+  coverImage?: File | FileData | string;
+  location?: Partial<LocationBlock>;
+};
 
 export interface SpaceStore {
   // State
   perspective: Accessor<PerspectiveProxy | null>;
-  spaceId: Accessor<string>;
   space: Accessor<Partial<Space | null>>;
   loading: Accessor<boolean>;
   signalTypes: Accessor<SignalType[]>;
   signalTypesBySlug: Accessor<Record<string, SignalType>>;
-
-  // Holarchy
   hasJoined: Accessor<boolean>;
-
-  // Setters
-  setSpaceId: (id: string) => void;
 
   // Actions
   createPost: (json: unknown) => Promise<void>;
@@ -58,22 +47,11 @@ export interface SpaceStore {
   updateSpaceCoverImage: (imageFile: File) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
-  createAgentProfile: (
-    firstName: string,
-    lastName: string,
-    handle: string,
-    bio: string,
-    avatarFile?: File,
-    coverImageFile?: File,
-    latitude?: number,
-    longitude?: number,
-    city?: string,
-    country?: string,
-    countryCode?: string,
-  ) => Promise<void>;
+  createAgentProfile: (config: AgentProfileInput) => Promise<void>;
   deriveSlug: (name: string) => string;
 
-  navigateInto: (uuid: string) => Promise<void>;
+  /** Navigate to a space by its spaceId (neighbourhood CID or local UUID), preserving the current sub-route view (falls back to 'globe'). */
+  navigateToSpace: (spaceId: string) => void;
 
   test: () => Promise<void>;
 }
@@ -89,7 +67,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   const routeStore = useRouteStore();
 
   // State
-  const [spaceId, setSpaceId] = createSignal('');
   const [perspective, setPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [space, setSpace] = createSignal<Partial<Space | null>>(null);
   const [loading, setLoading] = createSignal(true);
@@ -104,7 +81,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const spaces = await Space.findAll(p, { include: { location: true } });
     console.log('Spaces in perspective:', spaces);
 
-    console.log('spaceId: ', spaceId());
+    console.log('spaceId: ', perspective()?.uuid);
     console.log('space: ', space());
 
     // const posts = await CollectionBlock.findAll(p, {
@@ -178,25 +155,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       .replace(/\s+/g, '-');
   }
 
-  async function createAgentProfile(
-    firstName: string,
-    lastName: string,
-    handle: string,
-    bio: string,
-    avatarFile?: File,
-    coverImageFile?: File,
-    latitude?: number,
-    longitude?: number,
-    city?: string,
-    country?: string,
-    countryCode?: string,
-  ): Promise<void> {
+  async function createAgentProfile(config: AgentProfileInput): Promise<void> {
     const p = perspective();
     if (!p) return;
 
+    const { firstName, lastName, handle, bio, avatar, coverImage, location } = config;
+
     let avatarData: FileData | undefined;
-    if (avatarFile) {
-      const resized = await resizeImage(avatarFile, 0.6);
+    if (avatar instanceof File) {
+      const resized = await resizeImage(avatar, 0.6);
       avatarData = {
         data_base64: await blobToDataURL(resized),
         name: 'agent-avatar',
@@ -205,8 +172,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     let coverImageData: FileData | undefined;
-    if (coverImageFile) {
-      const resized = await resizeImage(coverImageFile, 0.6);
+    if (coverImage instanceof File) {
+      const resized = await resizeImage(coverImage, 0.6);
       coverImageData = {
         data_base64: await blobToDataURL(resized),
         name: 'agent-cover',
@@ -223,17 +190,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       ...(coverImageData && { coverImage: coverImageData }),
     });
 
-    if (latitude != null && longitude != null) {
+    if (location?.latitude != null && location?.longitude != null) {
       await LocationBlock.register(p);
+      const { city, country } = location;
       const locationName = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
-      const loc = await LocationBlock.create(p, {
-        latitude,
-        longitude,
-        ...(locationName && { name: locationName }),
-        ...(city && { city }),
-        ...(country && { country }),
-        ...(countryCode && { countryCode }),
-      });
+      const loc = await LocationBlock.create(p, { ...location, ...(locationName && { name: locationName }) });
       await profile.setLocation(loc);
     }
   }
@@ -266,63 +227,38 @@ export function SpaceStoreProvider(props: ParentProps) {
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
 
-  /**
-   * The node currently shown at `/space/:id`.
-   * Returns null when not on a `/space/...` route.
-   * `/space/global` is the well-known sentinel for the root global space — resolves
-   * directly from `adamStore.globalPerspective()` without the normal loading cycle.
-   * Returns `{ isJoined: false }` when the route points at an unjoined perspective.
-   */
-  const currentNode = createMemo<HolarchyNode | null>(() => {
-    const segs = routeStore.segments();
-    if (segs[0] !== 'space') return null;
-
-    // /space/global is the sentinel for the root global space
-    if (segs[1] === 'global') {
-      const globalP = adamStore.globalPerspective();
-      if (!globalP) return { perspective: null, space: null, isJoined: false };
-      return { perspective: globalP, space: null, isJoined: true };
-    }
-
-    if (!segs[1]) return null;
-
-    const p = perspective();
-    const s = space();
-
-    // While async hydration is in progress: if we already have a perspective loaded
-    // (e.g. re-clicking the current space or switching spaces), keep it visible as
-    // joined so the gate doesn't flash. Only hold off (return null) when there is
-    // genuinely nothing loaded yet — that prevents showing "not joined" prematurely
-    // on the very first navigation to an unknown perspective.
-    if (loading()) {
-      if (p) return { perspective: p, space: s as Space | null, isJoined: true };
-      return null;
-    }
-
-    if (p) return { perspective: p, space: s as Space | null, isJoined: true };
-    // Perspective not found locally — not yet joined
-    return { perspective: null, space: null, isJoined: false };
-  });
-
-  // When navigating to /space/global with the global perspective already joined,
-  // ensure setCurrentPerspective is called so SpaceStore hydrates correctly.
+  // Resolve the route segment to a local perspective whenever the route changes.
+  // Two cases:
+  //   CID  — neighbourhood space (no hyphens, no '://'): look up by sharedUrl
+  //   UUID — local/private perspective (contains '-'): set directly by UUID
   createEffect(() => {
     const segs = routeStore.segments();
-    if (segs[0] !== 'space' || segs[1] !== 'global') return;
-    const globalP = adamStore.globalPerspective();
-    if (!globalP) return;
-    const current = adamStore.currentPerspective();
-    if (current?.uuid !== globalP.uuid) {
-      void adamStore.setCurrentPerspective(globalP.uuid);
+    if (segs[0] !== 'space' || !segs[1]) return;
+    const seg = segs[1];
+
+    // CID — neighbourhood space: find an already-joined local perspective by sharedUrl
+    if (!seg.includes('-')) {
+      const p = adamStore.allPerspectives().find((ap) => ap.sharedUrl === 'neighbourhood://' + seg);
+      if (p) {
+        const current = adamStore.currentPerspective();
+        if (current?.uuid !== p.uuid) void adamStore.setCurrentPerspective(p.uuid);
+      }
+      // If no local perspective exists: hasJoined stays false → join gate is shown
+      return;
     }
+
+    // UUID — local/private perspective: set directly
+    const current = adamStore.currentPerspective();
+    if (current?.uuid !== seg) void adamStore.setCurrentPerspective(seg);
   });
 
-  /** Flat boolean derived from the internal currentNode memo. */
-  const hasJoined = createMemo<boolean>(() => currentNode()?.isJoined ?? false);
-
-  async function navigateInto(uuid: string): Promise<void> {
-    await adamStore.setCurrentPerspective(uuid);
+  function navigateToSpace(spaceId: string): void {
+    const segs = routeStore.segments();
+    const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
+    routeStore.navigate('/space/' + spaceId + '/' + currentView);
   }
+
+  const hasJoined = createMemo(() => perspective() !== null);
 
   // Watch adamStore.currentPerspective() and hydrate the WE space layer on top.
   // For a raw external perspective: Space.findAll returns [], setSpace(null) — space chrome hides.
@@ -356,7 +292,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       try {
         const uuid = p.uuid;
         _lastHydratedUuid = uuid;
-        setSpaceId(uuid);
 
         // Skip block-model registration for system perspectives (we-root, we-test)
         const rootUuid = adamStore.rootPerspective()?.uuid;
@@ -397,7 +332,6 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const store: SpaceStore = {
     // State
-    spaceId,
     perspective,
     space,
     loading,
@@ -407,9 +341,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Holarchy
     hasJoined,
 
-    // Setters
-    setSpaceId,
-
     // Actions
     createPost,
     updateSpaceAvatar,
@@ -418,7 +349,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     upsertSignal,
     createAgentProfile,
     deriveSlug,
-    navigateInto,
+
+    navigateToSpace,
 
     test,
   };
