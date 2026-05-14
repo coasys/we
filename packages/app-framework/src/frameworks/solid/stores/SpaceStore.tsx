@@ -25,15 +25,6 @@ import {
 
 import { useRouteStore } from './RouteStore';
 import { installSpaceSdna, SPACE_MODELS } from './spaceModels';
-import { type GlobePin } from './syncHelpers';
-
-/** Per-signal-type aggregate for the currently selected entity's react bar. **/
-export interface EntitySignalData {
-  nodeId: string;
-  signalType: SignalType;
-  totalValue: number;
-  myValue: number;
-}
 
 /**
  * A single node in the holarchic navigation path.
@@ -46,8 +37,6 @@ export interface HolarchyNode {
   isJoined: boolean;
 }
 
-export type { GlobePin } from './syncHelpers';
-
 export interface SpaceStore {
   // State
   perspective: Accessor<PerspectiveProxy | null>;
@@ -56,12 +45,6 @@ export interface SpaceStore {
   loading: Accessor<boolean>;
   signalTypes: Accessor<SignalType[]>;
   signalTypesBySlug: Accessor<Record<string, SignalType>>;
-
-  selectedPin: Accessor<GlobePin | null>;
-  selectedEntitySignalData: Accessor<EntitySignalData[]>;
-  setSelectedPin: (pin: GlobePin) => void;
-  clearSelectedPin: () => void;
-  upsertEntitySignal: (signalTypeId: string, value: number) => Promise<void>;
 
   // Holarchy
   hasJoined: Accessor<boolean>;
@@ -91,6 +74,8 @@ export interface SpaceStore {
   deriveSlug: (name: string) => string;
 
   navigateInto: (uuid: string) => Promise<void>;
+
+  test: () => Promise<void>;
 }
 
 const SpaceContext = createContext<SpaceStore>();
@@ -113,10 +98,28 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [signalTypes, setSignalTypes] = createSignal<SignalType[]>([]);
   const signalTypesBySlug = createMemo(() => Object.fromEntries(signalTypes().map((st) => [st.slug, st])));
 
-  // Selection state
-  const [selectedPin, setSelectedPin] = createSignal<GlobePin | null>(null);
-  const [selectedEntitySignalData, setSelectedEntitySignalData] = createSignal<EntitySignalData[]>([]);
-  const [selectedEntitySignals, setSelectedEntitySignals] = createSignal<Signal[]>([]);
+  async function test() {
+    const p = perspective();
+    if (!p) return;
+    const spaces = await Space.findAll(p, { include: { location: true } });
+    console.log('Spaces in perspective:', spaces);
+
+    console.log('spaceId: ', spaceId());
+    console.log('space: ', space());
+
+    // const posts = await CollectionBlock.findAll(p, {
+    //   where: { type: 'root' },
+    //   include: {
+    //     signals: true,
+    //     $mySignal: {
+    //       from: 'signals',
+    //       where: { signalTypeId: signalTypesBySlug().like.id, author: adamStore!.me().did },
+    //     },
+    //     $totalSignals: { from: 'signals', where: { signalTypeId: signalTypesBySlug().like.id }, count: true },
+    //   },
+    // });
+    // console.log('Posts in perspective:', posts);
+  }
 
   async function createPost(json: unknown): Promise<void> {
     const p = perspective();
@@ -240,6 +243,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const myDid = adamStore.me()?.did;
     if (!p || !myDid) return;
 
+    // TODO: simplify this - no need to query links, just get signals directly and use where to filter out my entires
     const nodeLinks = await p.get(new LinkQuery({ source: nodeId, predicate: 'we://signal' }));
     const myLinks = nodeLinks.filter((l) => l.author === myDid);
 
@@ -261,80 +265,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (value === 0) return;
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
-
-  // --- Selection actions ---
-
-  async function loadEntitySignalData(pin: GlobePin | null, stypes: SignalType[], myDid?: string): Promise<void> {
-    const p = perspective();
-    if (!pin || !p || !stypes.length) {
-      setSelectedEntitySignalData([]);
-      setSelectedEntitySignals([]);
-      return;
-    }
-    const nodeId = pin.id;
-    const results =
-      pin.kind === 'space'
-        ? await Space.findAll(p, { where: { id: nodeId }, include: { signals: true } })
-        : await AgentProfile.findAll(p, { where: { id: nodeId }, include: { signals: true } });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sigs: Signal[] = (results[0] as any)?.signals ?? [];
-    setSelectedEntitySignals(sigs);
-    const signalsByType: Record<string, { count: number; sum: number; myValue: number }> = {};
-    for (const sig of sigs) {
-      const entry = signalsByType[sig.signalTypeId] ?? { count: 0, sum: 0, myValue: 0 };
-      entry.count++;
-      entry.sum += sig.value;
-      if (sig.author === myDid) entry.myValue = sig.value;
-      signalsByType[sig.signalTypeId] = entry;
-    }
-    const rows: EntitySignalData[] = stypes.map((st) => {
-      const entry = signalsByType[st.id] ?? { count: 0, sum: 0, myValue: 0 };
-      let totalValue = 0;
-      if (st.aggregate === 'count') totalValue = entry.count;
-      else if (st.aggregate === 'sum') totalValue = entry.sum;
-      else if (st.aggregate === 'mean') totalValue = entry.count ? entry.sum / entry.count : 0;
-      return { nodeId, signalType: st, totalValue, myValue: entry.myValue };
-    });
-    setSelectedEntitySignalData(rows);
-  }
-
-  function clearSelectedPin(): void {
-    setSelectedPin(null);
-    setSelectedEntitySignals([]);
-  }
-
-  async function upsertEntitySignal(signalTypeId: string, value: number): Promise<void> {
-    const p = perspective();
-    const myDid = adamStore.me()?.did;
-    const nodeId = selectedPin()?.id;
-    if (!p || !myDid || !nodeId) return;
-    const existing = selectedEntitySignals().find((s) => s.signalTypeId === signalTypeId && s.author === myDid);
-    if (existing) {
-      if (value === 0) {
-        await existing.delete();
-      } else {
-        existing.value = value;
-        await existing.save();
-      }
-    } else if (value !== 0) {
-      await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
-    }
-    void loadEntitySignalData(selectedPin(), signalTypes(), myDid);
-  }
-
-  // Reload signal data when selected pin or signal types change
-  createEffect(() => {
-    const pin = selectedPin();
-    const stypes = signalTypes();
-    const myDid = adamStore.me()?.did;
-    void loadEntitySignalData(pin, stypes, myDid);
-  });
-
-  // Also clear selection when perspective changes
-  createEffect(() => {
-    adamStore.currentPerspective();
-    setSelectedPin(null);
-  });
 
   /**
    * The node currently shown at `/space/:id`.
@@ -412,9 +342,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       setPerspective(null);
       setSpace(null);
       setSignalTypes([]);
-      setSelectedPin(null);
-      setSelectedEntitySignalData([]);
-      setSelectedEntitySignals([]);
       return;
     }
 
@@ -438,9 +365,6 @@ export function SpaceStoreProvider(props: ParentProps) {
           if (cancelled) return;
           setPerspective(p);
           setSpace(null);
-          setSelectedPin(null);
-          setSelectedEntitySignalData([]);
-          setSelectedEntitySignals([]);
           void rootUuid;
           return;
         }
@@ -480,13 +404,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     signalTypes,
     signalTypesBySlug,
 
-    // Selection
-    selectedPin,
-    selectedEntitySignalData,
-    setSelectedPin,
-    clearSelectedPin,
-    upsertEntitySignal,
-
     // Holarchy
     hasJoined,
 
@@ -502,6 +419,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     createAgentProfile,
     deriveSlug,
     navigateInto,
+
+    test,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

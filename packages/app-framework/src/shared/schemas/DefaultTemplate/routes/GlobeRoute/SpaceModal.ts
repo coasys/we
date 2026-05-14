@@ -2,7 +2,7 @@
  * SpaceModal
  *
  * Rendered when the user clicks a Space pin on the discovery globe.
- * Fetches the selected Space via $each+$query bound to `spaceStore.selectedPin.id`.
+ * Fetches the selected Space via $each+$query bound to `$local.selectedPin.id`.
  *
  * Layout:
  *   • Optional cover-image banner  ($item.coverImage)
@@ -13,7 +13,7 @@
 export const spaceModal = {
   type: 'we-modal',
   props: {
-    close: { $action: 'spaceStore.clearSelectedPin', args: [] },
+    close: { $setLocal: 'selectedPin', value: null },
     maxWidth: '520px',
     width: '100%',
   },
@@ -21,39 +21,26 @@ export const spaceModal = {
     {
       type: '$each',
       props: {
-        as: 'item',
-        items: {
-          $query: {
-            model: 'Space',
-            where: { id: { $store: 'spaceStore.selectedPin.id' } },
-            subscribe: false,
-          },
-        },
+        items: { $query: { model: 'Space', where: { id: { $local: 'selectedPin.id' } }, include: { signals: true } } },
       },
       children: [
         {
           type: 'Column',
           props: { gap: '400' },
           children: [
-            // ── Cover image banner ──────────────────────────────
+            // Cover image
             {
               type: '$if',
               props: {
                 condition: '$item.coverImage',
                 then: {
                   type: 'we-image',
-                  props: {
-                    src: '$item.coverImage',
-                    width: '100%',
-                    height: '160px',
-                    fit: 'cover',
-                    r: '300',
-                  },
+                  props: { src: '$item.coverImage', width: '100%', height: '160px', fit: 'cover', r: '300' },
                 },
               },
             },
 
-            // ── Avatar + name / description row ────────────────
+            // Avatar + name / description row
             {
               type: 'Row',
               props: { gap: '300', ay: 'center' },
@@ -64,29 +51,16 @@ export const spaceModal = {
                     condition: '$item.avatar',
                     then: {
                       type: 'we-image',
-                      props: {
-                        src: '$item.avatar',
-                        width: '60px',
-                        height: '60px',
-                        fit: 'cover',
-                        r: 'full',
-                      },
+                      props: { src: '$item.avatar', width: '60px', height: '60px', fit: 'cover', r: 'full' },
                     },
-                    else: {
-                      type: 'we-icon',
-                      props: { name: 'globe', size: '60px', color: 'neutral-400' },
-                    },
+                    else: { type: 'we-icon', props: { name: 'globe', size: '60px', color: 'neutral-400' } },
                   },
                 },
                 {
                   type: 'Column',
                   props: { gap: '100' },
                   children: [
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '700', fontWeight: 'bold' },
-                      children: ['$item.name'],
-                    },
+                    { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['$item.name'] },
                     {
                       type: '$if',
                       props: {
@@ -103,25 +77,32 @@ export const spaceModal = {
               ],
             },
 
-            // ── Signal controls ─────────────────────────────────
+            // Signal controls
             {
               type: 'Row',
               props: { gap: '200', ay: 'center', wrap: true },
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'spaceStore.selectedEntitySignalData' }, as: 'sig' },
+                  props: { items: { $query: { model: 'SignalType', subscribe: true } }, as: 'sig' },
                   children: [
                     {
                       type: 'SignalControl',
                       props: {
-                        signalType: '$sig.signalType',
-                        myValue: '$sig.myValue',
-                        aggregate: '$sig.totalValue',
-                        onSignal: {
-                          $action: 'spaceStore.upsertEntitySignal',
-                          args: ['$sig.signalType.id', '$arg'],
+                        signalType: '$sig',
+                        aggregate: {
+                          $count: {
+                            items: { $filter: { items: '$item.signals', where: { signalTypeId: '$sig.id' } } },
+                          },
                         },
+                        myValue: {
+                          $find: {
+                            items: '$item.signals',
+                            where: { signalTypeId: '$sig.id', author: { $store: 'adamStore.me.did' } },
+                            select: 'value',
+                          },
+                        },
+                        onSignal: { $action: 'spaceStore.upsertSignal', args: ['$item.id', '$sig.id', '$arg'] },
                       },
                     },
                   ],
@@ -129,7 +110,7 @@ export const spaceModal = {
               ],
             },
 
-            // ── Join Space CTA ──────────────────────────────────
+            // Join Space CTA
             {
               type: 'we-button',
               props: {
@@ -139,10 +120,7 @@ export const spaceModal = {
                 height: '40px',
                 onClick: [
                   { $action: 'adamStore.setCurrentPerspective', args: ['$item.uuid'] },
-                  {
-                    $action: 'routeStore.navigate',
-                    args: [{ $concat: ['/space/', '$item.uuid', '/globe'] }],
-                  },
+                  { $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$item.uuid', '/globe'] }] },
                 ],
               },
             },

@@ -7,37 +7,7 @@
  */
 
 import { type PerspectiveProxy } from '@coasys/ad4m';
-import { AgentProfile, LocationBlock, SignalType, Space } from '@we/models';
-
-/** A lat/lng pin shown on the Cesium globe for any entity (space or agent). */
-export interface GlobePin {
-  id: string; // model .id (ad4m URI) — used to look up the source model
-  kind: 'space' | 'agent';
-  name: string;
-  latitude: number;
-  longitude: number;
-  avatar?: string; // URL for the space/agent avatar image — displayed as a circular pin when provided
-  signalEnergy?: number;
-}
-
-export interface DiscoveryData {
-  spaces: Space[];
-  agents: AgentProfile[];
-  signalTypes: SignalType[];
-}
-
-/**
- * Fetches spaces, agents, signal types and builds globe pins for any perspective.
- * Works for the global root, community spaces, or any holarchy node.
- */
-export async function buildDiscoveryData(p: PerspectiveProxy): Promise<DiscoveryData> {
-  const [spaces, agents, signalTypes] = await Promise.all([
-    Space.findAll(p, { include: { location: true } }),
-    AgentProfile.findAll(p, { include: { location: true } }),
-    SignalType.findAll(p),
-  ]);
-  return { spaces, agents, signalTypes };
-}
+import { AgentProfile, LocationBlock, Space } from '@we/models';
 
 /**
  * Upsert a Space record into `targetP`.

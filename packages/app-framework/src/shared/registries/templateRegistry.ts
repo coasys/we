@@ -16,11 +16,7 @@
  * 6. TemplateStoreProvider reads registry (gets final launcher)
  */
 
-import {
-  defaultTemplate,
-  // twitterTemplate,
-  // weTemplate,
-} from '@shared/schemas';
+import { defaultTemplate } from '@shared/schemas';
 // import type { TemplateSchema } from '@we/schema-shared';
 
 /**

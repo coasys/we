@@ -2,7 +2,7 @@
  * AgentModal
  *
  * Rendered when the user clicks an Agent pin on the discovery globe.
- * Fetches the selected AgentProfile via $each+$query bound to `spaceStore.selectedPin.id`.
+ * Fetches the selected AgentProfile via $each+$query bound to `$local.selectedPin.id`.
  *
  * Layout:
  *   • Optional cover-image banner  ($item.coverImage)
@@ -14,7 +14,7 @@
 export const agentModal = {
   type: 'we-modal',
   props: {
-    close: { $action: 'spaceStore.clearSelectedPin', args: [] },
+    close: { $setLocal: 'selectedPin', value: null },
     maxWidth: '520px',
     width: '100%',
   },
@@ -26,7 +26,8 @@ export const agentModal = {
         items: {
           $query: {
             model: 'AgentProfile',
-            where: { id: { $store: 'spaceStore.selectedPin.id' } },
+            where: { id: { $local: 'selectedPin.id' } },
+            include: { signals: true },
             subscribe: false,
           },
         },
@@ -122,17 +123,35 @@ export const agentModal = {
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'spaceStore.selectedEntitySignalData' }, as: 'sig' },
+                  props: { items: { $query: { model: 'SignalType', subscribe: true } }, as: 'sig' },
                   children: [
                     {
                       type: 'SignalControl',
                       props: {
-                        signalType: '$sig.signalType',
-                        myValue: '$sig.myValue',
-                        aggregate: '$sig.totalValue',
+                        signalType: '$sig',
+                        aggregate: {
+                          $count: {
+                            items: {
+                              $filter: {
+                                items: '$item.signals',
+                                where: { signalTypeId: '$sig.id' },
+                              },
+                            },
+                          },
+                        },
+                        myValue: {
+                          $find: {
+                            items: '$item.signals',
+                            where: {
+                              signalTypeId: '$sig.id',
+                              author: { $store: 'adamStore.me.did' },
+                            },
+                            select: 'value',
+                          },
+                        },
                         onSignal: {
-                          $action: 'spaceStore.upsertEntitySignal',
-                          args: ['$sig.signalType.id', '$arg'],
+                          $action: 'spaceStore.upsertSignal',
+                          args: ['$item.id', '$sig.id', '$arg'],
                         },
                       },
                     },
