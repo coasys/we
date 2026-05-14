@@ -79,6 +79,9 @@ export type InToken = { $in: unknown[] };
 export type NotToken = { $not: unknown };
 export type AndToken = { $and: unknown[] };
 export type OrToken = { $or: unknown[] };
+export type FilterToken = { $filter: { items: unknown; where: Record<string, unknown> } };
+export type CountToken = { $count: { items: unknown } };
+export type FindToken = { $find: { items: unknown; where?: Record<string, unknown>; select?: string } };
 export type QueryToken = {
   $query: {
     model: string;
@@ -95,7 +98,7 @@ export type QueryToken = {
 };
 
 export type LocalStateField = {
-  type: 'string' | 'boolean' | 'number' | 'file' | 'function';
+  type: 'string' | 'boolean' | 'number' | 'file' | 'function' | 'object';
   initial: string | boolean | number | null;
   validate?: ValidationRule[];
 };
@@ -158,4 +161,7 @@ export type OperatorToken =
   | TouchToken
   | ResetLocalToken
   | ToggleLocalToken
-  | CallLocalToken;
+  | CallLocalToken
+  | FilterToken
+  | CountToken
+  | FindToken;
