@@ -1,7 +1,9 @@
 import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { getModel, getModelForPerspective } from '@shared/registries/modelRegistry';
+import { landingPageTemplate, profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import type { RouteStore } from '@solid/stores';
 import {
   useAdamStore,
   useAiStore,
@@ -12,18 +14,30 @@ import {
   useThemeStore,
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
-import { Navigate, Route, Router, useLocation, useNavigate } from '@solidjs/router';
+import type { MemoryHistory } from '@solidjs/router';
+import { createMemoryHistory, MemoryRouter, Navigate, Route, Router, useLocation, useNavigate } from '@solidjs/router';
 import { toastService } from '@we/components/solid';
 import type { RouteSchema, TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { JSX, ParentProps } from 'solid-js';
-import { createEffect, createMemo, For, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onMount, Show } from 'solid-js';
 
-type FlattenedRoute = { path: string; component: () => JSX.Element; redirect?: string };
+// Width of the collapsed shell sidebar — defines the left offset for the content area.
+// Also set as --we-sidebar-width on :root for any position:fixed elements that need it.
+const SHELL_SIDEBAR_WIDTH = '72px';
+
 type ParentStackItem = { node: RouteSchema; fullPath: string; baseDepth: number };
 
+// Shell view schemas — rendered as an overlay when activeShellView is set
+const shellViewSchemas: Record<string, TemplateSchema> = {
+  'landing-page': landingPageTemplate,
+  profile: profileTemplate,
+  settings: settingsTemplate,
+  'schema-tests': schemaTestsTemplate,
+};
+
 // Creates the root layout component for the router
-function createLayout(stores: Stores, shellSchema: TemplateSchema) {
+function createLayout(stores: Stores, shellRouter: RouteStore, shellHistory: MemoryHistory) {
   return function Layout(props: ParentProps): JSX.Element {
     // Access the router hooks now we're inside the router context
     const navigate = useNavigate();
@@ -36,19 +50,17 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
     createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
 
     const aiRightMargin = () => (stores.aiStore.isOpen() ? '400px' : '0');
-    const contentWidth = () => (stores.aiStore.isOpen() ? 'calc(100% - 72px - 400px)' : 'calc(100% - 72px)');
+    const contentWidth = () =>
+      stores.aiStore.isOpen() ? `calc(100% - ${SHELL_SIDEBAR_WIDTH} - 400px)` : `calc(100% - ${SHELL_SIDEBAR_WIDTH})`;
 
     return (
       <>
-        {/* Shell chrome (boot screen, sidebar, chat panel) — always rendered */}
-        <RenderSchema node={shellSchema} stores={stores} registry={registry} />
-
-        {/* Content viewport — shared by templates and app iframes */}
+        {/* Content viewport — shared by templates, shell overlay, and app iframes */}
         <div
           style={{
             position: 'fixed',
             top: '0',
-            left: '72px',
+            left: `var(--we-sidebar-width, ${SHELL_SIDEBAR_WIDTH})`,
             right: aiRightMargin(),
             width: contentWidth(),
             height: '100vh',
@@ -80,6 +92,49 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
             </Show>
           </div>
 
+          {/* Shell overlay — profile, settings, schema-tests rendered above the active template.
+               position:absolute keeps the sidebar visible and interactive.
+               shellRouter provides an isolated routing context so shell schemas work correctly
+               without touching the browser URL bar. */}
+          <Show when={stores.templateStore.activeShellView()} keyed>
+            {(shellViewId) => {
+              const shellNode = shellViewSchemas[shellViewId];
+              if (!shellNode) return null;
+              const shellStores = { ...stores, routeStore: shellRouter };
+              return (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '0',
+                    left: '0',
+                    width: '100%',
+                    height: '100%',
+                    'z-index': '11',
+                    'overflow-y': 'auto',
+                  }}
+                >
+                  {/* MemoryRouter gives shell templates a real routing context so
+                       { type: '$routes' } outlets work. Driven by shellHistory so
+                       shellRouter.navigate() controls navigation without touching the URL bar. */}
+                  <MemoryRouter
+                    history={shellHistory}
+                    root={(props) => (
+                      <RenderSchema
+                        node={shellNode}
+                        stores={shellStores}
+                        registry={registry}
+                        children={props.children}
+                      />
+                    )}
+                  >
+                    {buildRoutes(shellStores, shellNode.routes ?? [])}
+                    <Route path="*" component={() => null} />
+                  </MemoryRouter>
+                </div>
+              );
+            }}
+          </Show>
+
           {/* Persistent app iframes — always mounted, CSS-toggled, layered on top of template */}
           <For each={stores.appStore.apps()}>
             {(app) => (
@@ -110,48 +165,119 @@ function createLayout(stores: Stores, shellSchema: TemplateSchema) {
   };
 }
 
-// Recursively flattens nested route schemas into a single array of routes with full paths
-function flattenRoutes(
+// Recursively builds nested <Route> JSX from a schema route tree.
+// Routes that have both children and sub-routes become SolidJS layout routes —
+// a persistent parent component that stays mounted while only the outlet (<$routes>) swaps.
+// Routes with keepAlive:true are rendered permanently inside the parent layout and
+// CSS-toggled, so their component tree (e.g. CesiumGlobe) never unmounts.
+// Leaf routes and redirect routes behave as before.
+function buildRoutes(
   stores: Stores,
   routes: RouteSchema[],
   parentPath = '',
   parentStack: ParentStackItem[] = [],
-): FlattenedRoute[] {
-  return routes.flatMap((route) => {
-    // Get the full route path and base depth (used for relative navigation)
+): JSX.Element[] {
+  return routes.map((route) => {
+    // Compute full path for baseDepth and absolute redirect resolution
     const fullPath =
       route.path === '/' && parentPath
         ? parentPath
         : parentPath + (route.path.startsWith('/') || !parentPath ? '' : '/') + route.path;
     const baseDepth = fullPath.split('/').filter(Boolean).length;
-    const currentMeta = { node: route, fullPath, baseDepth };
 
-    // Build the route component
-    const buildComponent = () => {
-      // Render the leaf with its own context
-      const leaf = RenderSchema({ node: route, stores, registry, context: { $nav: { baseDepth } } });
-
-      // Wrap with parents, each rendered with its own baseDepth context
-      return parentStack.reduceRight((child, meta) => {
-        const context = { $nav: { baseDepth: meta.baseDepth } };
-        return RenderSchema({ node: meta.node, stores, registry, context, children: child as JSX.Element });
-      }, leaf) as JSX.Element;
-    };
-
-    // Redirect routes don't render content — they navigate immediately.
-    // Relative redirects (starting with ./ or ../) are passed through as-is so SolidJS
-    // resolves them against the actual runtime URL (which has the real param values).
-    // Absolute-style redirects are prefixed with parentPath as before.
+    // Redirect routes navigate immediately without rendering content.
     if (route.redirect) {
       const isRelative = route.redirect.startsWith('./') || route.redirect.startsWith('../');
       const target = isRelative ? route.redirect : parentPath + route.redirect;
-      return [{ path: fullPath, component: () => <Navigate href={target} />, redirect: target }];
+      return <Route path={route.path} component={() => <Navigate href={target} />} />;
     }
 
-    // If the route has children, recursively flatten them too, otherwise just return the route
-    return route.routes?.length
-      ? flattenRoutes(stores, route.routes, fullPath, [...parentStack, currentMeta])
-      : [{ path: fullPath, component: buildComponent }];
+    if (route.routes?.length) {
+      // Layout route: stays mounted while sub-routes change.
+      // Split THIS route's children into keepAlive leaves vs normal routes.
+      // The keepAlive children are rendered persistently inside this layout component
+      // and CSS-toggled; normal children go through the router outlet.
+      const childDepth = fullPath.split('/').filter(Boolean).length + 1;
+      const childKeepAliveRoutes = route.routes.filter((r) => r.keepAlive && !r.redirect && !r.routes?.length);
+      const childNormalRoutes = route.routes.filter((r) => !r.keepAlive || r.redirect || r.routes?.length);
+      const component = (props: ParentProps) => {
+        const layout = RenderSchema({
+          node: route,
+          stores,
+          registry,
+          context: { $nav: { baseDepth } },
+          // Inject outlet + keepAlive children into the { type: '$routes' } slot
+          children: (
+            <>
+              {/* Always-mounted keepAlive routes — hidden when not active */}
+              <For each={childKeepAliveRoutes}>
+                {(kaRoute) => {
+                  const kaPath = fullPath + kaRoute.path;
+                  const kaDepth = kaPath.split('/').filter(Boolean).length;
+                  const kaContent = RenderSchema({
+                    node: kaRoute,
+                    stores,
+                    registry,
+                    context: { $nav: { baseDepth: kaDepth } },
+                  });
+                  // Active when the URL segment at childDepth-1 matches this route's path segment
+                  const segmentIndex = childDepth - 1;
+                  const routeSegment = kaRoute.path.replace(/^\//, '');
+                  const isActive = () => stores.routeStore.segments()[segmentIndex] === routeSegment;
+                  return (
+                    <div
+                      style={{
+                        display: isActive() ? 'contents' : 'none',
+                        width: '100%',
+                        height: '100%',
+                      }}
+                    >
+                      {kaContent}
+                    </div>
+                  );
+                }}
+              </For>
+              {/* Normal outlet — non-keepAlive routes render here */}
+              {props.children}
+            </>
+          ),
+        });
+        return parentStack.reduceRight((child, meta) => {
+          return RenderSchema({
+            node: meta.node,
+            stores,
+            registry,
+            context: { $nav: { baseDepth: meta.baseDepth } },
+            children: child as JSX.Element,
+          });
+        }, layout) as JSX.Element;
+      };
+      // Emit stub Routes for keepAlive children so the router still matches their paths
+      // (preventing 404); their actual content lives in the persistent divs above.
+      const keepAliveStubs = childKeepAliveRoutes.map((r) => <Route path={r.path} component={() => null} />);
+      const childRoutes = buildRoutes(stores, childNormalRoutes, fullPath, []);
+      return (
+        <Route path={route.path} component={component}>
+          {keepAliveStubs}
+          {childRoutes}
+        </Route>
+      );
+    }
+
+    // Normal leaf route
+    const component = () => {
+      const leaf = RenderSchema({ node: route, stores, registry, context: { $nav: { baseDepth } } });
+      return parentStack.reduceRight((child, meta) => {
+        return RenderSchema({
+          node: meta.node,
+          stores,
+          registry,
+          context: { $nav: { baseDepth: meta.baseDepth } },
+          children: child as JSX.Element,
+        });
+      }, leaf) as JSX.Element;
+    };
+    return <Route path={route.path} component={component} />;
   });
 }
 
@@ -164,6 +290,33 @@ export default function TemplateProvider() {
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
   const routeStore = useRouteStore();
+
+  // Set CSS custom property on :root so any position:fixed elements can consume it
+  onMount(() => {
+    document.documentElement.style.setProperty('--we-sidebar-width', SHELL_SIDEBAR_WIDTH);
+  });
+
+  // Shell memory history — in-memory router for shell overlay views.
+  // createMemoryHistory() gives us a history object we can drive programmatically
+  // AND use as the source for a real <MemoryRouter> so $routes outlets work.
+  const shellHistory = createMemoryHistory();
+  const [shellPath, setShellPath] = createSignal('/');
+  const shellSegments = createMemo(() => shellPath().split('/').filter(Boolean));
+  // shellHistory.listen keeps shellPath signal in sync so schema $store expressions work
+  shellHistory.listen((path) => setShellPath(path));
+  const shellRouter: RouteStore = {
+    currentPath: shellPath,
+    segments: shellSegments,
+    setNavigateFunction: () => {},
+    setCurrentPath: () => {},
+    navigate: (to: string) => shellHistory.set({ value: to, replace: false }),
+  };
+
+  // Reset shell router to '/' whenever the active shell view changes
+  createEffect(() => {
+    void templateStore.activeShellView();
+    shellHistory.set({ value: '/', replace: true });
+  });
 
   // Test store — isolated mock data + test perspective for test templates
   const testStore = createTestStore(adamStore.testPerspective);
@@ -194,7 +347,7 @@ export default function TemplateProvider() {
     },
   };
 
-  const stores = {
+  const stores: Stores = {
     adamStore,
     aiStore,
     appStore,
@@ -210,14 +363,6 @@ export default function TemplateProvider() {
     $onError: (msg: string) => toastService.error(msg),
   };
 
-  // Get the current template schema and build its routes
-  const templateSchema = templateStore.currentTemplate;
-  const routes = createMemo(() => {
-    // Read template ID to track it as a reactive dependency — routes rebuild on template switch
-    void templateSchema.id;
-    return flattenRoutes(stores, templateSchema.routes ?? []);
-  });
-
   // Shell schema — boot screen + sidebar chrome + chat panel (no template content)
   const shellSchema: TemplateSchema = {
     meta: { name: 'Shell', description: 'App shell chrome', icon: '' },
@@ -231,16 +376,31 @@ export default function TemplateProvider() {
     children: [{ type: 'we-text', props: { size: '600' }, children: ['Page not found :_('] }],
   };
 
-  // Return the router with the root layout and routes
+  const templateSchema = templateStore.currentTemplate;
+
   return (
-    <Router root={createLayout(stores, shellSchema)}>
-      {routes().map((route) => (
-        <Route path={route.path} component={route.component} />
-      ))}
-      <Route
-        path="*"
-        component={() => (routes().length > 0 ? RenderSchema({ node: notFoundNode, stores, registry }) : null)}
-      />
-    </Router>
+    <>
+      {/* Shell chrome — boot screen, sidebar, AI chat — rendered once outside the keyed Router
+           so it never remounts on template switches. */}
+      <RenderSchema node={shellSchema} stores={stores} registry={registry} />
+
+      {/* Router — keyed on template ID so it fully remounts on template switch.
+           This ensures buildRoutes is called fresh with the new template's route tree.
+           Template switching is a rare user action so a full remount is acceptable. */}
+      <Show when={templateSchema.id || 'empty'} keyed>
+        {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
+        {(_id) => (
+          <Router root={createLayout(stores, shellRouter, shellHistory)}>
+            {buildRoutes(stores, templateSchema.routes ?? [])}
+            <Route
+              path="*"
+              component={() =>
+                templateSchema.routes?.length ? RenderSchema({ node: notFoundNode, stores, registry }) : null
+              }
+            />
+          </Router>
+        )}
+      </Show>
+    </>
   );
 }

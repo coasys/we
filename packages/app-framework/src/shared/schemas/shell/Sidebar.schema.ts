@@ -86,21 +86,10 @@ export const sidebar: SchemaNode = {
             id: 'profile',
             icon: 'user',
             label: 'Profile',
-            active: {
-              $eq: [
-                {
-                  $if: {
-                    condition: { $store: 'appStore.activeAppId' },
-                    then: null,
-                    else: { $store: 'templateStore.currentTemplate.id' },
-                  },
-                },
-                'profile',
-              ],
-            },
+            active: { $eq: [{ $store: 'templateStore.activeShellView' }, 'profile'] },
             onClick: [
               { $action: 'appStore.deactivateApp' },
-              { $action: 'templateStore.switchTemplate', args: ['profile'] },
+              { $action: 'templateStore.openShellView', args: ['profile'] },
             ],
           },
 
@@ -109,21 +98,10 @@ export const sidebar: SchemaNode = {
             id: 'settings',
             icon: 'gear',
             label: 'Settings',
-            active: {
-              $eq: [
-                {
-                  $if: {
-                    condition: { $store: 'appStore.activeAppId' },
-                    then: null,
-                    else: { $store: 'templateStore.currentTemplate.id' },
-                  },
-                },
-                'settings',
-              ],
-            },
+            active: { $eq: [{ $store: 'templateStore.activeShellView' }, 'settings'] },
             onClick: [
               { $action: 'appStore.deactivateApp' },
-              { $action: 'templateStore.switchTemplate', args: ['settings'] },
+              { $action: 'templateStore.openShellView', args: ['settings'] },
             ],
           },
 
@@ -183,6 +161,7 @@ export const sidebar: SchemaNode = {
                   },
                   onClick: [
                     { $action: 'appStore.deactivateApp' },
+                    { $action: 'templateStore.closeShellView' },
                     { $action: 'templateStore.switchTemplate', args: ['$item.id'] },
                   ],
                 },
@@ -216,21 +195,10 @@ export const sidebar: SchemaNode = {
             id: 'schema-tests',
             icon: 'flask',
             label: 'Schema Tests',
-            active: {
-              $eq: [
-                {
-                  $if: {
-                    condition: { $store: 'appStore.activeAppId' },
-                    then: null,
-                    else: { $store: 'templateStore.currentTemplate.id' },
-                  },
-                },
-                'schema-tests',
-              ],
-            },
+            active: { $eq: [{ $store: 'templateStore.activeShellView' }, 'schema-tests'] },
             onClick: [
               { $action: 'appStore.deactivateApp' },
-              { $action: 'templateStore.switchTemplate', args: ['schema-tests'] },
+              { $action: 'templateStore.openShellView', args: ['schema-tests'] },
             ],
           },
           {
@@ -250,7 +218,7 @@ export const sidebar: SchemaNode = {
             ax: 'center',
             ay: 'center',
             styles: { cursor: 'pointer' },
-            onClick: { $action: 'templateStore.switchTemplate', args: ['landing-page'] },
+            onClick: { $action: 'templateStore.openShellView', args: ['landing-page'] },
             title: 'About WE',
           },
           children: [

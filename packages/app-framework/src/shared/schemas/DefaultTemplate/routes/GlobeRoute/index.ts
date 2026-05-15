@@ -13,6 +13,7 @@ import { spaceModal } from './SpaceModal';
 
 export const globeRoute: RouteSchema = {
   path: '/globe',
+  keepAlive: true,
   type: 'Column',
   $localState: {
     // Layer visibility toggles
@@ -33,7 +34,7 @@ export const globeRoute: RouteSchema = {
     // Header
     {
       type: 'Column',
-      props: { width: 'calc(100% - 72px)', p: '400', gap: '400', position: 'absolute', zIndex: 5 },
+      props: { width: 'calc(100% - 400px)', p: '400', gap: '400', position: 'absolute', zIndex: 5 },
       children: [
         {
           type: 'Row',

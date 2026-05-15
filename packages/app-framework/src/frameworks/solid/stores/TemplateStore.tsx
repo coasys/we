@@ -1,5 +1,5 @@
 import { templateRegistry } from '@shared/registries/templateRegistry';
-import { landingPageTemplate, profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
+import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
 import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutations.actions';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
@@ -32,10 +32,10 @@ export interface TemplateStoreBase {
   templates: Accessor<TemplateSchema[]>;
   allTemplates: Accessor<TemplateSchema[]>;
   templateManagementList: Accessor<TemplateManagementItem[]>;
-  shellTemplates: TemplateSchema[];
   currentTemplate: TemplateSchema;
   loading: Accessor<boolean>;
   defaultTemplateId: Accessor<string>;
+  activeShellView: Accessor<string | null>;
 
   // Actions
   updateTemplate: (newTemplate: TemplateSchema) => void;
@@ -50,6 +50,8 @@ export interface TemplateStoreBase {
   saveTemplate: (name: string) => Promise<void>;
   saveTemplateAs: (schema: TemplateSchema) => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
+  openShellView: (id: string) => void;
+  closeShellView: () => void;
 
   // Loading state
   operationLoading: Accessor<string | null>;
@@ -79,18 +81,15 @@ export function TemplateStoreProvider(props: ParentProps) {
   }));
 
   // Shell templates — static system pages (profile, settings, testing)
+  // landing-page is now an overlay (activeShellView), not a currentTemplate value
   const shellTemplates: TemplateSchema[] = [
-    { ...deepClone(landingPageTemplate), id: 'landing-page' },
     { ...deepClone(profileTemplate), id: 'profile' },
     { ...deepClone(settingsTemplate), id: 'settings' },
     { ...deepClone(schemaTestsTemplate), id: 'schema-tests' },
   ];
 
   const initialTemplate = deepClone(
-    shellTemplates.find((t) => t.id === 'landing-page') ||
-      coreTemplates.find((t) => t.id === 'launcher') ||
-      coreTemplates[0] ||
-      emptyTemplate,
+    coreTemplates.find((t) => t.id === 'launcher') || coreTemplates[0] || emptyTemplate,
   );
 
   console.log(
@@ -104,6 +103,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   const [loading, setLoading] = createSignal(true);
   const [currentTemplate, setCurrentTemplate] = createStore<TemplateSchema>(initialTemplate);
   const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
+  // Shell overlay: which shell view (if any) is currently shown above the active template
+  const [activeShellView, setActiveShellView] = createSignal<string | null>('landing-page');
 
   // Derived: core templates are always "installed", plus any custom templates in the installed set
   const templates = () => {
@@ -183,9 +184,10 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (loading() || initialRestoreDone) return;
     // Use defaultTemplateId for boot, fall back to currentTemplateId for backward compat
     const bootId = prefs?.defaultTemplateId || prefs?.currentTemplateId;
-    // Always boot on the landing page — skip restore for 'default' (user reaches it after the gate).
+    // Always boot on the landing page overlay — skip restore for 'default' and 'landing-page'.
+    // 'landing-page' is now an overlay (activeShellView), not a template to restore.
     // Only restore explicitly non-default templates (e.g. a custom template the user was editing).
-    if (bootId && bootId !== 'default' && bootId !== currentTemplate.id) {
+    if (bootId && bootId !== 'default' && bootId !== 'landing-page' && bootId !== currentTemplate.id) {
       const persisted = templates().find((t) => t.id === bootId) || shellTemplates.find((t) => t.id === bootId);
       if (persisted) {
         setCurrentTemplate(reconcile(deepClone(persisted)));
@@ -210,23 +212,29 @@ export function TemplateStoreProvider(props: ParentProps) {
     setCurrentTemplate(reconcile(deepClone(newTemplate)));
   }
 
+  // Per-template last-route memory — restores user's position when switching back
+  const lastRouteByTemplate = new Map<string, string>();
+
   function switchTemplate(newTemplateId: string) {
     // No-op if already on this template
     if (currentTemplate.id === newTemplateId) return;
     // If user manually switches before the boot restore fires, skip the restore
     initialRestoreDone = true;
+    // Save current path before leaving
+    if (currentTemplate.id) {
+      lastRouteByTemplate.set(currentTemplate.id, routeStore.currentPath());
+    }
     const newTemplate =
       allTemplates().find((t) => t.id === newTemplateId) || shellTemplates.find((t) => t.id === newTemplateId);
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
-      // Shell templates (profile, settings, etc.) always land on '/'.
-      // Space-capable templates (default/custom) resume the current space if one is active,
-      // otherwise fall back to '/' which renders the HomeRoute space-picker.
-      const isShell = shellTemplates.some((t) => t.id === newTemplateId);
-      if (!isShell) {
+      // Restore last known route for this template, or fall back to current space route
+      const lastRoute = lastRouteByTemplate.get(newTemplateId);
+      if (lastRoute) {
+        routeStore.navigate(lastRoute);
+      } else {
         const p = adamStore.currentPerspective();
         const segs = routeStore.segments();
-        // Preserve current sub-view (globe, cards, etc.) when switching back
         const view = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
         if (p) {
           const spaceId = p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid;
@@ -234,14 +242,20 @@ export function TemplateStoreProvider(props: ParentProps) {
         } else {
           routeStore.navigate('/');
         }
-      } else {
-        routeStore.navigate('/');
       }
       // Persist choice to Ad4m
       adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });
     } else {
       console.error(`TemplateStore: switchTemplate - Invalid templateId "${newTemplateId}"`);
     }
+  }
+
+  function openShellView(id: string) {
+    setActiveShellView(id);
+  }
+
+  function closeShellView() {
+    setActiveShellView(null);
   }
 
   async function removeTemplate() {
@@ -576,10 +590,10 @@ export function TemplateStoreProvider(props: ParentProps) {
     templates,
     allTemplates,
     templateManagementList,
-    shellTemplates,
     currentTemplate,
     loading,
     defaultTemplateId,
+    activeShellView,
 
     // Actions
     updateTemplate,
@@ -594,6 +608,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     saveTemplate,
     saveTemplateAs,
     persistCurrentTemplate,
+    openShellView,
+    closeShellView,
 
     // Loading state
     operationLoading,
