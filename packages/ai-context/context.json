@@ -1332,6 +1332,18 @@
           "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
+        },
+        {
+          "name": "labelOff",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "labelOn",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         }
       ]
     },

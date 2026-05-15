@@ -511,6 +511,8 @@ export const contextData: ContextData = {
         { name: 'name', type: 'string', optional: false, default: "''" },
         { name: 'value', type: 'string', optional: false, default: "''" },
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
+        { name: 'labelOff', type: 'string', optional: false, default: "''" },
+        { name: 'labelOn', type: 'string', optional: false, default: "''" },
       ],
     },
     {
