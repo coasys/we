@@ -12,7 +12,7 @@ import type {
 } from '@we/tokens';
 
 export type ElementState = 'hover' | 'focus' | 'active' | 'disabled';
-export type Display = 'flex' | 'block' | 'inline' | 'inline-block' | 'grid' | 'inline-flex';
+export type Display = 'flex' | 'block' | 'inline' | 'inline-block' | 'grid' | 'inline-flex' | 'none';
 export type FlexDirection = 'row' | 'row-reverse' | 'column' | 'column-reverse';
 export type FlexMainAxis = 'start' | 'center' | 'end' | 'between' | 'around' | 'even';
 export type FlexCrossAxis = 'start' | 'center' | 'end' | 'stretch';
@@ -24,6 +24,9 @@ export type Cursor = 'pointer' | 'default' | 'text' | 'not-allowed';
 export type TextDecoration = 'underline' | 'line-through' | 'overline' | 'none';
 export type TextTransform = 'uppercase' | 'lowercase' | 'capitalize' | 'none';
 export type PointerEvents = 'none' | 'auto';
+export type Visibility = 'hidden' | 'visible' | 'collapse';
+export type ScrollbarWidth = 'auto' | 'thin' | 'none';
+export type ScrollbarGutter = 'auto' | 'stable' | 'stable both-edges';
 export type Placement =
   | 'top'
   | 'bottom'
@@ -69,6 +72,7 @@ export interface DesignSystemProps {
   // Interaction
   cursor?: Cursor;
   pointerEvents?: PointerEvents;
+  visibility?: Visibility;
 
   // Layout
   width?: string;
@@ -86,6 +90,10 @@ export interface DesignSystemProps {
   flex?: string;
   alignSelf?: string;
   overflow?: Overflow;
+  overflowX?: Overflow;
+  overflowY?: Overflow;
+  scrollbarWidth?: ScrollbarWidth;
+  scrollbarGutter?: ScrollbarGutter;
   zIndex?: ZIndexValue;
   position?: Position;
   top?: string;

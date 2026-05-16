@@ -21,6 +21,7 @@ import type { RouteStore } from '@solid/stores/RouteStore';
 import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@solid/stores/ShellRouteStore';
 import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
+import { Column } from '@we/components/solid';
 import type { TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
@@ -45,8 +46,6 @@ const shellViews: Record<string, ShellViewEntry> = {
   settings: { schema: settingsTemplate },
   'schema-tests': {
     schema: schemaTestsTemplate,
-    // testStore is dev-only and only needed here — created with the shell router's
-    // navigate so benchRunAll advances routes inside the MemoryRouter, not the browser Router.
     stores: (base, shellRouteStore) => ({
       testStore: createTestStore(base.adamStore.testPerspective, (to) => shellRouteStore.navigate(to)),
     }),
@@ -96,30 +95,27 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
   return (
     <>
       {/* Content viewport — offset from shell sidebar and AI panel */}
-      <div
-        style={{
-          position: 'fixed',
-          top: '0',
-          left: `var(--we-sidebar-width, ${SHELL_SIDEBAR_WIDTH})`,
-          right: aiRightMargin(),
-          width: contentWidth(),
-          height: '100vh',
-          transition: 'right 300ms ease, width 300ms ease',
-        }}
+      <Column
+        position="fixed"
+        top="0"
+        left={`var(--we-sidebar-width, ${SHELL_SIDEBAR_WIDTH})`}
+        right={aiRightMargin()}
+        width={contentWidth()}
+        height="100vh"
+        transition="right 300ms ease, width 300ms ease"
       >
-        {/* Template content — WebGL canvas (Cesium) stays laid out even when hidden */}
-        <div
-          style={{
-            position: 'absolute',
-            top: '0',
-            left: '0',
-            width: '100%',
-            height: '100%',
-            visibility: stores.appStore.activeAppId() ? 'hidden' : 'visible',
-            'pointer-events': stores.appStore.activeAppId() ? 'none' : 'auto',
-            'overflow-y': 'auto',
-            'scrollbar-gutter': 'stable',
-          }}
+        {/* Main template content */}
+        <Column
+          display="block"
+          position="absolute"
+          top="0"
+          left="0"
+          width="100%"
+          height="100%"
+          visibility={stores.appStore.activeAppId() ? 'hidden' : 'visible'}
+          pointerEvents={stores.appStore.activeAppId() ? 'none' : 'auto'}
+          overflow="auto"
+          scrollbarGutter="stable"
         >
           <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
             <RenderSchema
@@ -129,32 +125,28 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
               children={props.children}
             />
           </Show>
-        </div>
+        </Column>
 
-        {/* Shell overlay — profile, settings, schema-tests, landing-page.
-             Rendered above the template (z-index 11). ShellRouteStoreProvider + MemoryRouter
-             give it a real isolated routing context without touching the browser URL bar.
-             Keyed on shellViewId so switching views properly recreates the overlay. */}
+        {/* Shell overlay rendered above the template */}
         <Show when={stores.templateStore.activeShellView()} keyed>
           {(shellViewId) => {
             const view = shellViews[shellViewId];
             if (!view) return null;
             return (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '0',
-                  left: '0',
-                  width: '100%',
-                  height: '100%',
-                  'z-index': '11',
-                  'overflow-y': 'auto',
-                }}
+              <Column
+                display="block"
+                position="absolute"
+                top="0"
+                left="0"
+                width="100%"
+                height="100%"
+                zIndex={11}
+                overflow="auto"
               >
                 <ShellRouteStoreProvider>
                   <ShellOverlayInner stores={stores} view={view} />
                 </ShellRouteStoreProvider>
-              </div>
+              </Column>
             );
           }}
         </Show>
@@ -162,21 +154,19 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
         {/* Persistent app iframes — always mounted, CSS-toggled */}
         <For each={stores.appStore.apps()}>
           {(app) => (
-            <div
-              style={{
-                position: 'absolute',
-                top: '0',
-                left: '0',
-                display: stores.appStore.activeAppId() === app.id ? 'block' : 'none',
-                width: '100%',
-                height: '100%',
-              }}
+            <Column
+              position="absolute"
+              top="0"
+              left="0"
+              display={stores.appStore.activeAppId() === app.id ? 'block' : 'none'}
+              width="100%"
+              height="100%"
             >
               <we-iframe src={app.url} title={app.name} allow={app.allow} width="100%" height="100%" display="block" />
-            </div>
+            </Column>
           )}
         </For>
-      </div>
+      </Column>
     </>
   );
 }

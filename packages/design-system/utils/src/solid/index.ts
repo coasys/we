@@ -73,6 +73,7 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
   // Interaction
   if (props.cursor) style.cursor = props.cursor;
   if (props.pointerEvents) style['pointer-events'] = props.pointerEvents;
+  if (props.visibility) style.visibility = props.visibility;
 
   // Flex item
   if (props.flex) style.flex = props.flex;
@@ -90,6 +91,10 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
   style['align-items'] = cross;
   if (props.gap) style.gap = tokenVar('space', props.gap);
   if (props.overflow) style.overflow = props.overflow;
+  if (props.overflowX) style['overflow-x'] = props.overflowX;
+  if (props.overflowY) style['overflow-y'] = props.overflowY;
+  if (props.scrollbarWidth) style['scrollbar-width'] = props.scrollbarWidth;
+  if (props.scrollbarGutter) style['scrollbar-gutter'] = props.scrollbarGutter;
   if (props.zIndex !== undefined) style['z-index'] = zIndexVar(props.zIndex);
   if (props.position) style.position = props.position;
   if (props.top) style.top = props.top;

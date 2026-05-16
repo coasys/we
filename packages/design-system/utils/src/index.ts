@@ -35,6 +35,10 @@ export const layoutKeys = [
   'zIndex',
   'display',
   'overflow',
+  'overflowX',
+  'overflowY',
+  'scrollbarWidth',
+  'scrollbarGutter',
   ...marginKeys,
 ] as const;
 
@@ -47,6 +51,7 @@ export const visualKeys = [
   'ring',
   'cursor',
   'pointerEvents',
+  'visibility',
   'transform',
   'transition',
   ...borderKeys,

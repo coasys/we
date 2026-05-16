@@ -13,7 +13,8 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 const styles = css`
   [part='base'] {
     overflow: auto;
-    scrollbar-width: thin;
+    scrollbar-width: var(--we-scroll-area-scrollbar-width, thin);
+    scrollbar-gutter: var(--we-scroll-area-scrollbar-gutter);
     scrollbar-color: var(--we-color-neutral-300) transparent;
   }
 
