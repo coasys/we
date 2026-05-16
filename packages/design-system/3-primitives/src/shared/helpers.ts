@@ -119,12 +119,17 @@ function updateCustomVars(
   setProperty(el, `${prefix}transition`, props.transition);
   setProperty(el, `${prefix}cursor`, props.cursor);
   setProperty(el, `${prefix}pointer-events`, props.pointerEvents);
+  setProperty(el, `${prefix}visibility`, props.visibility);
   const hasRadius = radiusKeys.some((k) => props[k] !== undefined && props[k] !== null);
   setProperty(el, `${prefix}radius`, hasRadius ? getRadiusValues(props) : undefined);
 
   // Layout on base
   setProperty(el, `${prefix}display`, props.display);
   setProperty(el, `${prefix}overflow`, props.overflow);
+  setProperty(el, `${prefix}overflow-x`, props.overflowX);
+  setProperty(el, `${prefix}overflow-y`, props.overflowY);
+  setProperty(el, `${prefix}scrollbar-width`, props.scrollbarWidth);
+  setProperty(el, `${prefix}scrollbar-gutter`, props.scrollbarGutter);
 
   // Flex
   const { main, cross } = mapFlexAxes(props, props.direction ?? 'row');
@@ -201,12 +206,17 @@ const BASE_VISUAL: PropSpec[] = [
   ['transform', 'transform'],
   ['cursor', 'cursor'],
   ['pointer-events', 'pointer-events'],
+  ['visibility', 'visibility'],
   ['border-radius', 'radius'],
 ];
 
 const BASE_LAYOUT: PropSpec[] = [
   ['display', 'display', 'flex'],
   ['overflow', 'overflow'],
+  ['overflow-x', 'overflow-x'],
+  ['overflow-y', 'overflow-y'],
+  ['scrollbar-width', 'scrollbar-width'],
+  ['scrollbar-gutter', 'scrollbar-gutter'],
 ];
 
 const BASE_FLEX: PropSpec[] = [

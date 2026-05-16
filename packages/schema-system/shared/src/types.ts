@@ -9,7 +9,7 @@ export type TemplateMeta = {
   components?: string[];
 };
 export type TemplateSchema = SchemaNode & { id?: string; schemaVersion?: number; meta: TemplateMeta };
-export type RouteSchema = SchemaNode & { path: string; redirect?: string };
+export type RouteSchema = SchemaNode & { path: string; redirect?: string; keepAlive?: boolean };
 
 // Transition configuration for $if operator (can be used in props via prop resolution)
 export type TransitionConfig = {

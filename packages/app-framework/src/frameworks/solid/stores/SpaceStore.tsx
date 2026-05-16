@@ -48,10 +48,9 @@ export interface SpaceStore {
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   createAgentProfile: (config: AgentProfileInput) => Promise<void>;
-
-  /** Navigate to a space by its spaceId (neighbourhood CID or local UUID), preserving the current sub-route view (falls back to 'globe'). */
   navigateToSpace: (spaceId: string) => void;
 
+  // Testing
   test: () => Promise<void>;
 }
 
@@ -107,12 +106,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     const segs = routeStore.segments();
     const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
     const targetPath = '/space/' + spaceId + '/' + currentView;
-    // If currently on a shell template (profile, settings, etc.), switch to the
-    // default template first so the space route is actually rendered.
-    const isShell = templateStore.shellTemplates.some((t) => t.id === templateStore.currentTemplate.id);
-    if (isShell) {
-      templateStore.switchTemplate(templateStore.defaultTemplateId());
-    }
+    // Close any shell overlay (landing page, profile, settings, etc.) before navigating
+    templateStore.closeShellView();
     routeStore.navigate(targetPath);
   }
 

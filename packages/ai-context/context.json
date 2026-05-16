@@ -1332,6 +1332,18 @@
           "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,
           "default": "'md'"
+        },
+        {
+          "name": "labelOff",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "labelOn",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         }
       ]
     },
@@ -1786,6 +1798,31 @@
       "superclass": "DesignSystemElement",
       "props": [
         {
+          "name": "visibility",
+          "type": "Visibility",
+          "optional": true
+        },
+        {
+          "name": "overflowX",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowY",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "scrollbarWidth",
+          "type": "ScrollbarWidth",
+          "optional": true
+        },
+        {
+          "name": "scrollbarGutter",
+          "type": "ScrollbarGutter",
+          "optional": true
+        },
+        {
           "name": "post",
           "type": "any",
           "optional": true
@@ -1807,6 +1844,31 @@
       "name": "BlockRenderer",
       "superclass": "DesignSystemElement",
       "props": [
+        {
+          "name": "visibility",
+          "type": "Visibility",
+          "optional": true
+        },
+        {
+          "name": "overflowX",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowY",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "scrollbarWidth",
+          "type": "ScrollbarWidth",
+          "optional": true
+        },
+        {
+          "name": "scrollbarGutter",
+          "type": "ScrollbarGutter",
+          "optional": true
+        },
         {
           "name": "post",
           "type": "any",
@@ -2842,6 +2904,11 @@
           "optional": true
         },
         {
+          "name": "visibility",
+          "type": "Visibility",
+          "optional": true
+        },
+        {
           "name": "width",
           "type": "string",
           "optional": true
@@ -2899,6 +2966,26 @@
         {
           "name": "overflow",
           "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowX",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowY",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "scrollbarWidth",
+          "type": "ScrollbarWidth",
+          "optional": true
+        },
+        {
+          "name": "scrollbarGutter",
+          "type": "ScrollbarGutter",
           "optional": true
         },
         {
@@ -3341,6 +3428,11 @@
           "optional": true
         },
         {
+          "name": "visibility",
+          "type": "Visibility",
+          "optional": true
+        },
+        {
           "name": "width",
           "type": "string",
           "optional": true
@@ -3413,6 +3505,26 @@
         {
           "name": "overflow",
           "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowX",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowY",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "scrollbarWidth",
+          "type": "ScrollbarWidth",
+          "optional": true
+        },
+        {
+          "name": "scrollbarGutter",
+          "type": "ScrollbarGutter",
           "optional": true
         },
         {
@@ -3763,6 +3875,11 @@
           "optional": true
         },
         {
+          "name": "visibility",
+          "type": "Visibility",
+          "optional": true
+        },
+        {
           "name": "width",
           "type": "string",
           "optional": true
@@ -3830,6 +3947,26 @@
         {
           "name": "overflow",
           "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowX",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowY",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "scrollbarWidth",
+          "type": "ScrollbarWidth",
+          "optional": true
+        },
+        {
+          "name": "scrollbarGutter",
+          "type": "ScrollbarGutter",
           "optional": true
         },
         {
@@ -4309,6 +4446,11 @@
           "optional": true
         },
         {
+          "name": "visibility",
+          "type": "Visibility",
+          "optional": true
+        },
+        {
           "name": "width",
           "type": "string",
           "optional": true
@@ -4366,6 +4508,26 @@
         {
           "name": "overflow",
           "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowX",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowY",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "scrollbarWidth",
+          "type": "ScrollbarWidth",
+          "optional": true
+        },
+        {
+          "name": "scrollbarGutter",
+          "type": "ScrollbarGutter",
           "optional": true
         },
         {

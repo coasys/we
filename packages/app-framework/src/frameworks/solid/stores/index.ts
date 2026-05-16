@@ -5,3 +5,4 @@ export { type TemplateStore, useTemplateStore, TemplateStoreProvider } from './T
 export { type RouteStore, useRouteStore, RouteStoreProvider } from './RouteStore';
 export { type AiStore, useAiStore, AiStoreProvider } from './AiStore';
 export { type AppStore, useAppStore, AppStoreProvider } from './AppStore';
+export { useShellRouteStore, ShellRouteStoreProvider, ShellRouterRoot } from './ShellRouteStore';

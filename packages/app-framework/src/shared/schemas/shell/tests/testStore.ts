@@ -21,7 +21,7 @@ export class TestItem extends Ad4mModel {
 // Store factory — test-oriented signals for integration test template
 // ---------------------------------------------------------------------------
 
-export function createTestStore(testPerspective: Accessor<PerspectiveProxy | null>) {
+export function createTestStore(testPerspective: Accessor<PerspectiveProxy | null>, navigate: (to: string) => void) {
   registerModel('TestItem', TestItem as any);
 
   // ---- Known values (for $store / assertion tests) ----
@@ -40,7 +40,6 @@ export function createTestStore(testPerspective: Accessor<PerspectiveProxy | nul
   const [benchLastRender, setBenchLastRender] = createSignal<number | null>(null);
   const [benchResults, setBenchResults] = createSignal<Record<string, number>>({});
   let benchQueue: string[] = [];
-  let benchNavigate: ((to: string) => void) | null = null;
   let benchRunning = false;
 
   // ---- List data (for $each) ----
@@ -118,13 +117,13 @@ export function createTestStore(testPerspective: Accessor<PerspectiveProxy | nul
     }
     // Auto-advance only during a Run All session
     if (!benchRunning) return;
-    if (benchQueue.length > 0 && benchNavigate) {
+    if (benchQueue.length > 0) {
       const next = benchQueue.shift()!;
-      setTimeout(() => benchNavigate!(next), 50);
+      setTimeout(() => navigate(next), 50);
     } else {
       // All done — return to dashboard
       benchRunning = false;
-      setTimeout(() => benchNavigate!(benchmarkBasePath), 50);
+      setTimeout(() => navigate(benchmarkBasePath), 50);
     }
   }
 
@@ -133,10 +132,6 @@ export function createTestStore(testPerspective: Accessor<PerspectiveProxy | nul
     setBenchLastRender(null);
     benchQueue = [];
     benchRunning = false;
-  }
-
-  function benchSetNavigate(navigate: (to: string) => void) {
-    benchNavigate = navigate;
   }
 
   const benchAllRoutes = [
@@ -154,12 +149,11 @@ export function createTestStore(testPerspective: Accessor<PerspectiveProxy | nul
   ];
 
   function benchRunAll() {
-    if (!benchNavigate) return;
     setBenchResults({});
     setBenchLastRender(null);
     benchRunning = true;
     benchQueue = benchAllRoutes.slice(1);
-    benchNavigate(benchAllRoutes[0]);
+    navigate(benchAllRoutes[0]);
   }
 
   async function createTestItem() {
@@ -259,7 +253,6 @@ export function createTestStore(testPerspective: Accessor<PerspectiveProxy | nul
     benchResults,
     benchRecordRender,
     benchClearResults,
-    benchSetNavigate,
     benchRunAll,
 
     // AD4M
