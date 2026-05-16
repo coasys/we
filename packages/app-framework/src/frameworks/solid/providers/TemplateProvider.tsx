@@ -1,6 +1,5 @@
 import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { getModel, getModelForPerspective } from '@shared/registries/modelRegistry';
-import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAdamStore,
@@ -37,10 +36,6 @@ export default function TemplateProvider() {
     document.documentElement.style.setProperty('--we-sidebar-width', SHELL_SIDEBAR_WIDTH);
   });
 
-  // Test store — isolated mock data + test perspective for schema test templates
-  const testStore = createTestStore(adamStore.testPerspective);
-  testStore.benchSetNavigate((to: string) => routeStore.navigate(to));
-
   // Console store for debugging $action calls in schema
   const consoleStore = {
     log: (...args: unknown[]) => console.log(...args),
@@ -74,7 +69,6 @@ export default function TemplateProvider() {
     templateStore,
     routeStore,
     consoleStore,
-    testStore,
     model: modelStore,
     $getModel: getModel,
     $getModelForPerspective: getModelForPerspective,

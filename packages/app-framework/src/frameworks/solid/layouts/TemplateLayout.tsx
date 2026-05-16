@@ -15,54 +15,62 @@
  * $routes outlets work with a real router context, without touching the browser URL.
  */
 import { landingPageTemplate, profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
+import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import type { RouteStore } from '@solid/stores/RouteStore';
 import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@solid/stores/ShellRouteStore';
 import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import type { TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
-import { createEffect, For, onCleanup, Show } from 'solid-js';
+import { createEffect, For, Show } from 'solid-js';
 
 import { buildRoutes } from '../utils/buildRoutes';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
 export const SHELL_SIDEBAR_WIDTH = '72px';
 
-// Shell view schemas — rendered as an overlay when activeShellView is set.
-const shellViewSchemas: Record<string, TemplateSchema> = {
-  'landing-page': landingPageTemplate,
-  profile: profileTemplate,
-  settings: settingsTemplate,
-  'schema-tests': schemaTestsTemplate,
+// Shell view registry — maps activeShellView id → schema + optional extra stores.
+// The stores factory is called with (baseStores, shellRouteStore) at mount time,
+// so each view gets exactly the stores it needs and nothing more.
+type ShellViewEntry = {
+  schema: TemplateSchema;
+  stores?: (base: Stores, shellRouteStore: RouteStore) => Partial<Stores>;
+};
+
+const shellViews: Record<string, ShellViewEntry> = {
+  'landing-page': { schema: landingPageTemplate },
+  profile: { schema: profileTemplate },
+  settings: { schema: settingsTemplate },
+  'schema-tests': {
+    schema: schemaTestsTemplate,
+    // testStore is dev-only and only needed here — created with the shell router's
+    // navigate so benchRunAll advances routes inside the MemoryRouter, not the browser Router.
+    stores: (base, shellRouteStore) => ({
+      testStore: createTestStore(base.adamStore.testPerspective, (to) => shellRouteStore.navigate(to)),
+    }),
+  },
 };
 
 // ---------------------------------------------------------------------------
 // Shell overlay inner — rendered inside ShellRouteStoreProvider + MemoryRouter
 // ---------------------------------------------------------------------------
 
-function ShellOverlayInner({ stores, shellNode }: { stores: Stores; shellNode: TemplateSchema }) {
+function ShellOverlayInner({ stores, view }: { stores: Stores; view: ShellViewEntry }) {
   const shellRouteStore = useShellRouteStore();
-  const shellStores: Stores = { ...stores, routeStore: shellRouteStore };
-
-  // benchRunAll navigates programmatically (outside the schema action system), so it needs
-  // to use the shell MemoryRouter's navigate, not the main browser Router's.
-  const testStore = stores.testStore as { benchSetNavigate?: (fn: (to: string) => void) => void } | undefined;
-  testStore?.benchSetNavigate?.((to: string) => shellRouteStore.navigate(to));
-  onCleanup(() => {
-    // Restore to main router navigate so benchSetNavigate isn't left pointing at a dead router.
-    testStore?.benchSetNavigate?.((to: string) => stores.routeStore.navigate(to));
-  });
+  const extraStores = view.stores?.(stores, shellRouteStore) ?? {};
+  const shellStores: Stores = { ...stores, routeStore: shellRouteStore, ...extraStores };
 
   return (
     <MemoryRouter
       root={(props) => (
         <ShellRouterRoot>
-          <RenderSchema node={shellNode} stores={shellStores} registry={registry} children={props.children} />
+          <RenderSchema node={view.schema} stores={shellStores} registry={registry} children={props.children} />
         </ShellRouterRoot>
       )}
     >
-      {buildRoutes(shellStores, shellNode.routes ?? [])}
+      {buildRoutes(shellStores, view.schema.routes ?? [])}
       <Route path="*" component={() => null} />
     </MemoryRouter>
   );
@@ -129,8 +137,8 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
              Keyed on shellViewId so switching views properly recreates the overlay. */}
         <Show when={stores.templateStore.activeShellView()} keyed>
           {(shellViewId) => {
-            const shellNode = shellViewSchemas[shellViewId];
-            if (!shellNode) return null;
+            const view = shellViews[shellViewId];
+            if (!view) return null;
             return (
               <div
                 style={{
@@ -144,7 +152,7 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
                 }}
               >
                 <ShellRouteStoreProvider>
-                  <ShellOverlayInner stores={stores} shellNode={shellNode} />
+                  <ShellOverlayInner stores={stores} view={view} />
                 </ShellRouteStoreProvider>
               </div>
             );
