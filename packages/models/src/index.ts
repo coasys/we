@@ -29,7 +29,13 @@ export {
   VideoBlock,
 } from './blocks';
 export { FILE_STORAGE_LANGUAGE } from './constants';
-export { dataURItoBlob, blobToDataURL, resizeImage } from './utils/imageHelpers';
+export {
+  dataURItoBlob,
+  blobToDataURL,
+  resizeImage,
+  compressImageToFileData,
+  dataURIToFileData,
+} from './utils/imageHelpers';
 export type { FileData } from './utils/imageHelpers';
 export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';
 export { aggregateSignals } from './utils/signalAggregate';

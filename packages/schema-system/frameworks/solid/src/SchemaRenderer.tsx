@@ -7,8 +7,8 @@ import {
   themeToStyle,
   validateField,
 } from '@we/schema-shared';
-import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup } from 'solid-js';
-import { createStore, produce } from 'solid-js/store';
+import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show } from 'solid-js';
+import { createStore, produce, reconcile } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
 import { ConditionalRenderer } from './ConditionalRenderer';
@@ -153,15 +153,16 @@ function createQuerySignal(
   getModel: (name: string) => unknown,
   context: Record<string, unknown> = {},
 ): () => unknown[] {
-  const [items, setItems] = createSignal<unknown[]>([]);
+  const [items, setItems] = createStore<unknown[]>([]);
+  const readItems = () => items;
   const getModelForPerspective = (stores as Record<string, unknown>).$getModelForPerspective as
     | ((name: string, uuid?: string) => unknown)
     | undefined;
 
   createEffect(() => {
     let p: unknown = null;
-    if (descriptor.perspectiveStore) {
-      const parts = descriptor.perspectiveStore.split('.');
+    if (descriptor.perspective) {
+      const parts = descriptor.perspective.split('.');
       let target: unknown = stores;
       for (const part of parts) target = (target as Record<string, unknown>)?.[part];
       p = typeof target === 'function' ? (target as () => unknown)() : target;
@@ -171,7 +172,7 @@ function createQuerySignal(
       p = typeof currentPerspective === 'function' ? (currentPerspective as () => unknown)() : null;
     }
     if (!p) {
-      setItems([]);
+      setItems(reconcile([]));
       return;
     }
 
@@ -184,7 +185,7 @@ function createQuerySignal(
     } catch {
       const onError = (stores as Record<string, unknown>).$onError as ((msg: string) => void) | undefined;
       onError?.(`Model "${descriptor.model}" is not available in this perspective`);
-      setItems([]);
+      setItems(reconcile([]));
       return;
     }
 
@@ -204,6 +205,16 @@ function createQuerySignal(
       ...(resolvedInclude !== undefined && { include: resolvedInclude }),
     };
 
+    // AD4M model instances expose `id` as a prototype getter, not an own enumerable
+    // property, so Solid's reconcile({ key: 'id' }) cannot find it for keyed diffing.
+    // Without normalisation, every subscription update destroys and recreates all
+    // <For> entries (reconcile treats them as new), causing visible DOM flashes.
+    const normalise = (results: unknown[]): unknown[] =>
+      results.map((r) => {
+        const rec = r as Record<string, unknown>;
+        return { id: rec.id, ...rec };
+      });
+
     if (descriptor.subscribe) {
       const builder = ModelClass.query(p, queryOptions) as {
         subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
@@ -211,20 +222,20 @@ function createQuerySignal(
       };
       builder
         .subscribe((results) => {
-          setItems(results);
+          setItems(reconcile(normalise(results), { key: 'id', merge: true }));
         })
         .then((initial) => {
-          setItems(initial);
+          setItems(reconcile(normalise(initial), { key: 'id', merge: true }));
         });
       onCleanup(() => builder.dispose());
     } else {
       (ModelClass.findAll(p, queryOptions) as Promise<unknown[]>).then((results) => {
-        setItems(results);
+        setItems(reconcile(normalise(results), { key: 'id', merge: true }));
       });
     }
   });
 
-  return items;
+  return readItems;
 }
 
 /** Detect values with no schema tokens — can be passed through without reactive tracking. */
@@ -313,10 +324,13 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           // If the child is a string, check for $-prefixed context references
           if (typeof child === 'string') {
             if (child.startsWith('$') && child.length > 1) {
-              const resolved = resolveProp(child, stores, effectiveContext, createMemo);
               return (
                 <>
                   {() => {
+                    // Call resolveProp INSIDE the reactive expression so that plain
+                    // context property reads (e.g. '$profile.bio' → item.bio on a
+                    // Solid store proxy) are tracked as fine-grained dependencies.
+                    const resolved = resolveProp(child, stores, effectiveContext, createMemo);
                     const v =
                       typeof resolved === 'function' && REACTIVE_ACCESSOR in resolved
                         ? (resolved as unknown as () => unknown)()
@@ -435,6 +449,114 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       <For each={itemsArray()}>
         {(item) => renderNode(itemSchema, { ...effectiveContext, [String(node.props?.as ?? 'item')]: item })}
       </For>
+    );
+  }
+
+  // Handle singleton query rendering — like $each but for exactly one item.
+  // Uses a dedicated createStore<Record<string,unknown>> for the item so subscription
+  // updates mutate the store proxy in-place (fine-grained reactivity) rather than
+  // replacing an array element, which avoids DOM destruction and preserves focus.
+  // Acts as a scope provider: all children are rendered with the resolved item in scope.
+  if (node.type === '$single') {
+    const asKey = String(node.props?.as ?? 'item');
+    const [hasItem, setHasItem] = createSignal(false);
+    const [item, setItem] = createStore<Record<string, unknown>>({});
+
+    const rawItems = node.props?.item;
+    if (hasToken(rawItems, '$query', 'object')) {
+      const descriptor = resolveQueryProp(rawItems);
+      const getModelFn = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      const getModelForPerspective = (stores as Record<string, unknown>).$getModelForPerspective as
+        | ((name: string, uuid?: string) => unknown)
+        | undefined;
+
+      if (!getModelFn) {
+        console.warn('Schema $single: $getModel not found in stores. Did you wire the model registry?');
+      } else {
+        createEffect(() => {
+          let p: unknown = null;
+          if (descriptor.perspective) {
+            const parts = descriptor.perspective.split('.');
+            let target: unknown = stores;
+            for (const part of parts) target = (target as Record<string, unknown>)?.[part];
+            p = typeof target === 'function' ? (target as () => unknown)() : target;
+          } else {
+            const cp = ((stores as Record<string, unknown>).adamStore as Record<string, unknown> | undefined)
+              ?.currentPerspective;
+            p = typeof cp === 'function' ? (cp as () => unknown)() : null;
+          }
+          if (!p) {
+            setHasItem(false);
+            return;
+          }
+
+          const perspectiveUuid = (p as Record<string, unknown>).uuid as string | undefined;
+          const dynamicCls = getModelForPerspective
+            ? getModelForPerspective(descriptor.model, perspectiveUuid)
+            : undefined;
+          let ModelClass: Record<string, (...args: unknown[]) => unknown>;
+          try {
+            ModelClass = (dynamicCls ?? getModelFn(descriptor.model)) as Record<
+              string,
+              (...args: unknown[]) => unknown
+            >;
+          } catch {
+            const onError = (stores as Record<string, unknown>).$onError as ((msg: string) => void) | undefined;
+            onError?.(`Model "${descriptor.model}" is not available in this perspective`);
+            setHasItem(false);
+            return;
+          }
+
+          const resolvedParams = deepResolveTokens(
+            descriptor.params,
+            stores as Record<string, unknown>,
+            effectiveContext,
+          ) as Record<string, unknown>;
+          const resolvedInclude =
+            descriptor.include !== undefined
+              ? (deepResolveTokens(descriptor.include, stores as Record<string, unknown>, effectiveContext) as Record<
+                  string,
+                  boolean | Record<string, unknown>
+                >)
+              : undefined;
+          const queryOptions = {
+            ...resolvedParams,
+            ...(resolvedInclude !== undefined && { include: resolvedInclude }),
+          };
+
+          const handleResults = (results: unknown[]) => {
+            if (results.length === 0) {
+              setHasItem(false);
+            } else {
+              const r0 = results[0] as Record<string, unknown>;
+              // AD4M model instances expose `id` as a prototype getter, not an own enumerable
+              // property, so plain spread / Object.keys misses it. Explicitly read it first
+              // so the store proxy has a stable id for $profile.id action args.
+              const plain: Record<string, unknown> = { id: r0.id, ...r0 };
+              setItem(reconcile(plain, { merge: true }));
+              setHasItem(true);
+            }
+          };
+
+          if (descriptor.subscribe) {
+            const builder = ModelClass.query(p, queryOptions) as {
+              subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
+              dispose: () => void;
+            };
+            builder.subscribe(handleResults).then(handleResults);
+            onCleanup(() => builder.dispose());
+          } else {
+            (ModelClass.findAll(p, queryOptions) as Promise<unknown[]>).then(handleResults);
+          }
+        });
+      }
+    }
+
+    const childContext = { ...effectiveContext, [asKey]: item };
+    return (
+      <Show when={hasItem()}>
+        <For each={node.children as SchemaNode[]}>{(child) => renderNode(child, childContext)}</For>
+      </Show>
     );
   }
 

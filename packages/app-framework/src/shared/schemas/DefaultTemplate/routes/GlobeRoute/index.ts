@@ -15,6 +15,7 @@ export const globeRoute: RouteSchema = {
   path: '/globe',
   keepAlive: true,
   type: 'Column',
+  props: { width: '100%' },
   $localState: {
     // Layer visibility toggles
     showSkybox: { type: 'boolean', initial: true },
@@ -217,7 +218,7 @@ export const globeRoute: RouteSchema = {
                   items: {
                     $query: {
                       model: 'Space',
-                      where: { id: { not: { $store: 'spaceStore.space.id' } } },
+                      where: { uuid: { not: { $store: 'adamStore.currentPerspective.uuid' } } },
                       include: { location: true },
                     },
                   },

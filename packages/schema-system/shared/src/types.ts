@@ -92,8 +92,8 @@ export type QueryToken = {
     include?: Record<string, unknown>;
     parent?: Record<string, unknown>;
     subscribe?: boolean;
-    /** Store path to resolve perspective from (e.g. 'testStore.perspective'). Defaults to spaceStore.perspective. */
-    perspectiveStore?: string;
+    /** Store path to resolve perspective from (e.g. 'testStore.perspective'). Defaults to adamStore.currentPerspective. */
+    perspective?: string;
   };
 };
 
@@ -131,7 +131,7 @@ export type QueryDescriptor = {
   model: string;
   params: Record<string, unknown>;
   subscribe: boolean;
-  perspectiveStore?: string;
+  perspective?: string;
   include?: Record<string, boolean | Record<string, unknown>>;
 };
 

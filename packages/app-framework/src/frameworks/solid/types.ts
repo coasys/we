@@ -4,10 +4,21 @@ import type { AdamStore, AiStore, AppStore, RouteStore, SpaceStore, TemplateStor
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ModelClass = typeof Ad4mModel & (new (...args: any[]) => Ad4mModel);
 
+export type ModelStoreOptions = {
+  perspective?: string;
+  parent?: { model: string; id: string; field?: string };
+  [k: string]: unknown;
+};
+
 export type ModelStore = {
-  create: (modelName: string, data?: Record<string, unknown>, options?: Record<string, unknown>) => Promise<Ad4mModel>;
-  update: (modelName: string, id: string, data: Record<string, unknown>) => Promise<Ad4mModel>;
-  delete: (modelName: string, id: string) => Promise<void>;
+  create: (modelName: string, data?: Record<string, unknown>, options?: ModelStoreOptions) => Promise<Ad4mModel>;
+  update: (
+    modelName: string,
+    id: string,
+    data: Record<string, unknown>,
+    options?: { perspective?: string },
+  ) => Promise<Ad4mModel>;
+  delete: (modelName: string, id: string, options?: { perspective?: string }) => Promise<void>;
 };
 
 export type Stores = {

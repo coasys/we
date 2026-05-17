@@ -136,7 +136,14 @@ export function BlockComposer({ post, onSave, onReady, width = '100%', ...rest }
         {onReady ? <OnReadyPlugin onSave={onSave} onReady={onReady} /> : <SaveButton onSave={onSave} />}
 
         {/* Lexical plugins */}
-        <RichTextPlugin contentEditable={<ContentEditable />} errorBoundary={LexicalErrorBoundary} />
+        <RichTextPlugin
+          contentEditable={
+            <div>
+              <ContentEditable />
+            </div>
+          }
+          errorBoundary={LexicalErrorBoundary}
+        />
         <LexicalMarkdownShortcutPlugin transformers={[HEADING, QUOTE, UNORDERED_LIST, ORDERED_LIST, CHECK_LIST]} />
         <HistoryPlugin />
         <ListPlugin />

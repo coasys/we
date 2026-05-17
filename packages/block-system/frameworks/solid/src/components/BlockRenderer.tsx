@@ -20,7 +20,6 @@ function LoadPostForRenderer({ post }: { post?: SerializedBlockNode }) {
   const [editor] = useLexicalComposerContext();
 
   createEffect(() => {
-    console.log('post data for renderer', post);
     if (!post || !editor) return;
     try {
       const editorState = editor.parseEditorState({ root: post });
@@ -47,7 +46,14 @@ export function BlockRenderer({ post, width = '100%', ...rest }: Props) {
     <Column class="we-block-renderer-wrapper" width={width} {...rest}>
       <LexicalComposer initialConfig={initialConfig}>
         <LoadPostForRenderer post={post} />
-        <RichTextPlugin contentEditable={<ContentEditable readOnly={true} />} errorBoundary={LexicalErrorBoundary} />
+        <RichTextPlugin
+          contentEditable={
+            <div>
+              <ContentEditable readOnly={true} />
+            </div>
+          }
+          errorBoundary={LexicalErrorBoundary}
+        />
         {/* No editing/history/custom plugins */}
       </LexicalComposer>
     </Column>

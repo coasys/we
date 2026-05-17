@@ -1,3 +1,4 @@
+import type { PerspectiveProxy } from '@coasys/ad4m';
 import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { getModel, getModelForPerspective } from '@shared/registries/modelRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
@@ -44,19 +45,22 @@ export default function TemplateProvider() {
     info: (...args: unknown[]) => console.info(...args),
   };
 
-  // Model store — wraps Ad4m static model methods with automatic perspective injection
+  // Model store — wraps Ad4m static model methods with automatic perspective injection.
+  // Pass `{ perspective: 'store.path' }` in options to target a different perspective
+  // (e.g. 'adamStore.rootPerspective' for we-root models like AgentProfile).
   const modelStore = {
     create: (modelName: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
-      const Model = getModel(modelName);
-      return Model.create(adamStore.currentPerspective()!, data, options);
+      const [Model, p] = resolve(modelName, options as { perspective?: string });
+      const rest = Object.fromEntries(Object.entries(options ?? {}).filter(([k]) => k !== 'perspective'));
+      return Model.create(p, data, Object.keys(rest).length ? rest : undefined);
     },
-    update: (modelName: string, id: string, data: Record<string, unknown>) => {
-      const Model = getModel(modelName);
-      return Model.update(adamStore.currentPerspective()!, id, data);
+    update: (modelName: string, id: string, data: Record<string, unknown>, options?: { perspective?: string }) => {
+      const [Model, p] = resolve(modelName, options);
+      return Model.update(p, id, data);
     },
-    delete: (modelName: string, id: string) => {
-      const Model = getModel(modelName);
-      return Model.delete(adamStore.currentPerspective()!, id);
+    delete: (modelName: string, id: string, options?: { perspective?: string }) => {
+      const [Model, p] = resolve(modelName, options);
+      return Model.delete(p, id);
     },
   };
 
@@ -74,6 +78,21 @@ export default function TemplateProvider() {
     $getModelForPerspective: getModelForPerspective,
     $onError: (msg: string) => toastService.error(msg),
   };
+
+  // Resolves a dot-path string like 'adamStore.rootPerspective' against the stores object.
+  // Only called at action-dispatch time, so `stores` is always fully initialized.
+  function resolvePerspective(path?: string): PerspectiveProxy | null {
+    if (!path) return null;
+    const [storeName, ...rest] = path.split('.');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let val: any = (stores as Record<string, unknown>)[storeName];
+    for (const key of rest) val = val?.[key];
+    return typeof val === 'function' ? val() : (val ?? null);
+  }
+
+  function resolve(modelName: string, opts?: { perspective?: string }) {
+    return [getModel(modelName), resolvePerspective(opts?.perspective) ?? adamStore.currentPerspective()!] as const;
+  }
 
   // Shell chrome — boot screen + sidebar + AI chat panel.
   // Rendered once outside the keyed Router so it never remounts on template switches.

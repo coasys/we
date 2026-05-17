@@ -11,34 +11,7 @@ export const postsList: SchemaNode = {
           $query: {
             model: 'CollectionBlock',
             where: { type: 'root' },
-            include: {
-              $totalLikeCount: {
-                from: 'signals',
-                where: { signalTypeId: { $store: 'spaceStore.signalTypesBySlug.like.id' } },
-                count: true,
-              },
-              $myLikeSignal: {
-                from: 'signals',
-                where: {
-                  signalTypeId: { $store: 'spaceStore.signalTypesBySlug.like.id' },
-                  author: { $store: 'adamStore.me.did' },
-                },
-                limit: 1,
-              },
-              $totalRatingCount: {
-                from: 'signals',
-                where: { signalTypeId: { $store: 'spaceStore.signalTypesBySlug.rating.id' } },
-                count: true,
-              },
-              $myRatingSignal: {
-                from: 'signals',
-                where: {
-                  signalTypeId: { $store: 'spaceStore.signalTypesBySlug.rating.id' },
-                  author: { $store: 'adamStore.me.did' },
-                },
-                limit: 1,
-              },
-            },
+            include: { signals: true },
           },
         },
         as: 'post',
@@ -57,47 +30,34 @@ export const postsList: SchemaNode = {
                 },
               ],
             },
-            // { type: 'we-text', props: { text: '$post.$totalLikeCount' } },
-            // { type: 'we-text', props: { text: '$post.$myLikeSignal' } },
             {
               type: 'Row',
               props: { mt: '400', ay: 'center', gap: '300' },
               children: [
                 {
-                  type: '$if',
-                  props: {
-                    condition: { $store: 'spaceStore.signalTypesBySlug.like' },
-                    then: {
+                  type: '$each',
+                  props: { items: { $query: { model: 'SignalType', subscribe: true } }, as: 'sig' },
+                  children: [
+                    {
                       type: 'SignalControl',
                       props: {
-                        signalType: { $store: 'spaceStore.signalTypesBySlug.like' },
-                        myValue: '$post.$myLikeSignal.value',
-                        aggregate: '$post.$totalLikeCount',
-                        onSignal: {
-                          $action: 'spaceStore.upsertSignal',
-                          args: ['$post.id', { $store: 'spaceStore.signalTypesBySlug.like.id' }, '$arg'],
+                        signalType: '$sig',
+                        aggregate: {
+                          $count: {
+                            items: { $filter: { items: '$post.signals', where: { signalTypeId: '$sig.id' } } },
+                          },
                         },
+                        myValue: {
+                          $find: {
+                            items: '$post.signals',
+                            where: { signalTypeId: '$sig.id', author: { $store: 'adamStore.me.did' } },
+                            select: 'value',
+                          },
+                        },
+                        onSignal: { $action: 'spaceStore.upsertSignal', args: ['$post.id', '$sig.id', '$arg'] },
                       },
                     },
-                  },
-                },
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $store: 'spaceStore.signalTypesBySlug.rating' },
-                    then: {
-                      type: 'SignalControl',
-                      props: {
-                        signalType: { $store: 'spaceStore.signalTypesBySlug.rating' },
-                        myValue: '$post.$myRatingSignal.value',
-                        aggregate: '$post.$totalRatingCount',
-                        onSignal: {
-                          $action: 'spaceStore.upsertSignal',
-                          args: ['$post.id', { $store: 'spaceStore.signalTypesBySlug.rating.id' }, '$arg'],
-                        },
-                      },
-                    },
-                  },
+                  ],
                 },
               ],
             },
