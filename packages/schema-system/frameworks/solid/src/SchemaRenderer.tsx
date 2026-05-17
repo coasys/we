@@ -205,6 +205,16 @@ function createQuerySignal(
       ...(resolvedInclude !== undefined && { include: resolvedInclude }),
     };
 
+    // AD4M model instances expose `id` as a prototype getter, not an own enumerable
+    // property, so Solid's reconcile({ key: 'id' }) cannot find it for keyed diffing.
+    // Without normalisation, every subscription update destroys and recreates all
+    // <For> entries (reconcile treats them as new), causing visible DOM flashes.
+    const normalise = (results: unknown[]): unknown[] =>
+      results.map((r) => {
+        const rec = r as Record<string, unknown>;
+        return { id: rec.id, ...rec };
+      });
+
     if (descriptor.subscribe) {
       const builder = ModelClass.query(p, queryOptions) as {
         subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
@@ -212,15 +222,15 @@ function createQuerySignal(
       };
       builder
         .subscribe((results) => {
-          setItems(reconcile(results, { key: 'id', merge: true }));
+          setItems(reconcile(normalise(results), { key: 'id', merge: true }));
         })
         .then((initial) => {
-          setItems(reconcile(initial, { key: 'id', merge: true }));
+          setItems(reconcile(normalise(initial), { key: 'id', merge: true }));
         });
       onCleanup(() => builder.dispose());
     } else {
       (ModelClass.findAll(p, queryOptions) as Promise<unknown[]>).then((results) => {
-        setItems(reconcile(results, { key: 'id', merge: true }));
+        setItems(reconcile(normalise(results), { key: 'id', merge: true }));
       });
     }
   });

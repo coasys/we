@@ -2,7 +2,7 @@
  * SpaceModal
  *
  * Rendered when the user clicks a Space pin on the discovery globe.
- * Fetches the selected Space via $each+$query bound to `$local.selectedPin.id`.
+ * Fetches the selected Space via $single+$query bound to `$local.selectedPin.id`.
  *
  * Layout:
  *   • Optional cover-image banner  ($item.coverImage)
@@ -19,9 +19,9 @@ export const spaceModal = {
   },
   children: [
     {
-      type: '$each',
+      type: '$single',
       props: {
-        items: { $query: { model: 'Space', where: { id: { $local: 'selectedPin.id' } }, include: { signals: true } } },
+        item: { $query: { model: 'Space', where: { id: { $local: 'selectedPin.id' } }, include: { signals: true } } },
       },
       children: [
         {

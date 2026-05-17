@@ -15,6 +15,7 @@ export const globeRoute: RouteSchema = {
   path: '/globe',
   keepAlive: true,
   type: 'Column',
+  props: { width: '100%' },
   $localState: {
     // Layer visibility toggles
     showSkybox: { type: 'boolean', initial: true },
