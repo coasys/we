@@ -4714,6 +4714,42 @@
       "source": "components"
     },
     {
+      "name": "SearchInput",
+      "props": [
+        {
+          "name": "placeholder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onSearch",
+          "type": "((value: string) => void)",
+          "optional": true
+        },
+        {
+          "name": "debounce",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "class",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "styles",
+          "type": "Record<string, string | number>",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
       "name": "SignalControl",
       "props": [
         {
@@ -4722,13 +4758,13 @@
           "optional": false
         },
         {
-          "name": "myValue",
-          "type": "number | null",
+          "name": "signals",
+          "type": "SignalData[]",
           "optional": true
         },
         {
-          "name": "aggregate",
-          "type": "number",
+          "name": "myDid",
+          "type": "string",
           "optional": true
         },
         {

@@ -122,7 +122,15 @@ export default class Slider extends DesignSystemElement {
     return mergeProps(usedProps, mergeProps(sizeDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
+  /** Fires continuously while dragging — does NOT persist to `this.value`. */
   private _onInput(e: Event) {
+    e.stopPropagation();
+    const val = Number((e.target as HTMLInputElement).value);
+    this.dispatchEvent(new CustomEvent('input', { detail: val, bubbles: true, composed: true }));
+  }
+
+  /** Fires once when the user releases — updates `this.value` and dispatches `change`. */
+  private _onChange(e: Event) {
     e.stopPropagation();
     const val = Number((e.target as HTMLInputElement).value);
     this.value = val;
@@ -145,6 +153,7 @@ export default class Slider extends DesignSystemElement {
             step=${this.step}
             ?disabled=${this.disabled}
             @input=${this._onInput}
+            @change=${this._onChange}
             style=${styleMap({
               '--track-height': trackH,
               '--thumb-size': thumbS,

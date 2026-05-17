@@ -1481,11 +1481,23 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
+      name: 'SearchInput',
+      props: [
+        { name: 'placeholder', type: 'string', optional: true },
+        { name: 'value', type: 'string', optional: true },
+        { name: 'onSearch', type: '((value: string) => void)', optional: true },
+        { name: 'debounce', type: 'number', optional: true },
+        { name: 'class', type: 'string', optional: true },
+        { name: 'styles', type: 'Record<string, string | number>', optional: true },
+      ],
+      source: 'components',
+    },
+    {
       name: 'SignalControl',
       props: [
         { name: 'signalType', type: 'SignalTypeData', optional: false },
-        { name: 'myValue', type: 'number | null', optional: true },
-        { name: 'aggregate', type: 'number', optional: true },
+        { name: 'signals', type: 'SignalData[]', optional: true },
+        { name: 'myDid', type: 'string', optional: true },
         { name: 'onSignal', type: '((value: number) => void)', optional: true },
         { name: 'disabled', type: 'boolean', optional: true },
         { name: 'preview', type: 'boolean', optional: true },

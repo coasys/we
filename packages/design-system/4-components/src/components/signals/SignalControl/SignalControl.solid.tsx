@@ -6,11 +6,19 @@ import { Row } from '../../../frameworks/solid';
 import type { SignalControlProps } from './SignalControl.types';
 
 export function SignalControl(props: SignalControlProps) {
-  console.log('SignalControl propsL: ', { ...props });
   const [previewValue, setPreviewValue] = createSignal<number | null>(null);
+  /** Draft value while the slider thumb is being dragged — not persisted until release */
+  const [sliderDraft, setSliderDraft] = createSignal<number | null>(null);
 
-  /** Unified reactive value: internal in preview mode, external otherwise */
-  const value = () => (props.preview ? previewValue() : (props.myValue ?? null));
+  /** The current user's signal value derived from the signals array */
+  const myValue = () => {
+    if (props.preview) return previewValue();
+    const mine = props.signals?.find((s) => s.author === props.myDid);
+    return mine !== undefined ? mine.value : null;
+  };
+
+  /** Unified reactive value */
+  const value = () => myValue();
 
   /** Unified signal emitter */
   const signal = (v: number) => {
@@ -21,8 +29,28 @@ export function SignalControl(props: SignalControlProps) {
   /** Disabled: never in preview mode */
   const isDisabled = () => !props.preview && (props.disabled ?? false);
 
-  /** In preview mode derive a sensible aggregate from the internal value */
-  const aggregate = () => (props.preview ? (previewValue() ?? 0) : (props.aggregate ?? 0));
+  /**
+   * Aggregate computed from the signals array according to SignalType.aggregate.
+   * - toggle: count of signals with value !== 0
+   * - vote:   net score (sum of all values, +1s and -1s cancel)
+   * - rating/slider: mean value (sum / count)
+   * Falls back to 0 if no signals.
+   */
+  const aggregate = () => {
+    if (props.preview) return previewValue() ?? 0;
+    const sigs = props.signals ?? [];
+    if (sigs.length === 0) return 0;
+    const mode = props.signalType.mode;
+    if (mode === 'toggle') {
+      return sigs.filter((s) => s.value !== 0).length;
+    }
+    if (mode === 'vote') {
+      return sigs.reduce((acc, s) => acc + s.value, 0);
+    }
+    // rating / slider: mean rounded to 1 decimal place
+    const sum = sigs.reduce((acc, s) => acc + s.value, 0);
+    return Math.round((sum / sigs.length) * 10) / 10;
+  };
 
   return (
     <div class={`signal-control ${props.class || ''}`} style={props.styles}>
@@ -68,6 +96,8 @@ export function SignalControl(props: SignalControlProps) {
         {/* ── rating ─────────────────────────────────────────────────────────── */}
         <Match when={props.signalType.mode === 'rating'}>
           <Row class="signal-control__rating" ay="center" gap="400">
+            {/* Community mean */}
+            <we-number class="signal-control__agg" value={aggregate()} shorten />
             {/* Icon row: one icon per integer step between rangeMin and rangeMax */}
             <Row class="signal-control__rating-icons" ay="center" gap="100">
               <For
@@ -126,16 +156,27 @@ export function SignalControl(props: SignalControlProps) {
         {/* ── slider ───────────────────────────────────────────────────────── */}
         <Match when={props.signalType.mode === 'slider'}>
           <Row class="signal-control__slider" ay="center" gap="300">
+            {/* Community mean shown on the left */}
+            <we-number class="signal-control__agg" value={aggregate()} shorten />
             <we-icon name={props.signalType.icon} />
             <we-slider
               min={props.signalType.rangeMin}
               max={props.signalType.rangeMax}
               step={props.signalType.step ?? 1}
-              value={value() ?? props.signalType.rangeMin}
+              value={sliderDraft() ?? value() ?? props.signalType.rangeMin}
               disabled={isDisabled()}
-              onChange={(e: Event) => signal((e as CustomEvent<number>).detail)}
+              onInput={(e: Event) => setSliderDraft((e as CustomEvent<number>).detail)}
+              onChange={(e: Event) => {
+                const v = (e as CustomEvent<number>).detail;
+                signal(v);
+                setSliderDraft(null);
+              }}
             />
-            <we-number class="signal-control__count" value={aggregate()} shorten />
+            {/* Live position during drag, settled value after */}
+            <we-number
+              class="signal-control__slider-value"
+              value={sliderDraft() ?? value() ?? props.signalType.rangeMin}
+            />
           </Row>
         </Match>
       </Switch>

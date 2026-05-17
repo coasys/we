@@ -436,7 +436,7 @@ export function ImageCrop(allProps: ImageCropProps) {
         </we-tooltip>
 
         <Column ax="center">
-          <we-slider mt="24px" min={-45} max={45} step={0.5} value={fineRotDeg()} on:change={onSlider} />
+          <we-slider mt="24px" min={-45} max={45} step={0.5} value={fineRotDeg()} on:input={onSlider} />
           <we-text mt="10px" fontSize="300" color="neutral-500">
             {fineRotDeg() > 0 ? `+${fineRotDeg()}°` : `${fineRotDeg()}°`}
           </we-text>

@@ -10,12 +10,22 @@ export interface SignalTypeData {
   mode: SignalMode;
 }
 
+/** Minimal shape expected from a Signal record */
+export interface SignalData {
+  signalTypeId: string;
+  value: number;
+  author: string;
+}
+
 export interface SignalControlProps {
   signalType: SignalTypeData;
-  /** The authenticated user's current signal value, or null if not yet signalled */
-  myValue?: number | null;
-  /** Pre-computed aggregate value to display (count, sum, mean, etc.) */
-  aggregate?: number;
+  /**
+   * All signals attached to the parent entity for this signalType.
+   * SignalControl computes myValue and aggregate internally from this array.
+   */
+  signals?: SignalData[];
+  /** DID of the current user — used to derive myValue from signals */
+  myDid?: string;
   onSignal?: (value: number) => void;
   disabled?: boolean;
   /**

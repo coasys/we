@@ -42,18 +42,8 @@ export const postsList: SchemaNode = {
                       type: 'SignalControl',
                       props: {
                         signalType: '$sig',
-                        aggregate: {
-                          $count: {
-                            items: { $filter: { items: '$post.signals', where: { signalTypeId: '$sig.id' } } },
-                          },
-                        },
-                        myValue: {
-                          $find: {
-                            items: '$post.signals',
-                            where: { signalTypeId: '$sig.id', author: { $store: 'adamStore.me.did' } },
-                            select: 'value',
-                          },
-                        },
+                        signals: { $filter: { items: '$post.signals', where: { signalTypeId: '$sig.id' } } },
+                        myDid: { $store: 'adamStore.me.did' },
                         onSignal: { $action: 'spaceStore.upsertSignal', args: ['$post.id', '$sig.id', '$arg'] },
                       },
                     },

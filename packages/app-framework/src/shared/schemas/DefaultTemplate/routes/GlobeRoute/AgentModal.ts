@@ -129,26 +129,8 @@ export const agentModal = {
                       type: 'SignalControl',
                       props: {
                         signalType: '$sig',
-                        aggregate: {
-                          $count: {
-                            items: {
-                              $filter: {
-                                items: '$item.signals',
-                                where: { signalTypeId: '$sig.id' },
-                              },
-                            },
-                          },
-                        },
-                        myValue: {
-                          $find: {
-                            items: '$item.signals',
-                            where: {
-                              signalTypeId: '$sig.id',
-                              author: { $store: 'adamStore.me.did' },
-                            },
-                            select: 'value',
-                          },
-                        },
+                        signals: { $filter: { items: '$item.signals', where: { signalTypeId: '$sig.id' } } },
+                        myDid: { $store: 'adamStore.me.did' },
                         onSignal: {
                           $action: 'spaceStore.upsertSignal',
                           args: ['$item.id', '$sig.id', '$arg'],
