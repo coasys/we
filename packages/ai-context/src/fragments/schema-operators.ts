@@ -39,6 +39,21 @@ Action/event:
 { "$action": "storeName.method", "args": [...] }
 Calls a method on a store, optionally with arguments (which can themselves be tokens).
 
+Model mutations via $action (use these for creating/updating/deleting model instances):
+model.create — creates a model instance in the current perspective (default) or a specified one:
+{ "$action": "model.create", "args": ["ModelName", { "field": "value" }, { "perspective": "adamStore.rootPerspective" }] }
+The third argument is an options object. Omit it to use the current space perspective.
+
+model.update — updates a model instance:
+{ "$action": "model.update", "args": ["ModelName", "$item.id", { "field": "newValue" }] }
+To target a non-current perspective: { "$action": "model.update", "args": ["ModelName", "$item.id", { "field": "value" }, { "perspective": "adamStore.rootPerspective" }] }
+
+model.delete — deletes a model instance:
+{ "$action": "model.delete", "args": ["ModelName", "$item.id"] }
+
+Use perspective: 'adamStore.rootPerspective' for we-root models (AgentProfile, AgentSettings).
+Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
+
 Conditional logic:
 { "$if": { "condition": ..., "then": ..., "else": ... } }
 Evaluates condition; if truthy, returns then, else returns else.

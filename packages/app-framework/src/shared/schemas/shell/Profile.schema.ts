@@ -6,7 +6,7 @@
  *
  * Data is sourced via a $query subscription on AgentProfile in rootPerspective
  * so the displayed data is always live without manual signal wiring.
- * Text field mutations use rootModel.update (targets we-root, not space perspective).
+ * Text field mutations use model.update with perspective: 'adamStore.rootPerspective' (targets we-root, not space perspective).
  * Image mutations use adamStore.updateProfileImage.
  */
 
@@ -183,8 +183,13 @@ export const profileTemplate: TemplateSchema = {
                                 placeholder: 'First name',
                                 value: '$profile.firstName',
                                 onChange: {
-                                  $action: 'rootModel.update',
-                                  args: ['AgentProfile', '$profile.id', { firstName: '$arg.detail' }],
+                                  $action: 'model.update',
+                                  args: [
+                                    'AgentProfile',
+                                    '$profile.id',
+                                    { firstName: '$arg.detail' },
+                                    { perspective: 'adamStore.rootPerspective' },
+                                  ],
                                 },
                               },
                             },
@@ -200,8 +205,13 @@ export const profileTemplate: TemplateSchema = {
                                 placeholder: 'Last name',
                                 value: '$profile.lastName',
                                 onChange: {
-                                  $action: 'rootModel.update',
-                                  args: ['AgentProfile', '$profile.id', { lastName: '$arg.detail' }],
+                                  $action: 'model.update',
+                                  args: [
+                                    'AgentProfile',
+                                    '$profile.id',
+                                    { lastName: '$arg.detail' },
+                                    { perspective: 'adamStore.rootPerspective' },
+                                  ],
                                 },
                               },
                             },
@@ -219,8 +229,13 @@ export const profileTemplate: TemplateSchema = {
                             placeholder: 'yourhandle',
                             value: '$profile.handle',
                             onChange: {
-                              $action: 'rootModel.update',
-                              args: ['AgentProfile', '$profile.id', { handle: '$arg.detail' }],
+                              $action: 'model.update',
+                              args: [
+                                'AgentProfile',
+                                '$profile.id',
+                                { handle: '$arg.detail' },
+                                { perspective: 'adamStore.rootPerspective' },
+                              ],
                             },
                           },
                         },
@@ -236,8 +251,13 @@ export const profileTemplate: TemplateSchema = {
                             placeholder: 'Tell us about yourself...',
                             value: '$profile.bio',
                             onChange: {
-                              $action: 'rootModel.update',
-                              args: ['AgentProfile', '$profile.id', { bio: '$arg.detail' }],
+                              $action: 'model.update',
+                              args: [
+                                'AgentProfile',
+                                '$profile.id',
+                                { bio: '$arg.detail' },
+                                { perspective: 'adamStore.rootPerspective' },
+                              ],
                             },
                           },
                         },

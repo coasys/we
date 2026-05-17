@@ -445,7 +445,7 @@ export function AdamStoreProvider(props: ParentProps) {
   async function initSystemPerspectives(client: Ad4mClient): Promise<void> {
     // Drives agentProfile signal and owns global sync for all mutations.
     // Fires on initial load and after every link-write to the root perspective that
-    // affects AgentProfile (text updates via rootModel.update, image updates via
+    // affects AgentProfile (text updates via model.update with perspective option, image updates via
     // updateProfileImage, location updates via updateAgentLocation).
     function subscribeToAgentProfile(p: PerspectiveProxy) {
       const profileBuilder = AgentProfile.query(p, { include: { location: true } });
