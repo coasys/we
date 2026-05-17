@@ -446,13 +446,13 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   // Uses a dedicated createStore<Record<string,unknown>> for the item so subscription
   // updates mutate the store proxy in-place (fine-grained reactivity) rather than
   // replacing an array element, which avoids DOM destruction and preserves focus.
+  // Acts as a scope provider: all children are rendered with the resolved item in scope.
   if (node.type === '$single') {
-    const itemSchema = node.children?.[0] as SchemaNode | undefined;
     const asKey = String(node.props?.as ?? 'item');
     const [hasItem, setHasItem] = createSignal(false);
     const [item, setItem] = createStore<Record<string, unknown>>({});
 
-    const rawItems = node.props?.items;
+    const rawItems = node.props?.item;
     if (hasToken(rawItems, '$query', 'object')) {
       const descriptor = resolveQueryProp(rawItems);
       const getModelFn = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
@@ -542,7 +542,12 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       }
     }
 
-    return <Show when={hasItem()}>{renderNode(itemSchema, { ...effectiveContext, [asKey]: item })}</Show>;
+    const childContext = { ...effectiveContext, [asKey]: item };
+    return (
+      <Show when={hasItem()}>
+        <For each={node.children as SchemaNode[]}>{(child) => renderNode(child, childContext)}</For>
+      </Show>
+    );
   }
 
   // Resolve component: registry entry > native HTML/custom element > error
