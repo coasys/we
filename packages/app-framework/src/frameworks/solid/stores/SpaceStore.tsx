@@ -4,16 +4,7 @@ import { installSpaceSdna, SPACE_MODELS } from '@shared/spaceModels';
 import { deriveSlug } from '@shared/utils';
 import { useAdamStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';
-import {
-  AgentProfile,
-  blobToDataURL,
-  FileData,
-  LocationBlock,
-  resizeImage,
-  Signal,
-  SignalType,
-  Space,
-} from '@we/models';
+import { AgentProfile, compressImageToFileData, LocationBlock, Signal, SignalType, Space } from '@we/models';
 import {
   Accessor,
   createContext,
@@ -29,8 +20,8 @@ import { useRouteStore } from './RouteStore';
 import { useTemplateStore } from './TemplateStore';
 
 export type AgentProfileInput = Omit<Partial<AgentProfile>, 'avatar' | 'coverImage' | 'location'> & {
-  avatar?: File | FileData | string;
-  coverImage?: File | FileData | string;
+  avatar?: File | string;
+  coverImage?: File | string;
   location?: Partial<LocationBlock>;
 };
 
@@ -43,8 +34,7 @@ export interface SpaceStore {
 
   // Actions
   createPost: (json: unknown) => Promise<void>;
-  updateSpaceAvatar: (imageFile: File) => Promise<void>;
-  updateSpaceCoverImage: (imageFile: File) => Promise<void>;
+  updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   createAgentProfile: (config: AgentProfileInput) => Promise<void>;
@@ -111,30 +101,15 @@ export function SpaceStoreProvider(props: ParentProps) {
     routeStore.navigate(targetPath);
   }
 
-  async function updateSpaceAvatar(imageFile: File): Promise<void> {
+  async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File): Promise<void> {
     const currentSpace = space();
     const currentPerspective = adamStore.currentPerspective();
     if (!currentSpace || !currentPerspective) return;
-    const compressedBlob = await resizeImage(imageFile, 0.6);
-    const imageBase64 = await blobToDataURL(compressedBlob);
+    const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'space-image' : 'space-cover');
     const [spaceModel] = await Space.findAll(currentPerspective, { where: { uuid: currentPerspective.uuid } });
     if (!spaceModel) return;
-    spaceModel.avatar = { data_base64: imageBase64, name: 'space-image', file_type: 'image/png' } as FileData;
-    await spaceModel.save();
-    setSpace({ ...currentSpace, avatar: spaceModel.avatar });
-  }
-
-  async function updateSpaceCoverImage(imageFile: File): Promise<void> {
-    const currentSpace = space();
-    const currentPerspective = adamStore.currentPerspective();
-    if (!currentSpace || !currentPerspective) return;
-    const compressedBlob = await resizeImage(imageFile, 0.6);
-    const imageBase64 = await blobToDataURL(compressedBlob);
-    const [spaceModel] = await Space.findAll(currentPerspective, { where: { uuid: currentPerspective.uuid } });
-    if (!spaceModel) return;
-    spaceModel.coverImage = { data_base64: imageBase64, name: 'space-cover', file_type: 'image/png' } as FileData;
-    await spaceModel.save();
-    setSpace({ ...currentSpace, coverImage: spaceModel.coverImage });
+    await Space.update(currentPerspective, spaceModel.id, { [field]: fileData });
+    setSpace({ ...currentSpace, [field]: fileData });
   }
 
   async function createSignalType(config: Partial<SignalType>): Promise<void> {
@@ -160,25 +135,10 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     const { firstName, lastName, handle, bio, avatar, coverImage, location } = config;
 
-    let avatarData: FileData | undefined;
-    if (avatar instanceof File) {
-      const resized = await resizeImage(avatar, 0.6);
-      avatarData = {
-        data_base64: await blobToDataURL(resized),
-        name: 'agent-avatar',
-        file_type: 'image/png',
-      } as FileData;
-    }
+    const avatarData = avatar instanceof File ? await compressImageToFileData(avatar, 'agent-avatar') : undefined;
 
-    let coverImageData: FileData | undefined;
-    if (coverImage instanceof File) {
-      const resized = await resizeImage(coverImage, 0.6);
-      coverImageData = {
-        data_base64: await blobToDataURL(resized),
-        name: 'agent-cover',
-        file_type: 'image/png',
-      } as FileData;
-    }
+    const coverImageData =
+      coverImage instanceof File ? await compressImageToFileData(coverImage, 'agent-cover') : undefined;
 
     const profile = await AgentProfile.create(p, {
       firstName,
@@ -278,8 +238,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Actions
     createPost,
-    updateSpaceAvatar,
-    updateSpaceCoverImage,
+    updateSpaceImage,
     createSignalType,
     upsertSignal,
     createAgentProfile,

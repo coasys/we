@@ -15,7 +15,7 @@ export const spaceSidebar: SchemaNode = {
         height: '180px',
         aspect: 4 / 1,
         placeholderIcon: 'panorama',
-        onImageChange: { $action: 'spaceStore.updateSpaceCoverImage', args: ['$arg'] },
+        onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['coverImage', '$arg'] },
       },
     },
     {
@@ -34,7 +34,7 @@ export const spaceSidebar: SchemaNode = {
             r: 'pill',
             ring: '0 0 0 3px var(--we-color-neutral-500)',
             placeholderIcon: 'users-three',
-            onImageChange: { $action: 'spaceStore.updateSpaceAvatar', args: ['$arg'] },
+            onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['avatar', '$arg'] },
           },
         },
       ],
