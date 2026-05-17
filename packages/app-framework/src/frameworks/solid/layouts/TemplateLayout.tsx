@@ -15,7 +15,9 @@
  * $routes outlets work with a real router context, without touching the browser URL.
  */
 import { landingPageTemplate, profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
+import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutations.actions';
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
+import { deepClone } from '@shared/utils';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import type { RouteStore } from '@solid/stores/RouteStore';
 import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@solid/stores/ShellRouteStore';
@@ -26,6 +28,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
 import { createEffect, For, Show } from 'solid-js';
+import { createStore } from 'solid-js/store';
 
 import { buildRoutes } from '../utils/buildRoutes';
 
@@ -35,9 +38,11 @@ export const SHELL_SIDEBAR_WIDTH = '72px';
 // Shell view registry — maps activeShellView id → schema + optional extra stores.
 // The stores factory is called with (baseStores, shellRouteStore) at mount time,
 // so each view gets exactly the stores it needs and nothing more.
+// Returning { $schema } from the factory overrides the rendered schema with a
+// mutable reactive store — used by schema-tests to make mutations visible.
 type ShellViewEntry = {
   schema: TemplateSchema;
-  stores?: (base: Stores, shellRouteStore: RouteStore) => Partial<Stores>;
+  stores?: (base: Stores, shellRouteStore: RouteStore) => Partial<Stores> & { $schema?: TemplateSchema };
 };
 
 const shellViews: Record<string, ShellViewEntry> = {
@@ -46,9 +51,15 @@ const shellViews: Record<string, ShellViewEntry> = {
   settings: { schema: settingsTemplate },
   'schema-tests': {
     schema: schemaTestsTemplate,
-    stores: (base, shellRouteStore) => ({
-      testStore: createTestStore(base.adamStore.testPerspective, (to) => shellRouteStore.navigate(to)),
-    }),
+    stores: (base, shellRouteStore) => {
+      const [schemaState, setSchemaState] = createStore<TemplateSchema>(deepClone(schemaTestsTemplate));
+      const mutations = schemaMutationActions(schemaState, setSchemaState);
+      return {
+        templateStore: { ...base.templateStore, ...mutations },
+        testStore: createTestStore(base.adamStore.testPerspective, (to) => shellRouteStore.navigate(to)),
+        $schema: schemaState,
+      };
+    },
   },
 };
 
@@ -58,18 +69,19 @@ const shellViews: Record<string, ShellViewEntry> = {
 
 function ShellOverlayInner({ stores, view }: { stores: Stores; view: ShellViewEntry }) {
   const shellRouteStore = useShellRouteStore();
-  const extraStores = view.stores?.(stores, shellRouteStore) ?? {};
-  const shellStores: Stores = { ...stores, routeStore: shellRouteStore, ...extraStores };
+  const { $schema: reactiveSchema, ...storeEntries } = view.stores?.(stores, shellRouteStore) ?? {};
+  const shellStores: Stores = { ...stores, routeStore: shellRouteStore, ...(storeEntries as Partial<Stores>) };
+  const schema = reactiveSchema ?? view.schema;
 
   return (
     <MemoryRouter
       root={(props) => (
         <ShellRouterRoot>
-          <RenderSchema node={view.schema} stores={shellStores} registry={registry} children={props.children} />
+          <RenderSchema node={schema} stores={shellStores} registry={registry} children={props.children} />
         </ShellRouterRoot>
       )}
     >
-      {buildRoutes(shellStores, view.schema.routes ?? [])}
+      {buildRoutes(shellStores, schema.routes ?? [])}
       <Route path="*" component={() => null} />
     </MemoryRouter>
   );

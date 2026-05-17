@@ -1,6 +1,5 @@
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
-import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutations.actions';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
@@ -27,7 +26,7 @@ export type TemplateManagementItem = {
   isDefault: boolean;
 };
 
-export interface TemplateStoreBase {
+export interface TemplateStore {
   // State
   templates: Accessor<TemplateSchema[]>;
   allTemplates: Accessor<TemplateSchema[]>;
@@ -61,9 +60,6 @@ export interface TemplateStoreBase {
   isInstalled: (templateId: string) => boolean;
   getTemplateModel: (templateId: string) => Template | undefined;
 }
-
-// TODO: Comment out test mutations before deploying
-export type TemplateStore = TemplateStoreBase & ReturnType<typeof schemaMutationActions>;
 
 const TemplateContext = createContext<TemplateStore>();
 
@@ -618,9 +614,6 @@ export function TemplateStoreProvider(props: ParentProps) {
     isCoreTemplate,
     isInstalled,
     getTemplateModel,
-
-    // Testing
-    ...schemaMutationActions(currentTemplate, setCurrentTemplate),
   };
 
   return <TemplateContext.Provider value={store}>{props.children}</TemplateContext.Provider>;
