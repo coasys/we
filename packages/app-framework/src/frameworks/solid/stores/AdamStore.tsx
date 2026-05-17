@@ -567,12 +567,20 @@ export function AdamStoreProvider(props: ParentProps) {
 
   async function updateProfileImage(field: 'avatar' | 'coverImage', imageFile: File): Promise<void> {
     const rootP = rootPerspective();
-    const profile = agentProfile();
-    if (!rootP || !profile) return;
-    await AgentProfile.update(rootP, profile.id, {
-      [field]: await compressImageToFileData(imageFile, field === 'avatar' ? 'profile-image' : 'cover-image'),
-    });
-    // Subscription fires after the link-write and handles setAgentProfile + sync
+    if (!rootP) return;
+    // agentProfile() may still be null on fresh boot if the subscription hasn't
+    // delivered its first result yet. Fall back to a one-shot findOne so the
+    // update isn't silently dropped.
+    const profile = agentProfile() ?? (await AgentProfile.findOne(rootP));
+    if (!profile) return;
+    const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'profile-image' : 'cover-image');
+    await AgentProfile.update(rootP, profile.id, { [field]: fileData });
+    // Eagerly update the signal with the resolved data URL — the subscription
+    // callback is the authoritative updater but may be temporarily dead if the
+    // server evicted it (Subscription not found keepalive error). This ensures
+    // the UI always reflects the change immediately.
+    profile[field] = `data:${fileData.file_type || 'image/png'};base64,${fileData.data_base64}`;
+    setAgentProfile(profile);
   }
 
   async function updateAgentLocation(
