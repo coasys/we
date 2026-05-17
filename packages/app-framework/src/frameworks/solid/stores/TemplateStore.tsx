@@ -208,36 +208,37 @@ export function TemplateStoreProvider(props: ParentProps) {
     setCurrentTemplate(reconcile(deepClone(newTemplate)));
   }
 
-  // Per-template last-route memory — restores user's position when switching back
-  const lastRouteByTemplate = new Map<string, string>();
+  // Per-template last-view memory — remembers which view segment (e.g. 'globe', 'chat')
+  // was active for each template. Intentionally stores only the view, not the space ID,
+  // so that template switching and space selection remain independent.
+  const lastViewByTemplate = new Map<string, string>();
 
   function switchTemplate(newTemplateId: string) {
     // No-op if already on this template
     if (currentTemplate.id === newTemplateId) return;
     // If user manually switches before the boot restore fires, skip the restore
     initialRestoreDone = true;
-    // Save current path before leaving
+    // Save current view segment before leaving (not the full path — space stays independent)
     if (currentTemplate.id) {
-      lastRouteByTemplate.set(currentTemplate.id, routeStore.currentPath());
+      const segs = routeStore.segments();
+      const view = segs[0] === 'space' && segs[2] ? segs[2] : null;
+      if (view) lastViewByTemplate.set(currentTemplate.id, view);
     }
     const newTemplate =
       allTemplates().find((t) => t.id === newTemplateId) || shellTemplates.find((t) => t.id === newTemplateId);
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
-      // Restore last known route for this template, or fall back to current space route
-      const lastRoute = lastRouteByTemplate.get(newTemplateId);
-      if (lastRoute) {
-        routeStore.navigate(lastRoute);
+      // Always navigate using the current perspective so space selection is not affected.
+      // Restore only the view segment for this template if one was previously saved.
+      const segs = routeStore.segments();
+      const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
+      const view = lastViewByTemplate.get(newTemplateId) ?? currentView;
+      const p = adamStore.currentPerspective();
+      if (p) {
+        const spaceId = p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid;
+        routeStore.navigate('/space/' + spaceId + '/' + view);
       } else {
-        const p = adamStore.currentPerspective();
-        const segs = routeStore.segments();
-        const view = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
-        if (p) {
-          const spaceId = p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid;
-          routeStore.navigate('/space/' + spaceId + '/' + view);
-        } else {
-          routeStore.navigate('/');
-        }
+        routeStore.navigate('/');
       }
       // Persist choice to Ad4m
       adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });
