@@ -17,6 +17,8 @@ export const globeRoute: RouteSchema = {
   type: 'Column',
   props: { width: '100%' },
   $localState: {
+    // Search filter
+    searchText: { type: 'string', initial: '' },
     // Layer visibility toggles
     showSkybox: { type: 'boolean', initial: true },
     showStars: { type: 'boolean', initial: true },
@@ -132,6 +134,14 @@ export const globeRoute: RouteSchema = {
                 ],
               },
             },
+            // Search filter
+            {
+              type: 'SearchInput',
+              props: {
+                placeholder: 'Search spaces and people…',
+                onSearch: { $setLocal: 'searchText', from: '$event' },
+              },
+            },
             // Create Space Button
             {
               type: 'we-button',
@@ -218,7 +228,10 @@ export const globeRoute: RouteSchema = {
                   items: {
                     $query: {
                       model: 'Space',
-                      where: { uuid: { not: { $store: 'adamStore.currentPerspective.uuid' } } },
+                      where: {
+                        uuid: { not: { $store: 'adamStore.currentPerspective.uuid' } },
+                        name: { contains: { $local: 'searchText' } },
+                      },
                       include: { location: true },
                     },
                   },
@@ -247,6 +260,7 @@ export const globeRoute: RouteSchema = {
                   items: {
                     $query: {
                       model: 'AgentProfile',
+                      where: { handle: { contains: { $local: 'searchText' } } },
                       include: { location: true },
                     },
                   },

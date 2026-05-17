@@ -6,6 +6,7 @@ import { Row } from '../../../frameworks/solid';
 import type { SignalControlProps } from './SignalControl.types';
 
 export function SignalControl(props: SignalControlProps) {
+  console.log('SignalControl propsL: ', { ...props });
   const [previewValue, setPreviewValue] = createSignal<number | null>(null);
 
   /** Unified reactive value: internal in preview mode, external otherwise */

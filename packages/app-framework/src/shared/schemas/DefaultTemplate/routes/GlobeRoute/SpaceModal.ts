@@ -79,8 +79,8 @@ export const spaceModal = {
 
             // Signal controls
             {
-              type: 'Row',
-              props: { gap: '200', ay: 'center', wrap: true },
+              type: 'Column',
+              props: { gap: '200' },
               children: [
                 {
                   type: '$each',

@@ -11,6 +11,9 @@ export { ImageCrop, type ImageCropProps, type ImageCropRef } from '../../compone
 export { FlipCard, type FlipCardProps } from '../../components/cards/FlipCard/FlipCard.solid';
 export { PostCard, type PostCardProps } from '../../components/cards/PostCard/PostCard.solid';
 
+// Inputs
+export { SearchInput, type SearchInputProps } from '../../components/inputs/SearchInput/SearchInput.solid';
+
 // Buttons
 export { CircleButton, type CircleButtonProps } from '../../components/buttons/CircleButton/CircleButton.solid';
 export {

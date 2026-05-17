@@ -62,7 +62,12 @@ function isEventProp(key: string): boolean {
  *
  * Must be called during component setup, not inside a createMemo or createEffect.
  */
-function hoistMapQuerySignals(value: unknown, stores: unknown, getModel: (name: string) => unknown): unknown {
+function hoistMapQuerySignals(
+  value: unknown,
+  stores: unknown,
+  getModel: (name: string) => unknown,
+  context: Record<string, unknown> = {},
+): unknown {
   if (!value || typeof value !== 'object') return value;
 
   // Found $map with $query items — replace items with a live reactive signal
@@ -70,7 +75,7 @@ function hoistMapQuerySignals(value: unknown, stores: unknown, getModel: (name: 
     const mapSpec = (value as { $map: MapProp }).$map;
     if (hasToken(mapSpec.items, '$query', 'object')) {
       const descriptor = resolveQueryProp(mapSpec.items);
-      const signal = createQuerySignal(descriptor, stores, getModel);
+      const signal = createQuerySignal(descriptor, stores, getModel, context);
       return { $map: { ...mapSpec, items: signal } };
     }
     return value;
@@ -79,7 +84,7 @@ function hoistMapQuerySignals(value: unknown, stores: unknown, getModel: (name: 
   if (Array.isArray(value)) {
     let changed = false;
     const mapped = value.map((item) => {
-      const h = hoistMapQuerySignals(item, stores, getModel);
+      const h = hoistMapQuerySignals(item, stores, getModel, context);
       if (h !== item) changed = true;
       return h;
     });
@@ -90,7 +95,7 @@ function hoistMapQuerySignals(value: unknown, stores: unknown, getModel: (name: 
   let changed = false;
   const result: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    const h = hoistMapQuerySignals(v, stores, getModel);
+    const h = hoistMapQuerySignals(v, stores, getModel, context);
     result[k] = h;
     if (h !== v) changed = true;
   }
@@ -658,7 +663,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       }
     } else {
       const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
-      const raw = getModel ? hoistMapQuerySignals(rawValue, stores, getModel) : rawValue;
+      const raw = getModel ? hoistMapQuerySignals(rawValue, stores, getModel, effectiveContext) : rawValue;
       propMemos[key] = createMemo(() => {
         const resolved = resolveProp(raw, stores, effectiveContext, createMemo);
         return deepUnwrap(resolved);
