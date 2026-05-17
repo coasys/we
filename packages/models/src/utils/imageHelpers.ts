@@ -77,3 +77,32 @@ export interface FileData {
   name: string;
   file_type: string;
 }
+
+/**
+ * Compress a browser File to a FileData value object suitable for AD4M's
+ * FILE_STORAGE_LANGUAGE. The compression percentage (0.6) and output format
+ * (image/png) match the convention used across all image uploads in the app.
+ */
+export async function compressImageToFileData(file: File, name: string): Promise<FileData> {
+  const blob = await resizeImage(file, 0.6);
+  return { data_base64: await blobToDataURL(blob), name, file_type: 'image/png' };
+}
+
+/**
+ * Reconstruct a FileData value object from a resolved data URI string.
+ *
+ * After AgentProfile.findOne() / Space.findOne() the resolveLanguage transform
+ * converts stored FileData objects to `data:<mime>;base64,<b64>` strings.
+ * This function reverses that transform so the value can be safely passed back
+ * through FILE_STORAGE_LANGUAGE — the storage is content-addressed
+ * (address = hash(name + size + file_type + data_base64)), so uploading the
+ * same bytes again returns the same address with no new file created.
+ *
+ * The `name` argument must match the name used on the original upload because
+ * it is part of the hash input.
+ */
+export function dataURIToFileData(dataUri: string, name: string): FileData {
+  const [header, data_base64] = dataUri.split(',');
+  const file_type = header.split(';')[0].split(':')[1];
+  return { data_base64, name, file_type };
+}
