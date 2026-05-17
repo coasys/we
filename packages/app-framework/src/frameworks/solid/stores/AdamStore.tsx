@@ -438,26 +438,26 @@ export function AdamStoreProvider(props: ParentProps) {
     return () => window.removeEventListener('message', handleMessage);
   }
 
+  // Syncs the agent profile to the global perspective on every change.
+  // Fires on initial load and after every link-write to the root perspective that affects AgentProfile.
+  function subscribeToAgentProfile(p: PerspectiveProxy) {
+    const profileBuilder = AgentProfile.query(p, { include: { location: true } });
+    profileBuilder.subscribe((profiles: AgentProfile[]) => {
+      const profile = profiles[0];
+      if (!profile) return;
+      const globalP = globalPerspective();
+      if (globalP) {
+        syncAgentProfileToParent(profile, globalP).catch((err) =>
+          console.error('AdamStore: subscription sync agentProfile to global failed', err),
+        );
+      }
+    });
+    onCleanup(() => profileBuilder.dispose());
+  }
+
   /** Find or create the root perspective and all other system perspectives.
    * Also re-registers we-global models if the perspective already exists (previously joined). */
   async function initSystemPerspectives(client: Ad4mClient): Promise<void> {
-    // Syncs the agent profile to the global perspective on every change.
-    // Fires on initial load and after every link-write to the root perspective that affects AgentProfile.
-    function subscribeToAgentProfile(p: PerspectiveProxy) {
-      const profileBuilder = AgentProfile.query(p, { include: { location: true } });
-      profileBuilder.subscribe((profiles: AgentProfile[]) => {
-        const profile = profiles[0];
-        if (!profile) return;
-        const globalP = globalPerspective();
-        if (globalP) {
-          syncAgentProfileToParent(profile, globalP).catch((err) =>
-            console.error('AdamStore: subscription sync agentProfile to global failed', err),
-          );
-        }
-      });
-      onCleanup(() => profileBuilder.dispose());
-    }
-
     try {
       const perspectives = await client.perspective.all();
       const existing = perspectives.find((p) => p.name === 'we-root');
@@ -551,11 +551,11 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
+  // TODO: could this be done cleaner with the .update() method on the model instead of mutating and saving?
   async function updateAgentSettings(updates: Partial<AgentSettings>): Promise<void> {
     const settings = agentSettings();
     if (!settings) return;
 
-    // TODO: could this be done cleaner with the .update() method on the model instead of mutating and saving?
     Object.assign(settings, updates);
     await settings.save();
     setAgentSettings(settings);

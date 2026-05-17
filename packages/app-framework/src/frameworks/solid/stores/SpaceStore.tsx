@@ -162,25 +162,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       where: { signalTypeId, author: myDid },
     });
 
-    console.log('existing signal:', existing);
-
-    console.log('value:', value);
-
-    if (existing) {
-      // Remove if value is 0 (deselected)
-      if (value === 0) await existing.delete();
-      // Otherwise update with the new value — use static update() so a fresh
-      // snapshot is taken before the diff, ensuring the dirty-field write fires
-      else {
-        await Signal.update(p, existing.id, { value });
-        console.log('updated signal with id', existing.id, 'to value', value);
-      }
-      return;
-    }
-
-    console.log('no existing signal found');
-
-    // No existing signal — create new (skip if value is 0)
+    if (existing) await existing.delete();
     if (value === 0) return;
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
