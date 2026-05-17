@@ -217,7 +217,7 @@ export const globeRoute: RouteSchema = {
                   items: {
                     $query: {
                       model: 'Space',
-                      where: { id: { not: { $store: 'spaceStore.space.id' } } },
+                      where: { id: { not: { $store: 'adamStore.currentPerspective.uuid' } } },
                       include: { location: true },
                     },
                   },

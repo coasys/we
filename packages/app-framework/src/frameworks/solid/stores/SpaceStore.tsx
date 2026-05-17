@@ -27,7 +27,6 @@ export type AgentProfileInput = Omit<Partial<AgentProfile>, 'avatar' | 'coverIma
 
 export interface SpaceStore {
   // State
-  space: Accessor<Partial<Space | null>>;
   loading: Accessor<boolean>;
   signalTypes: Accessor<SignalType[]>;
   signalTypesBySlug: Accessor<Record<string, SignalType>>;
@@ -56,7 +55,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   const templateStore = useTemplateStore();
 
   // State
-  const [space, setSpace] = createSignal<Partial<Space | null>>(null);
   const [loading, setLoading] = createSignal(true);
 
   // Signal types
@@ -70,7 +68,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     console.log('Spaces in perspective:', spaces);
 
     console.log('spaceId: ', p.uuid);
-    console.log('space: ', space());
 
     // const posts = await CollectionBlock.findAll(p, {
     //   where: { type: 'root' },
@@ -102,17 +99,12 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File): Promise<void> {
-    const currentSpace = space();
     const currentPerspective = adamStore.currentPerspective();
-    if (!currentSpace || !currentPerspective) return;
+    if (!currentPerspective) return;
     const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'space-image' : 'space-cover');
     const [spaceModel] = await Space.findAll(currentPerspective, { where: { uuid: currentPerspective.uuid } });
     if (!spaceModel) return;
     await Space.update(currentPerspective, spaceModel.id, { [field]: fileData });
-    // Apply the same transform the Space model uses so the signal holds a data URL
-    // string, not a raw FileData object (which breaks the img src attribute).
-    const imageUrl = `data:${fileData.file_type || 'image/png'};base64,${fileData.data_base64}`;
-    setSpace({ ...currentSpace, [field]: imageUrl });
   }
 
   async function createSignalType(config: Partial<SignalType>): Promise<void> {
@@ -199,16 +191,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     await installSpaceSdna(p);
     if (isCancelled()) return;
 
-    // Get the Space model for the current perspective
-    const spaceModel = await Space.findOne(p, { where: { uuid: p.uuid } });
-    if (isCancelled()) return;
-    setSpace(spaceModel ?? null);
-
     // Get the SignalType models for the current perspective
-    if (spaceModel) {
-      const fetchedSignalTypes = await SignalType.findAll(p);
-      if (!isCancelled()) setSignalTypes(fetchedSignalTypes);
-    }
+    const fetchedSignalTypes = await SignalType.findAll(p);
+    if (!isCancelled()) setSignalTypes(fetchedSignalTypes);
   }
 
   // Watch currentPerspective() + currentPerspectiveModels() in the adamStore to trigger hydration of the WE space layer
@@ -223,7 +208,6 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // No perspective or not a WE space: reset to initial state
     if (!perspective || !isWeSpace) {
-      setSpace(null);
       setSignalTypes([]);
       return;
     }
@@ -241,7 +225,6 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const store: SpaceStore = {
     // State
-    space,
     loading,
     signalTypes,
     signalTypesBySlug,
