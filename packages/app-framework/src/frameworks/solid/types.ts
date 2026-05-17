@@ -19,6 +19,7 @@ export type Stores = {
   templateStore: TemplateStore;
   routeStore: RouteStore;
   model?: ModelStore;
+  rootModel?: ModelStore;
   $getModel?: (name: string) => ModelClass;
   $getModelForPerspective?: (name: string, perspectiveUuid?: string) => ModelClass | undefined;
   $onError?: (message: string) => void;

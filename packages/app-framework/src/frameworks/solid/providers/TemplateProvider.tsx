@@ -60,6 +60,24 @@ export default function TemplateProvider() {
     },
   };
 
+  // rootModel store — same API as modelStore but targets rootPerspective.
+  // Used for models that live in we-root (AgentProfile, AgentSettings, etc.)
+  // rather than a space perspective.
+  const rootModelStore = {
+    create: (modelName: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
+      const Model = getModel(modelName);
+      return Model.create(adamStore.rootPerspective()!, data, options);
+    },
+    update: (modelName: string, id: string, data: Record<string, unknown>) => {
+      const Model = getModel(modelName);
+      return Model.update(adamStore.rootPerspective()!, id, data);
+    },
+    delete: (modelName: string, id: string) => {
+      const Model = getModel(modelName);
+      return Model.delete(adamStore.rootPerspective()!, id);
+    },
+  };
+
   const stores: Stores = {
     adamStore,
     aiStore,
@@ -70,6 +88,7 @@ export default function TemplateProvider() {
     routeStore,
     consoleStore,
     model: modelStore,
+    rootModel: rootModelStore,
     $getModel: getModel,
     $getModelForPerspective: getModelForPerspective,
     $onError: (msg: string) => toastService.error(msg),
