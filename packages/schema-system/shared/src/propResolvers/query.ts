@@ -11,12 +11,12 @@ import type { QueryDescriptor } from '../types';
  */
 export function resolveQueryProp(value: unknown): QueryDescriptor {
   const { $query } = value as { $query: Record<string, unknown> };
-  const { model, subscribe: sub, perspectiveStore, include, ...params } = $query;
+  const { model, subscribe: sub, perspective, include, ...params } = $query;
   return {
     model: model as string,
     params,
     subscribe: sub !== false,
-    perspectiveStore: perspectiveStore as string | undefined,
+    perspective: perspective as string | undefined,
     ...(include !== undefined && { include: include as Record<string, boolean | Record<string, unknown>> }),
   };
 }

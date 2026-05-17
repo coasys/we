@@ -23,7 +23,7 @@ export const profileTemplate: TemplateSchema = {
         items: {
           $query: {
             model: 'AgentProfile',
-            perspectiveStore: 'adamStore.rootPerspective',
+            perspective: 'adamStore.rootPerspective',
             include: { location: true },
           },
         },

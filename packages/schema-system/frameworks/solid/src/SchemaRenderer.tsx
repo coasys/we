@@ -161,8 +161,8 @@ function createQuerySignal(
 
   createEffect(() => {
     let p: unknown = null;
-    if (descriptor.perspectiveStore) {
-      const parts = descriptor.perspectiveStore.split('.');
+    if (descriptor.perspective) {
+      const parts = descriptor.perspective.split('.');
       let target: unknown = stores;
       for (const part of parts) target = (target as Record<string, unknown>)?.[part];
       p = typeof target === 'function' ? (target as () => unknown)() : target;
@@ -465,8 +465,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       } else {
         createEffect(() => {
           let p: unknown = null;
-          if (descriptor.perspectiveStore) {
-            const parts = descriptor.perspectiveStore.split('.');
+          if (descriptor.perspective) {
+            const parts = descriptor.perspective.split('.');
             let target: unknown = stores;
             for (const part of parts) target = (target as Record<string, unknown>)?.[part];
             p = typeof target === 'function' ? (target as () => unknown)() : target;

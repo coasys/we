@@ -77,11 +77,11 @@ Boolean logic:
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the local perspective for model instances. Always returns an array.
-Options: model (required), where, order, limit, offset, include, parent, perspectiveStore, subscribe.
+Options: model (required), where, order, limit, offset, include, parent, perspective, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
-By default $query targets the current perspective (adamStore.currentPerspective). Use perspectiveStore to query a different perspective —
+By default $query targets the current perspective (adamStore.currentPerspective). Use perspective to query a different perspective —
 required when reading models from an external app (e.g. Flux) that is open as a WE space:
-{ "$query": { "model": "Channel", "perspectiveStore": "adamStore.currentPerspective" } }
+{ "$query": { "model": "Channel", "perspective": "adamStore.currentPerspective" } }
 adamStore.currentPerspective resolves to the AD4M Perspective instance of the currently active perspective.
 
 Eager-loading relations with include (most common relational pattern):
@@ -117,7 +117,7 @@ Relational queries — fetch children by parent id (drill-down navigation):
 The parent.id is the id of the parent record (typically from a $each context variable or a route segment).
 The parent.relation name matches the HasMany relation listed for that model in externalModels.
 Use this pattern when navigating to a detail route and loading only that record's children.
-For external-app perspectives, always add perspectiveStore: "spaceStore.perspective".
+For external-app perspectives, always add perspective: "spaceStore.perspective".
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }

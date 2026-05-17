@@ -102,7 +102,7 @@ const zQueryToken = z
       include: z.record(z.string(), z.unknown()).optional(),
       parent: z.record(z.string(), z.unknown()).optional(),
       subscribe: z.boolean().optional(),
-      perspectiveStore: z.string().optional(),
+      perspective: z.string().optional(),
     }),
   })
   .strict();

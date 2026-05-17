@@ -145,7 +145,7 @@ function queryModePanel(mode: string, description: string, queryConfig: Record<s
               items: {
                 $query: {
                   model: 'TestItem',
-                  perspectiveStore: 'testStore.perspective',
+                  perspective: 'testStore.perspective',
                   subscribe: false,
                   ...queryConfig,
                 },
@@ -602,7 +602,7 @@ const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without su
           {
             type: '$each',
             props: {
-              items: { $query: { model: 'TestItem', perspectiveStore: 'testStore.perspective', subscribe: false } },
+              items: { $query: { model: 'TestItem', perspective: 'testStore.perspective', subscribe: false } },
               as: 'q',
             },
             children: [
@@ -673,7 +673,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
           {
             type: '$each',
             props: {
-              items: { $query: { model: 'TestItem', perspectiveStore: 'testStore.perspective', subscribe: true } },
+              items: { $query: { model: 'TestItem', perspective: 'testStore.perspective', subscribe: true } },
               as: 'q',
             },
             children: [

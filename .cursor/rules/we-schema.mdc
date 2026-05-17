@@ -80,11 +80,11 @@ Boolean logic:
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the local perspective for model instances. Always returns an array.
-Options: model (required), where, order, limit, offset, include, parent, perspectiveStore, subscribe.
+Options: model (required), where, order, limit, offset, include, parent, perspective, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
-By default $query targets the current perspective (adamStore.currentPerspective). Use perspectiveStore to query a different perspective —
+By default $query targets the current perspective (adamStore.currentPerspective). Use perspective to query a different perspective —
 required when reading models from an external app (e.g. Flux) that is open as a WE space:
-{ "$query": { "model": "Channel", "perspectiveStore": "adamStore.currentPerspective" } }
+{ "$query": { "model": "Channel", "perspective": "adamStore.currentPerspective" } }
 adamStore.currentPerspective resolves to the AD4M Perspective instance of the currently active perspective.
 
 Eager-loading relations with include (most common relational pattern):
@@ -120,7 +120,7 @@ Relational queries — fetch children by parent id (drill-down navigation):
 The parent.id is the id of the parent record (typically from a $each context variable or a route segment).
 The parent.relation name matches the HasMany relation listed for that model in externalModels.
 Use this pattern when navigating to a detail route and loading only that record's children.
-For external-app perspectives, always add perspectiveStore: "spaceStore.perspective".
+For external-app perspectives, always add perspective: "spaceStore.perspective".
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
@@ -1056,7 +1056,7 @@ Example — Channel list with conversation count and latest conversation:
     "items": {
       "$query": {
         "model": "Channel",
-        "perspectiveStore": "spaceStore.perspective",
+        "perspective": "spaceStore.perspective",
         "include": {
           "$conversationCount": { "from": "conversations", "count": true },
           "$latestConversation": { "from": "conversations", "order": { "createdAt": "desc" }, "limit": 1 }
@@ -1078,7 +1078,7 @@ Example — Nested include (Conversations with their messages):
 {
   "$query": {
     "model": "Conversation",
-    "perspectiveStore": "spaceStore.perspective",
+    "perspective": "spaceStore.perspective",
     "include": {
       "messages": {
         "order": { "createdAt": "desc" },
@@ -1105,7 +1105,7 @@ Example — Channel list → Conversation list:
       "children": [{
         "type": "$each",
         "props": {
-          "items": { "$query": { "model": "Channel", "perspectiveStore": "spaceStore.perspective" } },
+          "items": { "$query": { "model": "Channel", "perspective": "spaceStore.perspective" } },
           "as": "channel"
         },
         "children": [{
@@ -1129,7 +1129,7 @@ Example — Channel list → Conversation list:
             "$query": {
               "model": "Conversation",
               "parent": { "id": { "$store": "routeStore.segments.1" }, "relation": "conversations" },
-              "perspectiveStore": "spaceStore.perspective"
+              "perspective": "spaceStore.perspective"
             }
           },
           "as": "convo"
@@ -1145,7 +1145,7 @@ Example — Channel list → Conversation list:
 Notes:
 - Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
 - Use parent when you're on a detail route and want only children belonging to the current record.
-- perspectiveStore must point to the perspective that holds the data. For external apps (e.g. Flux) opened as a WE space, use "spaceStore.perspective".
+- perspective must point to the perspective that holds the data. For external apps (e.g. Flux) opened as a WE space, use "spaceStore.perspective".
 - The relation name (in include or parent.relation) is the HasMany field name on the parent model class.
 
 Local state (form with validation):
