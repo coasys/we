@@ -1,8 +1,11 @@
 import { PerspectiveProxy } from '@coasys/ad4m';
 import {
   AgentProfile,
+  AgentSettings,
   AudioBlock,
   CalloutBlock,
+  ChatMessage,
+  ChatSession,
   CodeBlock,
   CollectionBlock,
   DividerBlock,
@@ -17,10 +20,36 @@ import {
   Space,
   TagBlock,
   TaskBlock,
+  Template,
   TextBlock,
+  Theme,
   VideoBlock,
   WeNode,
 } from '@we/models';
+
+/**
+ * All SDNA models that belong to the we-root system perspective.
+ * Centralised here so both AdamStore branches (create vs restore) always
+ * register the same complete set.
+ */
+export const ROOT_MODELS = [
+  AgentSettings,
+  AgentProfile,
+  ChatMessage,
+  ChatSession,
+  Template,
+  Theme,
+  LocationBlock,
+] as const;
+
+/**
+ * Registers all root SDNA models on the given perspective.
+ * `register()` is idempotent — safe to call multiple times or on perspectives
+ * that already have some models registered.
+ */
+export async function installRootSdna(p: PerspectiveProxy): Promise<void> {
+  await Promise.all(ROOT_MODELS.map((M) => M.register(p)));
+}
 
 /**
  * All SDNA models that belong to a WE space perspective.

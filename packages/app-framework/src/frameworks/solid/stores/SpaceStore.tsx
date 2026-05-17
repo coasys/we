@@ -1,6 +1,6 @@
 import { PerspectiveProxy } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
-import { installSpaceSdna, SPACE_MODELS } from '@shared/spaceModels';
+import { installSpaceSdna, SPACE_MODELS } from '@shared/sdnaModels';
 import { deriveSlug } from '@shared/utils';
 import { useAdamStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';

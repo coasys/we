@@ -2,19 +2,9 @@ import { Ad4mClient, Agent, Perspective, type PerspectiveProxy } from '@coasys/a
 import { getModelClasses, getModelManifest } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
-import { installSpaceSdna } from '@shared/spaceModels';
+import { installRootSdna, installSpaceSdna } from '@shared/sdnaModels';
 import { removeSpaceFromParent, syncAgentProfileToParent } from '@shared/syncHelpers';
-import {
-  AgentProfile,
-  AgentSettings,
-  ChatMessage,
-  ChatSession,
-  compressImageToFileData,
-  LocationBlock,
-  Space,
-  Template,
-  Theme,
-} from '@we/models';
+import { AgentProfile, AgentSettings, compressImageToFileData, LocationBlock, Space } from '@we/models';
 import {
   Accessor,
   createContext,
@@ -464,12 +454,7 @@ export function AdamStoreProvider(props: ParentProps) {
 
       if (existing) {
         // Ensure all models are registered (handles new models added after initial creation)
-        await Promise.all([
-          ChatMessage.register(existing),
-          ChatSession.register(existing),
-          Template.register(existing),
-          LocationBlock.register(existing),
-        ]);
+        await installRootSdna(existing);
         setRootPerspective(existing);
         subscribeToAgentProfile(existing);
 
@@ -510,15 +495,7 @@ export function AdamStoreProvider(props: ParentProps) {
       // No root perspective exists — create one
       console.log('AdamStore: Creating root perspective');
       const perspective = await client.perspective.add('we-root');
-      await Promise.all([
-        AgentSettings.register(perspective),
-        AgentProfile.register(perspective),
-        ChatMessage.register(perspective),
-        ChatSession.register(perspective),
-        Template.register(perspective),
-        Theme.register(perspective),
-        LocationBlock.register(perspective),
-      ]);
+      await installRootSdna(perspective);
       // Model.register resolves before SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
