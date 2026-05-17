@@ -83,7 +83,6 @@ export interface AdamStore {
   /** The URL path segment for the global space — the neighbourhood CID (with `neighbourhood://` stripped), or null if no global space is configured in we-seed.json. */
   globalSpaceId: () => string | null;
   agentSettings: Accessor<AgentSettings | null>;
-  agentProfile: Accessor<AgentProfile | null>;
   creatingSpace: Accessor<boolean>;
   /** The currently focused perspective (universal signal — set for all navigation). */
   currentPerspective: Accessor<PerspectiveProxy | null>;
@@ -168,7 +167,6 @@ export function AdamStoreProvider(props: ParentProps) {
   const [testPerspective, setTestPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [globalPerspective, setGlobalPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
-  const [agentProfile, setAgentProfile] = createSignal<AgentProfile | null>(null, { equals: false });
   const [allPerspectives, setAllPerspectives] = createSignal<PerspectiveProxy[]>([]);
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [creatingSpace, setCreatingSpace] = createSignal(false);
@@ -443,16 +441,13 @@ export function AdamStoreProvider(props: ParentProps) {
   /** Find or create the root perspective and all other system perspectives.
    * Also re-registers we-global models if the perspective already exists (previously joined). */
   async function initSystemPerspectives(client: Ad4mClient): Promise<void> {
-    // Drives agentProfile signal and owns global sync for all mutations.
-    // Fires on initial load and after every link-write to the root perspective that
-    // affects AgentProfile (text updates via model.update with perspective option, image updates via
-    // updateProfileImage, location updates via updateAgentLocation).
+    // Syncs the agent profile to the global perspective on every change.
+    // Fires on initial load and after every link-write to the root perspective that affects AgentProfile.
     function subscribeToAgentProfile(p: PerspectiveProxy) {
       const profileBuilder = AgentProfile.query(p, { include: { location: true } });
       profileBuilder.subscribe((profiles: AgentProfile[]) => {
         const profile = profiles[0];
         if (!profile) return;
-        setAgentProfile(profile);
         const globalP = globalPerspective();
         if (globalP) {
           syncAgentProfileToParent(profile, globalP).catch((err) =>
@@ -500,12 +495,13 @@ export function AdamStoreProvider(props: ParentProps) {
           console.log('AdamStore: Restored global perspective', existingGlobal.uuid);
           // Belt-and-suspenders boot sync — subscription will also fire but this ensures
           // the global copy is refreshed immediately on startup.
-          const currentProfile = agentProfile();
-          if (currentProfile) {
-            syncAgentProfileToParent(currentProfile, existingGlobal).catch((err) =>
-              console.error('AdamStore: boot sync agentProfile to global failed', err),
-            );
-          }
+          AgentProfile.findOne(existing).then((currentProfile) => {
+            if (currentProfile) {
+              syncAgentProfileToParent(currentProfile, existingGlobal).catch((err) =>
+                console.error('AdamStore: boot sync agentProfile to global failed', err),
+              );
+            }
+          });
         }
 
         return;
@@ -568,19 +564,10 @@ export function AdamStoreProvider(props: ParentProps) {
   async function updateProfileImage(field: 'avatar' | 'coverImage', imageFile: File): Promise<void> {
     const rootP = rootPerspective();
     if (!rootP) return;
-    // agentProfile() may still be null on fresh boot if the subscription hasn't
-    // delivered its first result yet. Fall back to a one-shot findOne so the
-    // update isn't silently dropped.
-    const profile = agentProfile() ?? (await AgentProfile.findOne(rootP));
+    const profile = await AgentProfile.findOne(rootP);
     if (!profile) return;
     const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'profile-image' : 'cover-image');
     await AgentProfile.update(rootP, profile.id, { [field]: fileData });
-    // Eagerly update the signal with the resolved data URL — the subscription
-    // callback is the authoritative updater but may be temporarily dead if the
-    // server evicted it (Subscription not found keepalive error). This ensures
-    // the UI always reflects the change immediately.
-    profile[field] = `data:${fileData.file_type || 'image/png'};base64,${fileData.data_base64}`;
-    setAgentProfile(profile);
   }
 
   async function updateAgentLocation(
@@ -590,9 +577,10 @@ export function AdamStoreProvider(props: ParentProps) {
     country?: string,
     countryCode?: string,
   ): Promise<void> {
-    const profile = agentProfile();
     const rootP = rootPerspective();
-    if (!profile || !rootP) return;
+    if (!rootP) return;
+    const profile = await AgentProfile.findOne(rootP);
+    if (!profile) return;
 
     const name = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
     // Create a new LocationBlock (replace logic: delete old link first via setLocation)
@@ -605,7 +593,7 @@ export function AdamStoreProvider(props: ParentProps) {
       ...(countryCode && { countryCode }),
     });
     // HasOne generates setLocation — links the new block, removes any prior link.
-    // The subscription fires on the link change and handles setAgentProfile + sync.
+    // The subscription fires on the link change and delivers updated profile via $query.
     await (profile as unknown as { setLocation: (v: LocationBlock) => Promise<void> }).setLocation(loc);
   }
 
@@ -803,11 +791,15 @@ export function AdamStoreProvider(props: ParentProps) {
       const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
       if (neighbourhoodUrl === seedUrl) {
         setGlobalPerspective(joinedP);
-        const currentProfile = agentProfile();
-        if (currentProfile) {
-          syncAgentProfileToParent(currentProfile, joinedP).catch((err) =>
-            console.error('AdamStore: post-join sync agentProfile to global failed', err),
-          );
+        const rootP = rootPerspective();
+        if (rootP) {
+          AgentProfile.findOne(rootP).then((currentProfile) => {
+            if (currentProfile) {
+              syncAgentProfileToParent(currentProfile, joinedP).catch((err) =>
+                console.error('AdamStore: post-join sync agentProfile to global failed', err),
+              );
+            }
+          });
         }
       }
 
@@ -946,7 +938,6 @@ export function AdamStoreProvider(props: ParentProps) {
     globalPerspective,
     systemPerspectiveUuids,
     agentSettings,
-    agentProfile,
     creatingSpace,
     currentPerspective,
     currentPerspectiveModels,

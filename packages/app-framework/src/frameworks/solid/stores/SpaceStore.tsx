@@ -145,7 +145,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     });
 
     if (location?.latitude != null && location?.longitude != null) {
-      await LocationBlock.register(p);
       const { city, country } = location;
       const locationName = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
       const loc = await LocationBlock.create(p, { ...location, ...(locationName && { name: locationName }) });
