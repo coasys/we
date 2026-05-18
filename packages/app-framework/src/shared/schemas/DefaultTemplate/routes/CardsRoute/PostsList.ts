@@ -3,7 +3,31 @@ import type { SchemaNode } from '@we/schema-shared';
 export const postsList: SchemaNode = {
   type: 'Column',
   props: { gap: '400' },
+  $localState: {
+    sortBy: { type: 'string', initial: 'ASC' },
+  },
   children: [
+    // ── Header: sort controls ──────────────────────────────────────────────
+    {
+      type: 'Row',
+      props: { ay: 'center', gap: '300', pb: '200' },
+      children: [
+        { type: 'we-text', props: { fontSize: '300', color: 'neutral-500' }, children: ['Sort by'] },
+        {
+          type: 'we-select',
+          props: {
+            value: { $local: 'sortBy' },
+            options: [
+              { label: 'Newest', value: 'DESC' },
+              { label: 'Oldest', value: 'ASC' },
+            ],
+            onChange: { $setLocal: 'sortBy', from: '$event.target.value' },
+          },
+        },
+      ],
+    },
+
+    // ── Post list
     {
       type: '$each',
       props: {
@@ -11,6 +35,7 @@ export const postsList: SchemaNode = {
           $query: {
             model: 'CollectionBlock',
             where: { type: 'root' },
+            order: { createdAt: { $local: 'sortBy' } },
             include: { signals: true },
           },
         },
@@ -31,7 +56,7 @@ export const postsList: SchemaNode = {
               ],
             },
             {
-              type: 'Row',
+              type: 'Column',
               props: { mt: '400', ay: 'center', gap: '300' },
               children: [
                 {
