@@ -90,8 +90,11 @@ export function WeCube(rawProps: WeCubeProps) {
       100,
     );
     camera.position.set(10, 10, 10);
-    // viewDir is the camera's view axis — used each frame to reapply the animated roll.
-    const viewDir = new THREE.Vector3().subVectors(new THREE.Vector3(0, 0, 0), camera.position).normalize();
+    // viewAxisWorld: camera forward direction in world space (scene → camera = (-1,-1,-1)/√3).
+    // Roll is baked into the pivot quaternion as a rotation around this axis, so a single
+    // slerp on pivotQuat gives a visually clean arc — no separate roll animation diverging.
+    const viewAxisWorld = new THREE.Vector3(-1, -1, -1).normalize();
+    camera.up.set(0, 1, 0); // fixed — roll is encoded in pivotQuat instead
     camera.lookAt(0, 0, 0);
 
     // Renderer
@@ -172,21 +175,26 @@ export function WeCube(rawProps: WeCubeProps) {
     // deg(60) = spike-up isometric (one edge points up, two down).
     // 0       = spike-down isometric (one edge points down, two up).
     const snapViews = [
-      // 4 upper corners — spike-up (roll 60°) ──
-      { x: 0, y: 0, roll: deg(60) }, // corner +X+Y+Z
-      { x: 0, y: deg(90), roll: deg(60) }, // corner -X+Y+Z
-      { x: 0, y: deg(180), roll: deg(60) }, // corner -X+Y-Z
-      { x: 0, y: deg(-90), roll: deg(60) }, // corner +X+Y-Z
-      // 4 upper corners — spike-down (roll 0°) ──
-      { x: 0, y: 0, roll: 0 }, // corner +X+Y+Z
-      { x: 0, y: deg(90), roll: 0 }, // corner -X+Y+Z
-      { x: 0, y: deg(180), roll: 0 }, // corner -X+Y-Z
-      { x: 0, y: deg(-90), roll: 0 }, // corner +X+Y-Z
-      // 4 reachable flat faces (no roll — edges appear level) ──
-      { x: TOP_FACE, y: deg(45), roll: 0 }, // top face    (+Y)
-      { x: BOTTOM_FACE, y: deg(45), roll: 0 }, // bottom face (-Y, cube flips over)
-      { x: FRONT_FACE, y: deg(45), roll: 0 }, // front face  (+Z)
-      { x: BACK_FACE, y: deg(-135), roll: 0 }, // back face   (-Z)
+      { x: BACK_FACE + 0.34, y: deg(45), roll: deg(90) }, // W
+      { x: BACK_FACE - 1.23, y: deg(45), roll: deg(90) }, // E
+      { x: 0, y: deg(0), roll: deg(120) }, // WE Down
+      { x: 0, y: deg(90), roll: deg(60) }, // WE Up
+
+      // // 4 upper corners — spike-up (roll 60°) ──
+      // { x: 0, y: 0, roll: deg(60) }, // corner +X+Y+Z
+      // { x: 0, y: deg(90), roll: deg(60) }, // Original WE
+      // { x: 0, y: deg(180), roll: deg(60) }, // corner -X+Y-Z
+      // { x: 0, y: deg(-90), roll: deg(60) }, // corner +X+Y-Z
+      // // 4 upper corners — spike-down (roll 0°) ──
+      // { x: 0, y: 0, roll: 0 }, // corner +X+Y+Z
+      // { x: 0, y: deg(90), roll: 0 }, // corner -X+Y+Z
+      // { x: 0, y: deg(180), roll: 0 }, // corner -X+Y-Z
+      // { x: 0, y: deg(-90), roll: 0 }, // Down WE
+      // // 4 reachable flat faces (no roll — edges appear level) ──
+      // { x: TOP_FACE, y: deg(45), roll: 0 }, // E
+      // { x: BOTTOM_FACE, y: deg(45), roll: 0 }, // W
+      // { x: FRONT_FACE, y: deg(45), roll: 0 }, // M
+      // { x: BACK_FACE, y: deg(-135), roll: 0 }, // E
     ];
     let snapIndex = 0;
 
@@ -197,12 +205,11 @@ export function WeCube(rawProps: WeCubeProps) {
     // Using a quaternion lets drag feel like spinning a physical ball (arcball) rather than
     // independently accumulating two Euler angles, which causes the axis-coupling/drift the
     // Euler approach suffered from.
-    const pivotQuat = new THREE.Quaternion(); // identity = snap view 0 (x:0, y:0)
+    // Initial pivot encodes the starting visual roll (deg(60)) baked into orientation.
+    const pivotQuat = new THREE.Quaternion().setFromAxisAngle(viewAxisWorld, -deg(60));
     const snapTargetQuat = new THREE.Quaternion();
-    let snapTargetRoll = deg(60);
     let prevMouse = { x: 0, y: 0 };
     let pointerDownPos = { x: 0, y: 0 };
-    let currentRoll = deg(60); // matches first snap view (spike-up)
 
     const canvas = renderer.domElement;
 
@@ -240,8 +247,11 @@ export function WeCube(rawProps: WeCubeProps) {
       // Treat as a click if the pointer barely moved — snap to next preset view
       if (totalMoved < 6) {
         const view = snapViews[snapIndex];
-        snapTargetQuat.setFromEuler(new THREE.Euler(view.x, view.y, 0, 'YXZ'));
-        snapTargetRoll = view.roll;
+        // Bake roll into the target quaternion: rotation(roll, viewAxis) × Euler.
+        // This makes the slerp a single smooth arc instead of two diverging animations.
+        snapTargetQuat
+          .setFromAxisAngle(viewAxisWorld, -view.roll)
+          .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(view.x, view.y, 0, 'YXZ')));
         isSnapping = true;
         snapIndex = (snapIndex + 1) % snapViews.length;
       }
@@ -266,10 +276,8 @@ export function WeCube(rawProps: WeCubeProps) {
           // Exponential slerp toward snap target — speed 6 gives ~0.5s settle time.
           const t = 1 - Math.exp(-6 * delta);
           pivotQuat.slerp(snapTargetQuat, t);
-          currentRoll += (snapTargetRoll - currentRoll) * t;
-          if (pivotQuat.angleTo(snapTargetQuat) < 0.001 && Math.abs(snapTargetRoll - currentRoll) < 0.001) {
+          if (pivotQuat.angleTo(snapTargetQuat) < 0.001) {
             pivotQuat.copy(snapTargetQuat);
-            currentRoll = snapTargetRoll;
             isSnapping = false;
           }
         } else if (!isDragging) {
@@ -281,9 +289,6 @@ export function WeCube(rawProps: WeCubeProps) {
         pivotGroup.quaternion.copy(pivotQuat);
       }
 
-      // Reapply camera roll each frame (it animates between snap views).
-      camera.up.set(0, 1, 0).applyAxisAngle(viewDir, currentRoll);
-      camera.lookAt(0, 0, 0);
       renderer.render(scene, camera);
     };
     animate();
