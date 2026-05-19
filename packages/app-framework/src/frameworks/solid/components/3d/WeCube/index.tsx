@@ -177,6 +177,7 @@ export function WeCube(rawProps: WeCubeProps) {
     const snapViews = [
       { x: BACK_FACE + 0.34, y: deg(45), roll: deg(90) }, // W
       { x: BACK_FACE - 1.23, y: deg(45), roll: deg(90) }, // E
+      { x: 0.17, y: deg(45), roll: deg(90) }, // WE Middle
       { x: 0, y: deg(0), roll: deg(120) }, // WE Down
       { x: 0, y: deg(90), roll: deg(60) }, // WE Up
 
