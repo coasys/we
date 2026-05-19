@@ -4,7 +4,7 @@ export const postsList: SchemaNode = {
   type: 'Column',
   props: { gap: '400' },
   $localState: {
-    sortBy: { type: 'string', initial: 'ASC' },
+    sortBy: { type: 'string', initial: 'DESC' },
   },
   children: [
     // ── Header: sort controls ──────────────────────────────────────────────
@@ -56,8 +56,8 @@ export const postsList: SchemaNode = {
               ],
             },
             {
-              type: 'Column',
-              props: { mt: '400', ay: 'center', gap: '300' },
+              type: 'Row',
+              props: { height: '40px', mt: '400', ay: 'center', gap: '700' },
               children: [
                 {
                   type: '$each',

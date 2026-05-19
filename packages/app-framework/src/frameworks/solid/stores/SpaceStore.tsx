@@ -1,20 +1,10 @@
-import { PerspectiveProxy } from '@coasys/ad4m';
 import { registerModel } from '@shared/registries/modelRegistry';
-import { installSpaceSdna, SPACE_MODELS } from '@shared/sdnaModels';
+import { SPACE_MODELS } from '@shared/sdnaModels';
 import { deriveSlug } from '@shared/utils';
 import { useAdamStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';
 import { AgentProfile, compressImageToFileData, LocationBlock, Signal, SignalType, Space } from '@we/models';
-import {
-  Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  ParentProps,
-  useContext,
-} from 'solid-js';
+import { createContext, createEffect, ParentProps, useContext } from 'solid-js';
 
 import { useRouteStore } from './RouteStore';
 import { useTemplateStore } from './TemplateStore';
@@ -26,11 +16,6 @@ export type AgentProfileInput = Omit<Partial<AgentProfile>, 'avatar' | 'coverIma
 };
 
 export interface SpaceStore {
-  // State
-  loading: Accessor<boolean>;
-  signalTypes: Accessor<SignalType[]>;
-  signalTypesBySlug: Accessor<Record<string, SignalType>>;
-
   // Actions
   createPost: (json: unknown) => Promise<void>;
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
@@ -53,13 +38,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
   const routeStore = useRouteStore();
   const templateStore = useTemplateStore();
-
-  // State
-  const [loading, setLoading] = createSignal(true);
-
-  // Signal types
-  const [signalTypes, setSignalTypes] = createSignal<SignalType[]>([]);
-  const signalTypesBySlug = createMemo(() => Object.fromEntries(signalTypes().map((st) => [st.slug, st])));
 
   async function test() {
     const p = adamStore.currentPerspective();
@@ -120,8 +98,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const withSlug = { ...config, slug: effectiveSlug };
     const normalised =
       withSlug.mode && rangeOverrides[withSlug.mode] ? { ...withSlug, ...rangeOverrides[withSlug.mode] } : withSlug;
-    const created = await SignalType.create(p, normalised);
-    setSignalTypes((prev) => [...prev, created]);
+    await SignalType.create(p, normalised);
   }
 
   async function createAgentProfile(config: AgentProfileInput): Promise<void> {
@@ -167,49 +144,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
 
-  async function hydratePerspective(p: PerspectiveProxy, isCancelled: () => boolean): Promise<void> {
-    // Ensure the Space SDNA is installed
-    await installSpaceSdna(p);
-    if (isCancelled()) return;
-
-    // Get the SignalType models for the current perspective
-    const fetchedSignalTypes = await SignalType.findAll(p);
-    if (!isCancelled()) setSignalTypes(fetchedSignalTypes);
-  }
-
-  // Watch currentPerspective() + currentPerspectiveModels() in the adamStore to trigger hydration of the WE space layer
+  // Detect when entering a WE perspective with a Space model
   createEffect(() => {
-    const perspective = adamStore.currentPerspective();
     const models = adamStore.currentPerspectiveModels();
     const isWeSpace = models.some((m) => m.targetClass === 'we://Space');
-
-    // Track cancellation to avoid setting stale state after a perspective switch
-    let cancelled = false;
-    onCleanup(() => (cancelled = true));
-
-    // No perspective or not a WE space: reset to initial state
-    if (!perspective || !isWeSpace) {
-      setSignalTypes([]);
-      return;
-    }
-
-    // Valid WE space perspective detected: hydrate it
-    setLoading(true);
-    hydratePerspective(perspective, () => cancelled)
-      .catch((err) => {
-        if (!cancelled) console.error('SpaceStore hydration error', err);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    if (isWeSpace) console.log('Entering a WE space');
   });
 
   const store: SpaceStore = {
-    // State
-    loading,
-    signalTypes,
-    signalTypesBySlug,
-
     // Actions
     createPost,
     updateSpaceImage,
