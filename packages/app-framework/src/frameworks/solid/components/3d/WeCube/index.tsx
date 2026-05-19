@@ -160,42 +160,17 @@ export function WeCube(rawProps: WeCubeProps) {
       pivotGroup.add(new THREE.Points(particleGeo, particleMat));
     });
 
-    // Snap view presets — YXZ order: y = horizontal spin, x = vertical tilt.
-    // Camera at (10,10,10) → view direction (1,1,1)/√3.
-    // GLB is clean (no baked rotation), cube faces align with world axes.
-    // Solve R_Y(y)*R_X(x)*n̂ = (1,1,1)/√3 for each face/corner normal n̂.
-    //
-    // Note: +X and -X faces are unreachable — R_Y*R_X*(±1,0,0) always has Y=0,
-    // which can never match the camera's Y component (1/√3 ≠ 0).
+    // Snap view presets — YXZ Euler: y = horizontal spin, x = vertical tilt.
+    // TOP_FACE/FRONT_FACE are the x-tilts needed to point directly at the +Y and +Z cube faces.
     const TOP_FACE = Math.acos(1 / Math.sqrt(3)); // ≈ 54.74° — +Y face
-    const BOTTOM_FACE = TOP_FACE - Math.PI; // ≈-125.26° — -Y face (cube flips)
     const FRONT_FACE = -Math.asin(1 / Math.sqrt(3)); // ≈-35.26° — +Z face
-    const BACK_FACE = Math.asin(1 / Math.sqrt(3)); // ≈ 35.26° — -Z face
-    // roll = camera roll angle for this snap view.
-    // deg(60) = spike-up isometric (one edge points up, two down).
-    // 0       = spike-down isometric (one edge points down, two up).
+    // roll = camera roll baked into pivotQuat (see viewAxisWorld).
     const snapViews = [
-      { x: BACK_FACE + 0.34, y: deg(45), roll: deg(90) }, // W
-      { x: BACK_FACE - 1.23, y: deg(45), roll: deg(90) }, // E
-      { x: 0.17, y: deg(45), roll: deg(90) }, // WE Middle
+      { x: TOP_FACE, y: deg(45), roll: deg(90) }, // W
+      { x: FRONT_FACE, y: deg(45), roll: deg(90) }, // E
+      { x: (TOP_FACE + FRONT_FACE) / 2, y: deg(45), roll: deg(90) }, // WE Middle
       { x: 0, y: deg(0), roll: deg(120) }, // WE Down
       { x: 0, y: deg(90), roll: deg(60) }, // WE Up
-
-      // // 4 upper corners — spike-up (roll 60°) ──
-      // { x: 0, y: 0, roll: deg(60) }, // corner +X+Y+Z
-      // { x: 0, y: deg(90), roll: deg(60) }, // Original WE
-      // { x: 0, y: deg(180), roll: deg(60) }, // corner -X+Y-Z
-      // { x: 0, y: deg(-90), roll: deg(60) }, // corner +X+Y-Z
-      // // 4 upper corners — spike-down (roll 0°) ──
-      // { x: 0, y: 0, roll: 0 }, // corner +X+Y+Z
-      // { x: 0, y: deg(90), roll: 0 }, // corner -X+Y+Z
-      // { x: 0, y: deg(180), roll: 0 }, // corner -X+Y-Z
-      // { x: 0, y: deg(-90), roll: 0 }, // Down WE
-      // // 4 reachable flat faces (no roll — edges appear level) ──
-      // { x: TOP_FACE, y: deg(45), roll: 0 }, // E
-      // { x: BOTTOM_FACE, y: deg(45), roll: 0 }, // W
-      // { x: FRONT_FACE, y: deg(45), roll: 0 }, // M
-      // { x: BACK_FACE, y: deg(-135), roll: 0 }, // E
     ];
     let snapIndex = 0;
 
