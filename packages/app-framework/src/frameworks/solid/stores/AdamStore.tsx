@@ -57,31 +57,17 @@ export interface AdamStore {
   ad4mPort: Accessor<number | undefined>;
   ad4mToken: Accessor<string | undefined>;
   isDevelopment: Accessor<boolean>;
-  /** True when a globalSpaceUrl is configured in we-seed.json. */
   globalSpaceConfigured: Accessor<boolean>;
   rootPerspective: Accessor<PerspectiveProxy | null>;
-  /** The we-test perspective used by testStore for $query testing. Always populated after boot. */
   testPerspective: Accessor<PerspectiveProxy | null>;
-  /** The we-global perspective for discovery. Always populated after boot (local in dev, networked in prod when joined). */
   globalPerspective: Accessor<PerspectiveProxy | null>;
-  /** UUIDs of all internal WE system perspectives (names starting with 'we-'). */
   systemPerspectiveUuids: Accessor<string[]>;
-  /** Perspectives sorted by user-defined order (falls back to load order). */
   orderedPerspectives: Accessor<PerspectiveProxy[]>;
-  /** All non-system perspectives in user-defined order, enriched with Space avatar/name when available. Use this in the sidebar to show both WE spaces and external perspectives (e.g. Flux). */
   orderedSidebarItems: Accessor<{ uuid: string; name: string; avatar?: string; spaceId: string }[]>;
-  /** The URL path segment for the global space — the neighbourhood CID (with `neighbourhood://` stripped), or null if no global space is configured in we-seed.json. */
   globalSpaceId: () => string | null;
   agentSettings: Accessor<AgentSettings | null>;
   creatingSpace: Accessor<boolean>;
-  /** The currently focused perspective (universal signal — set for all navigation). */
   currentPerspective: Accessor<PerspectiveProxy | null>;
-  /**
-   * All model classes found in the current perspective (WE + external).
-   * Populated by `switchPerspective`; empty until a perspective is set.
-   * WE models are included so the AI validator can narrow its allowlist to
-   * what is actually registered in this perspective.
-   */
   currentPerspectiveModels: Accessor<ModelManifestEntry[]>;
 
   // Actions
@@ -100,33 +86,12 @@ export interface AdamStore {
     countryCode?: string,
   ) => Promise<void>;
   removePerspective: (uuid: string) => Promise<void>;
-  /**
-   * Set the active perspective by UUID.
-   * - Fetches the PerspectiveProxy via byUUID
-   * - Synthesises Ad4mModel classes from the perspective's SHACL shapes and
-   *   caches them in the per-perspective model registry (WE models filtered out
-   *   to avoid shadowing the real implementations)
-   * - Populates currentPerspectiveModels with the full manifest (WE + external)
-   *   so the AI validator can narrow its allowlist to what is actually registered
-   * - Sets the currentPerspective signal (SpaceStore reacts to this)
-   */
   switchPerspective: (uuid: string) => Promise<void>;
   updateAgentSettings: (updates: Partial<AgentSettings>) => Promise<void>;
-  /** Upload and set a profile image. Compression is handled internally; pass the raw File from the input. */
   updateProfileImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
   reorderPerspectives: (newOrder: string[]) => Promise<void>;
-  /** Join a space by its route segment (CID without `neighbourhood://` prefix), full neighbourhood URL, or local UUID.
-   * If already joined locally, just focuses the perspective. Otherwise joins the neighbourhood and syncs the agent profile. */
   joinSpace: (id: string) => Promise<void>;
-  /**
-   * If the global space has been joined and no perspective is currently active,
-   * sets the global perspective as the current perspective.
-   * If globalPerspective is not yet set, this is a no-op — the template handles joining.
-   */
-  // activateGlobalPerspective: () => Promise<void>;
-  /** Removes a Space copy from the global perspective. Used when visibility drops from 'public'. */
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
-  /** Creates or replaces the agent's LocationBlock in the root perspective (and syncs to global if joined). */
   updateAgentLocation: (
     latitude: number,
     longitude: number,
@@ -450,17 +415,16 @@ export function AdamStoreProvider(props: ParentProps) {
   async function initSystemPerspectives(client: Ad4mClient): Promise<void> {
     try {
       const perspectives = await client.perspective.all();
-      const existing = perspectives.find((p) => p.name === 'we-root');
+      const rootP = perspectives.find((p) => p.name === 'we-root');
 
-      if (existing) {
+      if (rootP) {
         // Ensure all models are registered (handles new models added after initial creation)
-        await installRootSdna(existing);
-        setRootPerspective(existing);
-        subscribeToAgentProfile(existing);
+        await installRootSdna(rootP);
+        setRootPerspective(rootP);
+        subscribeToAgentProfile(rootP);
 
-        const settings = await AgentSettings.findOne(existing);
+        const settings = await AgentSettings.findOne(rootP);
         if (settings) setAgentSettings(settings);
-        console.log('AdamStore: Found root perspective', existing.uuid);
 
         // Find or create we-test system perspective (uses same snapshot)
         const existingTest = perspectives.find((p) => p.name === 'we-test');
@@ -480,7 +444,7 @@ export function AdamStoreProvider(props: ParentProps) {
           console.log('AdamStore: Restored global perspective', existingGlobal.uuid);
           // Belt-and-suspenders boot sync — subscription will also fire but this ensures
           // the global copy is refreshed immediately on startup.
-          AgentProfile.findOne(existing).then((currentProfile) => {
+          AgentProfile.findOne(rootP, { include: { location: true } }).then((currentProfile) => {
             if (currentProfile) {
               syncAgentProfileToParent(currentProfile, existingGlobal).catch((err) =>
                 console.error('AdamStore: boot sync agentProfile to global failed', err),
@@ -731,6 +695,7 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
+  // TODO: install space SDNA on join if WE space?
   async function joinSpace(id: string): Promise<void> {
     const client = adamClient();
     if (!client) return;
@@ -929,7 +894,6 @@ export function AdamStoreProvider(props: ParentProps) {
     updateProfileImage,
     reorderPerspectives,
     joinSpace,
-    // activateGlobalPerspective,
     updateAgentLocation,
     removeSpaceFromGlobal: (spaceUuid) => {
       const globalP = globalPerspective();

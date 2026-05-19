@@ -149,6 +149,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const models = adamStore.currentPerspectiveModels();
     const isWeSpace = models.some((m) => m.targetClass === 'we://Space');
     if (isWeSpace) console.log('Entering a WE space');
+    else console.log('Entering a non-WE space');
   });
 
   const store: SpaceStore = {

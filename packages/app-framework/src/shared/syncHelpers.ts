@@ -77,6 +77,8 @@ export async function syncAgentProfileToParent(profile: AgentProfile, targetP: P
   const all = await AgentProfile.findAll(targetP, { include: { location: true } });
   const existing = all.find((p) => p.author === profile.author);
 
+  console.log('syncAgentProfileToParent', { profile, existing });
+
   let target: AgentProfile;
   if (existing) {
     existing.firstName = profile.firstName;
