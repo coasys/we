@@ -193,13 +193,15 @@ export function WeCube(rawProps: WeCubeProps) {
     // Drag-to-rotate state
     let isDragging = false;
     let isSnapping = false;
-    let snapTargetX = 0;
-    let snapTargetY = 0;
+    // Quaternion-based orientation — replaces the old separate dragRotX / autoRotY Euler state.
+    // Using a quaternion lets drag feel like spinning a physical ball (arcball) rather than
+    // independently accumulating two Euler angles, which causes the axis-coupling/drift the
+    // Euler approach suffered from.
+    const pivotQuat = new THREE.Quaternion(); // identity = snap view 0 (x:0, y:0)
+    const snapTargetQuat = new THREE.Quaternion();
     let snapTargetRoll = deg(60);
     let prevMouse = { x: 0, y: 0 };
     let pointerDownPos = { x: 0, y: 0 };
-    let dragRotX = 0; // starts at isometric corner A (x=0, y=0)
-    let autoRotY = 0;
     let currentRoll = deg(60); // matches first snap view (spike-up)
 
     const canvas = renderer.domElement;
@@ -217,14 +219,17 @@ export function WeCube(rawProps: WeCubeProps) {
       const dx = e.clientX - prevMouse.x;
       const dy = e.clientY - prevMouse.y;
       prevMouse = { x: e.clientX, y: e.clientY };
-      // Counter-rotate screen-space drag by currentRoll so that dragging "right"
-      // always feels like a horizontal spin regardless of the camera roll angle.
-      const cos = Math.cos(currentRoll),
-        sin = Math.sin(currentRoll);
-      const rdx = cos * dx + sin * dy;
-      const rdy = -sin * dx + cos * dy;
-      autoRotY += rdx * 0.004;
-      dragRotX += rdy * 0.004;
+
+      // Arcball rotation: the rotation axis is perpendicular to the drag direction in
+      // screen space, mapped to world space via the camera's world matrix columns.
+      // This accounts for the current camera roll automatically — no manual compensation needed.
+      // Dragging along any screen diagonal produces a clean spin around the matching 3D axis.
+      camera.updateMatrixWorld();
+      const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const camUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      const axis = new THREE.Vector3().addScaledVector(camRight, dy).addScaledVector(camUp, dx).normalize();
+      const angle = Math.sqrt(dx * dx + dy * dy) * 0.004;
+      pivotQuat.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, angle));
     };
 
     const onPointerUp = (e: PointerEvent) => {
@@ -235,8 +240,7 @@ export function WeCube(rawProps: WeCubeProps) {
       // Treat as a click if the pointer barely moved — snap to next preset view
       if (totalMoved < 6) {
         const view = snapViews[snapIndex];
-        snapTargetX = view.x;
-        snapTargetY = view.y;
+        snapTargetQuat.setFromEuler(new THREE.Euler(view.x, view.y, 0, 'YXZ'));
         snapTargetRoll = view.roll;
         isSnapping = true;
         snapIndex = (snapIndex + 1) % snapViews.length;
@@ -259,26 +263,22 @@ export function WeCube(rawProps: WeCubeProps) {
 
       if (pivotGroup) {
         if (isSnapping) {
-          // Exponential ease toward snap target — speed 6 gives ~0.5s settle time
+          // Exponential slerp toward snap target — speed 6 gives ~0.5s settle time.
           const t = 1 - Math.exp(-6 * delta);
-          autoRotY += (snapTargetY - autoRotY) * t;
-          dragRotX += (snapTargetX - dragRotX) * t;
+          pivotQuat.slerp(snapTargetQuat, t);
           currentRoll += (snapTargetRoll - currentRoll) * t;
-          if (
-            Math.abs(snapTargetY - autoRotY) < 0.001 &&
-            Math.abs(snapTargetX - dragRotX) < 0.001 &&
-            Math.abs(snapTargetRoll - currentRoll) < 0.001
-          ) {
-            autoRotY = snapTargetY;
-            dragRotX = snapTargetX;
+          if (pivotQuat.angleTo(snapTargetQuat) < 0.001 && Math.abs(snapTargetRoll - currentRoll) < 0.001) {
+            pivotQuat.copy(snapTargetQuat);
             currentRoll = snapTargetRoll;
             isSnapping = false;
           }
         } else if (!isDragging) {
-          autoRotY += delta * props.rotationSpeed;
+          // Auto-rotation: spin around world Y axis.
+          pivotQuat.premultiply(
+            new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), delta * props.rotationSpeed),
+          );
         }
-        pivotGroup.rotation.x = dragRotX;
-        pivotGroup.rotation.y = autoRotY;
+        pivotGroup.quaternion.copy(pivotQuat);
       }
 
       // Reapply camera roll each frame (it animates between snap views).
