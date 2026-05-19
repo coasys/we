@@ -7,8 +7,6 @@ import wecubeModel from '../../../../../shared/assets/wecube-2.glb';
 // Ensure Three.js treats hex/CSS colors as sRGB (not raw linear), matching the browser.
 THREE.ColorManagement.enabled = true;
 
-// ─── Scene setup ─────────────────────────────────────────────────────────────
-
 function setupScene(scene: THREE.Scene): {
   patchMesh: (mesh: THREE.Mesh, container: THREE.Object3D) => void;
   updateColors: () => void;
@@ -45,16 +43,19 @@ function setupScene(scene: THREE.Scene): {
   };
 }
 
-// ─── Scene constants ────────────────────────────────────────────────────────
-
-// Higher = cube appears larger in frame (divides the orthographic frustum size).
-const CUBE_ZOOM = 0.85;
-
-// Size of the background glow relative to the container. 1.0 = same size as the
-// container, 0.5 = half, 1.5 = 50% larger than the container (overflows, ambient).
-const GLOW_SIZE = 2.0;
-
-// ─── Component ───────────────────────────────────────────────────────────────
+// Scene constants
+const CUBE_ZOOM = 0.85; // Zoom level for the cube — tweak to make it fill more or less of the frame. 1 = tight fit, smaller = more breathing room.
+const GLOW_SIZE = 2.0; // Size of the glow layer relative to the cube size. Higher = bigger glow, but too high causes more noticeable pixelation at the edges. Keep below ~3 for best results.
+const PRE_INTRO_PAUSE = 0.5; // Seconds to pause on the initial view before starting the intro animation cycling through the snap views. Set to 0 to disable the pause.
+const INTRO_SNAP_INTERVAL = 0; // Seconds between each snap in the intro animation. Set to 0 to disable the intro and start directly at the first snap view (same as props.rotationSpeed = 0, but with the correct initial orientation).
+const SNAP_DURATION = 0.8; // Seconds for each snap animation to complete. Set to 0 for instant snaps with no animation (not recommended — the animation helps visually connect the views and makes it clear it's the same cube).
+const POST_INTRO_PAUSE = 0; // Seconds to pause after the intro animation finishes before starting auto-rotation. Set to 0 to start auto-rotation immediately after the intro.
+const SPIN_UP_DURATION = 2.0; // Seconds for auto-rotation to accelerate from 0 to full speed. Set to 0 to have auto-rotation start immediately at full speed (not recommended — the spin-up gives a nice sense of the cube coming to life, and prevents a jarring jump if the intro is disabled or the user interacts during the intro).
+const easeInOutCubic = (p: number) => (p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2);
+// const easeOutCubic = (p: number) => 1 - (1 - p) ** 3;
+// const smoothstep = (p: number) => p * p * (3 - 2 * p);
+// const linear = (p: number) => p;
+const snapEase = easeInOutCubic;
 
 interface WeCubeProps {
   width?: string;
@@ -168,9 +169,10 @@ export function WeCube(rawProps: WeCubeProps) {
     const snapViews = [
       { x: TOP_FACE, y: deg(45), roll: deg(90) }, // W
       { x: FRONT_FACE, y: deg(45), roll: deg(90) }, // E
-      { x: (TOP_FACE + FRONT_FACE) / 2, y: deg(45), roll: deg(90) }, // WE Middle
+      // { x: (TOP_FACE + FRONT_FACE) / 2, y: deg(45), roll: deg(90) }, // WE Middle
       { x: 0, y: deg(0), roll: deg(120) }, // WE Down
       { x: 0, y: deg(90), roll: deg(60) }, // WE Up
+      // { x: (TOP_FACE + FRONT_FACE) / 2, y: deg(45), roll: deg(90) }, // WE Middle
     ];
     let snapIndex = 0;
 
@@ -181,17 +183,30 @@ export function WeCube(rawProps: WeCubeProps) {
     // Using a quaternion lets drag feel like spinning a physical ball (arcball) rather than
     // independently accumulating two Euler angles, which causes the axis-coupling/drift the
     // Euler approach suffered from.
-    // Initial pivot encodes the starting visual roll (deg(60)) baked into orientation.
-    const pivotQuat = new THREE.Quaternion().setFromAxisAngle(viewAxisWorld, -deg(60));
+    // Start at snapViews[0] so the first frame shows the correct orientation, and the intro
+    // begins from view 1 (no redundant zero-distance snap back to the start).
+    const pivotQuat = new THREE.Quaternion()
+      .setFromAxisAngle(viewAxisWorld, -snapViews[0].roll)
+      .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(snapViews[0].x, snapViews[0].y, 0, 'YXZ')));
     const snapTargetQuat = new THREE.Quaternion();
+    const snapStartQuat = new THREE.Quaternion();
+    let snapElapsed = 0;
     let prevMouse = { x: 0, y: 0 };
     let pointerDownPos = { x: 0, y: 0 };
+    // Intro: cycle through all snap views once on load before auto-rotation starts.
+    let introPhase = true;
+    let introIdx = 1; // start at 1 — already at snapViews[0]
+    let introTimer = -PRE_INTRO_PAUSE; // negative so it must count up past 0 before first snap fires
+    let postIntroTimer = 0;
+    let spinUpElapsed = 0;
 
     const canvas = renderer.domElement;
 
     const onPointerDown = (e: PointerEvent) => {
       isDragging = true;
       isSnapping = false;
+      introPhase = false;
+      postIntroTimer = 0;
       prevMouse = { x: e.clientX, y: e.clientY };
       pointerDownPos = { x: e.clientX, y: e.clientY };
       canvas.setPointerCapture(e.pointerId);
@@ -225,6 +240,8 @@ export function WeCube(rawProps: WeCubeProps) {
         const view = snapViews[snapIndex];
         // Bake roll into the target quaternion: rotation(roll, viewAxis) × Euler.
         // This makes the slerp a single smooth arc instead of two diverging animations.
+        snapStartQuat.copy(pivotQuat);
+        snapElapsed = 0;
         snapTargetQuat
           .setFromAxisAngle(viewAxisWorld, -view.roll)
           .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(view.x, view.y, 0, 'YXZ')));
@@ -249,18 +266,45 @@ export function WeCube(rawProps: WeCubeProps) {
 
       if (pivotGroup) {
         if (isSnapping) {
-          // Exponential slerp toward snap target — speed 6 gives ~0.5s settle time.
-          const t = 1 - Math.exp(-6 * delta);
-          pivotQuat.slerp(snapTargetQuat, t);
-          if (pivotQuat.angleTo(snapTargetQuat) < 0.001) {
+          // Duration-based slerp with easing — SNAP_DURATION controls the time, snapEase the curve.
+          snapElapsed += delta;
+          const p = Math.min(snapElapsed / SNAP_DURATION, 1);
+          pivotQuat.copy(snapStartQuat).slerp(snapTargetQuat, snapEase(p));
+          if (p >= 1) {
             pivotQuat.copy(snapTargetQuat);
             isSnapping = false;
           }
+        } else if (introPhase) {
+          introTimer += delta;
+          if (introTimer >= INTRO_SNAP_INTERVAL) {
+            introTimer = 0;
+            if (introIdx < snapViews.length) {
+              const view = snapViews[introIdx++];
+              snapStartQuat.copy(pivotQuat);
+              snapElapsed = 0;
+              snapTargetQuat
+                .setFromAxisAngle(viewAxisWorld, -view.roll)
+                .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(view.x, view.y, 0, 'YXZ')));
+              isSnapping = true;
+            } else {
+              introPhase = false;
+              postIntroTimer = POST_INTRO_PAUSE;
+            }
+          }
         } else if (!isDragging) {
-          // Auto-rotation: spin around world Y axis.
-          pivotQuat.premultiply(
-            new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), delta * props.rotationSpeed),
-          );
+          if (postIntroTimer > 0) {
+            postIntroTimer -= delta;
+          } else {
+            // Auto-rotation: ease in from 0 to full speed over SPIN_UP_DURATION, then hold.
+            spinUpElapsed += delta;
+            const speedMul = snapEase(Math.min(spinUpElapsed / SPIN_UP_DURATION, 1));
+            pivotQuat.premultiply(
+              new THREE.Quaternion().setFromAxisAngle(
+                new THREE.Vector3(0, 1, 0),
+                delta * props.rotationSpeed * speedMul,
+              ),
+            );
+          }
         }
         pivotGroup.quaternion.copy(pivotQuat);
       }
