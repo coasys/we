@@ -75,6 +75,8 @@ export function WeCube(rawProps: WeCubeProps) {
     // Scene
     const scene = new THREE.Scene();
 
+    const deg = THREE.MathUtils.degToRad;
+
     // Camera — frustumSize tuned so the cube has breathing room on all sides.
     // Divide by CUBE_ZOOM: higher zoom → smaller frustum → cube fills more of the frame.
     const aspect = width / height;
@@ -88,6 +90,8 @@ export function WeCube(rawProps: WeCubeProps) {
       100,
     );
     camera.position.set(10, 10, 10);
+    // viewDir is the camera's view axis — used each frame to reapply the animated roll.
+    const viewDir = new THREE.Vector3().subVectors(new THREE.Vector3(0, 0, 0), camera.position).normalize();
     camera.lookAt(0, 0, 0);
 
     // Renderer
@@ -160,27 +164,29 @@ export function WeCube(rawProps: WeCubeProps) {
     //
     // Note: +X and -X faces are unreachable — R_Y*R_X*(±1,0,0) always has Y=0,
     // which can never match the camera's Y component (1/√3 ≠ 0).
-    const deg = THREE.MathUtils.degToRad;
     const TOP_FACE = Math.acos(1 / Math.sqrt(3)); // ≈ 54.74° — +Y face
     const BOTTOM_FACE = TOP_FACE - Math.PI; // ≈-125.26° — -Y face (cube flips)
     const FRONT_FACE = -Math.asin(1 / Math.sqrt(3)); // ≈-35.26° — +Z face
     const BACK_FACE = Math.asin(1 / Math.sqrt(3)); // ≈ 35.26° — -Z face
+    // roll = camera roll angle for this snap view.
+    // deg(60) = spike-up isometric (one edge points up, two down).
+    // 0       = spike-down isometric (one edge points down, two up).
     const snapViews = [
-      // 4 upper corners (top diagonal faces camera) ──
-      { x: 0, y: 0 }, // corner +X+Y+Z  (default)
-      { x: 0, y: deg(90) }, // corner -X+Y+Z
-      { x: 0, y: deg(180) }, // corner -X+Y-Z
-      { x: 0, y: deg(-90) }, // corner +X+Y-Z
-      // 4 lower corners (bottom diagonal faces camera) ──
-      { x: deg(-90), y: 0 }, // corner +X-Y+Z
-      { x: deg(-90), y: deg(90) }, // corner -X-Y+Z
-      { x: deg(90), y: deg(180) }, // corner -X-Y-Z
-      { x: deg(90), y: deg(-90) }, // corner +X-Y-Z
-      // 4 reachable flat faces ──
-      { x: TOP_FACE, y: deg(45) }, // top face    (+Y)
-      { x: BOTTOM_FACE, y: deg(45) }, // bottom face (-Y, cube flips over)
-      { x: FRONT_FACE, y: deg(45) }, // front face  (+Z)
-      { x: BACK_FACE, y: deg(-135) }, // back face   (-Z)
+      // 4 upper corners — spike-up (roll 60°) ──
+      { x: 0, y: 0, roll: deg(60) }, // corner +X+Y+Z
+      { x: 0, y: deg(90), roll: deg(60) }, // corner -X+Y+Z
+      { x: 0, y: deg(180), roll: deg(60) }, // corner -X+Y-Z
+      { x: 0, y: deg(-90), roll: deg(60) }, // corner +X+Y-Z
+      // 4 upper corners — spike-down (roll 0°) ──
+      { x: 0, y: 0, roll: 0 }, // corner +X+Y+Z
+      { x: 0, y: deg(90), roll: 0 }, // corner -X+Y+Z
+      { x: 0, y: deg(180), roll: 0 }, // corner -X+Y-Z
+      { x: 0, y: deg(-90), roll: 0 }, // corner +X+Y-Z
+      // 4 reachable flat faces (no roll — edges appear level) ──
+      { x: TOP_FACE, y: deg(45), roll: 0 }, // top face    (+Y)
+      { x: BOTTOM_FACE, y: deg(45), roll: 0 }, // bottom face (-Y, cube flips over)
+      { x: FRONT_FACE, y: deg(45), roll: 0 }, // front face  (+Z)
+      { x: BACK_FACE, y: deg(-135), roll: 0 }, // back face   (-Z)
     ];
     let snapIndex = 0;
 
@@ -189,10 +195,12 @@ export function WeCube(rawProps: WeCubeProps) {
     let isSnapping = false;
     let snapTargetX = 0;
     let snapTargetY = 0;
+    let snapTargetRoll = deg(60);
     let prevMouse = { x: 0, y: 0 };
     let pointerDownPos = { x: 0, y: 0 };
     let dragRotX = 0; // starts at isometric corner A (x=0, y=0)
     let autoRotY = 0;
+    let currentRoll = deg(60); // matches first snap view (spike-up)
 
     const canvas = renderer.domElement;
 
@@ -209,10 +217,14 @@ export function WeCube(rawProps: WeCubeProps) {
       const dx = e.clientX - prevMouse.x;
       const dy = e.clientY - prevMouse.y;
       prevMouse = { x: e.clientX, y: e.clientY };
-      autoRotY += dx * 0.004;
-      dragRotX += dy * 0.004;
-      // Clamp vertical rotation so it doesn't flip
-      dragRotX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, dragRotX));
+      // Counter-rotate screen-space drag by currentRoll so that dragging "right"
+      // always feels like a horizontal spin regardless of the camera roll angle.
+      const cos = Math.cos(currentRoll),
+        sin = Math.sin(currentRoll);
+      const rdx = cos * dx + sin * dy;
+      const rdy = -sin * dx + cos * dy;
+      autoRotY += rdx * 0.004;
+      dragRotX += rdy * 0.004;
     };
 
     const onPointerUp = (e: PointerEvent) => {
@@ -225,6 +237,7 @@ export function WeCube(rawProps: WeCubeProps) {
         const view = snapViews[snapIndex];
         snapTargetX = view.x;
         snapTargetY = view.y;
+        snapTargetRoll = view.roll;
         isSnapping = true;
         snapIndex = (snapIndex + 1) % snapViews.length;
       }
@@ -250,9 +263,15 @@ export function WeCube(rawProps: WeCubeProps) {
           const t = 1 - Math.exp(-6 * delta);
           autoRotY += (snapTargetY - autoRotY) * t;
           dragRotX += (snapTargetX - dragRotX) * t;
-          if (Math.abs(snapTargetY - autoRotY) < 0.001 && Math.abs(snapTargetX - dragRotX) < 0.001) {
+          currentRoll += (snapTargetRoll - currentRoll) * t;
+          if (
+            Math.abs(snapTargetY - autoRotY) < 0.001 &&
+            Math.abs(snapTargetX - dragRotX) < 0.001 &&
+            Math.abs(snapTargetRoll - currentRoll) < 0.001
+          ) {
             autoRotY = snapTargetY;
             dragRotX = snapTargetX;
+            currentRoll = snapTargetRoll;
             isSnapping = false;
           }
         } else if (!isDragging) {
@@ -262,6 +281,9 @@ export function WeCube(rawProps: WeCubeProps) {
         pivotGroup.rotation.y = autoRotY;
       }
 
+      // Reapply camera roll each frame (it animates between snap views).
+      camera.up.set(0, 1, 0).applyAxisAngle(viewDir, currentRoll);
+      camera.lookAt(0, 0, 0);
       renderer.render(scene, camera);
     };
     animate();
