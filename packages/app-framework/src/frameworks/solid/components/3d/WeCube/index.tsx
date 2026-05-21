@@ -44,9 +44,9 @@ function setupScene(scene: THREE.Scene): {
 }
 
 // Scene constants
-const SHOW_PARTICLE_CLOUD = false; // Toggle the co-rotating particle cloud layer around the cube.
-const SHOW_NETWORK = false; // Toggle the network layer of nodes and edges surrounding the cube.
-const SHOW_INTRO = false; // Set to false to skip the intro animation entirely and go straight to auto-rotation.
+const SHOW_PARTICLE_CLOUD = true; // Toggle the co-rotating particle cloud layer around the cube.
+const SHOW_NETWORK = true; // Toggle the network layer of nodes and edges surrounding the cube.
+const SHOW_INTRO = true; // Set to false to skip the intro animation entirely and go straight to auto-rotation.
 
 const CUBE_ZOOM = 0.85; // Zoom level for the cube — tweak to make it fill more or less of the frame. 1 = tight fit, smaller = more breathing room.
 const GLOW_SIZE = 2.0; // Size of the glow layer relative to the cube size. Higher = bigger glow, but too high causes more noticeable pixelation at the edges. Keep below ~3 for best results.
@@ -58,22 +58,28 @@ const POST_INTRO_PAUSE = 0; // Seconds to pause after the intro animation finish
 const SPIN_UP_DURATION = 3.0; // Seconds for auto-rotation to accelerate from 0 to full speed. Set to 0 to have auto-rotation start immediately at full speed (not recommended — the spin-up gives a nice sense of the cube coming to life, and prevents a jarring jump if the intro is disabled or the user interacts during the intro).
 const FREE_ROTATION_SPEED = 0.3; // Radians per second for auto-rotation after the intro. Set to 0 to disable auto-rotation.
 const FREE_ROTATION_DIRECTION = 0.2; // 1 = counter-clockwise (left), -1 = clockwise (right) when viewed from above.
-const FREE_ROTATION_TILT: number = 0.1; // Radians per second of vertical (up/down) rotation. Positive = tilts upward, negative = tilts downward. 0 = no vertical rotation.
+const FREE_ROTATION_TILT: number = 0; // Radians per second of vertical (up/down) rotation. Positive = tilts upward, negative = tilts downward. 0 = no vertical rotation.
 
 const SHOW_SPHERE = false; // Toggle the semi-transparent sphere layer surrounding the cube.
 const SPHERE_RADIUS = 2.7; // Radius of the surrounding sphere. 1.0 roughly encloses the cube — go larger for a looser halo.
 const SPHERE_COLOR = '#7c3aed'; // Fill color of the sphere.
 const SPHERE_OPACITY = 0.7; // Opacity of the sphere (0 = invisible, 1 = fully opaque). Keep low for a subtle halo effect.
 
-const NET_NODE_COUNT = 30; // Number of nodes in the network layer. Adjust as needed for visual density and performance balance — higher = more nodes and edges, but also more GPU load. Keep in mind that edges grow roughly with the square of node count, but we cap edges per node to mitigate this.
+const NET_NODE_COUNT = 100; // Number of nodes in the network layer. Adjust as needed for visual density and performance balance — higher = more nodes and edges, but also more GPU load. Keep in mind that edges grow roughly with the square of node count, but we cap edges per node to mitigate this.
 const NET_SPHERE_INNER_RADIUS = 3; // Inner radius — nodes are excluded from this zone to avoid overlapping the cube.
-const NET_SPHERE_OUTER_RADIUS = 3.5; // Outer radius of the shell within which network nodes are randomly distributed.
+const NET_SPHERE_OUTER_RADIUS = 3; // Outer radius of the shell within which network nodes are randomly distributed.
 const NET_MAX_EDGE_DIST = 2; // Maximum distance between two nodes for an edge to be drawn. Adjust to make the network more or less connected — lower = fewer edges and a sparser look, higher = more edges and a denser look. Keep in mind that the number of edges grows with the square of this distance, but we also cap edges per node to prevent hairball clusters.
 const NET_MAX_EDGES_PER_NODE = 5; // Cap on the number of edges each node can have. This prevents highly connected nodes from creating large hairball clusters that dominate the visual and make it hard to see the cube. Adjust as needed to balance between a more web-like look (higher) and clearer separation between nodes (lower).
-const NET_NODE_MIN_SIZE = 4; // px — smallest node circle
-const NET_NODE_MAX_SIZE = 12; // px — largest node circle
+const NET_NODE_MIN_SIZE = 3; // px — smallest node circle
+const NET_NODE_MAX_SIZE = 7; // px — largest node circle
 const PARTICLE_COLOR = '#6d3aed';
-const NETWORK_COLOR = '#a83aed';
+const NETWORK_COLOR = '#b860ee';
+const NETWORK_HUE_RANGE = 30; // Degrees of hue shift applied randomly to each node, centered on NETWORK_COLOR. e.g. 40 → ±20° around the base hue.
+const NETWORK_NODE_PULSE = true; // When true, each node's opacity oscillates between NETWORK_OPACITY_MIN and NETWORK_OPACITY_MAX.
+const NETWORK_OPACITY = 0.2; // Base opacity of network nodes when pulse is off (0 = invisible, 1 = fully opaque). Also used as NETWORK_OPACITY_MAX when pulse is on.
+const NETWORK_OPACITY_MIN = 0.05; // Minimum opacity during pulse cycle (only used when NETWORK_NODE_PULSE is true).
+const NETWORK_PULSE_SPEED = 1.0; // Speed of the opacity pulse in cycles per second — higher = faster flicker.
+const NETWORK_EDGE_OPACITY = 0.15; // Opacity of network edges (0 = invisible, 1 = fully opaque).
 
 const easeInOutCubic = (p: number) => (p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2);
 // const easeOutCubic = (p: number) => 1 - (1 - p) ** 3;
@@ -228,41 +234,70 @@ export function WeCube(rawProps: WeCubeProps) {
             degree[b]++;
           }
         }
-        // Node points — circular, varied size via ShaderMaterial + per-vertex pointSize attribute.
+        // Node points — circular, varied size via ShaderMaterial + per-vertex pointSize, color and phase attributes.
         const nodeBuf = new Float32Array(NET_NODE_COUNT * 3);
         const sizeBuf = new Float32Array(NET_NODE_COUNT);
+        const colorBuf = new Float32Array(NET_NODE_COUNT * 3);
+        const phaseBuf = new Float32Array(NET_NODE_COUNT); // per-node phase offset so pulses are desynchronised
+        const baseColor = new THREE.Color(NETWORK_COLOR);
+        const hsl = { h: 0, s: 0, l: 0 };
+        baseColor.getHSL(hsl);
         for (let i = 0; i < NET_NODE_COUNT; i++) {
           nodeBuf[i * 3] = netPositions[i].x;
           nodeBuf[i * 3 + 1] = netPositions[i].y;
           nodeBuf[i * 3 + 2] = netPositions[i].z;
           sizeBuf[i] = NET_NODE_MIN_SIZE + Math.random() * (NET_NODE_MAX_SIZE - NET_NODE_MIN_SIZE);
+          const hueShift = (Math.random() - 0.5) * (NETWORK_HUE_RANGE / 360);
+          const nodeColor = new THREE.Color().setHSL((hsl.h + hueShift + 1) % 1, hsl.s, hsl.l);
+          colorBuf[i * 3] = nodeColor.r;
+          colorBuf[i * 3 + 1] = nodeColor.g;
+          colorBuf[i * 3 + 2] = nodeColor.b;
+          phaseBuf[i] = Math.random() * Math.PI * 2;
         }
         const nodeGeo = new THREE.BufferGeometry();
         nodeGeo.setAttribute('position', new THREE.BufferAttribute(nodeBuf, 3));
         nodeGeo.setAttribute('pointSize', new THREE.BufferAttribute(sizeBuf, 1));
-        pivotGroup.add(
-          new THREE.Points(
-            nodeGeo,
-            new THREE.ShaderMaterial({
-              transparent: true,
-              uniforms: { color: { value: new THREE.Color(NETWORK_COLOR) } },
-              vertexShader: `
-              attribute float pointSize;
-              void main() {
-                gl_PointSize = pointSize;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-              }
-            `,
-              fragmentShader: `
-              uniform vec3 color;
-              void main() {
-                if (length(gl_PointCoord - vec2(0.5)) > 0.5) discard;
-                gl_FragColor = vec4(color, 0.8);
-              }
-            `,
-            }),
-          ),
-        );
+        nodeGeo.setAttribute('nodeColor', new THREE.BufferAttribute(colorBuf, 3));
+        nodeGeo.setAttribute('nodePhase', new THREE.BufferAttribute(phaseBuf, 1));
+        const nodeMat = new THREE.ShaderMaterial({
+          transparent: true,
+          uniforms: {
+            opacityBase: { value: NETWORK_OPACITY },
+            opacityMin: { value: NETWORK_OPACITY_MIN },
+            pulse: { value: NETWORK_NODE_PULSE ? 1.0 : 0.0 },
+            speed: { value: NETWORK_PULSE_SPEED },
+            time: { value: 0.0 },
+          },
+          vertexShader: `
+            attribute float pointSize;
+            attribute vec3 nodeColor;
+            attribute float nodePhase;
+            varying vec3 vColor;
+            varying float vPhase;
+            void main() {
+              vColor = nodeColor;
+              vPhase = nodePhase;
+              gl_PointSize = pointSize;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform float opacityBase;
+            uniform float opacityMin;
+            uniform float pulse;
+            uniform float speed;
+            uniform float time;
+            varying vec3 vColor;
+            varying float vPhase;
+            void main() {
+              if (length(gl_PointCoord - vec2(0.5)) > 0.5) discard;
+              float t = sin(time * speed * 6.2831853 + vPhase) * 0.5 + 0.5; // 0..1
+              float opacity = mix(opacityBase, opacityMin + (opacityBase - opacityMin) * t, pulse);
+              gl_FragColor = vec4(vColor, opacity);
+            }
+          `,
+        });
+        pivotGroup.add(new THREE.Points(nodeGeo, nodeMat));
         // Edge lines.
         if (netEdges.length > 0) {
           const edgeBuf = new Float32Array(netEdges.length * 6);
@@ -283,7 +318,7 @@ export function WeCube(rawProps: WeCubeProps) {
               new THREE.LineBasicMaterial({
                 color: NETWORK_COLOR,
                 transparent: true,
-                opacity: 0.2,
+                opacity: NETWORK_EDGE_OPACITY,
               }),
             ),
           );
@@ -391,9 +426,21 @@ export function WeCube(rawProps: WeCubeProps) {
     let animFrameId: number;
     const clock = new THREE.Clock();
 
+    let elapsedTime = 0;
     const animate = () => {
       animFrameId = requestAnimationFrame(animate);
       const delta = clock.getDelta();
+      elapsedTime += delta;
+      if (NETWORK_NODE_PULSE && SHOW_NETWORK) {
+        // Update the time uniform on the node shader material each frame.
+        // We find it by traversing pivotGroup once the model is loaded.
+        pivotGroup?.traverse((obj) => {
+          if (obj instanceof THREE.Points) {
+            const mat = obj.material as THREE.ShaderMaterial;
+            if (mat?.uniforms?.time !== undefined) mat.uniforms.time.value = elapsedTime;
+          }
+        });
+      }
 
       if (pivotGroup) {
         if (isSnapping) {
