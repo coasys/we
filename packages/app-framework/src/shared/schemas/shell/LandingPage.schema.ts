@@ -16,7 +16,8 @@ const CARDS = [
     },
     back: {
       icon: 'vault',
-      body: 'In WE, your community owns everything. Data lives in decentralised infrastructure you control. Uninstall an experience and your data stays. Move tools and your history comes with you.',
+      title: 'Own your data. Keep your history.',
+      body: 'In WE, your community owns everything. Data & interfaces live in decentralised infrastructure you control powered by the AD4M layer. Uninstall an experience and your data stays. Move tools and your history comes with you.',
     },
   },
   {
@@ -27,51 +28,32 @@ const CARDS = [
     },
     back: {
       icon: 'squares-four',
+      title: 'Your whole community, in one place.',
       body: "WE is one environment where discussion, governance, shared knowledge, and economic coordination all live together and work together — under one identity. A community doesn't bolt on another tool. It evolves its environment.",
     },
   },
   {
     front: {
       icon: 'lock-simple',
-      title: "You can't actually change the tools you use every day.",
+      title: "You can't evolve the tools you use every day.",
       body: "You're allowed to pick a theme or add a bot, but the real decisions — how votes work, what feedback signals mean, how information surfaces — are locked by the developers. Your culture gets flattened to fit their tool.",
     },
     back: {
       icon: 'git-fork',
+      title: 'Fork it, reshape it, make it yours.',
       body: 'In WE, every experience is built from structured templates — not locked code — that anyone can inspect, adapt, and share. Define what signals mean for your community. Fork an experience, make it yours, publish it back.',
     },
   },
   {
     front: {
       icon: 'translate',
-      title: 'Every community is building in a different language.',
+      title: 'Every project is building in a different language.',
       body: 'As AI makes it easy to generate custom tools on demand, a hidden problem emerges: everyone ends up with incompatible versions of the same things. Flexibility and interoperability end up in opposition.',
     },
     back: {
       icon: 'intersect',
+      title: 'A common vocabulary, infinite sentences.',
       body: "WE uses a shared vocabulary of content building blocks — text, audio, image, video, and more — that stay consistent across every community. Any community can connect with another's content without any upfront coordination. The alphabet is fixed. The sentences are free.",
-    },
-  },
-  {
-    front: {
-      icon: 'plant',
-      title: 'The tools break when your group grows.',
-      body: 'What works great for 20 people becomes chaos at 200. You outgrow the simple tools but switching means losing years of history and starting over. So you suffer with tools that no longer fit.',
-    },
-    back: {
-      icon: 'stack',
-      body: "Because WE separates data from interface, evolving your tools doesn't mean losing your history. Adopt a new governance mechanism, swap in a better decision-making flow — the community's memory stays intact. The tools change. The community continues.",
-    },
-  },
-  {
-    front: {
-      icon: 'robot',
-      title: 'AI is just a chatbot on the side.',
-      body: "Today's AI can describe changes and suggest features — but it's structurally outside the product. It can't reshape your interface or modify your governance logic. Locked software makes AI a very expensive suggestion box.",
-    },
-    back: {
-      icon: 'magic-wand',
-      body: 'WE is designed to be an environment AI can actively work inside. Experiences have a structure it can read, reason about, and modify. Describe what your community needs — a fairer decision-making process, a new economic flow — and AI can generate and preview it.',
     },
   },
   {
@@ -82,9 +64,33 @@ const CARDS = [
     },
     back: {
       icon: 'storefront',
+      title: 'Build once. Share with everyone.',
       body: 'The WE marketplace distributes coordination patterns as reusable, forkable components — governance mechanisms, knowledge interfaces, signalling systems. A community that builds something better publishes it. Others adopt and improve it. The ecosystem learns.',
     },
   },
+  {
+    front: {
+      icon: 'robot',
+      title: 'AI is just a chatbot on the side.',
+      body: "Today's AI can describe changes and suggest features — but it's structurally outside the product. It can't reshape your interface or modify your governance logic. Locked software makes AI a very expensive suggestion box.",
+    },
+    back: {
+      icon: 'magic-wand',
+      title: 'AI works inside your environment, not beside it.',
+      body: 'WE is designed to be an environment AI can actively work inside. Experiences have a structure it can read, reason about, and modify. Describe what your community needs — a fairer decision-making process, a new economic flow — and AI can generate and preview it.',
+    },
+  },
+  // {
+  //   front: {
+  //     icon: 'plant',
+  //     title: 'The tools break when your group grows.',
+  //     body: 'What works great for 20 people becomes chaos at 200. You outgrow the simple tools but switching means losing years of history and starting over. So you suffer with tools that no longer fit.',
+  //   },
+  //   back: {
+  //     icon: 'stack',
+  //     body: "Because WE separates data from interface, evolving your tools doesn't mean losing your history. Adopt a new governance mechanism, swap in a better decision-making flow — the community's memory stays intact. The tools change. The community continues.",
+  //   },
+  // },
 ];
 
 export const landingPageTemplate: TemplateSchema = {
@@ -102,8 +108,8 @@ export const landingPageTemplate: TemplateSchema = {
           type: 'Column',
           props: { gap: '400', ax: 'center', ay: 'center' },
           children: [
-            { type: 'WeCube', props: { width: '500px', height: '400px', rotationSpeed: 0.2 } },
-            // { type: 'WeNetwork', props: { width: '500px', height: '400px', rotationSpeed: 0.3 } },
+            { type: 'WeCube', props: { width: '500px', height: '400px' } },
+            // { type: 'WeNetwork', props: { width: '500px', height: '400px', rotationSpeed: 0.2 } },
             // {
             //   type: 'we-image',
             //   props: {
@@ -116,21 +122,22 @@ export const landingPageTemplate: TemplateSchema = {
             // },
             {
               type: 'we-text',
-              props: { fontSize: '900', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
-              children: ['The social layer humanity needs'],
+              props: { fontSize: '36px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center', mb: '200' },
+              children: ['A new foundation for thriving communities'],
+              // A new foundation for thriving communities...
             },
             {
               type: 'we-text',
               props: { fontSize: '600', color: 'neutral-700', textAlign: 'center' },
               children: [
-                "Scattered across the planet are the insights and capacity to solve the hardest problems we face. But we're held back by social infrastructure built to extract from us, not evolve with us — locked tools, fragmented context, coordination systems no one can change.",
+                "Scattered across the planet are the insights, resources, and creative capacity needed to solve the hardest problems we face as a species. But right now we're held back by social infrastructure built to extract from us, not evolve with us — rigid interfaces, fragmented data, & coordination systems no one can change.",
               ],
             },
             {
               type: 'we-text',
               props: { fontSize: '600', color: 'neutral-700', textAlign: 'center' },
               children: [
-                'WE offers communities a foundation to reclaim their infrastructure, reshape their tools, and an open ecosystem where better forms of governance and coordination can emerge and spread.',
+                'WE offers communities a new foundation to reclaim their social spaces, reshape their tools, and participate in an evolving ecosystem where better forms of governance and coordination can emerge and spread.',
               ],
             },
           ],
@@ -198,10 +205,21 @@ export const landingPageTemplate: TemplateSchema = {
                   height: '100%',
                 },
                 children: [
-                  { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'primary-100' } },
+                  { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'neutral-100' } },
                   {
                     type: 'we-text',
-                    props: { lineHeight: '1.6', fontSize: '400', color: 'primary-100' },
+                    props: {
+                      fontSize: '600',
+                      fontWeight: '600',
+                      textAlign: 'center',
+                      color: 'neutral-100',
+                      lineHeight: '1.4',
+                    },
+                    children: [card.back.title],
+                  },
+                  {
+                    type: 'we-text',
+                    props: { lineHeight: '1.6', fontSize: '400', color: 'neutral-100', textAlign: 'center' },
                     children: [card.back.body],
                   },
                 ],

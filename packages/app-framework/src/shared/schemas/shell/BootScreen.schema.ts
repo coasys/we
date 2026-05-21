@@ -29,7 +29,7 @@ export const bootScreen: SchemaNode = {
             gradient: 'primary',
           },
         },
-        // { type: 'WeCube', props: { width: '500px', height: '400px', rotationSpeed: 0.2 } },
+        // { type: 'WeCube', props: { width: '300px', height: '300px' } },
         // Initialising state
         {
           type: '$if',
