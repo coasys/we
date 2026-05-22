@@ -80,10 +80,10 @@ at all.
 
 ## Affected Files
 
-| File | Change |
-|------|--------|
-| `core/src/model/Ad4mModel.ts` | `innerUpdate()`: write HasOne/BelongsToOne string values as relation triples |
-| `core/src/model/Ad4mModel.test.ts` | New tests for inline HasOne in `create()` and `update()` |
+| File                               | Change                                                                       |
+| ---------------------------------- | ---------------------------------------------------------------------------- |
+| `core/src/model/Ad4mModel.ts`      | `innerUpdate()`: write HasOne/BelongsToOne string values as relation triples |
+| `core/src/model/Ad4mModel.test.ts` | New tests for inline HasOne in `create()` and `update()`                     |
 
 ---
 

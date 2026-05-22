@@ -9,12 +9,12 @@
 2. **Relation fields** (`@HasMany`, `@HasOne`, etc.) — only `String` or
    `StringArray` (bare target IRIs)
 
-Filtering a relation field by a *property of the related model* requires a
+Filtering a relation field by a _property of the related model_ requires a
 second query today:
 
 ```typescript
 // Desired — filter signals whose type has slug 'like'
-Signal.findAll(p, { where: { signalType: { slug: 'like' } } });  // ← not supported
+Signal.findAll(p, { where: { signalType: { slug: 'like' } } }); // ← not supported
 
 // Workaround — two steps
 const likeType = await SignalType.findOne(p, { where: { slug: 'like' } });
@@ -25,7 +25,7 @@ The same limitation applies to `HasMany` existence filters:
 
 ```typescript
 // "posts that have at least one signal with value > 0"
-Post.findAll(p, { where: { signals: { value: { $gt: 0 } } } });  // ← not supported
+Post.findAll(p, { where: { signals: { value: { $gt: 0 } } } }); // ← not supported
 ```
 
 ---
@@ -39,23 +39,10 @@ model's field names:
 
 ```typescript
 // Existing
-type WhereCondition =
-  | string
-  | number
-  | boolean
-  | string[]
-  | number[]
-  | WhereOps;
+type WhereCondition = string | number | boolean | string[] | number[] | WhereOps;
 
 // New
-type WhereCondition =
-  | string
-  | number
-  | boolean
-  | string[]
-  | number[]
-  | WhereOps
-  | Record<string, WhereCondition>;  // ← nested object condition
+type WhereCondition = string | number | boolean | string[] | number[] | WhereOps | Record<string, WhereCondition>; // ← nested object condition
 ```
 
 At the TypeScript layer, `compileWhereClause()` already serialises
@@ -77,7 +64,7 @@ pub(super) enum WhereCondition {
 }
 ```
 
-Deserialisation: when a where-clause value is a JSON object *without* the
+Deserialisation: when a where-clause value is a JSON object _without_ the
 operator keys (`$gt`, `$lt`, `$not`, etc.), parse it as `Object` rather than
 `Ops`. The two are unambiguous because operator keys always start with `$`.
 
@@ -149,13 +136,13 @@ if shape.properties.iter().any(|p| p.name == *prop_name && p.is_collection) {
 
 ## Affected Files
 
-| File | Change |
-|------|--------|
-| `core/src/model/types.ts` | Add `Record<string, WhereCondition>` to `WhereCondition` union |
-| `core/src/model/query-utils.ts` | Serialise nested objects in `compileWhereClause()` |
-| `rust-executor/src/perspectives/model_query/types.rs` | Add `Object(BTreeMap<String, WhereCondition>)` to `WhereCondition` enum; update deserialisation |
+| File                                                           | Change                                                                                                 |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `core/src/model/types.ts`                                      | Add `Record<string, WhereCondition>` to `WhereCondition` union                                         |
+| `core/src/model/query-utils.ts`                                | Serialise nested objects in `compileWhereClause()`                                                     |
+| `rust-executor/src/perspectives/model_query/types.rs`          | Add `Object(BTreeMap<String, WhereCondition>)` to `WhereCondition` enum; update deserialisation        |
 | `rust-executor/src/perspectives/model_query/sparql_builder.rs` | Generate inline JOIN / `FILTER EXISTS` patterns for `Object` conditions; update `all_where_pushable()` |
-| `rust-executor/src/perspectives/model_query/shape.rs` | Always populate `where_predicates` from `targetShape` when present |
+| `rust-executor/src/perspectives/model_query/shape.rs`          | Always populate `where_predicates` from `targetShape` when present                                     |
 
 ---
 

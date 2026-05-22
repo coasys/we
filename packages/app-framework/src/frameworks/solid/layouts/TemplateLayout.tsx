@@ -14,7 +14,16 @@
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
-import { landingPageTemplate, profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
+import {
+  landingPageTemplate,
+  forCommunitiesTemplate,
+  forBuildersTemplate,
+  howItWorksTemplate,
+  seeItInPracticeTemplate,
+  profileTemplate,
+  schemaTestsTemplate,
+  settingsTemplate,
+} from '@shared/schemas';
 import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutations.actions';
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { deepClone } from '@shared/utils';
@@ -47,6 +56,10 @@ type ShellViewEntry = {
 
 const shellViews: Record<string, ShellViewEntry> = {
   'landing-page': { schema: landingPageTemplate },
+  'for-communities': { schema: forCommunitiesTemplate },
+  'for-builders': { schema: forBuildersTemplate },
+  'how-it-works': { schema: howItWorksTemplate },
+  'see-it-in-practice': { schema: seeItInPracticeTemplate },
   profile: { schema: profileTemplate },
   settings: { schema: settingsTemplate },
   'schema-tests': {

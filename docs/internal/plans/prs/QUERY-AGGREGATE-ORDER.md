@@ -57,8 +57,8 @@ interface IncludeProjection {
   from: string;
   where?: Record<string, unknown>;
   count?: boolean;
-  aggregate?: AggregateMode;  // NEW — if set, field is required
-  field?: string;             // NEW — property name to aggregate over
+  aggregate?: AggregateMode; // NEW — if set, field is required
+  field?: string; // NEW — property name to aggregate over
   order?: Record<string, 'ASC' | 'DESC'>;
   limit?: number;
 }
@@ -82,6 +82,7 @@ In `execute_model_query()`, reorder the pipeline:
 **Implementation notes for step 6:**
 
 The `count: true` path already runs a grouped SPARQL query:
+
 ```sparql
 SELECT ?parent (COUNT(?child) AS ?n)
 WHERE { ?parent <predicate> ?child . <where filters> }
@@ -89,6 +90,7 @@ GROUP BY ?parent
 ```
 
 For `sum` and `mean`:
+
 ```sparql
 SELECT ?parent (SUM(?val) AS ?total)
 WHERE {
@@ -113,8 +115,12 @@ In the ORDER BY builder, accept `$`-prefixed virtual field names alongside real 
 properties:
 
 ```typescript
-order: { $likeScore: 'DESC' }  // sort by the projection
-order: { createdAt: 'ASC' }    // existing behaviour unchanged
+order: {
+  $likeScore: 'DESC';
+} // sort by the projection
+order: {
+  createdAt: 'ASC';
+} // existing behaviour unchanged
 ```
 
 In Rust: after attaching projection results to instances (step 7), `sort_instances()`
@@ -145,10 +151,10 @@ const posts = await CollectionBlock.findAll(p, {
 
 ## Affected Files
 
-| File | Change |
-|------|--------|
-| `core/src/model/types.ts` | Add `aggregate`, `field` to `IncludeProjection`; add `AggregateMode` type |
-| `core/src/model/ModelQueryBuilder.ts` | Accept `$`-prefixed virtual fields in `.order()` validation |
+| File                                            | Change                                                                                                                   |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `core/src/model/types.ts`                       | Add `aggregate`, `field` to `IncludeProjection`; add `AggregateMode` type                                                |
+| `core/src/model/ModelQueryBuilder.ts`           | Accept `$`-prefixed virtual fields in `.order()` validation                                                              |
 | `rust-executor/src/perspectives/model_query.rs` | Move projection step before ORDER BY; add `sum`/`mean` SPARQL patterns; extend `sort_instances()` to read virtual fields |
 
 ---

@@ -18,7 +18,7 @@ More flexibility (AI generates any model)
   → Less interoperability (can't share across communities)
 ```
 
-If 1000 communities each generate their own Recipe/Track/Post model, they create 1000 incompatible schemas despite representing the same concepts. Different property names, different predicates, different structures — no cross-community sharing.
+If 1000 communities each generate their own Recipe/Track/Post model, they create 1000 incompatible schemas despite representing the same concepts. Different property names, different predicates, different structures — limited cross-community sharing.
 
 **Blocks resolve this by standardizing components, not compositions.** Everyone uses the same ~20-30 block types (shared alphabet), but composes them differently (different sentences). The result: full cross-community readability, graceful degradation, and network effects at the component level.
 

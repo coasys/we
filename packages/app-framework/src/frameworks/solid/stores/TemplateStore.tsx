@@ -51,6 +51,7 @@ export interface TemplateStore {
   persistCurrentTemplate: () => Promise<void>;
   openShellView: (id: string) => void;
   closeShellView: () => void;
+  scrollToId: (id: string) => void;
 
   // Loading state
   operationLoading: Accessor<string | null>;
@@ -253,6 +254,10 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   function closeShellView() {
     setActiveShellView(null);
+  }
+
+  function scrollToId(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function removeTemplate() {
@@ -607,6 +612,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     persistCurrentTemplate,
     openShellView,
     closeShellView,
+    scrollToId,
 
     // Loading state
     operationLoading,
