@@ -4,7 +4,7 @@
  */
 
 // Literal union types for font tokens
-export type FontFamilyToken = 'base';
+export type FontFamilyToken = 'base' | 'mozilla';
 export type FontFamilyValue = FontFamilyToken | (string & {});
 export type FontSizeToken = 'base' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '1000';
 export type FontSizeValue = FontSizeToken | (string & {});
@@ -20,6 +20,7 @@ export type LetterSpacingValue = LetterSpacingToken | (string & {});
  */
 export const fontFamily = {
   base: "'DM Sans', sans-serif",
+  mozilla: "'Mozilla Text', serif",
 } satisfies Record<FontFamilyToken, string>;
 
 /**
