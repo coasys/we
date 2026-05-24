@@ -1,13 +1,11 @@
 import type { TemplateSchema } from '@we/schema-shared';
-// ─── Image Sets ───────────────────────────────────────────────────────────────
 
-import forCommunitiesV1 from '../../../assets/CTAv1/ForCommunities.jpg';
 import forBuildersV1 from '../../../assets/CTAv1/ForBuilders.jpg';
+import forCommunitiesV1 from '../../../assets/CTAv1/ForCommunities.jpg';
 import howItWorksV1 from '../../../assets/CTAv1/HowItWorks.jpg';
 import seeItInPracticeV1 from '../../../assets/CTAv1/SeeItInPractice.jpg';
-
-import forCommunitiesV2 from '../../../assets/CTAv2/ForCommunities.jpg';
 import forBuildersV2 from '../../../assets/CTAv2/ForBuilders.jpg';
+import forCommunitiesV2 from '../../../assets/CTAv2/ForCommunities.jpg';
 import howItWorksV2 from '../../../assets/CTAv2/HowItWorks.jpg';
 import seeItInPracticeV2 from '../../../assets/CTAv2/SeeItInPractice.jpg';
 
@@ -26,7 +24,7 @@ const IMAGE_SETS = {
   },
 } as const;
 
-const IMAGES = IMAGE_SETS.v2; // ← toggle here
+const IMAGES = IMAGE_SETS.v1; // ← toggle here
 
 /**
  * About WE — Shell overlay that pitches WE to newcomers.
@@ -83,7 +81,7 @@ const CARDS = [
   {
     front: {
       icon: 'castle-turret',
-      title: "You're renting your own community.",
+      title: "You're stuck renting your own community.",
       body: "Every group chat or shared workspace lives on someone else's land. One day they change the rules, raise prices, or shut down — and your entire history and culture can vanish overnight.",
     },
     back: {
@@ -334,26 +332,86 @@ export const landingPageTemplate: TemplateSchema = {
         // ── Hero ──────────────────────────────────────────────────────────
         {
           type: 'Column',
-          props: { gap: '400', ax: 'center' },
+          props: { gap: '400', ax: 'center', mb: '600' },
           children: [
-            // { type: 'WeCube', props: { width: '500px', height: '400px' } },
+            { type: 'WeCube', props: { width: '500px', height: '400px' } },
+            // {
+            //   type: 'we-image',
+            //   props: { src: '/we-text.svg', alt: 'WE Logo', width: '50px', height: '35px', gradient: 'primary' },
+            // },
             {
               type: 'we-text',
-              props: { fontSize: '36px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center', mb: '100' },
-              children: ['Social infrastructure for a more cooperative world.'],
-            },
-            {
-              type: 'we-text',
-              props: { fontSize: '600', color: 'neutral-700', textAlign: 'center', maxWidth: '720px' },
+              props: {
+                fontFamily: 'mozilla',
+                fontSize: '38px',
+                fontWeight: 'bold',
+                color: 'neutral-900',
+                textAlign: 'center',
+                mb: '300',
+                // maxWidth: '500px',
+                // textTransform: 'uppercase',
+                // letterSpacing: '0.1em',
+              },
+              // children: ['Social infrastructure for a more cooperative world'],
               children: [
-                "Scattered across the planet are the insights, resources, and creativity needed to solve the hardest problems we face. But we're held back by social infrastructure built to extract from us, not evolve with us.",
+                'Social ',
+                {
+                  type: 'we-text',
+                  props: {
+                    inline: true,
+                    // color: 'primary-600',
+                    gradient: 'primary',
+                    fontWeight: 'bold',
+                    fontSize: '38px',
+                  },
+                  children: ['infrastructure'],
+                },
+                ' for a more cooperative world',
               ],
             },
+            // {
+            //   type: 'we-text',
+            //   props: {
+            //     fontFamily: 'mozilla',
+            //     fontSize: '38px',
+            //     fontWeight: 'bold',
+            //     color: 'neutral-900',
+            //     textAlign: 'center',
+            //   },
+            //   // children: ['Social infrastructure for a more cooperative world'],
+            //   children: [
+            //     'Social ',
+            //     {
+            //       type: 'we-text',
+            //       props: { inline: true, gradient: 'primary', fontWeight: 'bold', fontSize: '38px' },
+            //       children: ['infrastructure'],
+            //     },
+            //     ' for a more cooperative world',
+            //   ],
+            // },
             {
               type: 'we-text',
-              props: { fontSize: '600', color: 'neutral-700', textAlign: 'center', maxWidth: '720px' },
+              props: {
+                fontSize: '600',
+                color: 'neutral-500',
+                textAlign: 'center',
+                maxWidth: '600px',
+                fontWeight: 'medium',
+                fontStyle: 'italic',
+              },
+              children: ["Communities don't just live in WE. They shape it."],
+            },
+            {
+              type: 'we-text',
+              props: {
+                fontSize: '500',
+                color: 'neutral-600',
+                textAlign: 'center',
+                maxWidth: '680px',
+                lineHeight: '1.8',
+              },
               children: [
-                "WE is a shared environment where communities can reclaim their tools, build on each other's discoveries, and coordinate on their own terms — infrastructure designed for cooperation, not capture.",
+                'WE is an open environment where community experiences are defined as schemas — not sealed apps. Any interface can be inspected, forked, and adapted to your context. Your data lives separately from the interface, so changing experiences never means losing history. What one community builds, every community can use.',
               ],
             },
           ],
@@ -366,7 +424,12 @@ export const landingPageTemplate: TemplateSchema = {
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '400', color: 'neutral-500', textAlign: 'center' },
+              props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+              children: ['Whats wrong with the tools we have today and how WE changes that?'],
+            },
+            {
+              type: 'we-text',
+              props: { fontSize: '500', color: 'neutral-500', textAlign: 'center' },
               children: ['Tap a card to see how WE changes this'],
             },
           ],
