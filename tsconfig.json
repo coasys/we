@@ -6,7 +6,6 @@
 
     // Module resolution
     "moduleResolution": "bundler",
-    "baseUrl": ".",
 
     // Type checking & strictness
     "strict": true,
