@@ -640,7 +640,7 @@ componentHeight: 'xs', 'sm', 'md', 'lg', 'xl'
 
 effect.depth: '100', '200', '300', '400', '500', 'none'
 
-font.family: 'base'
+font.family: 'base', 'mozilla'
 
 font.letterSpacing: 'tighter', 'tight', 'normal', 'wide', 'wider', 'widest'
 

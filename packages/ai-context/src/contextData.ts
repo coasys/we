@@ -2138,7 +2138,11 @@ export const contextData: ContextData = {
         none: 'none',
       },
     },
-    { name: 'font.family', type: 'Record<FontFamilyToken, string>', values: { base: "'DM Sans', sans-serif" } },
+    {
+      name: 'font.family',
+      type: 'Record<FontFamilyToken, string>',
+      values: { base: "'DM Sans', sans-serif", mozilla: "'Mozilla Text', serif" },
+    },
     {
       name: 'font.letterSpacing',
       type: 'Record<LetterSpacingToken, string>',

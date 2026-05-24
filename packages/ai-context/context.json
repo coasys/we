@@ -6586,7 +6586,8 @@
       "name": "font.family",
       "type": "Record<FontFamilyToken, string>",
       "values": {
-        "base": "'DM Sans', sans-serif"
+        "base": "'DM Sans', sans-serif",
+        "mozilla": "'Mozilla Text', serif"
       }
     },
     {
