@@ -125,27 +125,30 @@ in the same query using the \`include\` option on \`findAll\` / \`findOne\`.
 
 **Eager-load a relation (full instances)**
 \`\`\`ts
-// Attaches hydrated Signal[] as node.signals
+// signals is declared on WeNode as \`signals: string[]\`. Include hydrates
+// the URIs into Signal instances at runtime, but the static field type stays
+// string[] (it reflects the unhydrated state). Cast to read the instances:
 const nodes = await Space.findAll(perspective, { include: { signals: true } });
-const sigs: Signal[] = (nodes[0] as any).signals ?? [];
+const sigs = nodes[0].signals as unknown as Signal[];
 \`\`\`
 
 **Count a relation (number, no instances fetched)**
 
-Use a \`$\`-prefixed key with \`{ from, count: true as const }\`:
+Use a \`$\`-prefixed key with \`{ from, count: true }\`. The projection key flows
+into the result row's type via \`IncludeExtras\`, so the value is typed directly:
 \`\`\`ts
 const spaces = await Space.findAll(perspective, {
-  include: { $signalCount: { from: 'signals', count: true as const } },
+  include: { $signalCount: { from: 'signals', count: true } },
 });
-const n: number = (spaces[0] as any).$signalCount ?? 0;
+const n: number = spaces[0].$signalCount ?? 0;
 \`\`\`
 
 **Filtered subset — named \`$\`-projection returning instances**
 
 Use a \`$\`-prefixed key with \`{ from, where, limit }\`. The matched instances are
-attached to each result under that key:
+attached to each result under that key. With \`limit: 1\` the value is the scalar
+or \`null\`; without a limit (or with limit > 1) it's an array:
 \`\`\`ts
-// TS code — literal values
 const spaces = await Space.findAll(perspective, {
   include: {
     $mySignal: {
@@ -155,7 +158,7 @@ const spaces = await Space.findAll(perspective, {
     },
   },
 });
-const mySignal = (spaces[0] as any).$mySignal ?? null; // Signal | null
+const mySignal = spaces[0].$mySignal; // Signal | null — typed via IncludeExtras
 \`\`\`
 
 In JSON schema nodes, store references are used for the \`where\` values:
@@ -174,8 +177,8 @@ include: {
 // Access the result: '$post.$myLikeSignal.value'
 \`\`\`
 
-Important: \`count: true\` must be typed as \`true as const\` (not just \`true\`) to
-satisfy the \`IncludeProjection\` type — TypeScript infers \`boolean\` otherwise.
+Note: \`count: true\` works as a plain literal — the typed projection (\`TypedIncludeProjection\`)
+contextually narrows it to the \`true\` literal, so the \`as const\` workaround is no longer needed.
 
 ---
 
