@@ -14,6 +14,7 @@ A schema is a tree of nodes. Each node can have:
 - slots: Named slots for advanced composition (optional)
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
+- styles: Raw CSS escape hatch — Record<string, string | number> applied as inline styles on the node wrapper. Use for CSS not covered by design system props (e.g. filter, clip-path, backdrop-filter, mix-blend-mode). When present the wrapper participates in layout (no display:contents), so CSS effects apply correctly.
 
 Example node:
 {

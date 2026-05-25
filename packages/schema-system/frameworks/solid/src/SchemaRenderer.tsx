@@ -678,7 +678,17 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   }
 
   const slotProp = node.slot ? { slot: node.slot } : {};
-  const themeStyle = createMemo(() => (node.theme ? { display: 'contents', ...themeToStyle(node.theme) } : undefined));
+  // Compute wrapper div styles. `theme` always uses display:contents so it doesn't affect layout
+  // but still scopes CSS custom properties. `styles` is the raw-CSS escape hatch — when present
+  // the wrapper participates in layout (no display:contents) so transforms, filters, etc. work.
+  const wrapperStyle = createMemo(() => {
+    const themeVars = node.theme ? { display: 'contents' as const, ...themeToStyle(node.theme) } : null;
+    const ns = node.styles;
+    if (themeVars && ns) return { ...themeVars, ...ns };
+    if (themeVars) return themeVars;
+    if (ns) return ns;
+    return { display: 'contents' as const };
+  });
   const themeAttr = createMemo(() => node.theme?.themeName);
   const isWebComponent = node.type?.includes('-') ?? false;
 
@@ -725,7 +735,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     );
 
     return (
-      <div style={themeStyle() ?? { display: 'contents' }} data-we-theme={themeAttr()}>
+      <div style={wrapperStyle()} data-we-theme={themeAttr()}>
         {wcElement}
       </div>
     );
@@ -758,7 +768,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   );
 
   return (
-    <div style={themeStyle() ?? { display: 'contents' }} data-we-theme={themeAttr()}>
+    <div style={wrapperStyle()} data-we-theme={themeAttr()}>
       {solidElement}
     </div>
   );

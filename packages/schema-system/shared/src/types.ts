@@ -69,6 +69,7 @@ export type SchemaNode = {
   routes?: RouteSchema[]; // Routes for routing components
   children?: (SchemaNode | string | OperatorToken)[]; // Child nodes, text strings, or operator tokens ($concat, $store, etc.)
   theme?: ThemeOverrides; // Scoped theme overrides — applied as CSS custom properties on a display:contents wrapper
+  styles?: Record<string, string | number>; // Raw CSS escape hatch — applied as inline styles on the node wrapper element
   $localState?: Record<string, LocalStateField>; // Scoped local state — creates signals on mount, discarded on unmount
 };
 

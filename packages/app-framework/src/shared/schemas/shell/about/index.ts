@@ -327,94 +327,37 @@ export const landingPageTemplate: TemplateSchema = {
   children: [
     {
       type: 'Column',
-      props: { px: '500', py: '800', gap: '800', maxWidth: '1100px', width: '100%' },
+      props: { px: '500', py: '800', gap: '500', maxWidth: '1100px', width: '100%' },
       children: [
         // ── Hero ──────────────────────────────────────────────────────────
         {
           type: 'Column',
-          props: { gap: '400', ax: 'center', mb: '600' },
+          props: { gap: '400', ax: 'center', mb: '70px' },
           children: [
             { type: 'WeCube', props: { width: '500px', height: '400px' } },
             // {
             //   type: 'we-image',
             //   props: { src: '/we-text.svg', alt: 'WE Logo', width: '50px', height: '35px', gradient: 'primary' },
             // },
-            // {
-            //   type: 'we-text',
-            //   props: {
-            //     fontFamily: 'mozilla',
-            //     fontSize: '38px',
-            //     fontWeight: 'bold',
-            //     color: 'neutral-900',
-            //     textAlign: 'center',
-            //     mb: '300',
-            //     // maxWidth: '500px',
-            //     // textTransform: 'uppercase',
-            //     // letterSpacing: '0.1em',
-            //   },
-            //   // children: ['Social infrastructure for a more cooperative world'],
-            //   children: [
-            //     'Social ',
-            //     {
-            //       type: 'we-text',
-            //       props: {
-            //         inline: true,
-            //         // color: 'primary-600',
-            //         gradient: 'primary',
-            //         fontWeight: 'bold',
-            //         fontSize: '38px',
-            //       },
-            //       children: ['infrastructure'],
-            //     },
-            //     ' for a more cooperative world',
-            //   ],
-            // },
             {
               type: 'Column',
-              props: { ax: 'center' },
+              props: { ax: 'center', mb: '500' },
               children: [
                 {
                   type: 'we-text',
-                  props: {
-                    fontFamily: 'mozilla',
-                    fontSize: '42px',
-                    fontWeight: 'bold',
-                    color: 'neutral-900',
-                    textAlign: 'center',
-                    // mb: '300',
-                    // maxWidth: '500px',
-                    // textTransform: 'uppercase',
-                    // letterSpacing: '0.1em',
-                  },
-                  // children: ['Social infrastructure for a more cooperative world'],
+                  props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
                   children: [
                     'Social ',
                     {
                       type: 'we-text',
-                      props: {
-                        inline: true,
-                        // color: 'primary-600',
-                        gradient: 'primary',
-                        fontWeight: 'bold',
-                        fontSize: '42px',
-                      },
+                      props: { inline: true, gradient: 'primary', fontWeight: 'bold', fontSize: '50px' },
                       children: ['infrastructure'],
                     },
                   ],
                 },
                 {
                   type: 'we-text',
-                  props: {
-                    fontFamily: 'mozilla',
-                    fontSize: '42px',
-                    fontWeight: 'bold',
-                    color: 'neutral-900',
-                    textAlign: 'center',
-                    mb: '300',
-                    // maxWidth: '500px',
-                    // textTransform: 'uppercase',
-                    // letterSpacing: '0.1em',
-                  },
+                  props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
                   children: [' for a more cooperative world'],
                 },
               ],
@@ -425,7 +368,6 @@ export const landingPageTemplate: TemplateSchema = {
                 fontSize: '700',
                 color: 'neutral-700',
                 textAlign: 'center',
-                // maxWidth: '600px',
                 fontWeight: 'medium',
                 fontStyle: 'italic',
               },
@@ -450,17 +392,31 @@ export const landingPageTemplate: TemplateSchema = {
         // ── Card section label ────────────────────────────────────────────
         {
           type: 'Column',
-          props: { ax: 'center' },
+          props: { ax: 'center', gap: '300' },
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
-              children: ['Whats wrong and how WE fixes it'],
+              props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-800', textAlign: 'center' },
+              // children: ['Whats wrong with todays tools and how can we fix them?'],
+              children: ['What makes WE different'],
+              // children: ['The walls every community keeps hitting.'],
             },
             {
-              type: 'we-text',
-              props: { fontSize: '500', color: 'neutral-500', textAlign: 'center' },
-              children: ['Tap a card to see the solution.'],
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { fontSize: '600', color: 'neutral-600', textAlign: 'center' },
+                  children: ['Tap a card to see the solution'],
+                },
+                {
+                  type: 'we-icon',
+                  props: { name: 'hand-pointing', size: '28px', color: 'neutral-400' },
+                  // styles: { transform: 'rotate(180deg)' },
+                },
+                // { type: 'we-icon', props: { name: 'arrow-down', color: 'neutral-400' } },
+              ],
             },
           ],
         },
