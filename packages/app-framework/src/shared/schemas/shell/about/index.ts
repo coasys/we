@@ -339,36 +339,6 @@ export const landingPageTemplate: TemplateSchema = {
             //   type: 'we-image',
             //   props: { src: '/we-text.svg', alt: 'WE Logo', width: '50px', height: '35px', gradient: 'primary' },
             // },
-            {
-              type: 'we-text',
-              props: {
-                fontFamily: 'mozilla',
-                fontSize: '38px',
-                fontWeight: 'bold',
-                color: 'neutral-900',
-                textAlign: 'center',
-                mb: '300',
-                // maxWidth: '500px',
-                // textTransform: 'uppercase',
-                // letterSpacing: '0.1em',
-              },
-              // children: ['Social infrastructure for a more cooperative world'],
-              children: [
-                'Social ',
-                {
-                  type: 'we-text',
-                  props: {
-                    inline: true,
-                    // color: 'primary-600',
-                    gradient: 'primary',
-                    fontWeight: 'bold',
-                    fontSize: '38px',
-                  },
-                  children: ['infrastructure'],
-                },
-                ' for a more cooperative world',
-              ],
-            },
             // {
             //   type: 'we-text',
             //   props: {
@@ -377,25 +347,85 @@ export const landingPageTemplate: TemplateSchema = {
             //     fontWeight: 'bold',
             //     color: 'neutral-900',
             //     textAlign: 'center',
+            //     mb: '300',
+            //     // maxWidth: '500px',
+            //     // textTransform: 'uppercase',
+            //     // letterSpacing: '0.1em',
             //   },
             //   // children: ['Social infrastructure for a more cooperative world'],
             //   children: [
             //     'Social ',
             //     {
             //       type: 'we-text',
-            //       props: { inline: true, gradient: 'primary', fontWeight: 'bold', fontSize: '38px' },
+            //       props: {
+            //         inline: true,
+            //         // color: 'primary-600',
+            //         gradient: 'primary',
+            //         fontWeight: 'bold',
+            //         fontSize: '38px',
+            //       },
             //       children: ['infrastructure'],
             //     },
             //     ' for a more cooperative world',
             //   ],
             // },
             {
+              type: 'Column',
+              props: { ax: 'center' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: {
+                    fontFamily: 'mozilla',
+                    fontSize: '42px',
+                    fontWeight: 'bold',
+                    color: 'neutral-900',
+                    textAlign: 'center',
+                    // mb: '300',
+                    // maxWidth: '500px',
+                    // textTransform: 'uppercase',
+                    // letterSpacing: '0.1em',
+                  },
+                  // children: ['Social infrastructure for a more cooperative world'],
+                  children: [
+                    'Social ',
+                    {
+                      type: 'we-text',
+                      props: {
+                        inline: true,
+                        // color: 'primary-600',
+                        gradient: 'primary',
+                        fontWeight: 'bold',
+                        fontSize: '42px',
+                      },
+                      children: ['infrastructure'],
+                    },
+                  ],
+                },
+                {
+                  type: 'we-text',
+                  props: {
+                    fontFamily: 'mozilla',
+                    fontSize: '42px',
+                    fontWeight: 'bold',
+                    color: 'neutral-900',
+                    textAlign: 'center',
+                    mb: '300',
+                    // maxWidth: '500px',
+                    // textTransform: 'uppercase',
+                    // letterSpacing: '0.1em',
+                  },
+                  children: [' for a more cooperative world'],
+                },
+              ],
+            },
+            {
               type: 'we-text',
               props: {
-                fontSize: '600',
-                color: 'neutral-500',
+                fontSize: '700',
+                color: 'neutral-700',
                 textAlign: 'center',
-                maxWidth: '600px',
+                // maxWidth: '600px',
                 fontWeight: 'medium',
                 fontStyle: 'italic',
               },
@@ -425,12 +455,12 @@ export const landingPageTemplate: TemplateSchema = {
             {
               type: 'we-text',
               props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
-              children: ['Whats wrong with the tools we have today and how WE changes that?'],
+              children: ['Whats wrong and how WE fixes it'],
             },
             {
               type: 'we-text',
               props: { fontSize: '500', color: 'neutral-500', textAlign: 'center' },
-              children: ['Tap a card to see how WE changes this'],
+              children: ['Tap a card to see the solution.'],
             },
           ],
         },
@@ -521,7 +551,26 @@ export const landingPageTemplate: TemplateSchema = {
                 },
               ],
             },
-            ...DEEP_DIVE.map((card, i) => ctaCard(card, i % 2 === 0)),
+            ...DEEP_DIVE.map((card, i) => {
+              const imageLeft = i % 2 === 0;
+              return {
+                type: '$animate',
+                props: {
+                  scrollReveal: -100,
+                  enterTransition: [
+                    { type: 'fade', duration: 600, easing: 'ease-in-out' },
+                    {
+                      type: 'slide',
+                      direction: imageLeft ? 'left' : 'right',
+                      distance: '200px',
+                      duration: 1000,
+                      easing: 'ease-in-out',
+                    },
+                  ],
+                },
+                children: [ctaCard(card, imageLeft)],
+              };
+            }),
           ],
         },
 

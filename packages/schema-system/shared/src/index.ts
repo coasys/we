@@ -9,6 +9,7 @@ export type {
   ThemeOverrides,
   RouteSchema,
   TransitionConfig,
+  TransitionEffect,
   StoreToken,
   ConcatToken,
   ActionToken,

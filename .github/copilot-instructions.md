@@ -82,6 +82,11 @@ Equality / inequality checks:
 { "$eq": [a, b] } — strict equality
 { "$ne": [a, b] } — strict inequality
 
+Numeric comparisons:
+{ "$lt": [a, b] } — a < b (less than)
+{ "$gt": [a, b] } — a > b (greater than)
+Example: { "$gt": [{ "$count": { "items": { "$store": "listStore.items" } } }, 0] }
+
 Set membership:
 { "$in": [value, array] } — true if array contains value (false if second operand is not an array)
 Example: { "$in": [{ "$store": "spaceStore.uuid" }, { "$store": "adamStore.systemPerspectiveUuids" }] }
@@ -91,6 +96,20 @@ Boolean logic:
 { "$and": [a, b, ...] } — all truthy
 { "$or": [a, b, ...] } — any truthy
 { "$not": a } — negation
+
+Array operators:
+{ "$filter": { "items": <array>, "where": { "field": "value", ... } } }
+Filters an array to items where all where conditions match (strict equality).
+Where values can be any resolvable token, including context refs.
+Example: { "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
+
+{ "$count": { "items": <array> } }
+Returns the length of an array.
+Example: { "badge": { "$count": { "items": { "$store": "notificationStore.unread" } } } }
+
+{ "$find": { "items": <array>, "where"?: { ... }, "select"?: "fieldName" } }
+Finds the first matching item. where is optional (returns first item if omitted). select plucks a single field.
+Example: { "$find": { "items": { "$store": "spaceStore.members" }, "where": { "id": "$item.creatorId" }, "select": "name" } }
 
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
@@ -143,6 +162,10 @@ Read:  { "$local": "name" } — returns the signal value (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
        { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean).
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
+Call function: { "$callLocal": "fieldName" } — event handler that calls the function stored in a function-typed local field.
+  Used when a child component needs to trigger a callback passed in via $localState.
+  The field must be declared as type: 'function' and set via $setLocal.
+  Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
 $local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
 
@@ -239,6 +262,45 @@ Renders children once for each item. The "as" name becomes a context key. Defaul
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
 Renders "then" node if condition is truthy, else renders "else" node.
+Supports enterTransition / exitTransition for CSS animations when the node mounts/unmounts.
+TransitionConfig = TransitionEffect | TransitionEffect[]
+TransitionEffect = { type: 'fade'|'slide'|'scale', duration?: ms, easing?: string, delay?: ms, direction?: 'left'|'right'|'up'|'down', distance?: string }
+fade controls opacity only; slide/scale control transform only. Compose effects with an array.
+Example: enterTransition: [{ type: 'fade', duration: 300 }, { type: 'slide', direction: 'up', distance: '40px', duration: 400 }]
+
+Viewport / mount animation (child always in DOM):
+{ "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
+The child is always mounted. Animations are CSS-only (opacity / transform) — use this for scroll-reveal effects.
+Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
+scrollReveal: true fires enterTransition when the element enters the viewport.
+scrollReveal: -100 fires 100px before the element would enter (negative = earlier reveal).
+scrollLeave fires exitTransition when the element leaves the viewport.
+Without scrollReveal/scrollLeave, the enterTransition runs once on mount.
+Only one child node is supported.
+Example:
+{
+  "type": "$animate",
+  "props": {
+    "scrollReveal": -100,
+    "enterTransition": [
+      { "type": "fade", "duration": 600, "easing": "ease-in-out" },
+      { "type": "slide", "direction": "left", "distance": "200px", "duration": 1000, "easing": "ease-in-out" }
+    ]
+  },
+  "children": [{ "type": "SomeCard", "children": [] }]
+}
+
+Single model item (load one record, render children with it in context):
+{
+  "type": "$single",
+  "props": {
+    "item": { "$query": { "model": "ModelName", "params": { ... }, "subscribe": true } },
+    "as": "profile"   // context key for children — default: 'item'
+  },
+  "children": [{ "type": "we-text", "children": ["$profile.username"] }]
+}
+Renders nothing until a matching record is found. Like $each but for a single result.
+query options (model, params, include, perspective, subscribe) work identically to $query.
 
 Route outlet:
 { "type": "$routes" }

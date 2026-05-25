@@ -11,6 +11,7 @@ import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Sho
 import { createStore, produce, reconcile } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
+import { AnimateRenderer } from './AnimateRenderer';
 import { ConditionalRenderer } from './ConditionalRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 
@@ -418,6 +419,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   // Handle conditional rendering
   if (node.type === '$if') {
     return <ConditionalRenderer node={node} stores={stores} context={effectiveContext} renderNode={renderNode} />;
+  }
+
+  // Handle viewport-driven animations (child always mounted)
+  if (node.type === '$animate') {
+    return <AnimateRenderer node={node} stores={stores} context={effectiveContext} renderNode={renderNode} />;
   }
 
   // Handle each loops

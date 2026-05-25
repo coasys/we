@@ -11,13 +11,39 @@ export type TemplateMeta = {
 export type TemplateSchema = SchemaNode & { id?: string; schemaVersion?: number; meta: TemplateMeta };
 export type RouteSchema = SchemaNode & { path: string; redirect?: string; keepAlive?: boolean };
 
-// Transition configuration for $if operator (can be used in props via prop resolution)
-export type TransitionConfig = {
+/**
+ * A single animation effect.
+ * - 'fade'  — animates opacity only
+ * - 'slide' — animates transform only (use alongside 'fade' for a combined slide+fade)
+ * - 'scale' — animates transform (scale) only
+ */
+export type TransitionEffect = {
   type: 'fade' | 'slide' | 'scale';
   duration?: number; // Milliseconds (default: 300)
   easing?: string; // CSS easing function (default: 'ease')
   delay?: number; // Milliseconds (default: 0)
+  // slide / scale options
+  direction?: 'left' | 'right' | 'up' | 'down'; // Slide direction (default: 'up')
+  distance?: string; // Slide/scale distance (default: '40px' for slide, '0.95' for scale)
 };
+
+/**
+ * One or more animation effects composed together.
+ * Each effect independently controls its own CSS property and timing.
+ *
+ * Scroll triggers (scrollReveal / scrollLeave) are $animate node-level props,
+ * not part of the transition config.
+ *
+ * @example Single effect
+ * enterTransition: { type: 'fade', duration: 400 }
+ *
+ * @example Composed effects with independent timing
+ * enterTransition: [
+ *   { type: 'fade', duration: 400, easing: 'ease' },
+ *   { type: 'slide', direction: 'left', distance: '60px', duration: 700, easing: 'ease-out' },
+ * ]
+ */
+export type TransitionConfig = TransitionEffect | TransitionEffect[];
 
 /** Parametric theme overrides — each field maps to a CSS custom property on the design system. */
 export type ThemeOverrides = {
