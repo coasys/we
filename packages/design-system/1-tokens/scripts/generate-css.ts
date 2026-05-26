@@ -342,6 +342,7 @@ function generateCombinedCSS(outputDir: string) {
 /* Font imports */
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Mozilla+Text:wght@200..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Boldonse&family=Mozilla+Text:wght@200..700&display=swap');
 
 /* Design token variables */
 @import './animation.css';

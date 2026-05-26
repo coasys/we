@@ -1,7 +1,7 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
 import forBuildersV1 from '../../../assets/CTAv1/ForBuilders.jpg';
-import forCommunitiesV1 from '../../../assets/CTAv1/ForCommunities.jpg';
+import forCommunitiesV1 from '../../../assets/CTAv1/ForCommunitiesLarge.jpg';
 import howItWorksV1 from '../../../assets/CTAv1/HowItWorks.jpg';
 import seeItInPracticeV1 from '../../../assets/CTAv1/SeeItInPractice.jpg';
 import forBuildersV2 from '../../../assets/CTAv2/ForBuilders.jpg';
@@ -50,7 +50,7 @@ function bodyText(text: string, italic = false) {
       fontSize: '500',
       color: 'neutral-700',
       lineHeight: '1.7',
-      ...(italic ? { fontStyle: 'italic', fontWeight: 'medium' } : {}),
+      ...(italic ? { italic: true, fontWeight: 'medium' } : {}),
     },
     children: [text],
   };
@@ -59,7 +59,7 @@ function bodyText(text: string, italic = false) {
 function subheading(text: string) {
   return {
     type: 'we-text',
-    props: { fontSize: '600', fontWeight: 'semibold', color: 'neutral-900' },
+    props: { fontSize: '600', fontWeight: 'bold', color: 'primary-900', mb: '300' },
     children: [text],
   };
 }
@@ -75,6 +75,32 @@ function bulletItem(text: string) {
   };
 }
 
+function pageHeader(icon: string, label: string) {
+  return {
+    type: 'Row',
+    props: { ay: 'center', gap: '400' },
+    children: [
+      { type: 'we-icon', props: { name: icon, size: 'lg', color: 'primary-600' } },
+      {
+        type: 'we-text',
+        props: { fontSize: '700', fontWeight: 'bold', color: 'primary-600', textTransform: 'uppercase' },
+        children: [label],
+      },
+    ],
+  };
+}
+
+function sectionHeader(card: (typeof DEEP_DIVE)[0]) {
+  return [
+    pageHeader(card.icon, card.label),
+    sectionHeading(card.title),
+    {
+      type: 'we-image',
+      props: { src: card.image, alt: card.imageAlt, fit: 'cover', width: '100%', height: '300px' },
+    },
+  ];
+}
+
 // ─── Flip Cards ───────────────────────────────────────────────────────────────
 
 const CARDS = [
@@ -86,8 +112,8 @@ const CARDS = [
     },
     back: {
       icon: 'house-line',
-      title: 'Own your data. Keep your history.',
-      body: 'In WE, your community owns everything. Data lives in decentralised infrastructure you control. Uninstall an experience and your data stays. Move to a better tool and your history comes with you.',
+      title: 'Own your data. Protect your culture.',
+      body: 'In WE, your community owns everything. Data lives in decentralised infrastructure you control. Change your interface and your data stays. Switch tools and your history comes with you.',
     },
   },
   {
@@ -98,15 +124,15 @@ const CARDS = [
     },
     back: {
       icon: 'squares-four',
-      title: 'Your whole community, in one place.',
-      body: "WE is one environment where discussion, signals, shared knowledge, and coordination all live together — under one identity. Your community doesn't bolt on another tool. It evolves its environment.",
+      title: 'Everything you need in one place.',
+      body: 'WE is one environment where discussion, signals, shared knowledge, and coordination all live together — one place, one identity, no context-switching. When your community needs something new, it grows its environment instead of fragmenting it.',
     },
   },
   {
     front: {
       icon: 'lock-simple',
       title: "You can't change the tools you depend on.",
-      body: 'You can pick a theme or add a bot, but the real decisions — how votes work, how information surfaces, what signals mean — are locked by developers. Your culture gets flattened to fit their product.',
+      body: 'You can pick a theme or add a bot, but the real decisions — how the interface is organised, how votes work, what signals mean — are locked by developers. Your culture gets flattened to fit their product.',
     },
     back: {
       icon: 'git-fork',
@@ -116,26 +142,26 @@ const CARDS = [
   },
   {
     front: {
-      icon: 'cube-transparent',
-      title: 'Great ideas stay trapped inside single groups.',
-      body: 'One community figures out a brilliant way to run decisions or share resources. But that discovery never escapes the group it was built in. Every community keeps reinventing the same wheels.',
+      icon: 'circles-three',
+      title: 'Diversity crushed for compatibility.',
+      body: "Different tools speak different languages. Data created in one community can't flow into another without conversion overhead, fragile integrations, or one side giving up the tool that actually fits them. To connect, someone has to conform.",
     },
     back: {
-      icon: 'storefront',
-      title: 'Build once. Share with everyone.',
-      body: 'WE is being built around a shared marketplace where coordination patterns, templates, and tools can be published, forked, and improved by anyone. Build something better — the whole ecosystem benefits.',
+      icon: 'fediverse-logo',
+      title: 'Unity without uniformity.',
+      body: 'WE is built on a shared protocol any compatible tool can speak. Different communities using different experiences can still share data, connect, and collaborate — without anyone having to standardize. Your community keeps its way of working. Others keep theirs.',
     },
   },
   {
     front: {
-      icon: 'translate',
-      title: 'Switching tools means losing your history.',
-      body: 'What works for 20 people breaks at 200. You outgrow your tools but switching means losing years of conversations, decisions, and context. So you stay stuck with something that no longer fits.',
+      icon: 'hammer',
+      title: 'Builders compete when they could compound.',
+      body: "Every new app has to rebuild the same foundations before it can ship. Then it competes for users against other innovations that don't actually conflict. Good ideas stay isolated instead of building on each other.",
     },
     back: {
-      icon: 'stack',
-      title: 'Evolve your tools. Keep your memory.',
-      body: "Because WE separates data from interface, upgrading your tools doesn't mean losing your history. Swap in a new template, redesign how information surfaces — the community's memory stays intact.",
+      icon: 'storefront',
+      title: "Build what's new. Reuse what's already here.",
+      body: "The shared foundations already exist. Start there, build what's new, and contribute it to a growing module marketplace. Others fork it, improve it, build on it. Compatible innovations don't compete — they compound.",
     },
   },
   {
@@ -152,6 +178,19 @@ const CARDS = [
   },
 ];
 
+// {
+//   front: {
+//     icon: 'translate',
+//     title: 'Switching tools means losing your history.',
+//     body: 'What works for 20 people breaks at 200. You outgrow your tools but switching means losing years of conversations, decisions, and context. So you stay stuck with something that no longer fits.',
+//   },
+//   back: {
+//     icon: 'stack',
+//     title: 'Evolve your tools. Keep your memory.',
+//     body: "Because WE separates data from interface, upgrading your tools doesn't mean losing your history. Swap in a new template, redesign how information surfaces — the community's memory stays intact.",
+//   },
+// },
+
 // ─── Deep Dive Cards ─────────────────────────────────────────────────────────
 
 const DEEP_DIVE = [
@@ -159,7 +198,7 @@ const DEEP_DIVE = [
     id: 'for-communities',
     icon: 'users',
     label: 'For communities',
-    title: 'Tools that belong to your community, not a platform.',
+    title: 'Tools that adapt to your community, not the other way around.',
     preview:
       "Your community's tools should grow with you — not trap your data, resist change, or disappear when a platform pivots. WE gives you an environment you shape over time, with full continuity of history and identity.",
     image: IMAGES.forCommunities,
@@ -169,9 +208,9 @@ const DEEP_DIVE = [
     id: 'for-builders',
     icon: 'hammer',
     label: 'For builders',
-    title: 'Stop rebuilding the 80%. Start only building what is actually yours.',
+    title: "Build what's new. Reuse what's already here.",
     preview:
-      "Every team building social tools reinvents the same 80%. WE turns that 80% into shared infrastructure — so you only build the 20% that's actually yours. Publish it once. The whole ecosystem benefits.",
+      'Identity, data infrastructure, a content system, a design system, a growing component library — already in the ecosystem. You start from those and build only what is genuinely new. Contribute it as a module and the whole ecosystem benefits, without competing for the same users.',
     image: IMAGES.forBuilders,
     imageAlt: 'Builders at work',
   },
@@ -210,7 +249,7 @@ function ctaCard(card: (typeof DEEP_DIVE)[0], imageLeft: boolean) {
   };
   const contentCol = {
     type: 'Column',
-    props: { p: '700', gap: '400', ay: 'center', ax: 'start' },
+    props: { p: '600', gap: '400', ay: 'center', ax: 'start' },
     children: [
       {
         type: 'Row',
@@ -278,41 +317,88 @@ function ctaCard(card: (typeof DEEP_DIVE)[0], imageLeft: boolean) {
 // ─── Roadmap Items ────────────────────────────────────────────────────────────
 
 const BUILT = [
-  'Schema-driven UI rendering — experiences defined as JSON schemas, rendered live',
-  'Template system — community environments that can be forked, customised, and AI-generated',
-  'Block system — a shared content vocabulary (text, images, audio, video, collections, polls, maps, and more)',
-  'Design system — tokens, primitives, components, and widgets shared across all experiences',
-  'Signalling system — communities can define their own signal types and attach meaning to content',
-  'AI template generation — describe what you need, AI builds a working template from your data structures',
-  'AD4M integration — sovereign identity, agent-centric data, peer-to-peer coordination',
-  'Sub-app integration — existing AD4M applications (including Flux) can run inside WE',
-  'Themes — visual customisation across experiences',
+  {
+    title: 'AD4M integration',
+    description: 'Sovereign identity, self-owned data, and peer-to-peer coordination — no central server required.',
+  },
+  {
+    title: 'Design system',
+    description:
+      'A full suite of compatible tokens, themes, primitives, components, and widgets that can be used to build experiences.',
+  },
+  {
+    title: 'Schema system',
+    description:
+      'Adaptable JSON blueprints that define how experiences look and behave — rendered live without recompiling, safe to share, easy for AI to inspect and reason about, and runs in any frontend framework.',
+  },
+  {
+    title: 'Block system',
+    description:
+      'Composable building blocks for content generation — text, images, audio, video, events, tasks, and more — that can be combined freely, from a single message to a full document.',
+  },
+  {
+    title: 'AI template generation',
+    description:
+      "AI that reads the semantic shape of your community's data and generates working interfaces from plain language — start fresh or fork an existing template, no code required.",
+  },
+  {
+    title: 'Customisable signals',
+    description: 'Communities can define their own signal types and attach meaning to content.',
+  },
+  { title: 'Sub-app integration', description: 'Existing AD4M applications (including Flux) can run inside WE.' },
 ];
 
 const IN_PROGRESS = [
-  'Marketplace — discovery and publishing infrastructure for templates, widgets, and block types',
-  'Governance modules — structured proposal and decision-making tools',
-  'Economics and resource coordination flows',
+  {
+    title: 'Marketplace',
+    description: 'Discovery and publishing infrastructure for templates, widgets, and block types.',
+  },
+  { title: 'Governance modules', description: 'Structured proposal and decision-making tools.' },
+  { title: 'Economics and resource coordination', description: 'Flows for managing shared resources and incentives.' },
 ];
 
-function roadmapItem(text: string, done: boolean) {
+function roadmapItem(item: { title: string; description: string }, done: boolean) {
   return {
     type: 'Row',
-    props: { gap: '300', ay: 'start' },
+    props: {
+      gap: '400',
+      ay: 'center',
+      r: '400',
+      p: '400',
+      bg: 'neutral-75',
+      border: '1px solid var(--we-color-neutral-200)', //  done ? '1px solid var(--we-color-neutral-200)' : '2px dashed var(--we-color-neutral-400)',
+    },
     children: [
       {
         type: 'we-icon',
         props: {
-          name: done ? 'check-circle' : 'circle-dashed',
-          size: 'sm',
-          color: done ? 'success-500' : 'neutral-400',
-          mt: '50',
+          name: done ? 'check' : 'circle-dashed',
+          size: '30px',
+          // color: done ? 'primary-500' : 'neutral-400',
+          gradient: 'primary', // done ? 'primary' : undefined,
+          weight: 'bold',
         },
       },
       {
-        type: 'we-text',
-        props: { fontSize: '400', color: done ? 'neutral-800' : 'neutral-500', lineHeight: '1.6' },
-        children: [text],
+        type: 'Column',
+        props: { gap: '100' },
+        children: [
+          {
+            type: 'we-text',
+            props: {
+              fontSize: '600',
+              fontWeight: 'bold',
+              color: 'neutral-800', // done ? 'neutral-800' : 'neutral-600',
+              // lineHeight: '1.5',
+            },
+            children: [item.title],
+          },
+          {
+            type: 'we-text',
+            props: { fontSize: '500', color: 'neutral-600' },
+            children: [item.description],
+          },
+        ],
       },
     ],
   };
@@ -332,59 +418,214 @@ export const landingPageTemplate: TemplateSchema = {
         // ── Hero ──────────────────────────────────────────────────────────
         {
           type: 'Column',
-          props: { gap: '400', ax: 'center', mb: '70px' },
+          props: { gap: '400', ax: 'center', mt: '100px', mb: '180px' },
           children: [
-            { type: 'WeCube', props: { width: '500px', height: '400px' } },
+            { type: 'WeCube', props: { width: '350px', height: '350px' } },
             // {
             //   type: 'we-image',
             //   props: { src: '/we-text.svg', alt: 'WE Logo', width: '50px', height: '35px', gradient: 'primary' },
             // },
             {
               type: 'Column',
-              props: { ax: 'center', mb: '500' },
+              props: { ax: 'center', mt: '300', mb: '500' },
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+                  props: {
+                    fontSize: '52px',
+                    // fontFamily: 'boldonse',
+                    fontWeight: 'bold',
+                    color: 'neutral-900',
+                    textAlign: 'center',
+                    // lineHeight: '0.8',
+                    // letterSpacing: '0.2em',
+                    // textTransform: 'uppercase',
+                  },
                   children: [
                     'Social ',
                     {
                       type: 'we-text',
-                      props: { inline: true, gradient: 'primary', fontWeight: 'bold', fontSize: '50px' },
+                      props: {
+                        inline: true,
+                        gradient: 'primary',
+                        fontWeight: 'bold',
+                        fontSize: '52px',
+                      },
                       children: ['infrastructure'],
                     },
+                    // ' for',
                   ],
                 },
                 {
                   type: 'we-text',
-                  props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
-                  children: [' for a more cooperative world'],
+                  props: {
+                    // fontFamily: 'boldonse',
+                    fontSize: '52px',
+                    fontWeight: 'bold',
+                    color: 'neutral-900',
+                    textAlign: 'center',
+                    // letterSpacing: '0.1em',
+                    // textTransform: 'uppercase',
+                  },
+                  children: ['for a more cooperative world.'],
+                  // children: ['for the living web'],
                 },
               ],
             },
+            // {
+            //   type: 'Column',
+            //   props: { ax: 'center', mb: '500' },
+            //   children: [
+            //     {
+            //       type: 'we-text',
+            //       props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+            //       children: [
+            //         'Social infrastructure for the ',
+            //         {
+            //           type: 'we-text',
+            //           props: { inline: true, gradient: 'primary', fontWeight: 'bold', fontSize: '50px' },
+            //           children: ['living web'],
+            //         },
+            //       ],
+            //     },
+            //   ],
+            // },
+            // {
+            //   type: 'we-text',
+            //   props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+            //   children: ['An open environment for community-built interfaces.'],
+            // },
+            // {
+            //   type: 'Column',
+            //   children: [
+            //     {
+            //       type: 'we-text',
+            //       props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+            //       children: ['An open environment'],
+            //     },
+            //     {
+            //       type: 'we-text',
+            //       props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+            //       children: ['for community-built interfaces.'],
+            //     },
+            //   ],
+            // },
+            // {
+            //   type: 'we-text',
+            //   props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+            //   children: ['The interface layer for the living web'],
+            // },
             {
               type: 'we-text',
               props: {
-                fontSize: '700',
+                fontSize: '28px',
                 color: 'neutral-700',
                 textAlign: 'center',
                 fontWeight: 'medium',
-                fontStyle: 'italic',
+                mb: '500',
+                // italic: true,
+                // fontStyle: 'italic',
               },
-              children: ["Communities don't just live in WE. They shape it."],
+              // children: ["Communities don't just live in WE. They shape it."],
+              // children: ['Most platforms give you a space to use. WE gives you an environment to shape'],
+              // children: ['Own your data. Shape your environment. Share what you build.'],
+              // children: ['Own your data. Shape your environment. Build the commons.'],
+              children: ['Own your data. Shape your environment. Grow the commons.'],
+              // children: ["Design your community's experience. Own what you build. Share what works."],
             },
+            // {
+            //   type: 'we-text',
+            //   props: {
+            //     fontSize: '700',
+            //     color: 'neutral-700',
+            //     textAlign: 'center',
+            //     fontWeight: 'medium',
+            //     mb: '500',
+            //   },
+            //   children: [
+            //     'Own your ',
+            //     { type: 'we-text', props: { inline: true, italic: true }, children: ['data'] },
+            //     ' . Shape your ',
+            //     { type: 'we-text', props: { inline: true, italic: true }, children: ['environment'] },
+            //     ' . Share what you ',
+            //     { type: 'we-text', props: { inline: true, italic: true }, children: ['build'] },
+            //     '.',
+            //   ],
+            // },
             {
               type: 'we-text',
               props: {
-                fontSize: '500',
-                color: 'neutral-600',
+                fontSize: '18px',
+                color: 'neutral-700',
                 textAlign: 'center',
-                maxWidth: '680px',
+                maxWidth: '800px',
                 lineHeight: '1.8',
+                italic: true,
               },
+              // children: [
+              //   'WE is an open environment where community experiences are defined as schemas — not sealed apps. Any interface can be inspected, forked, and adapted to your context. Your data lives separately from the interface, so changing experiences never means losing history. What one community builds, every community can use.',
+              // ],
+              // children: [
+              //   'WE is open-source software where community experiences are open templates — inspectable, forkable, and owned by the people who use them. Your data lives separately from the interface, so your history stays intact no matter how your tools evolve.',
+              // ],
+              // children: [
+              //   "We've grown used to platforms that own our data, control our interfaces, and capture the value communities create. WE is an open environment built on a different premise: communities design their own tools, own their data, and share what works with everyone.", // Fork what exists. Build what's missing. Let collective intelligence compound — without losing what makes each community distinctly itself.
+              // ],
+              // children: [
+              //   "We've grown used to platforms that own our data, control our interfaces, and capture the value communities create. WE is different: communities design their own tools, own their data, and share what works with everyone.",
+              // ],
+              // children: [
+              //   "Today's platforms own your data, dictate your interface, and lock out innovation. WE is different: mix modules from an open marketplace, design experiences your community actually needs, and own your infrastructure. What one community builds, every community can use. Fork it, remix it, share it back.",
+              // ],
+              // children: [
+              //   "Most platforms are privately owned, opaquely governed, and built to extract — not evolve with the communities that use them. WE is an open environment where you compose your community's interface from shared modules, own your data infrastructure, and contribute back to a growing commons. What one community discovers, every community can use. Collective intelligence, without losing what makes each community distinctly itself.",
+              // ],
+              // children: [
+              //   "We've grown used to platforms designed to extract from us, that dictate our interfaces, block innovation, and limit our potential. WE flips this script by providing a framework that allows communities to design their own tools, mix and match modules from an open ecosystem, and own their own infrastructure.",
+              // ],
+              // children: [
+              //   "We've grown used to platforms that own our data, control our interfaces, and treat community software as a product sold back to us. WE is different: an open environment where communities design their own tools, own their infrastructure, and share what works with everyone.",
+              // ],
+              // children: [
+              //   "We've grown used to platforms that harvest our data, dictate our interfaces, and block innovation that doesn't fit their extractive agenda. But it doesn’t have to be this way. WE offers an alternative: an open environment where communities can reclaim their infrastructure, customise their interfaces, mix and match the tools they need, and share the fruits of those experiments with others.",
+              // ],
+              // children: [
+              //   "We've grown used to platforms that harvest our data, dictate our interfaces, and block innovations our communities need to thrive. WE is attempting something different — an open environment where communities can design their own experiences, own their infrastructure, and share what they discover with everyone else.",
+              // ],
+              // children: [
+              //   'Most platforms are privately owned, opaquely governed, and structurally resistant to change. WE is an open environment built on a different premise — where communities compose their own interfaces from shared modules, own their data infrastructure, and contribute back to a growing commons.',
+              // ],
+              // children: [
+              //   'Most platforms are rigid by design — they control your data, lock your interface, and treat your community as a product. WE is an open environment where you can compose experiences, own your infrastructure, and contribute back. What one community figures out, every community can use.',
+              // ],
+              // children: [
+              //   'Communities are living systems — they grow, adapt, and discover forms of organisation no product team would design for them. WE provides the infrastructure to make that possible, and share what you learn with everyone who comes after.',
+              // ],
+              // children: [
+              //   'Communities are living systems — they grow, adapt, and discover forms of organisation no product team would design for them. WE is the infrastructure that makes it possible — and a commons where what each community discovers can spread to everyone else.',
+              // ],
+              // children: [
+              //   'Communities are living systems — they grow, adapt, and discover forms of organisation no product team would design for them. WE is the infrastructure that makes it possible — open, composable, and designed so what each community discovers can spread.',
+              // ],
+              // children: [
+              //   'Communities are living systems — they grow, adapt, and discover forms of organisation no product team would design for them. Most tools prevent exactly that. WE is open, composable infrastructure that gets out of the way — build what your community needs, contribute to a growing commons, and stay interoperable with everyone else.',
+              // ],
+              // children: [
+              //   'Communities are living systems — they grow, adapt, and discover forms of organisation no product team would design for them. Most tools prevent exactly that. WE is open, composable infrastructure that gets out of the way — build what your community needs, without sacrificing interoperability with everyone else.',
+              // ],
+              // children: [
+              //   'Communities are living systems — they grow, adapt, and discover forms of organisation no product team would design for them. WE is open, composable infrastructure that gets out of the way — build what your community needs, contribute to the commons, without sacrificing interoperability with everyone else.',
+              // ],
               children: [
-                'WE is an open environment where community experiences are defined as schemas — not sealed apps. Any interface can be inspected, forked, and adapted to your context. Your data lives separately from the interface, so changing experiences never means losing history. What one community builds, every community can use.',
+                'Communities are living systems — they grow, adapt, and discover forms of organisation no product team would design for them. WE is open, composable infrastructure that gets out of the way — build what your community needs, and share what works with the commons.',
               ],
+              // children: [
+              //   "A community that can't shape its tools will eventually be shaped by them. WE is open, composable infrastructure that flips this: own your data, design your environment, and contribute what you learn to a commons every community can draw on.",
+              // ],
+
+              // Most communities today are capable of growing, creating, and self-organising — but unable to evolve the software conditions they live inside. The tools shape the community far more than the community can shape the tools.
+
+              // WE is an attempt to change that. Not by building a better platform, but by giving communities a shared environment where the tools themselves can be forked, adapted, and passed on.
             },
           ],
         },
@@ -392,14 +633,15 @@ export const landingPageTemplate: TemplateSchema = {
         // ── Card section label ────────────────────────────────────────────
         {
           type: 'Column',
-          props: { ax: 'center', gap: '300' },
+          props: { ax: 'center', gap: '300', mb: '400' },
           children: [
             {
               type: 'we-text',
               props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-800', textAlign: 'center' },
               // children: ['Whats wrong with todays tools and how can we fix them?'],
-              children: ['What makes WE different'],
-              // children: ['The walls every community keeps hitting.'],
+              // children: ['What makes WE different'],
+              children: ['The walls every community keeps hitting.'],
+              // children: ['6 Problems. 6 Solutions'],
             },
             {
               type: 'Row',
@@ -424,7 +666,7 @@ export const landingPageTemplate: TemplateSchema = {
         // ── Flip card grid ────────────────────────────────────────────────
         {
           type: 'Row',
-          props: { wrap: true, ax: 'center', gap: '400' },
+          props: { wrap: true, ax: 'center', gap: '400', mb: '900' },
           children: CARDS.map((card) => ({
             type: 'FlipCard',
             props: { width: '340px', height: '310px', wobbleDegree: 20 },
@@ -489,22 +731,39 @@ export const landingPageTemplate: TemplateSchema = {
         // ── Go deeper (full-width CTA cards) ─────────────────────────────
         {
           type: 'Column',
-          props: { gap: '500' },
+          props: { gap: '600', mt: '100px', mb: '180px' },
           children: [
             {
               type: 'Column',
-              props: { gap: '100', ax: 'center' },
+              props: { gap: '300', ax: 'center' },
               children: [
                 {
                   type: 'we-text',
                   props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
-                  children: ['Go deeper'],
+                  children: ['What this means for you.'],
                 },
-                {
-                  type: 'we-text',
-                  props: { fontSize: '500', color: 'neutral-600', textAlign: 'center' },
-                  children: ["WE means something different depending on where you're coming from."],
-                },
+                // {
+                //   type: 'Row',
+                //   props: { gap: '200', ay: 'center' },
+                //   children: [
+                //     {
+                //       type: 'we-text',
+                //       props: { fontSize: '600', color: 'neutral-600', textAlign: 'center' },
+                //       children: ['Click "learn more" on each card for a deeper dive'],
+                //     },
+                //     {
+                //       type: 'we-icon',
+                //       props: { name: 'hand-pointing', size: '28px', color: 'neutral-400' },
+                //       // styles: { transform: 'rotate(180deg)' },
+                //     },
+                //     // { type: 'we-icon', props: { name: 'arrow-down', color: 'neutral-400' } },
+                //   ],
+                // },
+                // {
+                //   type: 'we-text',
+                //   props: { fontSize: '500', color: 'neutral-600', textAlign: 'center' },
+                //   children: ["WE means something different depending on where you're coming from."],
+                // },
               ],
             },
             ...DEEP_DIVE.map((card, i) => {
@@ -530,12 +789,107 @@ export const landingPageTemplate: TemplateSchema = {
           ],
         },
 
+        // {
+        //   type: 'we-text',
+        //   props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+        //   children: ['Learn more'],
+        // },
+
+        // ── Roadmap ───────────────────────────────────────────────────────
+        {
+          type: 'Column',
+          props: { gap: '300', ax: 'center', mb: '300' },
+          children: [
+            {
+              type: 'we-text',
+              props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+              children: ["What we've built and what's next."],
+            },
+            {
+              type: 'we-text',
+              props: { fontSize: '600', color: 'neutral-600', textAlign: 'center' },
+              children: ["WE is in active development. Here's an honest picture of where we're at."],
+            },
+          ],
+        },
+        {
+          type: 'Column',
+          props: { gap: '500', p: '700', r: '500', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '300' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '400', ay: 'center', mb: '400' },
+                  children: [
+                    {
+                      type: 'we-icon',
+                      props: {
+                        name: 'city',
+                        size: 'lg',
+                        color: 'primary-600',
+                        // gradient: 'primary',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '700', fontWeight: 'bold', color: 'primary-600', textTransform: 'uppercase' },
+                      children: ['Already built'],
+                    },
+                  ],
+                },
+                ...BUILT.map((item) => roadmapItem(item, true)),
+              ],
+            },
+          ],
+        },
+        {
+          type: 'Column',
+          props: { gap: '500', p: '700', r: '500', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '300' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '400', ay: 'center', mb: '400' },
+                  children: [
+                    {
+                      type: 'we-icon',
+                      props: {
+                        name: 'hourglass',
+                        size: 'lg',
+                        color: 'primary-600',
+                        // gradient: 'primary',
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '700', fontWeight: 'bold', color: 'primary-600', textTransform: 'uppercase' },
+                      children: ['In progress'],
+                    },
+                  ],
+                },
+                ...IN_PROGRESS.map((item) => roadmapItem(item, false)),
+              ],
+            },
+            // {
+            //   type: 'we-text',
+            //   props: { fontSize: '500', fontWeight: 'semibold', color: 'neutral-700', fontStyle: 'italic' },
+            //   children: ['The foundation is solid. The ecosystem is just beginning.'],
+            // },
+          ],
+        },
+
         // ── For Communities ───────────────────────────────────────────────
         {
           type: 'Column',
-          props: { id: 'for-communities', gap: '600', pt: '800', borderTop: '2px solid var(--we-color-neutral-200)' },
+          props: { id: 'for-communities', gap: '600', mt: '100px' },
           children: [
-            sectionHeading('Tools that belong to your community, not a platform.'),
+            ...sectionHeader(DEEP_DIVE[0]),
             bodyText(
               'Most digital communities today are socially alive but structurally constrained. You can shape your culture, your tone, your norms. But the deeper layer — the software conditions you actually live inside — is almost always fixed by someone else.',
             ),
@@ -556,9 +910,9 @@ export const landingPageTemplate: TemplateSchema = {
             bodyText('WE is built differently.'),
             {
               type: 'Column',
-              props: { gap: '400' },
+              props: { gap: '600' },
               children: [
-                sectionHeading('What WE makes possible'),
+                // sectionHeading('What WE makes possible'),
                 {
                   type: 'Column',
                   props: { gap: '200' },
@@ -622,7 +976,7 @@ export const landingPageTemplate: TemplateSchema = {
               props: {
                 gap: '400',
                 p: '600',
-                r: 'lg',
+                r: '500',
                 bg: 'neutral-100',
                 border: '1px solid var(--we-color-neutral-200)',
               },
@@ -662,30 +1016,26 @@ export const landingPageTemplate: TemplateSchema = {
           type: 'Column',
           props: { id: 'for-builders', gap: '600', pt: '800', borderTop: '2px solid var(--we-color-neutral-200)' },
           children: [
-            sectionHeading('Stop rebuilding the 80%. Start only building what is actually yours.'),
+            ...sectionHeader(DEEP_DIVE[1]),
             bodyText(
-              'The features that make your project genuinely novel — a unique way to surface signals, a different model for resource coordination, a new kind of community interface — represent maybe 20% of what you need to build. The other 80% is infrastructure almost every social tool needs: identity, profiles, posts, threads, feeds, roles, notifications, moderation, content composition, data storage.',
+              'Building a new social tool usually means building everything: identity, profiles, threads, feeds, moderation, content composition, data storage. None of that is the interesting part — it is just the price of entry before you can start on the thing that is actually new.',
             ),
             bodyText(
-              "That 80% gets rebuilt from scratch, in isolation, by every team in the space. The result is a graveyard of incompatible systems, duplicated effort, and experiences that can't interoperate even when they're solving adjacent problems.",
+              'WE changes the starting point. Identity, data infrastructure, a content system, a design system, and a growing library of components and templates already exist in the ecosystem. You start from those and build only what is genuinely yours.',
             ),
-            bodyText('WE is designed to change that.'),
             {
               type: 'Column',
               props: { gap: '300' },
               children: [
-                sectionHeading('Shared infrastructure, not shared constraints'),
+                sectionHeading("Contribute, don't compete"),
                 bodyText(
-                  'WE provides the 80% as shared, open infrastructure. Every community using WE gets identity, data continuity, a content composition system, a design system, and a component ecosystem — built in, available, and consistent.',
+                  'In a traditional app, your success depends on winning the adoption game — capturing users before someone else does. In WE, that pressure dissolves. Your contribution does not need to be a complete app to matter.',
                 ),
                 bodyText(
-                  "That means when you build for WE, you're building the 20%: the novel interface, the unique signalling logic, the coordination pattern that makes your project genuinely interesting.",
+                  "A new widget, a block type, a template, a signalling pattern — each is a real addition to what every community in the ecosystem can use. A community can run your coordination module alongside someone else's knowledge base. Two experiences covering the same ground are not fighting for lock-in; they are both views over the same data, and users can run both.",
                 ),
                 bodyText(
-                  "You publish it as a template, a widget, or a block type. Others can adopt it, fork it, improve it, and publish improvements back. The whole ecosystem gets smarter from work you've already done.",
-                ),
-                bodyText(
-                  "This isn't just a developer convenience. It's a structural shift in how social tool innovation works — from isolated products competing through lock-in, to a compounding commons where good ideas spread.",
+                  "The question shifts from 'can I capture enough users to sustain this?' to 'does this new piece solve something real?' Good contributions spread through the ecosystem, get forked and improved, and come back better.",
                 ),
               ],
             },
@@ -836,7 +1186,7 @@ export const landingPageTemplate: TemplateSchema = {
           type: 'Column',
           props: { id: 'how-it-works', gap: '600', pt: '800', borderTop: '2px solid var(--we-color-neutral-200)' },
           children: [
-            sectionHeading('A shared vocabulary for community software.'),
+            ...sectionHeader(DEEP_DIVE[2]),
             {
               type: 'Column',
               props: { gap: '300' },
@@ -1056,7 +1406,7 @@ export const landingPageTemplate: TemplateSchema = {
             borderTop: '2px solid var(--we-color-neutral-200)',
           },
           children: [
-            sectionHeading('What communities actually do with WE.'),
+            ...sectionHeader(DEEP_DIVE[3]),
             bodyText(
               'The best way to understand WE is not the architecture, but the habit it creates: when a community needs something, they describe it, and the system helps build it.',
             ),
@@ -1262,55 +1612,6 @@ export const landingPageTemplate: TemplateSchema = {
               'The deeper bet: given the right infrastructure, communities will discover forms of coordination and collective intelligence that no platform team would have designed for them. And those discoveries will spread.',
               true,
             ),
-          ],
-        },
-
-        // ── Roadmap ───────────────────────────────────────────────────────
-        {
-          type: 'Column',
-          props: { gap: '500', p: '700', r: 'lg', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
-          children: [
-            {
-              type: 'Column',
-              props: { gap: '100' },
-              children: [
-                sectionHeading('Where we are'),
-                {
-                  type: 'we-text',
-                  props: { fontSize: '500', color: 'neutral-600' },
-                  children: ["WE is in active development. Here's an honest picture of what's built and what's next."],
-                },
-              ],
-            },
-            {
-              type: 'Column',
-              props: { gap: '300' },
-              children: [
-                {
-                  type: 'we-text',
-                  props: { fontSize: '500', fontWeight: 'semibold', color: 'neutral-900' },
-                  children: ['Built and working'],
-                },
-                ...BUILT.map((item) => roadmapItem(item, true)),
-              ],
-            },
-            {
-              type: 'Column',
-              props: { gap: '300' },
-              children: [
-                {
-                  type: 'we-text',
-                  props: { fontSize: '500', fontWeight: 'semibold', color: 'neutral-900' },
-                  children: ['In progress'],
-                },
-                ...IN_PROGRESS.map((item) => roadmapItem(item, false)),
-              ],
-            },
-            {
-              type: 'we-text',
-              props: { fontSize: '500', fontWeight: 'semibold', color: 'neutral-700', fontStyle: 'italic' },
-              children: ['The foundation is solid. The ecosystem is just beginning.'],
-            },
           ],
         },
 
