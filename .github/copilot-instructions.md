@@ -333,8 +333,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ]
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
-- we-divider (DesignSystemElement)
-  Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid'
+- we-divider (LayoutElement)
+  Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid', color?: string | undefined, thickness?: string | undefined
 - we-drawer (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
 - we-file-upload (DesignSystemElement)
@@ -354,7 +354,7 @@ fragment; it is sanitized before rendering so XSS payloads are stripped.
 - we-iframe (LayoutVisualElement)
   Props: src: string = '', title: string = 'Embedded content', allow: string = '', sandbox?: string | undefined
 - we-image (LayoutVisualElement)
-  Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = ''
+  Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = '', objectPosition: string = ''
 - we-input (DesignSystemElement)
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
@@ -703,7 +703,7 @@ componentHeight: 'xs', 'sm', 'md', 'lg', 'xl'
 
 effect.depth: '100', '200', '300', '400', '500', 'none'
 
-font.family: 'base', 'mozilla'
+font.family: 'base', 'mozilla', 'boldonse'
 
 font.letterSpacing: 'tighter', 'tight', 'normal', 'wide', 'wider', 'widest'
 

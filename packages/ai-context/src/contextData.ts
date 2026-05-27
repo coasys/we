@@ -135,10 +135,12 @@ export const contextData: ContextData = {
     {
       tagName: 'we-divider',
       className: 'Divider',
-      superclass: 'DesignSystemElement',
+      superclass: 'LayoutElement',
       ownProps: [
         { name: 'orientation', type: "'horizontal' | 'vertical'", optional: false, default: "'horizontal'" },
         { name: 'variant', type: "'solid' | 'dashed' | 'dotted'", optional: false, default: "'solid'" },
+        { name: 'color', type: 'string | undefined', optional: true },
+        { name: 'thickness', type: 'string | undefined', optional: true },
       ],
     },
     {
@@ -236,6 +238,7 @@ export const contextData: ContextData = {
         },
         { name: 'loading', type: "'eager' | 'lazy'", optional: false, default: "'eager'" },
         { name: 'gradient', type: 'string', optional: false, default: "''" },
+        { name: 'objectPosition', type: 'string', optional: false, default: "''" },
       ],
     },
     {
@@ -2141,7 +2144,7 @@ export const contextData: ContextData = {
     {
       name: 'font.family',
       type: 'Record<FontFamilyToken, string>',
-      values: { base: "'DM Sans', sans-serif", mozilla: "'Mozilla Text', serif" },
+      values: { base: "'DM Sans', sans-serif", mozilla: "'Mozilla Text', serif", boldonse: "'Boldonse', serif" },
     },
     {
       name: 'font.letterSpacing',

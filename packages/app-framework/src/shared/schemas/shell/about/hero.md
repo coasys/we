@@ -70,6 +70,4 @@
 - "Collective intelligence, without loss of coherence" earns its place in whichever version — it addresses the implicit worry that open/decentralised means chaotic.
 - "Social infrastructure for a more cooperative world" works better as a Coasys-level statement, not a WE headline.
 
-
-
 We’ve grown used to platforms that harvest our data, dictate our interfaces, and block innovation. But it doesn’t have to be this way. WE offers an alternative: an open environment where communities can reclaim their infrastructure, customise their interfaces, mix and match the tools they need, and share the fruits of those experiments with others.
