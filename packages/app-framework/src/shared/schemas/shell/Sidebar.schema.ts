@@ -18,6 +18,7 @@ export const sidebar: SchemaNode = {
       props: {
         // defaultExpanded: true,
         // expandOnHover: false,
+        bg: 'neutral-50',
         side: 'left',
         position: 'fixed',
         zIndex: 10,

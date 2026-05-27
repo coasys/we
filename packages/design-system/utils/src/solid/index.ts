@@ -8,6 +8,7 @@ import {
   getRadiusValues,
   mapFlexAxes,
   parseBorder,
+  resolveFontFamily,
   resolveFontWeight,
   resolveLineHeight,
   tokenVar,
@@ -62,7 +63,7 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
 
   // Typography
   if (props.textAlign) style['text-align'] = props.textAlign;
-  if (props.fontFamily) style['font-family'] = props.fontFamily;
+  if (props.fontFamily) style['font-family'] = resolveFontFamily(props.fontFamily);
   if (props.fontWeight) style['font-weight'] = resolveFontWeight(props.fontWeight);
   if (props.fontSize) style['font-size'] = tokenVar('font', props.fontSize);
   if (props.lineHeight) style['line-height'] = resolveLineHeight(props.lineHeight);

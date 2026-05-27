@@ -207,6 +207,10 @@ ${depthVars}
 }
 
 function generateFontCSS(font: typeof fontTokens, outputDir: string) {
+  const fontFamilyVars = Object.entries(font.family)
+    .map(([key, value]) => `  --we-font-family-${key}: ${value};`)
+    .join('\n');
+
   const fontSizeVars = Object.entries(font.size)
     .filter(([key]) => key !== 'base')
     .map(([key, value]) => `  --we-font-size-${key}: ${value};`)
@@ -227,8 +231,11 @@ function generateFontCSS(font: typeof fontTokens, outputDir: string) {
   const css = `/* FONT TOKENS - Generated from JS tokens */
 
 :root {
-  /* Font Family */
-  --we-font-family: ${font.family.base};
+  /* Font Family Palette */
+${fontFamilyVars}
+
+  /* Active font family — used by all components; themes can override this */
+  --we-font-family: var(--we-font-family-base);
 
   /* Font Sizes */
   --we-font-base-size: ${font.size.base};
@@ -334,6 +341,8 @@ function generateCombinedCSS(outputDir: string) {
 
 /* Font imports */
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Mozilla+Text:wght@200..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Boldonse&family=Mozilla+Text:wght@200..700&display=swap');
 
 /* Design token variables */
 @import './animation.css';

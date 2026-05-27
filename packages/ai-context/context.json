@@ -315,7 +315,7 @@
     {
       "tagName": "we-divider",
       "className": "Divider",
-      "superclass": "DesignSystemElement",
+      "superclass": "LayoutElement",
       "ownProps": [
         {
           "name": "orientation",
@@ -328,6 +328,16 @@
           "type": "'solid' | 'dashed' | 'dotted'",
           "optional": false,
           "default": "'solid'"
+        },
+        {
+          "name": "color",
+          "type": "string | undefined",
+          "optional": true
+        },
+        {
+          "name": "thickness",
+          "type": "string | undefined",
+          "optional": true
         }
       ]
     },
@@ -566,6 +576,12 @@
         },
         {
           "name": "gradient",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "objectPosition",
           "type": "string",
           "optional": false,
           "default": "''"
@@ -6586,7 +6602,9 @@
       "name": "font.family",
       "type": "Record<FontFamilyToken, string>",
       "values": {
-        "base": "'DM Sans', sans-serif"
+        "base": "'DM Sans', sans-serif",
+        "mozilla": "'Mozilla Text', serif",
+        "boldonse": "'Boldonse', serif"
       }
     },
     {

@@ -1,4 +1,5 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
+import { font } from '@we/tokens';
 
 // --- Shared sub-arrays (used by CSS helpers directly) ---
 export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;
@@ -151,19 +152,13 @@ function makeTokenResolver(tokens: Set<string>, cssVarPrefix: string) {
 }
 
 /** Resolves lineHeight: named tokens → CSS var, bare ratios/px/etc. → passthrough. */
-export const resolveLineHeight = makeTokenResolver(
-  new Set(['none', 'tight', 'snug', 'normal', 'relaxed', 'loose']),
-  'line-height',
-);
+export const resolveLineHeight = makeTokenResolver(new Set(Object.keys(font.lineHeight)), 'line-height');
 
-/**
- * Resolves fontWeight: numeric tokens ('100'–'900') → CSS var,
- * CSS keywords (bold, normal, bolder, lighter) → passthrough.
- */
-export const resolveFontWeight = makeTokenResolver(
-  new Set(['100', '200', '300', '400', '500', '600', '700', '800', '900']),
-  'font-weight',
-);
+/** Resolves fontWeight: numeric tokens ('100'–'900') → CSS var, CSS keywords → passthrough. */
+export const resolveFontWeight = makeTokenResolver(new Set(Object.keys(font.weight)), 'font-weight');
+
+/** Resolves fontFamily: token names → CSS var, raw CSS font stacks → passthrough. */
+export const resolveFontFamily = makeTokenResolver(new Set(Object.keys(font.family)), 'font-family');
 
 export function tokenVar(prefix: string, token?: string, fallback = '0') {
   // If no token, return fallback

@@ -16,14 +16,15 @@ All operator resolution logic lives in `shared/` — the renderer layer (`solid/
 All operators use the `$` prefix followed by a **single lowercase word**:
 
 ```
-$store  $action  $concat  $map  $pick  $if  $not  $eq  $ne  $in  $and  $or  $each  $routes
+$store  $action  $concat  $map  $pick  $if  $not  $eq  $ne  $lt  $gt  $in  $and  $or  $each  $routes
+$filter  $count  $find  $local  $setLocal  $toggleLocal  $callLocal  $error  $valid  $touched  $formValid  $touch  $resetLocal
 ```
 
 **Rules:**
 
 - Always a single word — no camelCase, no hyphens, no multi-word names.
 - Prop-level operators (resolved by `dispatcher.ts`) use object syntax: `{ $store: '...' }`.
-- Renderer-level operators (`$each`, `$if`, `$routes`) appear as `node.type` values and are handled in `SchemaRenderer.tsx`.
+- Renderer-level operators (`$each`, `$if`, `$routes`, `$animate`, `$single`) appear as `node.type` values and are handled in `SchemaRenderer.tsx`.
 - Context reference strings (`$item.name`, `$space.uuid`) are **not** operators — they're resolved inline by the dispatcher as plain strings.
 
 ## Two Operator Categories
@@ -32,30 +33,47 @@ $store  $action  $concat  $map  $pick  $if  $not  $eq  $ne  $in  $and  $or  $eac
 
 Resolved by the dispatcher during prop resolution. Each has a dedicated resolver file in `shared/src/propResolvers/`.
 
-| Operator  | File             | Purpose                               |
-| --------- | ---------------- | ------------------------------------- |
-| `$store`  | `store.ts`       | Read from reactive stores             |
-| `$action` | `action.ts`      | Create event handler functions        |
-| `$concat` | `concat.ts`      | Join parts into a string              |
-| `$map`    | `map.ts`         | Transform array data into prop values |
-| `$pick`   | `pick.ts`        | Select subset of props from a source  |
-| `$if`     | `conditional.ts` | Conditional value (ternary)           |
-| `$eq`     | `comparisons.ts` | Equality check                        |
-| `$ne`     | `comparisons.ts` | Inequality check                      |
-| `$in`     | `comparisons.ts` | Set membership check                  |
-| `$not`    | `comparisons.ts` | Boolean negation                      |
-| `$and`    | `comparisons.ts` | Short-circuit AND                     |
-| `$or`     | `comparisons.ts` | Short-circuit OR                      |
+| Operator       | File             | Purpose                                   |
+| -------------- | ---------------- | ----------------------------------------- |
+| `$store`       | `store.ts`       | Read from reactive stores                 |
+| `$action`      | `action.ts`      | Create event handler functions            |
+| `$concat`      | `concat.ts`      | Join parts into a string                  |
+| `$map`         | `map.ts`         | Transform array data into prop values     |
+| `$pick`        | `pick.ts`        | Select subset of props from a source      |
+| `$if`          | `conditional.ts` | Conditional value (ternary)               |
+| `$eq`          | `comparisons.ts` | Equality check                            |
+| `$ne`          | `comparisons.ts` | Inequality check                          |
+| `$in`          | `comparisons.ts` | Set membership check                      |
+| `$lt`          | `comparisons.ts` | Less-than numeric check                   |
+| `$gt`          | `comparisons.ts` | Greater-than numeric check                |
+| `$not`         | `comparisons.ts` | Boolean negation                          |
+| `$and`         | `comparisons.ts` | Short-circuit AND                         |
+| `$or`          | `comparisons.ts` | Short-circuit OR                          |
+| `$filter`      | `arrayOps.ts`    | Filter array by where conditions          |
+| `$count`       | `arrayOps.ts`    | Count items in array                      |
+| `$find`        | `arrayOps.ts`    | Find first matching item                  |
+| `$local`       | `local.ts`       | Read a local state field                  |
+| `$setLocal`    | `local.ts`       | Event handler that sets a local field     |
+| `$toggleLocal` | `local.ts`       | Event handler that toggles a boolean      |
+| `$callLocal`   | `local.ts`       | Event handler that calls a function field |
+| `$error`       | `local.ts`       | First validation error message            |
+| `$valid`       | `local.ts`       | True when field has no errors             |
+| `$touched`     | `local.ts`       | True when field has been interacted       |
+| `$formValid`   | `local.ts`       | True when all fields valid and touched    |
+| `$touch`       | `local.ts`       | Event handler that marks field touched    |
+| `$resetLocal`  | `local.ts`       | Event handler that resets all fields      |
 
 ### Renderer-Level Operators
 
 Handled directly in `SchemaRenderer.tsx` as special `node.type` values. These control DOM structure, not prop values.
 
-| Operator  | Purpose                                      |
-| --------- | -------------------------------------------- |
-| `$each`   | Iterate over items, render children per item |
-| `$if`     | Conditionally render a node subtree          |
-| `$routes` | Render routed children                       |
+| Operator   | Purpose                                                       |
+| ---------- | ------------------------------------------------------------- |
+| `$each`    | Iterate over items, render children per item                  |
+| `$if`      | Conditionally render a node subtree                           |
+| `$routes`  | Render routed children                                        |
+| `$animate` | Viewport/mount-triggered CSS animation (child always mounted) |
+| `$single`  | Load single model item; render children with item in context  |
 
 ## Adding a New Prop-Level Operator
 
@@ -121,7 +139,7 @@ This is the mechanism `$each` children use to access the current iteration item,
 
 The renderer resolves `node.type` to a component using these rules (in order):
 
-1. **Operator** — `$each`, `$if`, `$routes` are handled as special cases.
+1. **Operator** — `$each`, `$if`, `$routes`, `$animate`, `$single` are handled as special cases.
 2. **Registry lookup** — check the component registry by exact name.
 3. **Native element** — lowercase single-word (`div`, `span`) → HTML element; hyphenated (`we-button`) → web component.
 4. **Error** — unknown type throws.

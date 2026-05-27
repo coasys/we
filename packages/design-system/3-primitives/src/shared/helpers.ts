@@ -9,6 +9,7 @@ import {
   paddingKeys,
   parseBorder,
   radiusKeys,
+  resolveFontFamily,
   resolveFontWeight,
   resolveLineHeight,
   tokenVar,
@@ -143,7 +144,7 @@ function updateCustomVars(
 
   // Typography
   setProperty(el, `${prefix}text-align`, props.textAlign);
-  setProperty(el, `${prefix}font-family`, props.fontFamily);
+  setProperty(el, `${prefix}font-family`, resolveFontFamily(props.fontFamily));
   setProperty(el, `${prefix}font-weight`, resolveFontWeight(props.fontWeight));
   setProperty(el, `${prefix}font-size`, props.fontSize ? tokenVar('font-size', props.fontSize) : undefined);
   setProperty(el, `${prefix}line-height`, resolveLineHeight(props.lineHeight));

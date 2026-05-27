@@ -17,6 +17,7 @@ A schema is a tree of nodes. Each node can have:
 - slots: Named slots for advanced composition (optional)
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
+- styles: Raw CSS escape hatch — Record<string, string | number> applied as inline styles on the node wrapper. Use for CSS not covered by design system props (e.g. filter, clip-path, backdrop-filter, mix-blend-mode). When present the wrapper participates in layout (no display:contents), so CSS effects apply correctly.
 
 Example node:
 {
@@ -82,6 +83,11 @@ Equality / inequality checks:
 { "$eq": [a, b] } — strict equality
 { "$ne": [a, b] } — strict inequality
 
+Numeric comparisons:
+{ "$lt": [a, b] } — a < b (less than)
+{ "$gt": [a, b] } — a > b (greater than)
+Example: { "$gt": [{ "$count": { "items": { "$store": "listStore.items" } } }, 0] }
+
 Set membership:
 { "$in": [value, array] } — true if array contains value (false if second operand is not an array)
 Example: { "$in": [{ "$store": "spaceStore.uuid" }, { "$store": "adamStore.systemPerspectiveUuids" }] }
@@ -91,6 +97,20 @@ Boolean logic:
 { "$and": [a, b, ...] } — all truthy
 { "$or": [a, b, ...] } — any truthy
 { "$not": a } — negation
+
+Array operators:
+{ "$filter": { "items": <array>, "where": { "field": "value", ... } } }
+Filters an array to items where all where conditions match (strict equality).
+Where values can be any resolvable token, including context refs.
+Example: { "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
+
+{ "$count": { "items": <array> } }
+Returns the length of an array.
+Example: { "badge": { "$count": { "items": { "$store": "notificationStore.unread" } } } }
+
+{ "$find": { "items": <array>, "where"?: { ... }, "select"?: "fieldName" } }
+Finds the first matching item. where is optional (returns first item if omitted). select plucks a single field.
+Example: { "$find": { "items": { "$store": "spaceStore.members" }, "where": { "id": "$item.creatorId" }, "select": "name" } }
 
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
@@ -143,6 +163,10 @@ Read:  { "$local": "name" } — returns the signal value (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
        { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean).
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
+Call function: { "$callLocal": "fieldName" } — event handler that calls the function stored in a function-typed local field.
+  Used when a child component needs to trigger a callback passed in via $localState.
+  The field must be declared as type: 'function' and set via $setLocal.
+  Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
 $local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
 
@@ -239,6 +263,45 @@ Renders children once for each item. The "as" name becomes a context key. Defaul
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
 Renders "then" node if condition is truthy, else renders "else" node.
+Supports enterTransition / exitTransition for CSS animations when the node mounts/unmounts.
+TransitionConfig = TransitionEffect | TransitionEffect[]
+TransitionEffect = { type: 'fade'|'slide'|'scale', duration?: ms, easing?: string, delay?: ms, direction?: 'left'|'right'|'up'|'down', distance?: string }
+fade controls opacity only; slide/scale control transform only. Compose effects with an array.
+Example: enterTransition: [{ type: 'fade', duration: 300 }, { type: 'slide', direction: 'up', distance: '40px', duration: 400 }]
+
+Viewport / mount animation (child always in DOM):
+{ "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
+The child is always mounted. Animations are CSS-only (opacity / transform) — use this for scroll-reveal effects.
+Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
+scrollReveal: true fires enterTransition when the element enters the viewport.
+scrollReveal: -100 fires 100px before the element would enter (negative = earlier reveal).
+scrollLeave fires exitTransition when the element leaves the viewport.
+Without scrollReveal/scrollLeave, the enterTransition runs once on mount.
+Only one child node is supported.
+Example:
+{
+  "type": "$animate",
+  "props": {
+    "scrollReveal": -100,
+    "enterTransition": [
+      { "type": "fade", "duration": 600, "easing": "ease-in-out" },
+      { "type": "slide", "direction": "left", "distance": "200px", "duration": 1000, "easing": "ease-in-out" }
+    ]
+  },
+  "children": [{ "type": "SomeCard", "children": [] }]
+}
+
+Single model item (load one record, render children with it in context):
+{
+  "type": "$single",
+  "props": {
+    "item": { "$query": { "model": "ModelName", "params": { ... }, "subscribe": true } },
+    "as": "profile"   // context key for children — default: 'item'
+  },
+  "children": [{ "type": "we-text", "children": ["$profile.username"] }]
+}
+Renders nothing until a matching record is found. Like $each but for a single result.
+query options (model, params, include, perspective, subscribe) work identically to $query.
 
 Route outlet:
 { "type": "$routes" }
@@ -270,8 +333,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ]
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
-- we-divider (DesignSystemElement)
-  Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid'
+- we-divider (LayoutElement)
+  Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid', color?: string | undefined, thickness?: string | undefined
 - we-drawer (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
 - we-file-upload (DesignSystemElement)
@@ -291,7 +354,7 @@ fragment; it is sanitized before rendering so XSS payloads are stripped.
 - we-iframe (LayoutVisualElement)
   Props: src: string = '', title: string = 'Embedded content', allow: string = '', sandbox?: string | undefined
 - we-image (LayoutVisualElement)
-  Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = ''
+  Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = '', objectPosition: string = ''
 - we-input (DesignSystemElement)
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
@@ -640,7 +703,7 @@ componentHeight: 'xs', 'sm', 'md', 'lg', 'xl'
 
 effect.depth: '100', '200', '300', '400', '500', 'none'
 
-font.family: 'base'
+font.family: 'base', 'mozilla', 'boldonse'
 
 font.letterSpacing: 'tighter', 'tight', 'normal', 'wide', 'wider', 'widest'
 
@@ -1519,6 +1582,26 @@ After creating or modifying a `.schema.ts` file, always run validation to catch:
 ---
 
 ## Developer Patterns (codebase work — not for JSON schema authoring)
+
+---
+
+### Auto-generated Files — Never Edit Directly
+
+The following files are fully regenerated by `pnpm --filter @we/ai-context generate-context`.
+**Never edit them manually** — changes will be overwritten on the next generation run.
+
+| File | Source to edit instead |
+|---|---|
+| `CLAUDE.md` | `packages/ai-context/src/fragments/` |
+| `.github/copilot-instructions.md` | `packages/ai-context/src/fragments/` |
+| `.cursor/rules/we-schema.mdc` | `packages/ai-context/src/fragments/` |
+| `packages/ai-context/src/schemaContext.ts` | `packages/ai-context/src/fragments/` or `assembler.ts` |
+| `packages/ai-context/src/contextData.ts` | `packages/ai-context/src/generate.ts` or `storeEntries` |
+
+To add or change documented schema fields, tokens, conventions, or rules:
+1. Edit the appropriate fragment in `packages/ai-context/src/fragments/`
+2. Run `pnpm --filter @we/ai-context generate-context` to regenerate all output files
+3. Commit both the fragment source change and the regenerated files together
 
 ---
 

@@ -199,6 +199,7 @@ function schemaNodeShape() {
     routes: z.array(lazyRouteSchema).optional(),
     children: z.array(z.union([lazySchemaNode, z.string(), zPropToken])).optional(),
     theme: zThemeOverrides.optional(),
+    styles: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
     $localState: zLocalStateDeclaration.optional(),
   };
 }

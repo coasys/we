@@ -68,6 +68,7 @@ export default class Image extends LayoutVisualElement {
   @property({ type: String, reflect: true }) fit: ImageFit = '';
   @property({ type: String, reflect: true }) loading: ImageLoading = 'eager';
   @property({ type: String, reflect: true }) gradient = '';
+  @property({ type: String, reflect: true }) objectPosition = '';
 
   @state() private _objectUrl: string | null = null;
 
@@ -114,6 +115,7 @@ export default class Image extends LayoutVisualElement {
     }
 
     // Standard image rendering
-    return html`<img src=${this._resolvedSrc} alt=${this.alt} loading=${this.loading} />`;
+    const imgStyle = this.objectPosition ? `object-position: ${this.objectPosition}` : '';
+    return html`<img src=${this._resolvedSrc} alt=${this.alt} loading=${this.loading} style=${imgStyle} />`;
   }
 }

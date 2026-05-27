@@ -41,9 +41,7 @@ import {
   SpaceSidebarWidget,
 } from '@we/widgets/solid';
 
-import ComplexWeCube from '../components/3d/ComplexWeCube';
 import WeCube from '../components/3d/WeCube';
-import WeNetwork from '../components/3d/WeNetwork';
 import { BenchmarkTimer } from '../components/BenchmarkTimer';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -98,18 +96,4 @@ export const componentRegistry: ComponentRegistry = {
 
   // 3D
   WeCube,
-  ComplexWeCube,
-  WeNetwork,
 };
-
-// Ideas:
-// Hero — common landing section (title, subtitle, image, cta)
-// Card — repeatable content block (title, image, footer, actions)
-// Image/Media — src, alt, ratio, fit
-// Heading / Text primitives — H1..H4, Paragraph (gives AI typographic control)
-// List / Repeat (data-driven) — itemTemplate + itemsSource ($store/$map)
-// Nav / Menu — items array for site structure
-// Modal / Drawer — overlay patterns
-// Form primitives (Input, Select, Button) or a Form container (fields + onSubmit)
-// Badge / Tag / Avatar — small metadata visuals
-// DataTable (if you have tabular content use-cases)

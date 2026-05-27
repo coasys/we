@@ -21,13 +21,7 @@ export const bootScreen: SchemaNode = {
         // WE Logo
         {
           type: 'we-image',
-          props: {
-            src: '/we-text.svg',
-            alt: 'WE Logo',
-            width: '150px',
-            height: '75px',
-            gradient: 'primary',
-          },
+          props: { src: '/we-text.svg', alt: 'WE Logo', width: '150px', height: '75px', gradient: 'primary' },
         },
         // { type: 'WeCube', props: { width: '300px', height: '300px' } },
         // Initialising state
