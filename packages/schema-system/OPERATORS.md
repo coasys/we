@@ -11,6 +11,8 @@ This document describes the operators available in the schema system for declara
 - [Conditional Operators](#conditional-operators)
 - [Comparison Operators](#comparison-operators)
 - [Logical Operators](#logical-operators)
+- [Array Operators](#array-operators)
+- [Local State Operators](#local-state-operators)
 - [Composing Operators](#composing-operators)
 - [Renderer Operators](#renderer-operators)
 - [Best Practices](#best-practices)
@@ -25,12 +27,14 @@ The schema system has **two categories** of operators:
 
 **Prop-level operators** (resolved by `resolveProp` in `@we/schema-shared`) — these appear inside `props` and produce a value:
 
-- `$store`, `$concat`, `$action`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$in`, `$not`, `$and`, `$or`
+- `$store`, `$concat`, `$action`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$in`, `$not`, `$and`, `$or`, `$lt`, `$gt`
+- Array operators: `$filter`, `$count`, `$find`
+- Local state: `$local`, `$setLocal`, `$toggleLocal`, `$callLocal`, `$error`, `$valid`, `$touched`, `$formValid`, `$touch`, `$resetLocal`
 - Context reference strings: `$item.name`, `$space.uuid` (resolved inline by the dispatcher)
 
 **Renderer-level operators** (handled by the framework-specific renderer) — these appear as the `type` field and control rendering structure:
 
-- `$if` (node), `$each`, `$routes`, and fragment (no `type`)
+- `$if` (node), `$each`, `$routes`, `$animate`, `$single`, and fragment (no `type`)
 
 ### Dual-Use: `$if`
 
@@ -606,6 +610,230 @@ Logical OR — returns `true` if any operand is truthy. Short-circuits on the fi
 
 ---
 
+## Comparison Operators (Numeric)
+
+### `$lt`
+
+Less-than numeric comparison.
+
+**Syntax:**
+
+```typescript
+{ $lt: [<a>, <b>] }  // a < b
+```
+
+**Example:**
+
+```typescript
+{
+  condition: {
+    $lt: [{ $store: 'listStore.itemCount' }, 5];
+  }
+}
+// → true when itemCount is less than 5
+```
+
+---
+
+### `$gt`
+
+Greater-than numeric comparison.
+
+**Syntax:**
+
+```typescript
+{ $gt: [<a>, <b>] }  // a > b
+```
+
+**Example:**
+
+```typescript
+{
+  condition: {
+    $gt: [{ $store: 'listStore.itemCount' }, 0];
+  }
+}
+// → true when itemCount is greater than 0
+```
+
+---
+
+## Array Operators
+
+### `$filter`
+
+Filter an array to items where all `where` conditions match.
+
+**Syntax:**
+
+```typescript
+{
+  $filter: {
+    items: <array-source>,
+    where: { <field>: <value>, ... }
+  }
+}
+```
+
+Each key in `where` is matched against the corresponding field of each item using strict equality. Values can be any resolvable token.
+
+**Example:**
+
+```typescript
+{
+  items: {
+    $filter: {
+      items: { $store: 'spaceStore.members' },
+      where: { role: 'admin' }
+    }
+  }
+}
+// → only members with role === 'admin'
+```
+
+---
+
+### `$count`
+
+Return the length of an array.
+
+**Syntax:**
+
+```typescript
+{
+  $count: {
+    items: <array-source>
+  }
+}
+```
+
+**Example:**
+
+```typescript
+{
+  badge: {
+    $count: {
+      items: {
+        $store: 'notificationStore.unread';
+      }
+    }
+  }
+}
+// → number of unread notifications
+```
+
+---
+
+### `$find`
+
+Find the first array item matching `where` conditions. Optionally pluck a single field.
+
+**Syntax:**
+
+```typescript
+{
+  $find: {
+    items: <array-source>,
+    where?: { <field>: <value>, ... },
+    select?: '<field>'
+  }
+}
+```
+
+- `where` — optional; omit to get the first element
+- `select` — optional; if provided, returns `item[select]` instead of the whole item
+
+**Example:**
+
+```typescript
+// Find a member by id
+{ $find: { items: { $store: 'spaceStore.members' }, where: { id: '$item.creatorId' } } }
+
+// Get just the name
+{ $find: { items: { $store: 'spaceStore.members' }, where: { id: '$item.creatorId' }, select: 'name' } }
+```
+
+---
+
+## Local State Operators
+
+Local state is declared on a node with `$localState` and accessed in descendants via these operators.
+
+### `$local`
+
+Read a local state field.
+
+**Syntax:** `{ $local: 'fieldName' }` or `{ $local: 'fieldName.nestedPath' }`
+
+**Example:** `{ value: { $local: 'email' } }`
+
+---
+
+### `$setLocal`
+
+Return an event handler that sets a local state field. Used for `onChange`, `onInput`, etc.
+
+**Syntax:** `{ $setLocal: 'fieldName' }` (reads `event.target.value` automatically) or `{ $setLocal: 'fieldName', from: '$event.detail' }` to extract a custom path.
+
+**Example:** `{ onInput: { $setLocal: 'email' } }`
+
+---
+
+### `$toggleLocal`
+
+Return an event handler that flips a boolean local state field.
+
+**Syntax:** `{ $toggleLocal: 'fieldName' }`
+
+**Example:** `{ onClick: { $toggleLocal: 'isExpanded' } }`
+
+---
+
+### `$callLocal`
+
+Return an event handler that calls a function stored in a `function`-typed local state field.
+
+**Syntax:** `{ $callLocal: 'fieldName' }`
+
+Useful when a child component needs to trigger an action that was passed down via `$localState`. The field must be declared with `type: 'function'` and its value set via `$setLocal`.
+
+**Example:**
+
+```typescript
+// Declare in $localState
+$localState: {
+  onConfirm: { type: 'function', initial: null }
+}
+
+// Bind on a child component — calls the stored function on click
+{ onClick: { $callLocal: 'onConfirm' } }
+
+// Store the function from a parent action
+{ onConfirm: { $setLocal: 'onConfirm', from: '$arg' } }
+```
+
+---
+
+### `$error` / `$valid` / `$touched` / `$formValid`
+
+Validation state readers for form fields:
+
+- `{ $error: 'fieldName' }` — first error message if the field is touched, otherwise `""`
+- `{ $valid: 'fieldName' }` — `true` when field has no errors
+- `{ $touched: 'fieldName' }` — `true` when field has been interacted with
+- `{ $formValid: true }` — `true` when all fields in the current `$localState` scope are valid and touched
+
+---
+
+### `$touch` / `$resetLocal`
+
+Event handlers for form lifecycle:
+
+- `{ $touch: 'fieldName' }` — marks a field as touched (e.g. on blur)
+- `{ $resetLocal: true }` — resets all fields in the current `$localState` scope to their initial values
+
+---
+
 ## Composing Operators
 
 Operators can be composed together for complex logic:
@@ -722,7 +950,23 @@ Conditionally renders entire subtrees based on a boolean condition.
 }
 ```
 
-**Transition types:** `fade`, `slide`, `scale` — configured via `TransitionConfig` (`type`, `duration`, `easing`, `delay`).
+**TransitionConfig:**
+
+```typescript
+type TransitionEffect = {
+  type: 'fade' | 'slide' | 'scale';
+  duration?: number; // milliseconds, default 300
+  easing?: string; // CSS easing, default 'ease'
+  delay?: number; // milliseconds
+  direction?: 'left' | 'right' | 'up' | 'down'; // for slide/scale
+  distance?: string; // CSS length e.g. '40px', '20%'    // for slide
+};
+type TransitionConfig = TransitionEffect | TransitionEffect[];
+```
+
+- `fade` controls `opacity` only
+- `slide` / `scale` control `transform` only
+- Combine effects by passing an array — e.g. `[{ type: 'fade' }, { type: 'slide', direction: 'up' }]`
 
 **Notes:**
 
@@ -816,6 +1060,131 @@ Placeholder for routed content. Marks where child route content should be insert
 
 - Returns whatever `children` are passed to `RenderSchema` by the host component
 - The actual routing logic is external — the renderer just inserts the routed content at this marker
+
+---
+
+### `$animate`
+
+Viewport-triggered CSS animations. The child is **always mounted** in the DOM — this operator controls visibility via CSS transitions, not DOM presence. Use `$if` when you need the node conditionally absent from the DOM.
+
+**Syntax:**
+
+```typescript
+{
+  type: '$animate',
+  props: {
+    scrollReveal?: true | number,   // trigger enterTransition when scrolled into view
+                                    // number = rootMargin offset in px (negative = earlier)
+    scrollLeave?: true | number,    // trigger exitTransition when scrolled out of view
+    enterTransition?: TransitionConfig,
+    exitTransition?: TransitionConfig,
+  },
+  children: [<SchemaNode>]
+}
+```
+
+**TransitionConfig** is the same type used by `$if` — a single `TransitionEffect` or an array of effects (see [`$if` TransitionConfig](#if-node-level-conditional) for the full type definition).
+
+**Examples:**
+
+```typescript
+// Fade in when element enters the viewport
+{
+  type: '$animate',
+  props: {
+    scrollReveal: true,
+    enterTransition: { type: 'fade', duration: 400 }
+  },
+  children: [{ type: 'we-card', children: [...] }]
+}
+
+// Fade + slide with a negative offset (fires 100px before element reaches the viewport edge)
+{
+  type: '$animate',
+  props: {
+    scrollReveal: -100,
+    enterTransition: [
+      { type: 'fade', duration: 600, easing: 'ease-in-out' },
+      { type: 'slide', direction: 'left', distance: '200px', duration: 1000, easing: 'ease-in-out' }
+    ]
+  },
+  children: [{ type: 'SomeCard', children: [...] }]
+}
+
+// Mount animation (runs once on mount, no scroll trigger)
+{
+  type: '$animate',
+  props: {
+    enterTransition: { type: 'fade', duration: 300 }
+  },
+  children: [{ type: 'we-text', children: ['Hello'] }]
+}
+```
+
+**Notes:**
+
+- Child is always mounted; animation is CSS-only (`opacity`, `transform`)
+- Without `scrollReveal`/`scrollLeave`, the enter transition runs on mount
+- `scrollReveal: true` fires when the element is in the viewport at the default root margin
+- `scrollReveal: -100` fires 100px before the element would otherwise enter (useful for staggered reveals)
+- The `IntersectionObserver` is bidirectional — scroll in fires enter, scroll out fires exit
+- Only one child node is supported
+
+---
+
+### `$single`
+
+Load a single model item via a `$query` descriptor and render children with the result available in context. Renders nothing until a result is found.
+
+**Syntax:**
+
+```typescript
+{
+  type: '$single',
+  props: {
+    item: {
+      $query: {
+        model: '<ModelName>',
+        params?: { ... },
+        include?: { ... },
+        perspective?: '<store.path>',  // defaults to current perspective
+        subscribe?: boolean
+      }
+    },
+    as?: '<context-key>'  // Default: 'item'
+  },
+  children: [<template-SchemaNode>]
+}
+```
+
+**Examples:**
+
+```typescript
+// Load the current user's profile and render it
+{
+  type: '$single',
+  props: {
+    item: {
+      $query: {
+        model: 'Profile',
+        params: { author: { $store: 'adamStore.did' } },
+        subscribe: true
+      }
+    },
+    as: 'profile'
+  },
+  children: [
+    { type: 'we-text', children: ['$profile.username'] }
+  ]
+}
+```
+
+**Notes:**
+
+- Runs `ModelClass.findAll()` and uses the first result
+- With `subscribe: true`, subscribes to live updates via `ModelClass.query().subscribe()`
+- Renders nothing (`null`) when no matching item is found
+- Model class is resolved from the `$getModel` / `$getModelForPerspective` store functions
 
 ---
 

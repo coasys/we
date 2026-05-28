@@ -1,4 +1,4 @@
-import { mergeProps, onCleanup, onMount } from 'solid-js';
+import { createSignal, mergeProps, onCleanup, onMount } from 'solid-js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
@@ -44,9 +44,12 @@ function setupScene(scene: THREE.Scene): {
 }
 
 // Scene constants
-const SHOW_PARTICLE_CLOUD = true; // Toggle the co-rotating particle cloud layer around the cube.
-const SHOW_NETWORK = true; // Toggle the network layer of nodes and edges surrounding the cube.
+const FADE_IN_DURATION = 0.8; // Seconds for the component to fade in on first load.
 const SHOW_INTRO = true; // Set to false to skip the intro animation entirely and go straight to auto-rotation.
+const SHOW_PARTICLE_CLOUD = false; // Toggle the co-rotating particle cloud layer around the cube.
+const SHOW_NETWORK = false; // Toggle the network layer of nodes and edges surrounding the cube.
+const NETWORK_NODE_PULSE = true; // When true, each node's opacity oscillates between NETWORK_OPACITY_MIN and NETWORK_OPACITY_MAX.
+const SHOW_SPHERE = false; // Toggle the semi-transparent sphere layer surrounding the cube.
 
 const CUBE_ZOOM = 0.85; // Zoom level for the cube — tweak to make it fill more or less of the frame. 1 = tight fit, smaller = more breathing room.
 const GLOW_SIZE = 2.0; // Size of the glow layer relative to the cube size. Higher = bigger glow, but too high causes more noticeable pixelation at the edges. Keep below ~3 for best results.
@@ -60,26 +63,29 @@ const FREE_ROTATION_SPEED = 0.3; // Radians per second for auto-rotation after t
 const FREE_ROTATION_DIRECTION = 0.2; // 1 = counter-clockwise (left), -1 = clockwise (right) when viewed from above.
 const FREE_ROTATION_TILT: number = 0; // Radians per second of vertical (up/down) rotation. Positive = tilts upward, negative = tilts downward. 0 = no vertical rotation.
 
-const SHOW_SPHERE = false; // Toggle the semi-transparent sphere layer surrounding the cube.
+const PARTICLE_COLOR = '#6d3aed';
+const PARTICLE_COUNT = 100; // Number of particles in the co-rotating cloud.
+const PARTICLE_INNER_RADIUS = 1.6; // Inner radius of the particle shell — particles are excluded from this zone to avoid overlapping the cube.
+const PARTICLE_OUTER_RADIUS = 4; // Outer radius of the particle shell. Keep below ~2.9 (frustum half-size) to avoid clipping at canvas edges.
+const PARTICLE_OPACITY = 0.7; // Opacity of the particle dots (0 = invisible, 1 = fully opaque).
+
 const SPHERE_RADIUS = 2.7; // Radius of the surrounding sphere. 1.0 roughly encloses the cube — go larger for a looser halo.
 const SPHERE_COLOR = '#7c3aed'; // Fill color of the sphere.
 const SPHERE_OPACITY = 0.7; // Opacity of the sphere (0 = invisible, 1 = fully opaque). Keep low for a subtle halo effect.
 
-const NET_NODE_COUNT = 100; // Number of nodes in the network layer. Adjust as needed for visual density and performance balance — higher = more nodes and edges, but also more GPU load. Keep in mind that edges grow roughly with the square of node count, but we cap edges per node to mitigate this.
+const NETWORK_COLOR = '#b860ee';
+const NETWORK_HUE_RANGE = 30; // Degrees of hue shift applied randomly to each node, centered on NETWORK_COLOR. e.g. 40 → ±20° around the base hue.
+const NET_NODE_COUNT = 50; // Number of nodes in the network layer. Adjust as needed for visual density and performance balance — higher = more nodes and edges, but also more GPU load. Keep in mind that edges grow roughly with the square of node count, but we cap edges per node to mitigate this.
 const NET_SPHERE_INNER_RADIUS = 3; // Inner radius — nodes are excluded from this zone to avoid overlapping the cube.
-const NET_SPHERE_OUTER_RADIUS = 3; // Outer radius of the shell within which network nodes are randomly distributed.
+const NET_SPHERE_OUTER_RADIUS = 3.5; // Outer radius of the shell within which network nodes are randomly distributed.
 const NET_MAX_EDGE_DIST = 2; // Maximum distance between two nodes for an edge to be drawn. Adjust to make the network more or less connected — lower = fewer edges and a sparser look, higher = more edges and a denser look. Keep in mind that the number of edges grows with the square of this distance, but we also cap edges per node to prevent hairball clusters.
 const NET_MAX_EDGES_PER_NODE = 5; // Cap on the number of edges each node can have. This prevents highly connected nodes from creating large hairball clusters that dominate the visual and make it hard to see the cube. Adjust as needed to balance between a more web-like look (higher) and clearer separation between nodes (lower).
 const NET_NODE_MIN_SIZE = 3; // px — smallest node circle
-const NET_NODE_MAX_SIZE = 7; // px — largest node circle
-const PARTICLE_COLOR = '#6d3aed';
-const NETWORK_COLOR = '#b860ee';
-const NETWORK_HUE_RANGE = 30; // Degrees of hue shift applied randomly to each node, centered on NETWORK_COLOR. e.g. 40 → ±20° around the base hue.
-const NETWORK_NODE_PULSE = true; // When true, each node's opacity oscillates between NETWORK_OPACITY_MIN and NETWORK_OPACITY_MAX.
-const NETWORK_OPACITY = 0.2; // Base opacity of network nodes when pulse is off (0 = invisible, 1 = fully opaque). Also used as NETWORK_OPACITY_MAX when pulse is on.
+const NET_NODE_MAX_SIZE = 16; // px — largest node circle
+const NETWORK_OPACITY = 0.6; // Base opacity of network nodes when pulse is off (0 = invisible, 1 = fully opaque). Also used as NETWORK_OPACITY_MAX when pulse is on.
 const NETWORK_OPACITY_MIN = 0.05; // Minimum opacity during pulse cycle (only used when NETWORK_NODE_PULSE is true).
-const NETWORK_PULSE_SPEED = 1.0; // Speed of the opacity pulse in cycles per second — higher = faster flicker.
-const NETWORK_EDGE_OPACITY = 0.15; // Opacity of network edges (0 = invisible, 1 = fully opaque).
+const NETWORK_PULSE_SPEED = 0.8; // Speed of the opacity pulse in cycles per second — higher = faster flicker.
+const NETWORK_EDGE_OPACITY = 0.1; // Opacity of network edges (0 = invisible, 1 = fully opaque).
 
 const easeInOutCubic = (p: number) => (p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2);
 // const easeOutCubic = (p: number) => 1 - (1 - p) ** 3;
@@ -96,8 +102,12 @@ interface WeCubeProps {
 export function WeCube(rawProps: WeCubeProps) {
   const props = mergeProps({ width: '200px', height: '200px', rotationSpeed: FREE_ROTATION_SPEED }, rawProps);
   let containerRef: HTMLDivElement | undefined;
+  const [visible, setVisible] = createSignal(false);
 
   onMount(() => {
+    // Defer opacity change to the next frame so the browser first paints at opacity 0,
+    // allowing the CSS transition to run from the very first render.
+    requestAnimationFrame(() => setVisible(true));
     if (!containerRef) return;
 
     const width = containerRef.clientWidth;
@@ -169,11 +179,9 @@ export function WeCube(rawProps: WeCubeProps) {
       // PARTICLE_DISTANCE is the outer shell radius. Orthographic frustum half-size = 3,
       // so keep this below ~2.9 to avoid clipping at the canvas edges.
       if (SHOW_PARTICLE_CLOUD) {
-        const PARTICLE_DISTANCE = 4;
-        const PARTICLE_COUNT = 100;
         const positions = new Float32Array(PARTICLE_COUNT * 3);
         for (let i = 0; i < PARTICLE_COUNT; i++) {
-          const r = 1.6 + Math.random() * (PARTICLE_DISTANCE - 1.6); // shell from just past the cube to PARTICLE_DISTANCE
+          const r = PARTICLE_INNER_RADIUS + Math.random() * (PARTICLE_OUTER_RADIUS - PARTICLE_INNER_RADIUS); // shell from PARTICLE_INNER_RADIUS to PARTICLE_OUTER_RADIUS
           const theta = Math.random() * Math.PI * 2;
           const phi = Math.acos(2 * Math.random() - 1);
           positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
@@ -187,7 +195,7 @@ export function WeCube(rawProps: WeCubeProps) {
           size: 2,
           sizeAttenuation: false,
           transparent: true,
-          opacity: 0.5,
+          opacity: PARTICLE_OPACITY,
         });
         pivotGroup.add(new THREE.Points(particleGeo, particleMat));
       } // end SHOW_PARTICLE_CLOUD
@@ -530,7 +538,15 @@ export function WeCube(rawProps: WeCubeProps) {
   });
 
   return (
-    <div style={{ position: 'relative', width: props.width, height: props.height }}>
+    <div
+      style={{
+        position: 'relative',
+        width: props.width,
+        height: props.height,
+        opacity: visible() ? 1 : 0,
+        transition: `opacity ${FADE_IN_DURATION}s ease`,
+      }}
+    >
       {/* Glow layer — sits behind the Three.js canvas. Size controlled by GLOW_SIZE. */}
       <div
         style={{

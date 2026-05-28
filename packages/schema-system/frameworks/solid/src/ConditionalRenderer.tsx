@@ -2,6 +2,7 @@ import type { TransitionConfig } from '@we/schema-shared';
 import { resolveProp } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
+import { buildTransitionCSS, hiddenOpacity, hiddenTransform } from './transitionUtils';
 import type { RendererOutput, SchemaNode } from './types';
 
 type ConditionalRendererProps = {
@@ -12,7 +13,6 @@ type ConditionalRendererProps = {
 };
 
 export function ConditionalRenderer({ node, stores, context, renderNode }: ConditionalRendererProps): RendererOutput {
-  // Get transition configs from props (can be dynamic via prop resolution)
   const enterTransition = node.props?.enterTransition as TransitionConfig | undefined;
   const exitTransition = node.props?.exitTransition as TransitionConfig | undefined;
   const hasTransitions = enterTransition || exitTransition;
@@ -31,134 +31,107 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
     );
   }
 
-  // With transitions, we need to manage opacity and delayed unmounting
-  const [isVisible, setIsVisible] = createSignal(conditionMet());
-  const [shouldRender, setShouldRender] = createSignal(conditionMet());
-  const [opacity, setOpacity] = createSignal(conditionMet() ? 1 : 0);
+  const effectiveCondition = createMemo(() => !!conditionMet());
 
-  // Watch for condition changes and handle transitions
+  const startVisible = effectiveCondition();
+  const initialHiddenTransform = enterTransition ? hiddenTransform(enterTransition) : '';
+  const initialHiddenOpacity = enterTransition ? hiddenOpacity(enterTransition) : 0;
+
+  const [isVisible, setIsVisible] = createSignal(startVisible);
+  const [shouldRender, setShouldRender] = createSignal(startVisible);
+  const [opacity, setOpacity] = createSignal(startVisible ? 1 : initialHiddenOpacity);
+  const [transform, setTransform] = createSignal(startVisible ? '' : initialHiddenTransform);
+
+  // ── Condition change → animate in / out ──────────────────────────────────────
   createEffect(() => {
-    const newCondition = conditionMet();
+    const newCondition = effectiveCondition();
 
     if (newCondition && !isVisible()) {
-      // Condition became true - mount and fade in
       setShouldRender(true);
       setIsVisible(true);
 
       if (enterTransition) {
-        // Start with opacity 0, then fade in on next frame
-        setOpacity(0);
+        setOpacity(hiddenOpacity(enterTransition));
+        setTransform(hiddenTransform(enterTransition));
         requestAnimationFrame(() => {
-          setTimeout(() => setOpacity(1), enterTransition.delay ?? 0);
+          const firstEffect = Array.isArray(enterTransition) ? enterTransition[0] : enterTransition;
+          setTimeout(() => {
+            setOpacity(1);
+            setTransform('');
+          }, firstEffect?.delay ?? 0);
         });
       } else {
         setOpacity(1);
+        setTransform('');
       }
     } else if (!newCondition && isVisible()) {
-      // Condition became false - fade out then unmount
       setIsVisible(false);
 
       if (exitTransition) {
-        const duration = exitTransition.duration ?? 300;
-        const delay = exitTransition.delay ?? 0;
+        const firstEffect = Array.isArray(exitTransition) ? exitTransition[0] : exitTransition;
+        const duration = firstEffect?.duration ?? 300;
+        const delay = firstEffect?.delay ?? 0;
 
         setTimeout(() => {
-          setOpacity(0);
+          setOpacity(hiddenOpacity(exitTransition));
+          setTransform(hiddenTransform(exitTransition));
 
-          // Unmount after transition completes
-          const timer = setTimeout(() => {
-            setShouldRender(false);
-          }, duration);
-
+          const timer = setTimeout(() => setShouldRender(false), duration);
           onCleanup(() => clearTimeout(timer));
         }, delay);
       } else {
         setShouldRender(false);
-        setOpacity(0);
+        setOpacity(initialHiddenOpacity);
+        setTransform(initialHiddenTransform);
       }
     }
   });
 
-  // Build transition CSS based on config
-  const getTransitionCSS = (config: TransitionConfig | undefined): string => {
-    if (!config) return '';
-    const duration = config.duration ?? 300;
-    const easing = config.easing ?? 'ease';
-    return `opacity ${duration}ms ${easing}`;
-  };
-
+  // ── CSS transition string ─────────────────────────────────────────────────────
   const transitionCSS = createMemo(() => {
     const current = isVisible();
-    if (current && enterTransition) return getTransitionCSS(enterTransition);
-    if (!current && exitTransition) return getTransitionCSS(exitTransition);
-    // Fallback: use whichever config exists
-    return getTransitionCSS(exitTransition ?? enterTransition);
+    const config = current ? (enterTransition ?? exitTransition) : (exitTransition ?? enterTransition);
+    return config ? buildTransitionCSS(config) : '';
   });
 
-  // Helper to check if a web component extends OverlayElement
-  // Uses static property marker since class names get minified in production
+  // ── Overlay / positioning helpers (unchanged) ─────────────────────────────────
   const isOverlayComponent = (tagName: string): boolean => {
     if (!tagName?.startsWith('we-')) return false;
-
     const ComponentClass = customElements.get(tagName);
     if (!ComponentClass) return false;
-
-    // Check for static isOverlay marker property (minification-safe)
     return 'isOverlay' in ComponentClass && ComponentClass.isOverlay === true;
   };
 
-  // Get content node to check for positioning props
   const contentNode = node.props?.then as SchemaNode | undefined;
   const contentProps = contentNode?.props || {};
   const contentType = String(contentNode?.type || '');
-
-  // Check if content is a self-positioning overlay component
   const isOverlay = isOverlayComponent(contentType);
-
-  // Check if content has position or z-index props
   const hasPosition = contentProps.position;
   const hasZIndex = contentProps['z-index'] || contentProps.zIndex;
 
-  // Build wrapper style - use a memo to make it reactive
+  // ── Wrapper style ─────────────────────────────────────────────────────────────
   const wrapperStyle = createMemo(() => {
     const style: Record<string, string | number> = {
       opacity: opacity(),
       transition: transitionCSS(),
     };
 
-    // If content is an overlay component, don't interfere with its positioning
-    // But copy z-index to wrapper for proper stacking during transitions
+    const t = transform();
+    if (t) style.transform = t;
+
     if (isOverlay) {
-      // Copy z-index from overlay if present (for proper stacking during fade)
-      if (hasZIndex) {
-        const zIndexValue = String(contentProps['z-index'] || contentProps.zIndex);
-        style['z-index'] = zIndexValue;
-      }
-      // Let overlay handle its own positioning, wrapper just manages opacity & z-index
+      if (hasZIndex) style['z-index'] = String(contentProps['z-index'] || contentProps.zIndex);
       return style;
     }
 
-    // If content has position or z-index, copy them to wrapper to maintain stacking behavior
     if (hasPosition || hasZIndex) {
-      // Copy position (default to relative if only z-index is set)
-      const positionValue = String(contentProps.position || 'relative');
-      style.position = positionValue;
-
-      // Copy z-index (normalize from both camelCase and kebab-case)
-      if (hasZIndex) {
-        const zIndexValue = String(contentProps['z-index'] || contentProps.zIndex);
-        style['z-index'] = zIndexValue;
-      }
-
-      // Make wrapper fill available space to not disrupt layout
+      style.position = String(contentProps.position || 'relative');
+      if (hasZIndex) style['z-index'] = String(contentProps['z-index'] || contentProps.zIndex);
       style.width = '100%';
       style.height = '100%';
       return style;
     }
 
-    // For everything else (non-overlay, non-positioned), use layout-neutral wrapper.
-    // Note: display:contents removes the box from the tree and breaks CSS transitions.
-    // A plain div participates in flex/grid layouts as an item and supports opacity transitions.
     return style;
   });
 

@@ -7,7 +7,6 @@
     "noEmit": true,
     "isolatedModules": true,
     "experimentalDecorators": true,
-    "baseUrl": ".",
     "paths": { "@shared/*": ["./src/shared/*"], "@solid/*": ["./src/frameworks/solid/*"] },
     "types": ["@we/primitives/solid", "node"]
   }

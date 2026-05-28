@@ -34,6 +34,11 @@ const styles = css`
     --we-text-font-style: italic;
   }
 
+  :host([inline]) {
+    --we-text-host-display: inline;
+    --we-text-display: inline;
+  }
+
   :host([tag='p']) {
     --we-text-margin: 0 0 1em 0;
   }
