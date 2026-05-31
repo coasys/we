@@ -6,14 +6,10 @@ export { twitterTemplate } from './TwitterTemplate.schema';
 export {
   bootScreen,
   createTestStore,
-  forBuildersTemplate,
-  forCommunitiesTemplate,
-  howItWorksTemplate,
   landingPageTemplate,
   profileTemplate,
   schemaTestsTemplate,
   schemaMutationActions,
-  seeItInPracticeTemplate,
   settingsTemplate,
   sidebar,
 } from './shell';
