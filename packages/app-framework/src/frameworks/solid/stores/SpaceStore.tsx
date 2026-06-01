@@ -31,8 +31,10 @@ export interface SpaceStore {
 const SpaceContext = createContext<SpaceStore>();
 
 // Register JS classes for $query model resolution (runs once at module load)
+// Use .className (set by @Model decorator) rather than .name — bundlers mangle
+// the native .name property in production builds, breaking registry lookups.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-for (const M of SPACE_MODELS) registerModel(M.name, M as any);
+for (const M of SPACE_MODELS) registerModel((M as any).className, M as any);
 
 export function SpaceStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
