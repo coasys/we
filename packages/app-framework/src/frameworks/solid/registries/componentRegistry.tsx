@@ -43,6 +43,7 @@ import {
 
 import WeCube from '../components/3d/WeCube';
 import { BenchmarkTimer } from '../components/BenchmarkTimer';
+import HexagonGrid from '../components/LivingSystems/HexagonGrid';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
@@ -96,4 +97,7 @@ export const componentRegistry: ComponentRegistry = {
 
   // 3D
   WeCube,
+
+  // Living Systems
+  HexagonGrid,
 };

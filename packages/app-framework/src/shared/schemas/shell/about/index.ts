@@ -1,5 +1,7 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
+export { livingSystemsTemplate } from './LivingSystems.schema';
+
 import forBuildersV1 from '../../../assets/CTAv1/ForBuilders.jpg';
 import forCommunitiesV1 from '../../../assets/CTAv1/ForCommunitiesLarge.jpg';
 import howItWorksV1 from '../../../assets/CTAv1/HowItWorks.jpg';
@@ -1494,6 +1496,83 @@ export const landingPageTemplate: TemplateSchema = {
           'The deeper bet: given the right infrastructure, communities will discover forms of coordination and collective intelligence that no platform team would have designed for them. And those discoveries will spread.',
           true,
         ),
+
+        // Philosophy section
+        {
+          type: 'Column',
+          props: { gap: '500', mt: '100px', mb: '100px' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '300', ax: 'center', mb: '200' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+                  children: ['The philosophy behind WE'],
+                },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '600', color: 'neutral-600', textAlign: 'center' },
+                  children: ['The ideas that shape how we think about communities, technology, and life.'],
+                },
+              ],
+            },
+            {
+              type: 'Row',
+              props: {
+                gap: '500',
+                ay: 'center',
+                r: '600',
+                p: '600',
+                bg: 'neutral-100',
+                border: '1px solid var(--we-color-neutral-200)',
+                width: '100%',
+              },
+              children: [
+                {
+                  type: 'Column',
+                  props: {
+                    gap: '0',
+                    ax: 'center',
+                    ay: 'center',
+                    p: '400',
+                    r: '500',
+                    bg: 'neutral-200',
+                    flex: '0 0 auto',
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'hexagon', size: '48px', gradient: 'primary' } }],
+                },
+                {
+                  type: 'Column',
+                  props: { gap: '200', flex: '1' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '600', fontWeight: 'bold', color: 'neutral-800' },
+                      children: ['Fractal patterns in living systems'],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '500', color: 'neutral-600', lineHeight: '1.6' },
+                      children: [
+                        'The same seven functional patterns appear at every scale of life — from a single cell to an entire city. Exploring this helps explain why WE is designed the way it is.',
+                      ],
+                    },
+                  ],
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Explore',
+                    variant: 'outline',
+                    onClick: { $action: 'templateStore.openShellView', args: ['living-systems'] },
+                  },
+                },
+              ],
+            },
+          ],
+        },
 
         // Close button
         {

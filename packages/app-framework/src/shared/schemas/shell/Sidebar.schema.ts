@@ -115,6 +115,18 @@ export const sidebar: SchemaNode = {
             onClick: { $action: 'aiStore.toggle' },
           },
 
+          // Living Systems
+          {
+            id: 'living-systems',
+            icon: 'hexagon',
+            label: 'Living Systems',
+            active: { $eq: [{ $store: 'templateStore.activeShellView' }, 'living-systems'] },
+            onClick: [
+              { $action: 'appStore.deactivateApp' },
+              { $action: 'templateStore.openShellView', args: ['living-systems'] },
+            ],
+          },
+
           // Spaces
           {
             type: 'group',
