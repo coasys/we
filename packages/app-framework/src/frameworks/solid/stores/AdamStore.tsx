@@ -346,10 +346,17 @@ export function AdamStoreProvider(props: ParentProps) {
       HTMLElement & { postMessage: (data: Record<string, unknown>, origin: string) => void }
     >;
 
+    // On desktop, pass the raw port/token so the embedded app can open its own WebSocket.
+    // On web, the embedded app cannot reach localhost directly (browser PNA enforcement),
+    // so we tell it to use the postMessage proxy instead. Port is intentionally omitted.
+    const payload: Record<string, unknown> = platform.isDesktop
+      ? { type: 'AD4M_CONFIG', port, token, ...(url ? { url } : {}) }
+      : { type: 'AD4M_CONFIG', token, proxy: true };
+
     let sent = 0;
     weIframes.forEach((el) => {
       if (typeof el.postMessage === 'function') {
-        el.postMessage({ type: 'AD4M_CONFIG', port, token, ...(url ? { url } : {}) }, '*');
+        el.postMessage(payload, '*');
         sent++;
       }
     });
@@ -360,17 +367,79 @@ export function AdamStoreProvider(props: ParentProps) {
   }
 
   function setupMessageListener() {
+    // Tracks live WebSocket proxies keyed by the iframe's contentWindow.
+    // Used when the host forwards AD4M WebSocket traffic on behalf of embedded apps
+    // that cannot open their own connections (e.g. browser PNA enforcement on web).
+    const proxyConnections = new Map<Window, WebSocket>();
+
     // Listen for requests from iframes asking for AD4M config.
     // Reads port/token from signals at call time so it works even when called before
     // credentials are available (e.g. during the web auth flow on first load).
     const handleMessage = (event: MessageEvent) => {
+      const source = event.source as Window | null;
+
+      // ── AD4M_PROXY_WS_* protocol ─────────────────────────────────────────
+      // Embedded apps that receive proxy:true open no WebSocket themselves;
+      // instead they send these messages and we proxy frames via a real WebSocket.
+
+      if (event.data?.type === 'AD4M_PROXY_WS_CONNECT' && source) {
+        // Close any stale connection for this frame
+        const existing = proxyConnections.get(source);
+        if (existing) {
+          existing.close();
+          proxyConnections.delete(source);
+        }
+
+        const port = ad4mPort();
+        const token = ad4mToken();
+        const baseUrl = ad4mUrlValue ?? (port !== undefined ? `http://localhost:${port}` : null);
+        if (!baseUrl) {
+          source.postMessage({ type: 'AD4M_PROXY_WS_ERROR' }, '*');
+          return;
+        }
+
+        const wsBase = baseUrl.replace(/^http:\/\//, 'ws://').replace(/^https:\/\//, 'wss://');
+        const tokenParam = token ? `token=${encodeURIComponent(token)}` : '';
+        const wsUrl = tokenParam ? `${wsBase}/api/v1/ws?${tokenParam}` : `${wsBase}/api/v1/ws`;
+
+        const ws = new WebSocket(wsUrl);
+        proxyConnections.set(source, ws);
+
+        ws.onopen = () => source.postMessage({ type: 'AD4M_PROXY_WS_OPEN' }, '*');
+        ws.onmessage = (e) => source.postMessage({ type: 'AD4M_PROXY_WS_MESSAGE', data: e.data }, '*');
+        ws.onerror = () => source.postMessage({ type: 'AD4M_PROXY_WS_ERROR' }, '*');
+        ws.onclose = (e) => {
+          proxyConnections.delete(source);
+          source.postMessage({ type: 'AD4M_PROXY_WS_CLOSED', code: e.code, reason: e.reason }, '*');
+        };
+        return;
+      }
+
+      if (event.data?.type === 'AD4M_PROXY_WS_SEND' && source) {
+        const ws = proxyConnections.get(source);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(event.data.data as string);
+        }
+        return;
+      }
+
+      if (event.data?.type === 'AD4M_PROXY_WS_CLOSE' && source) {
+        const ws = proxyConnections.get(source);
+        if (ws) {
+          ws.close(event.data.code as number | undefined, event.data.reason as string | undefined);
+          proxyConnections.delete(source);
+        }
+        return;
+      }
+
+      // ─────────────────────────────────────────────────────────────────────
+
       if (event.data?.type === 'REQUEST_AD4M_CONFIG') {
         // Immediately acknowledge so the embedded app knows the parent window is alive and
         // its "parent not found" timeout can be safely cancelled. The actual AD4M_CONFIG
         // follows as soon as credentials are available (possibly much later, after auth).
-        const sourceFrame = event.source as Window | null;
-        if (sourceFrame) {
-          sourceFrame.postMessage({ type: 'AD4M_CONFIG_ACK' }, '*');
+        if (source) {
+          source.postMessage({ type: 'AD4M_CONFIG_ACK' }, '*');
         }
 
         const port = ad4mPort();
@@ -389,8 +458,12 @@ export function AdamStoreProvider(props: ParentProps) {
 
     window.addEventListener('message', handleMessage);
 
-    // Cleanup function
-    return () => window.removeEventListener('message', handleMessage);
+    // Cleanup: remove listener and close any open proxy WebSocket connections
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      proxyConnections.forEach((ws) => ws.close());
+      proxyConnections.clear();
+    };
   }
 
   // Syncs the agent profile to the global perspective on every change.

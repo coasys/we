@@ -5,8 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@coasys/ad4m': 0.13.0-test-6
-  '@coasys/ad4m-connect': 0.13.0-test-7
+  '@coasys/ad4m': 0.13.0-postmessage-ws-proxy.0
+  '@coasys/ad4m-connect': 0.13.0-postmessage-ws-proxy.0
 
 importers:
 
@@ -52,20 +52,20 @@ importers:
   apps/playgrounds/react/ad4m-model-testing:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-6
-        version: 0.13.0-test-6
+        specifier: 0.13.0-postmessage-ws-proxy.0
+        version: 0.13.0-postmessage-ws-proxy.0
       '@coasys/ad4m-connect':
-        specifier: 0.13.0-test-7
-        version: 0.13.0-test-7
+        specifier: 0.13.0-postmessage-ws-proxy.0
+        version: 0.13.0-postmessage-ws-proxy.0
       '@we/models':
         specifier: workspace:*
         version: link:../../../../packages/models
       react:
         specifier: ^19.2.0
-        version: 19.2.6
+        version: 19.2.7
       react-dom:
         specifier: ^19.2.0
-        version: 19.2.6(react@19.2.6)
+        version: 19.2.7(react@19.2.7)
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -84,10 +84,10 @@ importers:
         version: 24.12.4
       '@types/react':
         specifier: ^19.2.5
-        version: 19.2.15
+        version: 19.2.16
       '@types/react-dom':
         specifier: ^19.2.3
-        version: 19.2.3(@types/react@19.2.15)
+        version: 19.2.3(@types/react@19.2.16)
       '@vitejs/plugin-react':
         specifier: ^5.1.1
         version: 5.2.0(vite@7.3.5(@types/node@24.12.4)(sass@1.100.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -120,10 +120,10 @@ importers:
     dependencies:
       react:
         specifier: ^19.2.0
-        version: 19.2.6
+        version: 19.2.7
       react-dom:
         specifier: ^19.2.0
-        version: 19.2.6(react@19.2.6)
+        version: 19.2.7(react@19.2.7)
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.1
@@ -133,10 +133,10 @@ importers:
         version: 24.12.4
       '@types/react':
         specifier: ^19.2.5
-        version: 19.2.15
+        version: 19.2.16
       '@types/react-dom':
         specifier: ^19.2.3
-        version: 19.2.3(@types/react@19.2.15)
+        version: 19.2.3(@types/react@19.2.16)
       '@vitejs/plugin-react':
         specifier: ^5.1.1
         version: 5.2.0(vite@7.3.5(@types/node@24.12.4)(sass@1.100.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -166,10 +166,10 @@ importers:
     dependencies:
       '@apollo/client':
         specifier: ^3.7.10
-        version: 3.14.1(@types/react@19.2.15)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        version: 3.14.1(@types/react@19.2.16)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@coasys/ad4m':
-        specifier: 0.13.0-test-6
-        version: 0.13.0-test-6
+        specifier: 0.13.0-postmessage-ws-proxy.0
+        version: 0.13.0-postmessage-ws-proxy.0
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.13)
@@ -230,10 +230,10 @@ importers:
     dependencies:
       '@apollo/client':
         specifier: ^3.7.10
-        version: 3.14.1(@types/react@19.2.15)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        version: 3.14.1(@types/react@19.2.16)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@coasys/ad4m':
-        specifier: 0.13.0-test-6
-        version: 0.13.0-test-6
+        specifier: 0.13.0-postmessage-ws-proxy.0
+        version: 0.13.0-postmessage-ws-proxy.0
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.13)
@@ -278,11 +278,11 @@ importers:
   apps/we-web:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-6
-        version: 0.13.0-test-6
+        specifier: 0.13.0-postmessage-ws-proxy.0
+        version: 0.13.0-postmessage-ws-proxy.0
       '@coasys/ad4m-connect':
-        specifier: 0.13.0-test-7
-        version: 0.13.0-test-7
+        specifier: 0.13.0-postmessage-ws-proxy.0
+        version: 0.13.0-postmessage-ws-proxy.0
       '@we/app-framework':
         specifier: workspace:*
         version: link:../../packages/app-framework
@@ -331,8 +331,8 @@ importers:
   packages/app-framework:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-6
-        version: 0.13.0-test-6
+        specifier: 0.13.0-postmessage-ws-proxy.0
+        version: 0.13.0-postmessage-ws-proxy.0
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.13)
@@ -410,8 +410,8 @@ importers:
   packages/block-system/frameworks/solid:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-6
-        version: 0.13.0-test-6
+        specifier: 0.13.0-postmessage-ws-proxy.0
+        version: 0.13.0-postmessage-ws-proxy.0
       '@lexical/list':
         specifier: ^0.30.0
         version: 0.30.0
@@ -459,8 +459,8 @@ importers:
   packages/block-system/shared:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-6
-        version: 0.13.0-test-6
+        specifier: 0.13.0-postmessage-ws-proxy.0
+        version: 0.13.0-postmessage-ws-proxy.0
       '@we/design-types':
         specifier: workspace:*
         version: link:../../design-system/types
@@ -590,7 +590,7 @@ importers:
         version: 2.1.1
       '@storybook/addon-essentials':
         specifier: 8.4.6
-        version: 8.4.6(@types/react@19.2.15)(storybook@8.4.6(prettier@3.8.3))
+        version: 8.4.6(@types/react@19.2.16)(storybook@8.4.6(prettier@3.8.3))
       '@storybook/web-components':
         specifier: 8.4.6
         version: 8.4.6(lit@3.2.1)(storybook@8.4.6(prettier@3.8.3))
@@ -653,8 +653,8 @@ importers:
   packages/design-system/5-widgets:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-6
-        version: 0.13.0-test-6
+        specifier: 0.13.0-postmessage-ws-proxy.0
+        version: 0.13.0-postmessage-ws-proxy.0
       cesium:
         specifier: ^1.136.0
         version: 1.141.0
@@ -738,8 +738,8 @@ importers:
   packages/models:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-6
-        version: 0.13.0-test-6
+        specifier: 0.13.0-postmessage-ws-proxy.0
+        version: 0.13.0-postmessage-ws-proxy.0
     devDependencies:
       '@we/cli':
         specifier: workspace:*
@@ -1049,11 +1049,11 @@ packages:
     resolution: {integrity: sha512-a0udi+EKEeCyM4F+pxp9Qx8HXgh2eWVQrksxGO4lSu3f35XWc+eKdYiJBEP2t1d4tjw2MxOsjbVyMj7VQZ4JDw==}
     engines: {node: '>=22.0.0'}
 
-  '@coasys/ad4m-connect@0.13.0-test-7':
-    resolution: {integrity: sha512-GmuytEflKeg6cdH5TASlCHjNNVNPAfhGEUOzbqV+JTShsujF+5m1wNgNJpo/LpYgskWb4fCX4945BMrgNp+Tng==}
+  '@coasys/ad4m-connect@0.13.0-postmessage-ws-proxy.0':
+    resolution: {integrity: sha512-bFaGgPgKND+++83GFN/XN9v1xqLlRUs2vnqJSb0hYVhG8d/5hkl2VOYXSi21zD8LhA0rbw51D0WD9epR0ZpyTw==}
 
-  '@coasys/ad4m@0.13.0-test-6':
-    resolution: {integrity: sha512-lusi2z+RTZ6ldzzOgTdayf7MJqYC4LjBqhcbD+Su3FHduT995WTI3m1EYP+DAEwlmXudl+zWvEPAYXiSZXabyA==}
+  '@coasys/ad4m@0.13.0-postmessage-ws-proxy.0':
+    resolution: {integrity: sha512-lgfZLdZl7NJtwokjFvK3Ot33NnA8X4G+98Cp7IzOqB0bgY00LX7Y6ujuc2jvq3eMdro1+2qK4tgBjT+pJhirfg==}
 
   '@csstools/color-helpers@6.0.2':
     resolution: {integrity: sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q==}
@@ -2595,8 +2595,8 @@ packages:
     peerDependencies:
       '@types/react': ^19.2.0
 
-  '@types/react@19.2.15':
-    resolution: {integrity: sha512-eRwcGNHve+E8qtEQSSRl6urh+rFop4v8gm6O8rGv25CodbvFdLjA1vVQ1KkiFE0w0UPOnb8tDiFKL5lp0rtY5Q==}
+  '@types/react@19.2.16':
+    resolution: {integrity: sha512-esJiCAnl0kfpNdE69f3So4WJUXy95dLZydX0KwK46riIHDzHM7O9Vtf9xCHW0PXIqvgqNrswl522kA/5yx+F4w==}
 
   '@types/responselike@1.0.3':
     resolution: {integrity: sha512-H/+L+UkTV33uf49PH5pCAUBVPNj2nDBXTN+qS1dOwyyg24l3CcicicCA7ca+HMvJBZcFgl5r8e+RR6elsb4Lyw==}
@@ -5151,10 +5151,10 @@ packages:
     peerDependencies:
       react: ^18.3.1
 
-  react-dom@19.2.6:
-    resolution: {integrity: sha512-0prMI+hvBbPjsWnxDLxlCGyM8PN6UuWjEUCYmZhO67xIV9Xasa/r/vDnq+Xyq4Lo27g8QSbO5YzARu0D1Sps3g==}
+  react-dom@19.2.7:
+    resolution: {integrity: sha512-t0BRVXvbiE/o20Hfw669rLbMCDWtYZLvmJigy2f0MxsXF+71pxhR3xOkspmsO8h3ZlNzyibAmtCa3l4lYKk6gQ==}
     peerDependencies:
-      react: ^19.2.6
+      react: ^19.2.7
 
   react-is@16.13.1:
     resolution: {integrity: sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==}
@@ -5170,8 +5170,8 @@ packages:
     resolution: {integrity: sha512-wS+hAgJShR0KhEvPJArfuPVN1+Hz1t0Y6n5jLrGQbkb4urgPE/0Rve+1kMB1v/oWgHgm4WIcV+i7F2pTVj+2iQ==}
     engines: {node: '>=0.10.0'}
 
-  react@19.2.6:
-    resolution: {integrity: sha512-sfWGGfavi0xr8Pg0sVsyHMAOziVYKgPLNrS7ig+ivMNb3wbCBw3KxtflsGBAwD3gYQlE/AEZsTLgToRrSCjb0Q==}
+  react@19.2.7:
+    resolution: {integrity: sha512-HNe9WslTbXmFK8o8cmwgAeJFSBvt1bPdHCVKtaaV+WlAN36mpT4hcRpwbf3fY56ar2oIXzsBpOAiIRHAdY0OlQ==}
     engines: {node: '>=0.10.0'}
 
   read-binary-file-arch@1.0.6:
@@ -6176,7 +6176,7 @@ snapshots:
 
   '@acemir/cssom@0.9.31': {}
 
-  '@apollo/client@3.14.1(@types/react@19.2.15)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+  '@apollo/client@3.14.1(@types/react@19.2.16)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@graphql-typed-document-node/core': 3.2.0(graphql@15.7.2)
       '@wry/caches': 1.0.1
@@ -6187,15 +6187,15 @@ snapshots:
       hoist-non-react-statics: 3.3.2
       optimism: 0.18.1
       prop-types: 15.8.1
-      rehackt: 0.1.0(@types/react@19.2.15)(react@19.2.6)
+      rehackt: 0.1.0(@types/react@19.2.16)(react@19.2.7)
       symbol-observable: 4.0.0
       ts-invariant: 0.10.3
       tslib: 2.8.1
       zen-observable-ts: 1.2.5
     optionalDependencies:
       graphql-ws: 5.12.0(graphql@15.7.2)
-      react: 19.2.6
-      react-dom: 19.2.6(react@19.2.6)
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
     transitivePeerDependencies:
       - '@types/react'
 
@@ -6486,14 +6486,14 @@ snapshots:
       '@cesium/engine': 25.0.0
       nosleep.js: 0.12.0
 
-  '@coasys/ad4m-connect@0.13.0-test-7':
+  '@coasys/ad4m-connect@0.13.0-postmessage-ws-proxy.0':
     dependencies:
       '@undecaf/barcode-detector-polyfill': 0.9.23
       '@undecaf/zbar-wasm': 0.9.16
       auto-bind: 5.0.1
       lit: 2.8.0
 
-  '@coasys/ad4m@0.13.0-test-6':
+  '@coasys/ad4m@0.13.0-postmessage-ws-proxy.0':
     dependencies:
       '@holochain/client': 0.16.0
       base64-js: 1.5.1
@@ -7233,10 +7233,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@mdx-js/react@3.1.1(@types/react@19.2.15)(react@18.3.1)':
+  '@mdx-js/react@3.1.1(@types/react@19.2.16)(react@18.3.1)':
     dependencies:
       '@types/mdx': 2.0.13
-      '@types/react': 19.2.15
+      '@types/react': 19.2.16
       react: 18.3.1
 
   '@msgpack/msgpack@2.8.0': {}
@@ -7455,9 +7455,9 @@ snapshots:
       storybook: 8.4.6(prettier@3.8.3)
       ts-dedent: 2.2.0
 
-  '@storybook/addon-docs@8.4.6(@types/react@19.2.15)(storybook@8.4.6(prettier@3.8.3))':
+  '@storybook/addon-docs@8.4.6(@types/react@19.2.16)(storybook@8.4.6(prettier@3.8.3))':
     dependencies:
-      '@mdx-js/react': 3.1.1(@types/react@19.2.15)(react@18.3.1)
+      '@mdx-js/react': 3.1.1(@types/react@19.2.16)(react@18.3.1)
       '@storybook/blocks': 8.4.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(storybook@8.4.6(prettier@3.8.3))
       '@storybook/csf-plugin': 8.4.6(storybook@8.4.6(prettier@3.8.3))
       '@storybook/react-dom-shim': 8.4.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(storybook@8.4.6(prettier@3.8.3))
@@ -7468,12 +7468,12 @@ snapshots:
     transitivePeerDependencies:
       - '@types/react'
 
-  '@storybook/addon-essentials@8.4.6(@types/react@19.2.15)(storybook@8.4.6(prettier@3.8.3))':
+  '@storybook/addon-essentials@8.4.6(@types/react@19.2.16)(storybook@8.4.6(prettier@3.8.3))':
     dependencies:
       '@storybook/addon-actions': 8.4.6(storybook@8.4.6(prettier@3.8.3))
       '@storybook/addon-backgrounds': 8.4.6(storybook@8.4.6(prettier@3.8.3))
       '@storybook/addon-controls': 8.4.6(storybook@8.4.6(prettier@3.8.3))
-      '@storybook/addon-docs': 8.4.6(@types/react@19.2.15)(storybook@8.4.6(prettier@3.8.3))
+      '@storybook/addon-docs': 8.4.6(@types/react@19.2.16)(storybook@8.4.6(prettier@3.8.3))
       '@storybook/addon-highlight': 8.4.6(storybook@8.4.6(prettier@3.8.3))
       '@storybook/addon-measure': 8.4.6(storybook@8.4.6(prettier@3.8.3))
       '@storybook/addon-outline': 8.4.6(storybook@8.4.6(prettier@3.8.3))
@@ -7779,11 +7779,11 @@ snapshots:
       xmlbuilder: 15.1.1
     optional: true
 
-  '@types/react-dom@19.2.3(@types/react@19.2.15)':
+  '@types/react-dom@19.2.3(@types/react@19.2.16)':
     dependencies:
-      '@types/react': 19.2.15
+      '@types/react': 19.2.16
 
-  '@types/react@19.2.15':
+  '@types/react@19.2.16':
     dependencies:
       csstype: 3.2.3
 
@@ -10636,9 +10636,9 @@ snapshots:
       react: 18.3.1
       scheduler: 0.23.2
 
-  react-dom@19.2.6(react@19.2.6):
+  react-dom@19.2.7(react@19.2.7):
     dependencies:
-      react: 19.2.6
+      react: 19.2.7
       scheduler: 0.27.0
 
   react-is@16.13.1: {}
@@ -10651,7 +10651,7 @@ snapshots:
     dependencies:
       loose-envify: 1.4.0
 
-  react@19.2.6: {}
+  react@19.2.7: {}
 
   read-binary-file-arch@1.0.6:
     dependencies:
@@ -10701,10 +10701,10 @@ snapshots:
 
   reflect-metadata@0.2.2: {}
 
-  rehackt@0.1.0(@types/react@19.2.15)(react@19.2.6):
+  rehackt@0.1.0(@types/react@19.2.16)(react@19.2.7):
     optionalDependencies:
-      '@types/react': 19.2.15
-      react: 19.2.6
+      '@types/react': 19.2.16
+      react: 19.2.7
 
   require-directory@2.1.1: {}
 
