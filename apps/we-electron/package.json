@@ -10,13 +10,13 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "postinstall": "cd ../../node_modules/.pnpm/electron@*/node_modules/electron 2>/dev/null && node install.js || true",
+    "postinstall": "node scripts/ensure-electron.cjs",
     "dev": "vite",
     "prebuild:steps": "node scripts/generate-seed-config.cjs",
     "build:steps": "vite build",
     "build": "we-build",
     "serve": "vite preview",
-    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:3002 && VITE_DEV_SERVER_URL=http://localhost:3002 electron electron/main.js\"",
+    "electron:dev": "node scripts/ensure-electron.cjs && concurrently \"vite\" \"wait-on http://localhost:3002 && VITE_DEV_SERVER_URL=http://localhost:3002 electron electron/main.js\"",
     "preelectron:build": "node scripts/generate-seed-config.cjs",
     "electron:build": "vite build && electron-builder --config electron-builder.config.js"
   },

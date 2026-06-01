@@ -8,5 +8,5 @@ packages:
   - packages/block-system/*
   - packages/block-system/frameworks/*
 
-ignoredBuiltDependencies:
+onlyBuiltDependencies:
   - electron
