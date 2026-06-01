@@ -155,7 +155,13 @@ export const sidebar: SchemaNode = {
                         $if: {
                           condition: { $store: 'appStore.activeAppId' },
                           then: null,
-                          else: { $store: 'templateStore.currentTemplate.id' },
+                          else: {
+                            $if: {
+                              condition: { $store: 'templateStore.activeShellView' },
+                              then: null,
+                              else: { $store: 'templateStore.currentTemplate.id' },
+                            },
+                          },
                         },
                       },
                     ],
@@ -183,7 +189,10 @@ export const sidebar: SchemaNode = {
                   avatar: { src: '$item.image', name: '$item.name' },
                   label: '$item.name',
                   active: { $eq: ['$item.id', { $store: 'appStore.activeAppId' }] },
-                  onClick: { $action: 'appStore.activateApp', args: ['$item.id'] },
+                  onClick: [
+                    { $action: 'templateStore.closeShellView' },
+                    { $action: 'appStore.activateApp', args: ['$item.id'] },
+                  ],
                 },
               },
             },
