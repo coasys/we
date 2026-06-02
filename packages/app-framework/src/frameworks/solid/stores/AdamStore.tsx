@@ -356,7 +356,9 @@ export function AdamStoreProvider(props: ParentProps) {
     let sent = 0;
     weIframes.forEach((el) => {
       if (typeof el.postMessage === 'function') {
-        el.postMessage(payload, '*');
+        const rawSrc = el.getAttribute('src');
+        const iframeOrigin = rawSrc ? new URL(rawSrc).origin : '*';
+        el.postMessage(payload, iframeOrigin);
         sent++;
       }
     });
@@ -370,7 +372,9 @@ export function AdamStoreProvider(props: ParentProps) {
     // Tracks live WebSocket proxies keyed by the iframe's contentWindow.
     // Used when the host forwards AD4M WebSocket traffic on behalf of embedded apps
     // that cannot open their own connections (e.g. browser PNA enforcement on web).
-    const proxyConnections = new Map<Window, WebSocket>();
+    // origin is stored so proxy response frames can be targeted to the specific iframe
+    // origin rather than broadcast with '*'.
+    const proxyConnections = new Map<Window, { ws: WebSocket; origin: string }>();
 
     // Listen for requests from iframes asking for AD4M config.
     // Reads port/token from signals at call time so it works even when called before
@@ -386,15 +390,19 @@ export function AdamStoreProvider(props: ParentProps) {
         // Close any stale connection for this frame
         const existing = proxyConnections.get(source);
         if (existing) {
-          existing.close();
+          existing.ws.close();
           proxyConnections.delete(source);
         }
+
+        // Pin to the verified origin of the requesting iframe so all proxy
+        // response frames are delivered only to that origin.
+        const iframeOrigin = event.origin || '*';
 
         const port = ad4mPort();
         const token = ad4mToken();
         const baseUrl = ad4mUrlValue ?? (port !== undefined ? `http://localhost:${port}` : null);
         if (!baseUrl) {
-          source.postMessage({ type: 'AD4M_PROXY_WS_ERROR' }, '*');
+          source.postMessage({ type: 'AD4M_PROXY_WS_ERROR' }, iframeOrigin);
           return;
         }
 
@@ -403,30 +411,30 @@ export function AdamStoreProvider(props: ParentProps) {
         const wsUrl = tokenParam ? `${wsBase}/api/v1/ws?${tokenParam}` : `${wsBase}/api/v1/ws`;
 
         const ws = new WebSocket(wsUrl);
-        proxyConnections.set(source, ws);
+        proxyConnections.set(source, { ws, origin: iframeOrigin });
 
-        ws.onopen = () => source.postMessage({ type: 'AD4M_PROXY_WS_OPEN' }, '*');
-        ws.onmessage = (e) => source.postMessage({ type: 'AD4M_PROXY_WS_MESSAGE', data: e.data }, '*');
-        ws.onerror = () => source.postMessage({ type: 'AD4M_PROXY_WS_ERROR' }, '*');
+        ws.onopen = () => source.postMessage({ type: 'AD4M_PROXY_WS_OPEN' }, iframeOrigin);
+        ws.onmessage = (e) => source.postMessage({ type: 'AD4M_PROXY_WS_MESSAGE', data: e.data }, iframeOrigin);
+        ws.onerror = () => source.postMessage({ type: 'AD4M_PROXY_WS_ERROR' }, iframeOrigin);
         ws.onclose = (e) => {
           proxyConnections.delete(source);
-          source.postMessage({ type: 'AD4M_PROXY_WS_CLOSED', code: e.code, reason: e.reason }, '*');
+          source.postMessage({ type: 'AD4M_PROXY_WS_CLOSED', code: e.code, reason: e.reason }, iframeOrigin);
         };
         return;
       }
 
       if (event.data?.type === 'AD4M_PROXY_WS_SEND' && source) {
-        const ws = proxyConnections.get(source);
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(event.data.data as string);
+        const entry = proxyConnections.get(source);
+        if (entry && entry.ws.readyState === WebSocket.OPEN) {
+          entry.ws.send(event.data.data as string);
         }
         return;
       }
 
       if (event.data?.type === 'AD4M_PROXY_WS_CLOSE' && source) {
-        const ws = proxyConnections.get(source);
-        if (ws) {
-          ws.close(event.data.code as number | undefined, event.data.reason as string | undefined);
+        const entry = proxyConnections.get(source);
+        if (entry) {
+          entry.ws.close(event.data.code as number | undefined, event.data.reason as string | undefined);
           proxyConnections.delete(source);
         }
         return;
@@ -439,7 +447,7 @@ export function AdamStoreProvider(props: ParentProps) {
         // its "parent not found" timeout can be safely cancelled. The actual AD4M_CONFIG
         // follows as soon as credentials are available (possibly much later, after auth).
         if (source) {
-          source.postMessage({ type: 'AD4M_CONFIG_ACK' }, '*');
+          source.postMessage({ type: 'AD4M_CONFIG_ACK' }, event.origin || '*');
         }
 
         const port = ad4mPort();
@@ -461,7 +469,7 @@ export function AdamStoreProvider(props: ParentProps) {
     // Cleanup: remove listener and close any open proxy WebSocket connections
     return () => {
       window.removeEventListener('message', handleMessage);
-      proxyConnections.forEach((ws) => ws.close());
+      proxyConnections.forEach(({ ws }) => ws.close());
       proxyConnections.clear();
     };
   }
