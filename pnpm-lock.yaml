@@ -5,8 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@coasys/ad4m': 0.13.0-postmessage-ws-proxy.0
-  '@coasys/ad4m-connect': 0.13.0-postmessage-ws-proxy.2
+  '@coasys/ad4m': 0.13.0-postmessage-ws-proxy.3
+  '@coasys/ad4m-connect': 0.13.0-postmessage-ws-proxy.4
 
 importers:
 
@@ -52,11 +52,11 @@ importers:
   apps/playgrounds/react/ad4m-model-testing:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-postmessage-ws-proxy.0
-        version: 0.13.0-postmessage-ws-proxy.0
+        specifier: 0.13.0-postmessage-ws-proxy.3
+        version: 0.13.0-postmessage-ws-proxy.3
       '@coasys/ad4m-connect':
-        specifier: 0.13.0-postmessage-ws-proxy.2
-        version: 0.13.0-postmessage-ws-proxy.2
+        specifier: 0.13.0-postmessage-ws-proxy.4
+        version: 0.13.0-postmessage-ws-proxy.4
       '@we/models':
         specifier: workspace:*
         version: link:../../../../packages/models
@@ -168,8 +168,8 @@ importers:
         specifier: ^3.7.10
         version: 3.14.1(@types/react@19.2.16)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@coasys/ad4m':
-        specifier: 0.13.0-postmessage-ws-proxy.0
-        version: 0.13.0-postmessage-ws-proxy.0
+        specifier: 0.13.0-postmessage-ws-proxy.3
+        version: 0.13.0-postmessage-ws-proxy.3
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.13)
@@ -232,8 +232,8 @@ importers:
         specifier: ^3.7.10
         version: 3.14.1(@types/react@19.2.16)(graphql-ws@5.12.0(graphql@15.7.2))(graphql@15.7.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@coasys/ad4m':
-        specifier: 0.13.0-postmessage-ws-proxy.0
-        version: 0.13.0-postmessage-ws-proxy.0
+        specifier: 0.13.0-postmessage-ws-proxy.3
+        version: 0.13.0-postmessage-ws-proxy.3
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.13)
@@ -278,11 +278,11 @@ importers:
   apps/we-web:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-postmessage-ws-proxy.0
-        version: 0.13.0-postmessage-ws-proxy.0
+        specifier: 0.13.0-postmessage-ws-proxy.3
+        version: 0.13.0-postmessage-ws-proxy.3
       '@coasys/ad4m-connect':
-        specifier: 0.13.0-postmessage-ws-proxy.2
-        version: 0.13.0-postmessage-ws-proxy.2
+        specifier: 0.13.0-postmessage-ws-proxy.4
+        version: 0.13.0-postmessage-ws-proxy.4
       '@we/app-framework':
         specifier: workspace:*
         version: link:../../packages/app-framework
@@ -331,8 +331,8 @@ importers:
   packages/app-framework:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-postmessage-ws-proxy.0
-        version: 0.13.0-postmessage-ws-proxy.0
+        specifier: 0.13.0-postmessage-ws-proxy.3
+        version: 0.13.0-postmessage-ws-proxy.3
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.13)
@@ -410,8 +410,8 @@ importers:
   packages/block-system/frameworks/solid:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-postmessage-ws-proxy.0
-        version: 0.13.0-postmessage-ws-proxy.0
+        specifier: 0.13.0-postmessage-ws-proxy.3
+        version: 0.13.0-postmessage-ws-proxy.3
       '@lexical/list':
         specifier: ^0.30.0
         version: 0.30.0
@@ -459,8 +459,8 @@ importers:
   packages/block-system/shared:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-postmessage-ws-proxy.0
-        version: 0.13.0-postmessage-ws-proxy.0
+        specifier: 0.13.0-postmessage-ws-proxy.3
+        version: 0.13.0-postmessage-ws-proxy.3
       '@we/design-types':
         specifier: workspace:*
         version: link:../../design-system/types
@@ -653,8 +653,8 @@ importers:
   packages/design-system/5-widgets:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-postmessage-ws-proxy.0
-        version: 0.13.0-postmessage-ws-proxy.0
+        specifier: 0.13.0-postmessage-ws-proxy.3
+        version: 0.13.0-postmessage-ws-proxy.3
       cesium:
         specifier: ^1.136.0
         version: 1.142.0
@@ -738,8 +738,8 @@ importers:
   packages/models:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-postmessage-ws-proxy.0
-        version: 0.13.0-postmessage-ws-proxy.0
+        specifier: 0.13.0-postmessage-ws-proxy.3
+        version: 0.13.0-postmessage-ws-proxy.3
     devDependencies:
       '@we/cli':
         specifier: workspace:*
@@ -1049,11 +1049,11 @@ packages:
     resolution: {integrity: sha512-52PO61PKm6Cut1BR/OqrPLmDXL9lk7iwGHXWbWQpg1pJT8SaJ7PXyLqcAPz+6VTYXspmE4D6Xo0PgIav33dEEQ==}
     engines: {node: '>=22.0.0'}
 
-  '@coasys/ad4m-connect@0.13.0-postmessage-ws-proxy.2':
-    resolution: {integrity: sha512-9i5AXsHqxvMZ/d/FCYjsK5ksegxLvlMXo7ONdbNN5+2wSNaG7X6RPWiBSR+vle+6DCGbAzkbAY7vCki0fiq1Ug==}
+  '@coasys/ad4m-connect@0.13.0-postmessage-ws-proxy.4':
+    resolution: {integrity: sha512-E0l9x/L0BVDl2Vi46S0MBPZez2orOAY6qHGM1R7dqOSjFvCpZVJWfelUKSWbO6QYYkkvFZb06tDOBk9bYS9TQQ==}
 
-  '@coasys/ad4m@0.13.0-postmessage-ws-proxy.0':
-    resolution: {integrity: sha512-lgfZLdZl7NJtwokjFvK3Ot33NnA8X4G+98Cp7IzOqB0bgY00LX7Y6ujuc2jvq3eMdro1+2qK4tgBjT+pJhirfg==}
+  '@coasys/ad4m@0.13.0-postmessage-ws-proxy.3':
+    resolution: {integrity: sha512-oCOwNatxRiichnheDt3mKVkf+LApz2LNT1EZ3oHwcEoYFsdih9cf/uEX8iJuReoiqPozpOBvFRZdQvU0f/0m/Q==}
 
   '@csstools/color-helpers@6.0.2':
     resolution: {integrity: sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q==}
@@ -3484,8 +3484,8 @@ packages:
   electron-publish@25.1.7:
     resolution: {integrity: sha512-+jbTkR9m39eDBMP4gfbqglDd6UvBC7RLh5Y0MhFSsc6UkGHj9Vj9TWobxevHYMMqmoujL11ZLjfPpMX+Pt6YEg==}
 
-  electron-to-chromium@1.5.365:
-    resolution: {integrity: sha512-xfip4u1QF1s+URFqpA6N+OeFpDGpN7VJz1f3MO3bVL0QYBjpGiZ5/Of7kugvM+o8TTqmanUlviHN3c8M9vYWCw==}
+  electron-to-chromium@1.5.366:
+    resolution: {integrity: sha512-OlRuhb688YTCzzU3gXPLn6nGyd+F+53INE1qaKKlu6kETErE8FYsyDh0XqXEU+uBRn0MpCzz2vfNwORhkap8qg==}
 
   electron@33.4.11:
     resolution: {integrity: sha512-xmdAs5QWRkInC7TpXGNvzo/7exojubk+72jn1oJL7keNeIlw7xNglf8TGtJtkR4rWC5FJq0oXiIXPS9BcK2Irg==}
@@ -6486,14 +6486,14 @@ snapshots:
       '@cesium/engine': 26.0.0
       nosleep.js: 0.12.0
 
-  '@coasys/ad4m-connect@0.13.0-postmessage-ws-proxy.2':
+  '@coasys/ad4m-connect@0.13.0-postmessage-ws-proxy.4':
     dependencies:
       '@undecaf/barcode-detector-polyfill': 0.9.23
       '@undecaf/zbar-wasm': 0.9.16
       auto-bind: 5.0.1
       lit: 2.8.0
 
-  '@coasys/ad4m@0.13.0-postmessage-ws-proxy.0':
+  '@coasys/ad4m@0.13.0-postmessage-ws-proxy.3':
     dependencies:
       '@holochain/client': 0.16.0
       base64-js: 1.5.1
@@ -8322,7 +8322,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.10.33
       caniuse-lite: 1.0.30001793
-      electron-to-chromium: 1.5.365
+      electron-to-chromium: 1.5.366
       node-releases: 2.0.47
       update-browserslist-db: 1.2.3(browserslist@4.28.2)
 
@@ -8846,7 +8846,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron-to-chromium@1.5.365: {}
+  electron-to-chromium@1.5.366: {}
 
   electron@33.4.11:
     dependencies:
