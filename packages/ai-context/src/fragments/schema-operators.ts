@@ -39,6 +39,15 @@ Resolves a value from a named store, supporting nested paths.
 Action/event:
 { "$action": "storeName.method", "args": [...] }
 Calls a method on a store, optionally with arguments (which can themselves be tokens).
+Supports async lifecycle callbacks — fired after the store method's Promise resolves/rejects:
+  onSuccess: [...actions]  — fired on resolve; '$result' (and '$result.<path>') in args refers to the resolved value
+  onError: [...actions]    — fired on reject; '$result.message' etc. refers to the error object
+  onFinally: [...actions]  — fired regardless of outcome
+Non-promise (synchronous) methods are unaffected — lifecycle keys are ignored.
+Example — close modal after async submission:
+{ "$action": "adamStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
+Example — navigate to newly created item:
+{ "$action": "adamStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$result.uuid"] }] }] }
 
 Model mutations via $action (use these for creating/updating/deleting model instances):
 model.create — creates a model instance in the current perspective (default) or a specified one:
@@ -216,8 +225,9 @@ Action tokens:
 { "$resetLocal": "$scope" } — resets all fields to initial values and clears touched state.
 
 Handler arrays (compose multiple actions on one event):
-{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.submit" } } }] }
+{ "onClick": [{ "$touch": "$all" }, { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.submit", "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] } } }] }
 Array entries execute sequentially. Non-function entries (e.g. $if with false condition) are skipped.
+Prefer onSuccess over a bare $setLocal before the $action — the bare form closes the modal immediately (losing the loading spinner); onSuccess waits for the Promise to resolve.
 
 Typical form pattern:
 {
@@ -241,7 +251,7 @@ Typical form pattern:
         "disabled": { "$not": { "$formValid": "$scope" } },
         "onClick": [
           { "$touch": "$all" },
-          { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.save", "args": [{ "$local": "name" }] } } }
+          { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.save", "args": [{ "$local": "name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
         ]
       },
       "children": ["Submit"]

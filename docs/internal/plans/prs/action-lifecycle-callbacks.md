@@ -62,6 +62,7 @@ Schema `onClick` action arrays are fire-and-forget. When a button dispatches `$a
 ### `$result` token
 
 Within `onSuccess` / `onError` / `onFinally` action arrays, a new context variable `$result` is available:
+
 - `onSuccess`: the resolved return value of the action
 - `onError`: the caught error object (with `.message`, `.code`, etc.)
 - `onFinally`: not available (undefined)
@@ -118,13 +119,13 @@ Add a resolver for `$result` context references (similar to `$local` but reads f
 
 ## Files Affected
 
-| File | Change |
-|------|--------|
-| `packages/schema-system/shared/src/propResolvers/action.ts` | Core lifecycle dispatch logic |
-| `packages/schema-system/shared/src/propResolvers/types.ts` | `ActionToken` type extension |
-| `packages/schema-system/shared/src/index.ts` | Export `$result` resolver |
-| `packages/schema-system/shared/tests/propResolvers.test.ts` | Tests for lifecycle callbacks |
-| `packages/schema-system/OPERATORS.md` | Document `onSuccess`/`onError`/`onFinally`/`$result` |
+| File                                                        | Change                                               |
+| ----------------------------------------------------------- | ---------------------------------------------------- |
+| `packages/schema-system/shared/src/propResolvers/action.ts` | Core lifecycle dispatch logic                        |
+| `packages/schema-system/shared/src/propResolvers/types.ts`  | `ActionToken` type extension                         |
+| `packages/schema-system/shared/src/index.ts`                | Export `$result` resolver                            |
+| `packages/schema-system/shared/tests/propResolvers.test.ts` | Tests for lifecycle callbacks                        |
+| `packages/schema-system/OPERATORS.md`                       | Document `onSuccess`/`onError`/`onFinally`/`$result` |
 
 ---
 
@@ -158,6 +159,82 @@ onClick: [
 ```
 
 The modal now stays open with the loading spinner until `createSpace` resolves, then closes on success or shows an error on failure.
+
+---
+
+## Implementation Notes & Corrections
+
+### 1. Context key must be `result`, not `$result`
+
+The plan shows `{ ...context, $result: resolved }` but this is wrong. The dispatcher's string resolver strips the leading `$` when doing context lookup:
+
+```ts
+const contextKey = value.slice(1, dotIndex); // '$result.uuid' → 'result'
+if (contextKey in context) { ... }
+```
+
+So inject as `{ ...context, result: resolved }` (no `$`). The `$` in `'$result.uuid'` is just the reference syntax, not the key name. This applies to both `onSuccess` and `onError`.
+
+### 2. `from: '$result.message'` in `$setLocal` does NOT work
+
+`from` in `$setLocal` uses `extractFromPath(event, from)` where `event` is the function call argument — it's `$event`-based, not context-based. `resolveSetLocalProp` never calls `resolvePropFn` on the `value` or `from` fields.
+
+**What works** — `$result` in `args` of a `$action` inside a lifecycle callback:
+
+```ts
+onSuccess: [{ $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$result.uuid'] }] }];
+```
+
+This works because `resolveActionProp` calls `resolvePropFn` on each arg, and the string resolver reads `context.result.uuid`.
+
+**What doesn't work** — using `$result` in `$setLocal`'s `value` field:
+
+```ts
+onError: [{ $setLocal: 'errorMessage', from: '$result.message' }]; // BROKEN
+onError: [{ $setLocal: 'errorMessage', value: '$result.message' }]; // also BROKEN — stored as literal string
+```
+
+**V1 approach**: Only support literal `value:` in `onError` / `onSuccess` `$setLocal` tokens. To store a dynamic error message, use a `$action` calling a store method:
+
+```ts
+onError: [{ $action: 'adamStore.setError', args: ['$result.message'] }];
+```
+
+### 3. Silent rejections when `onError` is absent
+
+If `onError` is not provided and the action throws, the promise rejection is swallowed silently. Always log a fallback:
+
+```ts
+.catch((err) => {
+  if (token.onError) {
+    dispatchActions(token.onError, { ...context, result: err });
+  } else {
+    console.error(`[$action] ${(value as { $action: string }).$action} failed:`, err);
+  }
+});
+```
+
+### 4. `dispatchActions` is a local helper, not an export
+
+It needs `stores` and `memo` from the surrounding closure in `resolveActionProp` — it can't be a standalone exported function without additional params. Define it inline:
+
+```ts
+function dispatchActions(actions: unknown[], ctx: Props): void {
+  for (const item of actions) {
+    const fn = resolvePropFn(item, stores, ctx, memo);
+    if (typeof fn === 'function') fn();
+  }
+}
+```
+
+### 5. Everything else is solid
+
+- The `instanceof Promise` check is the correct hook point — inside the closure returned by `resolveActionProp`, after `method.apply`.
+- `$localSetters` (needed by `$setLocal`) are shallow-copied through the context spread and remain live references. ✅
+- `$local` signal accessors in context are function references — they read current state when called, so async callbacks always get fresh local state values. ✅
+- Non-promise actions are unaffected — `.then/.catch/.finally` simply aren't attached. ✅
+- Nested `$action` inside `onSuccess`/`onError` goes through the same `resolveActionProp` pipeline and can itself carry lifecycle callbacks. ✅
+- `$if`-wrapped `$action` tokens in lifecycle arrays work — `resolveIfProp` resolves `then` to the `$action` token which then hits `resolveActionProp` with its `onSuccess` intact. ✅
 
 ---
 
