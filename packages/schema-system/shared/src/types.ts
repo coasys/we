@@ -94,7 +94,13 @@ export type RendererOutput<NodeType = unknown> = NodeType | null;
 
 export type StoreToken = { $store: string };
 export type ConcatToken = { $concat: unknown[] };
-export type ActionToken = { $action: string; args?: unknown[] };
+export type ActionToken = {
+  $action: string;
+  args?: unknown[];
+  onSuccess?: unknown[];
+  onError?: unknown[];
+  onFinally?: unknown[];
+};
 export type IfToken = { $if: { condition: unknown; then: unknown; else?: unknown } };
 export type MapToken = { $map: { items: unknown; select: Record<string, unknown> } };
 export type PickToken = { $pick: { from: unknown; props: string[] } };

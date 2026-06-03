@@ -84,6 +84,8 @@ function deepUnwrap(value: unknown): unknown {
 
 // Resolves $action props: { $action: 'routeStore.navigate', args: ['/home'] }
 // Supports $arg token for extracting properties from callback arguments: args: ['$arg.id']
+// Supports lifecycle callbacks: onSuccess, onError, onFinally — fired after async actions resolve.
+// Within lifecycle arrays, '$result' resolves to the action's return value (onSuccess) or error (onError).
 export function resolveActionProp(
   value: unknown,
   context: Props,
@@ -91,11 +93,19 @@ export function resolveActionProp(
   memo: Memo,
   resolvePropFn: typeof resolveProp,
 ): unknown {
+  const token = value as {
+    $action: string;
+    args?: unknown[];
+    onSuccess?: unknown[];
+    onError?: unknown[];
+    onFinally?: unknown[];
+  };
+
   // Split the $action string into store name and method name
-  const [storeName, methodName] = (value as { $action: string }).$action.split('.');
+  const [storeName, methodName] = token.$action.split('.');
 
   // Retrieve args and resolve any expressions within them (but not $arg tokens yet)
-  const args = (value as { args?: unknown[] }).args ?? [];
+  const args = token.args ?? [];
   const resolvedArgs = args.map((arg) => resolvePropFn(arg, stores, context, memo));
 
   // Get the method from the store
@@ -104,6 +114,14 @@ export function resolveActionProp(
 
   // Return a callable function if the method exists
   if (typeof method === 'function') {
+    // Local helper: dispatch an array of action tokens with an optionally augmented context
+    function dispatchActions(actions: unknown[], ctx: Props): void {
+      for (const item of actions) {
+        const fn = resolvePropFn(item, stores, ctx, memo);
+        if (typeof fn === 'function') (fn as (...a: unknown[]) => unknown)();
+      }
+    }
+
     return (...callArgs: unknown[]) => {
       // Handle special case for relative paths used in router navigation
       if (storeName === 'routeStore' && methodName === 'navigate' && typeof resolvedArgs[0] === 'string') {
@@ -129,7 +147,27 @@ export function resolveActionProp(
 
       // Unwrap reactive accessors at all depths so store methods receive plain values
       const unwrappedArgs = argsToUse.map(deepUnwrap);
-      return method.apply(store, unwrappedArgs);
+      const result = method.apply(store, unwrappedArgs);
+
+      // Attach lifecycle callbacks if the action returned a Promise
+      if (result instanceof Promise) {
+        result
+          .then((resolved: unknown) => {
+            if (token.onSuccess) dispatchActions(token.onSuccess, { ...context, result: resolved });
+          })
+          .catch((err: unknown) => {
+            if (token.onError) {
+              dispatchActions(token.onError, { ...context, result: err });
+            } else {
+              console.error(`[$action] ${token.$action} failed:`, err);
+            }
+          })
+          .finally(() => {
+            if (token.onFinally) dispatchActions(token.onFinally, context);
+          });
+      }
+
+      return result;
     };
   }
 
