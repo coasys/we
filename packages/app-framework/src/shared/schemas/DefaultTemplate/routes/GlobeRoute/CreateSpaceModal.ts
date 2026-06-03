@@ -279,7 +279,7 @@ export const createSpaceModal = {
           props: {
             variant: 'ghost',
             text: 'Cancel',
-            onClick: { $setLocal: 'createSpaceOpen', value: false },
+            onClick: { $setLocal: 'createSpaceModalOpen', value: false },
           },
         },
         {
@@ -293,7 +293,7 @@ export const createSpaceModal = {
             disabled: { $not: { $formValid: '$scope' } },
             onClick: [
               { $touch: '$all' },
-              { $setLocal: 'createSpaceOpen', value: false },
+              { $setLocal: 'createSpaceModalOpen', value: false },
               {
                 $if: {
                   condition: { $formValid: '$scope' },

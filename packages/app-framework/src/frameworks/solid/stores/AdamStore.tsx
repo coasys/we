@@ -190,20 +190,12 @@ export function AdamStoreProvider(props: ParentProps) {
   }
 
   function subscribeToPerspectiveChanges(client: Ad4mClient): void {
-    // perspectiveAdded fires for any client that adds a perspective (WE, Flux, CLI, etc.)
-    // For WE-created spaces the Space model isn't saved yet when this fires, so
-    // findOne returns null and createSpace() handles setMySpaces directly.
     client.perspective.addPerspectiveAddedListener((handle) => {
       if (allPerspectives().some((p) => p.uuid === handle.uuid)) return null;
       client.perspective.byUUID(handle.uuid).then((perspective) => {
         if (!perspective) return;
         setAllPerspectives((prev) => [...prev, perspective]);
         reorderPerspectives([...getPerspectiveOrder(), perspective.uuid]).catch(console.error);
-        Space.findOne(perspective).then((space) => {
-          if (space && !mySpaces().some((s) => s.uuid === handle.uuid)) {
-            setMySpaces((prev) => [...prev, space].sort((a, b) => Number(a.createdAt) - Number(b.createdAt)));
-          }
-        });
       });
       return null;
     });
@@ -239,7 +231,14 @@ export function AdamStoreProvider(props: ParentProps) {
     try {
       const perspectives = await client.perspective.all();
       setAllPerspectives(perspectives);
-      const spaces = await Promise.all(perspectives.map(async (perspective) => await Space.findOne(perspective)));
+      // we-root and we-test are system perspectives that never have Space SDNA installed —
+      // calling Space.findOne on them produces an RPC 500 "No SHACL shape" error and
+      // rejects the entire Promise.all, hiding all real spaces.
+      const SYSTEM_PERSPECTIVES = ['we-root', 'we-test'];
+      const candidatePerspectives = perspectives.filter((p) => !SYSTEM_PERSPECTIVES.includes(p.name));
+      const spaces = await Promise.all(
+        candidatePerspectives.map(async (perspective) => await Space.findOne(perspective)),
+      );
       const filteredSpaces = spaces
         .filter((s): s is Space => !!s)
         .sort((a, b) => Number(a.createdAt) - Number(b.createdAt));
