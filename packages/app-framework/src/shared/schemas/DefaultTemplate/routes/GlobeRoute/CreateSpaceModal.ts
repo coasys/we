@@ -13,7 +13,7 @@ export const createSpaceModal = {
     },
     description: { type: 'string', initial: '' },
     shared: { type: 'boolean', initial: false },
-    listedGlobally: { type: 'boolean', initial: false },
+    listed: { type: 'boolean', initial: false },
     avatar: { type: 'file', initial: null },
     coverImage: { type: 'file', initial: null },
     globalPromptDismissed: { type: 'boolean', initial: false },
@@ -22,6 +22,7 @@ export const createSpaceModal = {
     locationCity: { type: 'string', initial: '' },
     locationCountry: { type: 'string', initial: '' },
     locationCountryCode: { type: 'string', initial: '' },
+    submitting: { type: 'boolean', initial: false },
   },
   children: [
     { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create a New Space'] },
@@ -234,7 +235,7 @@ export const createSpaceModal = {
               children: [
                 {
                   $if: {
-                    condition: { $local: 'listedGlobally' },
+                    condition: { $local: 'listed' },
                     then: 'Listed in Global Discovery',
                     else: 'Unlisted',
                   },
@@ -247,7 +248,7 @@ export const createSpaceModal = {
               children: [
                 {
                   $if: {
-                    condition: { $local: 'listedGlobally' },
+                    condition: { $local: 'listed' },
                     then: 'Appears on the WE discovery globe',
                     else: 'Not shown in global discovery',
                   },
@@ -259,11 +260,11 @@ export const createSpaceModal = {
         {
           type: 'we-switch',
           props: {
-            checked: { $local: 'listedGlobally' },
+            checked: { $local: 'listed' },
             disabled: { $not: { $local: 'shared' } },
             labelOff: 'Hidden',
             labelOn: 'Public',
-            onChange: { $setLocal: 'listedGlobally', from: '$event.detail' },
+            onChange: { $setLocal: 'listed', from: '$event.detail' },
           },
         },
       ],
@@ -289,11 +290,11 @@ export const createSpaceModal = {
             bg: 'primary-500',
             color: 'neutral-0',
             height: '40px',
-            loading: { $store: 'adamStore.creatingSpace' },
-            disabled: { $not: { $formValid: '$scope' } },
+            loading: { $local: 'submitting' },
+            disabled: { $local: 'submitting' },
             onClick: [
               { $touch: '$all' },
-              { $setLocal: 'createSpaceModalOpen', value: false },
+              { $setLocal: 'submitting', value: true },
               {
                 $if: {
                   condition: { $formValid: '$scope' },
@@ -302,19 +303,8 @@ export const createSpaceModal = {
                     args: [
                       { $local: 'name' },
                       { $local: 'description' },
-                      {
-                        $if: {
-                          condition: { $and: [{ $local: 'shared' }, { $local: 'listedGlobally' }] },
-                          then: 'public',
-                          else: {
-                            $if: {
-                              condition: { $local: 'shared' },
-                              then: 'shared',
-                              else: 'personal',
-                            },
-                          },
-                        },
-                      },
+                      { $local: 'shared' },
+                      { $local: 'listed' },
                       { $local: 'avatar' },
                       { $local: 'coverImage' },
                       { $local: 'locationLat' },
@@ -323,7 +313,10 @@ export const createSpaceModal = {
                       { $local: 'locationCountry' },
                       { $local: 'locationCountryCode' },
                     ],
+                    onSuccess: [{ $setLocal: 'createSpaceModalOpen', value: false }],
+                    onFinally: [{ $setLocal: 'submitting', value: false }],
                   },
+                  else: { $setLocal: 'submitting', value: false },
                 },
               },
             ],
