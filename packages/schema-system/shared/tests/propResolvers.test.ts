@@ -410,6 +410,108 @@ describe('propResolvers (combined)', () => {
     spy.mockRestore();
   });
 
+  // --- $action lifecycle callbacks ---
+
+  it('onSuccess fires after async action resolves', async () => {
+    const successValue = { uuid: 'space-123' };
+    const onSuccessSpy = vi.fn();
+    const stores = { myStore: { create: () => Promise.resolve(successValue), notify: onSuccessSpy } };
+    const action = {
+      $action: 'myStore.create',
+      args: [],
+      onSuccess: [{ $action: 'myStore.notify', args: ['$result.uuid'] }],
+    };
+    const fn = resolveProp(action, stores, {}) as () => void;
+    fn();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(onSuccessSpy).toHaveBeenCalledWith('space-123');
+  });
+
+  it('onError fires when async action rejects', async () => {
+    const errorSpy = vi.fn();
+    const stores = { myStore: { fail: () => Promise.reject(new Error('oops')), handleError: errorSpy } };
+    const action = {
+      $action: 'myStore.fail',
+      args: [],
+      onError: [{ $action: 'myStore.handleError', args: ['$result.message'] }],
+    };
+    const fn = resolveProp(action, stores, {}) as () => void;
+    fn();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(errorSpy).toHaveBeenCalledWith('oops');
+  });
+
+  it('onFinally fires regardless of success or failure', async () => {
+    const finallySpy = vi.fn();
+    const stores = { myStore: { succeed: () => Promise.resolve('ok'), cleanup: finallySpy } };
+    const action = {
+      $action: 'myStore.succeed',
+      onFinally: [{ $action: 'myStore.cleanup', args: [] }],
+    };
+    const fn = resolveProp(action, stores, {}) as () => void;
+    fn();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(finallySpy).toHaveBeenCalled();
+  });
+
+  it('onFinally fires after rejection too', async () => {
+    const finallySpy = vi.fn();
+    const errorSpy = vi.fn();
+    const stores = { myStore: { fail: () => Promise.reject(new Error('boom')), cleanup: finallySpy, onErr: errorSpy } };
+    const action = {
+      $action: 'myStore.fail',
+      onError: [{ $action: 'myStore.onErr', args: [] }],
+      onFinally: [{ $action: 'myStore.cleanup', args: [] }],
+    };
+    const fn = resolveProp(action, stores, {}) as () => void;
+    fn();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(finallySpy).toHaveBeenCalled();
+  });
+
+  it('onSuccess can set local state via $setLocal', async () => {
+    let storedValue: unknown;
+    const mockContext = {
+      $localSetters: {
+        modalOpen: (v: unknown) => {
+          storedValue = v;
+        },
+      },
+    };
+    const stores = { myStore: { create: () => Promise.resolve('done') } };
+    const action = {
+      $action: 'myStore.create',
+      onSuccess: [{ $setLocal: 'modalOpen', value: false }],
+    };
+    const fn = resolveProp(action, stores, mockContext) as () => void;
+    fn();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(storedValue).toBe(false);
+  });
+
+  it('logs error to console when async action rejects and no onError is provided', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stores = { myStore: { fail: () => Promise.reject(new Error('unhandled')) } };
+    const action = { $action: 'myStore.fail', args: [] };
+    const fn = resolveProp(action, stores, {}) as () => void;
+    fn();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('myStore.fail'), expect.any(Error));
+    consoleSpy.mockRestore();
+  });
+
+  it('does not attach lifecycle handlers for synchronous (non-promise) actions', () => {
+    const successSpy = vi.fn();
+    const stores = { myStore: { sync: () => 42, notify: successSpy } };
+    const action = {
+      $action: 'myStore.sync',
+      onSuccess: [{ $action: 'myStore.notify', args: [] }],
+    };
+    const fn = resolveProp(action, stores, {}) as () => unknown;
+    fn();
+    expect(successSpy).not.toHaveBeenCalled();
+  });
+
   // --- $concat ---
 
   it('$concat joins string parts', () => {
