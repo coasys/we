@@ -25,7 +25,7 @@ export class Theme extends WeNode {
   @Property({
     through: 'we://stylesheet',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: decodeFileAsString,
+    transform: decodeFileAsString as any,
   })
   css: string = '';
 
@@ -33,7 +33,7 @@ export class Theme extends WeNode {
   @Property({
     through: 'we://token_overrides',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: decodeFileAsJson,
+    transform: decodeFileAsJson as any,
   })
   overrides: Record<string, unknown> = {};
 }

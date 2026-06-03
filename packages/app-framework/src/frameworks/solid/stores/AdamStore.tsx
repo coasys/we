@@ -387,6 +387,18 @@ export function AdamStoreProvider(props: ParentProps) {
       // instead they send these messages and we proxy frames via a real WebSocket.
 
       if (event.data?.type === 'AD4M_PROXY_WS_CONNECT' && source) {
+        // Gate: only serve requests from known we-iframe contentWindows.
+        // Without this, any child iframe in WE's page could use WE as a
+        // WebSocket proxy to the executor using WE's own auth token.
+        const weIframesForWsCheck = document.querySelectorAll('we-iframe');
+        const isKnownWsIframe = Array.from(weIframesForWsCheck).some(
+          (el) => (el as HTMLIFrameElement).contentWindow === source,
+        );
+        if (!isKnownWsIframe) {
+          console.warn('AdamStore: rejected AD4M_PROXY_WS_CONNECT from unknown source');
+          return;
+        }
+
         // Close any stale connection for this frame
         const existing = proxyConnections.get(source);
         if (existing) {
@@ -396,7 +408,13 @@ export function AdamStoreProvider(props: ParentProps) {
 
         // Pin to the verified origin of the requesting iframe so all proxy
         // response frames are delivered only to that origin.
-        const iframeOrigin = event.origin || '*';
+        // Reject if origin is empty — we must never fall back to '*' for
+        // frames carrying sensitive GraphQL responses.
+        if (!event.origin) {
+          console.warn('AdamStore: rejected AD4M_PROXY_WS_CONNECT with empty origin');
+          return;
+        }
+        const iframeOrigin = event.origin;
 
         const port = ad4mPort();
         const token = ad4mToken();
@@ -437,6 +455,71 @@ export function AdamStoreProvider(props: ParentProps) {
           entry.ws.close(event.data.code as number | undefined, event.data.reason as string | undefined);
           proxyConnections.delete(source);
         }
+        return;
+      }
+
+      // ── AD4M_PROXY_HTTP_* protocol ────────────────────────────────────────
+      // Embedded apps that received proxy:true cannot make direct HTTP requests
+      // to the executor (cross-origin / PNA). They send AD4M_PROXY_HTTP_REQUEST
+      // and we make the real fetch from our privileged origin, then reply.
+      if (event.data?.type === 'AD4M_PROXY_HTTP_REQUEST' && source) {
+        // Gate: only serve requests from known we-iframe contentWindows, not from
+        // arbitrary third-party pages that may have embedded WE as a child frame.
+        const weIframesForHttpCheck = document.querySelectorAll('we-iframe');
+        const isKnownIframe = Array.from(weIframesForHttpCheck).some(
+          (el) => (el as HTMLIFrameElement).contentWindow === source,
+        );
+        if (!isKnownIframe) {
+          console.warn('AdamStore: rejected AD4M_PROXY_HTTP_REQUEST from unknown source');
+          return;
+        }
+
+        const { id, url, method, headers, body } = event.data as {
+          id: string;
+          url: string;
+          method: string;
+          headers: Record<string, string>;
+          body: ArrayBuffer | null;
+        };
+        const iframeOrigin = event.origin || '*';
+
+        if (typeof url !== 'string' || typeof method !== 'string') {
+          console.warn('AdamStore: rejected AD4M_PROXY_HTTP_REQUEST with invalid url/method type');
+          return;
+        }
+
+        const port = ad4mPort();
+        const baseUrl = ad4mUrlValue ?? (port !== undefined ? `http://localhost:${port}` : null);
+        if (!baseUrl) {
+          source.postMessage({ type: 'AD4M_PROXY_HTTP_ERROR', id, message: 'No executor URL available' }, iframeOrigin);
+          return;
+        }
+
+        // Replace the placeholder origin with the real executor base URL.
+        const realUrl = url.replace(/^http:\/\/proxy(?=\/|$)/, baseUrl);
+
+        (async () => {
+          try {
+            const response = await fetch(realUrl, { method, headers, body: body ?? undefined });
+            const responseBody = await response.arrayBuffer();
+            source.postMessage(
+              {
+                type: 'AD4M_PROXY_HTTP_RESPONSE',
+                id,
+                status: response.status,
+                statusText: response.statusText,
+                body: responseBody,
+              },
+              iframeOrigin,
+              [responseBody],
+            );
+          } catch (e) {
+            source.postMessage(
+              { type: 'AD4M_PROXY_HTTP_ERROR', id, message: e instanceof Error ? e.message : String(e) },
+              iframeOrigin,
+            );
+          }
+        })();
         return;
       }
 

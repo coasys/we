@@ -15,7 +15,7 @@ export class CollectionBlock extends WeNode {
   @Property({
     through: 'we://editor_state',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: decodeFileAsJson,
+    transform: decodeFileAsJson as any,
   })
   editorState: Record<string, unknown> | null = null;
 
