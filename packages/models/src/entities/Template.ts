@@ -22,7 +22,7 @@ export class Template extends WeNode {
   @Property({
     through: 'we://template_schema',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: decodeFileAsJson,
+    transform: decodeFileAsJson as any,
   })
   schema: Record<string, unknown> = {};
 

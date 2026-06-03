@@ -28,20 +28,20 @@ export class AgentProfile extends WeNode {
   @Property({
     through: 'we://profile_image',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: (data: FileData | string | null | undefined) =>
+    transform: ((data: FileData | string | null | undefined) =>
       data && typeof data === 'object' && 'data_base64' in data
         ? `data:${data?.file_type || 'image/png'};base64,${data?.data_base64}`
-        : data,
+        : data) as any,
   })
   avatar?: string | FileData;
 
   @Property({
     through: 'we://cover_image',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: (data: FileData | string | null | undefined) =>
+    transform: ((data: FileData | string | null | undefined) =>
       data && typeof data === 'object' && 'data_base64' in data
         ? `data:${data?.file_type || 'image/png'};base64,${data?.data_base64}`
-        : data,
+        : data) as any,
   })
   coverImage?: string | FileData;
 }
