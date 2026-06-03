@@ -181,16 +181,16 @@ export default function HexagonGrid(props: HexagonGridProps) {
                   d={hexRoundedPath(c().x, c().y, outerR(), HEX_CORNER_RADIUS)}
                   fill={`url(#hg-grad-${i()})`}
                   style={{
-                    filter: 'drop-shadow(0 5px 5px rgba(0,0,0,1))',
-                    cursor: 'pointer',
+                    filter: 'drop-shadow(0 8px 8px rgba(0,0,0,0.5))',
+                    // cursor: 'pointer',
                   }}
                 />
                 {/* Inner white hexagon */}
                 <path
                   d={hexRoundedPath(c().x, c().y, innerR(), HEX_CORNER_RADIUS * HEX_INNER_RATIO)}
                   fill="#ffffffb2"
-                  opacity="0.95"
-                  style={{ 'pointer-events': 'none' }}
+                  opacity="0.8"
+                  style={{ 'pointer-events': 'none', filter: 'drop-shadow(0 5px 5px rgba(0,0,0,0.5))' }}
                 />
               </>
             );
@@ -212,7 +212,7 @@ export default function HexagonGrid(props: HexagonGridProps) {
                 display: 'flex',
                 'flex-direction': 'column',
                 'align-items': 'center',
-                gap: '4px',
+                gap: '6px',
                 'text-align': 'center',
                 width: `${(R() - HEX_GAP) * HEX_INNER_RATIO * 1.55}px`,
                 'pointer-events': 'none',
@@ -220,11 +220,15 @@ export default function HexagonGrid(props: HexagonGridProps) {
               }}
             >
               {/* Icon uses the outer hex colour; text is dark grey */}
-              <we-icon name={feature.icon} size={iconSize()} style={{ color: feature.color }} />
+              <we-icon
+                name={feature.icon}
+                size="60px" // iconSize()
+                style={{ color: feature.color, filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.4))' }}
+              />
               <span
                 style={{
                   'font-family': 'var(--we-font-family)',
-                  'font-size': labelSize(),
+                  'font-size': '18px', //labelSize(),
                   'font-weight': '600',
                   'line-height': '1.2',
                 }}
