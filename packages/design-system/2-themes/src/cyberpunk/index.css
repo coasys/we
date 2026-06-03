@@ -1,0 +1,127 @@
+[data-we-theme='cyberpunk'] {
+  --we-color-multiplier: -1;
+  --we-color-subtractor: 110%;
+  --we-color-saturation: 60%;
+  --we-color-neutral-saturation: 10%;
+  --we-font-family: monospace;
+  --we-border-radius: 0px;
+  --we-border-color: var(--we-color-primary-200);
+  --we-border-color-strong: var(--we-color-primary-400);
+  --we-size-sm: 30px;
+  --we-size-md: 40px;
+  --we-size-lg: 50px;
+}
+
+[data-we-theme='cyberpunk'] we-text[variant^='heading'] {
+  display: block;
+  position: relative;
+  animation-name: glitched;
+  animation-duration: 3s;
+  animation-iteration-count: infinite;
+  animation-direction: reverse;
+  animation-timing-function: ease-out;
+  --we-text-color: var(--we-color-primary-500);
+}
+
+[data-we-theme='cyberpunk'] we-button::part(base) {
+  clip-path: polygon(-15px 0%, calc(100% + 15px) 0%, calc(100% + 15px) 100%, 20px 100%, -15px calc(100% - 35px));
+}
+
+[data-we-theme='cyberpunk'] we-button::part(base):hover {
+  clip-path: none;
+}
+
+[data-we-theme='cyberpunk'] we-button:hover {
+  display: inline-block;
+  animation-name: glitched;
+  animation-duration: 2s;
+  animation-iteration-count: infinite;
+  animation-direction: reverse;
+  animation-timing-function: ease-out;
+}
+
+[data-we-theme='cyberpunk'] we-menu-item::part(base) {
+  margin-top: var(--we-space-100);
+  margin-left: var(--we-space-300);
+  margin-right: 0;
+  clip-path: polygon(90% 0, 0 0, 0 50%, 5% 100%, 0% 100%, 100% 100%, 100% 0%);
+}
+
+[data-we-theme='cyberpunk'] we-tab-item::part(base) {
+  clip-path: polygon(87% 0, 0 0, 0 50%, 13% 100%, 88% 100%, 100% 100%, 99% 16%);
+}
+
+[data-we-theme='cyberpunk'] we-input::part(input-wrapper) {
+  height: 60px;
+  font-size: 16px;
+  border: 10px solid var(--we-color-primary-500);
+  border-left: 2px solid var(--we-color-primary-500);
+  border-right: 2px solid var(--we-color-primary-500);
+  border-bottom: 10px solid var(--we-color-primary-500);
+  border-color: var(--we-color-primary-200);
+  clip-path: polygon(
+    0 5px,
+    5px 0,
+    calc(60% - 5px) 0,
+    60% 5px,
+    100% 5px,
+    100% calc(100% - 5px),
+    calc(100% - 5px) calc(100% - 3px),
+    calc(80% - 3px) calc(100% - 3px),
+    calc(80% - 5px) calc(100% - 0px),
+    0 calc(100% - 0px),
+    0% calc(100% - 0px)
+  );
+}
+
+[data-we-theme='cyberpunk'] we-input::part(input-wrapper):focus-within {
+  border-color: var(--we-color-primary-500);
+}
+
+[data-we-theme='cyberpunk'] we-text[variant^='heading']::after {
+  display: block;
+  content: '';
+  width: 100%;
+  bottom: -10px;
+  left: 0;
+  height: 10px;
+  clip-path: polygon(0 0, 85px 0, 90px 5px, 100% 5px, 100% 6px, 85px 6px, 80px 10px, 0 10px);
+  background: var(--we-color-primary-500);
+}
+
+@keyframes glitched {
+  0% {
+    transform: skew(-15deg);
+    left: -4px;
+  }
+
+  10% {
+    transform: skew(-15deg);
+    left: -4px;
+  }
+
+  11% {
+    transform: skew(0deg);
+    left: 2px;
+  }
+
+  50% {
+    transform: skew(0deg);
+  }
+
+  51% {
+    transform: skew(5deg);
+  }
+
+  59% {
+    transform: skew(5deg);
+  }
+
+  60% {
+    transform: skew(0deg);
+  }
+
+  100% {
+    transform: skew(0deg);
+  }
+}

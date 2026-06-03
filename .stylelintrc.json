@@ -1,0 +1,5 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "ignoreFiles": ["**/dist/**", "**/build/**", "**/node_modules/**"],
+  "rules": { "custom-property-empty-line-before": ["never", { "ignore": ["after-comment"] }] }
+}

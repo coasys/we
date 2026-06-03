@@ -1,0 +1,64 @@
+{
+  "name": "@we/widgets",
+  "version": "0.1.0",
+  "description": "Widget components for WE",
+  "author": "James Weir",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:css": "sass src/styles/index.scss dist/styles/index.css --no-source-map --style=compressed",
+    "build:steps": "tsup && pnpm build:css",
+    "build": "we-build"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./solid": {
+      "types": "./dist/solid/index.d.ts",
+      "import": "./dist/solid/index.js"
+    },
+    "./styles": {
+      "default": "./dist/styles/index.css"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "cesium": "^1.136.0",
+    "d3-force": "^3.0.0"
+  },
+  "peerDependencies": {
+    "@coasys/ad4m": "0.11.0",
+    "@we/components": "^0.1.0",
+    "@we/primitives": "^1.0.0",
+    "solid-js": "^1.9.5"
+  },
+  "devDependencies": {
+    "@types/d3-force": "^3.0.10",
+    "@we/block-shared": "workspace:*",
+    "@we/cli": "workspace:*",
+    "@we/components": "workspace:*",
+    "@we/design-utils": "workspace:*",
+    "@we/models": "workspace:*",
+    "@we/primitives": "workspace:*",
+    "@we/tokens": "workspace:*",
+    "esbuild-plugin-solid": "^0.6.0",
+    "sass": "^1.92.1",
+    "solid-js": "^1.9.5",
+    "tsup": "^8.5.1",
+    "vite-plugin-cesium": "^1.2.23"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "context": {
+    "type": "widgets"
+  },
+  "sideEffects": [
+    "*.css"
+  ]
+}

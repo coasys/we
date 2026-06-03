@@ -1,0 +1,34 @@
+{
+  "name": "@we/design-types",
+  "version": "0.1.0",
+  "description": "Shared types for WE",
+  "author": "James Weir",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "clean": "rimraf dist",
+    "build:steps": "pnpm run clean && tsc",
+    "build": "we-build"
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "@we/tokens": "workspace:*",
+    "rimraf": "^6.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

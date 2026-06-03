@@ -1,0 +1,31 @@
+{
+  "name": "@we/ai-context",
+  "version": "0.1.0",
+  "description": "Auto-extracted AI context for schema generation — instruction files + runtime constant",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsx src/generate.ts && tsup",
+    "build": "we-build",
+    "generate-context": "tsx src/generate.ts",
+    "test": "vitest run"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@we/schema-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@we/cli": "workspace:*",
+    "ts-morph": "^25.0.1",
+    "tsup": "^8.5.1",
+    "tsx": "^4.19.3",
+    "vitest": "^4.0.15"
+  },
+  "sideEffects": false
+}

@@ -1,0 +1,52 @@
+{
+  "project": {
+    "name": "WE Multi-App",
+    "version": "0.1.0",
+    "description": "Testing multi-app integration with Flux and React playground",
+    "author": "James Weir"
+  },
+
+  "ad4m": {
+    "dataPath": "~/.we-multi-app",
+    "executorPath": "../ad4m/target/release/ad4m-executor",
+    "repoPath": "../ad4m"
+  },
+
+  "electron": {
+    "appDistPath": "dist",
+    "basePort": 8080
+  },
+
+  "apps": [
+    {
+      "id": "flux",
+      "name": "Flux",
+      "icon": "camera",
+      "description": "Social web3 toolkit for communities",
+      "capabilities": ["perspectives", "languages", "agents"],
+      "paths": {
+        "projectRoot": "../flux/app",
+        "dist": "../flux/app/dist",
+        "devServer": {
+          "port": 3030,
+          "host": "localhost"
+        }
+      }
+    },
+    {
+      "id": "playground",
+      "name": "Playground",
+      "icon": "beaker",
+      "description": "React test playground",
+      "capabilities": [],
+      "paths": {
+        "projectRoot": "./apps/playgrounds/react/demo",
+        "dist": "./apps/playgrounds/react/demo/dist",
+        "devServer": {
+          "port": 3040,
+          "host": "localhost"
+        }
+      }
+    }
+  ]
+}

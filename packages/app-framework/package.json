@@ -1,0 +1,65 @@
+{
+  "name": "@we/app-framework",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
+  },
+  "bin": {
+    "we-seed": "./dist/seed/cli.js"
+  },
+  "exports": {
+    "./shared": {
+      "import": "./dist/shared/index.js",
+      "types": "./dist/shared/index.d.ts"
+    },
+    "./shared/index.scss": "./src/shared/index.scss",
+    "./shared/*": {
+      "import": "./dist/shared/*.js",
+      "types": "./dist/shared/*.d.ts"
+    },
+    "./solid": {
+      "import": "./src/frameworks/solid/index.ts",
+      "types": "./src/frameworks/solid/index.ts"
+    },
+    "./seed": {
+      "import": "./dist/seed/index.js",
+      "types": "./dist/seed/index.d.ts"
+    }
+  },
+  "dependencies": {
+    "@we/ai-context": "workspace:*",
+    "@we/cesium-layers": "workspace:*",
+    "@we/components": "workspace:*",
+    "@we/design-types": "workspace:*",
+    "@we/primitives": "workspace:*",
+    "@we/models": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "@we/schema-solid": "workspace:*",
+    "@we/themes": "workspace:*",
+    "@we/tokens": "workspace:*",
+    "@we/widgets": "workspace:*",
+    "@we/block-shared": "workspace:*",
+    "@we/block-solid": "workspace:*",
+    "@coasys/ad4m": "0.11.0",
+    "@solidjs/router": "^0.15.3",
+    "gsap": "^3.13.0",
+    "solid-js": "^1.9.5",
+    "three": "^0.176.0",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/three": "^0.176.0",
+    "@vitest/coverage-v8": "^4.0.15",
+    "@we/cli": "workspace:*",
+    "tsup": "^8.5.1",
+    "vitest": "^4.0.15"
+  }
+}

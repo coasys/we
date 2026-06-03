@@ -1,0 +1,24 @@
+.we-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  &--ordered {
+    padding-left: 1.5em;
+    list-style: decimal;
+  }
+}
+
+.we-list-item {
+  display: flex;
+  align-items: center;
+  gap: var(--we-space-200);
+  padding: var(--we-space-200) 0;
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+  }
+}

@@ -1,0 +1,193 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+[data-we-theme='retro'] {
+  /* Color system — must be complete so the theme is self-contained */
+  --we-color-primary-hue: 230;
+  --we-color-multiplier: 1;
+  --we-color-subtractor: 0%;
+  --we-color-saturation: 60%;
+  --we-color-neutral-saturation: 10%;
+  --we-border-radius: 0px;
+  --we-border-color: silver;
+  --we-font-family: monospace;
+  --we-size-sm: 30px;
+  --we-size-md: 40px;
+  --we-size-lg: 50px;
+  --we-scrollbar-thumb-box-shadow:
+    inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px grey, inset 2px 2px #dfdfdf;
+  --we-scrollbar-thumb-background: #dfdfdf;
+  --we-scrollbar-background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg width='2' height='2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M1 0H0v1h1v1h1V1H1V0z' fill='silver'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M2 0H1v1H0v1h1V1h1V0z' fill='%23fff'/%3E%3C/svg%3E");
+  --we-scrollbar-width: 16px;
+  --we-scrollbar-thumb-border-radius: 0;
+}
+
+[data-we-theme='retro'] we-modal::part(modal) {
+  position: relative;
+  background: silver;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #fff,
+    inset -2px -2px grey,
+    inset 2px 2px #dfdfdf;
+  padding: 0;
+}
+
+[data-we-theme='retro'] we-modal::part(close-button) {
+  top: 10px;
+  right: 10px;
+  padding: var(--we-space-200);
+  width: var(--we-size-sm);
+  height: var(--we-size-sm);
+  background: silver;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #fff,
+    inset -2px -2px grey,
+    inset 2px 2px #dfdfdf;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+[data-we-theme='retro'] we-modal::part(header) {
+  display: block;
+  height: 50px;
+  background: linear-gradient(90deg, navy, #1084d0);
+}
+
+[data-we-theme='retro'] we-toggle::part(indicator) {
+  border-radius: 0;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #fff,
+    inset -2px -2px grey,
+    inset 2px 2px #dfdfdf;
+}
+
+[data-we-theme='retro'] we-toggle::part(toggle) {
+  border-radius: 0;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #fff,
+    inset -2px -2px grey,
+    inset 2px 2px #dfdfdf;
+}
+
+[data-we-theme='retro'] we-avatar::part(base) {
+  border-radius: 0;
+  border: 0;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #fff,
+    inset -2px -2px grey,
+    inset 2px 2px #dfdfdf;
+}
+
+[data-we-theme='retro'] we-avatar[selected]::part(base) {
+  border-radius: 0;
+  box-shadow: 0 0 0 2px var(--we-color-primary-500);
+}
+
+[data-we-theme='retro'] we-avatar::part(img) {
+  border-radius: 0;
+}
+
+[data-we-theme='retro'] we-button::part(base) {
+  background: silver !important;
+  color: #222 !important;
+  font-weight: 400;
+  border: 0 !important;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #fff,
+    inset -2px -2px grey,
+    inset 2px 2px #dfdfdf;
+}
+
+[data-we-theme='retro'] we-button[disabled]::part(base) {
+  text-shadow: 1px 1px 0 #fff;
+}
+
+[data-we-theme='retro'] we-button::part(base):active {
+  box-shadow:
+    inset -1px -1px #fff,
+    inset 1px 1px #0a0a0a,
+    inset -2px -2px #dfdfdf,
+    inset 2px 2px grey;
+}
+
+[data-we-theme='retro'] we-button[variant='primary']::part(base) {
+  border: 0;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #fff,
+    inset -2px -2px grey,
+    inset 2px 2px #dfdfdf;
+}
+
+[data-we-theme='retro'] we-button[circle]::part(base) {
+  border-radius: 0;
+}
+
+[data-we-theme='retro'] we-tabs::part(base) {
+  background: none;
+  border: 0;
+}
+
+[data-we-theme='retro'] we-tabs::part(base)::before {
+  content: none;
+}
+
+[data-we-theme='retro'] we-menu::part(base) {
+  background: var(--we-color-neutral-100);
+}
+
+[data-we-theme='retro'] we-menu-group-item::part(summary) {
+  padding-left: var(--we-space-300);
+}
+
+[data-we-theme='retro'] we-menu-group-item::part(content) {
+  border-left: 1px dotted grey;
+  margin-left: var(--we-space-500);
+}
+
+[data-we-theme='retro'] we-menu-item::part(base) {
+  position: relative;
+}
+
+[data-we-theme='retro'] we-menu-item::part(base)::after {
+  position: absolute;
+  content: '';
+  display: block;
+  left: 0;
+  width: 15px;
+  height: 1px;
+  border-top: 1px dotted grey;
+}
+
+[data-we-theme='retro'] we-tab-item::part(base) {
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #fff,
+    inset -2px -2px grey,
+    inset 2px 2px #dfdfdf;
+}
+
+[data-we-theme='retro'] we-input::part(input-wrapper) {
+  background: white;
+  border: 0;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #fff,
+    inset -2px -2px grey,
+    inset 2px 2px #dfdfdf;
+}
+
+[data-we-theme='retro'] we-input::part(input-wrapper):focus-within {
+  border: 0;
+  box-shadow:
+    inset -1px -1px #0a0a0a,
+    inset 1px 1px #fff,
+    inset -2px -2px grey,
+    inset 2px 2px #dfdfdf;
+}

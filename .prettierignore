@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/build
+**/target
+**/dist-electron
+**/.tauri
+*.asar
+.git
+pnpm-lock.yaml
+
+# Auto-generated AI context files (packages/ai-context)
+.github/copilot-instructions.md
+CLAUDE.md
+.cursor/rules/we-schema.mdc
+packages/ai-context/src/schemaContext.ts

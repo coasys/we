@@ -1,0 +1,49 @@
+// ── SignalControl ──────────────────────────────────────────────────────────────
+
+// min-width: 1ch (= width of "0" in current font) keeps the counter stable
+// when toggling between 0 and 1. tabular-nums in we-number handles multi-digit.
+.signal-control__count {
+  min-width: 1ch;
+}
+
+// Stacked icon pair used for partial-fill star/heart/etc. ratings
+.signal-icon-stack {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  line-height: 1;
+
+  // Background icon: muted neutral colour
+  color: var(--we-color-neutral-200);
+
+  // Emoji fallback: dim via custom property (pierces shadow DOM)
+  > we-icon {
+    --we-icon-emoji-opacity: 0.3;
+  }
+
+  &.is-disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+}
+
+.signal-icon-stack__fill {
+  // Fill icon: primary colour + restore full emoji opacity
+  color: var(--we-color-primary-600);
+
+  we-icon {
+    --we-icon-emoji-opacity: 1;
+  }
+}
+
+.signal-icon-stack__fill {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  // clip-path applied inline per-icon to show the filled fraction
+  overflow: hidden;
+}

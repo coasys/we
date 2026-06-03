@@ -1,0 +1,40 @@
+.we-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--we-z-modal);
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.we-dialog {
+  background: var(--we-color-neutral-0);
+  border-radius: var(--we-radius-600);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  padding: var(--we-space-600);
+  max-width: 480px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--we-space-400);
+
+  &__title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--we-color-neutral-900);
+    margin: 0;
+  }
+
+  &__description {
+    color: var(--we-color-neutral-600);
+    font-size: 0.875rem;
+    margin: 0;
+  }
+
+  &__actions {
+    display: flex;
+    gap: var(--we-space-200);
+    justify-content: flex-end;
+  }
+}

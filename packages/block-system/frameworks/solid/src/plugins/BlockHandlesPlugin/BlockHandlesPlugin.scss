@@ -1,0 +1,55 @@
+.we-block-handle {
+  position: absolute;
+  z-index: var(--we-z-popover);
+  opacity: 0;
+  display: flex;
+  height: 40px;
+  width: 50px;
+  padding: 8px 5px 0 0;
+  transition: opacity var(--we-transition-200);
+
+  .we-block-handle-settings-button {
+    all: unset;
+    cursor: pointer;
+  }
+
+  .we-block-handle-dragger {
+    cursor: grab;
+  }
+
+  .we-block-handle-settings-button,
+  .we-block-handle-dragger {
+    height: 25px;
+    width: 25px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    &:hover {
+      background-color: var(--we-color-neutral-50);
+      border-radius: 5px;
+    }
+  }
+
+  &[data-block-hovered='true'],
+  &[data-block-focused='true'] {
+    opacity: 1;
+  }
+}
+
+.we-block-handle-drop-spot {
+  position: absolute;
+  height: 4px;
+  background-color: var(--we-color-primary-400);
+  border-radius: 2px;
+  z-index: var(--we-z-popover);
+  pointer-events: none;
+  opacity: 0;
+  // transition: opacity var(--we-transition-300);
+  will-change: opacity;
+  // z-index: var(--we-z-dropdown);
+
+  &.we-block-handle-visible {
+    opacity: 1;
+  }
+}

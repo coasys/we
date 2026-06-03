@@ -1,0 +1,36 @@
+{
+  "name": "@we/schema-solid",
+  "version": "0.1.0",
+  "description": "SolidJS schema renderer for WE",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@we/design-types": "workspace:*",
+    "@we/schema-shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "solid-js": "^1.9.5"
+  },
+  "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
+    "@we/cli": "workspace:*",
+    "esbuild-plugin-solid": "^0.6.0",
+    "happy-dom": "^20.8.4",
+    "solid-js": "^1.9.5",
+    "tsup": "^8.5.1",
+    "vite-plugin-solid": "^2.11.11",
+    "vitest": "^4.1.0"
+  },
+  "sideEffects": false
+}

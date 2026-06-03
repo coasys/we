@@ -1,0 +1,29 @@
+/* ===== BASE THEME VARIABLES ===== */
+
+[data-we-theme='black'] {
+  --we-color-subtractor: 100%;
+  --we-color-multiplier: -1;
+  --we-color-saturation: 50%;
+  --we-color-neutral-saturation: 20%;
+}
+
+/* ===== ELEMENTS OVERRIDES ===== */
+[data-we-theme='black'] we-tooltip::part(tooltip) {
+  background: var(--we-color-neutral-100);
+  color: var(--we-color-black);
+}
+
+[data-we-theme='black'] we-menu-item::part(base) {
+  margin-top: var(--we-space-100);
+  margin-left: var(--we-space-400);
+  margin-right: var(--we-space-400);
+  border-radius: 6px;
+}
+
+/* ===== COMPONENTS OVERRIDES ===== */
+
+/* ===== WIDGETS OVERRIDES ===== */
+
+/* [data-we-theme='black'] .we-data-table {
+  border: var(--we-border-width) solid var(--we-border-color-strong);
+} */

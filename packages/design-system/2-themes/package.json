@@ -1,0 +1,41 @@
+{
+  "name": "@we/themes",
+  "version": "0.1.0",
+  "description": "Style themes for WE",
+  "author": "James Weir",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "clean": "rimraf dist",
+    "build:css": "postcss 'src/**/index.css' --base src --dir dist",
+    "build:steps": "pnpm run clean && pnpm run build:css",
+    "build": "we-build"
+  },
+  "exports": {
+    ".": "./dist/index.css",
+    "./dark": "./dist/dark/index.css",
+    "./black": "./dist/black/index.css",
+    "./retro": "./dist/retro/index.css",
+    "./cyberpunk": "./dist/cyberpunk/index.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "@we/tokens": "workspace:*"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "postcss": "^8.4.23",
+    "postcss-cli": "^10.1.0",
+    "postcss-import": "^15.1.0",
+    "rimraf": "^6.0.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "style": "./dist/index.css",
+  "sideEffects": [
+    "*.css"
+  ]
+}

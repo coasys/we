@@ -1,0 +1,48 @@
+{
+  "name": "@we/monorepo",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "setup-workspace": "node scripts/setup-workspace.cjs",
+    "validate:seed": "node scripts/validate-seed.cjs",
+    "validate:schemas": "pnpm --filter @we/schema-shared validate",
+    "prepare": "pnpm --filter @we/cli run bootstrap",
+    "clean": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + && find . -name 'dist' -type d -prune -exec rm -rf '{}' + && rm -f pnpm-lock.yaml && pnpm store prune",
+    "build": "pnpm -r --workspace-concurrency=1 run build",
+    "build:web": "pnpm --filter @we/app-web build",
+    "build:electron": "pnpm --filter @we/app-electron electron:build",
+    "build:tauri": "pnpm --filter @we/app-tauri tauri:build",
+    "build:all": "pnpm build:web && pnpm build:electron && pnpm build:tauri",
+    "dev": "pnpm dev:web",
+    "dev:web": "pnpm --filter @we/app-web dev",
+    "dev:electron": "pnpm --filter @we/app-electron electron:dev",
+    "dev:tauri": "pnpm --filter @we/app-tauri tauri:dev",
+    "test": "pnpm -r --no-bail run test",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write ."
+  },
+  "packageManager": "pnpm@10.18.3",
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@typescript-eslint/eslint-plugin": "^8.17.0",
+    "@typescript-eslint/parser": "^8.17.0",
+    "eslint": "^9.16.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.2.1",
+    "eslint-plugin-simple-import-sort": "^12.1.1",
+    "prettier": "^3.4.2",
+    "prettier-plugin-sort-package-json": "^1.1.0",
+    "stylelint": "^16.24.0",
+    "stylelint-config-standard": "^39.0.0",
+    "typescript": "^5.7.2"
+  },
+  "pnpm": {
+    "overrides": {
+      "@coasys/ad4m": "0.13.0-postmessage-ws-proxy.5",
+      "@coasys/ad4m-connect": "0.13.0-postmessage-ws-proxy.5"
+    }
+  }
+}

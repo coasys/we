@@ -1,0 +1,214 @@
+import { walkPath } from './path';
+import { markReactive } from './reactive';
+import type { Memo, Props } from './types';
+import { noMemo } from './types';
+
+// --- Types for $localMeta context ---
+
+export type LocalFieldMeta = {
+  initial: unknown;
+  rules: import('../types').ValidationRule[];
+  touched: () => boolean;
+  setTouched: (v: boolean) => void;
+  errors: () => string[];
+  reset: () => void;
+};
+
+export type LocalMetaMap = Record<string, LocalFieldMeta>;
+
+/**
+ * Extract a value from an event object using a dot-path expression.
+ * Supports "$event", "$event.target.value", "$event.detail", etc.
+ */
+export function extractFromPath(event: unknown, from: string): unknown {
+  // "$event" alone returns the raw event
+  if (from === '$event') return event;
+
+  // Strip the "$event." prefix and walk the path
+  const path = from.startsWith('$event.') ? from.slice(7) : from;
+  let current: unknown = event;
+  for (const segment of path.split('.')) {
+    if (/^\d+$/.test(segment)) {
+      current = (current as unknown[])?.[Number(segment)];
+    } else {
+      current = (current as Record<string, unknown>)?.[segment];
+    }
+  }
+  return current;
+}
+
+/** Resolves $local tokens: { $local: "name" } or { $local: "name.nested.path" } → signal accessor from context.$local */
+export function resolveLocalProp(value: { $local: string }, context: Props, memo: Memo = noMemo): unknown {
+  const localState = context.$local as Record<string, () => unknown> | undefined;
+  if (!localState) {
+    console.warn(`Schema $local: no $localState in scope for "${value.$local}"`);
+    return undefined;
+  }
+
+  const [fieldName, ...nestedPath] = value.$local.split('.');
+  const accessor = localState[fieldName];
+  if (!accessor) {
+    console.warn(`Schema $local: field "${fieldName}" not declared in $localState`);
+    return undefined;
+  }
+
+  // Simple single-level access — return the signal accessor directly
+  if (nestedPath.length === 0) return markReactive(accessor);
+
+  // Nested path: call the signal, then walk the remaining segments
+  return markReactive(memo(() => walkPath(accessor(), nestedPath)));
+}
+
+/** Resolves $setLocal tokens: { $setLocal: "name", from: "$event.target.value" } or { $setLocal: "name", value: <literal> } → event handler */
+export function resolveSetLocalProp(
+  value: { $setLocal: string; from?: string; value?: unknown },
+  context: Props,
+): (event: unknown) => void {
+  const localSetters = context.$localSetters as Record<string, (v: unknown) => void> | undefined;
+  if (!localSetters) {
+    console.warn(`Schema $setLocal: no $localState in scope for "${value.$setLocal}"`);
+    return () => {};
+  }
+  const setter = localSetters[value.$setLocal];
+  if (!setter) {
+    console.warn(`Schema $setLocal: field "${value.$setLocal}" not declared in $localState`);
+    return () => {};
+  }
+  if ('value' in value) {
+    return () => {
+      setter(value.value);
+    };
+  }
+  return (event: unknown) => {
+    setter(extractFromPath(event, value.from!));
+  };
+}
+
+/** Resolves $toggleLocal tokens: { $toggleLocal: "fieldName" } → event handler that toggles a boolean field */
+export function resolveToggleLocalProp(value: { $toggleLocal: string }, context: Props): () => void {
+  const localState = context.$local as Record<string, () => unknown> | undefined;
+  const localSetters = context.$localSetters as Record<string, (v: unknown) => void> | undefined;
+  if (!localState || !localSetters) {
+    console.warn(`Schema $toggleLocal: no $localState in scope for "${value.$toggleLocal}"`);
+    return () => {};
+  }
+  const accessor = localState[value.$toggleLocal];
+  const setter = localSetters[value.$toggleLocal];
+  if (!accessor || !setter) {
+    console.warn(`Schema $toggleLocal: field "${value.$toggleLocal}" not declared in $localState`);
+    return () => {};
+  }
+  return () => {
+    setter(!accessor());
+  };
+}
+
+/** Resolves $callLocal tokens: { $callLocal: "fieldName" } → event handler that calls the stored function */
+export function resolveCallLocalProp(value: { $callLocal: string }, context: Props): (...args: unknown[]) => void {
+  const localState = context.$local as Record<string, () => unknown> | undefined;
+  if (!localState) {
+    console.warn(`Schema $callLocal: no $localState in scope for "${value.$callLocal}"`);
+    return () => {};
+  }
+  const accessor = localState[value.$callLocal];
+  if (!accessor) {
+    console.warn(`Schema $callLocal: field "${value.$callLocal}" not declared in $localState`);
+    return () => {};
+  }
+  return (...args: unknown[]) => {
+    const fn = accessor();
+    if (typeof fn === 'function') {
+      fn(...args);
+    } else {
+      console.warn(`Schema $callLocal: field "${value.$callLocal}" is not a function (yet?)`);
+    }
+  };
+}
+
+// --- Validation token resolvers ---
+
+function getMeta(context: Props): LocalMetaMap | undefined {
+  return context.$localMeta as LocalMetaMap | undefined;
+}
+
+function getScopeFields(context: Props): string[] | undefined {
+  return context.$localScopeFields as string[] | undefined;
+}
+
+/** Resolves $error tokens: { $error: "name" } → first error message (only if touched) or "" */
+export function resolveErrorProp(value: { $error: string }, context: Props): unknown {
+  const meta = getMeta(context)?.[value.$error];
+  if (!meta) {
+    console.warn(`Schema $error: field "${value.$error}" not found in $localMeta`);
+    return '';
+  }
+  return markReactive(() => (meta.touched() ? (meta.errors()[0] ?? '') : ''));
+}
+
+/** Resolves $valid tokens: { $valid: "name" } → true if all rules pass (ignores touched) */
+export function resolveValidProp(value: { $valid: string }, context: Props): unknown {
+  const meta = getMeta(context)?.[value.$valid];
+  if (!meta) {
+    console.warn(`Schema $valid: field "${value.$valid}" not found in $localMeta`);
+    return true;
+  }
+  return markReactive(() => meta.errors().length === 0);
+}
+
+/** Resolves $touched tokens: { $touched: "name" } → true if field has been touched */
+export function resolveTouchedProp(value: { $touched: string }, context: Props): unknown {
+  const meta = getMeta(context)?.[value.$touched];
+  if (!meta) {
+    console.warn(`Schema $touched: field "${value.$touched}" not found in $localMeta`);
+    return false;
+  }
+  return markReactive(() => meta.touched());
+}
+
+/** Resolves $formValid tokens: { $formValid: "$scope" } → true if all scoped fields are valid */
+export function resolveFormValidProp(context: Props): unknown {
+  const metaMap = getMeta(context);
+  const scopeFields = getScopeFields(context);
+  if (!metaMap || !scopeFields) {
+    console.warn('Schema $formValid: no $localMeta or $localScopeFields in scope');
+    return true;
+  }
+  return markReactive(() => scopeFields.every((f) => (metaMap[f]?.errors().length ?? 0) === 0));
+}
+
+/** Resolves $touch tokens: { $touch: "name" } or { $touch: "$all" } → handler that marks touched */
+export function resolveTouchProp(value: { $touch: string }, context: Props): () => void {
+  const metaMap = getMeta(context);
+  if (!metaMap) {
+    console.warn(`Schema $touch: no $localMeta in scope`);
+    return () => {};
+  }
+
+  if (value.$touch === '$all') {
+    const scopeFields = getScopeFields(context);
+    if (!scopeFields) return () => {};
+    return () => {
+      for (const f of scopeFields) metaMap[f]?.setTouched(true);
+    };
+  }
+
+  const meta = metaMap[value.$touch];
+  if (!meta) {
+    console.warn(`Schema $touch: field "${value.$touch}" not found in $localMeta`);
+    return () => {};
+  }
+  return () => meta.setTouched(true);
+}
+
+/** Resolves $resetLocal tokens: { $resetLocal: "$scope" } → handler that resets all scoped fields */
+export function resolveResetLocalProp(context: Props): () => void {
+  const metaMap = getMeta(context);
+  const scopeFields = getScopeFields(context);
+  if (!metaMap || !scopeFields) {
+    console.warn('Schema $resetLocal: no $localMeta or $localScopeFields in scope');
+    return () => {};
+  }
+  return () => {
+    for (const f of scopeFields) metaMap[f]?.reset();
+  };
+}

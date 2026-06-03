@@ -1,0 +1,38 @@
+{
+  "name": "@we/schema-shared",
+  "version": "0.1.0",
+  "description": "Framework-agnostic schema types, validators, and prop resolvers for WE",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "validate": "tsx src/cli/we-validate-schemas.ts ../../app-framework/src/shared/schemas/"
+  },
+  "bin": {
+    "we-validate-schemas": "./dist/cli/we-validate-schemas.js"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@we/design-utils": "workspace:*",
+    "@we/tokens": "workspace:*",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@vitest/coverage-v8": "^4.0.15",
+    "@we/cli": "workspace:*",
+    "jsdom": "^27.2.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "vitest": "^4.0.15"
+  },
+  "sideEffects": false
+}

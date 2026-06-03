@@ -1,0 +1,27 @@
+import { Ad4mModel, Flag, HasMany, HasManyMethods, HasOne, Model, Property } from '@coasys/ad4m';
+
+import { TestComment } from './TestComment';
+import { TestTag } from './TestTag';
+
+@Model({ name: 'TestPost' })
+export class TestPost extends Ad4mModel {
+  @Flag({ through: 'test://post_type', value: 'test://post' })
+  type = 'test://post';
+
+  @Property({ through: 'test://title', required: true })
+  title: string = '';
+
+  @Property({ through: 'test://body' })
+  body: string = '';
+
+  @HasMany(() => TestTag, { through: 'test://has_tag' })
+  tags: TestTag[] = [];
+
+  @HasMany(() => TestComment, { through: 'test://has_comment' })
+  comments: TestComment[] = [];
+
+  @HasOne(() => TestComment, { through: 'test://pinned_comment' })
+  pinnedComment: TestComment | null = null;
+}
+
+export interface TestPost extends HasManyMethods<'tags' | 'comments' | 'pinnedComment'> {}

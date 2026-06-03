@@ -1,0 +1,29 @@
+{
+  "name": "@we/block-shared",
+  "version": "0.1.0",
+  "description": "Shared types and serialization for the WE block system",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@we/design-types": "workspace:*",
+    "@we/models": "workspace:*"
+  },
+  "peerDependencies": {
+    "@coasys/ad4m": "0.11.0"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "tsup": "^8.5.1"
+  },
+  "sideEffects": false
+}

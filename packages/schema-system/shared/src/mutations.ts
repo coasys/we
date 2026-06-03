@@ -1,0 +1,113 @@
+import { isDeepEqual, isObject, isPrimitive } from './predicates';
+
+type Mutation = { path: (string | number)[]; value: unknown };
+
+// Recursive diffing function to find mutations between two values
+function accumulateMutations(mutations: Mutation[] = [], path: (string | number)[], a: unknown, b: unknown) {
+  // Early exit for deep equality
+  if (isDeepEqual(a, b)) return;
+
+  // Handle arrays
+  if (Array.isArray(a) && Array.isArray(b)) {
+    // Diff shared indices, then emit length mutation if the array shrank
+    const maxLen = Math.max(a.length, b.length);
+    for (let i = 0; i < maxLen; i++) {
+      const oldItem = a[i];
+      const newItem = b[i];
+      const itemPath = [...path, i];
+      if (i >= b.length) {
+        // Element removed — handled by the length mutation below
+        continue;
+      }
+      if (oldItem === undefined && newItem !== undefined) {
+        mutations.push({ path: itemPath, value: newItem });
+        continue;
+      }
+      if (isPrimitive(oldItem) || isPrimitive(newItem)) {
+        if (oldItem !== newItem) mutations.push({ path: itemPath, value: newItem });
+        continue;
+      }
+      if (Array.isArray(oldItem) && Array.isArray(newItem)) {
+        accumulateMutations(mutations, itemPath, oldItem, newItem);
+        continue;
+      }
+      if (isObject(oldItem) && isObject(newItem)) {
+        accumulateMutations(mutations, itemPath, oldItem, newItem);
+        continue;
+      }
+      if (oldItem !== newItem) mutations.push({ path: itemPath, value: newItem });
+    }
+    // Emit a length mutation so the consumer can truncate the array
+    if (b.length < a.length) {
+      mutations.push({ path: [...path, 'length'], value: b.length });
+    }
+    return;
+  }
+
+  // Handle objects
+  if (isObject(a) && isObject(b)) {
+    // When a schema node's type changes (e.g. Text → Row), replace the entire
+    // object rather than diffing individual properties.  This gives the Solid
+    // store a new reference so <For> rebuilds the RenderSchema component from
+    // scratch — ensuring fresh propMemos, correct isWebComponent flag, etc.
+    const aObj = a as Record<string, unknown>;
+    const bObj = b as Record<string, unknown>;
+    if (typeof aObj.type === 'string' && typeof bObj.type === 'string' && aObj.type !== bObj.type) {
+      mutations.push({ path, value: b });
+      return;
+    }
+
+    const aKeys = a ? Object.keys(a) : [];
+    const bKeys = b ? Object.keys(b) : [];
+    const keys = new Set([...aKeys, ...bKeys]);
+    const bKeysSet = new Set(bKeys);
+    for (const k of keys) {
+      const oldVal = (a as Record<string, unknown>)?.[k];
+      const newVal = (b as Record<string, unknown>)?.[k];
+      const keyPath = [...path, k];
+      if (!bKeysSet.has(k) && oldVal !== undefined) {
+        mutations.push({ path: keyPath, value: undefined });
+        continue;
+      }
+      if (!a?.hasOwnProperty(k) && newVal !== undefined) {
+        mutations.push({ path: keyPath, value: newVal });
+        continue;
+      }
+      if (isPrimitive(oldVal) || isPrimitive(newVal)) {
+        if (oldVal !== newVal) mutations.push({ path: keyPath, value: newVal });
+        continue;
+      }
+      if (Array.isArray(oldVal) && Array.isArray(newVal)) {
+        accumulateMutations(mutations, keyPath, oldVal, newVal);
+        continue;
+      }
+      if (isObject(oldVal) && isObject(newVal)) {
+        accumulateMutations(mutations, keyPath, oldVal, newVal);
+        continue;
+      }
+      if (oldVal !== newVal) mutations.push({ path: keyPath, value: newVal });
+    }
+    return;
+  }
+
+  // Handle array/object mismatch
+  if ((Array.isArray(a) && isObject(b)) || (isObject(a) && Array.isArray(b))) {
+    mutations.push({ path, value: b });
+    return;
+  }
+
+  // Fallback: replace
+  if (a !== b) mutations.push({ path, value: b });
+}
+
+// Finds all mutations needed to transform an old schema node into a new one
+export function findMutations<T extends Record<string, unknown>>(oldNode: T, newNode: T): Mutation[] {
+  const mutations: Mutation[] = [];
+  accumulateMutations(mutations, [], oldNode, newNode);
+  return mutations;
+}
+
+/** Check whether a mutation is an array-length truncation (path ends with 'length'). */
+export function isLengthMutation(m: Mutation): boolean {
+  return m.path.length > 0 && m.path[m.path.length - 1] === 'length' && typeof m.value === 'number';
+}

@@ -1,0 +1,12 @@
+packages:
+  - apps/*
+  - apps/playgrounds/*/*
+  - packages/*
+  - packages/design-system/*
+  - packages/schema-system/*
+  - packages/schema-system/frameworks/*
+  - packages/block-system/*
+  - packages/block-system/frameworks/*
+
+onlyBuiltDependencies:
+  - electron

@@ -1,0 +1,55 @@
+{
+  "name": "@we/components",
+  "version": "0.1.0",
+  "description": "Basic components for WE",
+  "author": "James Weir",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles": {
+      "import": "./dist/styles/index.css"
+    },
+    "./solid": {
+      "types": "./dist/solid/index.d.ts",
+      "import": "./dist/solid/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@we/design-utils": "workspace:*"
+  },
+  "peerDependencies": {
+    "@we/primitives": "^1.0.0",
+    "solid-js": "^1.9.5"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "@we/primitives": "workspace:*",
+    "@we/tokens": "workspace:*",
+    "@we/design-types": "workspace:*",
+    "esbuild-plugin-solid": "^0.6.0",
+    "sass": "^1.92.1",
+    "solid-js": "^1.9.5",
+    "tsup": "^8.5.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "context": {
+    "type": "components"
+  },
+  "sideEffects": [
+    "*.css"
+  ]
+}
