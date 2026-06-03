@@ -388,11 +388,13 @@ export function AdamStoreProvider(props: ParentProps) {
 
       if (event.data?.type === 'AD4M_PROXY_WS_CONNECT' && source) {
         // Gate: only serve requests from known we-iframe contentWindows.
+        // we-iframe is a Lit web component — the real <iframe> lives inside its
+        // shadow DOM, so we must look there rather than on the element itself.
         // Without this, any child iframe in WE's page could use WE as a
         // WebSocket proxy to the executor using WE's own auth token.
         const weIframesForWsCheck = document.querySelectorAll('we-iframe');
         const isKnownWsIframe = Array.from(weIframesForWsCheck).some(
-          (el) => (el as HTMLIFrameElement).contentWindow === source,
+          (el) => (el.shadowRoot?.querySelector('iframe') as HTMLIFrameElement | null)?.contentWindow === source,
         );
         if (!isKnownWsIframe) {
           console.warn('AdamStore: rejected AD4M_PROXY_WS_CONNECT from unknown source');
@@ -465,9 +467,10 @@ export function AdamStoreProvider(props: ParentProps) {
       if (event.data?.type === 'AD4M_PROXY_HTTP_REQUEST' && source) {
         // Gate: only serve requests from known we-iframe contentWindows, not from
         // arbitrary third-party pages that may have embedded WE as a child frame.
+        // we-iframe is a Lit web component — the real <iframe> lives inside its shadow DOM.
         const weIframesForHttpCheck = document.querySelectorAll('we-iframe');
         const isKnownIframe = Array.from(weIframesForHttpCheck).some(
-          (el) => (el as HTMLIFrameElement).contentWindow === source,
+          (el) => (el.shadowRoot?.querySelector('iframe') as HTMLIFrameElement | null)?.contentWindow === source,
         );
         if (!isKnownIframe) {
           console.warn('AdamStore: rejected AD4M_PROXY_HTTP_REQUEST from unknown source');
