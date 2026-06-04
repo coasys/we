@@ -13,7 +13,7 @@ export const settingsTemplate: TemplateSchema = {
   type: 'Column',
   props: { width: '100%', minHeight: '100%', bg: 'neutral-50', ax: 'center' },
   $localState: {
-    createSpaceOpen: { type: 'boolean', initial: false },
+    createSpaceModalOpen: { type: 'boolean', initial: false },
   },
   children: [
     {
@@ -543,13 +543,13 @@ export const settingsTemplate: TemplateSchema = {
             text: 'Create New Space',
             variant: 'primary',
             height: '40px',
-            onClick: { $setLocal: 'createSpaceOpen', value: true },
+            onClick: { $setLocal: 'createSpaceModalOpen', value: true },
           },
         },
 
         {
           type: '$if',
-          props: { condition: { $local: 'createSpaceOpen' }, then: createSpaceModal },
+          props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal },
         },
       ],
     },

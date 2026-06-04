@@ -41,8 +41,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@coasys/ad4m": "0.13.0-postmessage-ws-proxy.5",
-      "@coasys/ad4m-connect": "0.13.0-postmessage-ws-proxy.5"
+      "@coasys/ad4m": "0.13.0-test-8",
+      "@coasys/ad4m-connect": "0.13.0-localhost-wildcard-1"
     }
   }
 }

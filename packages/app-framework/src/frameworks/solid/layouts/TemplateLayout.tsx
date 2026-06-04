@@ -163,14 +163,19 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           }}
         </Show>
 
-        {/* Persistent app iframes — always mounted, CSS-toggled */}
+        {/* Persistent app iframes — always mounted, opacity-toggled.
+             opacity:0/1 creates an explicit GPU compositing layer (unlike visibility:hidden
+             which does not). will-change:opacity pre-allocates that layer so the browser
+             never needs to rasterize on show — it's a pure compositor operation. */}
         <For each={stores.appStore.apps()}>
           {(app) => (
             <Column
               position="absolute"
               top="0"
               left="0"
-              display={stores.appStore.activeAppId() === app.id ? 'block' : 'none'}
+              opacity={stores.appStore.activeAppId() === app.id ? 1 : 0}
+              pointerEvents={stores.appStore.activeAppId() === app.id ? 'auto' : 'none'}
+              styles={{ 'will-change': 'opacity' }}
               width="100%"
               height="100%"
             >

@@ -76,6 +76,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Close any shell overlay (landing page, profile, settings, etc.) before navigating
     templateStore.closeShellView();
     routeStore.navigate(targetPath);
+    // Notify embedded app iframes (e.g. Flux) so they can navigate to the matching community
+    broadcastPerspectiveNavigation(spaceId);
+  }
+
+  function broadcastPerspectiveNavigation(communityId: string): void {
+    const iframes = document.querySelectorAll('we-iframe') as NodeListOf<
+      HTMLElement & { postMessage: (data: unknown, origin: string) => void }
+    >;
+    iframes.forEach((el) => {
+      if (typeof el.postMessage === 'function') {
+        el.postMessage({ type: 'NAVIGATE_PERSPECTIVE', communityId }, '*');
+      }
+    });
   }
 
   async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File): Promise<void> {
