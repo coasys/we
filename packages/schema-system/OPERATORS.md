@@ -307,14 +307,17 @@ Plain strings starting with `$` followed by a key present in the context resolve
 
 ### `$action`
 
-Call store methods, with support for argument extraction from callbacks.
+Call store methods, with support for argument extraction from callbacks and async lifecycle callbacks.
 
 **Syntax:**
 
 ```typescript
 {
   $action: 'storeName.methodName',
-  args?: [<arg1>, <arg2>, ...]
+  args?: [<arg1>, <arg2>, ...],
+  onSuccess?: [...actions],   // fired after the action's Promise resolves
+  onError?: [...actions],     // fired after the action's Promise rejects
+  onFinally?: [...actions],   // fired after resolve or reject
 }
 ```
 
@@ -381,10 +384,51 @@ Call store methods, with support for argument extraction from callbacks.
 }
 ```
 
+**Close a modal after async submission:**
+
+```typescript
+{
+  onClick: [
+    { $touch: '$all' },
+    {
+      $if: {
+        condition: { $formValid: '$scope' },
+        then: {
+          $action: 'adamStore.createSpace',
+          args: [{ $local: 'name' }, { $local: 'description' }],
+          onSuccess: [{ $setLocal: 'createSpaceModalOpen', value: false }],
+        },
+      },
+    },
+  ];
+}
+```
+
+The modal stays open (with the button's `loading` spinner) until `createSpace` resolves, then closes automatically.
+
+**Post-success navigation using `$result`:**
+
+Within `onSuccess` / `onError` / `onFinally` callback arrays, the string `'$result'` (and `'$result.<path>'`) refers to the action's resolved return value (for `onSuccess`) or caught error object (for `onError`). It can be used in `args` of nested `$action` tokens:
+
+```typescript
+{
+  $action: 'adamStore.createSpace',
+  args: [...],
+  onSuccess: [
+    { $setLocal: 'modalOpen', value: false },
+    { $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$result.uuid'] }] },
+  ],
+}
+```
+
 **Notes:**
 
 - `$arg` - passes entire first callback argument
 - `$arg.<path>` - extracts property from first callback argument
+- `onSuccess` / `onError` / `onFinally` only fire for async (Promise-returning) store methods — synchronous methods are unaffected
+- `$result` is only in scope inside lifecycle callback arrays; it is not available in the parent `onClick` array
+- If `onError` is absent and the action rejects, the error is logged to the console
+- Lifecycle callbacks go through the same resolver pipeline, so they can themselves carry `onSuccess` / `onError` for chained async work
 - Automatically extracts `event.target.value` from DOM events
 - Supports relative path navigation for `routeStore.navigate`
 

@@ -76,7 +76,8 @@ export interface AdamStore {
   createSpace: (
     name: string,
     description: string,
-    visibility: 'personal' | 'shared' | 'public',
+    shared: boolean,
+    listed: boolean,
     avatarFile?: File,
     coverImageFile?: File,
     latitude?: number,
@@ -770,7 +771,8 @@ export function AdamStoreProvider(props: ParentProps) {
   async function createSpace(
     name: string,
     description: string,
-    visibility: 'personal' | 'shared' | 'public',
+    shared: boolean,
+    listed: boolean,
     avatarFile?: File,
     coverImageFile?: File,
     latitude?: number,
@@ -779,6 +781,7 @@ export function AdamStoreProvider(props: ParentProps) {
     country?: string,
     countryCode?: string,
   ): Promise<void> {
+    const visibility: 'personal' | 'shared' | 'public' = shared && listed ? 'public' : shared ? 'shared' : 'personal';
     const client = adamClient();
     if (!client) return;
     // Capture the active perspective now — it becomes the parent once the new space is created

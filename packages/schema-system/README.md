@@ -13,18 +13,18 @@ The schema system provides a framework-agnostic, schema-driven UI renderer desig
 
 Operators that appear inside `props` and resolve to values:
 
-| Operator       | Purpose                     | Example                                             |
-| -------------- | --------------------------- | --------------------------------------------------- |
-| `$store`       | Reactive store access       | `{ $store: 'userStore.name' }`                      |
-| `$concat`      | String building             | `{ $concat: ['/space/', '$item.uuid'] }`            |
-| `$action`      | Store method call           | `{ $action: 'store.method', args: ['$arg.id'] }`    |
-| `$map`         | Array/object transformation | `{ $map: { items: ..., select: { ... } } }`         |
-| `$pick`        | Property extraction         | `{ $pick: { from: ..., props: ['a', 'b'] } }`       |
-| `$if`          | Conditional value           | `{ $if: { condition: ..., then: 'a', else: 'b' } }` |
-| `$eq` / `$ne`  | Equality / inequality       | `{ $eq: [{ $store: 'x.role' }, 'admin'] }`          |
-| `$not`         | Logical NOT                 | `{ $not: { $store: 'x.locked' } }`                  |
-| `$and` / `$or` | Logical AND / OR            | `{ $and: [cond1, cond2] }`                          |
-| `$item.*`      | Context reference           | `'$space.name'` (inside `$each` children)           |
+| Operator       | Purpose                             | Example                                                            |
+| -------------- | ----------------------------------- | ------------------------------------------------------------------ |
+| `$store`       | Reactive store access               | `{ $store: 'userStore.name' }`                                     |
+| `$concat`      | String building                     | `{ $concat: ['/space/', '$item.uuid'] }`                           |
+| `$action`      | Store method call + async lifecycle | `{ $action: 'store.method', args: ['$arg.id'], onSuccess: [...] }` |
+| `$map`         | Array/object transformation         | `{ $map: { items: ..., select: { ... } } }`                        |
+| `$pick`        | Property extraction                 | `{ $pick: { from: ..., props: ['a', 'b'] } }`                      |
+| `$if`          | Conditional value                   | `{ $if: { condition: ..., then: 'a', else: 'b' } }`                |
+| `$eq` / `$ne`  | Equality / inequality               | `{ $eq: [{ $store: 'x.role' }, 'admin'] }`                         |
+| `$not`         | Logical NOT                         | `{ $not: { $store: 'x.locked' } }`                                 |
+| `$and` / `$or` | Logical AND / OR                    | `{ $and: [cond1, cond2] }`                                         |
+| `$item.*`      | Context reference                   | `'$space.name'` (inside `$each` children)                          |
 
 ### Renderer Operators
 
