@@ -41,15 +41,15 @@ export function ImageInput(props: ImageInputProps) {
   const showInput = () => !props.src || editing();
   const activeWidth = () => props.width ?? 33;
 
-  function cancelEdit() {
-    setEditing(false);
-    setImageUrl('');
-    const url = rawUrl();
-    if (url) URL.revokeObjectURL(url);
-    setRawUrl(null);
-    setPendingFile(null);
-    cropRef = undefined;
-  }
+  // function cancelEdit() {
+  //   setEditing(false);
+  //   setImageUrl('');
+  //   const url = rawUrl();
+  //   if (url) URL.revokeObjectURL(url);
+  //   setRawUrl(null);
+  //   setPendingFile(null);
+  //   cropRef = undefined;
+  // }
 
   function handleFileChange(e: Event) {
     const file = (e as CustomEvent).detail as File | null;
@@ -99,14 +99,16 @@ export function ImageInput(props: ImageInputProps) {
   }
 
   return (
-    <Column class="we-image-block" onClick={props.onSelect} position="relative">
+    <Column onClick={props.onSelect} position="relative">
       <Show
         when={!showInput()}
         fallback={
-          <Column class="we-image-block-input" gap="400" ax="center">
-            <we-file-upload accept="image/*" on:change={handleFileChange}>
-              <we-icon name="image" color="neutral-500" />
-              <we-text color="neutral-500">Drop an image or click to browse</we-text>
+          <Column ax="center" bg="neutral-25" p="400" gap="400">
+            <we-file-upload accept="image/*" on:change={handleFileChange} p="500">
+              <we-icon name="image" color="neutral-500" size="lg" />
+              <we-text color="neutral-500" fontSize="500">
+                Drop an image or click to browse
+              </we-text>
             </we-file-upload>
 
             <Row gap="300" ax="center">
@@ -120,23 +122,33 @@ export function ImageInput(props: ImageInputProps) {
               <we-button onClick={handleUrlSubmit}>Add</we-button>
             </Row>
 
-            <Show when={editing()}>
+            {/* <Show when={editing()}>
               <Row ax="end">
                 <we-button variant="ghost" onClick={cancelEdit}>
                   Cancel
                 </we-button>
               </Row>
-            </Show>
+            </Show> */}
           </Column>
         }
       >
         <ImageDisplay src={props.src} altText={props.altText} width={props.width} height={props.height} />
 
         <Show when={props.isSelected()}>
-          <Row class="we-image-block-actions" gap="100">
+          <Row
+            position="absolute"
+            top="5px"
+            right="5px"
+            p="200"
+            r="200"
+            gap="200"
+            border="1px solid var(--we-color-neutral-100)"
+            bg="neutral-0"
+          >
             <For each={WIDTH_PRESETS}>
               {(preset) => (
                 <we-button
+                  square
                   variant={activeWidth() === preset.value ? 'secondary' : 'ghost'}
                   onClick={(e: MouseEvent) => {
                     e.stopPropagation();
@@ -147,12 +159,12 @@ export function ImageInput(props: ImageInputProps) {
                 </we-button>
               )}
             </For>
-            <div class="we-image-block-actions-sep" />
-            <we-button variant="ghost" onClick={() => setEditing(true)}>
+            <we-divider orientation="vertical" my="300" mx="100" color="neutral-100" />
+            {/* <we-button square variant="ghost" onClick={() => setEditing(true)}>
               <we-icon name="pencil-simple" size="sm" />
-            </we-button>
-            <we-button variant="ghost" onClick={handleDelete}>
-              <we-icon name="x" size="sm" />
+            </we-button> */}
+            <we-button square variant="ghost" onClick={handleDelete}>
+              <we-icon name="x" size="xs" />
             </we-button>
           </Row>
         </Show>
@@ -164,8 +176,10 @@ export function ImageInput(props: ImageInputProps) {
           web-component sizing (we-tooltip). */}
       <Show when={rawUrl()}>
         <Portal>
-          <we-modal close={handleCropBack} p="500" r="300">
-            <we-text variant="heading">Crop Image</we-text>
+          <we-modal close={handleCropBack}>
+            <we-text fontSize="700" fontWeight="bold" textAlign="center">
+              Crop Image
+            </we-text>
             <ImageCrop
               src={rawUrl()!}
               fileName={pendingFile()?.name}
@@ -173,7 +187,7 @@ export function ImageInput(props: ImageInputProps) {
                 cropRef = ref;
               }}
             />
-            <Row ax="end" gap="200">
+            <Row ax="center" gap="300">
               <we-button variant="secondary" onClick={handleCropBack}>
                 Back
               </we-button>

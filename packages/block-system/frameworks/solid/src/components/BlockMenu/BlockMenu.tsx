@@ -11,10 +11,10 @@ const ul = { type: 'ul', label: 'Bullet List', icon: 'list-bullets', md: '-' };
 const ol = { type: 'ol', label: 'Number List', icon: 'list-numbers', md: '1.' };
 // const cl = { type: 'cl', label: 'Check List', icon: 'list-checks', md: '[]' };
 
-// Collection blocks
-const grid = { type: 'grid', label: 'Grid', icon: 'squares-four', md: '+' };
-const columns = { type: 'columns', label: 'Columns', icon: 'columns-plus-right', md: '||' };
-const rows = { type: 'rows', label: 'Rows', icon: 'rows-plus-bottom', md: '=' };
+// // Collection blocks
+// const grid = { type: 'grid', label: 'Grid', icon: 'squares-four', md: '+' };
+// const columns = { type: 'columns', label: 'Columns', icon: 'columns-plus-right', md: '||' };
+// const rows = { type: 'rows', label: 'Rows', icon: 'rows-plus-bottom', md: '=' };
 
 // Media blocks
 const url = { type: 'url', label: 'URL', icon: 'link', md: '!' };
@@ -23,17 +23,17 @@ const audio = { type: 'audio', label: 'Audio', icon: 'speaker-high', md: '!!!' }
 const video = { type: 'video', label: 'Video', icon: 'youtube-logo', md: '!!!!' };
 const file = { type: 'file', label: 'File', icon: 'paperclip', md: '!!!!!' };
 
-// Social blocks
-const event = { type: 'event', label: 'Event', icon: 'calendar', md: '' };
-const task = { type: 'task', label: 'Task', icon: 'check-square', md: '' };
-const poll = { type: 'poll', label: 'Poll', icon: 'chart-pie', md: '' };
-const game = { type: 'game', label: 'game', icon: 'game-controller', md: '' };
+// // Social blocks
+// const event = { type: 'event', label: 'Event', icon: 'calendar', md: '' };
+// const task = { type: 'task', label: 'Task', icon: 'check-square', md: '' };
+// const poll = { type: 'poll', label: 'Poll', icon: 'chart-pie', md: '' };
+// const game = { type: 'game', label: 'game', icon: 'game-controller', md: '' };
 
 const categories = [
   { title: 'Text', blocks: [p, h1, h2, h3, quote, ul, ol] },
-  { title: 'Collection', blocks: [grid, columns, rows] },
+  // { title: 'Collection', blocks: [grid, columns, rows] },
   { title: 'Media', blocks: [url, image, audio, video, file] },
-  { title: 'Social', blocks: [event, task, poll, game] },
+  // { title: 'Social', blocks: [event, task, poll, game] },
 ].map((category, index, arr) => ({
   ...category,
   offset: arr.slice(0, index).reduce((sum, cat) => sum + cat.blocks.length, 0),
