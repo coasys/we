@@ -150,7 +150,7 @@ export async function createBlocks(
         data_base64: base64,
         name: 'editor-state.json',
         file_type: 'application/json',
-      } as unknown as Record<string, unknown>;
+      } as any;
       await root.save(tx.batchId);
     }
 

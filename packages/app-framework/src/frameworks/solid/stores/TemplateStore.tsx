@@ -3,7 +3,7 @@ import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
-import { Template } from '@we/models';
+import { decodeFileAsJson, Template } from '@we/models';
 import type { StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
@@ -123,10 +123,11 @@ export function TemplateStoreProvider(props: ParentProps) {
       const savedTemplates: TemplateSchema[] = [];
 
       for (const template of allDbTemplates) {
-        if (!template.schema || typeof template.schema !== 'object') continue;
+        const decoded = decodeFileAsJson(template.schema);
+        if (!decoded || typeof decoded !== 'object') continue;
 
         // The schema field stores a StoredTemplate { schema, sections }
-        const stored = template.schema as unknown as StoredTemplate;
+        const stored = decoded as unknown as StoredTemplate;
         const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
         // Prefer the ID embedded in the schema (set during save) over deriving from name
         const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
@@ -388,7 +389,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     try {
       const existingTemplate = savedTemplateMap.get(templateId);
       if (existingTemplate) {
-        existingTemplate.schema = schemaBlob as unknown as Record<string, unknown>;
+        existingTemplate.schema = schemaBlob as any;
         existingTemplate.name = name;
         existingTemplate.version = (existingTemplate.version || 1) + 1;
         await existingTemplate.save();
@@ -397,7 +398,7 @@ export function TemplateStoreProvider(props: ParentProps) {
           name,
           origin: 'custom',
           version: 1,
-          schema: schemaBlob as unknown as Record<string, unknown>,
+          schema: schemaBlob as any,
         });
         savedTemplateMap.set(templateId, newTemplate);
 
@@ -447,7 +448,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     try {
       const existingTemplate = savedTemplateMap.get(templateId);
       if (existingTemplate) {
-        existingTemplate.schema = schemaBlob as unknown as Record<string, unknown>;
+        existingTemplate.schema = schemaBlob as any;
         existingTemplate.name = schemaToSave.meta.name;
         existingTemplate.version = (existingTemplate.version || 1) + 1;
         await existingTemplate.save();
@@ -456,7 +457,7 @@ export function TemplateStoreProvider(props: ParentProps) {
           name: schemaToSave.meta.name,
           origin: 'custom',
           version: 1,
-          schema: schemaBlob as unknown as Record<string, unknown>,
+          schema: schemaBlob as any,
         });
         savedTemplateMap.set(templateId, newTemplate);
 
@@ -523,7 +524,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     try {
       const existing = savedTemplateMap.get(templateId)!;
-      existing.schema = schemaBlob as unknown as Record<string, unknown>;
+      existing.schema = schemaBlob as any;
       existing.version = (existing.version || 1) + 1;
       await existing.save();
     } catch (error) {

@@ -1,7 +1,6 @@
 import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { FILE_STORAGE_LANGUAGE } from '../constants';
-import { decodeFileAsJson, decodeFileAsString } from '../utils/fileTransforms';
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'Theme' })
@@ -25,15 +24,13 @@ export class Theme extends WeNode {
   @Property({
     through: 'we://stylesheet',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: decodeFileAsString as any,
   })
-  css: string = '';
+  css: string | null = null;
 
   /** Structured token overrides (primaryHue, saturation, neutralSaturation, etc.) */
   @Property({
     through: 'we://token_overrides',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: decodeFileAsJson as any,
   })
-  overrides: Record<string, unknown> = {};
+  overrides: string | null = null;
 }

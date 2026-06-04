@@ -1,6 +1,7 @@
 import { ListItemNode, ListNode } from '@lexical/list';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import type { BlockRendererProps, SerializedBlockNode } from '@we/block-shared';
+import { decodeEditorState } from '@we/block-shared';
 import type { ColumnProps } from '@we/components/solid';
 import { Column } from '@we/components/solid';
 import {
@@ -21,8 +22,12 @@ function LoadPostForRenderer({ post }: { post?: SerializedBlockNode }) {
 
   createEffect(() => {
     if (!post || !editor) return;
+
+    const rootNode: SerializedBlockNode = typeof post === 'string' ? decodeEditorState(post) : post;
+    if (!rootNode) return;
+
     try {
-      const editorState = editor.parseEditorState({ root: post });
+      const editorState = editor.parseEditorState({ root: rootNode });
       editor.setEditorState(editorState);
     } catch (error) {
       console.error('Error loading post data:', error);

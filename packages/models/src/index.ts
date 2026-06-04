@@ -39,3 +39,4 @@ export {
 export type { FileData } from './utils/imageHelpers';
 export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';
 export { aggregateSignals } from './utils/signalAggregate';
+export { decodeFileAsString, decodeFileAsJson } from './utils/fileTransforms';

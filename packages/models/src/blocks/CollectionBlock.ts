@@ -1,7 +1,6 @@
 import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
 import { FILE_STORAGE_LANGUAGE } from '../constants';
-import { decodeFileAsJson } from '../utils/fileTransforms';
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'CollectionBlock' })
@@ -15,9 +14,8 @@ export class CollectionBlock extends WeNode {
   @Property({
     through: 'we://editor_state',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: decodeFileAsJson as any,
   })
-  editorState: Record<string, unknown> | null = null;
+  editorState: string | null = null;
 
   @Property({ through: 'we://type' })
   type: string = '';

@@ -2,6 +2,7 @@ import { ListItemNode, ListNode } from '@lexical/list';
 import { CHECK_LIST, HEADING, ORDERED_LIST, QUOTE, UNORDERED_LIST } from '@lexical/markdown';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import type { BlockComposerProps, SerializedBlockNode } from '@we/block-shared';
+import { decodeEditorState } from '@we/block-shared';
 import { registerCoreBlocks } from '@we/block-shared';
 import type { ColumnProps } from '@we/components/solid';
 import { Column, Row } from '@we/components/solid';
@@ -58,8 +59,11 @@ function LoadPostIntoEditor({ post }: { post?: SerializedBlockNode }) {
   createEffect(() => {
     if (!post || !editor) return;
 
+    const rootNode: SerializedBlockNode = typeof post === 'string' ? decodeEditorState(post) : post;
+    if (!rootNode) return;
+
     try {
-      const editorState = editor.parseEditorState({ root: post });
+      const editorState = editor.parseEditorState({ root: rootNode });
       editor.setEditorState(editorState);
     } catch (error) {
       console.error('Error loading post data:', error);
