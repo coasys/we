@@ -30,7 +30,7 @@
       "paths": {
         "projectRoot": "../flux/app",
         "dist": "../flux/app/dist",
-        "webUrl": "https://deploy-preview-600--fluxsocial-dev.netlify.app/",
+        "webUrl": "https://deploy-preview-603--fluxsocial-dev.netlify.app",
         "devServer": {
           "port": 3030,
           "host": "localhost"
