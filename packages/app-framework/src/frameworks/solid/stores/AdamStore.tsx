@@ -195,6 +195,9 @@ export function AdamStoreProvider(props: ParentProps) {
       if (allPerspectives().some((p) => p.uuid === handle.uuid)) return null;
       client.perspective.byUUID(handle.uuid).then((perspective) => {
         if (!perspective) return;
+        // Re-check after the async gap: createSpace's eager update may have run while
+        // we were waiting for byUUID to resolve, which would add a duplicate.
+        if (allPerspectives().some((p) => p.uuid === handle.uuid)) return;
         setAllPerspectives((prev) => [...prev, perspective]);
         reorderPerspectives([...getPerspectiveOrder(), perspective.uuid]).catch(console.error);
       });
@@ -223,7 +226,10 @@ export function AdamStoreProvider(props: ParentProps) {
   async function reorderPerspectives(newOrder: string[]): Promise<void> {
     const settings = agentSettings();
     if (!settings) return;
-    settings.perspectiveOrder = JSON.stringify(newOrder);
+    // Deduplicate while preserving order — guards against any remaining race between
+    // the eager update in createSpace and the addPerspectiveAddedListener subscription.
+    const deduped = [...new Set(newOrder)];
+    settings.perspectiveOrder = JSON.stringify(deduped);
     await settings.save();
     setAgentSettings(settings);
   }
@@ -853,7 +859,14 @@ export function AdamStoreProvider(props: ParentProps) {
         );
       }
 
-      // Update sidebar and navigate
+      // Update sidebar and navigate.
+      // Eagerly add to allPerspectives for web (where the addPerspectiveAddedListener
+      // subscription may not fire). Guarded so we don't double-add on desktop when the
+      // subscription has already resolved its byUUID fetch and added the perspective first.
+      if (!allPerspectives().some((p) => p.uuid === spacePerspective.uuid)) {
+        setAllPerspectives((prev) => [...prev, spacePerspective]);
+        await reorderPerspectives([...getPerspectiveOrder(), spacePerspective.uuid]);
+      }
       setMySpaces((prev) => [...prev, spaceModel]);
       // await setCurrentPerspective(spacePerspective.uuid);
       // routeStore.navigate(`/space/${spaceModel.uuid}/globe`);
