@@ -3,26 +3,61 @@ import type { TemplateSchema } from '@we/schema-shared';
 // Rainbow spectrum: Violet (centre) → Indigo → Blue → Green → Yellow → Orange → Red
 // Outer ring runs clockwise from top so adjacent colours are adjacent in the spectrum.
 
+// const FEATURES = [
+//   {
+//     name: 'Coordinator', // 'Regulator', // 'Coordination Centre',
+//     icon: 'brain',
+//     color: '#983eff',
+//     description: 'Stores information, makes decisions, and coordinates the system. Nucleus → Brain → Government.',
+//   },
+//   {
+//     name: 'Circulator', // 'Material Transport',
+//     icon: 'drop',
+//     color: '#ff3e68', // #3eff4e',
+//     description:
+//       'Moves resources, nutrients, fuel, and waste through the system. Cytoplasm → Circulatory system → Roads & supply chains.',
+//   },
+//   {
+//     name: 'Transmitter', // 'Information Transport',
+//     icon: 'pulse',
+//     color: '#3e71ff', // #3ee2ff',
+//     description:
+//       'Moves signals and coordination information throughout the system. Signal transduction → Nervous system → Internet.',
+//   },
+//   {
+//     name: 'Membrane', // 'Boundary',
+//     icon: 'wall',
+//     color: '#3ee2ff', // '#3e71ff',
+//     description: 'Defines self vs. outside and controls what enters and exits. Cell membrane → Skin → Border.',
+//   },
+
+//   {
+//     name: 'Guardian', // 'Immune System', 'Senitnel
+//     icon: 'shield-checkered',
+//     color: '#3eff4e', // '#ff3e68',
+//     description:
+//       'Protects the system, removes threats, and clears waste. Lysosomes → Immune system → Military & sanitation.',
+//   },
+//   {
+//     name: 'Digestor', // 'Digestion',
+//     icon: 'cookie',
+//     color: '#fff533',
+//     description: 'Breaks down inputs and generates usable energy. Mitochondria → Digestive system → Power plants.',
+//   },
+//   {
+//     name: 'Assembler', // 'Builder', // 'Assembler', //  'Assembly',
+//     icon: 'hammer',
+//     color: '#ffb23e',
+//     description: "Builds, repairs, and maintains the system's structures. Ribosomes → Organs → Factories.",
+//   },
+// ];
+
 const FEATURES = [
   {
     name: 'Coordinator', // 'Regulator', // 'Coordination Centre',
     icon: 'brain',
     color: '#983eff',
     description: 'Stores information, makes decisions, and coordinates the system. Nucleus → Brain → Government.',
-  },
-  {
-    name: 'Circulator', // 'Material Transport',
-    icon: 'drop',
-    color: '#ff3e68', // #3eff4e',
-    description:
-      'Moves resources, nutrients, fuel, and waste through the system. Cytoplasm → Circulatory system → Roads & supply chains.',
-  },
-  {
-    name: 'Transmitter', // 'Information Transport',
-    icon: 'pulse',
-    color: '#3e71ff', // #3ee2ff',
-    description:
-      'Moves signals and coordination information throughout the system. Signal transduction → Nervous system → Internet.',
   },
   {
     name: 'Membrane', // 'Boundary',
@@ -32,12 +67,20 @@ const FEATURES = [
   },
 
   {
-    name: 'Guardian', // 'Immune System', 'Senitnel
-    icon: 'shield-checkered',
-    color: '#3eff4e', // '#ff3e68',
+    name: 'Transmitter', // 'Information Transport',
+    icon: 'pulse',
+    color: '#3e71ff', // #3ee2ff',
     description:
-      'Protects the system, removes threats, and clears waste. Lysosomes → Immune system → Military & sanitation.',
+      'Moves signals and coordination information throughout the system. Signal transduction → Nervous system → Internet.',
   },
+  {
+    name: 'Circulator', // 'Material Transport',
+    icon: 'drop',
+    color: '#ff3e68', // #3eff4e',
+    description:
+      'Moves resources, nutrients, fuel, and waste through the system. Cytoplasm → Circulatory system → Roads & supply chains.',
+  },
+
   {
     name: 'Digestor', // 'Digestion',
     icon: 'cookie',
@@ -50,14 +93,13 @@ const FEATURES = [
     color: '#ffb23e',
     description: "Builds, repairs, and maintains the system's structures. Ribosomes → Organs → Factories.",
   },
-
-  // {
-  //   name: 'Circulator', // 'Material Transport',
-  //   icon: 'package',
-  //   color: '#ff3e68', // #3eff4e',
-  //   description:
-  //     'Moves resources, nutrients, fuel, and waste through the system. Cytoplasm → Circulatory system → Roads & supply chains.',
-  // },
+  {
+    name: 'Guardian', // 'Immune System', 'Senitnel
+    icon: 'shield-checkered',
+    color: '#3eff4e', // '#ff3e68',
+    description:
+      'Protects the system, removes threats, and clears waste. Lysosomes → Immune system → Military & sanitation.',
+  },
 ];
 
 export const livingSystemsTemplate: TemplateSchema = {
@@ -151,7 +193,7 @@ export const livingSystemsTemplate: TemplateSchema = {
                 border: '1px solid var(--we-color-neutral-200)',
               },
               children: [
-                { type: 'we-icon', props: { name: feature.icon, size: '32px', gradient: 'primary' } },
+                { type: 'we-icon', props: { name: feature.icon, size: '32px', color: feature.color } },
                 {
                   type: 'Column',
                   props: { gap: '100' },
