@@ -12,7 +12,6 @@ interface ImageInputProps {
   height: number | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 const WIDTH_PRESETS = [
@@ -93,13 +92,12 @@ export function ImageInput(props: ImageInputProps) {
     }
   }
 
-  function handleDelete(e: MouseEvent) {
-    e.stopPropagation();
+  function handleDelete() {
     props.onChange('src', undefined);
   }
 
   return (
-    <Column onClick={props.onSelect} position="relative">
+    <Column position="relative">
       <Show
         when={!showInput()}
         fallback={
@@ -150,10 +148,7 @@ export function ImageInput(props: ImageInputProps) {
                 <we-button
                   square
                   variant={activeWidth() === preset.value ? 'secondary' : 'ghost'}
-                  onClick={(e: MouseEvent) => {
-                    e.stopPropagation();
-                    props.onChange('width', preset.value);
-                  }}
+                  onClick={() => props.onChange('width', preset.value)}
                 >
                   {preset.label}
                 </we-button>

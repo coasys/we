@@ -1,9 +1,16 @@
 import { getBlockRegistration } from '@we/block-shared';
 import type { LexicalEditor, LexicalNode, NodeKey, SerializedLexicalNode } from 'lexical';
-import { $getNodeByKey, DecoratorNode } from 'lexical';
+import {
+  $getNodeByKey,
+  $getSelection,
+  $isNodeSelection,
+  COMMAND_PRIORITY_LOW,
+  DecoratorNode,
+  SELECTION_CHANGE_COMMAND,
+} from 'lexical';
 import { useLexicalComposerContext, useLexicalNodeSelection } from 'lexical-solid';
 import type { Component, JSX } from 'solid-js';
-import { createMemo } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 
 import { useDisplayOverride } from '../components/BlockDisplayOverrides';
 
@@ -34,7 +41,9 @@ export interface BlockNodeClass {
  */
 function BlockBridge(props: { nodeKey: string; nodeProps: Record<string, unknown>; nodeType: string }) {
   const [editor] = useLexicalComposerContext();
-  const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(props.nodeKey);
+  const [lexicalSelected, setLexicalSelected] = useLexicalNodeSelection(props.nodeKey);
+  const [localActive, setLocalActive] = createSignal(false);
+  const isSelected = () => lexicalSelected() || localActive();
 
   const reg = createMemo(() => getBlockRegistration(props.nodeType));
 
@@ -47,22 +56,55 @@ function BlockBridge(props: { nodeKey: string; nodeProps: Record<string, unknown
     });
   }
 
-  function onSelect(e: MouseEvent) {
-    if (isSelected()) clearSelection();
-    else setSelected(true);
-    e.stopPropagation();
-  }
+  // Clear local active when Lexical selection moves away and focus is outside this block.
+  // Read Lexical state directly instead of the SolidJS signal — the signal hasn't propagated
+  // yet when SELECTION_CHANGE_COMMAND fires synchronously inside Lexical's update cycle.
+  createEffect(() => {
+    const unregister = editor.registerCommand(
+      SELECTION_CHANGE_COMMAND,
+      () => {
+        if (!localActive()) return false;
+        const isNodeSelected = editor.getEditorState().read(() => {
+          const sel = $getSelection();
+          return $isNodeSelection(sel) && sel.has(props.nodeKey);
+        });
+        if (!isNodeSelected) {
+          setTimeout(() => {
+            const el = editor.getElementByKey(props.nodeKey);
+            const hasFocus = el?.contains(document.activeElement) ?? false;
+            if (!hasFocus) {
+              setLocalActive(false);
+            }
+          }, 0);
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+    onCleanup(unregister);
+  });
 
   return (
-    <BlockBridgeInner
-      editor={editor}
-      reg={reg()}
-      nodeProps={props.nodeProps}
-      nodeType={props.nodeType}
-      isSelected={isSelected}
-      onChange={onChange}
-      onSelect={onSelect}
-    />
+    <div
+      onMouseDown={(e: MouseEvent) => {
+        e.stopPropagation();
+        setLocalActive(true);
+        setLexicalSelected(true);
+      }}
+      onClick={(e: MouseEvent) => {
+        e.stopPropagation();
+      }}
+      style={{ display: 'contents' }}
+    >
+      <BlockBridgeInner
+        editor={editor}
+        reg={reg()}
+        nodeProps={props.nodeProps}
+        nodeType={props.nodeType}
+        isSelected={isSelected}
+        onChange={onChange}
+      />
+    </div>
   );
 }
 
@@ -73,7 +115,6 @@ function BlockBridgeInner(props: {
   nodeType: string;
   isSelected: () => boolean;
   onChange: (property: string, value: unknown) => void;
-  onSelect: (e: MouseEvent) => void;
 }) {
   const readOnly = () => !props.editor.isEditable();
   const DisplayOverride = useDisplayOverride(props.nodeType);
@@ -87,12 +128,7 @@ function BlockBridgeInner(props: {
           <props.reg.display {...props.nodeProps} />
         ) : null
       ) : props.reg?.input ? (
-        <props.reg.input
-          {...props.nodeProps}
-          onChange={props.onChange}
-          isSelected={props.isSelected}
-          onSelect={props.onSelect}
-        />
+        <props.reg.input {...props.nodeProps} onChange={props.onChange} isSelected={props.isSelected} />
       ) : null}
     </>
   );
@@ -133,6 +169,13 @@ export function createBlockNodeClass(
     createDOM(): HTMLElement {
       const div = document.createElement('div');
       div.className = 'we-block';
+      // Mark the decorator wrapper non-editable so it becomes its own editing host
+      // boundary. Without this, interactive content (e.g. we-input's shadow <input>)
+      // lives inside Lexical's contenteditable=true region, which owns the document
+      // selection — so a first click delegates focus but never places a caret inside
+      // the input (keydown fires, but no beforeinput/insertText). contentEditable=false
+      // lets the browser treat the input as a normal, independently-selectable field.
+      div.contentEditable = 'false';
       return div;
     }
 

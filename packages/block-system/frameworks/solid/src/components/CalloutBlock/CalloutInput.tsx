@@ -9,7 +9,6 @@ interface CalloutInputProps {
   icon: string | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 const VARIANT_OPTIONS = [
@@ -32,7 +31,7 @@ export function CalloutInput(props: CalloutInputProps) {
   }
 
   return (
-    <Column class="we-callout-block-input" onClick={props.onSelect} gap="200">
+    <Column class="we-callout-block-input" gap="200">
       <we-select value={variant()} options={VARIANT_OPTIONS} onChange={handleVariantChange} size="xs" />
       <CalloutDisplay text={props.text} variant={variant()} icon={props.icon} />
       <we-input type="text" value={props.text || ''} onInput={handleTextInput} placeholder="Callout text..." />

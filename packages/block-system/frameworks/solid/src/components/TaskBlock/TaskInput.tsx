@@ -12,7 +12,6 @@ interface TaskInputProps {
   assignee: string | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 const STATUS_OPTIONS = [
@@ -36,8 +35,7 @@ export function TaskInput(props: TaskInputProps) {
   const [dueDate, setDueDate] = createSignal('');
   const [assignee, setAssignee] = createSignal('');
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
+  function openModal() {
     setTitle(props.title || '');
     setDescription(props.description || '');
     setStatus(props.status || 'todo');
@@ -65,7 +63,7 @@ export function TaskInput(props: TaskInputProps) {
   }
 
   return (
-    <Column class="we-task-block" onClick={props.onSelect} position="relative">
+    <Column class="we-task-block" position="relative">
       <Show
         when={props.title}
         fallback={

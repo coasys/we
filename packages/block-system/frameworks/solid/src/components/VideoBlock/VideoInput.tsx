@@ -10,7 +10,6 @@ interface VideoInputProps {
   provider: string | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 export function VideoInput(props: VideoInputProps) {
@@ -18,8 +17,7 @@ export function VideoInput(props: VideoInputProps) {
   const [url, setUrl] = createSignal('');
   const [title, setTitle] = createSignal('');
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
+  function openModal() {
     setUrl(props.url || '');
     setTitle(props.title || '');
     setShowModal(true);
@@ -39,7 +37,7 @@ export function VideoInput(props: VideoInputProps) {
   }
 
   return (
-    <Column class="we-video-block" onClick={props.onSelect} position="relative">
+    <Column class="we-video-block" position="relative">
       <Show
         when={props.url}
         fallback={

@@ -11,7 +11,6 @@ interface AudioInputProps {
   albumArt: string | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 export function AudioInput(props: AudioInputProps) {
@@ -20,8 +19,7 @@ export function AudioInput(props: AudioInputProps) {
   const [title, setTitle] = createSignal('');
   const [artist, setArtist] = createSignal('');
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
+  function openModal() {
     setUrl(props.audioUrl || '');
     setTitle(props.title || '');
     setArtist(props.artist || '');
@@ -43,7 +41,7 @@ export function AudioInput(props: AudioInputProps) {
   }
 
   return (
-    <Column class="we-audio-block" onClick={props.onSelect} position="relative">
+    <Column class="we-audio-block" position="relative">
       <Show
         when={props.audioUrl}
         fallback={

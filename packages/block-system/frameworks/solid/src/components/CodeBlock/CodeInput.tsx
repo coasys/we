@@ -7,7 +7,6 @@ interface CodeInputProps {
   title: string | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 const LANGUAGE_OPTIONS = [
@@ -40,7 +39,7 @@ export function CodeInput(props: CodeInputProps) {
   }
 
   return (
-    <Column class="we-code-block" onClick={props.onSelect} gap="0">
+    <Column class="we-code-block" gap="0">
       <Row ay="center" p="200" bg="neutral-100" r="300">
         <we-select value={language()} options={LANGUAGE_OPTIONS} onChange={handleLanguageChange} size="xs" />
       </Row>

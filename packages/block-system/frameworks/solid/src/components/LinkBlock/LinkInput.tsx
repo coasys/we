@@ -10,7 +10,6 @@ interface LinkInputProps {
   thumbnail: string | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 export function LinkInput(props: LinkInputProps) {
@@ -19,8 +18,7 @@ export function LinkInput(props: LinkInputProps) {
   const [title, setTitle] = createSignal('');
   const [description, setDescription] = createSignal('');
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
+  function openModal() {
     setUrl(props.url || '');
     setTitle(props.title || '');
     setDescription(props.description || '');
@@ -42,7 +40,7 @@ export function LinkInput(props: LinkInputProps) {
   }
 
   return (
-    <Column class="we-link-block" onClick={props.onSelect} position="relative">
+    <Column class="we-link-block" position="relative">
       <Show
         when={props.url}
         fallback={

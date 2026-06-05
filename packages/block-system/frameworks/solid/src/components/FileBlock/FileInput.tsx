@@ -10,7 +10,6 @@ interface FileInputProps {
   size: number | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 export function FileInput(props: FileInputProps) {
@@ -18,8 +17,7 @@ export function FileInput(props: FileInputProps) {
   const [url, setUrl] = createSignal('');
   const [name, setName] = createSignal('');
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
+  function openModal() {
     setUrl(props.url || '');
     setName(props.name || '');
     setShowModal(true);
@@ -39,7 +37,7 @@ export function FileInput(props: FileInputProps) {
   }
 
   return (
-    <Column class="we-file-block" onClick={props.onSelect} position="relative">
+    <Column class="we-file-block" position="relative">
       <Show
         when={props.url}
         fallback={

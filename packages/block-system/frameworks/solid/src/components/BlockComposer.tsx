@@ -22,6 +22,7 @@ import { registerCoreBlockComponents } from '../core-block-components';
 import { blockNodeClasses } from '../nodes';
 import BlockHandlesPlugin from '../plugins/BlockHandlesPlugin';
 import BlockInsertPlugin from '../plugins/BlockInsertPlugin';
+import BlockKeyboardPlugin from '../plugins/BlockKeyboardPlugin';
 import IndentationPlugin from '../plugins/IndentationPlugin';
 import PlaceholdersPlugin from '../plugins/PlaceholdersPlugin';
 import SlashCommandPlugin from '../plugins/SlashCommandPlugin';
@@ -159,6 +160,7 @@ export function BlockComposer({ post, onSave, onReady, width = '100%', ...rest }
         <SlashCommandPlugin />
         <IndentationPlugin />
         <BlockInsertPlugin />
+        <BlockKeyboardPlugin />
       </LexicalComposer>
     </Column>
   );
