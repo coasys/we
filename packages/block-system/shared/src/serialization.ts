@@ -173,9 +173,12 @@ export async function createBlocks(
   perspective: PerspectiveProxy,
   node: SerializedBlockNode,
 ): Promise<Ad4mModel | undefined> {
-  // Pre-upload any FileData values on resolveLanguage properties so that:
-  // 1. The editorState blob stores expression addresses (CIDs), not raw base64
-  // 2. AD4M model create() receives strings it can store without re-uploading
+  // Pre-upload FileData values to get expression addresses for the editorState
+  // blob only.  The block tree itself is persisted from the original node so
+  // that FileData objects hit the deferred setProperty → createExpression →
+  // executeAction path, which stores clean URI references in the triple graph.
+  // (Passing pre-uploaded strings through initialValues → createSubject would
+  // JSON-encode them with quote characters, breaking resolveLanguage resolution.)
   const patchedNode = await preUploadFileAssets(perspective, node);
 
   return Ad4mModel.transaction(perspective, async (tx) => {
@@ -237,11 +240,11 @@ export async function createBlocks(
       return block;
     }
 
-    const root = await persist(patchedNode);
+    const root = await persist(node);
 
     // Store the full Lexical serialized JSON as a file-storage blob on the
-    // root CollectionBlock for lossless roundtrip. Now uses patchedNode which
-    // has expression addresses (small CIDs) instead of raw FileData objects.
+    // root CollectionBlock for lossless roundtrip. Uses patchedNode (with CIDs
+    // instead of raw FileData objects) so the blob stays compact.
     if (root && 'editorState' in root) {
       const jsonStr = JSON.stringify(patchedNode);
       const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
