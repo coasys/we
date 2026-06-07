@@ -53,12 +53,7 @@ export function VideoInput(props: VideoInputProps) {
       <Show
         when={props.url}
         fallback={
-          <BlockPlaceholder
-            icon="youtube-logo"
-            label="Add video"
-            hint="Click to add a URL"
-            onClick={openModal}
-          />
+          <BlockPlaceholder icon="youtube-logo" label="Add video" hint="Click to add a URL" onClick={openModal} />
         }
       >
         <VideoDisplay url={props.url} title={props.title} thumbnail={props.thumbnail} provider={props.provider} />
@@ -117,5 +112,3 @@ export function VideoInput(props: VideoInputProps) {
     </Column>
   );
 }
-
-

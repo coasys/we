@@ -108,4 +108,3 @@ export function FileInput(props: FileInputProps) {
     </Column>
   );
 }
-

@@ -24,18 +24,10 @@ export class Space extends WeNode {
   @Property({ through: 'we://visibility' })
   visibility: string = '';
 
-  @Property({
-    through: 'we://image',
-    resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: fileToDataUri,
-  })
+  @Property({ through: 'we://image', resolveLanguage: FILE_STORAGE_LANGUAGE, transform: fileToDataUri })
   avatar?: string;
 
-  @Property({
-    through: 'we://thumbnail',
-    resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: fileToDataUri,
-  })
+  @Property({ through: 'we://thumbnail', resolveLanguage: FILE_STORAGE_LANGUAGE, transform: fileToDataUri })
   coverImage?: string;
 
   @HasOne(() => LocationBlock, { through: 'we://location' })
