@@ -1,5 +1,6 @@
-import { Flag, Model, Property } from '@coasys/ad4m';
+import { fileToDataUri, Flag, Model, Property } from '@coasys/ad4m';
 
+import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'AudioBlock' })
@@ -13,7 +14,12 @@ export class AudioBlock extends WeNode {
   @Property({ through: 'we://artist' })
   artist: string = '';
 
-  @Property({ through: 'we://audio_url', required: true })
+  @Property({
+    through: 'we://audio_url',
+    required: true,
+    resolveLanguage: FILE_STORAGE_LANGUAGE,
+    transform: fileToDataUri,
+  })
   audioUrl: string = '';
 
   @Property({ through: 'we://duration' })
