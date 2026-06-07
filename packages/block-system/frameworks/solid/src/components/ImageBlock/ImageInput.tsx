@@ -1,12 +1,15 @@
 import type { ImageCropRef } from '@we/components/solid';
 import { Column, ImageCrop, Row } from '@we/components/solid';
+import type { FileData } from '@we/models';
+import { compressImageToFileData } from '@we/models';
 import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
+import { BlockPlaceholder } from '../BlockPlaceholder';
 import { ImageDisplay } from './ImageDisplay';
 
 interface ImageInputProps {
-  src: string | undefined;
+  src: string | FileData | undefined;
   altText: string | undefined;
   width: number | undefined;
   height: number | undefined;
@@ -23,56 +26,62 @@ const WIDTH_PRESETS = [
 /**
  * Input component for ImageBlock.
  * Pure SolidJS — no Lexical imports. Receives onChange from the factory.
- * Composes ImageDisplay when an image is loaded, with edit affordances overlaid.
  *
- * UX: upload and URL input are shown simultaneously — no mode toggle needed.
- * Width is stored as a percentage (33 / 66 / 100) and chosen via S/M/L presets
- * that appear in the selection toolbar. Cropping is the one modal exception
- * because the crop tool requires a minimum 520px canvas.
+ * Empty state: BlockPlaceholder (dashed zone, icon, label).
+ *   - Drop a file directly → goes straight to crop modal.
+ *   - Click → opens the add-image modal (portalled outside the editor so
+ *     shadow-DOM inputs work on first click).
+ *
+ * Add-image modal: we-file-upload + URL field + optional alt text.
+ * Crop modal: portalled, for image positioning after file selection.
+ *
+ * Loaded state: ImageDisplay with a selection toolbar (width presets + delete).
  */
 export function ImageInput(props: ImageInputProps) {
-  const [editing, setEditing] = createSignal(false);
+  const [showAddModal, setShowAddModal] = createSignal(false);
   const [imageUrl, setImageUrl] = createSignal('');
+  const [altText, setAltText] = createSignal('');
   const [rawUrl, setRawUrl] = createSignal<string | null>(null);
   const [pendingFile, setPendingFile] = createSignal<File | null>(null);
   let cropRef: ImageCropRef | undefined;
 
-  const showInput = () => !props.src || editing();
   const activeWidth = () => props.width ?? 33;
 
-  // function cancelEdit() {
-  //   setEditing(false);
-  //   setImageUrl('');
-  //   const url = rawUrl();
-  //   if (url) URL.revokeObjectURL(url);
-  //   setRawUrl(null);
-  //   setPendingFile(null);
-  //   cropRef = undefined;
-  // }
+  // Derive a displayable URL from src (handles both string and FileData).
+  const displaySrc = () => {
+    const s = props.src;
+    if (!s) return undefined;
+    if (typeof s === 'string') return s;
+    return `data:${s.file_type};base64,${s.data_base64}`;
+  };
 
-  function handleFileChange(e: Event) {
-    const file = (e as CustomEvent).detail as File | null;
-    if (!file) return;
+  // Shared: receive a File and move to the crop step.
+  function receiveFile(file: File) {
     const old = rawUrl();
     if (old) URL.revokeObjectURL(old);
     setPendingFile(file);
     setRawUrl(URL.createObjectURL(file));
   }
 
+  // File selected via we-file-upload inside the add modal.
+  function handleModalFileChange(e: Event) {
+    const file = (e as CustomEvent).detail as File | null;
+    if (!file) return;
+    setShowAddModal(false);
+    receiveFile(file);
+  }
+
   async function handleCropSave() {
     if (!cropRef) return;
     const file = await cropRef.getCroppedFile();
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        props.onChange('src', reader.result);
-        setRawUrl(null);
-        setPendingFile(null);
-        setEditing(false);
-        cropRef = undefined;
-      }
-    };
-    reader.readAsDataURL(file);
+    const fileData = await compressImageToFileData(file, 'image-block');
+    props.onChange('src', fileData);
+    if (altText().trim()) props.onChange('altText', altText().trim());
+    setRawUrl(null);
+    setPendingFile(null);
+    setAltText('');
+    cropRef = undefined;
+    setShowAddModal(false);
   }
 
   function handleCropBack() {
@@ -87,8 +96,10 @@ export function ImageInput(props: ImageInputProps) {
     const url = imageUrl().trim();
     if (url) {
       props.onChange('src', url);
+      if (altText().trim()) props.onChange('altText', altText().trim());
       setImageUrl('');
-      setEditing(false);
+      setAltText('');
+      setShowAddModal(false);
     }
   }
 
@@ -99,39 +110,21 @@ export function ImageInput(props: ImageInputProps) {
   return (
     <Column position="relative">
       <Show
-        when={!showInput()}
+        when={props.src}
         fallback={
-          <Column ax="center" bg="neutral-25" p="400" gap="400">
-            <we-file-upload accept="image/*" on:change={handleFileChange} p="500">
-              <we-icon name="image" color="neutral-500" size="lg" />
-              <we-text color="neutral-500" fontSize="500">
-                Drop an image or click to browse
-              </we-text>
-            </we-file-upload>
-
-            <Row gap="300" ax="center">
-              <we-input
-                type="text"
-                value={imageUrl()}
-                on:input={(e: CustomEvent) => setImageUrl(e.detail)}
-                placeholder="Paste image URL…"
-                width="100%"
-              />
-              <we-button onClick={handleUrlSubmit}>Add</we-button>
-            </Row>
-
-            {/* <Show when={editing()}>
-              <Row ax="end">
-                <we-button variant="ghost" onClick={cancelEdit}>
-                  Cancel
-                </we-button>
-              </Row>
-            </Show> */}
-          </Column>
+          <BlockPlaceholder
+            icon="image"
+            label="Add an image"
+            hint="Drop here or click for options"
+            accept="image/*"
+            onFileDrop={receiveFile}
+            onClick={() => setShowAddModal(true)}
+          />
         }
       >
-        <ImageDisplay src={props.src} altText={props.altText} width={props.width} height={props.height} />
+        <ImageDisplay src={displaySrc()} altText={props.altText} width={props.width} height={props.height} />
 
+        {/* Selection toolbar */}
         <Show when={props.isSelected()}>
           <Row
             position="absolute"
@@ -155,9 +148,6 @@ export function ImageInput(props: ImageInputProps) {
               )}
             </For>
             <we-divider orientation="vertical" my="300" mx="100" color="neutral-100" />
-            {/* <we-button square variant="ghost" onClick={() => setEditing(true)}>
-              <we-icon name="pencil-simple" size="sm" />
-            </we-button> */}
             <we-button square variant="ghost" onClick={handleDelete}>
               <we-icon name="x" size="xs" />
             </we-button>
@@ -165,10 +155,46 @@ export function ImageInput(props: ImageInputProps) {
         </Show>
       </Show>
 
-      {/* Crop modal — portalled to document.body to escape the Lexical contenteditable
-          context, which causes browsers to miscalculate containing blocks for
-          shadow-DOM absolute children ([part="close-button-wrapper"]) and light-DOM
-          web-component sizing (we-tooltip). */}
+      {/* Add-image modal — portalled to escape the Lexical contenteditable context. */}
+      <Show when={showAddModal()}>
+        <Portal>
+          <we-modal close={() => setShowAddModal(false)}>
+            <we-text fontWeight="bold" fontSize="600" textAlign="center">
+              Add Image
+            </we-text>
+
+            <we-file-upload accept="image/*" on:change={handleModalFileChange} width="100%">
+              <we-icon name="image" color="neutral-500" size="lg" />
+              <we-text color="neutral-500" fontSize="400">
+                Drop an image or click to browse
+              </we-text>
+            </we-file-upload>
+
+            <Row ay="center" gap="200">
+              <we-input
+                type="text"
+                value={imageUrl()}
+                on:input={(e: CustomEvent) => setImageUrl(e.detail)}
+                placeholder="Or paste an image URL…"
+                flex="1"
+              />
+              <we-button onClick={handleUrlSubmit} disabled={!imageUrl().trim()}>
+                Add
+              </we-button>
+            </Row>
+
+            <we-input
+              type="text"
+              value={altText()}
+              on:input={(e: CustomEvent) => setAltText(e.detail)}
+              placeholder="Alt text (optional)"
+              width="100%"
+            />
+          </we-modal>
+        </Portal>
+      </Show>
+
+      {/* Crop modal — portalled to escape the Lexical contenteditable context. */}
       <Show when={rawUrl()}>
         <Portal>
           <we-modal close={handleCropBack}>

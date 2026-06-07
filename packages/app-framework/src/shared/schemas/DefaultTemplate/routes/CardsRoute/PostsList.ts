@@ -7,7 +7,7 @@ export const postsList: SchemaNode = {
     sortBy: { type: 'string', initial: 'DESC' },
   },
   children: [
-    // ── Header: sort controls ──────────────────────────────────────────────
+    // Header: sort controls
     {
       type: 'Row',
       props: { ay: 'center', gap: '300', pb: '200' },
@@ -27,7 +27,7 @@ export const postsList: SchemaNode = {
       ],
     },
 
-    // ── Post list
+    // Post list
     {
       type: '$each',
       props: {

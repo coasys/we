@@ -4,6 +4,7 @@ export const createPostModal = {
     close: { $setLocal: 'createPostOpen', value: false },
     maxWidth: '900px',
     width: '100%',
+    ax: 'center',
   },
   children: [
     { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create Post'] },
