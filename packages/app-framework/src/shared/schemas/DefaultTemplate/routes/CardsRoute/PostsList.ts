@@ -51,7 +51,7 @@ export const postsList: SchemaNode = {
               children: [
                 {
                   type: 'BlockRenderer',
-                  props: { post: '$post.editorState' },
+                  props: { editorState: '$post.editorState', perspective: { $store: 'adamStore.currentPerspective' } },
                 },
               ],
             },
