@@ -33,14 +33,18 @@ export function VideoInput(props: VideoInputProps) {
     setShowModal(true);
   }
 
-  function handleSubmit() {
-    const trimmed = url().trim();
-    if (!trimmed) return;
-    props.onChange('url', trimmed);
-    if (title().trim()) props.onChange('title', title().trim());
+  function closeModal() {
     setUrl('');
     setTitle('');
     setShowModal(false);
+  }
+
+  function handleSave() {
+    const trimmedUrl = url().trim();
+    if (!trimmedUrl) return;
+    props.onChange('url', trimmedUrl);
+    props.onChange('title', title().trim() || undefined);
+    closeModal();
   }
 
   function handleDelete() {
@@ -81,23 +85,18 @@ export function VideoInput(props: VideoInputProps) {
       {/* Add-video modal — portalled to escape the Lexical contenteditable context. */}
       <Show when={showModal()}>
         <Portal>
-          <we-modal close={() => setShowModal(false)}>
+          <we-modal close={closeModal} ax="center" minWidth="400px">
             <we-text fontWeight="bold" fontSize="600" textAlign="center">
               Add Video
             </we-text>
 
-            <Row ay="center" gap="200">
-              <we-input
-                type="text"
-                value={url()}
-                on:input={(e: CustomEvent) => setUrl(e.detail)}
-                placeholder="YouTube, Vimeo, or direct video URL…"
-                flex="1"
-              />
-              <we-button onClick={handleSubmit} disabled={!url().trim()}>
-                Add
-              </we-button>
-            </Row>
+            <we-input
+              type="text"
+              value={url()}
+              on:input={(e: CustomEvent) => setUrl(e.detail)}
+              placeholder="YouTube, Vimeo, or direct video URL…"
+              width="100%"
+            />
 
             <we-input
               type="text"
@@ -106,6 +105,15 @@ export function VideoInput(props: VideoInputProps) {
               placeholder="Title (optional)"
               width="100%"
             />
+
+            <Row gap="200" ax="center" width="100%">
+              <we-button variant="ghost" onClick={closeModal}>
+                Cancel
+              </we-button>
+              <we-button variant="primary" onClick={handleSave} disabled={!url().trim()}>
+                Save
+              </we-button>
+            </Row>
           </we-modal>
         </Portal>
       </Show>

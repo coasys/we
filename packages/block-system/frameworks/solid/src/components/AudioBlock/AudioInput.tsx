@@ -146,7 +146,7 @@ export function AudioInput(props: AudioInputProps) {
       {/* Add-audio modal — portalled to escape the Lexical contenteditable context. */}
       <Show when={showModal()}>
         <Portal>
-          <we-modal close={closeModal} ax="center">
+          <we-modal close={closeModal} ax="center" minWidth="400px">
             <we-text fontWeight="bold" fontSize="600" textAlign="center">
               Add Audio
             </we-text>
