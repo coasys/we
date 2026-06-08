@@ -1,12 +1,14 @@
 import { $isListItemNode, $isListNode, ListNode } from '@lexical/list';
 import { mergeRegister } from '@lexical/utils';
 import {
+  $createNodeSelection,
   $getRoot,
   $getSelection,
   $isDecoratorNode,
   $isElementNode,
   $isNodeSelection,
   $isRangeSelection,
+  $setSelection,
   COMMAND_PRIORITY_EDITOR,
   COMMAND_PRIORITY_LOW,
   LexicalNode,
@@ -144,7 +146,19 @@ function BlockHandle({ nodeKey, nodeData }: { nodeKey: string; nodeData: NodeDat
         <button class="we-block-handle-settings-button" onClick={() => setShowMenu(true)}>
           <we-icon name="cube" size="sm" color="neutral-600" />
         </button>
-        <div class="we-block-handle-dragger" draggable={true} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+        <div
+          class="we-block-handle-dragger"
+          draggable={true}
+          onMouseDown={() => {
+            editor.update(() => {
+              const sel = $createNodeSelection();
+              sel.add(nodeKey);
+              $setSelection(sel);
+            });
+          }}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+        >
           <we-icon name="dots-six-vertical" weight="bold" size="sm" color="neutral-600" />
         </div>
       </div>

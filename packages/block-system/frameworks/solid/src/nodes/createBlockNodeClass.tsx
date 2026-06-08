@@ -1,9 +1,11 @@
 import { getBlockRegistration } from '@we/block-shared';
 import type { LexicalEditor, LexicalNode, NodeKey, SerializedLexicalNode } from 'lexical';
 import {
+  $createNodeSelection,
   $getNodeByKey,
   $getSelection,
   $isNodeSelection,
+  $setSelection,
   COMMAND_PRIORITY_LOW,
   DecoratorNode,
   SELECTION_CHANGE_COMMAND,
@@ -166,7 +168,7 @@ export function createBlockNodeClass(
       this.__props = props;
     }
 
-    createDOM(): HTMLElement {
+    createDOM(_config: unknown, editor: LexicalEditor): HTMLElement {
       const div = document.createElement('div');
       div.className = 'we-block';
       // Mark the decorator wrapper non-editable so it becomes its own editing host
@@ -176,6 +178,16 @@ export function createBlockNodeClass(
       // the input (keydown fires, but no beforeinput/insertText). contentEditable=false
       // lets the browser treat the input as a normal, independently-selectable field.
       div.contentEditable = 'false';
+      // Select this block when clicking the wrapper padding area. Child clicks are
+      // already stopped by BlockBridge.onMouseDown so this only fires for the gap.
+      const key = this.__key;
+      div.addEventListener('mousedown', () => {
+        editor.update(() => {
+          const sel = $createNodeSelection();
+          sel.add(key);
+          $setSelection(sel);
+        });
+      });
       return div;
     }
 
