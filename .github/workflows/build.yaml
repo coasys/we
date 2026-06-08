@@ -1,0 +1,111 @@
+name: Build
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: 'pnpm'
+
+      - name: Detect branch
+        id: branch
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --heads \
+            https://github.com/coasys/ad4m.git "$BRANCH" >/dev/null 2>&1; then
+            echo "ad4m_branch=$BRANCH" >> "$GITHUB_OUTPUT"
+            echo "✅ Found matching AD4M branch: $BRANCH"
+          else
+            echo "ad4m_branch=dev" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ No matching AD4M branch — using dev"
+          fi
+
+      # --- AD4M linked build (published packages have broken workspace: refs) ---
+
+      - name: Clone AD4M
+        run: |
+          git clone --depth 1 --single-branch \
+            --branch "${{ steps.branch.outputs.ad4m_branch }}" \
+            https://github.com/coasys/ad4m.git ad4m
+
+      - name: Get AD4M commit hash
+        id: ad4m-hash
+        run: |
+          HASH=$(cd ad4m && git rev-parse HEAD)
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "AD4M commit: $HASH"
+
+      - name: Cache AD4M built outputs
+        id: ad4m-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ad4m/node_modules
+            ad4m/core/lib
+            ad4m/connect/dist
+          key: ad4m-sdk-${{ steps.ad4m-hash.outputs.hash }}
+
+      - name: Install & build AD4M packages
+        if: steps.ad4m-cache.outputs.cache-hit != 'true'
+        run: |
+          cd ad4m
+          npm i -g pnpm 2>/dev/null || true
+          pnpm install --no-frozen-lockfile
+
+          cd core && pnpm exec tsc && pnpm run bundle && cd ..
+          cd connect && pnpm run build && cd ..
+
+      # --- WE build ---
+
+      - name: Cache WE dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            */node_modules
+            !ad4m/node_modules
+          key: we-deps-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Override AD4M packages with local builds
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            pkg.pnpm = pkg.pnpm || {};
+            pkg.pnpm.overrides = pkg.pnpm.overrides || {};
+            pkg.pnpm.overrides['@coasys/ad4m'] = 'file:./ad4m/core';
+            pkg.pnpm.overrides['@coasys/ad4m-connect'] = 'file:./ad4m/connect';
+            require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Install WE dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Clear build caches for linked SDK
+        run: |
+          rm -rf .turbo node_modules/.cache
+          find . -name '.turbo' -type d -not -path './ad4m/*' -not -path './node_modules/*' -exec rm -rf {} + 2>/dev/null || true
+          find . -name '.vite' -type d -path '*/node_modules/.vite' -not -path './ad4m/*' -exec rm -rf {} + 2>/dev/null || true
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
+
+      - name: Test
+        run: pnpm test
