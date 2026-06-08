@@ -57,7 +57,9 @@ export function VideoDisplay(props: VideoDisplayProps) {
           />
         </Show>
         <Show when={props.title}>
-          <we-text variant="footnote">{props.title}</we-text>
+          <we-text fontSize="300" color="neutral-500">
+            {props.title}
+          </we-text>
         </Show>
       </Show>
     </Column>

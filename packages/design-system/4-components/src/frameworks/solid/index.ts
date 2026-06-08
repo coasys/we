@@ -4,6 +4,10 @@ export { Grid, type GridProps } from '../../components/layout/Grid/Grid.solid';
 export { Row, type RowProps } from '../../components/layout/Row/Row.solid';
 
 // Media
+export {
+  AudioVisualiser,
+  type AudioVisualiserProps,
+} from '../../components/media/AudioVisualiser/AudioVisualiser.solid';
 export { EditableImage, type EditableImageProps } from '../../components/media/EditableImage/EditableImage.solid';
 export { ImageCrop, type ImageCropProps, type ImageCropRef } from '../../components/media/ImageCrop/ImageCrop.solid';
 

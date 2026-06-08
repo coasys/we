@@ -1,3 +1,4 @@
+import { AudioVisualiser } from '@we/components/solid';
 import { Column, Row } from '@we/components/solid';
 import { Show } from 'solid-js';
 
@@ -24,16 +25,20 @@ export function AudioDisplay(props: AudioDisplayProps) {
               fit="cover"
             />
           </Show>
-          <Column gap="0">
+          <Column>
             <Show when={props.title}>
-              <we-text variant="label">{props.title}</we-text>
+              <we-text fontSize="400" color="neutral-700">
+                {props.title}
+              </we-text>
             </Show>
             <Show when={props.artist}>
-              <we-text variant="footnote">{props.artist}</we-text>
+              <we-text fontSize="300" color="neutral-500">
+                {props.artist}
+              </we-text>
             </Show>
           </Column>
         </Row>
-        <we-audio controls preload="metadata" src={props.audioUrl} />
+        <AudioVisualiser src={props.audioUrl} />
       </Show>
     </Column>
   );
