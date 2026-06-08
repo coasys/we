@@ -235,9 +235,29 @@ function createQuerySignal(
         });
       onCleanup(() => builder.dispose());
     } else {
-      (ModelClass.findAll(p, queryOptions) as Promise<unknown[]>).then((results) => {
-        setItems(reconcile(normalise(results), { key: 'id', merge: true }));
-      });
+      // The effect re-runs when any reactive dep changes — perspective swap,
+      // resolved params, etc.  When that happens (or the component unmounts)
+      // the previous findAll may still be in flight against a slow query.
+      // An AbortController scoped to this iteration tells the executor to
+      // drop the JSON reply for the stale query instead of paying its
+      // serialise + WebSocket + deserialise cost.
+      //
+      // ad4m's `Ad4mModel.findAll` accepts `options?: { signal?: AbortSignal }`
+      // as the 3rd argument and forwards it through `perspective.modelQuery`
+      // to the executor's `request.cancel` machinery.
+      const controller = new AbortController();
+      onCleanup(() => controller.abort());
+      (ModelClass.findAll(p, queryOptions, { signal: controller.signal }) as Promise<unknown[]>)
+        .then((results) => {
+          if (controller.signal.aborted) return;
+          setItems(reconcile(normalise(results), { key: 'id', merge: true }));
+        })
+        .catch((err) => {
+          // AbortError = a newer effect run or unmount cancelled this query.
+          // Silently drop — no UI state to update, the new run handles it.
+          if (err instanceof DOMException && err.name === 'AbortError') return;
+          throw err;
+        });
     }
   });
 
@@ -557,7 +577,21 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             builder.subscribe(handleResults).then(handleResults);
             onCleanup(() => builder.dispose());
           } else {
-            (ModelClass.findAll(p, queryOptions) as Promise<unknown[]>).then(handleResults);
+            // Same abort discipline as the list-path createQuerySignal: the
+            // effect re-runs on perspective swap / param change, and any
+            // in-flight findAll from the previous run should be cancelled so
+            // we don't pay its serialise + transit + deserialise tax.
+            const controller = new AbortController();
+            onCleanup(() => controller.abort());
+            (ModelClass.findAll(p, queryOptions, { signal: controller.signal }) as Promise<unknown[]>)
+              .then((results) => {
+                if (controller.signal.aborted) return;
+                handleResults(results);
+              })
+              .catch((err) => {
+                if (err instanceof DOMException && err.name === 'AbortError') return;
+                throw err;
+              });
           }
         });
       }

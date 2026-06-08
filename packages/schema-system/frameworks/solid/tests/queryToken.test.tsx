@@ -228,6 +228,98 @@ describe('$query token', () => {
     expect(JSON.parse(el?.textContent ?? '[]')).toEqual([{ id: 1 }]);
   });
 
+  // ---- AbortSignal threading + cleanup ----
+
+  it('passes an AbortSignal to findAll and aborts it on unmount', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const MockModel = {
+      query: vi.fn(),
+      findAll: vi.fn((_p: unknown, _q: unknown, opts: { signal?: AbortSignal } = {}) => {
+        capturedSignal = opts.signal;
+        return Promise.resolve([]);
+      }),
+    };
+    const stores = {
+      spaceStore: { perspective: () => ({ uuid: 'p1' }) },
+      $getModel: () => MockModel,
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { model: 'Post', subscribe: false } } },
+    };
+
+    const { unmount } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    await tick();
+
+    expect(MockModel.findAll).toHaveBeenCalledOnce();
+    expect(capturedSignal).toBeInstanceOf(AbortSignal);
+    expect(capturedSignal!.aborted).toBe(false);
+
+    // Unmount should trigger onCleanup, which aborts the controller.
+    unmount();
+    expect(capturedSignal!.aborted).toBe(true);
+  });
+
+  it('aborts a stale findAll when the effect re-runs', async () => {
+    const signals: AbortSignal[] = [];
+    const MockModel = {
+      query: vi.fn(),
+      findAll: vi.fn((_p: unknown, _q: unknown, opts: { signal?: AbortSignal } = {}) => {
+        if (opts.signal) signals.push(opts.signal);
+        return new Promise<unknown[]>(() => {
+          // Never resolve — simulate slow query
+        });
+      }),
+    };
+    const [perspective, setPerspective] = createSignal<{ uuid: string } | null>({ uuid: 'p1' });
+    const stores = {
+      spaceStore: { perspective },
+      $getModel: () => MockModel,
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { model: 'Post', subscribe: false } } },
+    };
+
+    render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    await tick();
+    expect(signals.length).toBe(1);
+    expect(signals[0].aborted).toBe(false);
+
+    // Trigger effect re-run by changing the reactive perspective dep.
+    setPerspective({ uuid: 'p2' });
+    await tick();
+
+    // Old run's controller aborted; new run got its own fresh signal.
+    expect(signals[0].aborted).toBe(true);
+    expect(signals.length).toBe(2);
+    expect(signals[1].aborted).toBe(false);
+  });
+
+  it('swallows AbortError from findAll without surfacing it', async () => {
+    const MockModel = {
+      query: vi.fn(),
+      findAll: vi.fn(() => Promise.reject(new DOMException('Aborted', 'AbortError'))),
+    };
+    const stores = {
+      spaceStore: { perspective: () => ({ uuid: 'p1' }) },
+      $getModel: () => MockModel,
+    };
+
+    const node: SchemaNode = {
+      type: 'DataDisplay',
+      props: { data: { $query: { model: 'Post', subscribe: false } } },
+    };
+
+    // If the catch arm doesn't swallow AbortError, the unhandled rejection
+    // would surface as a test failure.
+    render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    await tick();
+    expect(MockModel.findAll).toHaveBeenCalledOnce();
+  });
+
   // ---- Query params forwarding ----
 
   it('forwards where/order/limit params to query builder', async () => {
