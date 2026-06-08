@@ -47,6 +47,10 @@ function BlockBridge(props: { nodeKey: string; nodeProps: Record<string, unknown
   const [localActive, setLocalActive] = createSignal(false);
   const isSelected = () => lexicalSelected() || localActive();
 
+  // Tracks where the most recent mousedown landed so SELECTION_CHANGE_COMMAND can
+  // distinguish "selection changed because user clicked this block" from "clicked elsewhere".
+  let lastMousedownTarget: EventTarget | null = null;
+
   const reg = createMemo(() => getBlockRegistration(props.nodeType));
 
   function onChange(property: string, value: unknown) {
@@ -58,7 +62,24 @@ function BlockBridge(props: { nodeKey: string; nodeProps: Record<string, unknown
     });
   }
 
-  // Clear local active when Lexical selection moves away and focus is outside this block.
+  // Use a capture-phase document listener to track the mousedown target and activate
+  // this block. Capture phase fires before any stopPropagation in child handlers, and
+  // also covers clicks on the outer .we-block padding which never bubble into the
+  // BlockBridge inner div.
+  createEffect(() => {
+    const blockEl = editor.getElementByKey(props.nodeKey);
+    const handler = (e: MouseEvent) => {
+      lastMousedownTarget = e.target;
+      if (blockEl?.contains(e.target as Node)) {
+        setLocalActive(true);
+      }
+    };
+    document.addEventListener('mousedown', handler, true);
+    onCleanup(() => document.removeEventListener('mousedown', handler, true));
+  });
+
+  // Clear localActive when Lexical selection moves away and the last mousedown
+  // was not inside this block.
   // Read Lexical state directly instead of the SolidJS signal — the signal hasn't propagated
   // yet when SELECTION_CHANGE_COMMAND fires synchronously inside Lexical's update cycle.
   createEffect(() => {
@@ -72,9 +93,9 @@ function BlockBridge(props: { nodeKey: string; nodeProps: Record<string, unknown
         });
         if (!isNodeSelected) {
           setTimeout(() => {
-            const el = editor.getElementByKey(props.nodeKey);
-            const hasFocus = el?.contains(document.activeElement) ?? false;
-            if (!hasFocus) {
+            const blockEl = editor.getElementByKey(props.nodeKey);
+            const clickedInsideBlock = blockEl?.contains(lastMousedownTarget as Node) ?? false;
+            if (!clickedInsideBlock) {
               setLocalActive(false);
             }
           }, 0);
