@@ -1,5 +1,5 @@
 import { Column, Row } from '@we/components/solid';
-import { createSignal, Show } from 'solid-js';
+import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 import { BlockPlaceholder } from '../BlockPlaceholder';
@@ -10,9 +10,16 @@ interface VideoInputProps {
   title: string | undefined;
   thumbnail: string | undefined;
   provider: string | undefined;
+  width: number | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
 }
+
+const WIDTH_PRESETS = [
+  { label: 'S', value: 50 },
+  { label: 'M', value: 75 },
+  { label: 'L', value: 100 },
+] as const;
 
 /**
  * Input component for VideoBlock.
@@ -26,6 +33,8 @@ export function VideoInput(props: VideoInputProps) {
   const [showModal, setShowModal] = createSignal(false);
   const [url, setUrl] = createSignal('');
   const [title, setTitle] = createSignal('');
+
+  const activeWidth = () => props.width ?? 100;
 
   function openModal() {
     setUrl(props.url || '');
@@ -60,7 +69,13 @@ export function VideoInput(props: VideoInputProps) {
           <BlockPlaceholder icon="youtube-logo" label="Add video" hint="Click to add a URL" onClick={openModal} />
         }
       >
-        <VideoDisplay url={props.url} title={props.title} thumbnail={props.thumbnail} provider={props.provider} />
+        <VideoDisplay
+          url={props.url}
+          title={props.title}
+          thumbnail={props.thumbnail}
+          provider={props.provider}
+          width={props.width}
+        />
         <Show when={props.isSelected()}>
           <Row
             position="absolute"
@@ -72,6 +87,18 @@ export function VideoInput(props: VideoInputProps) {
             border="1px solid var(--we-color-neutral-100)"
             bg="neutral-0"
           >
+            <For each={WIDTH_PRESETS}>
+              {(preset) => (
+                <we-button
+                  square
+                  variant={activeWidth() === preset.value ? 'secondary' : 'ghost'}
+                  onClick={() => props.onChange('width', preset.value)}
+                >
+                  {preset.label}
+                </we-button>
+              )}
+            </For>
+            <we-divider orientation="vertical" my="300" mx="100" color="neutral-100" />
             <we-button square variant="ghost" onClick={openModal}>
               <we-icon name="pencil" size="xs" />
             </we-button>

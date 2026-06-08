@@ -6,6 +6,7 @@ interface VideoDisplayProps {
   title: string | undefined;
   thumbnail: string | undefined;
   provider: string | undefined;
+  width: number | undefined;
 }
 
 function getEmbedUrl(url: string): string | undefined {
@@ -26,9 +27,10 @@ function isDirectVideo(url: string): boolean {
 
 export function VideoDisplay(props: VideoDisplayProps) {
   const embedUrl = createMemo(() => (props.url ? getEmbedUrl(props.url) : undefined));
+  const containerWidth = () => `${props.width ?? 100}%`;
 
   return (
-    <Column class="we-video-block" gap="200">
+    <Column class="we-video-block" gap="200" width={containerWidth()} mx="auto">
       <Show when={props.url}>
         <Show
           when={embedUrl()}
@@ -44,17 +46,20 @@ export function VideoDisplay(props: VideoDisplayProps) {
                 </we-link>
               }
             >
-              <we-video controls preload="metadata" src={props.url} r="300" />
+              <we-video controls preload="metadata" src={props.url} r="300" width="100%" />
             </Show>
           }
         >
-          <we-iframe
-            src={embedUrl()}
-            title={props.title || 'Video'}
-            r="300"
-            styles={{ 'aspect-ratio': '16/9' }}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          />
+          {/* Padding-top trick: padding % is relative to width, giving a reliable 16:9 height */}
+          <div style={{ position: 'relative', width: '100%', 'padding-top': '56.25%' }}>
+            <we-iframe
+              src={embedUrl()}
+              title={props.title || 'Video'}
+              r="300"
+              style={{ position: 'absolute', top: '0', left: '0', width: '100%', height: '100%' }}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            />
+          </div>
         </Show>
         <Show when={props.title}>
           <we-text fontSize="300" color="neutral-500">
