@@ -368,7 +368,7 @@ fragment; it is sanitized before rendering so XSS payloads are stripped.
 - we-input (DesignSystemElement)
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
-  Props: href: string = '', target: string = '', rel: string = '', disabled: boolean = false
+  Props: href: string = '', target: string = '', rel: string = '', download: string = '', disabled: boolean = false
 - we-location-picker (DesignSystemElement)
   Props: latitude?: number | undefined, longitude?: number | undefined, placeholder: string = 'Set location…', disabled: boolean = false, reverseGeocode: boolean = true
 - we-markdown (DesignSystemElement)
@@ -466,9 +466,9 @@ when `relative` is enabled.
 - EventInput
   Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - FileDisplay
-  Props: name: string | undefined, url: string | undefined, mimeType: string | undefined, size: number | undefined
+  Props: title: string | undefined, name: string | undefined, url: string | undefined, mimeType: string | undefined, size: number | undefined
 - FileInput
-  Props: name: string | undefined, url: string | FileData | undefined, mimeType: string | undefined, size: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
+  Props: title: string | undefined, name: string | undefined, url: string | FileData | undefined, mimeType: string | undefined, size: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - ImageDisplay
   Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined
 - ImageInput
@@ -490,11 +490,13 @@ when `relative` is enabled.
 - TaskInput
   Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - VideoDisplay
-  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined
+  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, width: number | undefined
 - VideoInput
-  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
+  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, width: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - Accordion
   Props: children?: JSX.Element, renderContent?: ((item: AccordionItem, index: number) => JSX.Element), onChange?: ((openItems: string[]) => void), items?: AccordionItem[], multiple?: boolean, styles?: Record<string, string | number>
+- AudioVisualiser
+  Props: src: string | undefined, bars?: number, height?: number, color?: string, activeColor?: string
 - Breadcrumbs
   Props: onNavigate?: ((item: BreadcrumbItem, index: number) => void), items?: BreadcrumbItem[], separator?: string, styles?: Record<string, string | number>
 - Calendar
@@ -838,6 +840,7 @@ EventBlock extends WeNode:
 
 FileBlock extends WeNode:
   Fields:
+  - title: string [we://title]
   - name: string (required) [we://name]
   - url: string (required) [we://url]
   - mimeType: string [we://mime_type]

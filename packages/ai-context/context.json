@@ -715,6 +715,12 @@
           "default": "''"
         },
         {
+          "name": "download",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "disabled",
           "type": "boolean",
           "optional": false,
@@ -2213,6 +2219,11 @@
       "name": "FileDisplay",
       "props": [
         {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
           "name": "name",
           "type": "string | undefined",
           "optional": false
@@ -2238,6 +2249,11 @@
     {
       "name": "FileInput",
       "props": [
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
         {
           "name": "name",
           "type": "string | undefined",
@@ -2603,6 +2619,11 @@
           "name": "provider",
           "type": "string | undefined",
           "optional": false
+        },
+        {
+          "name": "width",
+          "type": "number | undefined",
+          "optional": false
         }
       ],
       "source": "components"
@@ -2628,6 +2649,11 @@
         {
           "name": "provider",
           "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "width",
+          "type": "number | undefined",
           "optional": false
         },
         {
@@ -2674,6 +2700,37 @@
         {
           "name": "styles",
           "type": "Record<string, string | number>",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "AudioVisualiser",
+      "props": [
+        {
+          "name": "src",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "bars",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "activeColor",
+          "type": "string",
           "optional": true
         }
       ],
@@ -5813,6 +5870,12 @@
       "className": "FileBlock",
       "extends": "WeNode",
       "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "predicate": "we://title",
+          "required": false
+        },
         {
           "name": "name",
           "type": "string",
