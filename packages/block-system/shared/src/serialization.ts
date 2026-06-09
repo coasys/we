@@ -247,7 +247,17 @@ export async function createBlocks(
       // to create AD4M models for the blocks inside (e.g. images, files).
       if (node.type === 'collection' && block && node.childEditorState) {
         const childRoot = node.childEditorState as SerializedBlockNode;
-        await persist(childRoot, block);
+        // Recurse into the ROOT's CHILDREN directly rather than passing the root
+        // node itself through persist(). The root node has type='root' which maps
+        // to CollectionBlock — persisting it would create a ghost CollectionBlock
+        // that appears as a duplicate post in queries filtered by { type: 'root' }.
+        if (childRoot.children) {
+          for (const child of childRoot.children) {
+            if (!INLINE_TYPES.has(child.type)) {
+              await persist(child, block);
+            }
+          }
+        }
         // No separate editorState blob — it's embedded in the parent's blob.
         return block;
       }
