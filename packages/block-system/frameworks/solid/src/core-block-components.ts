@@ -7,6 +7,8 @@ import {
   CalloutInput,
   CodeDisplay,
   CodeInput,
+  CollectionDisplay,
+  CollectionInput,
   DividerDisplay,
   DividerInput,
   EmbedDisplay,
@@ -53,4 +55,5 @@ export function registerCoreBlockComponents(): void {
   updateBlockRegistration('task', { display: TaskDisplay, input: TaskInput });
   updateBlockRegistration('location', { display: LocationDisplay, input: LocationInput });
   updateBlockRegistration('tag', { display: TagDisplay, input: TagInput });
+  updateBlockRegistration('collection', { display: CollectionDisplay, input: CollectionInput });
 }

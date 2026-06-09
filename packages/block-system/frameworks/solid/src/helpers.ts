@@ -66,6 +66,12 @@ export function transformBlock({ editor, nodeKey, newNodeType }: TransformBlockP
       if ($isElementNode(node)) node.getChildren().forEach((child) => listItemNode.append(child));
       listNode.append(listItemNode);
       newNode = listNode;
+    } else if (['columns', 'rows', 'grid'].includes(newNodeType) && blockNodeClassMap['collection']) {
+      // Collection layout blocks — insert a CollectionBlockNode with layout preset
+      newNode = $createBlockNode(blockNodeClassMap['collection'], {
+        layout: newNodeType,
+        columnCount: 2,
+      });
     } else if (blockNodeClassMap[newNodeType]) {
       // Factory-created decorator block (image, audio, video, etc.)
       newNode = $createBlockNode(blockNodeClassMap[newNodeType], {});

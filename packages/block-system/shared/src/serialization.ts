@@ -96,6 +96,13 @@ async function preUploadFileAssets(
     );
   }
 
+  // Recurse into collection block child editor states
+  if (Array.isArray(node.childEditorStates)) {
+    patched.childEditorStates = await Promise.all(
+      (node.childEditorStates as SerializedBlockNode[]).map((child) => preUploadFileAssets(perspective, child)),
+    );
+  }
+
   return patched;
 }
 
@@ -138,6 +145,14 @@ export async function resolveExpressionAddresses(
   if (Array.isArray(node.children)) {
     patched.children = await Promise.all(
       node.children.map((child: SerializedBlockNode) => resolveExpressionAddresses(perspective, child)),
+    );
+  }
+
+  // Recurse into collection block child editor states so sub-renderers receive
+  // pre-resolved data URIs and don't need their own perspective reference.
+  if (Array.isArray(node.childEditorStates)) {
+    patched.childEditorStates = await Promise.all(
+      (node.childEditorStates as SerializedBlockNode[]).map((child) => resolveExpressionAddresses(perspective, child)),
     );
   }
 
@@ -226,6 +241,29 @@ export async function createBlocks(
         if (parent && block && hasChildrenRelation(parent)) {
           await parent.addChildren(block.id, tx.batchId);
         }
+      }
+
+      // Special handling for collection blocks: each childEditorState is a full
+      // Lexical root that becomes its own CollectionBlock model with its own blob.
+      if (node.type === 'collection' && block && Array.isArray(node.childEditorStates)) {
+        for (const childState of node.childEditorStates as SerializedBlockNode[]) {
+          const childBlock = await persist(childState, block);
+          if (childBlock && 'editorState' in childBlock) {
+            // Pre-upload file assets in the child state, then save as a blob.
+            // Safe to call again: strings/CIDs are not FileData, so no re-upload.
+            const patchedChild = await preUploadFileAssets(perspective, childState);
+            const jsonStr = JSON.stringify(patchedChild);
+            const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
+            (childBlock as CollectionBlock).editorState = {
+              data_base64: base64,
+              name: 'editor-state.json',
+              file_type: 'application/json',
+            } as unknown as string;
+            await childBlock.save(tx.batchId);
+          }
+        }
+        // collection nodes use childEditorStates, not node.children
+        return block;
       }
 
       // Only recurse into non-inline children (skip text/linebreak nodes)

@@ -11,3 +11,4 @@ export { LocationDisplay, LocationInput } from './LocationBlock';
 export { TagDisplay, TagInput } from './TagBlock';
 export { TaskDisplay, TaskInput } from './TaskBlock';
 export { VideoDisplay, VideoInput } from './VideoBlock';
+export { CollectionDisplay, CollectionInput } from './CollectionBlock';

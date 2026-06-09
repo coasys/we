@@ -4,6 +4,9 @@
  * Register these in BlockComposer/BlockRenderer initialConfig.nodes.
  */
 import { createBlockNodeClass } from './createBlockNodeClass';
+import { CollectionBlockNode } from './CollectionBlockNode';
+
+export { CollectionBlockNode };
 
 export const ImageBlockNode = createBlockNodeClass('image');
 export const AudioBlockNode = createBlockNodeClass('audio');
@@ -21,6 +24,7 @@ export const TagBlockNode = createBlockNodeClass('tag');
 
 /** All factory block node classes, for registration with Lexical. */
 export const blockNodeClasses = [
+  CollectionBlockNode as unknown as ReturnType<typeof createBlockNodeClass>,
   ImageBlockNode,
   AudioBlockNode,
   VideoBlockNode,
