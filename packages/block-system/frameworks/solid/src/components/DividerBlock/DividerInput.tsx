@@ -1,4 +1,5 @@
-import { Column, Row } from '@we/components/solid';
+import { BlockToolbar } from '../BlockToolbar';
+import { Column } from '@we/components/solid';
 import { createSignal, Show } from 'solid-js';
 
 import { DividerDisplay } from './DividerDisplay';
@@ -29,9 +30,9 @@ export function DividerInput(props: DividerInputProps) {
     <Column position="relative">
       <DividerDisplay style={style()} />
       <Show when={props.isSelected()}>
-        <Row position="absolute" top="-32px" right="0">
+        <BlockToolbar placement="above">
           <we-select value={style()} options={STYLE_OPTIONS} onChange={handleStyleChange} size="xs" />
-        </Row>
+        </BlockToolbar>
       </Show>
     </Column>
   );

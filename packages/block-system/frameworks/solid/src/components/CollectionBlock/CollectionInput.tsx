@@ -3,7 +3,6 @@ import { CHECK_LIST, HEADING, ORDERED_LIST, QUOTE, UNORDERED_LIST } from '@lexic
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import type { SerializedBlockNode } from '@we/block-shared';
 import { registerCoreBlocks } from '@we/block-shared';
-import { Row } from '@we/components/solid';
 import {
   ContentEditable,
   HistoryPlugin,
@@ -24,6 +23,7 @@ import BlockKeyboardPlugin from '../../plugins/BlockKeyboardPlugin';
 import IndentationPlugin from '../../plugins/IndentationPlugin';
 import PlaceholdersPlugin from '../../plugins/PlaceholdersPlugin';
 import SlashCommandPlugin from '../../plugins/SlashCommandPlugin';
+import { BlockToolbar } from '../BlockToolbar';
 
 // Ensure core block models are registered for sub-editor node types
 registerCoreBlocks();
@@ -159,20 +159,9 @@ export function CollectionInput(props: CollectionInputProps) {
         <BlockKeyboardPlugin />
       </LexicalComposer>
 
-      {/* Settings toolbar — shown when the collection node is selected */}
+      {/* Settings toolbar — floats above the block so it never obscures content */}
       <Show when={props.isSelected()}>
-        <Row
-          position="absolute"
-          top="5px"
-          right="5px"
-          p="200"
-          r="200"
-          gap="200"
-          border="1px solid var(--we-color-neutral-100)"
-          bg="neutral-0"
-          onMouseDown={stop}
-          onClick={stop}
-        >
+        <BlockToolbar placement="above">
           {/* Layout toggles */}
           <For each={LAYOUT_OPTIONS}>
             {(opt) => (
@@ -207,7 +196,7 @@ export function CollectionInput(props: CollectionInputProps) {
               )}
             </For>
           </Show>
-        </Row>
+        </BlockToolbar>
       </Show>
     </div>
   );

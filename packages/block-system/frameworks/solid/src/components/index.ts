@@ -1,4 +1,6 @@
 export { AudioDisplay, AudioInput } from './AudioBlock';
+export { BlockToolbar } from './BlockToolbar';
+export type { BlockToolbarPlacement } from './BlockToolbar';
 export { CalloutDisplay, CalloutInput } from './CalloutBlock';
 export { CodeDisplay, CodeInput } from './CodeBlock';
 export { DividerDisplay, DividerInput } from './DividerBlock';
