@@ -179,6 +179,29 @@ Call function: { "$callLocal": "fieldName" } — event handler that calls the fu
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
 $local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
 
+Hoisted query state ($queries):
+Declare on any node to run reactive subscriptions at the node root and expose results in $local.
+Solves two problems: avoids N duplicate subscriptions inside $each loops, and makes query results available for $if conditions.
+"$queries": { "signalTypes": { "model": "SignalType", "subscribe": true } }
+Results are injected into $local as read-only reactive arrays, accessible via { "$local": "signalTypes" }.
+Query options are identical to $each's $query prop (model, where, order, limit, include, perspective, subscribe).
+$queries and $localState share the same $local namespace — avoid duplicate names across both.
+$setLocal will warn and no-op on $queries entries (they are read-only).
+Use with $count + $gt for conditional visibility:
+{ "condition": { "$gt": [{ "$count": { "items": { "$local": "signalTypes" } } }, 0] } }
+Example:
+{
+  "$queries": { "signalTypes": { "model": "SignalType", "subscribe": true } },
+  "type": "Column",
+  "children": [
+    {
+      "type": "$each",
+      "props": { "items": { "$local": "signalTypes" }, "as": "sig" },
+      "children": [...]
+    }
+  ]
+}
+
 Boolean toggle pattern (show/hide comments, expand/collapse sections, etc.):
 {
   "$localState": { "showComments": { "type": "boolean", "initial": false } },
