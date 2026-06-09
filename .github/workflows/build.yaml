@@ -103,7 +103,7 @@ jobs:
           find . -name '.vite' -type d -path '*/node_modules/.vite' -not -path './ad4m/*' -exec rm -rf {} + 2>/dev/null || true
 
       - name: Lint
-        run: pnpm lint
+        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm lint
 
       - name: Build
         run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
