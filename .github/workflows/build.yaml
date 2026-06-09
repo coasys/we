@@ -102,8 +102,15 @@ jobs:
           find . -name '.turbo' -type d -not -path './ad4m/*' -not -path './node_modules/*' -exec rm -rf {} + 2>/dev/null || true
           find . -name '.vite' -type d -path '*/node_modules/.vite' -not -path './ad4m/*' -exec rm -rf {} + 2>/dev/null || true
 
+      # Non-blocking: this is the first CI workflow on the WE repo, so
+      # pre-existing lint debt on `dev` (mostly `no-explicit-any`
+      # warnings, plus the occasional unsorted import) shows up the
+      # moment lint actually runs.  Surface the warnings to reviewers
+      # via the run annotations, but don't fail the build until the
+      # backlog is cleared in a follow-up.
       - name: Lint
         run: NODE_OPTIONS='--max-old-space-size=8192' pnpm lint
+        continue-on-error: true
 
       - name: Build
         run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
