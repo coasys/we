@@ -11,17 +11,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # pnpm version is sourced from packageManager in package.json — don't
-      # also pass `version:` here or action-setup errors with multiple
-      # versions specified.
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-
       # WE's .nvmrc pins Node 24 (uses Node 22+ features like `fs.globSync`).
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-          cache: 'pnpm'
+
+      # ad4m's monorepo uses object-format pnpm.overrides which pnpm v10
+      # rejects.  Install pnpm 9.15.0 directly via npm and pin it for the
+      # whole workflow — WE's `packageManager: pnpm@10.18.3` works fine
+      # under pnpm 9 (the warning is cosmetic) and pnpm/action-setup@v4
+      # refuses to override packageManager without erroring.
+      - name: Install pnpm 9.15.0
+        run: npm install -g pnpm@9.15.0
 
       - name: Detect branch
         id: branch
@@ -66,7 +67,6 @@ jobs:
         if: steps.ad4m-cache.outputs.cache-hit != 'true'
         run: |
           cd ad4m
-          npm i -g pnpm 2>/dev/null || true
           pnpm install --no-frozen-lockfile
 
           cd core && pnpm exec tsc && pnpm run bundle && cd ..
