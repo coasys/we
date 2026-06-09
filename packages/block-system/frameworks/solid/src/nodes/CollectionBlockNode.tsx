@@ -1,4 +1,4 @@
-import { getBlockRegistration } from '@we/block-shared';
+import { getBlockRegistration, type SerializedBlockNode } from '@we/block-shared';
 import type { LexicalEditor, NodeKey, SerializedLexicalNode } from 'lexical';
 import {
   $createNodeSelection,
@@ -46,13 +46,19 @@ function CollectionBlockBridge(props: { nodeKey: string }) {
   const reg = createMemo(() => getBlockRegistration('collection'));
   const [isNodeSelected, setIsNodeSelected] = createSignal(false);
 
-  // Read the FULL props (including childEditorState) once at mount.
-  // childEditorState is intentionally NOT tracked reactively — if it were,
-  // any layout change would cause LoadEditorState to re-run and reset content.
+  // Read the full props (including childEditorState) once at mount.
   const initialProps = editor.getEditorState().read(() => {
     const n = $getNodeByKey(props.nodeKey);
     return n instanceof CollectionBlockNode ? { ...n.__props } : ({} as Record<string, unknown>);
   });
+
+  // Prefer the LIVE sub-editor state from collectionNodeStates if it exists.
+  // lexical-solid's useDecorators recreates ALL decorator portals whenever any
+  // decorator changes (e.g. a new image block is added elsewhere). Without
+  // this, remounting the bridge would reset content to the original
+  // childEditorState from __props rather than what the user has typed.
+  const liveState = collectionNodeStates.get(props.nodeKey);
+  const effectiveChildEditorState = liveState ?? initialProps.childEditorState;
 
   // Track ONLY layout-display props reactively so toolbar changes propagate
   // without triggering a sub-editor content reset.
@@ -62,16 +68,23 @@ function CollectionBlockBridge(props: { nodeKey: string }) {
     gap: initialProps.gap as string | undefined,
   });
 
+  // Clean up the factory cache entry on unmount.
+  // collectionNodeStates is intentionally NOT cleared here — we must keep the
+  // live state so it's available if useDecorators remounts this bridge.
+  // It is cleaned up below when the node is confirmed deleted from the editor.
   onCleanup(() => {
-    collectionNodeStates.delete(props.nodeKey);
     decoratorFactoryCache.delete(props.nodeKey);
   });
 
   createEffect(() => {
     const unregister = editor.registerUpdateListener(({ editorState }) => {
       editorState.read(() => {
-        // Update reactive layout props
         const n = $getNodeByKey(props.nodeKey);
+        if (!n) {
+          // Node was genuinely deleted — clear the live state.
+          collectionNodeStates.delete(props.nodeKey);
+          return;
+        }
         if (n instanceof CollectionBlockNode) {
           setLayoutProps({
             layout: n.__props.layout as string | undefined,
@@ -79,7 +92,6 @@ function CollectionBlockBridge(props: { nodeKey: string }) {
             gap: n.__props.gap as string | undefined,
           });
         }
-        // Update selection state
         const sel = $getSelection();
         setIsNodeSelected($isNodeSelection(sel) ? sel.has(props.nodeKey) : false);
       });
@@ -107,7 +119,7 @@ function CollectionBlockBridge(props: { nodeKey: string }) {
       {readOnly() ? (
         Display ? (
           <Display
-            childEditorState={initialProps.childEditorState}
+            childEditorState={effectiveChildEditorState}
             layout={layoutProps().layout}
             columnCount={layoutProps().columnCount}
             gap={layoutProps().gap}
@@ -115,9 +127,9 @@ function CollectionBlockBridge(props: { nodeKey: string }) {
         ) : null
       ) : Input ? (
         <Input
-          // childEditorState is passed once from initialProps — NOT reactive —
-          // so LoadEditorState only runs on mount, never on layout changes.
-          childEditorState={initialProps.childEditorState}
+          // Use effectiveChildEditorState (live state if available, else original)
+          // so content survives portal remounts triggered by useDecorators.
+          childEditorState={effectiveChildEditorState as SerializedBlockNode | undefined}
           layout={layoutProps().layout}
           columnCount={layoutProps().columnCount}
           gap={layoutProps().gap}
