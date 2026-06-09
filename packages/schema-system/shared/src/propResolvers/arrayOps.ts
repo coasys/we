@@ -40,9 +40,12 @@ export function resolveFilterProp(
   memo: Memo,
   resolvePropFn: typeof resolveProp,
 ): unknown {
-  const arr = resolvePropFn(token.items, stores, context, memo) as unknown[];
+  let arr = resolvePropFn(token.items, stores, context, memo);
+  if (typeof arr === 'function' && REACTIVE_ACCESSOR in (arr as object)) {
+    arr = (arr as () => unknown)();
+  }
   if (!Array.isArray(arr)) return [];
-  return arr.filter((item) => matchesWhere(item, token.where, stores, context, memo, resolvePropFn));
+  return (arr as unknown[]).filter((item) => matchesWhere(item, token.where, stores, context, memo, resolvePropFn));
 }
 
 /**
@@ -55,7 +58,10 @@ export function resolveCountProp(
   memo: Memo,
   resolvePropFn: typeof resolveProp,
 ): number {
-  const arr = resolvePropFn(token.items, stores, context, memo);
+  let arr = resolvePropFn(token.items, stores, context, memo);
+  if (typeof arr === 'function' && REACTIVE_ACCESSOR in (arr as object)) {
+    arr = (arr as () => unknown)();
+  }
   return Array.isArray(arr) ? arr.length : 0;
 }
 

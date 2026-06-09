@@ -41,14 +41,14 @@ export function extractFromPath(event: unknown, from: string): unknown {
 export function resolveLocalProp(value: { $local: string }, context: Props, memo: Memo = noMemo): unknown {
   const localState = context.$local as Record<string, () => unknown> | undefined;
   if (!localState) {
-    console.warn(`Schema $local: no $localState in scope for "${value.$local}"`);
+    console.warn(`Schema $local: no $localState or $queries in scope for "${value.$local}"`);
     return undefined;
   }
 
   const [fieldName, ...nestedPath] = value.$local.split('.');
   const accessor = localState[fieldName];
   if (!accessor) {
-    console.warn(`Schema $local: field "${fieldName}" not declared in $localState`);
+    console.warn(`Schema $local: field "${fieldName}" not declared in $localState or $queries`);
     return undefined;
   }
 
@@ -71,7 +71,9 @@ export function resolveSetLocalProp(
   }
   const setter = localSetters[value.$setLocal];
   if (!setter) {
-    console.warn(`Schema $setLocal: field "${value.$setLocal}" not declared in $localState`);
+    console.warn(
+      `Schema $setLocal: field "${value.$setLocal}" not declared in $localState (fields from $queries are read-only)`,
+    );
     return () => {};
   }
   if ('value' in value) {

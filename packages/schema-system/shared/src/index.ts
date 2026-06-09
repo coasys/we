@@ -27,6 +27,7 @@ export type {
   QueryDescriptor,
   OperatorToken,
   LocalStateField,
+  QueryStateField,
   LocalToken,
   SetLocalToken,
   ErrorToken,

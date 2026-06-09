@@ -186,6 +186,19 @@ const zLocalStateField = z.object({
 });
 const zLocalStateDeclaration = z.record(z.string(), zLocalStateField);
 
+const zQueryStateField = z.object({
+  model: z.string().min(1),
+  where: z.record(z.string(), z.unknown()).optional(),
+  order: z.record(z.string(), z.unknown()).optional(),
+  limit: z.number().int().positive().optional(),
+  offset: z.number().int().nonnegative().optional(),
+  include: z.record(z.string(), z.unknown()).optional(),
+  parent: z.record(z.string(), z.unknown()).optional(),
+  subscribe: z.boolean().optional(),
+  perspective: z.string().optional(),
+});
+const zQueriesDeclaration = z.record(z.string(), zQueryStateField);
+
 /** Known node-level operator types */
 export const NODE_OPERATORS = new Set(['$each', '$if', '$routes']);
 
@@ -201,6 +214,7 @@ function schemaNodeShape() {
     theme: zThemeOverrides.optional(),
     styles: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
     $localState: zLocalStateDeclaration.optional(),
+    $queries: zQueriesDeclaration.optional(),
   };
 }
 
