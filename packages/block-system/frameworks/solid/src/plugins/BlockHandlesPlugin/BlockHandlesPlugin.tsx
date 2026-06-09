@@ -307,6 +307,13 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
           ? blockOrHandle.getAttribute(ATTR_BLOCK_ID)
           : blockOrHandle.getAttribute(ATTR_HANDLE_FOR_BLOCK);
 
+        // If the hovered block/handle doesn't belong to this editor, do nothing.
+        // Without this guard, nested sub-editors (e.g. collection blocks) each
+        // register their own document-level mouseover handler. When one fires for
+        // a block that isn't in its own blockMap, it clears the outer editor's
+        // hover highlights via document.querySelectorAll and never re-applies them.
+        if (blockId && !blockMap().has(blockId)) return;
+
         const blockElement = root?.querySelector(`[${ATTR_BLOCK_ID}="${blockId}"]`);
         if (blockElement?.hasAttribute(ATTR_BLOCK_HOVERED)) return;
       }
@@ -328,6 +335,14 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
     }
 
     function onMouseOut(e: MouseEvent) {
+      const blockOrHandle = (e.target as HTMLElement)?.closest(BLOCK_OR_HANDLE_SELECTOR);
+      const blockId = blockOrHandle?.hasAttribute(ATTR_BLOCK_ID)
+        ? blockOrHandle.getAttribute(ATTR_BLOCK_ID)
+        : blockOrHandle?.getAttribute(ATTR_HANDLE_FOR_BLOCK);
+
+      // Only clear hovers managed by this editor instance.
+      if (blockId && !blockMap().has(blockId)) return;
+
       if (!(e.relatedTarget as HTMLElement)?.closest(BLOCK_OR_HANDLE_SELECTOR)) {
         document
           .querySelectorAll(`[${ATTR_BLOCK_HOVERED}="true"]`)
