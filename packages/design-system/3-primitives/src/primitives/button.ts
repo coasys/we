@@ -105,6 +105,11 @@ const CSS_STYLES = css`
     position: relative;
     z-index: 1;
   }
+
+  /* Icons inside buttons are decorative — pass pointer events through to the button */
+  ::slotted(we-icon) {
+    pointer-events: none;
+  }
 `;
 
 @customElement('we-button')

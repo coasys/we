@@ -169,7 +169,9 @@ export function CollectionInput(props: CollectionInputProps) {
                 square
                 variant={layout() === opt.value ? 'secondary' : 'ghost'}
                 onClick={(e: MouseEvent) => {
+                  console.log('Setting layout to', opt.value);
                   stop(e);
+                  console.log('Calling props.onChange with', opt.value);
                   props.onChange('layout', opt.value);
                 }}
               >
