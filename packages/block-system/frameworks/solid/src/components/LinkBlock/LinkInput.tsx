@@ -1,6 +1,8 @@
 import { Column, Row } from '@we/components/solid';
 import { createSignal, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 
+import { BlockPlaceholder } from '../BlockPlaceholder';
 import { LinkDisplay } from './LinkDisplay';
 
 interface LinkInputProps {
@@ -25,79 +27,91 @@ export function LinkInput(props: LinkInputProps) {
     setShowModal(true);
   }
 
-  function closeModal() {
-    setShowModal(false);
-  }
-
-  function handleSubmit(e: Event) {
-    e.preventDefault();
+  function handleSubmit() {
     if (url().trim()) {
       props.onChange('url', url().trim());
       if (title().trim()) props.onChange('title', title().trim());
       if (description().trim()) props.onChange('description', description().trim());
-      closeModal();
+      setShowModal(false);
     }
   }
 
+  function handleDelete() {
+    props.onChange('url', undefined);
+    props.onChange('title', undefined);
+    props.onChange('description', undefined);
+    props.onChange('thumbnail', undefined);
+  }
+
   return (
-    <Column class="we-link-block" position="relative">
+    <Column position="relative">
       <Show
         when={props.url}
-        fallback={
-          <we-button variant="ghost" onClick={openModal} class="we-block-input-placeholder">
-            <we-icon name="link" />
-            Add Link
-          </we-button>
-        }
+        fallback={<BlockPlaceholder icon="link" label="Add a link" hint="Click to enter a URL" onClick={openModal} />}
       >
-        <LinkDisplay {...props} />
+        <LinkDisplay url={props.url} title={props.title} description={props.description} thumbnail={props.thumbnail} />
+
+        {/* Selection toolbar */}
         <Show when={props.isSelected()}>
-          <we-button variant="ghost" onClick={openModal} class="we-block-input-placeholder" mt="300">
-            Edit Link
-          </we-button>
+          <Row
+            position="absolute"
+            top="5px"
+            right="5px"
+            p="200"
+            r="200"
+            gap="200"
+            border="1px solid var(--we-color-neutral-100)"
+            bg="neutral-0"
+          >
+            <we-button square variant="ghost" onClick={openModal}>
+              <we-icon name="pencil-simple" size="xs" />
+            </we-button>
+            <we-button square variant="ghost" onClick={handleDelete}>
+              <we-icon name="x" size="xs" />
+            </we-button>
+          </Row>
         </Show>
       </Show>
 
+      {/* Add/edit modal — portalled to escape the Lexical contenteditable context. */}
       <Show when={showModal()}>
-        <we-modal close={closeModal} p="500" width="320px" r="300">
-          <form onSubmit={handleSubmit}>
-            <Column gap="300">
-              <we-text variant="subheading">Add Link</we-text>
-              <we-form-field label="URL">
-                <we-input
-                  type="text"
-                  value={url()}
-                  on:input={(e: CustomEvent) => setUrl(e.detail)}
-                  placeholder="https://example.com"
-                />
-              </we-form-field>
-              <we-form-field label="Title">
-                <we-input
-                  type="text"
-                  value={title()}
-                  on:input={(e: CustomEvent) => setTitle(e.detail)}
-                  placeholder="Link title"
-                />
-              </we-form-field>
-              <we-form-field label="Description">
-                <we-input
-                  type="text"
-                  value={description()}
-                  on:input={(e: CustomEvent) => setDescription(e.detail)}
-                  placeholder="Brief description"
-                />
-              </we-form-field>
-              <Row ax="end" gap="200">
-                <we-button variant="secondary" onClick={closeModal}>
-                  Cancel
-                </we-button>
-                <we-button variant="primary" onClick={handleSubmit}>
-                  Add
-                </we-button>
-              </Row>
+        <Portal>
+          <we-modal close={() => setShowModal(false)} ax="center" minWidth="400px">
+            <we-text fontWeight="bold" fontSize="600" textAlign="center">
+              {props.url ? 'Edit Link' : 'Add Link'}
+            </we-text>
+
+            <Column width="100%" gap="400">
+              <we-input
+                type="text"
+                value={url()}
+                on:input={(e: CustomEvent) => setUrl(e.detail)}
+                placeholder="https://example.com"
+              />
+              <we-input
+                type="text"
+                value={title()}
+                on:input={(e: CustomEvent) => setTitle(e.detail)}
+                placeholder="Title (optional)"
+              />
+              <we-input
+                type="text"
+                value={description()}
+                on:input={(e: CustomEvent) => setDescription(e.detail)}
+                placeholder="Description (optional)"
+              />
             </Column>
-          </form>
-        </we-modal>
+
+            <Row ax="center" gap="300">
+              <we-button variant="secondary" onClick={() => setShowModal(false)}>
+                Cancel
+              </we-button>
+              <we-button variant="primary" onClick={handleSubmit} disabled={!url().trim()}>
+                {props.url ? 'Save' : 'Add'}
+              </we-button>
+            </Row>
+          </we-modal>
+        </Portal>
       </Show>
     </Column>
   );

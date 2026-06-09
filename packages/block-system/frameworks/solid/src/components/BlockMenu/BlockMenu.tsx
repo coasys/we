@@ -17,7 +17,7 @@ const ol = { type: 'ol', label: 'Number List', icon: 'list-numbers', md: '1.' };
 // const rows = { type: 'rows', label: 'Rows', icon: 'rows-plus-bottom', md: '=' };
 
 // Media blocks
-const url = { type: 'url', label: 'URL', icon: 'link', md: '!' };
+const url = { type: 'link', label: 'URL', icon: 'link', md: '!' };
 const image = { type: 'image', label: 'Image', icon: 'image', md: '!!' };
 const audio = { type: 'audio', label: 'Audio', icon: 'speaker-high', md: '!!!' };
 const video = { type: 'video', label: 'Video', icon: 'youtube-logo', md: '!!!!' };

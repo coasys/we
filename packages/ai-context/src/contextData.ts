@@ -819,6 +819,7 @@ export const contextData: ContextData = {
     {
       name: 'FileDisplay',
       props: [
+        { name: 'title', type: 'string | undefined', optional: false },
         { name: 'name', type: 'string | undefined', optional: false },
         { name: 'url', type: 'string | undefined', optional: false },
         { name: 'mimeType', type: 'string | undefined', optional: false },
@@ -829,6 +830,7 @@ export const contextData: ContextData = {
     {
       name: 'FileInput',
       props: [
+        { name: 'title', type: 'string | undefined', optional: false },
         { name: 'name', type: 'string | undefined', optional: false },
         { name: 'url', type: 'string | FileData | undefined', optional: false },
         { name: 'mimeType', type: 'string | undefined', optional: false },

@@ -6,7 +6,10 @@ interface BlockPlaceholderProps {
   icon: string;
   /** Primary label, e.g. "Add an image". */
   label: string;
-  /** Secondary hint shown below the label. Defaults to "Drop here or click for options". */
+  /** Secondary hint shown below the label.
+   * Defaults to "Drop here or click for options" when `onFileDrop` is provided,
+   * or "Click to configure" otherwise.
+   */
   hint?: string;
   /**
    * Accepted mime types for drag-drop filtering, in HTML `accept` attribute format.
@@ -33,9 +36,9 @@ function matchesAccept(file: File, accept: string): boolean {
 /**
  * Consistent empty-state placeholder for media and advanced block types.
  *
- * Renders a dashed drop zone with the block's icon and label. Dropping a file
- * calls `onFileDrop` directly (skipping the config modal). Clicking calls
- * `onClick` (which should open the block's config modal).
+ * When `onFileDrop` is provided the border is dashed and the zone accepts file
+ * drops (image, audio, video, file blocks). Without it the border is solid and
+ * the placeholder is click-only (link, embed, event, task, etc.).
  *
  * Intentionally does NOT wrap `we-file-upload` — that primitive's click-to-browse
  * behaviour conflicts with our click-to-open-modal requirement here. `we-file-upload`
@@ -43,9 +46,10 @@ function matchesAccept(file: File, accept: string): boolean {
  */
 export function BlockPlaceholder(props: BlockPlaceholderProps) {
   const [dragOver, setDragOver] = createSignal(false);
+  const droppable = () => !!props.onFileDrop;
 
   function onDragOver(e: DragEvent) {
-    if (!e.dataTransfer?.types.includes('Files')) return;
+    if (!droppable() || !e.dataTransfer?.types.includes('Files')) return;
     e.preventDefault();
     setDragOver(true);
   }
@@ -65,6 +69,14 @@ export function BlockPlaceholder(props: BlockPlaceholderProps) {
     props.onFileDrop(file);
   }
 
+  const borderStyle = () => {
+    if (dragOver()) return '2px dashed var(--we-color-primary-500)';
+    if (droppable()) return '2px dashed var(--we-color-neutral-200)';
+    return '2px solid var(--we-color-neutral-200)';
+  };
+
+  const defaultHint = () => (droppable() ? 'Drop here or click for options' : 'Click to configure');
+
   return (
     <Column
       ax="center"
@@ -72,7 +84,7 @@ export function BlockPlaceholder(props: BlockPlaceholderProps) {
       gap="200"
       p="600"
       r="300"
-      border={dragOver() ? '2px dashed var(--we-color-primary-500)' : '2px dashed var(--we-color-neutral-200)'}
+      border={borderStyle()}
       bg={dragOver() ? 'primary-50' : 'neutral-25'}
       cursor="pointer"
       minHeight="120px"
@@ -87,7 +99,7 @@ export function BlockPlaceholder(props: BlockPlaceholderProps) {
         {props.label}
       </we-text>
       <we-text color={dragOver() ? 'primary-500' : 'neutral-400'} fontSize="300" textAlign="center">
-        {props.hint ?? 'Drop here or click for options'}
+        {props.hint ?? defaultHint()}
       </we-text>
     </Column>
   );

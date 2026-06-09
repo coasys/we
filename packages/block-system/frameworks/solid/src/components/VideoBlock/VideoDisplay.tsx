@@ -30,7 +30,7 @@ export function VideoDisplay(props: VideoDisplayProps) {
   const containerWidth = () => `${props.width ?? 100}%`;
 
   return (
-    <Column class="we-video-block" gap="200" width={containerWidth()} mx="auto">
+    <Column class="we-video-block" gap="300" width={containerWidth()} mx="auto">
       <Show when={props.url}>
         <Show
           when={embedUrl()}
@@ -41,7 +41,9 @@ export function VideoDisplay(props: VideoDisplayProps) {
                 <we-link href={props.url} target="_blank" textDecoration="none" color="inherit">
                   <Row gap="200" ay="center">
                     <we-icon name="youtube-logo" size="lg" />
-                    <we-text>{props.title || props.url}</we-text>
+                    <we-text fontSize="400" color="neutral-700">
+                      {props.title || props.url}
+                    </we-text>
                   </Row>
                 </we-link>
               }
@@ -62,7 +64,7 @@ export function VideoDisplay(props: VideoDisplayProps) {
           </div>
         </Show>
         <Show when={props.title}>
-          <we-text fontSize="300" color="neutral-500">
+          <we-text fontSize="400" color="neutral-700">
             {props.title}
           </we-text>
         </Show>

@@ -32,7 +32,7 @@ export function AudioDisplay(props: AudioDisplayProps) {
               </we-text>
             </Show>
             <Show when={props.artist}>
-              <we-text fontSize="300" color="neutral-500">
+              <we-text fontSize="400" color="neutral-500">
                 {props.artist}
               </we-text>
             </Show>
