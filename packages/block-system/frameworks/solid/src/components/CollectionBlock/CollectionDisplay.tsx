@@ -9,27 +9,26 @@ interface CollectionDisplayProps {
   childEditorState?: SerializedBlockNode;
 }
 
-/** Returns the Lexical root class that applies the grid layout. */
-function layoutRootClass(layout?: string): string {
-  if (layout === 'columns' || layout === 'grid') return 'we-collection-layout';
-  return ''; // 'rows' — default stacking, no grid needed
+function normaliseLayout(layout?: string): string {
+  if (layout === 'column') return 'columns';
+  if (layout === 'row') return 'rows';
+  return layout ?? 'grid';
 }
 
 export function CollectionDisplay(props: CollectionDisplayProps) {
-  const colCount = props.columnCount ?? 2;
-  const rootClass = layoutRootClass(props.layout);
+  const colCount = () => props.columnCount ?? 2;
+  const layout = () => normaliseLayout(props.layout);
 
   return (
     <div
-      // CSS custom properties cascade into the Lexical editor root so that
-      // we-collection-layout can reference --we-cols / --we-gap.
+      class="we-collection-block"
+      data-layout={layout()}
       style={{
-        '--we-cols': String(colCount),
+        '--we-cols': String(colCount()),
         '--we-gap': props.gap ? `var(--we-spacing-${props.gap}, 1rem)` : '1rem',
       }}
-      class="we-collection-block"
     >
-      <BlockRenderer editorState={props.childEditorState} rootClass={rootClass} />
+      <BlockRenderer editorState={props.childEditorState} />
     </div>
   );
 }

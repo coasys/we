@@ -1,9 +1,16 @@
 import { getBlockRegistration } from '@we/block-shared';
 import type { LexicalEditor, NodeKey, SerializedLexicalNode } from 'lexical';
-import { $createNodeSelection, $setSelection, DecoratorNode } from 'lexical';
+import {
+  $createNodeSelection,
+  $getNodeByKey,
+  $getSelection,
+  $isNodeSelection,
+  $setSelection,
+  DecoratorNode,
+} from 'lexical';
 import { useLexicalComposerContext } from 'lexical-solid';
 import type { JSX } from 'solid-js';
-import { createMemo, onCleanup } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 
 export type SerializedCollectionNode = SerializedLexicalNode & {
   layout?: string;
@@ -24,15 +31,71 @@ export type SerializedCollectionNode = SerializedLexicalNode & {
  */
 export const collectionNodeStates = new Map<string, unknown>();
 
+/**
+ * Stable decorator factory cache — keyed by node key.
+ *
+ * decorate() must always return the *same* function reference for a given key.
+ * If it returns a new reference, lexical-solid unmounts the old component and
+ * mounts a fresh one, destroying the sub-editor and losing its content.
+ */
+const decoratorFactoryCache = new Map<string, () => JSX.Element>();
+
 /** Bridge component rendered by the CollectionBlockNode decorator. */
-function CollectionBlockBridge(props: { nodeKey: string; nodeProps: Record<string, unknown> }) {
+function CollectionBlockBridge(props: { nodeKey: string }) {
   const [editor] = useLexicalComposerContext();
   const reg = createMemo(() => getBlockRegistration('collection'));
+  const [isNodeSelected, setIsNodeSelected] = createSignal(false);
 
-  // Tear down the state entry when the node unmounts
+  // Read the FULL props (including childEditorState) once at mount.
+  // childEditorState is intentionally NOT tracked reactively — if it were,
+  // any layout change would cause LoadEditorState to re-run and reset content.
+  const initialProps = editor.getEditorState().read(() => {
+    const n = $getNodeByKey(props.nodeKey);
+    return n instanceof CollectionBlockNode ? { ...n.__props } : ({} as Record<string, unknown>);
+  });
+
+  // Track ONLY layout-display props reactively so toolbar changes propagate
+  // without triggering a sub-editor content reset.
+  const [layoutProps, setLayoutProps] = createSignal({
+    layout: initialProps.layout as string | undefined,
+    columnCount: initialProps.columnCount as number | undefined,
+    gap: initialProps.gap as string | undefined,
+  });
+
   onCleanup(() => {
     collectionNodeStates.delete(props.nodeKey);
+    decoratorFactoryCache.delete(props.nodeKey);
   });
+
+  createEffect(() => {
+    const unregister = editor.registerUpdateListener(({ editorState }) => {
+      editorState.read(() => {
+        // Update reactive layout props
+        const n = $getNodeByKey(props.nodeKey);
+        if (n instanceof CollectionBlockNode) {
+          setLayoutProps({
+            layout: n.__props.layout as string | undefined,
+            columnCount: n.__props.columnCount as number | undefined,
+            gap: n.__props.gap as string | undefined,
+          });
+        }
+        // Update selection state
+        const sel = $getSelection();
+        setIsNodeSelected($isNodeSelection(sel) ? sel.has(props.nodeKey) : false);
+      });
+    });
+    onCleanup(unregister);
+  });
+
+  function handleChange(prop: string, value: unknown) {
+    editor.update(() => {
+      const node = $getNodeByKey(props.nodeKey);
+      if (node instanceof CollectionBlockNode) {
+        const writable = node.getWritable() as CollectionBlockNode;
+        writable.__props = { ...writable.__props, [prop]: value };
+      }
+    });
+  }
 
   const readOnly = () => !editor.isEditable();
 
@@ -43,16 +106,24 @@ function CollectionBlockBridge(props: { nodeKey: string; nodeProps: Record<strin
     <>
       {readOnly() ? (
         Display ? (
-          <Display {...props.nodeProps} />
+          <Display
+            childEditorState={initialProps.childEditorState}
+            layout={layoutProps().layout}
+            columnCount={layoutProps().columnCount}
+            gap={layoutProps().gap}
+          />
         ) : null
       ) : Input ? (
         <Input
-          {...props.nodeProps}
+          // childEditorState is passed once from initialProps — NOT reactive —
+          // so LoadEditorState only runs on mount, never on layout changes.
+          childEditorState={initialProps.childEditorState}
+          layout={layoutProps().layout}
+          columnCount={layoutProps().columnCount}
+          gap={layoutProps().gap}
           nodeKey={props.nodeKey}
-          // onChange/isSelected are no-ops: CollectionInput writes directly to
-          // collectionNodeStates instead of mutating the node's __props.
-          onChange={() => {}}
-          isSelected={() => false}
+          onChange={handleChange}
+          isSelected={isNodeSelected}
         />
       ) : null}
     </>
@@ -129,7 +200,11 @@ export class CollectionBlockNode extends DecoratorNode<() => JSX.Element> {
 
   decorate(): () => JSX.Element {
     const nodeKey = this.__key;
-    const nodeProps = this.__props;
-    return () => <CollectionBlockBridge nodeKey={nodeKey} nodeProps={nodeProps} />;
+    // Return the cached factory so lexical-solid sees a stable reference and
+    // never unmounts/remounts the sub-editor when __props change.
+    if (!decoratorFactoryCache.has(nodeKey)) {
+      decoratorFactoryCache.set(nodeKey, () => <CollectionBlockBridge nodeKey={nodeKey} />);
+    }
+    return decoratorFactoryCache.get(nodeKey)!;
   }
 }
