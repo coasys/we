@@ -756,6 +756,29 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
+      name: 'CollectionDisplay',
+      props: [
+        { name: 'layout', type: 'string', optional: true },
+        { name: 'columnCount', type: 'number', optional: true },
+        { name: 'gap', type: 'string', optional: true },
+        { name: 'childEditorStates', type: 'any[]', optional: true },
+      ],
+      source: 'components',
+    },
+    {
+      name: 'CollectionInput',
+      props: [
+        { name: 'nodeKey', type: 'string', optional: false },
+        { name: 'layout', type: 'string', optional: true },
+        { name: 'columnCount', type: 'number', optional: true },
+        { name: 'gap', type: 'string', optional: true },
+        { name: 'childEditorStates', type: 'any[]', optional: true },
+        { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
+        { name: 'isSelected', type: '() => boolean', optional: false },
+      ],
+      source: 'components',
+    },
+    {
       name: 'DividerDisplay',
       props: [{ name: 'style', type: '"solid" | "dashed" | "dotted" | undefined', optional: false }],
       source: 'components',

@@ -476,6 +476,10 @@ when `relative` is enabled.
   Props: code: string | undefined, language: string | undefined, title: string | undefined
 - CodeInput
   Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
+- CollectionDisplay
+  Props: layout?: string, columnCount?: number, gap?: string, childEditorStates?: any[]
+- CollectionInput
+  Props: nodeKey: string, layout?: string, columnCount?: number, gap?: string, childEditorStates?: any[], onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - DividerDisplay
   Props: style: "solid" | "dashed" | "dotted" | undefined
 - DividerInput
