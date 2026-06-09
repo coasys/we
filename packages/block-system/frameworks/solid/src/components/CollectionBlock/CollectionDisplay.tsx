@@ -9,15 +9,9 @@ interface CollectionDisplayProps {
   childEditorState?: SerializedBlockNode;
 }
 
-function normaliseLayout(layout?: string): string {
-  if (layout === 'column') return 'columns';
-  if (layout === 'row') return 'rows';
-  return layout ?? 'grid';
-}
-
 export function CollectionDisplay(props: CollectionDisplayProps) {
   const colCount = () => props.columnCount ?? 2;
-  const layout = () => normaliseLayout(props.layout);
+  const layout = () => props.layout ?? 'grid';
 
   return (
     <div

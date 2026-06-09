@@ -152,7 +152,8 @@
   padding: 10px;
 
   &[data-layout='row'] {
-    .we-block-composer-wrapper {
+    .we-block-composer-wrapper,
+    .we-block-renderer-wrapper {
       overflow-x: auto;
     }
     .we-block-composer-editor,
