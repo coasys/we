@@ -96,11 +96,9 @@ async function preUploadFileAssets(
     );
   }
 
-  // Recurse into collection block child editor states
-  if (Array.isArray(node.childEditorStates)) {
-    patched.childEditorStates = await Promise.all(
-      (node.childEditorStates as SerializedBlockNode[]).map((child) => preUploadFileAssets(perspective, child)),
-    );
+  // Recurse into collection block child editor state
+  if (node.childEditorState && typeof node.childEditorState === 'object') {
+    patched.childEditorState = await preUploadFileAssets(perspective, node.childEditorState as SerializedBlockNode);
   }
 
   return patched;
@@ -148,11 +146,12 @@ export async function resolveExpressionAddresses(
     );
   }
 
-  // Recurse into collection block child editor states so sub-renderers receive
+  // Recurse into collection block child editor state so sub-renderers receive
   // pre-resolved data URIs and don't need their own perspective reference.
-  if (Array.isArray(node.childEditorStates)) {
-    patched.childEditorStates = await Promise.all(
-      (node.childEditorStates as SerializedBlockNode[]).map((child) => resolveExpressionAddresses(perspective, child)),
+  if (node.childEditorState && typeof node.childEditorState === 'object') {
+    patched.childEditorState = await resolveExpressionAddresses(
+      perspective,
+      node.childEditorState as SerializedBlockNode,
     );
   }
 
@@ -243,26 +242,13 @@ export async function createBlocks(
         }
       }
 
-      // Special handling for collection blocks: each childEditorState is a full
-      // Lexical root that becomes its own CollectionBlock model with its own blob.
-      if (node.type === 'collection' && block && Array.isArray(node.childEditorStates)) {
-        for (const childState of node.childEditorStates as SerializedBlockNode[]) {
-          const childBlock = await persist(childState, block);
-          if (childBlock && 'editorState' in childBlock) {
-            // Pre-upload file assets in the child state, then save as a blob.
-            // Safe to call again: strings/CIDs are not FileData, so no re-upload.
-            const patchedChild = await preUploadFileAssets(perspective, childState);
-            const jsonStr = JSON.stringify(patchedChild);
-            const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
-            (childBlock as CollectionBlock).editorState = {
-              data_base64: base64,
-              name: 'editor-state.json',
-              file_type: 'application/json',
-            } as unknown as string;
-            await childBlock.save(tx.batchId);
-          }
-        }
-        // collection nodes use childEditorStates, not node.children
+      // Special handling for collection blocks: the childEditorState is the
+      // sub-editor content embedded inline in the parent blob. Recurse into it
+      // to create AD4M models for the blocks inside (e.g. images, files).
+      if (node.type === 'collection' && block && node.childEditorState) {
+        const childRoot = node.childEditorState as SerializedBlockNode;
+        await persist(childRoot, block);
+        // No separate editorState blob — it's embedded in the parent's blob.
         return block;
       }
 

@@ -136,3 +136,22 @@
     background-color: var(--we-color-neutral-25);
   }
 }
+
+// Collection block wrapper — provides CSS custom properties to the sub-editor
+.we-collection-block {
+  width: 100%;
+}
+
+// Grid/columns layout: applied to the Lexical editor root via theme.rootClass
+// so each top-level block node becomes a grid cell.
+.we-collection-layout {
+  display: grid;
+  grid-template-columns: repeat(var(--we-cols, 2), 1fr);
+  gap: var(--we-gap, 1rem);
+}
+
+// Outer collection node wrapper: dashed outline so the block boundary is visible
+.we-block-content .we-block:has(> .we-collection-block) {
+  border: 1px dashed var(--we-color-neutral-200);
+  padding: 8px;
+}

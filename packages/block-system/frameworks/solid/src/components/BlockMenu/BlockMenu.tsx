@@ -13,8 +13,8 @@ const ol = { type: 'ol', label: 'Number List', icon: 'list-numbers', md: '1.' };
 
 // // Collection blocks
 const grid = { type: 'grid', label: 'Grid', icon: 'squares-four', md: '+' };
-const column = { type: 'column', label: 'Column', icon: 'rows-plus-right', md: '=' };
-const row = { type: 'row', label: 'Row', icon: 'columns-plus-bottom', md: '||' };
+const column = { type: 'column', label: 'Column', icon: 'rows-plus-bottom', md: '=' };
+const row = { type: 'row', label: 'Row', icon: 'columns-plus-right', md: '||' };
 
 // Media blocks
 const url = { type: 'link', label: 'URL', icon: 'link', md: '!' };
@@ -31,7 +31,7 @@ const file = { type: 'file', label: 'File', icon: 'paperclip', md: '!!!!!' };
 
 const categories = [
   { title: 'Text', blocks: [p, h1, h2, h3, quote, ul, ol] },
-  { title: 'Collection', blocks: [grid, column, row] },
+  { title: 'Collection', blocks: [grid, row, column] },
   { title: 'Media', blocks: [url, image, audio, video, file] },
   // { title: 'Social', blocks: [event, task, poll, game] },
 ].map((category, index, arr) => ({

@@ -9,7 +9,7 @@ export type SerializedCollectionNode = SerializedLexicalNode & {
   layout?: string;
   columnCount?: number;
   gap?: string;
-  childEditorStates?: unknown[];
+  childEditorState?: unknown;
 };
 
 /**
@@ -22,7 +22,7 @@ export type SerializedCollectionNode = SerializedLexicalNode & {
  * Lexical re-renders and create a reactive loop with StateChangePlugin in the
  * sub-editors).
  */
-export const collectionNodeStates = new Map<string, unknown[]>();
+export const collectionNodeStates = new Map<string, unknown>();
 
 /** Bridge component rendered by the CollectionBlockNode decorator. */
 function CollectionBlockBridge(props: { nodeKey: string; nodeProps: Record<string, unknown> }) {
@@ -106,12 +106,12 @@ export class CollectionBlockNode extends DecoratorNode<() => JSX.Element> {
   }
 
   exportJSON(): SerializedCollectionNode {
-    const registeredStates = collectionNodeStates.get(this.__key);
+    const registeredState = collectionNodeStates.get(this.__key);
     return {
       ...this.__props,
       // Use the live registry if available; fall back to the serialised props
       // (e.g. when reading an existing post that was never opened for editing)
-      ...(registeredStates !== undefined ? { childEditorStates: registeredStates } : {}),
+      ...(registeredState !== undefined ? { childEditorState: registeredState } : {}),
       type: 'collection',
       version: 1,
     };

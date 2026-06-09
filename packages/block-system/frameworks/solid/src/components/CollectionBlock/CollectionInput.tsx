@@ -16,8 +16,6 @@ import {
 import { createEffect, onCleanup } from 'solid-js';
 
 import { blockNodeClasses } from '../../nodes';
-// Import collectionNodeStates from the node file (not from nodes/index to avoid
-// touching the module-load order of the factory-generated node classes).
 import { collectionNodeStates } from '../../nodes/CollectionBlockNode';
 import BlockHandlesPlugin from '../../plugins/BlockHandlesPlugin';
 import BlockInsertPlugin from '../../plugins/BlockInsertPlugin';
@@ -49,7 +47,7 @@ function LoadEditorState({ editorState }: { editorState?: SerializedBlockNode })
       const state = editor.parseEditorState({ root: editorState });
       editor.setEditorState(state);
     } catch (e) {
-      console.error('CollectionInput sub-editor: error loading state', e);
+      console.error('CollectionInput: error loading state', e);
     }
   });
 
@@ -70,36 +68,67 @@ function StateChangePlugin({ onStateChange }: { onStateChange: (root: Serialized
   return null;
 }
 
-// ── SubBlockComposer ─────────────────────────────────────────────────────────
+// ── CollectionInput ──────────────────────────────────────────────────────────
+
+interface CollectionInputProps {
+  /** The Lexical node key — used to write state updates to collectionNodeStates. */
+  nodeKey: string;
+  layout?: string;
+  columnCount?: number;
+  gap?: string;
+  childEditorState?: SerializedBlockNode;
+  /** Unused: state is tracked via collectionNodeStates, not via onChange. */
+  onChange: (property: string, value: unknown) => void;
+  isSelected: () => boolean;
+}
+
+/** Returns the Lexical root class that applies the grid layout. */
+function layoutRootClass(layout?: string): string {
+  if (layout === 'columns' || layout === 'grid') return 'we-collection-layout';
+  return ''; // 'rows' — default stacking
+}
 
 /**
- * Lightweight nested editor — same as BlockComposer but without auto-focus
- * and without re-registering components (they're already registered when
- * BlockComposer loaded).
+ * Single sub-editor for a collection block.
+ *
+ * Each block added inside it becomes a grid cell (when layout is 'columns' or
+ * 'grid') via display:grid on the Lexical editor root.  The self-similar
+ * design mirrors the root composition: one editor state, standard block nodes,
+ * no per-cell sub-editors.  Users nest another collection block to get a
+ * multi-block cell.
  */
-function SubBlockComposer(props: {
-  index: number;
-  editorState?: SerializedBlockNode;
-  onStateChange: (root: SerializedBlockNode) => void;
-}) {
+export function CollectionInput(props: CollectionInputProps) {
+  const colCount = props.columnCount ?? 2;
+  const rootClass = layoutRootClass(props.layout);
+
   const initialConfig = {
-    namespace: `CollectionCell-${props.index}`,
-    theme: { root: 'we-block-composer-editor we-block-content' },
+    namespace: 'CollectionBlock',
+    theme: {
+      root: `we-block-composer-editor we-block-content${rootClass ? ` ${rootClass}` : ''}`,
+    },
     nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, ...blockNodeClasses] as const,
-    onError: (error: Error) => console.error('CollectionInput sub-editor error:', error),
+    onError: (error: Error) => console.error('CollectionInput error:', error),
   };
 
   return (
     <div
-      class="we-block-composer-wrapper we-collection-cell"
-      style={{ flex: '1', 'min-width': '0', 'min-height': '80px' }}
+      // CSS custom properties cascade into the editor root for we-collection-layout
+      style={{
+        '--we-cols': String(colCount),
+        '--we-gap': props.gap ? `var(--we-spacing-${props.gap}, 1rem)` : '1rem',
+      }}
+      class="we-collection-block"
     >
       <LexicalComposer initialConfig={initialConfig}>
-        <LoadEditorState editorState={props.editorState} />
-        <StateChangePlugin onStateChange={props.onStateChange} />
+        <LoadEditorState editorState={props.childEditorState ?? EMPTY_ROOT} />
+        <StateChangePlugin
+          onStateChange={(root) => {
+            collectionNodeStates.set(props.nodeKey, root);
+          }}
+        />
         <RichTextPlugin
           contentEditable={
-            <div>
+            <div class="we-block-composer-wrapper">
               <ContentEditable />
             </div>
           }
@@ -119,68 +148,5 @@ function SubBlockComposer(props: {
   );
 }
 
-// ── CollectionInput ──────────────────────────────────────────────────────────
-
-interface CollectionInputProps {
-  /** The Lexical node key — used to write state updates to collectionNodeStates. */
-  nodeKey: string;
-  layout?: string;
-  columnCount?: number;
-  gap?: string;
-  childEditorStates?: SerializedBlockNode[];
-  /** Unused: state is tracked via collectionNodeStates, not via onChange. */
-  onChange: (property: string, value: unknown) => void;
-  isSelected: () => boolean;
-}
-
-function containerStyle(layout?: string, columnCount?: number, gap?: string): Record<string, string> {
-  const g = gap ? `var(--we-spacing-${gap}, 1rem)` : '1rem';
-  if (layout === 'grid') {
-    return {
-      display: 'grid',
-      'grid-template-columns': `repeat(${columnCount ?? 2}, 1fr)`,
-      gap: g,
-    };
-  }
-  if (layout === 'rows') {
-    return { display: 'flex', 'flex-direction': 'column', gap: g };
-  }
-  // 'columns' (default)
-  return {
-    display: 'flex',
-    'flex-direction': 'row',
-    gap: g,
-    'align-items': 'flex-start',
-  };
-}
-
-export function CollectionInput(props: CollectionInputProps) {
-  // Determine how many cells to create.
-  // For 'grid', create columnCount² cells; for others, columnCount cells.
-  const cellCount =
-    props.childEditorStates?.length ??
-    (props.layout === 'grid' ? (props.columnCount ?? 2) * (props.columnCount ?? 2) : (props.columnCount ?? 2));
-
-  // Capture initial states once at mount — not reactive.
-  // Using a plain array + static .map() renders cells exactly once.
-  const initialStates: SerializedBlockNode[] = props.childEditorStates?.length
-    ? [...props.childEditorStates]
-    : Array.from({ length: cellCount }, () => JSON.parse(JSON.stringify(EMPTY_ROOT)));
-
-  // Mutable tracking: updated on every sub-editor change without triggering
-  // Lexical re-renders (we never call setProperty / getWritable here).
-  const currentStates: SerializedBlockNode[] = [...initialStates];
-
-  function handleStateChange(index: number, root: SerializedBlockNode) {
-    currentStates[index] = root;
-    collectionNodeStates.set(props.nodeKey, [...currentStates]);
-  }
-
-  return (
-    <div style={containerStyle(props.layout, props.columnCount, props.gap)} class="we-collection-block">
-      {initialStates.map((state, i) => (
-        <SubBlockComposer index={i} editorState={state} onStateChange={(root) => handleStateChange(i, root)} />
-      ))}
-    </div>
-  );
-}
+// Ensure core block models are registered for sub-editor node types
+registerCoreBlocks();

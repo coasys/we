@@ -1,5 +1,4 @@
 import type { SerializedBlockNode } from '@we/block-shared';
-import { For } from 'solid-js';
 
 import { BlockRenderer } from '../BlockRenderer';
 
@@ -7,42 +6,30 @@ interface CollectionDisplayProps {
   layout?: string;
   columnCount?: number;
   gap?: string;
-  childEditorStates?: SerializedBlockNode[];
+  childEditorState?: SerializedBlockNode;
 }
 
-function containerStyle(layout?: string, columnCount?: number, gap?: string): Record<string, string> {
-  const g = gap ? `var(--we-spacing-${gap}, 1rem)` : '1rem';
-  if (layout === 'grid') {
-    return {
-      display: 'grid',
-      'grid-template-columns': `repeat(${columnCount ?? 2}, 1fr)`,
-      gap: g,
-    };
-  }
-  if (layout === 'rows') {
-    return { display: 'flex', 'flex-direction': 'column', gap: g };
-  }
-  // 'columns' (default)
-  return {
-    display: 'flex',
-    'flex-direction': 'row',
-    gap: g,
-    'align-items': 'flex-start',
-  };
+/** Returns the Lexical root class that applies the grid layout. */
+function layoutRootClass(layout?: string): string {
+  if (layout === 'columns' || layout === 'grid') return 'we-collection-layout';
+  return ''; // 'rows' — default stacking, no grid needed
 }
 
 export function CollectionDisplay(props: CollectionDisplayProps) {
-  const states = () => props.childEditorStates ?? [];
+  const colCount = props.columnCount ?? 2;
+  const rootClass = layoutRootClass(props.layout);
 
   return (
-    <div style={containerStyle(props.layout, props.columnCount, props.gap)} class="we-collection-block">
-      <For each={states()}>
-        {(state) => (
-          <div style={{ flex: '1', 'min-width': '0' }}>
-            <BlockRenderer editorState={state} />
-          </div>
-        )}
-      </For>
+    <div
+      // CSS custom properties cascade into the Lexical editor root so that
+      // we-collection-layout can reference --we-cols / --we-gap.
+      style={{
+        '--we-cols': String(colCount),
+        '--we-gap': props.gap ? `var(--we-spacing-${props.gap}, 1rem)` : '1rem',
+      }}
+      class="we-collection-block"
+    >
+      <BlockRenderer editorState={props.childEditorState} rootClass={rootClass} />
     </div>
   );
 }
