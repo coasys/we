@@ -1,4 +1,11 @@
-import type { LocalFieldMeta, LocalStateField, MapProp, QueryDescriptor, ValidationRule } from '@we/schema-shared';
+import type {
+  LocalFieldMeta,
+  LocalStateField,
+  MapProp,
+  QueryDescriptor,
+  QueryStateField,
+  ValidationRule,
+} from '@we/schema-shared';
 import {
   hasToken,
   REACTIVE_ACCESSOR,
@@ -308,6 +315,26 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       $localMeta: { ...((context.$localMeta as Record<string, unknown>) ?? {}), ...metaEntries },
       $localScopeFields: scopeFields,
     };
+  }
+
+  // Create reactive query subscriptions when $queries is declared on this node.
+  // Each entry runs createQuerySignal at node mount and injects the result array into
+  // $local under the given name — read-only, shared across the entire subtree.
+  if (node.$queries) {
+    const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+    if (getModel) {
+      const queryAccessors: Record<string, () => unknown[]> = {};
+      for (const [name, field] of Object.entries(node.$queries as Record<string, QueryStateField>)) {
+        const descriptor = resolveQueryProp({ $query: field });
+        queryAccessors[name] = createQuerySignal(descriptor, stores, getModel, effectiveContext);
+      }
+      effectiveContext = {
+        ...effectiveContext,
+        $local: { ...((effectiveContext.$local as Record<string, unknown>) ?? {}), ...queryAccessors },
+      };
+    } else {
+      console.warn('Schema $queries: $getModel not found in stores. Did you wire the model registry?');
+    }
   }
 
   function renderNode(node?: SchemaNode, nodeContext?: Record<string, unknown>) {

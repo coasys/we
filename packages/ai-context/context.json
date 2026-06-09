@@ -715,6 +715,12 @@
           "default": "''"
         },
         {
+          "name": "download",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "disabled",
           "type": "boolean",
           "optional": false,
@@ -1778,7 +1784,7 @@
         },
         {
           "name": "audioUrl",
-          "type": "string | undefined",
+          "type": "string | FileData | undefined",
           "optional": false
         },
         {
@@ -1799,11 +1805,6 @@
         {
           "name": "isSelected",
           "type": "() => boolean",
-          "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
           "optional": false
         }
       ],
@@ -1839,7 +1840,7 @@
           "optional": true
         },
         {
-          "name": "post",
+          "name": "editorState",
           "type": "any",
           "optional": true
         },
@@ -1851,6 +1852,42 @@
         {
           "name": "onReady",
           "type": "((api: { save: () => void; }) => void)",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "BlockPlaceholder",
+      "props": [
+        {
+          "name": "icon",
+          "type": "string",
+          "optional": false
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": false
+        },
+        {
+          "name": "hint",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "accept",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "onFileDrop",
+          "type": "((file: File) => void)",
+          "optional": true
+        },
+        {
+          "name": "onClick",
+          "type": "(() => void)",
           "optional": true
         }
       ],
@@ -1886,8 +1923,13 @@
           "optional": true
         },
         {
-          "name": "post",
+          "name": "editorState",
           "type": "any",
+          "optional": true
+        },
+        {
+          "name": "perspective",
+          "type": "PerspectiveProxy | null",
           "optional": true
         }
       ],
@@ -1941,11 +1983,6 @@
           "name": "isSelected",
           "type": "() => boolean",
           "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
-          "optional": false
         }
       ],
       "source": "components"
@@ -1998,11 +2035,6 @@
           "name": "isSelected",
           "type": "() => boolean",
           "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
-          "optional": false
         }
       ],
       "source": "components"
@@ -2034,11 +2066,6 @@
         {
           "name": "isSelected",
           "type": "() => boolean",
-          "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
           "optional": false
         }
       ],
@@ -2101,11 +2128,6 @@
         {
           "name": "isSelected",
           "type": "() => boolean",
-          "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
           "optional": false
         }
       ],
@@ -2189,11 +2211,6 @@
           "name": "isSelected",
           "type": "() => boolean",
           "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
-          "optional": false
         }
       ],
       "source": "components"
@@ -2201,6 +2218,11 @@
     {
       "name": "FileDisplay",
       "props": [
+        {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
         {
           "name": "name",
           "type": "string | undefined",
@@ -2228,13 +2250,18 @@
       "name": "FileInput",
       "props": [
         {
+          "name": "title",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
           "name": "name",
           "type": "string | undefined",
           "optional": false
         },
         {
           "name": "url",
-          "type": "string | undefined",
+          "type": "string | FileData | undefined",
           "optional": false
         },
         {
@@ -2255,11 +2282,6 @@
         {
           "name": "isSelected",
           "type": "() => boolean",
-          "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
           "optional": false
         }
       ],
@@ -2296,7 +2318,7 @@
       "props": [
         {
           "name": "src",
-          "type": "string | undefined",
+          "type": "string | FileData | undefined",
           "optional": false
         },
         {
@@ -2322,11 +2344,6 @@
         {
           "name": "isSelected",
           "type": "() => boolean",
-          "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
           "optional": false
         }
       ],
@@ -2390,11 +2407,6 @@
           "name": "isSelected",
           "type": "() => boolean",
           "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
-          "optional": false
         }
       ],
       "source": "components"
@@ -2457,11 +2469,6 @@
           "name": "isSelected",
           "type": "() => boolean",
           "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
-          "optional": false
         }
       ],
       "source": "components"
@@ -2503,11 +2510,6 @@
         {
           "name": "isSelected",
           "type": "() => boolean",
-          "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
           "optional": false
         }
       ],
@@ -2591,11 +2593,6 @@
           "name": "isSelected",
           "type": "() => boolean",
           "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
-          "optional": false
         }
       ],
       "source": "components"
@@ -2621,6 +2618,11 @@
         {
           "name": "provider",
           "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "width",
+          "type": "number | undefined",
           "optional": false
         }
       ],
@@ -2650,6 +2652,11 @@
           "optional": false
         },
         {
+          "name": "width",
+          "type": "number | undefined",
+          "optional": false
+        },
+        {
           "name": "onChange",
           "type": "(property: string, value: unknown) => void",
           "optional": false
@@ -2657,11 +2664,6 @@
         {
           "name": "isSelected",
           "type": "() => boolean",
-          "optional": false
-        },
-        {
-          "name": "onSelect",
-          "type": "(e: MouseEvent) => void",
           "optional": false
         }
       ],
@@ -2698,6 +2700,37 @@
         {
           "name": "styles",
           "type": "Record<string, string | number>",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "AudioVisualiser",
+      "props": [
+        {
+          "name": "src",
+          "type": "string | undefined",
+          "optional": false
+        },
+        {
+          "name": "bars",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "activeColor",
+          "type": "string",
           "optional": true
         }
       ],
@@ -5416,13 +5449,13 @@
         },
         {
           "name": "avatar",
-          "type": "string | FileData",
+          "type": "string",
           "predicate": "we://profile_image",
           "required": false
         },
         {
           "name": "coverImage",
-          "type": "string | FileData",
+          "type": "string",
           "predicate": "we://cover_image",
           "required": false
         }
@@ -5659,7 +5692,7 @@
       "fields": [
         {
           "name": "editorState",
-          "type": "Record<string, unknown>",
+          "type": "string",
           "predicate": "we://editor_state",
           "required": false,
           "default": "null"
@@ -5837,6 +5870,12 @@
       "className": "FileBlock",
       "extends": "WeNode",
       "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "predicate": "we://title",
+          "required": false
+        },
         {
           "name": "name",
           "type": "string",
@@ -6159,13 +6198,13 @@
         },
         {
           "name": "avatar",
-          "type": "string | FileData",
+          "type": "string",
           "predicate": "we://image",
           "required": false
         },
         {
           "name": "coverImage",
-          "type": "string | FileData",
+          "type": "string",
           "predicate": "we://thumbnail",
           "required": false
         }
@@ -6282,9 +6321,10 @@
         },
         {
           "name": "schema",
-          "type": "Record<string, unknown>",
+          "type": "string",
           "predicate": "we://template_schema",
-          "required": false
+          "required": false,
+          "default": "null"
         }
       ],
       "relations": [
@@ -6404,13 +6444,15 @@
           "name": "css",
           "type": "string",
           "predicate": "we://stylesheet",
-          "required": false
+          "required": false,
+          "default": "null"
         },
         {
           "name": "overrides",
-          "type": "Record<string, unknown>",
+          "type": "string",
           "predicate": "we://token_overrides",
-          "required": false
+          "required": false,
+          "default": "null"
         }
       ],
       "relations": []

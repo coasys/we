@@ -6,10 +6,10 @@
   display: flex;
   flex-direction: column;
   background-color: var(--we-color-neutral-0);
-  padding: 5px;
-  border-radius: 5px;
+  padding: 10px;
+  border-radius: 10px;
   font-family: var(--we-font-family);
-  border: 1px solid var(--we-color-neutral-300);
+  border: 1px solid var(--we-color-neutral-200);
   min-width: 250px;
   max-height: min(400px, 60vh);
   overflow-y: auto;
@@ -17,9 +17,6 @@
   .we-block-menu-filter {
     all: unset;
     font-size: 13px;
-    padding: 6px 8px;
-    margin-bottom: 4px;
-    border-bottom: 1px solid var(--we-color-neutral-100);
     color: var(--we-color-neutral-900);
 
     &::placeholder {
@@ -42,27 +39,11 @@
     justify-content: space-between;
     border-radius: 5px;
     height: 30px;
-    padding: 0 5px;
-    font-size: 14px;
-    color: var(--we-color-neutral-900);
+    padding: 5px 8px;
 
     &.we-block-menu-focused {
       background-color: var(--we-color-neutral-50);
     }
-
-    .we-block-menu-markdown {
-      font-size: 12px;
-      color: var(--we-color-neutral-300);
-    }
-  }
-
-  .we-block-menu-category-title {
-    font-size: 10px;
-    color: var(--we-color-neutral-400);
-    padding: 5px 0;
-    margin-left: 5px;
-    font-weight: 600;
-    text-transform: uppercase;
   }
 
   .we-block-menu-divider {

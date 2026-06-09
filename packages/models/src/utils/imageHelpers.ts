@@ -89,6 +89,20 @@ export async function compressImageToFileData(file: File, name: string): Promise
 }
 
 /**
+ * Read any browser File into a FileData value object suitable for AD4M's
+ * FILE_STORAGE_LANGUAGE.  Unlike compressImageToFileData, no resizing or
+ * format conversion is applied — the file is stored as-is.
+ */
+export async function readFileAsFileData(file: File): Promise<FileData> {
+  const data_base64 = await blobToDataURL(file);
+  return {
+    data_base64,
+    name: file.name,
+    file_type: file.type || 'application/octet-stream',
+  };
+}
+
+/**
  * Reconstruct a FileData value object from a resolved data URI string.
  *
  * After AgentProfile.findOne() / Space.findOne() the resolveLanguage transform

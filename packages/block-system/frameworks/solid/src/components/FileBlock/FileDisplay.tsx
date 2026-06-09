@@ -2,6 +2,7 @@ import { Column, Row } from '@we/components/solid';
 import { Show } from 'solid-js';
 
 interface FileDisplayProps {
+  title: string | undefined;
   name: string | undefined;
   url: string | undefined;
   mimeType: string | undefined;
@@ -16,21 +17,40 @@ function formatSize(bytes: number): string {
 
 export function FileDisplay(props: FileDisplayProps) {
   return (
-    <div class="we-file-block">
+    <Column class="we-file-block" gap="200">
       <Show when={props.url}>
-        <we-link href={props.url} target="_blank" textDecoration="none" color="inherit">
-          <Row gap="300" ay="center" p="300" border="1px solid neutral-200" r="300">
-            <we-icon name="paperclip" size="lg" />
-            <Column flex="1">
-              <we-text variant="label">{props.name || 'File'}</we-text>
+        <we-link
+          href={props.url}
+          target="_blank"
+          download={props.url?.startsWith('data:') ? props.name : undefined}
+          textDecoration="none"
+          display="flex"
+        >
+          <Row
+            gap="400"
+            ay="center"
+            p="400"
+            border="1px solid neutral-300"
+            r="400"
+            width="100%"
+            bg="neutral-75"
+            hoverProps={{ bg: 'neutral-100' }}
+          >
+            <we-icon name="download-simple" color="neutral-500" />
+            <Column gap="100" flex="1">
+              <we-text fontSize="500" color="neutral-800">
+                {props.title || props.name || 'File'}
+              </we-text>
               <Show when={props.size}>
-                <we-text variant="footnote">{formatSize(props.size!)}</we-text>
+                <we-text fontSize="400" color="neutral-600">
+                  {formatSize(props.size!)}
+                </we-text>
               </Show>
             </Column>
-            <we-icon name="download-simple" size="sm" />
+            <we-icon name="download-simple" color="neutral-500" size="sm" />
           </Row>
         </we-link>
       </Show>
-    </div>
+    </Column>
   );
 }

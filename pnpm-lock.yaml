@@ -427,6 +427,9 @@ importers:
       '@we/block-shared':
         specifier: workspace:*
         version: link:../../shared
+      '@we/models':
+        specifier: workspace:*
+        version: link:../../../models
       lexical:
         specifier: ^0.30.0
         version: 0.30.0

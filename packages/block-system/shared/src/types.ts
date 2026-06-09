@@ -1,3 +1,4 @@
+import type { PerspectiveProxy } from '@coasys/ad4m';
 import type { DesignSystemProps } from '@we/design-types';
 
 /**
@@ -8,11 +9,12 @@ import type { DesignSystemProps } from '@we/design-types';
 export type SerializedBlockNode = any;
 
 export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
-  post?: SerializedBlockNode;
+  editorState?: SerializedBlockNode;
   onSave?: (json: SerializedBlockNode) => void;
   onReady?: (api: { save: () => void }) => void;
 };
 
 export type BlockRendererProps = Omit<DesignSystemProps, 'direction'> & {
-  post?: SerializedBlockNode;
+  editorState?: SerializedBlockNode;
+  perspective?: PerspectiveProxy | null;
 };

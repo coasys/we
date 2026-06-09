@@ -37,6 +37,7 @@ export default class Link extends DesignSystemElement {
   @property({ type: String }) href = '';
   @property({ type: String }) target = '';
   @property({ type: String }) rel = '';
+  @property({ type: String }) download = '';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -51,6 +52,7 @@ export default class Link extends DesignSystemElement {
         href=${this.href}
         target=${this.target || nothing}
         rel=${this.target === '_blank' ? this.rel || 'noopener noreferrer' : this.rel || nothing}
+        download=${this.download || nothing}
         aria-disabled=${this.disabled ? 'true' : 'false'}
         style=${styleMap(this.styles || {})}
       >

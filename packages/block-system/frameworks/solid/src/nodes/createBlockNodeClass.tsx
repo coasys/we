@@ -1,9 +1,18 @@
 import { getBlockRegistration } from '@we/block-shared';
 import type { LexicalEditor, LexicalNode, NodeKey, SerializedLexicalNode } from 'lexical';
-import { $getNodeByKey, DecoratorNode } from 'lexical';
+import {
+  $createNodeSelection,
+  $getNodeByKey,
+  $getSelection,
+  $isNodeSelection,
+  $setSelection,
+  COMMAND_PRIORITY_LOW,
+  DecoratorNode,
+  SELECTION_CHANGE_COMMAND,
+} from 'lexical';
 import { useLexicalComposerContext, useLexicalNodeSelection } from 'lexical-solid';
 import type { Component, JSX } from 'solid-js';
-import { createMemo } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 
 import { useDisplayOverride } from '../components/BlockDisplayOverrides';
 
@@ -34,7 +43,13 @@ export interface BlockNodeClass {
  */
 function BlockBridge(props: { nodeKey: string; nodeProps: Record<string, unknown>; nodeType: string }) {
   const [editor] = useLexicalComposerContext();
-  const [isSelected, setSelected, clearSelection] = useLexicalNodeSelection(props.nodeKey);
+  const [lexicalSelected, setLexicalSelected] = useLexicalNodeSelection(props.nodeKey);
+  const [localActive, setLocalActive] = createSignal(false);
+  const isSelected = () => lexicalSelected() || localActive();
+
+  // Tracks where the most recent mousedown landed so SELECTION_CHANGE_COMMAND can
+  // distinguish "selection changed because user clicked this block" from "clicked elsewhere".
+  let lastMousedownTarget: EventTarget | null = null;
 
   const reg = createMemo(() => getBlockRegistration(props.nodeType));
 
@@ -47,22 +62,72 @@ function BlockBridge(props: { nodeKey: string; nodeProps: Record<string, unknown
     });
   }
 
-  function onSelect(e: MouseEvent) {
-    if (isSelected()) clearSelection();
-    else setSelected(true);
-    e.stopPropagation();
-  }
+  // Use a capture-phase document listener to track the mousedown target and activate
+  // this block. Capture phase fires before any stopPropagation in child handlers, and
+  // also covers clicks on the outer .we-block padding which never bubble into the
+  // BlockBridge inner div.
+  createEffect(() => {
+    const blockEl = editor.getElementByKey(props.nodeKey);
+    const handler = (e: MouseEvent) => {
+      lastMousedownTarget = e.target;
+      if (blockEl?.contains(e.target as Node)) {
+        setLocalActive(true);
+      }
+    };
+    document.addEventListener('mousedown', handler, true);
+    onCleanup(() => document.removeEventListener('mousedown', handler, true));
+  });
+
+  // Clear localActive when Lexical selection moves away and the last mousedown
+  // was not inside this block.
+  // Read Lexical state directly instead of the SolidJS signal — the signal hasn't propagated
+  // yet when SELECTION_CHANGE_COMMAND fires synchronously inside Lexical's update cycle.
+  createEffect(() => {
+    const unregister = editor.registerCommand(
+      SELECTION_CHANGE_COMMAND,
+      () => {
+        if (!localActive()) return false;
+        const isNodeSelected = editor.getEditorState().read(() => {
+          const sel = $getSelection();
+          return $isNodeSelection(sel) && sel.has(props.nodeKey);
+        });
+        if (!isNodeSelected) {
+          setTimeout(() => {
+            const blockEl = editor.getElementByKey(props.nodeKey);
+            const clickedInsideBlock = blockEl?.contains(lastMousedownTarget as Node) ?? false;
+            if (!clickedInsideBlock) {
+              setLocalActive(false);
+            }
+          }, 0);
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+    onCleanup(unregister);
+  });
 
   return (
-    <BlockBridgeInner
-      editor={editor}
-      reg={reg()}
-      nodeProps={props.nodeProps}
-      nodeType={props.nodeType}
-      isSelected={isSelected}
-      onChange={onChange}
-      onSelect={onSelect}
-    />
+    <div
+      onMouseDown={(e: MouseEvent) => {
+        e.stopPropagation();
+        setLocalActive(true);
+        setLexicalSelected(true);
+      }}
+      onClick={(e: MouseEvent) => {
+        e.stopPropagation();
+      }}
+      style={{ display: 'contents' }}
+    >
+      <BlockBridgeInner
+        editor={editor}
+        reg={reg()}
+        nodeProps={props.nodeProps}
+        nodeType={props.nodeType}
+        isSelected={isSelected}
+        onChange={onChange}
+      />
+    </div>
   );
 }
 
@@ -73,7 +138,6 @@ function BlockBridgeInner(props: {
   nodeType: string;
   isSelected: () => boolean;
   onChange: (property: string, value: unknown) => void;
-  onSelect: (e: MouseEvent) => void;
 }) {
   const readOnly = () => !props.editor.isEditable();
   const DisplayOverride = useDisplayOverride(props.nodeType);
@@ -87,12 +151,7 @@ function BlockBridgeInner(props: {
           <props.reg.display {...props.nodeProps} />
         ) : null
       ) : props.reg?.input ? (
-        <props.reg.input
-          {...props.nodeProps}
-          onChange={props.onChange}
-          isSelected={props.isSelected}
-          onSelect={props.onSelect}
-        />
+        <props.reg.input {...props.nodeProps} onChange={props.onChange} isSelected={props.isSelected} />
       ) : null}
     </>
   );
@@ -130,9 +189,26 @@ export function createBlockNodeClass(
       this.__props = props;
     }
 
-    createDOM(): HTMLElement {
+    createDOM(_config: unknown, editor: LexicalEditor): HTMLElement {
       const div = document.createElement('div');
       div.className = 'we-block';
+      // Mark the decorator wrapper non-editable so it becomes its own editing host
+      // boundary. Without this, interactive content (e.g. we-input's shadow <input>)
+      // lives inside Lexical's contenteditable=true region, which owns the document
+      // selection — so a first click delegates focus but never places a caret inside
+      // the input (keydown fires, but no beforeinput/insertText). contentEditable=false
+      // lets the browser treat the input as a normal, independently-selectable field.
+      div.contentEditable = 'false';
+      // Select this block when clicking the wrapper padding area. Child clicks are
+      // already stopped by BlockBridge.onMouseDown so this only fires for the gap.
+      const key = this.__key;
+      div.addEventListener('mousedown', () => {
+        editor.update(() => {
+          const sel = $createNodeSelection();
+          sel.add(key);
+          $setSelection(sel);
+        });
+      });
       return div;
     }
 

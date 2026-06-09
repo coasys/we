@@ -11,6 +11,9 @@
   .we-block-handle-settings-button {
     all: unset;
     cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--we-transition-200);
   }
 
   .we-block-handle-dragger {
@@ -31,14 +34,20 @@
     }
   }
 
-  &[data-block-hovered='true'],
+  &[data-block-hovered='true'] {
+    opacity: 1;
+  }
   &[data-block-focused='true'] {
     opacity: 1;
+    .we-block-handle-settings-button {
+      opacity: 1;
+      pointer-events: auto;
+    }
   }
 }
 
 .we-block-handle-drop-spot {
-  position: absolute;
+  position: fixed;
   height: 4px;
   background-color: var(--we-color-primary-400);
   border-radius: 2px;

@@ -24,18 +24,10 @@ export class AgentProfile extends WeNode {
   @HasOne(() => LocationBlock, { through: 'we://location' })
   location?: LocationBlock;
 
-  @Property({
-    through: 'we://profile_image',
-    resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: fileToDataUri,
-  })
+  @Property({ through: 'we://profile_image', resolveLanguage: FILE_STORAGE_LANGUAGE, transform: fileToDataUri })
   avatar?: string;
 
-  @Property({
-    through: 'we://cover_image',
-    resolveLanguage: FILE_STORAGE_LANGUAGE,
-    transform: fileToDataUri,
-  })
+  @Property({ through: 'we://cover_image', resolveLanguage: FILE_STORAGE_LANGUAGE, transform: fileToDataUri })
   coverImage?: string;
 }
 

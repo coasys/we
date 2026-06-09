@@ -35,6 +35,7 @@ export {
   resizeImage,
   compressImageToFileData,
   dataURIToFileData,
+  readFileAsFileData,
 } from './utils/imageHelpers';
 export type { FileData } from './utils/imageHelpers';
 export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';

@@ -8,7 +8,6 @@ interface TagInputProps {
   color: string | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 export function TagInput(props: TagInputProps) {
@@ -16,8 +15,7 @@ export function TagInput(props: TagInputProps) {
   const [name, setName] = createSignal('');
   const [color, setColor] = createSignal('#3b82f6');
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
+  function openModal() {
     setName(props.name || '');
     setColor(props.color || '#3b82f6');
     setShowModal(true);
@@ -37,7 +35,7 @@ export function TagInput(props: TagInputProps) {
   }
 
   return (
-    <Column class="we-tag-block-wrapper" onClick={props.onSelect} position="relative" display="inline-block">
+    <Column class="we-tag-block-wrapper" position="relative" display="inline-block">
       <Show
         when={props.name}
         fallback={

@@ -22,6 +22,7 @@ import { registerCoreBlockComponents } from '../core-block-components';
 import { blockNodeClasses } from '../nodes';
 import BlockHandlesPlugin from '../plugins/BlockHandlesPlugin';
 import BlockInsertPlugin from '../plugins/BlockInsertPlugin';
+import BlockKeyboardPlugin from '../plugins/BlockKeyboardPlugin';
 import IndentationPlugin from '../plugins/IndentationPlugin';
 import PlaceholdersPlugin from '../plugins/PlaceholdersPlugin';
 import SlashCommandPlugin from '../plugins/SlashCommandPlugin';
@@ -53,20 +54,21 @@ function SaveButton({ onSave }: { onSave?: (json: SerializedBlockNode) => void }
   );
 }
 
-function LoadPostIntoEditor({ post }: { post?: SerializedBlockNode }) {
+function LoadEditorState({ editorState }: { editorState?: SerializedBlockNode }) {
   const [editor] = useLexicalComposerContext();
 
   createEffect(() => {
-    if (!post || !editor) return;
+    if (!editorState || !editor) return;
 
-    const rootNode: SerializedBlockNode = typeof post === 'string' ? decodeEditorState(post) : post;
+    const rootNode: SerializedBlockNode =
+      typeof editorState === 'string' ? decodeEditorState(editorState) : editorState;
     if (!rootNode) return;
 
     try {
-      const editorState = editor.parseEditorState({ root: rootNode });
-      editor.setEditorState(editorState);
+      const lexicalState = editor.parseEditorState({ root: rootNode });
+      editor.setEditorState(lexicalState);
     } catch (error) {
-      console.error('Error loading post data:', error);
+      console.error('Error loading editor state:', error);
     }
   });
 
@@ -125,7 +127,7 @@ function OnReadyPlugin({
 type Props = Omit<BlockComposerProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'ay'>;
 
 /** @superclass DesignSystemElement */
-export function BlockComposer({ post, onSave, onReady, width = '100%', ...rest }: Props) {
+export function BlockComposer({ editorState, onSave, onReady, width = '100%', ...rest }: Props) {
   const initialConfig = {
     namespace: 'BlockComposer',
     theme: { root: 'we-block-composer-editor we-block-content' },
@@ -136,7 +138,7 @@ export function BlockComposer({ post, onSave, onReady, width = '100%', ...rest }
   return (
     <Column class="we-block-composer-wrapper" width={width} {...rest}>
       <LexicalComposer initialConfig={initialConfig}>
-        <LoadPostIntoEditor post={post} />
+        <LoadEditorState editorState={editorState} />
         {onReady ? <OnReadyPlugin onSave={onSave} onReady={onReady} /> : <SaveButton onSave={onSave} />}
 
         {/* Lexical plugins */}
@@ -159,6 +161,7 @@ export function BlockComposer({ post, onSave, onReady, width = '100%', ...rest }
         <SlashCommandPlugin />
         <IndentationPlugin />
         <BlockInsertPlugin />
+        <BlockKeyboardPlugin />
       </LexicalComposer>
     </Column>
   );

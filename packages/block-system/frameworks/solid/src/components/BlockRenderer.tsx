@@ -1,7 +1,8 @@
+import type { PerspectiveProxy } from '@coasys/ad4m';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import type { BlockRendererProps, SerializedBlockNode } from '@we/block-shared';
-import { decodeEditorState } from '@we/block-shared';
+import { decodeEditorState, resolveExpressionAddresses } from '@we/block-shared';
 import type { ColumnProps } from '@we/components/solid';
 import { Column } from '@we/components/solid';
 import {
@@ -17,28 +18,40 @@ import { blockNodeClasses } from '../nodes';
 
 type Props = Omit<BlockRendererProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'ay'>;
 
-function LoadPostForRenderer({ post }: { post?: SerializedBlockNode }) {
+function LoadEditorState({
+  editorState,
+  perspective,
+}: {
+  editorState?: SerializedBlockNode;
+  perspective?: PerspectiveProxy | null;
+}) {
   const [editor] = useLexicalComposerContext();
 
   createEffect(() => {
-    if (!post || !editor) return;
+    if (!editorState || !editor) return;
 
-    const rootNode: SerializedBlockNode = typeof post === 'string' ? decodeEditorState(post) : post;
+    const rootNode: SerializedBlockNode =
+      typeof editorState === 'string' ? decodeEditorState(editorState) : editorState;
     if (!rootNode) return;
 
-    try {
-      const editorState = editor.parseEditorState({ root: rootNode });
-      editor.setEditorState(editorState);
-    } catch (error) {
-      console.error('Error loading post data:', error);
-    }
+    const load = async (node: SerializedBlockNode) => {
+      const resolved = perspective ? await resolveExpressionAddresses(perspective, node) : node;
+      try {
+        const lexicalState = editor.parseEditorState({ root: resolved });
+        editor.setEditorState(lexicalState);
+      } catch (error) {
+        console.error('Error loading editor state:', error);
+      }
+    };
+
+    load(rootNode).catch((error) => console.error('Error resolving expression addresses:', error));
   });
 
   return null;
 }
 
 /** @superclass DesignSystemElement */
-export function BlockRenderer({ post, width = '100%', ...rest }: Props) {
+export function BlockRenderer({ editorState, perspective, width = '100%', ...rest }: Props) {
   const initialConfig = {
     namespace: 'BlockRenderer',
     theme: { root: 'we-block-renderer we-block-content' },
@@ -50,7 +63,7 @@ export function BlockRenderer({ post, width = '100%', ...rest }: Props) {
   return (
     <Column class="we-block-renderer-wrapper" width={width} {...rest}>
       <LexicalComposer initialConfig={initialConfig}>
-        <LoadPostForRenderer post={post} />
+        <LoadEditorState editorState={editorState} perspective={perspective} />
         <RichTextPlugin
           contentEditable={
             <div>

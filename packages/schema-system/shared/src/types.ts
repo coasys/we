@@ -71,6 +71,7 @@ export type SchemaNode = {
   theme?: ThemeOverrides; // Scoped theme overrides — applied as CSS custom properties on a display:contents wrapper
   styles?: Record<string, string | number>; // Raw CSS escape hatch — applied as inline styles on the node wrapper element
   $localState?: Record<string, LocalStateField>; // Scoped local state — creates signals on mount, discarded on unmount
+  $queries?: Record<string, QueryStateField>; // Hoisted reactive query subscriptions — results injected into $local, shared across entire subtree
 };
 
 // Types that need to be passed a framework specific NodeType (e.g. JSX.Element for Solid, React.ReactNode for React)
@@ -135,6 +136,9 @@ export type LocalStateField = {
   initial: string | boolean | number | null;
   validate?: ValidationRule[];
 };
+
+/** A single entry in $queries — a reactive subscription hoisted to the node root. */
+export type QueryStateField = QueryToken['$query'];
 
 // --- Validation Rule Types ---
 

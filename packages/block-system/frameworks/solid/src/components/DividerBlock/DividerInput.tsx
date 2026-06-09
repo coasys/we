@@ -9,7 +9,6 @@ interface DividerInputProps {
   style: DividerVariant | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 const STYLE_OPTIONS = [
@@ -27,7 +26,7 @@ export function DividerInput(props: DividerInputProps) {
   }
 
   return (
-    <Column onClick={props.onSelect} position="relative">
+    <Column position="relative">
       <DividerDisplay style={style()} />
       <Show when={props.isSelected()}>
         <Row position="absolute" top="-32px" right="0">

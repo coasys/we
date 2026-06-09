@@ -11,29 +11,29 @@ const ul = { type: 'ul', label: 'Bullet List', icon: 'list-bullets', md: '-' };
 const ol = { type: 'ol', label: 'Number List', icon: 'list-numbers', md: '1.' };
 // const cl = { type: 'cl', label: 'Check List', icon: 'list-checks', md: '[]' };
 
-// Collection blocks
-const grid = { type: 'grid', label: 'Grid', icon: 'squares-four', md: '+' };
-const columns = { type: 'columns', label: 'Columns', icon: 'columns-plus-right', md: '||' };
-const rows = { type: 'rows', label: 'Rows', icon: 'rows-plus-bottom', md: '=' };
+// // Collection blocks
+// const grid = { type: 'grid', label: 'Grid', icon: 'squares-four', md: '+' };
+// const columns = { type: 'columns', label: 'Columns', icon: 'columns-plus-right', md: '||' };
+// const rows = { type: 'rows', label: 'Rows', icon: 'rows-plus-bottom', md: '=' };
 
 // Media blocks
-const url = { type: 'url', label: 'URL', icon: 'link', md: '!' };
+const url = { type: 'link', label: 'URL', icon: 'link', md: '!' };
 const image = { type: 'image', label: 'Image', icon: 'image', md: '!!' };
 const audio = { type: 'audio', label: 'Audio', icon: 'speaker-high', md: '!!!' };
 const video = { type: 'video', label: 'Video', icon: 'youtube-logo', md: '!!!!' };
 const file = { type: 'file', label: 'File', icon: 'paperclip', md: '!!!!!' };
 
-// Social blocks
-const event = { type: 'event', label: 'Event', icon: 'calendar', md: '' };
-const task = { type: 'task', label: 'Task', icon: 'check-square', md: '' };
-const poll = { type: 'poll', label: 'Poll', icon: 'chart-pie', md: '' };
-const game = { type: 'game', label: 'game', icon: 'game-controller', md: '' };
+// // Social blocks
+// const event = { type: 'event', label: 'Event', icon: 'calendar', md: '' };
+// const task = { type: 'task', label: 'Task', icon: 'check-square', md: '' };
+// const poll = { type: 'poll', label: 'Poll', icon: 'chart-pie', md: '' };
+// const game = { type: 'game', label: 'game', icon: 'game-controller', md: '' };
 
 const categories = [
   { title: 'Text', blocks: [p, h1, h2, h3, quote, ul, ol] },
-  { title: 'Collection', blocks: [grid, columns, rows] },
+  // { title: 'Collection', blocks: [grid, columns, rows] },
   { title: 'Media', blocks: [url, image, audio, video, file] },
-  { title: 'Social', blocks: [event, task, poll, game] },
+  // { title: 'Social', blocks: [event, task, poll, game] },
 ].map((category, index, arr) => ({
   ...category,
   offset: arr.slice(0, index).reduce((sum, cat) => sum + cat.blocks.length, 0),
@@ -124,24 +124,28 @@ export default function BlockTypeMenu(props: {
       style={{ top: `${position.top}px`, left: `${position.left}px` }}
       onKeyDown={onMenuKeyDown}
     >
-      <input
-        ref={filterRef}
-        class="we-block-menu-filter"
-        type="text"
-        placeholder="Filter blocks..."
-        value={filter()}
-        onInput={(e) => setFilter(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && filteredBlocks().length > 0) {
-            e.preventDefault();
-            const block = filteredBlocks()[focusIndex()];
-            if (block) {
-              selectType(block.type);
-              close();
+      <Row ay="center" gap="200" p="200">
+        <we-icon name="magnifying-glass" size="xs" color="neutral-400" />
+        <input
+          ref={filterRef}
+          class="we-block-menu-filter"
+          type="text"
+          placeholder="Filter blocks..."
+          value={filter()}
+          onInput={(e) => setFilter(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && filteredBlocks().length > 0) {
+              e.preventDefault();
+              const block = filteredBlocks()[focusIndex()];
+              if (block) {
+                selectType(block.type);
+                close();
+              }
             }
-          }
-        }}
-      />
+          }}
+        />
+      </Row>
+      <we-divider mt="200" mb="400" />
       <Show when={filteredBlocks().length > 0} fallback={<div class="we-block-menu-empty">No matching blocks</div>}>
         {filteredCategories().map((category, index) => {
           const offset = () =>
@@ -152,7 +156,9 @@ export default function BlockTypeMenu(props: {
             <>
               {index > 0 && <div class="we-block-menu-divider" />}
 
-              <span class="we-block-menu-category-title">{category.title}</span>
+              <we-text fontSize="300" fontWeight="600" textTransform="uppercase" color="neutral-600" mb="100">
+                {category.title}
+              </we-text>
 
               {category.blocks.map((option, blockIndex) => (
                 <button
@@ -164,17 +170,13 @@ export default function BlockTypeMenu(props: {
                   onClick={(e) => onOptionClick(e, option.type)}
                   onKeyDown={(e) => onOptionKeyDown(e, option.type)}
                 >
-                  <Row>
-                    <we-icon
-                      name={option.icon}
-                      weight="bold"
-                      color="neutral-300"
-                      size="sm"
-                      style={{ margin: '0 10px 0 0' }}
-                    />
-                    {option.label}
+                  <Row ay="center" gap="300">
+                    <we-icon name={option.icon} weight="bold" color="neutral-400" size="sm" />
+                    <we-text fontSize="400">{option.label}</we-text>
                   </Row>
-                  <span class="we-block-menu-markdown">{option.md}</span>
+                  <we-text fontSize="400" color="neutral-500">
+                    {option.md}
+                  </we-text>
                 </button>
               ))}
             </>

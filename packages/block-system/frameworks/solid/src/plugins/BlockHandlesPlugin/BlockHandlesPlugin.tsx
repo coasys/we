@@ -1,11 +1,14 @@
 import { $isListItemNode, $isListNode, ListNode } from '@lexical/list';
 import { mergeRegister } from '@lexical/utils';
 import {
+  $createNodeSelection,
   $getRoot,
   $getSelection,
   $isDecoratorNode,
   $isElementNode,
+  $isNodeSelection,
   $isRangeSelection,
+  $setSelection,
   COMMAND_PRIORITY_EDITOR,
   COMMAND_PRIORITY_LOW,
   LexicalNode,
@@ -143,7 +146,19 @@ function BlockHandle({ nodeKey, nodeData }: { nodeKey: string; nodeData: NodeDat
         <button class="we-block-handle-settings-button" onClick={() => setShowMenu(true)}>
           <we-icon name="cube" size="sm" color="neutral-600" />
         </button>
-        <div class="we-block-handle-dragger" draggable={true} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+        <div
+          class="we-block-handle-dragger"
+          draggable={true}
+          onMouseDown={() => {
+            editor.update(() => {
+              const sel = $createNodeSelection();
+              sel.add(nodeKey);
+              $setSelection(sel);
+            });
+          }}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+        >
           <we-icon name="dots-six-vertical" weight="bold" size="sm" color="neutral-600" />
         </div>
       </div>
@@ -175,6 +190,34 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
     function applyFocusHighlight() {
       editor.getEditorState().read(() => {
         const selection = $getSelection();
+
+        // When Lexical sees null selection (e.g. focus moved into a shadow-DOM
+        // web component like we-input), find which block contains the active element
+        // and set data-block-focused on it. This handles first-click on a focusable
+        // child in an unselected block, where no NodeSelection is ever set.
+        if (selection === null && root && root.contains(document.activeElement)) {
+          const activeEl = document.activeElement;
+          if (activeEl && activeEl !== root) {
+            const blockEl = activeEl.closest(`[${ATTR_BLOCK_ID}]`) as HTMLElement | null;
+            if (blockEl) {
+              root
+                .querySelectorAll(`[${ATTR_BLOCK_FOCUSED}="true"]`)
+                .forEach((el) => el.removeAttribute(ATTR_BLOCK_FOCUSED));
+              document
+                .querySelectorAll(`[${ATTR_HANDLE_FOR_BLOCK}][${ATTR_BLOCK_FOCUSED}="true"]`)
+                .forEach((el) => el.removeAttribute(ATTR_BLOCK_FOCUSED));
+              blockEl.setAttribute(ATTR_BLOCK_FOCUSED, 'true');
+              blockEl.removeAttribute(ATTR_BLOCK_HOVERED);
+              const key = blockEl.getAttribute(ATTR_BLOCK_ID);
+              if (key) {
+                const handleEl = document.querySelector(`[${ATTR_HANDLE_FOR_BLOCK}="${key}"]`);
+                if (handleEl) handleEl.setAttribute(ATTR_BLOCK_FOCUSED, 'true');
+              }
+            }
+          }
+          return;
+        }
+
         root
           ?.querySelectorAll(`[${ATTR_BLOCK_FOCUSED}="true"]`)
           .forEach((el) => el.removeAttribute(ATTR_BLOCK_FOCUSED));
@@ -186,6 +229,20 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
           const anchorNode = selection.anchor.getNode();
           const key = anchorNode.getKey() === 'root' ? null : anchorNode.getTopLevelElementOrThrow().getKey();
           if (key) {
+            const el = root?.querySelector(`[${ATTR_BLOCK_ID}="${key}"]`);
+            if (el) {
+              el.setAttribute(ATTR_BLOCK_FOCUSED, 'true');
+              el.removeAttribute(ATTR_BLOCK_HOVERED);
+            }
+            const handleEl = document.querySelector(`[${ATTR_HANDLE_FOR_BLOCK}="${key}"]`);
+            if (handleEl) {
+              handleEl.setAttribute(ATTR_BLOCK_FOCUSED, 'true');
+            }
+          }
+        } else if ($isNodeSelection(selection)) {
+          const nodes = selection.getNodes();
+          if (nodes.length === 1) {
+            const key = nodes[0].getKey();
             const el = root?.querySelector(`[${ATTR_BLOCK_ID}="${key}"]`);
             if (el) {
               el.setAttribute(ATTR_BLOCK_FOCUSED, 'true');

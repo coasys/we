@@ -4,6 +4,7 @@
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "types": ["solid-js"],
+    "rootDir": "src",
     "outDir": "dist"
   },
   "include": ["src"]

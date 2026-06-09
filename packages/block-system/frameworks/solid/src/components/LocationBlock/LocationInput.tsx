@@ -10,7 +10,6 @@ interface LocationInputProps {
   address: string | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 export function LocationInput(props: LocationInputProps) {
@@ -20,8 +19,7 @@ export function LocationInput(props: LocationInputProps) {
   const [longitude, setLongitude] = createSignal('');
   const [address, setAddress] = createSignal('');
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
+  function openModal() {
     setName(props.name || '');
     setLatitude(props.latitude?.toString() || '');
     setLongitude(props.longitude?.toString() || '');
@@ -47,7 +45,7 @@ export function LocationInput(props: LocationInputProps) {
   }
 
   return (
-    <Column class="we-location-block" onClick={props.onSelect} position="relative">
+    <Column class="we-location-block" position="relative">
       <Show
         when={props.name}
         fallback={

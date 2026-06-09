@@ -6,8 +6,11 @@ export const postsList: SchemaNode = {
   $localState: {
     sortBy: { type: 'string', initial: 'DESC' },
   },
+  $queries: {
+    signalTypes: { model: 'SignalType', subscribe: true },
+  },
   children: [
-    // ── Header: sort controls ──────────────────────────────────────────────
+    // Header: sort controls
     {
       type: 'Row',
       props: { ay: 'center', gap: '300', pb: '200' },
@@ -27,7 +30,7 @@ export const postsList: SchemaNode = {
       ],
     },
 
-    // ── Post list
+    // Post list
     {
       type: '$each',
       props: {
@@ -51,30 +54,36 @@ export const postsList: SchemaNode = {
               children: [
                 {
                   type: 'BlockRenderer',
-                  props: { post: '$post.editorState' },
+                  props: { editorState: '$post.editorState', perspective: { $store: 'adamStore.currentPerspective' } },
                 },
               ],
             },
             {
-              type: 'Row',
-              props: { height: '40px', mt: '400', ay: 'center', gap: '700' },
-              children: [
-                {
-                  type: '$each',
-                  props: { items: { $query: { model: 'SignalType', subscribe: true } }, as: 'sig' },
+              type: '$if',
+              props: {
+                condition: { $count: { items: { $local: 'signalTypes' } } },
+                then: {
+                  type: 'Row',
+                  props: { height: '40px', mt: '400', ay: 'center', gap: '700' },
                   children: [
                     {
-                      type: 'SignalControl',
-                      props: {
-                        signalType: '$sig',
-                        signals: { $filter: { items: '$post.signals', where: { signalTypeId: '$sig.id' } } },
-                        myDid: { $store: 'adamStore.me.did' },
-                        onSignal: { $action: 'spaceStore.upsertSignal', args: ['$post.id', '$sig.id', '$arg'] },
-                      },
+                      type: '$each',
+                      props: { items: { $local: 'signalTypes' }, as: 'sig' },
+                      children: [
+                        {
+                          type: 'SignalControl',
+                          props: {
+                            signalType: '$sig',
+                            signals: { $filter: { items: '$post.signals', where: { signalTypeId: '$sig.id' } } },
+                            myDid: { $store: 'adamStore.me.did' },
+                            onSignal: { $action: 'spaceStore.upsertSignal', args: ['$post.id', '$sig.id', '$arg'] },
+                          },
+                        },
+                      ],
                     },
                   ],
                 },
-              ],
+              },
             },
           ],
         },

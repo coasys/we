@@ -179,6 +179,29 @@ Call function: { "$callLocal": "fieldName" } — event handler that calls the fu
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
 $local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
 
+Hoisted query state ($queries):
+Declare on any node to run reactive subscriptions at the node root and expose results in $local.
+Solves two problems: avoids N duplicate subscriptions inside $each loops, and makes query results available for $if conditions.
+"$queries": { "signalTypes": { "model": "SignalType", "subscribe": true } }
+Results are injected into $local as read-only reactive arrays, accessible via { "$local": "signalTypes" }.
+Query options are identical to $each's $query prop (model, where, order, limit, include, perspective, subscribe).
+$queries and $localState share the same $local namespace — avoid duplicate names across both.
+$setLocal will warn and no-op on $queries entries (they are read-only).
+Use with $count + $gt for conditional visibility:
+{ "condition": { "$gt": [{ "$count": { "items": { "$local": "signalTypes" } } }, 0] } }
+Example:
+{
+  "$queries": { "signalTypes": { "model": "SignalType", "subscribe": true } },
+  "type": "Column",
+  "children": [
+    {
+      "type": "$each",
+      "props": { "items": { "$local": "signalTypes" }, "as": "sig" },
+      "children": [...]
+    }
+  ]
+}
+
 Boolean toggle pattern (show/hide comments, expand/collapse sections, etc.):
 {
   "$localState": { "showComments": { "type": "boolean", "initial": false } },
@@ -368,7 +391,7 @@ fragment; it is sanitized before rendering so XSS payloads are stripped.
 - we-input (DesignSystemElement)
   Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
-  Props: href: string = '', target: string = '', rel: string = '', disabled: boolean = false
+  Props: href: string = '', target: string = '', rel: string = '', download: string = '', disabled: boolean = false
 - we-location-picker (DesignSystemElement)
   Props: latitude?: number | undefined, longitude?: number | undefined, placeholder: string = 'Set location…', disabled: boolean = false, reverseGeocode: boolean = true
 - we-markdown (DesignSystemElement)
@@ -438,61 +461,65 @@ when `relative` is enabled.
 - AudioDisplay
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
 - AudioInput
-  Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: visibility?: Visibility, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, post?: any, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+  Props: visibility?: Visibility, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, editorState?: any, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+- BlockPlaceholder
+  Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
-  Props: visibility?: Visibility, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, post?: any
+  Props: visibility?: Visibility, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, editorState?: any, perspective?: PerspectiveProxy | null
 - CalloutDisplay
   Props: text: string | undefined, variant: string | undefined, icon: string | undefined
 - CalloutInput
-  Props: text: string | undefined, variant: string | undefined, icon: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: text: string | undefined, variant: string | undefined, icon: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - CodeDisplay
   Props: code: string | undefined, language: string | undefined, title: string | undefined
 - CodeInput
-  Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - DividerDisplay
   Props: style: "solid" | "dashed" | "dotted" | undefined
 - DividerInput
-  Props: style: DividerVariant | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: style: DividerVariant | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - EmbedDisplay
   Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined
 - EmbedInput
-  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: url: string | undefined, target: string | undefined, targetType: string | undefined, displayMode: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - EventDisplay
   Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined
 - EventInput
-  Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: title: string | undefined, description: string | undefined, startDate: string | undefined, endDate: string | undefined, location: string | undefined, allDay: boolean | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - FileDisplay
-  Props: name: string | undefined, url: string | undefined, mimeType: string | undefined, size: number | undefined
+  Props: title: string | undefined, name: string | undefined, url: string | undefined, mimeType: string | undefined, size: number | undefined
 - FileInput
-  Props: name: string | undefined, url: string | undefined, mimeType: string | undefined, size: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: title: string | undefined, name: string | undefined, url: string | FileData | undefined, mimeType: string | undefined, size: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - ImageDisplay
   Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined
 - ImageInput
-  Props: src: string | undefined, altText: string | undefined, width: number | undefined, height: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: src: string | FileData | undefined, altText: string | undefined, width: number | undefined, height: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - LinkDisplay
   Props: url: string | undefined, title: string | undefined, description: string | undefined, thumbnail: string | undefined
 - LinkInput
-  Props: url: string | undefined, title: string | undefined, description: string | undefined, thumbnail: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: url: string | undefined, title: string | undefined, description: string | undefined, thumbnail: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - LocationDisplay
   Props: name: string | undefined, latitude: number | undefined, longitude: number | undefined, address: string | undefined
 - LocationInput
-  Props: name: string | undefined, latitude: number | undefined, longitude: number | undefined, address: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: name: string | undefined, latitude: number | undefined, longitude: number | undefined, address: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - TagDisplay
   Props: name: string | undefined, color: string | undefined
 - TagInput
-  Props: name: string | undefined, color: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: name: string | undefined, color: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - TaskDisplay
   Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined
 - TaskInput
-  Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: title: string | undefined, description: string | undefined, status: string | undefined, priority: string | undefined, dueDate: string | undefined, assignee: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - VideoDisplay
-  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined
+  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, width: number | undefined
 - VideoInput
-  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean, onSelect: (e: MouseEvent) => void
+  Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, width: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - Accordion
   Props: children?: JSX.Element, renderContent?: ((item: AccordionItem, index: number) => JSX.Element), onChange?: ((openItems: string[]) => void), items?: AccordionItem[], multiple?: boolean, styles?: Record<string, string | number>
+- AudioVisualiser
+  Props: src: string | undefined, bars?: number, height?: number, color?: string, activeColor?: string
 - Breadcrumbs
   Props: onNavigate?: ((item: BreadcrumbItem, index: number) => void), items?: BreadcrumbItem[], separator?: string, styles?: Record<string, string | number>
 - Calendar
@@ -745,8 +772,8 @@ AgentProfile extends WeNode:
   - lastName: string [we://last_name]
   - handle: string [we://handle]
   - bio: string [we://bio]
-  - avatar: string | FileData [we://profile_image]
-  - coverImage: string | FileData [we://cover_image]
+  - avatar: string [we://profile_image]
+  - coverImage: string [we://cover_image]
   Relations:
   - location: HasOne [we://location]
 
@@ -799,7 +826,7 @@ CodeBlock extends WeNode:
 
 CollectionBlock extends WeNode:
   Fields:
-  - editorState: Record<string, unknown> = null [we://editor_state]
+  - editorState: string = null [we://editor_state]
   - type: string [we://type]
   - display: string [we://display]
   - direction: string [we://direction]
@@ -836,6 +863,7 @@ EventBlock extends WeNode:
 
 FileBlock extends WeNode:
   Fields:
+  - title: string [we://title]
   - name: string (required) [we://name]
   - url: string (required) [we://url]
   - mimeType: string [we://mime_type]
@@ -898,8 +926,8 @@ Space extends WeNode:
   - name: string (required) [we://name]
   - description: string (required) [we://description]
   - visibility: string [we://visibility]
-  - avatar: string | FileData [we://image]
-  - coverImage: string | FileData [we://thumbnail]
+  - avatar: string [we://image]
+  - coverImage: string [we://thumbnail]
   Relations:
   - location: HasOne [we://location]
 
@@ -924,7 +952,7 @@ Template extends WeNode:
   - name: string [we://name]
   - origin: string [we://origin]
   - version: number = 1 [we://version]
-  - schema: Record<string, unknown> [we://template_schema]
+  - schema: string = null [we://template_schema]
   Relations:
   - chatSessions: HasMany → ChatSession [we://chat_session]
 
@@ -948,8 +976,8 @@ Theme extends WeNode:
   - icon: string [we://icon]
   - origin: string [we://origin]
   - version: number = 1 [we://version]
-  - css: string [we://stylesheet]
-  - overrides: Record<string, unknown> [we://token_overrides]
+  - css: string = null [we://stylesheet]
+  - overrides: string = null [we://token_overrides]
 
 VideoBlock extends WeNode:
   Fields:

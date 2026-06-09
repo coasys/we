@@ -10,7 +10,6 @@ interface EmbedInputProps {
   displayMode: string | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 const DISPLAY_MODE_OPTIONS = [
@@ -23,8 +22,7 @@ export function EmbedInput(props: EmbedInputProps) {
   const [url, setUrl] = createSignal('');
   const [displayMode, setDisplayMode] = createSignal('inline');
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
+  function openModal() {
     setUrl(props.url || props.target || '');
     setDisplayMode(props.displayMode || 'inline');
     setShowModal(true);
@@ -44,7 +42,7 @@ export function EmbedInput(props: EmbedInputProps) {
   }
 
   return (
-    <Column class="we-embed-block" onClick={props.onSelect} position="relative">
+    <Column class="we-embed-block" position="relative">
       <Show
         when={props.url || props.target}
         fallback={

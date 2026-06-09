@@ -4,6 +4,11 @@ export const createPostModal = {
     close: { $setLocal: 'createPostOpen', value: false },
     maxWidth: '900px',
     width: '100%',
+    ax: 'center',
+  },
+  $localState: {
+    savePost: { type: 'function', initial: null },
+    submitting: { type: 'boolean', initial: false },
   },
   children: [
     { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create Post'] },
@@ -23,8 +28,13 @@ export const createPostModal = {
           props: {
             onReady: { $setLocal: 'savePost', from: '$event.save' },
             onSave: [
-              { $action: 'spaceStore.createPost', args: ['$arg'] },
-              { $setLocal: 'createPostOpen', value: false },
+              { $setLocal: 'submitting', value: true },
+              {
+                $action: 'spaceStore.createPost',
+                args: ['$arg'],
+                onSuccess: [{ $setLocal: 'createPostOpen', value: false }],
+                onFinally: [{ $setLocal: 'submitting', value: false }],
+              },
             ],
           },
         },
@@ -49,6 +59,8 @@ export const createPostModal = {
             bg: 'primary-500',
             color: 'neutral-0',
             height: '40px',
+            loading: { $local: 'submitting' },
+            disabled: { $local: 'submitting' },
             onClick: { $callLocal: 'savePost' },
           },
         },

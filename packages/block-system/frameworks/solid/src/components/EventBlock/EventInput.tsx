@@ -12,7 +12,6 @@ interface EventInputProps {
   allDay: boolean | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
 export function EventInput(props: EventInputProps) {
@@ -23,8 +22,7 @@ export function EventInput(props: EventInputProps) {
   const [location, setLocation] = createSignal('');
   const [description, setDescription] = createSignal('');
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
+  function openModal() {
     setTitle(props.title || '');
     setStartDate(props.startDate || '');
     setEndDate(props.endDate || '');
@@ -50,7 +48,7 @@ export function EventInput(props: EventInputProps) {
   }
 
   return (
-    <Column class="we-event-block" onClick={props.onSelect} position="relative">
+    <Column class="we-event-block" position="relative">
       <Show
         when={props.title}
         fallback={

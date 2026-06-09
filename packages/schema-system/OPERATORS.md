@@ -13,6 +13,7 @@ This document describes the operators available in the schema system for declara
 - [Logical Operators](#logical-operators)
 - [Array Operators](#array-operators)
 - [Local State Operators](#local-state-operators)
+- [Hoisted Query State ($queries)](#hoisted-query-state-queries)
 - [Composing Operators](#composing-operators)
 - [Renderer Operators](#renderer-operators)
 - [Best Practices](#best-practices)
@@ -803,6 +804,8 @@ Find the first array item matching `where` conditions. Optionally pluck a single
 
 Local state is declared on a node with `$localState` and accessed in descendants via these operators.
 
+> **See also:** [`$queries`](#hoisted-query-state-queries) for reactive query results that are also accessible via `$local`. Both share the same `$local` namespace — avoid duplicate names across the two declarations.
+
 ### `$local`
 
 Read a local state field.
@@ -875,6 +878,88 @@ Event handlers for form lifecycle:
 
 - `{ $touch: 'fieldName' }` — marks a field as touched (e.g. on blur)
 - `{ $resetLocal: true }` — resets all fields in the current `$localState` scope to their initial values
+
+---
+
+## Hoisted Query State (`$queries`)
+
+`$queries` lets you run reactive model subscriptions at the root of any node and expose the results as named read-only arrays in `$local`. This solves two problems at once: deduplicating subscriptions that would otherwise be repeated inside `$each` loops, and making query results available for use in `$if` conditions.
+
+**Syntax:**
+
+```typescript
+$queries: {
+  '<name>': {
+    model: '<ModelName>',
+    where?: { ... },
+    order?: { ... },
+    limit?: number,
+    subscribe?: boolean,   // default: true
+    include?: { ... },
+    perspective?: '<store.path>'
+  }
+}
+```
+
+The query options are identical to those used in `$each`'s `$query` prop. Each entry creates one subscription at node mount, cleaned up on unmount.
+
+Results are injected into `$local` under the declared name and are accessible anywhere in the subtree via `{ $local: 'name' }`. They are **read-only** — `$setLocal` will warn and no-op if called on a `$queries` entry.
+
+**Example — hoist a shared subscription:**
+
+```typescript
+// Without $queries: SignalType queried once per post card (N subscriptions)
+{
+  type: '$each',
+  props: { items: { $query: { model: 'Post' } }, as: 'post' },
+  children: [{
+    type: '$each',
+    props: { items: { $query: { model: 'SignalType', subscribe: true } }, as: 'sig' },
+    // ...
+  }]
+}
+
+// With $queries: one subscription shared across all post cards
+{
+  $queries: {
+    signalTypes: { model: 'SignalType', subscribe: true }
+  },
+  type: '$each',
+  props: { items: { $query: { model: 'Post' } }, as: 'post' },
+  children: [{
+    type: '$each',
+    props: { items: { $local: 'signalTypes' }, as: 'sig' },
+    // ...
+  }]
+}
+```
+
+**Example — conditional visibility using `$count` + `$gt`:**
+
+```typescript
+{
+  $queries: {
+    signalTypes: { model: 'SignalType', subscribe: true }
+  },
+  children: [{
+    type: '$if',
+    props: {
+      condition: { $gt: [{ $count: { items: { $local: 'signalTypes' } } }, 0] },
+      then: {
+        type: 'Row',
+        children: [{ type: '$each', props: { items: { $local: 'signalTypes' }, as: 'sig' }, children: [...] }]
+      }
+    }
+  }]
+}
+```
+
+**Notes:**
+
+- `$queries` and `$localState` share the same `$local` namespace — avoid duplicate names across both
+- Results are arrays even when empty; use `{ $count: { items: { $local: 'name' } } }` to get the length
+- `$queries` runs after `$localState` in the renderer — if both declare the same name, `$queries` wins
+- The query options support the same `include`, `perspective`, `order`, `where` etc. as `$each`'s `$query` prop
 
 ---
 

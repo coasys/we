@@ -1,6 +1,6 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
 import { Ad4mModel, getPropertiesMetadata, LinkQuery, Literal } from '@coasys/ad4m';
-import type { CollectionBlock } from '@we/models';
+import type { CollectionBlock, FileData } from '@we/models';
 
 import { getBlockModel, getBlockRegistration } from './registry';
 import type { SerializedBlockNode } from './types';
@@ -50,6 +50,100 @@ function hasChildren(block: Ad4mModel): block is BlockWithChildren {
   return Array.isArray((block as BlockWithChildren).children);
 }
 
+/** Returns true if a value looks like a FileData object (data_base64 + file_type). */
+function isFileData(value: unknown): value is FileData {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'data_base64' in value &&
+    'file_type' in value &&
+    typeof (value as FileData).data_base64 === 'string'
+  );
+}
+
+/**
+ * Walk a serialized block node tree, upload any FileData values on
+ * resolveLanguage properties to file-storage, and return a patched copy
+ * where those values are replaced with the resulting expression addresses
+ * (e.g. "QmLang://QmHash").  This keeps the editorState blob small (CIDs
+ * instead of raw base64 payloads) and ensures the AD4M model's create()
+ * path receives a string it can store directly rather than a FileData object.
+ */
+async function preUploadFileAssets(
+  perspective: PerspectiveProxy,
+  node: SerializedBlockNode,
+): Promise<SerializedBlockNode> {
+  // Shallow-copy so we don't mutate the original Lexical JSON
+  const patched: SerializedBlockNode = { ...node };
+
+  // Resolve the model class for this node type (if registered)
+  const ModelClass = getBlockModel(node.type);
+  if (ModelClass) {
+    const propsMeta = getPropertiesMetadata(ModelClass);
+    for (const [propName, meta] of Object.entries(propsMeta)) {
+      if (meta.resolveLanguage && isFileData(patched[propName])) {
+        // Upload the file and replace the FileData with the expression address
+        const expressionAddress = await perspective.createExpression(patched[propName], meta.resolveLanguage);
+        patched[propName] = expressionAddress;
+      }
+    }
+  }
+
+  // Recurse into children
+  if (Array.isArray(node.children)) {
+    patched.children = await Promise.all(
+      node.children.map((child: SerializedBlockNode) => preUploadFileAssets(perspective, child)),
+    );
+  }
+
+  return patched;
+}
+
+/**
+ * Walk a serialized block node tree and resolve any expression-address strings
+ * on resolveLanguage properties to data URIs via the perspective.
+ * This is the read-side counterpart to preUploadFileAssets — called by
+ * BlockRenderer before loading the editorState blob into Lexical so that
+ * stored CIDs (e.g. "QmLang://QmHash") are replaced with renderable data URIs.
+ */
+export async function resolveExpressionAddresses(
+  perspective: PerspectiveProxy,
+  node: SerializedBlockNode,
+): Promise<SerializedBlockNode> {
+  const patched: SerializedBlockNode = { ...node };
+
+  const ModelClass = getBlockModel(node.type);
+  if (ModelClass) {
+    const propsMeta = getPropertiesMetadata(ModelClass);
+    for (const [propName, meta] of Object.entries(propsMeta)) {
+      const val = patched[propName];
+      // Only attempt resolution for resolveLanguage properties that hold a
+      // non-empty string containing "://" — the hallmark of an expression address.
+      if (meta.resolveLanguage && typeof val === 'string' && val.includes('://')) {
+        try {
+          const expr = await perspective.getExpression(val);
+          if (expr?.data) {
+            const data = typeof expr.data === 'string' ? JSON.parse(expr.data) : expr.data;
+            if (data?.data_base64 && data?.file_type) {
+              patched[propName] = `data:${data.file_type};base64,${data.data_base64}`;
+            }
+          }
+        } catch {
+          // Leave original value if resolution fails (e.g. offline / bad address)
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(node.children)) {
+    patched.children = await Promise.all(
+      node.children.map((child: SerializedBlockNode) => resolveExpressionAddresses(perspective, child)),
+    );
+  }
+
+  return patched;
+}
+
 /**
  * Extract property values from a serialized node for a given model class.
  * Only includes properties that exist on both the node and the model.
@@ -79,6 +173,14 @@ export async function createBlocks(
   perspective: PerspectiveProxy,
   node: SerializedBlockNode,
 ): Promise<Ad4mModel | undefined> {
+  // Pre-upload FileData values to get expression addresses for the editorState
+  // blob only.  The block tree itself is persisted from the original node so
+  // that FileData objects hit the deferred setProperty → createExpression →
+  // executeAction path, which stores clean URI references in the triple graph.
+  // (Passing pre-uploaded strings through initialValues → createSubject would
+  // JSON-encode them with quote characters, breaking resolveLanguage resolution.)
+  const patchedNode = await preUploadFileAssets(perspective, node);
+
   return Ad4mModel.transaction(perspective, async (tx) => {
     async function persist(
       node: SerializedBlockNode,
@@ -141,10 +243,10 @@ export async function createBlocks(
     const root = await persist(node);
 
     // Store the full Lexical serialized JSON as a file-storage blob on the
-    // root CollectionBlock for lossless roundtrip. The block tree (created
-    // above) continues to exist alongside it for queryability and interop.
+    // root CollectionBlock for lossless roundtrip. Uses patchedNode (with CIDs
+    // instead of raw FileData objects) so the blob stays compact.
     if (root && 'editorState' in root) {
-      const jsonStr = JSON.stringify(node);
+      const jsonStr = JSON.stringify(patchedNode);
       const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
       (root as CollectionBlock).editorState = {
         data_base64: base64,

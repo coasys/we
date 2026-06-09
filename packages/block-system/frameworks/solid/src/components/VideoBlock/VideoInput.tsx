@@ -1,6 +1,8 @@
 import { Column, Row } from '@we/components/solid';
-import { createSignal, Show } from 'solid-js';
+import { createSignal, For, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 
+import { BlockPlaceholder } from '../BlockPlaceholder';
 import { VideoDisplay } from './VideoDisplay';
 
 interface VideoInputProps {
@@ -8,87 +10,139 @@ interface VideoInputProps {
   title: string | undefined;
   thumbnail: string | undefined;
   provider: string | undefined;
+  width: number | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
+const WIDTH_PRESETS = [
+  { label: 'S', value: 50 },
+  { label: 'M', value: 75 },
+  { label: 'L', value: 100 },
+] as const;
+
+/**
+ * Input component for VideoBlock.
+ * Video is URL-only (YouTube, Vimeo, or direct .mp4/.webm links) —
+ * file uploads are not supported due to file-size constraints.
+ * Empty state: BlockPlaceholder (click only, no file drop).
+ * Modal: URL field + optional title.
+ * Loaded state: VideoDisplay with a delete toolbar when selected.
+ */
 export function VideoInput(props: VideoInputProps) {
   const [showModal, setShowModal] = createSignal(false);
   const [url, setUrl] = createSignal('');
   const [title, setTitle] = createSignal('');
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
+  const activeWidth = () => props.width ?? 100;
+
+  function openModal() {
     setUrl(props.url || '');
     setTitle(props.title || '');
     setShowModal(true);
   }
 
   function closeModal() {
+    setUrl('');
+    setTitle('');
     setShowModal(false);
   }
 
-  function handleSubmit(e: Event) {
-    e.preventDefault();
-    if (url().trim()) {
-      props.onChange('url', url().trim());
-      if (title().trim()) props.onChange('title', title().trim());
-      closeModal();
-    }
+  function handleSave() {
+    const trimmedUrl = url().trim();
+    if (!trimmedUrl) return;
+    props.onChange('url', trimmedUrl);
+    props.onChange('title', title().trim() || undefined);
+    closeModal();
+  }
+
+  function handleDelete() {
+    props.onChange('url', undefined);
+    props.onChange('title', undefined);
   }
 
   return (
-    <Column class="we-video-block" onClick={props.onSelect} position="relative">
+    <Column position="relative">
       <Show
         when={props.url}
         fallback={
-          <we-button variant="ghost" onClick={openModal} class="we-block-input-placeholder">
-            <we-icon name="youtube-logo" />
-            Add Video
-          </we-button>
+          <BlockPlaceholder icon="youtube-logo" label="Add video" hint="Click to add a URL" onClick={openModal} />
         }
       >
-        <VideoDisplay {...props} />
+        <VideoDisplay
+          url={props.url}
+          title={props.title}
+          thumbnail={props.thumbnail}
+          provider={props.provider}
+          width={props.width}
+        />
         <Show when={props.isSelected()}>
-          <we-button variant="ghost" onClick={openModal} class="we-block-input-placeholder" mt="300">
-            Edit Video
-          </we-button>
+          <Row
+            position="absolute"
+            top="5px"
+            right="5px"
+            p="200"
+            r="200"
+            gap="200"
+            border="1px solid var(--we-color-neutral-100)"
+            bg="neutral-0"
+          >
+            <For each={WIDTH_PRESETS}>
+              {(preset) => (
+                <we-button
+                  square
+                  variant={activeWidth() === preset.value ? 'secondary' : 'ghost'}
+                  onClick={() => props.onChange('width', preset.value)}
+                >
+                  {preset.label}
+                </we-button>
+              )}
+            </For>
+            <we-divider orientation="vertical" my="300" mx="100" color="neutral-100" />
+            <we-button square variant="ghost" onClick={openModal}>
+              <we-icon name="pencil" size="xs" />
+            </we-button>
+            <we-button square variant="ghost" onClick={handleDelete}>
+              <we-icon name="x" size="xs" />
+            </we-button>
+          </Row>
         </Show>
       </Show>
 
+      {/* Add-video modal — portalled to escape the Lexical contenteditable context. */}
       <Show when={showModal()}>
-        <we-modal close={closeModal} p="500" width="320px" r="300">
-          <form onSubmit={handleSubmit}>
-            <Column gap="300">
-              <we-text variant="subheading">Add Video</we-text>
-              <we-form-field label="Video URL">
-                <we-input
-                  type="text"
-                  value={url()}
-                  on:input={(e: CustomEvent) => setUrl(e.detail)}
-                  placeholder="https://youtube.com/watch?v=... or .mp4 URL"
-                />
-              </we-form-field>
-              <we-form-field label="Title">
-                <we-input
-                  type="text"
-                  value={title()}
-                  on:input={(e: CustomEvent) => setTitle(e.detail)}
-                  placeholder="Video title"
-                />
-              </we-form-field>
-              <Row ax="end" gap="200">
-                <we-button variant="secondary" onClick={closeModal}>
-                  Cancel
-                </we-button>
-                <we-button variant="primary" onClick={handleSubmit}>
-                  Add
-                </we-button>
-              </Row>
-            </Column>
-          </form>
-        </we-modal>
+        <Portal>
+          <we-modal close={closeModal} ax="center" minWidth="400px">
+            <we-text fontWeight="bold" fontSize="600" textAlign="center">
+              Add Video
+            </we-text>
+
+            <we-input
+              type="text"
+              value={url()}
+              on:input={(e: CustomEvent) => setUrl(e.detail)}
+              placeholder="YouTube, Vimeo, or direct video URL…"
+              width="100%"
+            />
+
+            <we-input
+              type="text"
+              value={title()}
+              on:input={(e: CustomEvent) => setTitle(e.detail)}
+              placeholder="Title (optional)"
+              width="100%"
+            />
+
+            <Row gap="200" ax="center" width="100%">
+              <we-button variant="ghost" onClick={closeModal}>
+                Cancel
+              </we-button>
+              <we-button variant="primary" onClick={handleSave} disabled={!url().trim()}>
+                Save
+              </we-button>
+            </Row>
+          </we-modal>
+        </Portal>
       </Show>
     </Column>
   );

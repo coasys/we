@@ -1,106 +1,210 @@
+import { AudioVisualiser } from '@we/components/solid';
 import { Column, Row } from '@we/components/solid';
+import type { FileData } from '@we/models';
+import { readFileAsFileData } from '@we/models';
 import { createSignal, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 
+import { BlockPlaceholder } from '../BlockPlaceholder';
 import { AudioDisplay } from './AudioDisplay';
 
 interface AudioInputProps {
   title: string | undefined;
   artist: string | undefined;
-  audioUrl: string | undefined;
+  audioUrl: string | FileData | undefined;
   duration: number | undefined;
   albumArt: string | undefined;
   onChange: (property: string, value: unknown) => void;
   isSelected: () => boolean;
-  onSelect: (e: MouseEvent) => void;
 }
 
+/**
+ * Input component for AudioBlock.
+ * Empty state: BlockPlaceholder with file drop (audio/*) or click to open modal.
+ * Modal: file upload zone → audio preview + optional title/artist fields → Save.
+ * Loaded state: AudioDisplay with a delete toolbar when selected.
+ */
 export function AudioInput(props: AudioInputProps) {
   const [showModal, setShowModal] = createSignal(false);
-  const [url, setUrl] = createSignal('');
-  const [title, setTitle] = createSignal('');
-  const [artist, setArtist] = createSignal('');
+  const [pendingTitle, setPendingTitle] = createSignal('');
+  const [pendingArtist, setPendingArtist] = createSignal('');
+  const [pendingFile, setPendingFile] = createSignal<File | null>(null);
+  const [pendingPreviewUrl, setPendingPreviewUrl] = createSignal<string | undefined>(undefined);
+  const [isEditing, setIsEditing] = createSignal(false);
 
-  function openModal(e: MouseEvent) {
-    e.stopPropagation();
-    setUrl(props.audioUrl || '');
-    setTitle(props.title || '');
-    setArtist(props.artist || '');
+  // Derive a playable URL from audioUrl (handles both string data URI and FileData).
+  const displayAudioUrl = () => {
+    const u = props.audioUrl;
+    if (!u) return undefined;
+    if (typeof u === 'string') return u;
+    return `data:${u.file_type};base64,${u.data_base64}`;
+  };
+
+  function resetPending() {
+    const url = pendingPreviewUrl();
+    // Only revoke object URLs — not the existing audio data URI from props.
+    if (url && !isEditing()) URL.revokeObjectURL(url);
+    setPendingFile(null);
+    setPendingPreviewUrl(undefined);
+    setPendingTitle('');
+    setPendingArtist('');
+    setIsEditing(false);
+  }
+
+  function openEditModal() {
+    setPendingTitle(props.title ?? '');
+    setPendingArtist(props.artist ?? '');
+    setPendingPreviewUrl(displayAudioUrl());
+    setIsEditing(true);
     setShowModal(true);
   }
 
   function closeModal() {
+    resetPending();
     setShowModal(false);
   }
 
-  function handleSubmit(e: Event) {
-    e.preventDefault();
-    if (url().trim()) {
-      props.onChange('audioUrl', url().trim());
-      if (title().trim()) props.onChange('title', title().trim());
-      if (artist().trim()) props.onChange('artist', artist().trim());
-      closeModal();
+  async function saveFile() {
+    const file = pendingFile();
+    if (file) {
+      const fileData = await readFileAsFileData(file);
+      props.onChange('audioUrl', fileData);
+      props.onChange('title', pendingTitle().trim() || file.name.replace(/\.[^/.]+$/, ''));
+    } else {
+      props.onChange('title', pendingTitle().trim() || props.title || '');
     }
+    props.onChange('artist', pendingArtist().trim() || undefined);
+    closeModal();
+  }
+
+  // Called by the direct drop-on-placeholder path (bypasses modal entirely).
+  async function receiveFile(file: File) {
+    const fileData = await readFileAsFileData(file);
+    props.onChange('audioUrl', fileData);
+    props.onChange('title', file.name.replace(/\.[^/.]+$/, ''));
+  }
+
+  function handleModalFileChange(e: Event) {
+    const file = (e as CustomEvent).detail as File | null;
+    if (!file) return;
+    const url = pendingPreviewUrl();
+    if (url) URL.revokeObjectURL(url);
+    setPendingPreviewUrl(URL.createObjectURL(file));
+    setPendingFile(file);
+    if (!pendingTitle().trim()) setPendingTitle(file.name.replace(/\.[^/.]+$/, ''));
+  }
+
+  function handleDelete() {
+    props.onChange('audioUrl', undefined);
+    props.onChange('title', undefined);
+    props.onChange('artist', undefined);
   }
 
   return (
-    <Column class="we-audio-block" onClick={props.onSelect} position="relative">
+    <Column position="relative">
       <Show
         when={props.audioUrl}
         fallback={
-          <we-button variant="ghost" onClick={openModal} class="we-block-input-placeholder">
-            <we-icon name="speaker-high" />
-            Add Audio
-          </we-button>
+          <BlockPlaceholder
+            icon="music-note"
+            label="Add audio"
+            hint="Drop here or click to browse"
+            accept="audio/*"
+            onFileDrop={receiveFile}
+            onClick={() => setShowModal(true)}
+          />
         }
       >
-        <AudioDisplay {...props} />
+        <AudioDisplay
+          title={props.title}
+          artist={props.artist}
+          audioUrl={displayAudioUrl()}
+          duration={props.duration}
+          albumArt={props.albumArt}
+        />
         <Show when={props.isSelected()}>
-          <we-button variant="ghost" onClick={openModal} class="we-block-input-placeholder" mt="300">
-            Edit Audio
-          </we-button>
+          <Row
+            position="absolute"
+            top="5px"
+            right="5px"
+            p="200"
+            r="200"
+            gap="200"
+            border="1px solid var(--we-color-neutral-100)"
+            bg="neutral-0"
+          >
+            <we-button square variant="ghost" onClick={openEditModal}>
+              <we-icon name="pencil" size="xs" />
+            </we-button>
+            <we-button square variant="ghost" onClick={handleDelete}>
+              <we-icon name="x" size="xs" />
+            </we-button>
+          </Row>
         </Show>
       </Show>
 
+      {/* Add-audio modal — portalled to escape the Lexical contenteditable context. */}
       <Show when={showModal()}>
-        <we-modal close={closeModal} p="500" width="320px" r="300">
-          <form onSubmit={handleSubmit}>
-            <Column gap="300">
-              <we-text variant="subheading">Add Audio</we-text>
-              <we-form-field label="Audio URL">
-                <we-input
-                  type="text"
-                  value={url()}
-                  on:input={(e: CustomEvent) => setUrl(e.detail)}
-                  placeholder="https://example.com/audio.mp3"
-                />
-              </we-form-field>
-              <we-form-field label="Title">
-                <we-input
-                  type="text"
-                  value={title()}
-                  on:input={(e: CustomEvent) => setTitle(e.detail)}
-                  placeholder="Track title"
-                />
-              </we-form-field>
-              <we-form-field label="Artist">
-                <we-input
-                  type="text"
-                  value={artist()}
-                  on:input={(e: CustomEvent) => setArtist(e.detail)}
-                  placeholder="Artist name"
-                />
-              </we-form-field>
-              <Row ax="end" gap="200">
-                <we-button variant="secondary" onClick={closeModal}>
+        <Portal>
+          <we-modal close={closeModal} ax="center" minWidth="400px">
+            <we-text fontWeight="bold" fontSize="600" textAlign="center">
+              Add Audio
+            </we-text>
+
+            <Show
+              when={pendingPreviewUrl()}
+              fallback={
+                <we-file-upload accept="audio/*" on:change={handleModalFileChange} width="100%">
+                  <we-icon name="music-note" color="neutral-500" size="lg" />
+                  <we-text color="neutral-500" fontSize="400">
+                    Drop an audio file or click to browse
+                  </we-text>
+                </we-file-upload>
+              }
+            >
+              <AudioVisualiser src={pendingPreviewUrl()} />
+              <we-button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  const url = pendingPreviewUrl();
+                  if (url) URL.revokeObjectURL(url);
+                  setPendingPreviewUrl(undefined);
+                  setPendingFile(null);
+                }}
+              >
+                <we-icon name="trash" size="xs" />
+                Remove file
+              </we-button>
+            </Show>
+
+            <we-input
+              type="text"
+              value={pendingTitle()}
+              on:input={(e: CustomEvent) => setPendingTitle(e.detail)}
+              placeholder="Track title (optional)"
+              width="100%"
+            />
+            <we-input
+              type="text"
+              value={pendingArtist()}
+              on:input={(e: CustomEvent) => setPendingArtist(e.detail)}
+              placeholder="Artist (optional)"
+              width="100%"
+            />
+
+            <Show when={pendingFile() || isEditing()}>
+              <Row gap="200" ax="center" width="100%">
+                <we-button variant="ghost" onClick={closeModal}>
                   Cancel
                 </we-button>
-                <we-button variant="primary" onClick={handleSubmit}>
-                  Add
+                <we-button variant="primary" onClick={() => saveFile().catch(console.error)}>
+                  Save
                 </we-button>
               </Row>
-            </Column>
-          </form>
-        </we-modal>
+            </Show>
+          </we-modal>
+        </Portal>
       </Show>
     </Column>
   );
