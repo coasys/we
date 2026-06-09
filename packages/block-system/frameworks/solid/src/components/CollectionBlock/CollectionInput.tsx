@@ -84,9 +84,9 @@ interface CollectionInputProps {
 }
 
 const LAYOUT_OPTIONS = [
-  { value: 'rows', icon: 'rows-plus-bottom', title: 'Stack (rows)' },
   { value: 'grid', icon: 'squares-four', title: 'Grid' },
-  { value: 'columns', icon: 'columns-plus-right', title: 'Side-by-side (columns)' },
+  { value: 'row', icon: 'columns-plus-right', title: 'Row' },
+  { value: 'column', icon: 'rows-plus-bottom', title: 'Column' },
 ] as const;
 
 const COL_COUNTS = [2, 3, 4] as const;
@@ -101,14 +101,9 @@ const COL_COUNTS = [2, 3, 4] as const;
  */
 export function CollectionInput(props: CollectionInputProps) {
   // Normalise layout name (accepts singular/plural variants)
-  const layout = () => {
-    const l = props.layout;
-    if (l === 'column') return 'columns';
-    if (l === 'row') return 'rows';
-    return l ?? 'grid';
-  };
+  const layout = () => props.layout ?? 'grid';
   const colCount = () => props.columnCount ?? 2;
-  const hasColumns = () => layout() !== 'rows';
+  const hasColumns = () => layout() === 'grid';
 
   const initialConfig = {
     namespace: 'CollectionBlock',

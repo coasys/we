@@ -11,10 +11,7 @@ export class CollectionBlock extends WeNode {
   @HasMany({ through: 'we://children' })
   children: string[] = [];
 
-  @Property({
-    through: 'we://editor_state',
-    resolveLanguage: FILE_STORAGE_LANGUAGE,
-  })
+  @Property({ through: 'we://editor_state', resolveLanguage: FILE_STORAGE_LANGUAGE })
   editorState: string | null = null;
 
   @Property({ through: 'we://type' })
