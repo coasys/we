@@ -61,10 +61,31 @@ function serializeNodeWithChildren(node: LexicalNode): SerializedLexicalNode {
 }
 
 /**
+ * Returns true if the given editor's root element lives inside a collection
+ * block wrapper — i.e. it is a sub-editor created by CollectionInput.
+ */
+function isCollectionSubEditor(editor: LexicalEditor): boolean {
+  return !!editor.getRootElement()?.closest('.we-collection-block');
+}
+
+/**
  * Move a block from one Lexical editor to another.
- * Serializes the node in the source editor, removes it, then recreates it
- * at the target position using $parseSerializedNode (which runs in the target
- * editor's context so all registered node classes are resolved correctly).
+ *
+ * Order matters: whichever editor is the collection sub-editor must commit
+ * FIRST so that collectionNodeStates reflects the final state before the root
+ * editor's decorator listener fires. That listener synchronously causes
+ * Solid.js to unmount/remount CollectionBlockBridge — and when the bridge
+ * remounts it reads collectionNodeStates to initialise the new sub-editor.
+ *
+ * root → collection (targetEditor is sub-editor):
+ *   Insert into sub-editor first → StateChangePlugin updates collectionNodeStates
+ *   → root removes block → root decorator listener fires → CollectionBlockBridge
+ *   remounts with updated state (block present) ✓
+ *
+ * collection → root (sourceEditor is sub-editor):
+ *   Remove from sub-editor first → StateChangePlugin updates collectionNodeStates
+ *   → onUpdate inserts into root → root decorator listener fires →
+ *   CollectionBlockBridge remounts with updated state (block absent) ✓
  */
 function crossEditorMove(
   sourceEditor: LexicalEditor,
@@ -73,38 +94,49 @@ function crossEditorMove(
   targetKey: string,
   insertBefore: boolean,
 ): void {
-  // Serialize and remove from source inside the same update() so the active
-  // editor is correctly set (needed by $getNodeByKey and exportJSON).
+  // Serialize the node via a synchronous read — no update needed for a read.
   let serialized: SerializedLexicalNode | null = null;
+  sourceEditor.getEditorState().read(() => {
+    const node = $getNodeByKey(sourceKey);
+    if (!node) return;
+    serialized = serializeNodeWithChildren(node);
+  });
+  if (!serialized) return;
+  const _serialized = serialized;
 
-  sourceEditor.update(
-    () => {
-      const node = $getNodeByKey(sourceKey);
-      if (!node) return;
-      serialized = serializeNodeWithChildren(node);
-      node.remove();
-    },
-    {
-      // Only insert in target AFTER the source removal has committed,
-      // so both editors are in a consistent state.
-      onUpdate: () => {
-        if (!serialized) return;
-        const _serialized = serialized;
-        targetEditor.update(() => {
-          const targetNode = $getNodeByKey(targetKey);
-          if (!targetNode) return;
-          const newNode = $parseSerializedNode(_serialized);
-          if (insertBefore) {
-            targetNode.insertBefore(newNode);
-          } else {
-            const next = targetNode.getNextSibling();
-            if (next) next.insertBefore(newNode);
-            else targetNode.getParent()?.append(newNode);
-          }
-        });
+  function insertIntoTarget(tEditor: LexicalEditor) {
+    tEditor.update(() => {
+      const targetNode = $getNodeByKey(targetKey);
+      if (!targetNode) return;
+      const newNode = $parseSerializedNode(_serialized);
+      if (insertBefore) {
+        targetNode.insertBefore(newNode);
+      } else {
+        const next = targetNode.getNextSibling();
+        if (next) next.insertBefore(newNode);
+        else targetNode.getParent()?.append(newNode);
+      }
+    });
+  }
+
+  if (isCollectionSubEditor(targetEditor)) {
+    // root → collection: sub-editor (target) must commit first.
+    insertIntoTarget(targetEditor);
+    sourceEditor.update(() => {
+      $getNodeByKey(sourceKey)?.remove();
+    });
+  } else {
+    // collection → root (or any other case): sub-editor (source) must commit
+    // first. Use onUpdate so the target insert happens after source commits.
+    sourceEditor.update(
+      () => {
+        $getNodeByKey(sourceKey)?.remove();
       },
-    },
-  );
+      {
+        onUpdate: () => insertIntoTarget(targetEditor),
+      },
+    );
+  }
 }
 
 /**
