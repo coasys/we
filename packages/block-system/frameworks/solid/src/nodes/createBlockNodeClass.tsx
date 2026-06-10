@@ -110,6 +110,14 @@ function BlockBridge(props: { nodeKey: string; nodeProps: Record<string, unknown
   return (
     <div
       onMouseDown={(e: MouseEvent) => {
+        // SolidJS event delegation walks the component tree, not the DOM tree,
+        // so portal content (e.g. modal inputs rendered via <Portal> to
+        // document.body) still triggers this handler. Bail out if the click
+        // target is outside the editor DOM — it's portal content and should
+        // receive focus normally.
+        const editorRoot = editor.getRootElement();
+        if (!editorRoot || !editorRoot.contains(e.target as Node)) return;
+
         // Allow clicks inside nested contenteditable areas to pass through.
         let node = e.target as HTMLElement | null;
         const blockEl = editor.getElementByKey(props.nodeKey);
