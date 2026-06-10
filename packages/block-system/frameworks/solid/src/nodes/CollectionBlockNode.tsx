@@ -174,7 +174,16 @@ export class CollectionBlockNode extends DecoratorNode<() => JSX.Element> {
     div.className = 'we-block';
     div.contentEditable = 'false';
     const key = this.__key;
-    div.addEventListener('mousedown', () => {
+    div.addEventListener('mousedown', (e) => {
+      // If the click is inside a nested contenteditable (a child editor's root),
+      // let it through so the user can place a cursor / select text inside the
+      // collection. Only intercept clicks on the block wrapper itself.
+      let node = e.target as HTMLElement | null;
+      while (node && node !== div) {
+        if (node.contentEditable === 'true') return;
+        node = node.parentElement;
+      }
+      e.preventDefault();
       editor.update(() => {
         const sel = $createNodeSelection();
         sel.add(key);
