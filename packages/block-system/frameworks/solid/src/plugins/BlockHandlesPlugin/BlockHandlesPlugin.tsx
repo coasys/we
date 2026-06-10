@@ -1,5 +1,7 @@
 import { $isListItemNode, $isListNode, ListNode } from '@lexical/list';
 import { mergeRegister } from '@lexical/utils';
+import type { FileData } from '@we/models';
+import { compressImageToFileData, readFileAsFileData } from '@we/models';
 import {
   $createNodeSelection,
   $getNodeByKey,
@@ -30,6 +32,8 @@ import {
   TRANSFORM_BLOCK_COMMAND,
   transformBlock,
 } from '../../helpers';
+import { blockNodeClassMap } from '../../nodes';
+import { $createBlockNode } from '../../nodes/createBlockNodeClass';
 
 /**
  * Module-level reference to the editor that owns the currently dragged block.
@@ -101,6 +105,85 @@ function crossEditorMove(
       },
     },
   );
+}
+
+/**
+ * Map a File's MIME type to the Lexical block type to create.
+ * Video blocks are URL-only, so video files fall through to 'file'.
+ */
+function mimeToBlockType(mime: string): string {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('audio/')) return 'audio';
+  return 'file';
+}
+
+/**
+ * Read a dropped File and return the (blockType, props) pair ready to pass
+ * to $createBlockNode. Uses compressImageToFileData for images so large
+ * photos are resized before being stored, matching ImageInput's behaviour.
+ */
+async function fileToBlockProps(file: File, type: string): Promise<{ type: string; props: Record<string, unknown> }> {
+  let fileData: FileData;
+  if (type === 'image') {
+    fileData = await compressImageToFileData(file);
+    return { type, props: { src: fileData } };
+  }
+  fileData = await readFileAsFileData(file);
+  if (type === 'audio') {
+    return {
+      type,
+      props: {
+        audioUrl: fileData,
+        title: file.name.replace(/\.[^/.]+$/, ''),
+      },
+    };
+  }
+  // 'file' (and any unrecognised MIME, including video/*)
+  return {
+    type: 'file',
+    props: { url: fileData, name: file.name, mimeType: file.type },
+  };
+}
+
+/**
+ * Insert one or more blocks created from dropped OS files into the editor at
+ * the position indicated by targetKey / insertBefore. Reads files asynchronously
+ * then performs a single Lexical update to add all nodes.
+ */
+async function handleFileDrop(
+  editor: LexicalEditor,
+  files: File[],
+  targetKey: string,
+  insertBefore: boolean,
+): Promise<void> {
+  const blocks = await Promise.all(files.map((f) => fileToBlockProps(f, mimeToBlockType(f.type))));
+
+  editor.update(() => {
+    if (insertBefore) {
+      const anchor = $getNodeByKey(targetKey);
+      if (!anchor) return;
+      for (const { type, props } of blocks) {
+        const NodeClass = blockNodeClassMap[type];
+        if (!NodeClass) continue;
+        // insertBefore on the same anchor each time preserves file order:
+        // 1st file lands just before anchor, 2nd file lands just before anchor
+        // (i.e. just after 1st file), etc.
+        anchor.insertBefore($createBlockNode(NodeClass, props));
+      }
+    } else {
+      let anchor = $getNodeByKey(targetKey);
+      if (!anchor) return;
+      for (const { type, props } of blocks) {
+        const NodeClass = blockNodeClassMap[type];
+        if (!NodeClass) continue;
+        const node = $createBlockNode(NodeClass, props);
+        const next = anchor.getNextSibling();
+        if (next) next.insertBefore(node);
+        else anchor.getParent()?.append(node);
+        anchor = node; // advance so next file goes after this one
+      }
+    }
+  });
 }
 
 // Data attributes for block elements
@@ -431,7 +514,8 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
     function onDragOver(e: DragEvent) {
       e.preventDefault();
       const sourceKey = document.body.getAttribute(ATTR_DRAG_SOURCE);
-      if (!sourceKey) return;
+      const isFileDrag = Array.from(e.dataTransfer?.types ?? []).includes('Files');
+      if (!sourceKey && !isFileDrag) return;
 
       // If the cursor is inside a nested (child) editor, let that editor's
       // own onDragOver handle the indicator. Hide ours and bail out so we
@@ -500,15 +584,22 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
       // child and outer editor's drop handlers (double-fire).
       e.stopPropagation();
 
-      const sourceKey = document.body.getAttribute(ATTR_DRAG_SOURCE);
       const targetKey = root?.getAttribute(ATTR_DROP_TARGET);
       const insertBefore = root?.getAttribute(ATTR_DROP_POSITION) === 'before';
 
       setDropSpot((prev) => ({ ...prev, visible: false }));
-
       root?.removeAttribute(ATTR_DROP_TARGET);
       root?.removeAttribute(ATTR_DROP_POSITION);
 
+      // OS file drop — create media/file blocks at the indicated position.
+      const droppedFiles = e.dataTransfer?.files;
+      if (droppedFiles && droppedFiles.length > 0 && targetKey) {
+        void handleFileDrop(editor, Array.from(droppedFiles), targetKey, insertBefore);
+        return;
+      }
+
+      // Block drag — reorder within the same editor or move across editors.
+      const sourceKey = document.body.getAttribute(ATTR_DRAG_SOURCE);
       if (sourceKey && targetKey && sourceKey !== targetKey) {
         if (dragSourceEditor && dragSourceEditor !== editor) {
           // Cross-editor move: block dragged between the outer editor and a
