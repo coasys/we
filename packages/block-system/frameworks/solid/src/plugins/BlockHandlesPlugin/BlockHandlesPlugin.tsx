@@ -125,7 +125,7 @@ function mimeToBlockType(mime: string): string {
 async function fileToBlockProps(file: File, type: string): Promise<{ type: string; props: Record<string, unknown> }> {
   let fileData: FileData;
   if (type === 'image') {
-    fileData = await compressImageToFileData(file);
+    fileData = await compressImageToFileData(file, 'image-block');
     return { type, props: { src: fileData } };
   }
   fileData = await readFileAsFileData(file);
