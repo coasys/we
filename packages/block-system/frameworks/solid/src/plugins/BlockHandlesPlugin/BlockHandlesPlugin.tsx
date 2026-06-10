@@ -2,17 +2,21 @@ import { $isListItemNode, $isListNode, ListNode } from '@lexical/list';
 import { mergeRegister } from '@lexical/utils';
 import {
   $createNodeSelection,
+  $getNodeByKey,
   $getRoot,
   $getSelection,
   $isDecoratorNode,
   $isElementNode,
   $isNodeSelection,
   $isRangeSelection,
+  $parseSerializedNode,
   $setSelection,
   COMMAND_PRIORITY_EDITOR,
   COMMAND_PRIORITY_LOW,
+  LexicalEditor,
   LexicalNode,
   SELECTION_CHANGE_COMMAND,
+  SerializedLexicalNode,
 } from 'lexical';
 import { useLexicalComposerContext } from 'lexical-solid';
 import { createEffect, createSignal, JSX, onCleanup } from 'solid-js';
@@ -26,6 +30,78 @@ import {
   TRANSFORM_BLOCK_COMMAND,
   transformBlock,
 } from '../../helpers';
+
+/**
+ * Module-level reference to the editor that owns the currently dragged block.
+ * Set on dragstart, cleared on dragend. Read in onDrop to detect cross-editor
+ * moves (e.g. dragging a block from the outer editor into a collection's child
+ * editor, or vice-versa).
+ */
+let dragSourceEditor: LexicalEditor | null = null;
+
+/**
+ * Recursively serialize a node and all its descendants.
+ *
+ * ElementNode.exportJSON() returns children:[] regardless of actual content —
+ * the children are only populated during a full EditorState.toJSON() pass.
+ * This helper replaces that empty array with the correctly serialized subtree.
+ *
+ * Must be called inside an active Lexical editor context (update() or read()).
+ */
+function serializeNodeWithChildren(node: LexicalNode): SerializedLexicalNode {
+  const json = node.exportJSON() as Record<string, unknown>;
+  if ($isElementNode(node)) {
+    json.children = node.getChildren().map(serializeNodeWithChildren);
+  }
+  return json as SerializedLexicalNode;
+}
+
+/**
+ * Move a block from one Lexical editor to another.
+ * Serializes the node in the source editor, removes it, then recreates it
+ * at the target position using $parseSerializedNode (which runs in the target
+ * editor's context so all registered node classes are resolved correctly).
+ */
+function crossEditorMove(
+  sourceEditor: LexicalEditor,
+  targetEditor: LexicalEditor,
+  sourceKey: string,
+  targetKey: string,
+  insertBefore: boolean,
+): void {
+  // Serialize and remove from source inside the same update() so the active
+  // editor is correctly set (needed by $getNodeByKey and exportJSON).
+  let serialized: SerializedLexicalNode | null = null;
+
+  sourceEditor.update(
+    () => {
+      const node = $getNodeByKey(sourceKey);
+      if (!node) return;
+      serialized = serializeNodeWithChildren(node);
+      node.remove();
+    },
+    {
+      // Only insert in target AFTER the source removal has committed,
+      // so both editors are in a consistent state.
+      onUpdate: () => {
+        if (!serialized) return;
+        const _serialized = serialized;
+        targetEditor.update(() => {
+          const targetNode = $getNodeByKey(targetKey);
+          if (!targetNode) return;
+          const newNode = $parseSerializedNode(_serialized);
+          if (insertBefore) {
+            targetNode.insertBefore(newNode);
+          } else {
+            const next = targetNode.getNextSibling();
+            if (next) next.insertBefore(newNode);
+            else targetNode.getParent()?.append(newNode);
+          }
+        });
+      },
+    },
+  );
+}
 
 // Data attributes for block elements
 const ATTR_BLOCK_ID = 'data-block-id';
@@ -77,6 +153,7 @@ function BlockHandle({ nodeKey, nodeData }: { nodeKey: string; nodeData: NodeDat
 
   function onDragStart(e: DragEvent) {
     setIsDragging(true);
+    dragSourceEditor = editor;
     e.dataTransfer?.setData('application/x-lexical-node-key', nodeKey);
     e.dataTransfer!.effectAllowed = 'move';
     document.body.classList.add('block-dragging');
@@ -85,6 +162,7 @@ function BlockHandle({ nodeKey, nodeData }: { nodeKey: string; nodeData: NodeDat
 
   function onDragEnd() {
     setIsDragging(false);
+    dragSourceEditor = null;
     document.body.classList.remove('block-dragging');
     document.body.removeAttribute(ATTR_DRAG_SOURCE);
   }
@@ -355,6 +433,17 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
       const sourceKey = document.body.getAttribute(ATTR_DRAG_SOURCE);
       if (!sourceKey) return;
 
+      // If the cursor is inside a nested (child) editor, let that editor's
+      // own onDragOver handle the indicator. Hide ours and bail out so we
+      // don't show two indicators at the same time.
+      const nestedRoots = root?.querySelectorAll('[data-lexical-editor="true"]') ?? [];
+      for (const nestedRoot of nestedRoots) {
+        if (nestedRoot !== root && nestedRoot.contains(e.target as Node)) {
+          setDropSpot((prev) => ({ ...prev, visible: false }));
+          return;
+        }
+      }
+
       let targetElement: HTMLElement | null = null;
       let insertBefore = true;
 
@@ -406,6 +495,10 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
 
     function onDrop(e: DragEvent) {
       e.preventDefault();
+      // Stop propagation so parent editors don't also fire onDrop for the same
+      // event — without this, dragging into a child editor triggers both the
+      // child and outer editor's drop handlers (double-fire).
+      e.stopPropagation();
 
       const sourceKey = document.body.getAttribute(ATTR_DRAG_SOURCE);
       const targetKey = root?.getAttribute(ATTR_DROP_TARGET);
@@ -417,7 +510,13 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
       root?.removeAttribute(ATTR_DROP_POSITION);
 
       if (sourceKey && targetKey && sourceKey !== targetKey) {
-        editor.dispatchCommand(REORDER_BLOCK_COMMAND, { editor, sourceKey, targetKey, insertBefore });
+        if (dragSourceEditor && dragSourceEditor !== editor) {
+          // Cross-editor move: block dragged between the outer editor and a
+          // collection block's child editor (or between two child editors).
+          crossEditorMove(dragSourceEditor, editor, sourceKey, targetKey, insertBefore);
+        } else {
+          editor.dispatchCommand(REORDER_BLOCK_COMMAND, { editor, sourceKey, targetKey, insertBefore });
+        }
       }
     }
 
