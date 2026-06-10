@@ -6,9 +6,11 @@ import {
   $getSelection,
   $isNodeSelection,
   $setSelection,
+  COMMAND_PRIORITY_LOW,
   DecoratorNode,
+  SELECTION_CHANGE_COMMAND,
 } from 'lexical';
-import { useLexicalComposerContext } from 'lexical-solid';
+import { useLexicalComposerContext, useLexicalNodeSelection } from 'lexical-solid';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 
@@ -44,7 +46,12 @@ const decoratorFactoryCache = new Map<string, () => JSX.Element>();
 function CollectionBlockBridge(props: { nodeKey: string }) {
   const [editor] = useLexicalComposerContext();
   const reg = createMemo(() => getBlockRegistration('collection'));
-  const [isNodeSelected, setIsNodeSelected] = createSignal(false);
+  const [lexicalSelected] = useLexicalNodeSelection(props.nodeKey);
+  const [localActive, setLocalActive] = createSignal(false);
+  const isNodeSelected = () => lexicalSelected() || localActive();
+
+  // Tracks where the most recent mousedown landed (same pattern as BlockBridge).
+  let lastMousedownTarget: EventTarget | null = null;
 
   // Read the full props (including childEditorState) once at mount.
   const initialProps = editor.getEditorState().read(() => {
@@ -92,10 +99,49 @@ function CollectionBlockBridge(props: { nodeKey: string }) {
             gap: n.__props.gap as string | undefined,
           });
         }
-        const sel = $getSelection();
-        setIsNodeSelected($isNodeSelection(sel) ? sel.has(props.nodeKey) : false);
       });
     });
+    onCleanup(unregister);
+  });
+
+  // Document capture mousedown — set localActive whenever the user clicks anywhere
+  // inside this collection block (including inside child editors). Mirrors BlockBridge.
+  createEffect(() => {
+    const blockEl = editor.getElementByKey(props.nodeKey);
+    const handler = (e: MouseEvent) => {
+      lastMousedownTarget = e.target;
+      if (blockEl?.contains(e.target as Node)) {
+        setLocalActive(true);
+      }
+    };
+    document.addEventListener('mousedown', handler, true);
+    onCleanup(() => document.removeEventListener('mousedown', handler, true));
+  });
+
+  // Clear localActive when Lexical selection moves away and the last click was
+  // not inside this block. Mirrors BlockBridge's SELECTION_CHANGE_COMMAND handler.
+  createEffect(() => {
+    const unregister = editor.registerCommand(
+      SELECTION_CHANGE_COMMAND,
+      () => {
+        if (!localActive()) return false;
+        const isStillSelected = editor.getEditorState().read(() => {
+          const sel = $getSelection();
+          return $isNodeSelection(sel) && sel.has(props.nodeKey);
+        });
+        if (!isStillSelected) {
+          setTimeout(() => {
+            const blockEl = editor.getElementByKey(props.nodeKey);
+            const clickedInsideBlock = blockEl?.contains(lastMousedownTarget as Node) ?? false;
+            if (!clickedInsideBlock) {
+              setLocalActive(false);
+            }
+          }, 0);
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
     onCleanup(unregister);
   });
 
@@ -189,6 +235,7 @@ export class CollectionBlockNode extends DecoratorNode<() => JSX.Element> {
         sel.add(key);
         $setSelection(sel);
       });
+      editor.getRootElement()?.focus({ preventScroll: true });
     });
     return div;
   }
