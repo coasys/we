@@ -76,8 +76,7 @@ export default function BlockKeyboardPlugin() {
           const sel = $getSelection();
           if ($isNodeSelection(sel)) {
             const nodes = sel.getNodes();
-            lastSelectedDecoratorKey =
-              nodes.length === 1 && $isDecoratorNode(nodes[0]) ? nodes[0].getKey() : null;
+            lastSelectedDecoratorKey = nodes.length === 1 && $isDecoratorNode(nodes[0]) ? nodes[0].getKey() : null;
           } else if (sel !== null) {
             // Cursor moved to a text block — clear the fallback.
             lastSelectedDecoratorKey = null;

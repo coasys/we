@@ -467,7 +467,9 @@ when `relative` is enabled.
 - BlockPlaceholder
   Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
-  Props: visibility?: Visibility, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, editorState?: any, perspective?: PerspectiveProxy | null
+  Props: visibility?: Visibility, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, editorState?: any, perspective?: PerspectiveProxy | null, rootClass?: string
+- BlockToolbar
+  Props: placement?: BlockToolbarPlacement, children: JSX.Element, stopPropagation?: boolean
 - CalloutDisplay
   Props: text: string | undefined, variant: string | undefined, icon: string | undefined
 - CalloutInput
@@ -477,9 +479,9 @@ when `relative` is enabled.
 - CodeInput
   Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - CollectionDisplay
-  Props: layout?: string, columnCount?: number, gap?: string, childEditorStates?: any[]
+  Props: layout?: string, columnCount?: number, gap?: string, childEditorState?: any
 - CollectionInput
-  Props: nodeKey: string, layout?: string, columnCount?: number, gap?: string, childEditorStates?: any[], onChange: (property: string, value: unknown) => void, isSelected: () => boolean
+  Props: nodeKey: string, layout?: string, columnCount?: number, gap?: string, childEditorState?: any, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - DividerDisplay
   Props: style: "solid" | "dashed" | "dotted" | undefined
 - DividerInput

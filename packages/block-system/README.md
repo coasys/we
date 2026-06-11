@@ -2,10 +2,10 @@
 
 SolidJS block editor and renderer for the WE block system. Part of a two-package system:
 
-| Package | Purpose |
-| --- | --- |
-| `@we/block-shared` (`../shared/`) | Framework-agnostic registry, serialization, AD4M model bindings |
-| `@we/block-solid` (this package) | SolidJS `BlockComposer`, `BlockRenderer`, all block components and plugins |
+| Package                           | Purpose                                                                    |
+| --------------------------------- | -------------------------------------------------------------------------- |
+| `@we/block-shared` (`../shared/`) | Framework-agnostic registry, serialization, AD4M model bindings            |
+| `@we/block-solid` (this package)  | SolidJS `BlockComposer`, `BlockRenderer`, all block components and plugins |
 
 For architecture, conventions, and how to add new block types, see [`../CONVENTIONS.md`](../CONVENTIONS.md).
 
@@ -42,31 +42,31 @@ registerCoreBlockComponents();
 
 ### Components
 
-| Export | Description |
-| --- | --- |
-| `BlockComposer` | Full-featured block editor (Lexical + all plugins) |
-| `BlockRenderer` | Read-only renderer with AD4M asset resolution |
+| Export                  | Description                                                |
+| ----------------------- | ---------------------------------------------------------- |
+| `BlockComposer`         | Full-featured block editor (Lexical + all plugins)         |
+| `BlockRenderer`         | Read-only renderer with AD4M asset resolution              |
 | `BlockDisplayOverrides` | Context provider to override display components per render |
 
 ### Nodes
 
-| Export | Description |
-| --- | --- |
-| `blockNodeClasses` | Array of all registered `DecoratorNode` classes — pass to `nodes:` in a custom `LexicalComposer` |
-| `blockNodeClassMap` | `Map<nodeType, NodeClass>` for individual lookup |
-| `createBlockNodeClass(type)` | Factory — creates a `DecoratorNode` class for a custom block type |
-| `CollectionBlockNode` | Hand-written node for blocks with nested Lexical editors |
-| `$createBlockNode(type, props)` | Creates a new block node instance inside `editor.update()` |
-| `$isBlockNode(node)` | Type guard |
+| Export                          | Description                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `blockNodeClasses`              | Array of all registered `DecoratorNode` classes — pass to `nodes:` in a custom `LexicalComposer` |
+| `blockNodeClassMap`             | `Map<nodeType, NodeClass>` for individual lookup                                                 |
+| `createBlockNodeClass(type)`    | Factory — creates a `DecoratorNode` class for a custom block type                                |
+| `CollectionBlockNode`           | Hand-written node for blocks with nested Lexical editors                                         |
+| `$createBlockNode(type, props)` | Creates a new block node instance inside `editor.update()`                                       |
+| `$isBlockNode(node)`            | Type guard                                                                                       |
 
 ### Helpers
 
-| Export | Description |
-| --- | --- |
-| `INSERT_BLOCK_COMMAND` | Dispatch to insert a block at current selection: `editor.dispatchCommand(INSERT_BLOCK_COMMAND, { type, props })` |
-| `TRANSFORM_BLOCK_COMMAND` | Dispatch to change a block's type in place |
-| `REORDER_BLOCK_COMMAND` | Dispatch to move a block to a new position (used by drag handles) |
-| `transformBlock(editor, nodeKey, newType, newProps?)` | Imperative helper for block type transformation |
+| Export                                                | Description                                                                                                      |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `INSERT_BLOCK_COMMAND`                                | Dispatch to insert a block at current selection: `editor.dispatchCommand(INSERT_BLOCK_COMMAND, { type, props })` |
+| `TRANSFORM_BLOCK_COMMAND`                             | Dispatch to change a block's type in place                                                                       |
+| `REORDER_BLOCK_COMMAND`                               | Dispatch to move a block to a new position (used by drag handles)                                                |
+| `transformBlock(editor, nodeKey, newType, newProps?)` | Imperative helper for block type transformation                                                                  |
 
 ---
 
@@ -133,4 +133,3 @@ Uses `tsup`. Output in `dist/`. CSS is emitted separately — consumers must imp
 - `@we/block-shared` — framework-agnostic registry and serialization
 - `@we/models` — AD4M data models for all block types
 - `@we/schema-solid` — schema-driven UI system that hosts `BlockComposer` in document views
-

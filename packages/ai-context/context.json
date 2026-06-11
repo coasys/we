@@ -1931,6 +1931,32 @@
           "name": "perspective",
           "type": "PerspectiveProxy | null",
           "optional": true
+        },
+        {
+          "name": "rootClass",
+          "type": "string",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "BlockToolbar",
+      "props": [
+        {
+          "name": "placement",
+          "type": "BlockToolbarPlacement",
+          "optional": true
+        },
+        {
+          "name": "children",
+          "type": "JSX.Element",
+          "optional": false
+        },
+        {
+          "name": "stopPropagation",
+          "type": "boolean",
+          "optional": true
         }
       ],
       "source": "components"
@@ -2058,8 +2084,8 @@
           "optional": true
         },
         {
-          "name": "childEditorStates",
-          "type": "any[]",
+          "name": "childEditorState",
+          "type": "any",
           "optional": true
         }
       ],
@@ -2089,8 +2115,8 @@
           "optional": true
         },
         {
-          "name": "childEditorStates",
-          "type": "any[]",
+          "name": "childEditorState",
+          "type": "any",
           "optional": true
         },
         {

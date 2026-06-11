@@ -4,10 +4,10 @@ Rules and patterns for building and maintaining the WE block editor (`@we/block-
 
 ## Package Structure
 
-| Directory            | Package          | Purpose                                                                 |
-| -------------------- | ---------------- | ----------------------------------------------------------------------- |
-| `shared/`            | `@we/block-shared` | Framework-agnostic: type definitions, block registry, AD4M serialization |
-| `frameworks/solid/`  | `@we/block-solid`  | SolidJS: `BlockComposer`, `BlockRenderer`, all block components, plugins |
+| Directory           | Package            | Purpose                                                                  |
+| ------------------- | ------------------ | ------------------------------------------------------------------------ |
+| `shared/`           | `@we/block-shared` | Framework-agnostic: type definitions, block registry, AD4M serialization |
+| `frameworks/solid/` | `@we/block-solid`  | SolidJS: `BlockComposer`, `BlockRenderer`, all block components, plugins |
 
 All serialization, registry, and model logic lives in `shared/` — the SolidJS layer only handles rendering and interactivity.
 
@@ -38,9 +38,11 @@ Consumer apps import from `@we/block-solid`. Only server-side serialization code
 1. **Create the model** in `@we/models/src/blocks/` (extend `WeNode`, add `version: number` — see `@we/models` CONVENTIONS).
 
 2. **Register the model** in `@we/block-shared`:
+
    ```ts
    registerBlock({ nodeTypes: ['my-block'], model: MyBlock });
    ```
+
    This is called from `registerCoreBlocks()` in `shared/src/core-blocks.ts`.
 
 3. **Create display and input components** in `frameworks/solid/src/components/MyBlock/`:
@@ -48,9 +50,11 @@ Consumer apps import from `@we/block-solid`. Only server-side serialization code
    - `MyBlockInput.tsx` — edit-mode render, receives `nodeProps`, `onChange`, `isSelected: () => boolean`
 
 4. **Register components** in `@we/block-solid`:
+
    ```ts
    updateBlockRegistration('my-block', { display: MyBlockDisplay, input: MyBlockInput });
    ```
+
    Called from `registerCoreBlockComponents()` in `frameworks/solid/src/core-block-components.ts`.
 
 5. **The node class is created automatically** — `createBlockNodeClass('my-block')` is called in `frameworks/solid/src/nodes/index.ts` and the result included in `blockNodeClasses`. No custom node class is needed unless you have sub-editor requirements (see [CollectionBlockNode](#collectionblocknode)).
@@ -117,6 +121,7 @@ Clicking a `contentEditable="false"` element inside a contenteditable triggers a
 All keyboard handling for decorator blocks is in `BlockKeyboardPlugin`. The plugin uses `SELECTION_CHANGE_COMMAND` to maintain a `lastSelectedDecoratorKey` that persists through the DOM race described above.
 
 **The `getTargetDecorator()` helper** (internal to the plugin):
+
 - Returns the current NodeSelection target if `$getSelection()` is a `NodeSelection`
 - Falls back to `$getNodeByKey(lastSelectedDecoratorKey)` only when `$getSelection()` is `null` (the race condition case)
 - Returns `null` when selection is a non-null `RangeSelection` (cursor is in a text block — no fallback)
@@ -126,15 +131,15 @@ This design means keyboard commands always work correctly whether the user navig
 
 **Keyboard behaviours (all `COMMAND_PRIORITY_CRITICAL`):**
 
-| Key | Context | Behaviour |
-| --- | ------- | --------- |
-| ArrowDown | Block selected | Move to next sibling (NodeSelect if decorator, `selectStart()` if text) |
-| ArrowUp | Block selected | Move to previous sibling |
-| ArrowDown | Cursor at end of text block | Jump into following decorator block |
-| ArrowUp | Cursor at start of text block | Jump into preceding decorator block |
-| Enter | Block selected | Insert empty paragraph after block, place cursor there |
-| Backspace | Block selected | Remove block, cursor to previous sibling's end |
-| Delete | Block selected | Remove block, cursor to next sibling's start |
+| Key       | Context                       | Behaviour                                                               |
+| --------- | ----------------------------- | ----------------------------------------------------------------------- |
+| ArrowDown | Block selected                | Move to next sibling (NodeSelect if decorator, `selectStart()` if text) |
+| ArrowUp   | Block selected                | Move to previous sibling                                                |
+| ArrowDown | Cursor at end of text block   | Jump into following decorator block                                     |
+| ArrowUp   | Cursor at start of text block | Jump into preceding decorator block                                     |
+| Enter     | Block selected                | Insert empty paragraph after block, place cursor there                  |
+| Backspace | Block selected                | Remove block, cursor to previous sibling's end                          |
+| Delete    | Block selected                | Remove block, cursor to next sibling's start                            |
 
 ---
 
@@ -231,11 +236,11 @@ If your block stores binary assets (images, audio, files), store them as `FileDa
 
 ## Common Mistakes
 
-| Mistake | Why it breaks | Fix |
-| ------- | ------------- | --- |
-| Mutating block props directly | Bypasses Lexical history; undo/redo breaks | Always use `onChange(property, value)` |
-| Returning new JSX from `decorate()` | Infinite Portal remount | Cache the factory function |
-| Using `setProperty()` in `CollectionBlock`'s sub-editor update | Triggers decorator re-render, destroys sub-editor state | Write to `collectionNodeStates` map instead |
-| Removing `contentEditable="false"` from `.we-block` | Lexical intercepts block input keyboard events | Never remove it |
-| Forgetting `import '@we/block-solid/styles'` | Block handles/highlights/placeholders invisible | Always import styles in the consumer |
-| Treating `isSelected` as a boolean | `isSelected` is a SolidJS signal — calling it as a value skips reactivity | Always call it: `props.isSelected()` |
+| Mistake                                                        | Why it breaks                                                             | Fix                                         |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------- |
+| Mutating block props directly                                  | Bypasses Lexical history; undo/redo breaks                                | Always use `onChange(property, value)`      |
+| Returning new JSX from `decorate()`                            | Infinite Portal remount                                                   | Cache the factory function                  |
+| Using `setProperty()` in `CollectionBlock`'s sub-editor update | Triggers decorator re-render, destroys sub-editor state                   | Write to `collectionNodeStates` map instead |
+| Removing `contentEditable="false"` from `.we-block`            | Lexical intercepts block input keyboard events                            | Never remove it                             |
+| Forgetting `import '@we/block-solid/styles'`                   | Block handles/highlights/placeholders invisible                           | Always import styles in the consumer        |
+| Treating `isSelected` as a boolean                             | `isSelected` is a SolidJS signal — calling it as a value skips reactivity | Always call it: `props.isSelected()`        |
