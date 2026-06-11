@@ -571,6 +571,7 @@ export const contextData: ContextData = {
         { name: 'inline', type: 'boolean', optional: false, default: 'false' },
         { name: 'uppercase', type: 'boolean', optional: false, default: 'false' },
         { name: 'italic', type: 'boolean', optional: false, default: 'false' },
+        { name: 'truncate', type: 'boolean', optional: false, default: 'false' },
         { name: 'gradient', type: 'string', optional: false, default: "''" },
       ],
     },

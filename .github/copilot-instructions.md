@@ -467,7 +467,7 @@ array of IDs.
 - we-tag (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, gradient: string = ''
+  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = ''
 - we-textarea (DesignSystemElement)
   Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute

@@ -53,7 +53,7 @@ export const spaceHeader: SchemaNode = {
                 // Space Details
                 {
                   type: 'Column',
-                  props: { p: '400', gap: '200' },
+                  props: { p: '400', gap: '200', maxWidth: '700px' },
                   children: [
                     {
                       type: 'we-text',
@@ -66,7 +66,7 @@ export const spaceHeader: SchemaNode = {
                         condition: '$space.description',
                         then: {
                           type: 'we-text',
-                          props: { fontSize: '400' },
+                          props: { fontSize: '400', truncate: true },
                           children: ['$space.description'],
                         },
                         else: {
