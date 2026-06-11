@@ -7,6 +7,7 @@ export const spaceHeader: SchemaNode = {
     as: 'space',
   },
   children: [
+    // ─── Header ───────────────────────────────────────────────────────────────
     {
       type: 'Row',
       props: { bg: 'neutral-100', ax: 'center' },
@@ -68,41 +69,100 @@ export const spaceHeader: SchemaNode = {
                 },
               ],
             },
+            // Sentinel — zero-height marker used by scrollPast in the sticky nav below
+            {
+              type: 'div',
+              props: { id: 'space-header-sentinel' },
+              styles: { height: '0px', pointerEvents: 'none' },
+            },
+          ],
+        },
+      ],
+    },
 
-            // Navigation
+    // Sticky navigation
+    {
+      type: 'Row',
+      props: {
+        bg: 'neutral-100',
+        ax: 'center',
+        position: 'sticky',
+        zIndex: 'sticky',
+        top: '0',
+        left: '0',
+        borderBottom: '1px solid neutral-200',
+      },
+      children: [
+        // Mini-profile (fades in once the header has scrolled out of view)
+        {
+          type: '$animate',
+          props: {
+            scrollPast: 'space-header-sentinel',
+            enterTransition: { type: 'fade', duration: 250 },
+            exitTransition: { type: 'fade', duration: 200 },
+          },
+          children: [
             {
               type: 'Row',
-              props: { p: '400', gap: '200' },
+              props: { position: 'absolute', left: '16px', top: '0', bottom: '0', ay: 'center', gap: '400' },
               children: [
                 {
-                  type: '$each',
-                  props: {
-                    items: [
-                      { label: 'About', icon: 'book-open', segment: 'about', path: './about' },
-                      { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
-                      { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
-                      { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
-                      // { label: 'Signals', icon: 'heart', segment: 'signals', path: './signals' },
-                      // { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },
-                    ],
-                    as: 'view',
-                  },
+                  type: 'we-avatar',
+                  props: { image: '$space.avatar', initials: '$space.name', size: 'sm' },
+                },
+                {
+                  type: 'we-text',
+                  props: { fontWeight: '600' },
+                  children: ['$space.name'],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'Column',
+          props: { width: '100%', maxWidth: '1200px' },
+          children: [
+            {
+              type: 'Row',
+              props: { ay: 'center', ax: 'between', p: '400' },
+              children: [
+                // Navigation
+                {
+                  type: 'Row',
+                  props: { gap: '200' },
                   children: [
                     {
-                      type: 'we-button',
+                      type: '$each',
                       props: {
-                        variant: {
-                          $if: {
-                            condition: { $eq: [{ $store: 'routeStore.segments.2' }, '$view.segment'] },
-                            then: 'primary',
-                            else: 'ghost',
-                          },
-                        },
-                        onClick: { $action: 'routeStore.navigate', args: ['$view.path'] },
+                        items: [
+                          { label: 'About', icon: 'book-open', segment: 'about', path: './about' },
+                          { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
+                          { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
+                          { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
+                          // { label: 'Signals', icon: 'heart', segment: 'signals', path: './signals' },
+                          // { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },
+                        ],
+                        as: 'view',
                       },
                       children: [
-                        { type: 'we-icon', props: { name: '$view.icon' } },
-                        { type: 'we-text', props: { fontSize: '500' }, children: ['$view.label'] },
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: {
+                              $if: {
+                                condition: { $eq: [{ $store: 'routeStore.segments.2' }, '$view.segment'] },
+                                then: 'primary',
+                                else: 'ghost',
+                              },
+                            },
+                            onClick: { $action: 'routeStore.navigate', args: ['$view.path'] },
+                          },
+                          children: [
+                            { type: 'we-icon', props: { name: '$view.icon' } },
+                            { type: 'we-text', props: { fontSize: '500' }, children: ['$view.label'] },
+                          ],
+                        },
                       ],
                     },
                   ],

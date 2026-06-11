@@ -303,15 +303,21 @@ fade controls opacity only; slide/scale control transform only. Compose effects 
 Example: enterTransition: [{ type: 'fade', duration: 300 }, { type: 'slide', direction: 'up', distance: '40px', duration: 400 }]
 
 Viewport / mount animation (child always in DOM):
-{ "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
+{ "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
 The child is always mounted. Animations are CSS-only (opacity / transform) — use this for scroll-reveal effects.
 Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
 scrollReveal: true fires enterTransition when the element enters the viewport.
 scrollReveal: -100 fires 100px before the element would enter (negative = earlier reveal).
 scrollLeave fires exitTransition when the element leaves the viewport.
-Without scrollReveal/scrollLeave, the enterTransition runs once on mount.
+scrollPast: "element-id" observes a sentinel element (by DOM id) instead of the $animate element itself.
+  enterTransition fires when the sentinel leaves the viewport (user scrolled past it).
+  exitTransition fires when the sentinel returns (user scrolled back up).
+  Use this for sticky headers: place a zero-height sentinel div at the bottom of the non-sticky header section,
+  then wrap the mini-profile in $animate with scrollPast pointing to that sentinel's id.
+  scrollPast is mutually exclusive with scrollReveal/scrollLeave.
+Without any scroll trigger, the enterTransition runs once on mount.
 Only one child node is supported.
-Example:
+Example (scroll-reveal):
 {
   "type": "$animate",
   "props": {
@@ -322,6 +328,21 @@ Example:
     ]
   },
   "children": [{ "type": "SomeCard", "children": [] }]
+}
+Example (sticky header mini-profile):
+Place a sentinel at the bottom of the header, reference it in the sticky nav:
+{ "type": "div", "props": { "id": "header-sentinel" }, "styles": { "height": "0px", "pointerEvents": "none" } }
+{
+  "type": "$animate",
+  "props": {
+    "scrollPast": "header-sentinel",
+    "enterTransition": { "type": "fade", "duration": 250 },
+    "exitTransition": { "type": "fade", "duration": 200 }
+  },
+  "children": [{ "type": "Row", "props": { "ay": "center", "gap": "300" }, "children": [
+    { "type": "we-avatar", "props": { "image": "$space.avatar", "size": "sm" } },
+    { "type": "we-text", "props": { "fontWeight": "600" }, "children": ["$space.name"] }
+  ]}]
 }
 
 Single model item (load one record, render children with it in context):

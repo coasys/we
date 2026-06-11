@@ -124,6 +124,7 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           left="0"
           width="100%"
           height="100%"
+          zIndex={1}
           visibility={stores.appStore.activeAppId() ? 'hidden' : 'visible'}
           pointerEvents={stores.appStore.activeAppId() ? 'none' : 'auto'}
           overflow="auto"

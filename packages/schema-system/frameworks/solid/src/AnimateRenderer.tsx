@@ -19,6 +19,9 @@ type AnimateRendererProps = {
  *
  *  - `props.scrollReveal` — fire enter transition when element scrolls into viewport
  *  - `props.scrollLeave`  — fire exit transition when element scrolls out of viewport
+ *  - `props.scrollPast`   — fire enter/exit transitions keyed to a sentinel element's
+ *                           viewport visibility (enter fires when sentinel leaves,
+ *                           exit fires when sentinel returns). Use for sticky headers.
  *  - Neither set          — fire enter animation on mount
  *
  * Transition effects are composed as arrays:
@@ -38,7 +41,8 @@ export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): Ren
   // Scroll triggers live on the $animate node props, not inside the transition config
   const scrollReveal = node.props?.scrollReveal as true | number | undefined;
   const scrollLeave = node.props?.scrollLeave as true | number | undefined;
-  const hasScrollTrigger = scrollReveal !== undefined || scrollLeave !== undefined;
+  const scrollPast = node.props?.scrollPast as string | undefined;
+  const hasSelfScrollTrigger = scrollReveal !== undefined || scrollLeave !== undefined;
 
   // Start in the hidden state; transitions will reveal / hide the element
   const initOpacity = enterTransition ? hiddenOpacity(enterTransition) : 1;
@@ -73,7 +77,30 @@ export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): Ren
 
   let wrapperRef: HTMLDivElement | undefined;
 
-  if (hasScrollTrigger) {
+  if (scrollPast) {
+    // Sentinel-based trigger: observe a separate element by DOM id.
+    // enterTransition fires when the sentinel leaves the viewport (user scrolled past it).
+    // exitTransition fires when the sentinel returns (user scrolled back up).
+    createEffect(() => {
+      const sentinel = document.getElementById(scrollPast);
+      if (!sentinel) return;
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const entry = entries[0];
+          if (!entry.isIntersecting && enterTransition) {
+            animateIn(enterTransition);
+          } else if (entry.isIntersecting && exitTransition) {
+            animateOut(exitTransition);
+          }
+        },
+        { threshold: 0 },
+      );
+
+      observer.observe(sentinel);
+      onCleanup(() => observer.disconnect());
+    });
+  } else if (hasSelfScrollTrigger) {
     // Bidirectional scroll observer — does not disconnect after first intersection
     createEffect(() => {
       if (!wrapperRef) return;

@@ -1205,6 +1205,9 @@ Viewport-triggered CSS animations. The child is **always mounted** in the DOM â€
     scrollReveal?: true | number,   // trigger enterTransition when scrolled into view
                                     // number = rootMargin offset in px (negative = earlier)
     scrollLeave?: true | number,    // trigger exitTransition when scrolled out of view
+    scrollPast?: string,            // DOM element id of a sentinel; enterTransition fires
+                                    // when sentinel leaves viewport, exitTransition fires
+                                    // when it returns. Use for sticky header mini-profiles.
     enterTransition?: TransitionConfig,
     exitTransition?: TransitionConfig,
   },
@@ -1248,15 +1251,29 @@ Viewport-triggered CSS animations. The child is **always mounted** in the DOM â€
   },
   children: [{ type: 'we-text', children: ['Hello'] }]
 }
+
+// Sticky header mini-profile â€” fades in once the header sentinel leaves the viewport
+{
+  type: '$animate',
+  props: {
+    scrollPast: 'header-sentinel',
+    enterTransition: { type: 'fade', duration: 250 },
+    exitTransition: { type: 'fade', duration: 200 }
+  },
+  children: [{ type: 'Row', children: [{ type: 'we-avatar', props: { image: '$space.avatar', size: 'sm' } }] }]
+}
 ```
 
 **Notes:**
 
 - Child is always mounted; animation is CSS-only (`opacity`, `transform`)
-- Without `scrollReveal`/`scrollLeave`, the enter transition runs on mount
+- Without `scrollReveal`/`scrollLeave`/`scrollPast`, the enter transition runs on mount
 - `scrollReveal: true` fires when the element is in the viewport at the default root margin
 - `scrollReveal: -100` fires 100px before the element would otherwise enter (useful for staggered reveals)
 - The `IntersectionObserver` is bidirectional â€” scroll in fires enter, scroll out fires exit
+- `scrollPast` observes a _different_ element (by DOM id) rather than itself; enter fires when that element leaves the viewport, exit fires when it returns
+- `scrollPast` is mutually exclusive with `scrollReveal`/`scrollLeave` â€” use one or the other
+- The sentinel element (`type: 'div'`, zero height) should be placed at the boundary where the transition should trigger
 - Only one child node is supported
 
 ---
