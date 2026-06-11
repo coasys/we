@@ -66,6 +66,12 @@ export function transformBlock({ editor, nodeKey, newNodeType }: TransformBlockP
       if ($isElementNode(node)) node.getChildren().forEach((child) => listItemNode.append(child));
       listNode.append(listItemNode);
       newNode = listNode;
+    } else if (['collection', 'row', 'column', 'grid'].includes(newNodeType) && blockNodeClassMap['collection']) {
+      // Collection layout blocks — normalise type aliases and insert.
+      // 'collection' (from the menu) defaults to grid layout.
+      const layout = newNodeType === 'collection' ? 'grid' : newNodeType;
+      const columnCount = layout === 'grid' ? 2 : 1;
+      newNode = $createBlockNode(blockNodeClassMap['collection'], { layout, columnCount });
     } else if (blockNodeClassMap[newNodeType]) {
       // Factory-created decorator block (image, audio, video, etc.)
       newNode = $createBlockNode(blockNodeClassMap[newNodeType], {});

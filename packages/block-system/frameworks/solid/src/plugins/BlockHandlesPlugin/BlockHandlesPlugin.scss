@@ -1,7 +1,8 @@
 .we-block-handle {
   position: absolute;
-  z-index: var(--we-z-popover);
+  z-index: 10;
   opacity: 0;
+  pointer-events: none;
   display: flex;
   height: 40px;
   width: 50px;
@@ -36,9 +37,11 @@
 
   &[data-block-hovered='true'] {
     opacity: 1;
+    pointer-events: auto;
   }
   &[data-block-focused='true'] {
     opacity: 1;
+    pointer-events: auto;
     .we-block-handle-settings-button {
       opacity: 1;
       pointer-events: auto;
@@ -51,7 +54,7 @@
   height: 4px;
   background-color: var(--we-color-primary-400);
   border-radius: 2px;
-  z-index: var(--we-z-popover);
+  z-index: 10;
   pointer-events: none;
   opacity: 0;
   // transition: opacity var(--we-transition-300);

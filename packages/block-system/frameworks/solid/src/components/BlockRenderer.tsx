@@ -16,7 +16,7 @@ import { createEffect } from 'solid-js';
 
 import { blockNodeClasses } from '../nodes';
 
-type Props = Omit<BlockRendererProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'ay'>;
+type Props = Omit<BlockRendererProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'ay'> & { rootClass?: string };
 
 function LoadEditorState({
   editorState,
@@ -51,10 +51,13 @@ function LoadEditorState({
 }
 
 /** @superclass DesignSystemElement */
-export function BlockRenderer({ editorState, perspective, width = '100%', ...rest }: Props) {
+export function BlockRenderer({ editorState, perspective, width = '100%', rootClass, ...rest }: Props) {
+  const themeRoot = rootClass
+    ? `we-block-renderer we-block-content ${rootClass}`
+    : 'we-block-renderer we-block-content';
   const initialConfig = {
     namespace: 'BlockRenderer',
-    theme: { root: 'we-block-renderer we-block-content' },
+    theme: { root: themeRoot },
     nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, ...blockNodeClasses] as const,
     editable: false, // If supported
     onError: (error: Error) => console.error('Renderer Error:', error),

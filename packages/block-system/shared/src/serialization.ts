@@ -96,6 +96,11 @@ async function preUploadFileAssets(
     );
   }
 
+  // Recurse into collection block child editor state
+  if (node.childEditorState && typeof node.childEditorState === 'object') {
+    patched.childEditorState = await preUploadFileAssets(perspective, node.childEditorState as SerializedBlockNode);
+  }
+
   return patched;
 }
 
@@ -138,6 +143,15 @@ export async function resolveExpressionAddresses(
   if (Array.isArray(node.children)) {
     patched.children = await Promise.all(
       node.children.map((child: SerializedBlockNode) => resolveExpressionAddresses(perspective, child)),
+    );
+  }
+
+  // Recurse into collection block child editor state so sub-renderers receive
+  // pre-resolved data URIs and don't need their own perspective reference.
+  if (node.childEditorState && typeof node.childEditorState === 'object') {
+    patched.childEditorState = await resolveExpressionAddresses(
+      perspective,
+      node.childEditorState as SerializedBlockNode,
     );
   }
 
@@ -226,6 +240,26 @@ export async function createBlocks(
         if (parent && block && hasChildrenRelation(parent)) {
           await parent.addChildren(block.id, tx.batchId);
         }
+      }
+
+      // Special handling for collection blocks: the childEditorState is the
+      // sub-editor content embedded inline in the parent blob. Recurse into it
+      // to create AD4M models for the blocks inside (e.g. images, files).
+      if (node.type === 'collection' && block && node.childEditorState) {
+        const childRoot = node.childEditorState as SerializedBlockNode;
+        // Recurse into the ROOT's CHILDREN directly rather than passing the root
+        // node itself through persist(). The root node has type='root' which maps
+        // to CollectionBlock — persisting it would create a ghost CollectionBlock
+        // that appears as a duplicate post in queries filtered by { type: 'root' }.
+        if (childRoot.children) {
+          for (const child of childRoot.children) {
+            if (!INLINE_TYPES.has(child.type)) {
+              await persist(child, block);
+            }
+          }
+        }
+        // No separate editorState blob — it's embedded in the parent's blob.
+        return block;
       }
 
       // Only recurse into non-inline children (skip text/linebreak nodes)

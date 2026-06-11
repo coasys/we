@@ -110,9 +110,30 @@ function BlockBridge(props: { nodeKey: string; nodeProps: Record<string, unknown
   return (
     <div
       onMouseDown={(e: MouseEvent) => {
+        // SolidJS event delegation walks the component tree, not the DOM tree,
+        // so portal content (e.g. modal inputs rendered via <Portal> to
+        // document.body) still triggers this handler. Bail out if the click
+        // target is outside the editor DOM — it's portal content and should
+        // receive focus normally.
+        const editorRoot = editor.getRootElement();
+        if (!editorRoot || !editorRoot.contains(e.target as Node)) return;
+
+        // Allow clicks inside nested contenteditable areas to pass through.
+        let node = e.target as HTMLElement | null;
+        const blockEl = editor.getElementByKey(props.nodeKey);
+        while (node && node !== blockEl) {
+          if (node.contentEditable === 'true') return;
+          node = node.parentElement;
+        }
+        // preventDefault() prevents the browser from moving DOM focus away from
+        // the editor root. Without this, clicking any element inside the block
+        // (including shadow DOM content) causes Lexical to lose its NodeSelection.
+        // Click events still fire normally so block interactions still work.
+        e.preventDefault();
         e.stopPropagation();
         setLocalActive(true);
         setLexicalSelected(true);
+        editor.getRootElement()?.focus({ preventScroll: true });
       }}
       onClick={(e: MouseEvent) => {
         e.stopPropagation();
@@ -201,14 +222,28 @@ export function createBlockNodeClass(
       div.contentEditable = 'false';
       // Select this block when clicking the wrapper padding area. Child clicks are
       // already stopped by BlockBridge.onMouseDown so this only fires for the gap.
+      //
+      // preventDefault() is critical: it prevents the browser from giving DOM focus
+      // to the .we-block div (contentEditable=false steals focus from the editor root
+      // otherwise). This is the same technique Lexical toolbar buttons use.
       const key = this.__key;
-      div.addEventListener('mousedown', () => {
+      div.addEventListener('mousedown', (e) => {
+        // Allow clicks inside nested contenteditable areas (e.g. child editors)
+        // to pass through so they can place cursors / select content.
+        let node = e.target as HTMLElement | null;
+        while (node && node !== div) {
+          if (node.contentEditable === 'true') return;
+          node = node.parentElement;
+        }
+        e.preventDefault();
         editor.update(() => {
           const sel = $createNodeSelection();
           sel.add(key);
           $setSelection(sel);
         });
+        editor.getRootElement()?.focus({ preventScroll: true });
       });
+
       return div;
     }
 

@@ -1,4 +1,6 @@
 export { AudioDisplay, AudioInput } from './AudioBlock';
+export { BlockToolbar } from './BlockToolbar';
+export type { BlockToolbarPlacement } from './BlockToolbar';
 export { CalloutDisplay, CalloutInput } from './CalloutBlock';
 export { CodeDisplay, CodeInput } from './CodeBlock';
 export { DividerDisplay, DividerInput } from './DividerBlock';
@@ -11,3 +13,4 @@ export { LocationDisplay, LocationInput } from './LocationBlock';
 export { TagDisplay, TagInput } from './TagBlock';
 export { TaskDisplay, TaskInput } from './TaskBlock';
 export { VideoDisplay, VideoInput } from './VideoBlock';
+export { CollectionDisplay, CollectionInput } from './CollectionBlock';

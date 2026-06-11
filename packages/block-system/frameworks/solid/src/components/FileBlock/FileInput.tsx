@@ -1,3 +1,4 @@
+import { BlockToolbar } from '../BlockToolbar';
 import { Column, Row } from '@we/components/solid';
 import type { FileData } from '@we/models';
 import { readFileAsFileData } from '@we/models';
@@ -114,23 +115,14 @@ export function FileInput(props: FileInputProps) {
           size={props.size}
         />
         <Show when={props.isSelected()}>
-          <Row
-            position="absolute"
-            top="5px"
-            right="5px"
-            p="200"
-            r="200"
-            gap="200"
-            border="1px solid var(--we-color-neutral-100)"
-            bg="neutral-0"
-          >
+          <BlockToolbar>
             <we-button square variant="ghost" onClick={openEditModal}>
               <we-icon name="pencil" size="xs" />
             </we-button>
             <we-button square variant="ghost" onClick={handleDelete}>
               <we-icon name="x" size="xs" />
             </we-button>
-          </Row>
+          </BlockToolbar>
         </Show>
       </Show>
 

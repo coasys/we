@@ -1,3 +1,4 @@
+import { BlockToolbar } from '../BlockToolbar';
 import { Column, Row } from '@we/components/solid';
 import { createSignal, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
@@ -53,23 +54,14 @@ export function LinkInput(props: LinkInputProps) {
 
         {/* Selection toolbar */}
         <Show when={props.isSelected()}>
-          <Row
-            position="absolute"
-            top="5px"
-            right="5px"
-            p="200"
-            r="200"
-            gap="200"
-            border="1px solid var(--we-color-neutral-100)"
-            bg="neutral-0"
-          >
+          <BlockToolbar>
             <we-button square variant="ghost" onClick={openModal}>
               <we-icon name="pencil-simple" size="xs" />
             </we-button>
             <we-button square variant="ghost" onClick={handleDelete}>
               <we-icon name="x" size="xs" />
             </we-button>
-          </Row>
+          </BlockToolbar>
         </Show>
       </Show>
 

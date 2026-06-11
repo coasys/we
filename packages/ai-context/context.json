@@ -1931,6 +1931,32 @@
           "name": "perspective",
           "type": "PerspectiveProxy | null",
           "optional": true
+        },
+        {
+          "name": "rootClass",
+          "type": "string",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "BlockToolbar",
+      "props": [
+        {
+          "name": "placement",
+          "type": "BlockToolbarPlacement",
+          "optional": true
+        },
+        {
+          "name": "children",
+          "type": "JSX.Element",
+          "optional": false
+        },
+        {
+          "name": "stopPropagation",
+          "type": "boolean",
+          "optional": true
         }
       ],
       "source": "components"
@@ -2025,6 +2051,73 @@
           "name": "title",
           "type": "string | undefined",
           "optional": false
+        },
+        {
+          "name": "onChange",
+          "type": "(property: string, value: unknown) => void",
+          "optional": false
+        },
+        {
+          "name": "isSelected",
+          "type": "() => boolean",
+          "optional": false
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "CollectionDisplay",
+      "props": [
+        {
+          "name": "layout",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "columnCount",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "gap",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "childEditorState",
+          "type": "any",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "CollectionInput",
+      "props": [
+        {
+          "name": "nodeKey",
+          "type": "string",
+          "optional": false
+        },
+        {
+          "name": "layout",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "columnCount",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "gap",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "childEditorState",
+          "type": "any",
+          "optional": true
         },
         {
           "name": "onChange",

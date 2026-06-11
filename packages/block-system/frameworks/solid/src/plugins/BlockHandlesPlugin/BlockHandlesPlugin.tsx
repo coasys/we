@@ -1,18 +1,24 @@
 import { $isListItemNode, $isListNode, ListNode } from '@lexical/list';
 import { mergeRegister } from '@lexical/utils';
+import type { FileData } from '@we/models';
+import { compressImageToFileData, readFileAsFileData } from '@we/models';
 import {
   $createNodeSelection,
+  $getNodeByKey,
   $getRoot,
   $getSelection,
   $isDecoratorNode,
   $isElementNode,
   $isNodeSelection,
   $isRangeSelection,
+  $parseSerializedNode,
   $setSelection,
   COMMAND_PRIORITY_EDITOR,
   COMMAND_PRIORITY_LOW,
+  LexicalEditor,
   LexicalNode,
   SELECTION_CHANGE_COMMAND,
+  SerializedLexicalNode,
 } from 'lexical';
 import { useLexicalComposerContext } from 'lexical-solid';
 import { createEffect, createSignal, JSX, onCleanup } from 'solid-js';
@@ -26,6 +32,191 @@ import {
   TRANSFORM_BLOCK_COMMAND,
   transformBlock,
 } from '../../helpers';
+import { blockNodeClassMap } from '../../nodes';
+import { $createBlockNode } from '../../nodes/createBlockNodeClass';
+
+/**
+ * Module-level reference to the editor that owns the currently dragged block.
+ * Set on dragstart, cleared on dragend. Read in onDrop to detect cross-editor
+ * moves (e.g. dragging a block from the outer editor into a collection's child
+ * editor, or vice-versa).
+ */
+let dragSourceEditor: LexicalEditor | null = null;
+
+/**
+ * Recursively serialize a node and all its descendants.
+ *
+ * ElementNode.exportJSON() returns children:[] regardless of actual content —
+ * the children are only populated during a full EditorState.toJSON() pass.
+ * This helper replaces that empty array with the correctly serialized subtree.
+ *
+ * Must be called inside an active Lexical editor context (update() or read()).
+ */
+function serializeNodeWithChildren(node: LexicalNode): SerializedLexicalNode {
+  const json = node.exportJSON() as Record<string, unknown>;
+  if ($isElementNode(node)) {
+    json.children = node.getChildren().map(serializeNodeWithChildren);
+  }
+  return json as SerializedLexicalNode;
+}
+
+/**
+ * Returns true if the given editor's root element lives inside a collection
+ * block wrapper — i.e. it is a sub-editor created by CollectionInput.
+ */
+function isCollectionSubEditor(editor: LexicalEditor): boolean {
+  return !!editor.getRootElement()?.closest('.we-collection-block');
+}
+
+/**
+ * Move a block from one Lexical editor to another.
+ *
+ * Order matters: whichever editor is the collection sub-editor must commit
+ * FIRST so that collectionNodeStates reflects the final state before the root
+ * editor's decorator listener fires. That listener synchronously causes
+ * Solid.js to unmount/remount CollectionBlockBridge — and when the bridge
+ * remounts it reads collectionNodeStates to initialise the new sub-editor.
+ *
+ * root → collection (targetEditor is sub-editor):
+ *   Insert into sub-editor first → StateChangePlugin updates collectionNodeStates
+ *   → root removes block → root decorator listener fires → CollectionBlockBridge
+ *   remounts with updated state (block present) ✓
+ *
+ * collection → root (sourceEditor is sub-editor):
+ *   Remove from sub-editor first → StateChangePlugin updates collectionNodeStates
+ *   → onUpdate inserts into root → root decorator listener fires →
+ *   CollectionBlockBridge remounts with updated state (block absent) ✓
+ */
+function crossEditorMove(
+  sourceEditor: LexicalEditor,
+  targetEditor: LexicalEditor,
+  sourceKey: string,
+  targetKey: string,
+  insertBefore: boolean,
+): void {
+  // Serialize the node via a synchronous read — no update needed for a read.
+  let serialized: SerializedLexicalNode | null = null;
+  sourceEditor.getEditorState().read(() => {
+    const node = $getNodeByKey(sourceKey);
+    if (!node) return;
+    serialized = serializeNodeWithChildren(node);
+  });
+  if (!serialized) return;
+  const _serialized = serialized;
+
+  function insertIntoTarget(tEditor: LexicalEditor) {
+    tEditor.update(() => {
+      const targetNode = $getNodeByKey(targetKey);
+      if (!targetNode) return;
+      const newNode = $parseSerializedNode(_serialized);
+      if (insertBefore) {
+        targetNode.insertBefore(newNode);
+      } else {
+        const next = targetNode.getNextSibling();
+        if (next) next.insertBefore(newNode);
+        else targetNode.getParent()?.append(newNode);
+      }
+    });
+  }
+
+  if (isCollectionSubEditor(targetEditor)) {
+    // root → collection: sub-editor (target) must commit first.
+    insertIntoTarget(targetEditor);
+    sourceEditor.update(() => {
+      $getNodeByKey(sourceKey)?.remove();
+    });
+  } else {
+    // collection → root (or any other case): sub-editor (source) must commit
+    // first. Use onUpdate so the target insert happens after source commits.
+    sourceEditor.update(
+      () => {
+        $getNodeByKey(sourceKey)?.remove();
+      },
+      {
+        onUpdate: () => insertIntoTarget(targetEditor),
+      },
+    );
+  }
+}
+
+/**
+ * Map a File's MIME type to the Lexical block type to create.
+ * Video blocks are URL-only, so video files fall through to 'file'.
+ */
+function mimeToBlockType(mime: string): string {
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('audio/')) return 'audio';
+  return 'file';
+}
+
+/**
+ * Read a dropped File and return the (blockType, props) pair ready to pass
+ * to $createBlockNode. Uses compressImageToFileData for images so large
+ * photos are resized before being stored, matching ImageInput's behaviour.
+ */
+async function fileToBlockProps(file: File, type: string): Promise<{ type: string; props: Record<string, unknown> }> {
+  let fileData: FileData;
+  if (type === 'image') {
+    fileData = await compressImageToFileData(file, 'image-block');
+    return { type, props: { src: fileData } };
+  }
+  fileData = await readFileAsFileData(file);
+  if (type === 'audio') {
+    return {
+      type,
+      props: {
+        audioUrl: fileData,
+        title: file.name.replace(/\.[^/.]+$/, ''),
+      },
+    };
+  }
+  // 'file' (and any unrecognised MIME, including video/*)
+  return {
+    type: 'file',
+    props: { url: fileData, name: file.name, mimeType: file.type },
+  };
+}
+
+/**
+ * Insert one or more blocks created from dropped OS files into the editor at
+ * the position indicated by targetKey / insertBefore. Reads files asynchronously
+ * then performs a single Lexical update to add all nodes.
+ */
+async function handleFileDrop(
+  editor: LexicalEditor,
+  files: File[],
+  targetKey: string,
+  insertBefore: boolean,
+): Promise<void> {
+  const blocks = await Promise.all(files.map((f) => fileToBlockProps(f, mimeToBlockType(f.type))));
+
+  editor.update(() => {
+    if (insertBefore) {
+      const anchor = $getNodeByKey(targetKey);
+      if (!anchor) return;
+      for (const { type, props } of blocks) {
+        const NodeClass = blockNodeClassMap[type];
+        if (!NodeClass) continue;
+        // insertBefore on the same anchor each time preserves file order:
+        // 1st file lands just before anchor, 2nd file lands just before anchor
+        // (i.e. just after 1st file), etc.
+        anchor.insertBefore($createBlockNode(NodeClass, props));
+      }
+    } else {
+      let anchor = $getNodeByKey(targetKey);
+      if (!anchor) return;
+      for (const { type, props } of blocks) {
+        const NodeClass = blockNodeClassMap[type];
+        if (!NodeClass) continue;
+        const node = $createBlockNode(NodeClass, props);
+        const next = anchor.getNextSibling();
+        if (next) next.insertBefore(node);
+        else anchor.getParent()?.append(node);
+        anchor = node; // advance so next file goes after this one
+      }
+    }
+  });
+}
 
 // Data attributes for block elements
 const ATTR_BLOCK_ID = 'data-block-id';
@@ -77,6 +268,7 @@ function BlockHandle({ nodeKey, nodeData }: { nodeKey: string; nodeData: NodeDat
 
   function onDragStart(e: DragEvent) {
     setIsDragging(true);
+    dragSourceEditor = editor;
     e.dataTransfer?.setData('application/x-lexical-node-key', nodeKey);
     e.dataTransfer!.effectAllowed = 'move';
     document.body.classList.add('block-dragging');
@@ -85,6 +277,7 @@ function BlockHandle({ nodeKey, nodeData }: { nodeKey: string; nodeData: NodeDat
 
   function onDragEnd() {
     setIsDragging(false);
+    dragSourceEditor = null;
     document.body.classList.remove('block-dragging');
     document.body.removeAttribute(ATTR_DRAG_SOURCE);
   }
@@ -307,6 +500,13 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
           ? blockOrHandle.getAttribute(ATTR_BLOCK_ID)
           : blockOrHandle.getAttribute(ATTR_HANDLE_FOR_BLOCK);
 
+        // If the hovered block/handle doesn't belong to this editor, do nothing.
+        // Without this guard, nested sub-editors (e.g. collection blocks) each
+        // register their own document-level mouseover handler. When one fires for
+        // a block that isn't in its own blockMap, it clears the outer editor's
+        // hover highlights via document.querySelectorAll and never re-applies them.
+        if (blockId && !blockMap().has(blockId)) return;
+
         const blockElement = root?.querySelector(`[${ATTR_BLOCK_ID}="${blockId}"]`);
         if (blockElement?.hasAttribute(ATTR_BLOCK_HOVERED)) return;
       }
@@ -328,6 +528,14 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
     }
 
     function onMouseOut(e: MouseEvent) {
+      const blockOrHandle = (e.target as HTMLElement)?.closest(BLOCK_OR_HANDLE_SELECTOR);
+      const blockId = blockOrHandle?.hasAttribute(ATTR_BLOCK_ID)
+        ? blockOrHandle.getAttribute(ATTR_BLOCK_ID)
+        : blockOrHandle?.getAttribute(ATTR_HANDLE_FOR_BLOCK);
+
+      // Only clear hovers managed by this editor instance.
+      if (blockId && !blockMap().has(blockId)) return;
+
       if (!(e.relatedTarget as HTMLElement)?.closest(BLOCK_OR_HANDLE_SELECTOR)) {
         document
           .querySelectorAll(`[${ATTR_BLOCK_HOVERED}="true"]`)
@@ -338,7 +546,19 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
     function onDragOver(e: DragEvent) {
       e.preventDefault();
       const sourceKey = document.body.getAttribute(ATTR_DRAG_SOURCE);
-      if (!sourceKey) return;
+      const isFileDrag = Array.from(e.dataTransfer?.types ?? []).includes('Files');
+      if (!sourceKey && !isFileDrag) return;
+
+      // If the cursor is inside a nested (child) editor, let that editor's
+      // own onDragOver handle the indicator. Hide ours and bail out so we
+      // don't show two indicators at the same time.
+      const nestedRoots = root?.querySelectorAll('[data-lexical-editor="true"]') ?? [];
+      for (const nestedRoot of nestedRoots) {
+        if (nestedRoot !== root && nestedRoot.contains(e.target as Node)) {
+          setDropSpot((prev) => ({ ...prev, visible: false }));
+          return;
+        }
+      }
 
       let targetElement: HTMLElement | null = null;
       let insertBefore = true;
@@ -391,18 +611,35 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
 
     function onDrop(e: DragEvent) {
       e.preventDefault();
+      // Stop propagation so parent editors don't also fire onDrop for the same
+      // event — without this, dragging into a child editor triggers both the
+      // child and outer editor's drop handlers (double-fire).
+      e.stopPropagation();
 
-      const sourceKey = document.body.getAttribute(ATTR_DRAG_SOURCE);
       const targetKey = root?.getAttribute(ATTR_DROP_TARGET);
       const insertBefore = root?.getAttribute(ATTR_DROP_POSITION) === 'before';
 
       setDropSpot((prev) => ({ ...prev, visible: false }));
-
       root?.removeAttribute(ATTR_DROP_TARGET);
       root?.removeAttribute(ATTR_DROP_POSITION);
 
+      // OS file drop — create media/file blocks at the indicated position.
+      const droppedFiles = e.dataTransfer?.files;
+      if (droppedFiles && droppedFiles.length > 0 && targetKey) {
+        void handleFileDrop(editor, Array.from(droppedFiles), targetKey, insertBefore);
+        return;
+      }
+
+      // Block drag — reorder within the same editor or move across editors.
+      const sourceKey = document.body.getAttribute(ATTR_DRAG_SOURCE);
       if (sourceKey && targetKey && sourceKey !== targetKey) {
-        editor.dispatchCommand(REORDER_BLOCK_COMMAND, { editor, sourceKey, targetKey, insertBefore });
+        if (dragSourceEditor && dragSourceEditor !== editor) {
+          // Cross-editor move: block dragged between the outer editor and a
+          // collection block's child editor (or between two child editors).
+          crossEditorMove(dragSourceEditor, editor, sourceKey, targetKey, insertBefore);
+        } else {
+          editor.dispatchCommand(REORDER_BLOCK_COMMAND, { editor, sourceKey, targetKey, insertBefore });
+        }
       }
     }
 

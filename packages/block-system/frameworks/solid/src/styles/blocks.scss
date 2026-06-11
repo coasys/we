@@ -136,3 +136,51 @@
     background-color: var(--we-color-neutral-25);
   }
 }
+
+// Collection block wrapper — provides CSS custom properties to the sub-editor
+// and an outline so the block boundary is visible.
+// Layout modes (applied reactively via data-layout attribute):
+//   row    — cells side-by-side in a single horizontal line, scrolls on overflow
+//   column — cells stacked vertically (single column list)
+//   grid   — cells in a configurable multi-column grid
+.we-collection-block {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--we-color-neutral-200);
+  background-color: var(--we-color-neutral-0);
+  border-radius: 8px;
+  padding: 10px;
+
+  &[data-layout='row'] {
+    .we-block-composer-wrapper,
+    .we-block-renderer-wrapper {
+      overflow-x: auto;
+    }
+    .we-block-composer-editor,
+    .we-block-renderer {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      width: max-content;
+      gap: var(--we-gap, 1rem);
+    }
+  }
+
+  &[data-layout='column'] {
+    .we-block-composer-editor,
+    .we-block-renderer {
+      display: flex;
+      flex-direction: column;
+      gap: var(--we-gap, 1rem);
+    }
+  }
+
+  &[data-layout='grid'] {
+    .we-block-composer-editor,
+    .we-block-renderer {
+      display: grid;
+      grid-template-columns: repeat(var(--we-cols, 2), 1fr);
+      gap: var(--we-gap, 1rem);
+    }
+  }
+}
