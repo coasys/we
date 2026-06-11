@@ -15,7 +15,7 @@ export const globeRoute: RouteSchema = {
   path: '/globe',
   keepAlive: true,
   type: 'Column',
-  props: { width: '100%' },
+  props: { width: '100%', height: 'calc(100vh - 100px)' },
   $localState: {
     // Search filter
     searchText: { type: 'string', initial: '' },

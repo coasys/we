@@ -78,11 +78,12 @@ export const spaceHeader: SchemaNode = {
                   type: '$each',
                   props: {
                     items: [
-                      { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
-                      // { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
+                      { label: 'About', icon: 'book-open', segment: 'about', path: './about' },
                       { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
-                      { label: 'Signals', icon: 'heart', segment: 'signals', path: './signals' },
-                      { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },
+                      { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
+                      { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
+                      // { label: 'Signals', icon: 'heart', segment: 'signals', path: './signals' },
+                      // { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },
                     ],
                     as: 'view',
                   },
