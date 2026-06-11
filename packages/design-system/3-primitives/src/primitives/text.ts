@@ -44,7 +44,7 @@ const styles = css`
   }
 
   :host([truncate]) [part='base'] {
-    overflow: hidden;
+    overflow: hidden !important;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

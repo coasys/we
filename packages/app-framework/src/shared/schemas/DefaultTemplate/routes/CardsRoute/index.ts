@@ -17,7 +17,7 @@ export const cardsRoute: RouteSchema = {
   children: [
     {
       type: 'Column',
-      props: { gap: '400', p: '600', width: '100%', maxWidth: '1200px' },
+      props: { gap: '400', p: '600', width: '100%', maxWidth: '1200px', minHeight: 'calc(100vh - 72px)' },
       children: [
         // Header: mode toggle + create button
         postsHeader,
