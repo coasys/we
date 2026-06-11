@@ -40,18 +40,14 @@ export const aboutRoute: RouteSchema = {
                     {
                       type: 'we-text',
                       props: { fontSize: '700', fontWeight: 'bold', color: 'primary-700' },
+                      // props: { fontSize: '600', fontWeight: 'bold', textTransform: 'uppercase', color: 'primary-700' },
                       children: ['About this space'],
                     },
                     {
                       type: '$if',
                       props: {
-                        condition: { $local: 'editing' },
+                        condition: { $not: { $local: 'editing' } },
                         then: {
-                          type: 'we-button',
-                          props: { variant: 'secondary', size: 'sm', onClick: { $setLocal: 'editing', value: false } },
-                          children: ['Cancel'],
-                        },
-                        else: {
                           type: 'we-button',
                           props: {
                             variant: 'secondary',
@@ -85,7 +81,7 @@ export const aboutRoute: RouteSchema = {
                           type: 'Column',
                           props: { gap: '100' },
                           children: [
-                            { type: 'we-text', props: { fontSize: '500', color: 'neutral-700' }, children: ['Name'] },
+                            { type: 'we-text', props: { fontSize: '500', color: 'neutral-600' }, children: ['Name'] },
                             {
                               type: 'we-text',
                               props: { fontSize: '700', fontWeight: 'bold' },
@@ -99,18 +95,14 @@ export const aboutRoute: RouteSchema = {
                           children: [
                             {
                               type: 'we-text',
-                              props: { fontSize: '500', color: 'neutral-700' },
+                              props: { fontSize: '500', color: 'neutral-600' },
                               children: ['Description'],
                             },
                             {
                               type: '$if',
                               props: {
                                 condition: '$space.description',
-                                then: {
-                                  type: 'we-text',
-                                  // props: { color: 'neutral-700' },
-                                  children: ['$space.description'],
-                                },
+                                then: { type: 'we-text', children: ['$space.description'] },
                                 else: {
                                   type: 'we-text',
                                   props: { color: 'neutral-500', italic: true },
@@ -132,7 +124,7 @@ export const aboutRoute: RouteSchema = {
                     condition: { $local: 'editing' },
                     then: {
                       type: 'Column',
-                      props: { gap: '400' },
+                      props: { gap: '500' },
                       children: [
                         {
                           type: 'we-form-field',
@@ -158,15 +150,20 @@ export const aboutRoute: RouteSchema = {
                                 value: { $local: 'editDescription' },
                                 onInput: { $setLocal: 'editDescription', from: '$event.detail' },
                                 placeholder: 'Space description',
-                                rows: 4,
+                                // rows: 6,
                               },
                             },
                           ],
                         },
                         {
                           type: 'Row',
-                          props: { ax: 'end' },
+                          props: { gap: '300' },
                           children: [
+                            {
+                              type: 'we-button',
+                              props: { variant: 'secondary', onClick: { $setLocal: 'editing', value: false } },
+                              children: ['Cancel'],
+                            },
                             {
                               type: 'we-button',
                               props: {
