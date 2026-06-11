@@ -23,6 +23,7 @@ export const aboutRoute: RouteSchema = {
           props: { width: '100%', maxWidth: '1200px', gap: '500', px: '400', pt: '500' },
           $localState: {
             editing: { type: 'boolean', initial: false },
+            saving: { type: 'boolean', initial: false },
             editName: { type: 'string', initial: '' },
             editDescription: { type: 'string', initial: '' },
           },
@@ -68,122 +69,109 @@ export const aboutRoute: RouteSchema = {
                   ],
                 },
 
-                // View mode
+                // Name field
                 {
-                  type: '$if',
-                  props: {
-                    condition: { $not: { $local: 'editing' } },
-                    then: {
-                      type: 'Column',
-                      props: { gap: '400' },
-                      children: [
-                        {
-                          type: 'Column',
-                          props: { gap: '100' },
-                          children: [
-                            { type: 'we-text', props: { fontSize: '500', color: 'neutral-600' }, children: ['Name'] },
-                            {
-                              type: 'we-text',
-                              props: { fontSize: '700', fontWeight: 'bold' },
-                              children: ['$space.name'],
-                            },
-                          ],
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    { type: 'we-text', props: { fontSize: '500', color: 'neutral-600' }, children: ['Name'] },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $local: 'editing' },
+                        then: {
+                          type: 'we-input',
+                          props: {
+                            value: { $local: 'editName' },
+                            onInput: { $setLocal: 'editName', from: '$event.detail' },
+                            placeholder: 'Space name',
+                            fontSize: '700',
+                            fontWeight: 'bold',
+                          },
                         },
-                        {
-                          type: 'Column',
-                          props: { gap: '100' },
-                          children: [
-                            {
-                              type: 'we-text',
-                              props: { fontSize: '500', color: 'neutral-600' },
-                              children: ['Description'],
-                            },
-                            {
-                              type: '$if',
-                              props: {
-                                condition: '$space.description',
-                                then: { type: 'we-text', children: ['$space.description'] },
-                                else: {
-                                  type: 'we-text',
-                                  props: { color: 'neutral-500', italic: true },
-                                  children: ['No description...'],
-                                },
-                              },
-                            },
-                          ],
+                        else: {
+                          type: 'we-text',
+                          props: { fontSize: '700', fontWeight: 'bold' },
+                          children: ['$space.name'],
                         },
-                      ],
+                      },
                     },
-                  },
+                  ],
                 },
 
-                // Edit mode
+                // Description field
+                {
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    { type: 'we-text', props: { fontSize: '500', color: 'neutral-600' }, children: ['Description'] },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $local: 'editing' },
+                        then: {
+                          type: 'we-textarea',
+                          props: {
+                            value: { $local: 'editDescription' },
+                            onInput: { $setLocal: 'editDescription', from: '$event.detail' },
+                            placeholder: 'Space description',
+                          },
+                        },
+                        else: {
+                          type: '$if',
+                          props: {
+                            condition: '$space.description',
+                            then: { type: 'we-text', children: ['$space.description'] },
+                            else: {
+                              type: 'we-text',
+                              props: { color: 'neutral-500', italic: true },
+                              children: ['No description...'],
+                            },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+
+                // Save / Cancel (edit mode only)
                 {
                   type: '$if',
                   props: {
                     condition: { $local: 'editing' },
                     then: {
-                      type: 'Column',
-                      props: { gap: '500' },
+                      type: 'Row',
+                      props: { gap: '300' },
                       children: [
                         {
-                          type: 'we-form-field',
-                          props: { label: 'Name' },
-                          children: [
-                            {
-                              type: 'we-input',
-                              props: {
-                                value: { $local: 'editName' },
-                                onInput: { $setLocal: 'editName', from: '$event.detail' },
-                                placeholder: 'Space name',
-                              },
-                            },
-                          ],
+                          type: 'we-button',
+                          props: { variant: 'secondary', onClick: { $setLocal: 'editing', value: false } },
+                          children: ['Cancel'],
                         },
                         {
-                          type: 'we-form-field',
-                          props: { label: 'Description' },
-                          children: [
-                            {
-                              type: 'we-textarea',
-                              props: {
-                                value: { $local: 'editDescription' },
-                                onInput: { $setLocal: 'editDescription', from: '$event.detail' },
-                                placeholder: 'Space description',
-                                // rows: 6,
+                          type: 'we-button',
+                          props: {
+                            variant: 'primary',
+                            loading: { $local: 'saving' },
+                            disabled: { $local: 'saving' },
+                            onClick: [
+                              { $setLocal: 'saving', value: true },
+                              {
+                                $action: 'model.update',
+                                args: [
+                                  'Space',
+                                  '$space.id',
+                                  {
+                                    name: { $local: 'editName' },
+                                    description: { $local: 'editDescription' },
+                                  },
+                                ],
+                                onSuccess: [{ $setLocal: 'editing', value: false }],
+                                onFinally: [{ $setLocal: 'saving', value: false }],
                               },
-                            },
-                          ],
-                        },
-                        {
-                          type: 'Row',
-                          props: { gap: '300' },
-                          children: [
-                            {
-                              type: 'we-button',
-                              props: { variant: 'secondary', onClick: { $setLocal: 'editing', value: false } },
-                              children: ['Cancel'],
-                            },
-                            {
-                              type: 'we-button',
-                              props: {
-                                variant: 'primary',
-                                onClick: {
-                                  $action: 'model.update',
-                                  args: [
-                                    'Space',
-                                    '$space.id',
-                                    {
-                                      name: { $local: 'editName' },
-                                      description: { $local: 'editDescription' },
-                                    },
-                                  ],
-                                  onSuccess: [{ $setLocal: 'editing', value: false }],
-                                },
-                              },
-                              children: ['Save changes'],
-                            },
-                          ],
+                            ],
+                          },
+                          children: ['Save changes'],
                         },
                       ],
                     },
