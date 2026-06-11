@@ -8,29 +8,35 @@ import { postsList } from './PostsList';
 export const cardsRoute: RouteSchema = {
   path: '/cards',
   type: 'Column',
-  props: { gap: '400', p: '600', width: '100%', maxWidth: '1000px' },
+  props: { width: '100%', ax: 'center' },
   $localState: {
     createPostOpen: { type: 'boolean', initial: false },
     viewMode: { type: 'string', initial: 'posts' },
     savePost: { type: 'function', initial: null },
   },
   children: [
-    // Header: mode toggle + create button
-    postsHeader,
-
-    // Create Post modal
-    { type: '$if', props: { condition: { $local: 'createPostOpen' }, then: createPostModal } },
-
-    // Mode: Full Posts
     {
-      type: '$if',
-      props: { condition: { $eq: [{ $local: 'viewMode' }, 'posts'] }, then: postsList },
-    },
+      type: 'Column',
+      props: { gap: '400', p: '600', width: '100%', maxWidth: '1200px' },
+      children: [
+        // Header: mode toggle + create button
+        postsHeader,
 
-    // Mode: Individual Blocks
-    {
-      type: '$if',
-      props: { condition: { $eq: [{ $local: 'viewMode' }, 'blocks'] }, then: blocksList },
+        // Create Post modal
+        { type: '$if', props: { condition: { $local: 'createPostOpen' }, then: createPostModal } },
+
+        // Mode: Full Posts
+        {
+          type: '$if',
+          props: { condition: { $eq: [{ $local: 'viewMode' }, 'posts'] }, then: postsList },
+        },
+
+        // Mode: Individual Blocks
+        {
+          type: '$if',
+          props: { condition: { $eq: [{ $local: 'viewMode' }, 'blocks'] }, then: blocksList },
+        },
+      ],
     },
   ],
 };

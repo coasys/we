@@ -15,7 +15,7 @@ export const globeRoute: RouteSchema = {
   path: '/globe',
   keepAlive: true,
   type: 'Column',
-  props: { width: '100%', height: 'calc(100vh - 100px)' },
+  props: { width: '100%', height: 'calc(100vh - 72px)' },
   $localState: {
     // Search filter
     searchText: { type: 'string', initial: '' },
@@ -37,141 +37,147 @@ export const globeRoute: RouteSchema = {
     // Header
     {
       type: 'Column',
-      props: { width: 'calc(100% - 400px)', p: '400', gap: '400', position: 'absolute', zIndex: 5 },
+      props: { width: '100%', ax: 'center', position: 'absolute', zIndex: 5 },
       children: [
         {
-          type: 'Row',
-          props: { gap: '400' },
+          type: 'Column',
+          props: { width: '100%', maxWidth: '1200px', p: '400', gap: '400' },
           children: [
-            // Globe layer controls
             {
-              type: 'DropdownMenu',
-              props: {
-                placement: 'bottom-start',
-                triggerLabel: 'Layers',
-                triggerIcon: 'stack',
-                items: [
-                  {
-                    type: 'group',
-                    id: 'background',
-                    label: 'Background',
-                    collapsible: true,
+              type: 'Row',
+              props: { gap: '400' },
+              children: [
+                // Globe layer controls
+                {
+                  type: 'DropdownMenu',
+                  props: {
+                    placement: 'bottom-start',
+                    triggerLabel: 'Layers',
+                    triggerIcon: 'stack',
                     items: [
                       {
-                        type: 'toggle',
-                        id: 'skybox',
-                        label: 'Skybox',
-                        icon: 'image',
-                        checked: { $local: 'showSkybox' },
-                        onToggle: { $toggleLocal: 'showSkybox' },
+                        type: 'group',
+                        id: 'background',
+                        label: 'Background',
+                        collapsible: true,
+                        items: [
+                          {
+                            type: 'toggle',
+                            id: 'skybox',
+                            label: 'Skybox',
+                            icon: 'image',
+                            checked: { $local: 'showSkybox' },
+                            onToggle: { $toggleLocal: 'showSkybox' },
+                          },
+                          {
+                            type: 'toggle',
+                            id: 'stars',
+                            label: 'Procedural Stars',
+                            icon: 'sparkle',
+                            checked: { $local: 'showStars' },
+                            onToggle: { $toggleLocal: 'showStars' },
+                          },
+                          {
+                            type: 'toggle',
+                            id: 'solar-system',
+                            label: 'Solar System',
+                            icon: 'atom',
+                            checked: { $local: 'showSolarSystem' },
+                            onToggle: { $toggleLocal: 'showSolarSystem' },
+                          },
+                        ],
                       },
                       {
-                        type: 'toggle',
-                        id: 'stars',
-                        label: 'Procedural Stars',
-                        icon: 'sparkle',
-                        checked: { $local: 'showStars' },
-                        onToggle: { $toggleLocal: 'showStars' },
+                        type: 'group',
+                        id: 'planet-surface',
+                        label: 'Planet',
+                        collapsible: true,
+                        items: [
+                          {
+                            type: 'toggle',
+                            id: 'countries',
+                            label: 'Country Outlines',
+                            icon: 'flag',
+                            checked: { $local: 'showCountryOutlines' },
+                            onToggle: { $toggleLocal: 'showCountryOutlines' },
+                          },
+                          {
+                            type: 'toggle',
+                            id: 'h3',
+                            label: 'H3 Hexagons',
+                            icon: 'hexagon',
+                            checked: { $local: 'showH3Hexagons' },
+                            onToggle: { $toggleLocal: 'showH3Hexagons' },
+                          },
+                        ],
                       },
                       {
-                        type: 'toggle',
-                        id: 'solar-system',
-                        label: 'Solar System',
-                        icon: 'atom',
-                        checked: { $local: 'showSolarSystem' },
-                        onToggle: { $toggleLocal: 'showSolarSystem' },
+                        type: 'group',
+                        id: 'content',
+                        label: 'Content',
+                        collapsible: true,
+                        items: [
+                          {
+                            type: 'toggle',
+                            id: 'user-locations',
+                            label: 'User Locations',
+                            icon: 'map-pin',
+                            checked: { $local: 'showUserLocations' },
+                            onToggle: { $toggleLocal: 'showUserLocations' },
+                          },
+                          {
+                            type: 'toggle',
+                            id: 'space-locations',
+                            label: 'Space Locations',
+                            icon: 'map-pin',
+                            checked: { $local: 'showSpaceLocations' },
+                            onToggle: { $toggleLocal: 'showSpaceLocations' },
+                          },
+                        ],
                       },
                     ],
                   },
-                  {
-                    type: 'group',
-                    id: 'planet-surface',
-                    label: 'Planet',
-                    collapsible: true,
-                    items: [
-                      {
-                        type: 'toggle',
-                        id: 'countries',
-                        label: 'Country Outlines',
-                        icon: 'flag',
-                        checked: { $local: 'showCountryOutlines' },
-                        onToggle: { $toggleLocal: 'showCountryOutlines' },
-                      },
-                      {
-                        type: 'toggle',
-                        id: 'h3',
-                        label: 'H3 Hexagons',
-                        icon: 'hexagon',
-                        checked: { $local: 'showH3Hexagons' },
-                        onToggle: { $toggleLocal: 'showH3Hexagons' },
-                      },
-                    ],
+                },
+                // Search filter
+                {
+                  type: 'SearchInput',
+                  props: {
+                    placeholder: 'Search spaces and people…',
+                    onSearch: { $setLocal: 'searchText', from: '$event' },
                   },
-                  {
-                    type: 'group',
-                    id: 'content',
-                    label: 'Content',
-                    collapsible: true,
-                    items: [
-                      {
-                        type: 'toggle',
-                        id: 'user-locations',
-                        label: 'User Locations',
-                        icon: 'map-pin',
-                        checked: { $local: 'showUserLocations' },
-                        onToggle: { $toggleLocal: 'showUserLocations' },
-                      },
-                      {
-                        type: 'toggle',
-                        id: 'space-locations',
-                        label: 'Space Locations',
-                        icon: 'map-pin',
-                        checked: { $local: 'showSpaceLocations' },
-                        onToggle: { $toggleLocal: 'showSpaceLocations' },
-                      },
-                    ],
+                },
+                // Create Space Button
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Create New Space',
+                    variant: 'primary',
+                    height: '40px',
+                    onClick: { $setLocal: 'createSpaceModalOpen', value: true },
                   },
-                ],
-              },
-            },
-            // Search filter
-            {
-              type: 'SearchInput',
-              props: {
-                placeholder: 'Search spaces and people…',
-                onSearch: { $setLocal: 'searchText', from: '$event' },
-              },
-            },
-            // Create Space Button
-            {
-              type: 'we-button',
-              props: {
-                text: 'Create New Space',
-                variant: 'primary',
-                height: '40px',
-                onClick: { $setLocal: 'createSpaceModalOpen', value: true },
-              },
-            },
-            // Create Agent Profile Button
-            {
-              type: 'we-button',
-              props: {
-                text: 'Add Agent Profile',
-                variant: 'primary',
-                height: '40px',
-                onClick: { $setLocal: 'createAgentModalOpen', value: true },
-              },
-            },
+                },
+                // Create Agent Profile Button
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Add Agent Profile',
+                    variant: 'primary',
+                    height: '40px',
+                    onClick: { $setLocal: 'createAgentModalOpen', value: true },
+                  },
+                },
 
-            // Space store test button
-            {
-              type: 'we-button',
-              props: {
-                text: 'Test',
-                variant: 'primary',
-                height: '40px',
-                onClick: { $action: 'spaceStore.test' },
-              },
+                // Space store test button
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Test',
+                    variant: 'primary',
+                    height: '40px',
+                    onClick: { $action: 'spaceStore.test' },
+                  },
+                },
+              ],
             },
           ],
         },
