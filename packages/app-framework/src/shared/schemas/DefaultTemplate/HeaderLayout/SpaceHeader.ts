@@ -33,7 +33,7 @@ export const spaceHeader: SchemaNode = {
             },
             {
               type: 'Row',
-              props: { gap: '300', p: '600' },
+              props: { gap: '300', p: '400', mt: '400' },
               children: [
                 // Profile picture
                 {
@@ -53,17 +53,28 @@ export const spaceHeader: SchemaNode = {
                 // Space Details
                 {
                   type: 'Column',
-                  props: { p: '400', gap: '200', ax: 'center' },
+                  props: { p: '400', gap: '200' },
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '600', textAlign: 'center' },
+                      props: { fontSize: '700', fontWeight: 'bold' },
                       children: ['$space.name'],
                     },
                     {
-                      type: 'we-text',
-                      props: { fontSize: '400', textAlign: 'center', mb: '400' },
-                      children: ['$space.description'],
+                      type: '$if',
+                      props: {
+                        condition: '$space.description',
+                        then: {
+                          type: 'we-text',
+                          props: { fontSize: '400' },
+                          children: ['$space.description'],
+                        },
+                        else: {
+                          type: 'we-text',
+                          props: { fontSize: '400', color: 'neutral-500', italic: true },
+                          children: ['No description...'],
+                        },
+                      },
                     },
                   ],
                 },

@@ -17,10 +17,26 @@ export type LocalFieldMeta = {
 export type LocalMetaMap = Record<string, LocalFieldMeta>;
 
 /**
- * Extract a value from an event object using a dot-path expression.
- * Supports "$event", "$event.target.value", "$event.detail", etc.
+ * Extract a value from an event object or schema context using a dot-path expression.
+ * Supports "$event", "$event.target.value", "$event.detail", etc. for event paths,
+ * and "$space.name", "$item.id", etc. for context variable paths.
  */
-export function extractFromPath(event: unknown, from: string): unknown {
+export function extractFromPath(event: unknown, from: string, context?: Props): unknown {
+  // Context variable reference — resolve from context instead of event
+  if (from.startsWith('$') && !from.startsWith('$event') && context) {
+    const dotIndex = from.indexOf('.');
+    const contextKey = dotIndex > 1 ? from.slice(1, dotIndex) : from.slice(1);
+    if (contextKey in context) {
+      if (dotIndex === -1) return context[contextKey];
+      const path = from.slice(dotIndex + 1).split('.');
+      let current: unknown = context[contextKey];
+      for (const segment of path) {
+        current = (current as Record<string, unknown>)?.[segment];
+      }
+      return current;
+    }
+  }
+
   // "$event" alone returns the raw event
   if (from === '$event') return event;
 
@@ -82,7 +98,7 @@ export function resolveSetLocalProp(
     };
   }
   return (event: unknown) => {
-    setter(extractFromPath(event, value.from!));
+    setter(extractFromPath(event, value.from!, context));
   };
 }
 

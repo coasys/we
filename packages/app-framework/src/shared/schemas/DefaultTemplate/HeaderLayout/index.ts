@@ -1,5 +1,6 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
+import { aboutRoute } from '../routes/AboutRoute';
 import { cardsRoute } from '../routes/CardsRoute';
 import { fluxRoute } from '../routes/FluxRoute';
 import { globeRoute } from '../routes/GlobeRoute';
@@ -35,7 +36,7 @@ export const headerLayout: TemplateSchema = {
           },
         },
       ],
-      routes: [{ path: '/', redirect: './globe' }, globeRoute, cardsRoute, signalsRoute, fluxRoute],
+      routes: [{ path: '/', redirect: './globe' }, aboutRoute, globeRoute, cardsRoute, signalsRoute, fluxRoute],
     },
   ],
 };
