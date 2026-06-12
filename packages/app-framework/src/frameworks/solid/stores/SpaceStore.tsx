@@ -1,27 +1,25 @@
+import type { AgentProfileSummary } from '@shared/agentHelpers';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { SPACE_MODELS } from '@shared/sdnaModels';
 import { deriveSlug } from '@shared/utils';
 import { useAdamStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';
-import { AgentProfile, compressImageToFileData, LocationBlock, Signal, SignalType, Space } from '@we/models';
-import { createContext, createEffect, ParentProps, useContext } from 'solid-js';
+import { compressImageToFileData, Signal, SignalType, Space } from '@we/models';
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useRouteStore } from './RouteStore';
 import { useTemplateStore } from './TemplateStore';
 
-export type AgentProfileInput = Omit<Partial<AgentProfile>, 'avatar' | 'coverImage' | 'location'> & {
-  avatar?: File | string;
-  coverImage?: File | string;
-  location?: Partial<LocationBlock>;
-};
-
 export interface SpaceStore {
+  // State
+  memberDids: Accessor<string[]>;
+  members: Accessor<AgentProfileSummary[]>;
+
   // Actions
   createPost: (json: unknown) => Promise<void>;
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
-  createAgentProfile: (config: AgentProfileInput) => Promise<void>;
   navigateToSpace: (spaceId: string) => void;
 
   // Testing
@@ -116,34 +114,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     await SignalType.create(p, normalised);
   }
 
-  async function createAgentProfile(config: AgentProfileInput): Promise<void> {
-    const p = adamStore.currentPerspective();
-    if (!p) return;
-
-    const { firstName, lastName, handle, bio, avatar, coverImage, location } = config;
-
-    const avatarData = avatar instanceof File ? await compressImageToFileData(avatar, 'agent-avatar') : undefined;
-
-    const coverImageData =
-      coverImage instanceof File ? await compressImageToFileData(coverImage, 'agent-cover') : undefined;
-
-    const profile = await AgentProfile.create(p, {
-      firstName,
-      lastName,
-      handle,
-      bio,
-      ...(avatarData && { avatar: avatarData }),
-      ...(coverImageData && { coverImage: coverImageData }),
-    });
-
-    if (location?.latitude != null && location?.longitude != null) {
-      const { city, country } = location;
-      const locationName = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
-      const loc = await LocationBlock.create(p, { ...location, ...(locationName && { name: locationName }) });
-      await profile.setLocation(loc);
-    }
-  }
-
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
     const p = adamStore.currentPerspective();
     const myDid = adamStore.me()?.did;
@@ -159,6 +129,39 @@ export function SpaceStoreProvider(props: ParentProps) {
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
 
+  const [memberDids, setMemberDids] = createSignal<string[]>([]);
+
+  // Load neighbourhood members whenever the current perspective changes
+  createEffect(() => {
+    const p = adamStore.currentPerspective();
+    const client = adamStore.adamClient();
+    const myDid = adamStore.me()?.did;
+    if (!p || !client) {
+      setMemberDids(myDid ? [myDid] : []);
+      return;
+    }
+    client.neighbourhood
+      .otherAgents(p.uuid)
+      .then((dids: string[]) => {
+        const allDids = myDid ? [...new Set([myDid, ...dids])] : dids;
+        setMemberDids(allDids);
+        for (const did of allDids) {
+          adamStore.fetchAgent(did);
+        }
+      })
+      .catch(() => {
+        setMemberDids(myDid ? [myDid] : []);
+      });
+  });
+
+  // Map memberDids to cached AgentProfileSummary entries
+  const members = createMemo<AgentProfileSummary[]>(() => {
+    const cached = adamStore.agents();
+    return memberDids()
+      .map((did) => cached.find((a) => a.did === did))
+      .filter((a): a is AgentProfileSummary => a != null);
+  });
+
   // Detect when entering a WE perspective with a Space model
   createEffect(() => {
     const models = adamStore.currentPerspectiveModels();
@@ -168,13 +171,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
 
   const store: SpaceStore = {
+    // State
+    memberDids,
+    members,
+
     // Actions
     createPost,
     updateSpaceImage,
     createSignalType,
     upsertSignal,
-    createAgentProfile,
-
     navigateToSpace,
 
     test,

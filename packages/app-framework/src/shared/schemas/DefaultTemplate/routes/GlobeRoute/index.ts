@@ -7,7 +7,6 @@
 import type { RouteSchema } from '@we/schema-shared';
 
 import { agentModal } from './AgentModal';
-import { createAgentModal } from './CreateAgentModal';
 import { createSpaceModal } from './CreateSpaceModal';
 import { spaceModal } from './SpaceModal';
 
@@ -31,7 +30,6 @@ export const globeRoute: RouteSchema = {
     selectedPin: { type: 'object', initial: null },
     // Modal open states
     createSpaceModalOpen: { type: 'boolean', initial: false },
-    createAgentModalOpen: { type: 'boolean', initial: false },
   },
   children: [
     // Header
@@ -156,17 +154,6 @@ export const globeRoute: RouteSchema = {
                     onClick: { $setLocal: 'createSpaceModalOpen', value: true },
                   },
                 },
-                // Create Agent Profile Button
-                {
-                  type: 'we-button',
-                  props: {
-                    text: 'Add Agent Profile',
-                    variant: 'primary',
-                    height: '40px',
-                    onClick: { $setLocal: 'createAgentModalOpen', value: true },
-                  },
-                },
-
                 // Space store test button
                 {
                   type: 'we-button',
@@ -264,14 +251,16 @@ export const globeRoute: RouteSchema = {
               locations: {
                 $map: {
                   items: {
-                    $query: {
-                      model: 'AgentProfile',
-                      where: { handle: { contains: { $local: 'searchText' } } },
-                      include: { location: true },
+                    $filter: {
+                      items: { $store: 'spaceStore.members' },
+                      where: {
+                        location: { exists: true },
+                        handle: { contains: { $local: 'searchText' } },
+                      },
                     },
                   },
                   select: {
-                    id: '$item.id',
+                    id: '$item.did',
                     kind: 'agent',
                     name: { $concat: ['$item.firstName', ' ', '$item.lastName'] },
                     latitude: '$item.location.latitude',
@@ -311,12 +300,6 @@ export const globeRoute: RouteSchema = {
     {
       type: '$if',
       props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal },
-    },
-
-    // Create Agent Profile Modal
-    {
-      type: '$if',
-      props: { condition: { $local: 'createAgentModalOpen' }, then: createAgentModal },
     },
 
     // Space Modal (shown when a Space pin is clicked)

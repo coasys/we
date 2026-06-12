@@ -1733,20 +1733,6 @@ export const contextData: ContextData = {
   ],
   models: [
     {
-      name: 'AgentProfile',
-      className: 'AgentProfile',
-      extends: 'WeNode',
-      fields: [
-        { name: 'firstName', type: 'string', predicate: 'we://first_name', required: false },
-        { name: 'lastName', type: 'string', predicate: 'we://last_name', required: false },
-        { name: 'handle', type: 'string', predicate: 'we://handle', required: false },
-        { name: 'bio', type: 'string', predicate: 'we://bio', required: false },
-        { name: 'avatar', type: 'string', predicate: 'we://profile_image', required: false },
-        { name: 'coverImage', type: 'string', predicate: 'we://cover_image', required: false },
-      ],
-      relations: [{ name: 'location', kind: 'HasOne', predicate: 'we://location' }],
-    },
-    {
       name: 'AgentSettings',
       className: 'AgentSettings',
       extends: 'Ad4mModel',
@@ -2304,9 +2290,13 @@ export const contextData: ContextData = {
         passwordError: { type: 'string' },
         loginLoading: { type: 'boolean' },
         creatingSpace: { type: 'boolean' },
-        agentProfile: {
+        agents: {
+          type: 'array',
+          properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
+        },
+        ownAgent: {
           type: 'object',
-          properties: ['firstName', 'lastName', 'handle', 'bio', 'location', 'avatar', 'coverImage'],
+          properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
         },
       },
       actions: [
@@ -2317,9 +2307,10 @@ export const contextData: ContextData = {
         'removePerspective',
         'login',
         'logout',
-        'updateAgentProfile',
-        'updateAvatarImage',
-        'updateCoverImage',
+        'fetchAgent',
+        'updateOwnProfile',
+        'updateProfileImage',
+        'updateAgentLocation',
       ],
     },
     {
@@ -2356,10 +2347,10 @@ export const contextData: ContextData = {
     {
       name: 'spaceStore',
       state: {
-        perspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
-        space: {
-          type: 'object',
-          properties: ['uuid', 'name', 'description', 'url', 'visibility', 'avatar', 'coverImage'],
+        memberDids: { type: 'array', properties: ['did'] },
+        members: {
+          type: 'array',
+          properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
         },
         signalTypes: {
           type: 'array',
@@ -2377,17 +2368,8 @@ export const contextData: ContextData = {
           ],
         },
         signalTypesBySlug: { type: 'object' },
-        loading: { type: 'boolean' },
       },
-      actions: [
-        'getSpace',
-        'createPost',
-        'updateSpaceAvatar',
-        'updateSpaceCoverImage',
-        'createSignalType',
-        'upsertSignal',
-        'deriveSlug',
-      ],
+      actions: ['createPost', 'updateSpaceImage', 'createSignalType', 'upsertSignal', 'navigateToSpace'],
     },
     {
       name: 'aiStore',

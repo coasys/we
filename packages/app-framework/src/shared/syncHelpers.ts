@@ -7,7 +7,7 @@
  */
 
 import { type PerspectiveProxy } from '@coasys/ad4m';
-import { AgentProfile, dataURIToFileData, LocationBlock, Space } from '@we/models';
+import { LocationBlock, Space } from '@we/models';
 
 /**
  * Upsert a Space record into `targetP`.
@@ -66,76 +66,4 @@ export async function removeSpaceFromParent(spaceUuid: string, targetP: Perspect
   const all = await Space.findAll(targetP);
   const existing = all.find((s) => s.uuid === spaceUuid);
   if (existing) await existing.delete();
-}
-
-/**
- * Upsert an AgentProfile record into `targetP`, including location.
- * Keyed by the built-in `author` field (the creator's DID) — automatically
- * populated by AD4M on every model instance, no explicit @Property needed.
- */
-export async function syncAgentProfileToParent(profile: AgentProfile, targetP: PerspectiveProxy): Promise<void> {
-  const all = await AgentProfile.findAll(targetP, { include: { location: true } });
-  const existing = all.find((p) => p.author === profile.author);
-
-  console.log('syncAgentProfileToParent', { profile, existing });
-
-  let target: AgentProfile;
-  if (existing) {
-    existing.firstName = profile.firstName;
-    existing.lastName = profile.lastName;
-    existing.handle = profile.handle;
-    existing.bio = profile.bio;
-    // FILE_STORAGE_LANGUAGE is content-addressed — reconstructing FileData from a
-    // resolved data URI string is safe and deduplicates on the server automatically.
-    if (profile.avatar)
-      existing.avatar =
-        typeof profile.avatar === 'string' ? dataURIToFileData(profile.avatar, 'profile-image') : profile.avatar;
-    if (profile.coverImage)
-      existing.coverImage =
-        typeof profile.coverImage === 'string'
-          ? dataURIToFileData(profile.coverImage, 'cover-image')
-          : profile.coverImage;
-    await existing.save();
-    target = existing;
-  } else {
-    const avatarData = profile.avatar
-      ? typeof profile.avatar === 'string'
-        ? dataURIToFileData(profile.avatar, 'profile-image')
-        : profile.avatar
-      : undefined;
-    const coverImageData = profile.coverImage
-      ? typeof profile.coverImage === 'string'
-        ? dataURIToFileData(profile.coverImage, 'cover-image')
-        : profile.coverImage
-      : undefined;
-    target = await AgentProfile.create(targetP, {
-      firstName: profile.firstName,
-      lastName: profile.lastName,
-      handle: profile.handle,
-      bio: profile.bio,
-      ...(avatarData && { avatar: avatarData }),
-      ...(coverImageData && { coverImage: coverImageData }),
-    });
-  }
-
-  // Sync location block into the target perspective
-  const loc = profile.location;
-  if (loc && loc.latitude != null && loc.longitude != null) {
-    const existingLoc = existing?.location;
-    const locationChanged =
-      !existingLoc || existingLoc.latitude !== loc.latitude || existingLoc.longitude !== loc.longitude;
-
-    if (locationChanged) {
-      await LocationBlock.register(targetP);
-      const newLoc = await LocationBlock.create(targetP, {
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-        ...(loc.name && { name: loc.name }),
-        ...(loc.city && { city: loc.city }),
-        ...(loc.country && { country: loc.country }),
-        ...(loc.countryCode && { countryCode: loc.countryCode }),
-      });
-      await (target as unknown as { setLocation: (l: LocationBlock) => Promise<void> }).setLocation(newLoc);
-    }
-  }
 }

@@ -64,7 +64,7 @@ To target a non-current perspective: { "$action": "model.update", "args": ["Mode
 model.delete — deletes a model instance:
 { "$action": "model.delete", "args": ["ModelName", "$item.id"] }
 
-Use perspective: 'adamStore.rootPerspective' for we-root models (AgentProfile, AgentSettings).
+Use perspective: 'adamStore.rootPerspective' for we-root models (AgentSettings, ChatSession, etc.).
 Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
 
 Conditional logic:
@@ -109,9 +109,20 @@ Boolean logic:
 
 Array operators:
 { "$filter": { "items": <array>, "where": { "field": "value", ... } } }
-Filters an array to items where all where conditions match (strict equality).
-Where values can be any resolvable token, including context refs.
-Example: { "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
+Filters an array to items where all where conditions match. Mirrors the AD4M model $query where operator set:
+
+  { "field": "value" }                                   — strict equality
+  { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
+  { "field": { "contains": "text" } }                    — case-insensitive substring match (strings only)
+  { "field": { "exists": true } }                        — non-null / non-undefined presence check
+  { "field": { "exists": false } }                       — null or undefined check
+
+Where values (including those inside operator objects) are resolved through the prop system,
+so $store, $local, and context refs like { "$local": "searchText" } all work.
+
+Examples:
+{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
+{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "location": { "exists": true }, "handle": { "contains": { "$local": "searchText" } } } } }
 
 { "$count": { "items": <array> } }
 Returns the length of an array.
@@ -793,17 +804,6 @@ zIndex: 'dropdown', 'sticky', 'modal', 'popover', 'toast', 'tooltip'
 
 Available data models for $query and store data:
 
-AgentProfile extends WeNode:
-  Fields:
-  - firstName: string [we://first_name]
-  - lastName: string [we://last_name]
-  - handle: string [we://handle]
-  - bio: string [we://bio]
-  - avatar: string [we://profile_image]
-  - coverImage: string [we://cover_image]
-  Relations:
-  - location: HasOne [we://location]
-
 AgentSettings extends Ad4mModel:
   Fields:
   - currentTemplateId: string = 'default' [we://current_template]
@@ -1041,7 +1041,8 @@ AdamStore:
   - passwordError: string | undefined
   - loginLoading: boolean
   - creatingSpace: boolean (true while a new space is being created)
-  - agentProfile: AgentProfile | null (the current agent profile with name, bio, images, etc.)
+  - agents: AgentProfileSummary[] — cache of all fetched agent profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)
+  - ownAgent: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from agents cache)
 - Actions:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
@@ -1050,9 +1051,10 @@ AdamStore:
   - removePerspective(): unknown
   - login(password: string): logs in the agent with password
   - logout(): locks the agent and returns to login screen
-  - updateAgentProfile(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)
-  - updateAvatarImage(imageFile: File): uploads and sets the profile image
-  - updateCoverImage(imageFile: File): uploads and sets the cover image
+  - fetchAgent(did: string): fetches and caches an agent's profile from their public AD4M perspective
+  - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to public perspective
+  - updateProfileImage(field: "avatar" | "coverImage", imageFile: File): uploads image to FILE_STORAGE_LANGUAGE and publishes expression URL to public perspective
+  - updateAgentLocation(update: { latitude?, longitude?, city?, country?, countryCode? }): merges location update into cache and publishes to public perspective
 
 RouteStore:
 - State:
@@ -1086,19 +1088,16 @@ TemplateStore:
 
 SpaceStore:
 - State:
-  - perspective: PerspectiveProxy | null
-  - space: Partial<Space> (current space object)
+  - memberDids: string[] — DIDs of all members in the current space (includes own DID)
+  - members: AgentProfileSummary[] — cached profiles for all memberDids
   - signalTypes: array of SignalType objects (community-created reaction/vote types)
   - signalTypesBySlug: Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID
-  - loading: boolean
 - Actions:
-  - getSpace(): loads space data
   - createPost(editorState: unknown): creates a new post
-  - updateSpaceAvatar(): unknown
-  - updateSpaceCoverImage(): unknown
+  - updateSpaceImage(field: "avatar" | "coverImage", imageFile: File): uploads and sets the space avatar or cover image
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
-  - deriveSlug(name: string) => string: converts a name to a URL-safe slug (lowercase, hyphens)
+  - navigateToSpace(spaceId: string): navigates to a space by perspective UUID
 
 AiStore:
 - State:

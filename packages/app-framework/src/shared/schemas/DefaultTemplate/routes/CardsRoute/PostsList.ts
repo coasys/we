@@ -47,8 +47,38 @@ export const postsList: SchemaNode = {
       children: [
         {
           type: 'Column',
-          props: { width: '100%', bg: 'neutral-25', r: '400', p: '600' },
+          props: { width: '100%', bg: 'neutral-25', r: '400', p: '600', gap: '300' },
           children: [
+            // Author row
+            {
+              type: '$agent',
+              props: { did: '$post.author', as: 'author' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { ay: 'center', gap: '300', p: '300' },
+                  children: [
+                    {
+                      type: 'we-avatar',
+                      props: {
+                        image: '$author.avatar',
+                        initials: { $concat: ['$author.firstName', ' ', '$author.lastName'] },
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400', fontWeight: '600', color: 'neutral-800' },
+                      children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400', color: 'neutral-500' },
+                      children: [{ $concat: ['@', '$author.handle'] }],
+                    },
+                  ],
+                },
+              ],
+            },
             {
               type: 'Column',
               children: [

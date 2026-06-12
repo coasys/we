@@ -22,9 +22,13 @@ export const storeEntries: StoreEntry[] = [
       passwordError: { type: 'string' },
       loginLoading: { type: 'boolean' },
       creatingSpace: { type: 'boolean' },
-      agentProfile: {
+      agents: {
+        type: 'array',
+        properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
+      },
+      ownAgent: {
         type: 'object',
-        properties: ['firstName', 'lastName', 'handle', 'bio', 'location', 'avatar', 'coverImage'],
+        properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
     },
     actions: [
@@ -35,9 +39,10 @@ export const storeEntries: StoreEntry[] = [
       'removePerspective',
       'login',
       'logout',
-      'updateAgentProfile',
-      'updateAvatarImage',
-      'updateCoverImage',
+      'fetchAgent',
+      'updateOwnProfile',
+      'updateProfileImage',
+      'updateAgentLocation',
     ],
   },
   {
@@ -77,10 +82,10 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'spaceStore',
     state: {
-      perspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
-      space: {
-        type: 'object',
-        properties: ['uuid', 'name', 'description', 'url', 'visibility', 'avatar', 'coverImage'],
+      memberDids: { type: 'array', properties: ['did'] },
+      members: {
+        type: 'array',
+        properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
       signalTypes: {
         type: 'array',
@@ -100,17 +105,8 @@ export const storeEntries: StoreEntry[] = [
       signalTypesBySlug: {
         type: 'object',
       },
-      loading: { type: 'boolean' },
     },
-    actions: [
-      'getSpace',
-      'createPost',
-      'updateSpaceAvatar',
-      'updateSpaceCoverImage',
-      'createSignalType',
-      'upsertSignal',
-      'deriveSlug',
-    ],
+    actions: ['createPost', 'updateSpaceImage', 'createSignalType', 'upsertSignal', 'navigateToSpace'],
   },
   {
     name: 'aiStore',
@@ -182,7 +178,10 @@ function generateStoresText(entries: StoreEntry[]): string {
         bootState: 'string',
         passwordError: 'string | undefined',
         loginLoading: 'boolean',
-        agentProfile: 'AgentProfile | null (the current agent profile with name, bio, images, etc.)',
+        agents:
+          'AgentProfileSummary[] — cache of all fetched agent profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)',
+        ownAgent:
+          "AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from agents cache)",
         creatingSpace: 'boolean (true while a new space is being created)',
       },
       actions: {
@@ -194,10 +193,13 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(uuid: string): sets the current perspective, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels',
         login: '(password: string): logs in the agent with password',
         logout: '(): locks the agent and returns to login screen',
-        updateAgentProfile:
-          '(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)',
-        updateAvatarImage: '(imageFile: File): uploads and sets the profile image',
-        updateCoverImage: '(imageFile: File): uploads and sets the cover image',
+        fetchAgent: "(did: string): fetches and caches an agent's profile from their public AD4M perspective",
+        updateOwnProfile:
+          '(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to public perspective',
+        updateProfileImage:
+          '(field: "avatar" | "coverImage", imageFile: File): uploads image to FILE_STORAGE_LANGUAGE and publishes expression URL to public perspective',
+        updateAgentLocation:
+          '(update: { latitude?, longitude?, city?, country?, countryCode? }): merges location update into cache and publishes to public perspective',
       },
     },
     routeStore: {
@@ -232,21 +234,21 @@ function generateStoresText(entries: StoreEntry[]): string {
     },
     spaceStore: {
       state: {
-        perspective: 'PerspectiveProxy | null',
-        space: 'Partial<Space> (current space object)',
+        memberDids: 'string[] — DIDs of all members in the current space (includes own DID)',
+        members: 'AgentProfileSummary[] — cached profiles for all memberDids',
         signalTypes: 'array of SignalType objects (community-created reaction/vote types)',
         signalTypesBySlug:
           'Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID',
-        loading: 'boolean',
       },
       actions: {
-        getSpace: '(): loads space data',
         createPost: '(editorState: unknown): creates a new post',
+        updateSpaceImage:
+          '(field: "avatar" | "coverImage", imageFile: File): uploads and sets the space avatar or cover image',
         createSignalType:
           '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
         upsertSignal:
           '(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it',
-        deriveSlug: '(name: string) => string: converts a name to a URL-safe slug (lowercase, hyphens)',
+        navigateToSpace: '(spaceId: string): navigates to a space by perspective UUID',
       },
     },
     aiStore: {

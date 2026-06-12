@@ -17,8 +17,8 @@
   color: var(--we-color-neutral-900);
 
   .we-block {
-    padding: 10px;
-    border-radius: 10px;
+    padding: var(--we-space-300);
+    border-radius: var(--we-radius-400);
     margin: 0;
     color: var(--we-color-neutral-900);
     position: relative;

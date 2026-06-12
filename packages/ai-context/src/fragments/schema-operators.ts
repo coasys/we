@@ -61,7 +61,7 @@ To target a non-current perspective: { "$action": "model.update", "args": ["Mode
 model.delete — deletes a model instance:
 { "$action": "model.delete", "args": ["ModelName", "$item.id"] }
 
-Use perspective: 'adamStore.rootPerspective' for we-root models (AgentProfile, AgentSettings).
+Use perspective: 'adamStore.rootPerspective' for we-root models (AgentSettings, ChatSession, etc.).
 Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
 
 Conditional logic:
@@ -106,9 +106,20 @@ Boolean logic:
 
 Array operators:
 { "$filter": { "items": <array>, "where": { "field": "value", ... } } }
-Filters an array to items where all where conditions match (strict equality).
-Where values can be any resolvable token, including context refs.
-Example: { "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
+Filters an array to items where all where conditions match. Mirrors the AD4M model $query where operator set:
+
+  { "field": "value" }                                   — strict equality
+  { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
+  { "field": { "contains": "text" } }                    — case-insensitive substring match (strings only)
+  { "field": { "exists": true } }                        — non-null / non-undefined presence check
+  { "field": { "exists": false } }                       — null or undefined check
+
+Where values (including those inside operator objects) are resolved through the prop system,
+so $store, $local, and context refs like { "$local": "searchText" } all work.
+
+Examples:
+{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
+{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "location": { "exists": true }, "handle": { "contains": { "$local": "searchText" } } } } }
 
 { "$count": { "items": <array> } }
 Returns the length of an array.
