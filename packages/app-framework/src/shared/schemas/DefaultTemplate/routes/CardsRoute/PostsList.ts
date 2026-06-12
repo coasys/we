@@ -47,7 +47,7 @@ export const postsList: SchemaNode = {
       children: [
         {
           type: 'Column',
-          props: { width: '100%', bg: 'neutral-25', r: '400', p: '600', gap: '300' },
+          props: { width: '100%', bg: 'neutral-100', border: '1px solid neutral-200', r: '400', p: '600', gap: '300' },
           children: [
             // Author row
             {
@@ -67,13 +67,17 @@ export const postsList: SchemaNode = {
                     },
                     {
                       type: 'we-text',
-                      props: { fontSize: '400', fontWeight: '600', color: 'neutral-800' },
+                      props: { fontWeight: '600', color: 'neutral-800' },
                       children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
                     },
+                    // {
+                    //   type: 'we-text',
+                    //   props: { fontSize: '500', color: 'neutral-500' },
+                    //   children: [{ $concat: ['@', '$author.handle'] }],
+                    // },
                     {
-                      type: 'we-text',
-                      props: { fontSize: '400', color: 'neutral-500' },
-                      children: [{ $concat: ['@', '$author.handle'] }],
+                      type: 'we-timestamp',
+                      props: { value: '$post.createdAt', relative: true, color: 'neutral-500' },
                     },
                   ],
                 },

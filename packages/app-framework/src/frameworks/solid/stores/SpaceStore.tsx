@@ -69,7 +69,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   function navigateToSpace(spaceId: string): void {
     const segs = routeStore.segments();
-    const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
+    const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'cards';
     const targetPath = '/space/' + spaceId + '/' + currentView;
     // Close any shell overlay (landing page, profile, settings, etc.) before navigating
     templateStore.closeShellView();
