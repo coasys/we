@@ -115,6 +115,7 @@ export const aboutRoute: RouteSchema = {
                             value: { $local: 'editDescription' },
                             onInput: { $setLocal: 'editDescription', from: '$event.detail' },
                             placeholder: 'Space description',
+                            fontSize: '500',
                           },
                         },
                         else: {
@@ -178,44 +179,52 @@ export const aboutRoute: RouteSchema = {
                   },
                 },
 
-                // Privacy (access)
+                // Access
                 {
                   type: 'Row',
-                  props: { ay: 'center', gap: '300', py: '100' },
+                  props: { ay: 'center', gap: '400', py: '100' },
                   children: [
-                    { type: 'we-icon', props: { name: 'lock-simple' } },
-                    { type: 'we-text', props: { color: 'neutral-600', minWidth: '80px' }, children: ['Privacy'] },
+                    { type: 'we-icon', props: { name: 'lock-simple', color: 'primary-600' } },
                     {
-                      type: 'we-badge',
-                      props: {
-                        variant: {
-                          $if: {
-                            condition: { $eq: ['$space.access', 'shared'] },
-                            then: 'primary',
-                            else: 'neutral',
-                          },
-                        },
-                      },
+                      type: 'Column',
+                      props: { gap: '100' },
                       children: [
                         {
-                          $if: {
-                            condition: { $eq: ['$space.access', 'shared'] },
-                            then: 'Shared',
-                            else: 'Personal',
-                          },
+                          type: 'Row',
+                          props: { gap: '300' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { color: 'neutral-700', fontWeight: 'bold' },
+                              children: ['Access:'],
+                            },
+                            {
+                              type: 'we-text',
+                              props: { fontWeight: 'bold' },
+                              children: [
+                                {
+                                  $if: {
+                                    condition: { $eq: ['$space.access', 'shared'] },
+                                    then: 'Shared',
+                                    else: 'Personal',
+                                  },
+                                },
+                              ],
+                            },
+                          ],
                         },
-                      ],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { color: 'neutral-500', fontSize: '300' },
-                      children: [
                         {
-                          $if: {
-                            condition: { $eq: ['$space.access', 'shared'] },
-                            then: 'Joinable by anyone with the link',
-                            else: 'Only visible to you',
-                          },
+                          type: 'we-text',
+                          props: { color: 'neutral-700', fontSize: '400' },
+                          children: [
+                            {
+                              $if: {
+                                condition: { $eq: ['$space.access', 'shared'] },
+                                then: 'Joinable by anyone with the link',
+                                else: 'Only visible to you',
+                              },
+                            },
+                          ],
                         },
                       ],
                     },
@@ -225,41 +234,49 @@ export const aboutRoute: RouteSchema = {
                 // Discovery
                 {
                   type: 'Row',
-                  props: { ay: 'center', gap: '300', py: '100' },
+                  props: { ay: 'center', gap: '400', py: '100' },
                   children: [
-                    { type: 'we-icon', props: { name: 'globe' } },
-                    { type: 'we-text', props: { color: 'neutral-600', minWidth: '80px' }, children: ['Discovery'] },
+                    { type: 'we-icon', props: { name: 'globe', color: 'primary-600' } },
                     {
-                      type: 'we-badge',
-                      props: {
-                        variant: {
-                          $if: {
-                            condition: { $eq: ['$space.discovery', 'listed'] },
-                            then: 'success',
-                            else: 'neutral',
-                          },
-                        },
-                      },
+                      type: 'Column',
+                      props: { gap: '100' },
                       children: [
                         {
-                          $if: {
-                            condition: { $eq: ['$space.discovery', 'listed'] },
-                            then: 'Listed',
-                            else: 'Hidden',
-                          },
+                          type: 'Row',
+                          props: { gap: '300' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { color: 'neutral-700', fontWeight: 'bold' },
+                              children: ['Discovery:'],
+                            },
+                            {
+                              type: 'we-text',
+                              props: { fontWeight: 'bold' },
+                              children: [
+                                {
+                                  $if: {
+                                    condition: { $eq: ['$space.discovery', 'listed'] },
+                                    then: 'Listed',
+                                    else: 'Hidden',
+                                  },
+                                },
+                              ],
+                            },
+                          ],
                         },
-                      ],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { color: 'neutral-500', fontSize: '300' },
-                      children: [
                         {
-                          $if: {
-                            condition: { $eq: ['$space.discovery', 'listed'] },
-                            then: 'Appears on the WE discovery globe',
-                            else: 'Not shown in global discovery',
-                          },
+                          type: 'we-text',
+                          props: { color: 'neutral-700', fontSize: '400' },
+                          children: [
+                            {
+                              $if: {
+                                condition: { $eq: ['$space.discovery', 'listed'] },
+                                then: 'Appears on the WE discovery globe',
+                                else: 'Not shown in global discovery',
+                              },
+                            },
+                          ],
                         },
                       ],
                     },
@@ -273,11 +290,31 @@ export const aboutRoute: RouteSchema = {
                     condition: '$space.location',
                     then: {
                       type: 'Row',
-                      props: { ay: 'center', gap: '300', py: '100' },
+                      props: { ay: 'center', gap: '400', py: '100' },
                       children: [
-                        { type: 'we-icon', props: { name: 'map-pin' } },
-                        { type: 'we-text', props: { color: 'neutral-600', minWidth: '80px' }, children: ['Location'] },
-                        { type: 'we-text', children: ['$space.location.address'] },
+                        { type: 'we-icon', props: { name: 'map-pin', color: 'primary-600' } },
+                        {
+                          type: 'Column',
+                          props: { gap: '100' },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: { gap: '300' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { color: 'neutral-700', fontWeight: 'bold' },
+                                  children: ['Location:'],
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: { fontWeight: 'bold' },
+                                  children: [{ $concat: ['$space.location.city', ', ', '$space.location.country'] }],
+                                },
+                              ],
+                            },
+                          ],
+                        },
                       ],
                     },
                   },
@@ -286,17 +323,51 @@ export const aboutRoute: RouteSchema = {
                 // History
                 {
                   type: 'Row',
-                  props: { ay: 'center', gap: '300', py: '100' },
+                  props: { ay: 'center', gap: '400', py: '100' },
                   children: [
-                    { type: 'we-icon', props: { name: 'clock' } },
-                    { type: 'we-text', props: { color: 'neutral-600', minWidth: '80px' }, children: ['Created'] },
-                    { type: 'we-timestamp', props: { value: '$space.createdAt', relative: true } },
-                    { type: 'we-text', props: { color: 'neutral-500', fontSize: '300' }, children: ['by'] },
-                    { type: 'we-avatar', props: { hash: '$space.author', size: 'xs' } },
+                    { type: 'we-icon', props: { name: 'clock', color: 'primary-600' } },
                     {
-                      type: 'we-text',
-                      props: { color: 'neutral-500', fontSize: '300', truncate: true, maxWidth: '160px' },
-                      children: ['$space.author'],
+                      type: 'Column',
+                      props: { gap: '100' },
+                      children: [
+                        {
+                          type: 'Row',
+                          props: { gap: '300' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { color: 'neutral-700', fontWeight: 'bold' },
+                              children: ['Created:'],
+                            },
+                            {
+                              type: 'we-timestamp',
+                              props: { value: '$space.createdAt', relative: true, fontWeight: 'bold' },
+                            },
+                          ],
+                        },
+                        {
+                          type: 'Row',
+                          props: { gap: '200', ay: 'center' },
+                          children: [
+                            { type: 'we-text', props: { color: 'neutral-700', fontSize: '400' }, children: ['By'] },
+                            {
+                              type: '$agent',
+                              props: { did: '$space.author', as: 'agent' },
+                              children: [
+                                {
+                                  type: 'we-avatar',
+                                  props: { image: '$agent.avatar', hash: '$space.author', size: 'xs' },
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: { color: 'neutral-700', fontSize: '400', truncate: true, maxWidth: '160px' },
+                                  children: [{ $concat: ['$agent.firstName', ' ', '$agent.lastName'] }],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
                     },
                   ],
                 },
