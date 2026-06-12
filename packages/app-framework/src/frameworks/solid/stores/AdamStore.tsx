@@ -224,9 +224,9 @@ export function AdamStoreProvider(props: ParentProps) {
           );
           return;
         }
-        if (['agent-profile', 'agent profile'].some((n) => perspective.name?.toLowerCase() === n)) {
+        if (perspective.name?.toLowerCase().startsWith('agent perspective')) {
           console.log(
-            'AdamStore: suppressing agent profile perspective from sidebar',
+            'AdamStore: suppressing agent perspective from sidebar',
             perspective.name,
             perspective.uuid,
           );
