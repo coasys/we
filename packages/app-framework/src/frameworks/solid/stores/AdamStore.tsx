@@ -83,8 +83,8 @@ export interface AdamStore {
   createSpace: (
     name: string,
     description: string,
-    shared: boolean,
-    listed: boolean,
+    access: 'personal' | 'shared',
+    discovery: 'hidden' | 'listed',
     avatarFile?: File,
     coverImageFile?: File,
     latitude?: number,
@@ -193,8 +193,8 @@ export function AdamStoreProvider(props: ParentProps) {
   });
 
   // Derived: personal and shared spaces
-  const personalSpaces = createMemo(() => mySpaces().filter((s) => s.visibility !== 'shared'));
-  const sharedSpaces = createMemo(() => mySpaces().filter((s) => s.visibility === 'shared'));
+  const personalSpaces = createMemo(() => mySpaces().filter((s) => s.access === 'personal'));
+  const sharedSpaces = createMemo(() => mySpaces().filter((s) => s.access === 'shared'));
 
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
@@ -867,8 +867,8 @@ export function AdamStoreProvider(props: ParentProps) {
   async function createSpace(
     name: string,
     description: string,
-    shared: boolean,
-    listed: boolean,
+    access: 'personal' | 'shared',
+    discovery: 'hidden' | 'listed',
     avatarFile?: File,
     coverImageFile?: File,
     latitude?: number,
@@ -877,7 +877,6 @@ export function AdamStoreProvider(props: ParentProps) {
     country?: string,
     countryCode?: string,
   ): Promise<void> {
-    const visibility: 'personal' | 'shared' | 'public' = shared && listed ? 'public' : shared ? 'shared' : 'personal';
     const client = adamClient();
     if (!client) return;
     // Capture the active perspective now — it becomes the parent once the new space is created
@@ -894,8 +893,8 @@ export function AdamStoreProvider(props: ParentProps) {
       // HACK: Model.register resolves before the SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // If shared or public, publish as neighbourhood
-      if (visibility !== 'personal') {
+      // If shared, publish as neighbourhood
+      if (access === 'shared') {
         const uid = crypto.randomUUID();
         const languages = await client.runtime.knownLinkLanguageTemplates();
         const templateAddress = languages?.[0];
@@ -921,7 +920,8 @@ export function AdamStoreProvider(props: ParentProps) {
         url: spacePerspective.sharedUrl ?? undefined,
         name,
         description,
-        visibility,
+        access,
+        discovery,
         ...(avatarData && { avatar: avatarData }),
         ...(coverImageData && { coverImage: coverImageData }),
       };

@@ -21,8 +21,11 @@ export class Space extends WeNode {
   @Property({ through: 'we://description', required: true })
   description: string = '';
 
-  @Property({ through: 'we://visibility' })
-  visibility: string = '';
+  @Property({ through: 'we://access' })
+  access: string = 'personal';
+
+  @Property({ through: 'we://discovery' })
+  discovery: string = 'hidden';
 
   @Property({ through: 'we://image', resolveLanguage: FILE_STORAGE_LANGUAGE, transform: fileToDataUri })
   avatar?: string;

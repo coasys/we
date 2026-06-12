@@ -12,8 +12,8 @@ export const createSpaceModal = {
       validate: [{ rule: 'required', message: 'Name is required' }],
     },
     description: { type: 'string', initial: '' },
-    shared: { type: 'boolean', initial: false },
-    listed: { type: 'boolean', initial: false },
+    access: { type: 'string', initial: 'personal' },
+    discovery: { type: 'string', initial: 'hidden' },
     avatar: { type: 'file', initial: null },
     coverImage: { type: 'file', initial: null },
     globalPromptDismissed: { type: 'boolean', initial: false },
@@ -167,7 +167,7 @@ export const createSpaceModal = {
       ],
     },
 
-    // Shared toggle
+    // Access toggle (Personal vs Shared)
     {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
@@ -182,7 +182,7 @@ export const createSpaceModal = {
               children: [
                 {
                   $if: {
-                    condition: { $local: 'shared' },
+                    condition: { $eq: [{ $local: 'access' }, 'shared'] },
                     then: 'Shared with network',
                     else: 'Personal space',
                   },
@@ -195,7 +195,7 @@ export const createSpaceModal = {
               children: [
                 {
                   $if: {
-                    condition: { $local: 'shared' },
+                    condition: { $eq: [{ $local: 'access' }, 'shared'] },
                     then: 'Joinable by anyone with the link',
                     else: 'Only visible to you',
                   },
@@ -207,16 +207,25 @@ export const createSpaceModal = {
         {
           type: 'we-switch',
           props: {
-            checked: { $local: 'shared' },
+            checked: { $eq: [{ $local: 'access' }, 'shared'] },
             labelOff: 'Personal',
             labelOn: 'Shared',
-            onChange: { $setLocal: 'shared', from: '$event.detail' },
+            onChange: [
+              {
+                $if: {
+                  condition: '$event.detail',
+                  then: { $setLocal: 'access', value: 'shared' },
+                  else: { $setLocal: 'access', value: 'personal' },
+                },
+              },
+              { $if: { condition: { $not: '$event.detail' }, then: { $setLocal: 'discovery', value: 'hidden' } } },
+            ],
           },
         },
       ],
     },
 
-    // Listed in Global Discovery toggle (only active when shared)
+    // Discovery toggle (Hidden vs Listed)
     {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
@@ -230,12 +239,18 @@ export const createSpaceModal = {
               props: {
                 fontSize: '400',
                 fontWeight: 'medium',
-                color: { $if: { condition: { $local: 'shared' }, then: 'neutral-800', else: 'neutral-400' } },
+                color: {
+                  $if: {
+                    condition: { $eq: [{ $local: 'access' }, 'shared'] },
+                    then: 'neutral-800',
+                    else: 'neutral-400',
+                  },
+                },
               },
               children: [
                 {
                   $if: {
-                    condition: { $local: 'listed' },
+                    condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
                     then: 'Listed in Global Discovery',
                     else: 'Unlisted',
                   },
@@ -248,7 +263,7 @@ export const createSpaceModal = {
               children: [
                 {
                   $if: {
-                    condition: { $local: 'listed' },
+                    condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
                     then: 'Appears on the WE discovery globe',
                     else: 'Not shown in global discovery',
                   },
@@ -260,11 +275,19 @@ export const createSpaceModal = {
         {
           type: 'we-switch',
           props: {
-            checked: { $local: 'listed' },
-            disabled: { $not: { $local: 'shared' } },
+            checked: { $eq: [{ $local: 'discovery' }, 'listed'] },
+            disabled: { $not: { $eq: [{ $local: 'access' }, 'shared'] } },
             labelOff: 'Hidden',
             labelOn: 'Public',
-            onChange: { $setLocal: 'listed', from: '$event.detail' },
+            onChange: [
+              {
+                $if: {
+                  condition: '$event.detail',
+                  then: { $setLocal: 'discovery', value: 'listed' },
+                  else: { $setLocal: 'discovery', value: 'hidden' },
+                },
+              },
+            ],
           },
         },
       ],
@@ -303,8 +326,8 @@ export const createSpaceModal = {
                     args: [
                       { $local: 'name' },
                       { $local: 'description' },
-                      { $local: 'shared' },
-                      { $local: 'listed' },
+                      { $local: 'access' },
+                      { $local: 'discovery' },
                       { $local: 'avatar' },
                       { $local: 'coverImage' },
                       { $local: 'locationLat' },

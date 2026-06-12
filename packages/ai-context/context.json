@@ -6281,10 +6281,18 @@
           "required": true
         },
         {
-          "name": "visibility",
+          "name": "access",
           "type": "string",
-          "predicate": "we://visibility",
-          "required": false
+          "predicate": "we://access",
+          "required": false,
+          "default": "'personal'"
+        },
+        {
+          "name": "discovery",
+          "type": "string",
+          "predicate": "we://discovery",
+          "required": false,
+          "default": "'hidden'"
         },
         {
           "name": "avatar",

@@ -25,7 +25,8 @@ export async function syncSpaceToParent(space: Space, targetP: PerspectiveProxy)
     existing.url = space.url;
     existing.name = space.name;
     existing.description = space.description;
-    existing.visibility = space.visibility;
+    existing.access = space.access;
+    existing.discovery = space.discovery;
     existing.avatar = space.avatar;
     existing.coverImage = space.coverImage;
     await existing.save();
@@ -36,7 +37,8 @@ export async function syncSpaceToParent(space: Space, targetP: PerspectiveProxy)
       url: space.url,
       name: space.name,
       description: space.description,
-      visibility: space.visibility,
+      access: space.access,
+      discovery: space.discovery,
       avatar: space.avatar,
       coverImage: space.coverImage,
     });
@@ -60,7 +62,7 @@ export async function syncSpaceToParent(space: Space, targetP: PerspectiveProxy)
 
 /**
  * Remove a Space record from `targetP` by UUID.
- * Called when a space's visibility drops below the level where it should be mirrored.
+ * Called when a space is removed from global discovery or access is revoked.
  */
 export async function removeSpaceFromParent(spaceUuid: string, targetP: PerspectiveProxy): Promise<void> {
   const all = await Space.findAll(targetP);

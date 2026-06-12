@@ -961,7 +961,8 @@ Space extends WeNode:
   - url: string [we://url]
   - name: string (required) [we://name]
   - description: string (required) [we://description]
-  - visibility: string [we://visibility]
+  - access: string = 'personal' [we://access]
+  - discovery: string = 'hidden' [we://discovery]
   - avatar: string [we://image]
   - coverImage: string [we://thumbnail]
   Relations:

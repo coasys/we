@@ -178,25 +178,90 @@ export const aboutRoute: RouteSchema = {
                   },
                 },
 
-                // Visibility
+                // Privacy (access)
                 {
                   type: 'Row',
                   props: { ay: 'center', gap: '300', py: '100' },
                   children: [
-                    { type: 'we-icon', props: { name: 'eye' } },
-                    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Visibility'] },
+                    { type: 'we-icon', props: { name: 'lock-simple' } },
+                    { type: 'we-text', props: { color: 'neutral-600', minWidth: '80px' }, children: ['Privacy'] },
                     {
                       type: 'we-badge',
                       props: {
                         variant: {
                           $if: {
-                            condition: { $eq: ['$space.visibility', 'public'] },
+                            condition: { $eq: ['$space.access', 'shared'] },
+                            then: 'primary',
+                            else: 'neutral',
+                          },
+                        },
+                      },
+                      children: [
+                        {
+                          $if: {
+                            condition: { $eq: ['$space.access', 'shared'] },
+                            then: 'Shared',
+                            else: 'Personal',
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { color: 'neutral-500', fontSize: '300' },
+                      children: [
+                        {
+                          $if: {
+                            condition: { $eq: ['$space.access', 'shared'] },
+                            then: 'Joinable by anyone with the link',
+                            else: 'Only visible to you',
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+
+                // Discovery
+                {
+                  type: 'Row',
+                  props: { ay: 'center', gap: '300', py: '100' },
+                  children: [
+                    { type: 'we-icon', props: { name: 'globe' } },
+                    { type: 'we-text', props: { color: 'neutral-600', minWidth: '80px' }, children: ['Discovery'] },
+                    {
+                      type: 'we-badge',
+                      props: {
+                        variant: {
+                          $if: {
+                            condition: { $eq: ['$space.discovery', 'listed'] },
                             then: 'success',
                             else: 'neutral',
                           },
                         },
                       },
-                      children: ['$space.visibility'],
+                      children: [
+                        {
+                          $if: {
+                            condition: { $eq: ['$space.discovery', 'listed'] },
+                            then: 'Listed',
+                            else: 'Hidden',
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { color: 'neutral-500', fontSize: '300' },
+                      children: [
+                        {
+                          $if: {
+                            condition: { $eq: ['$space.discovery', 'listed'] },
+                            then: 'Appears on the WE discovery globe',
+                            else: 'Not shown in global discovery',
+                          },
+                        },
+                      ],
                     },
                   ],
                 },
@@ -211,11 +276,29 @@ export const aboutRoute: RouteSchema = {
                       props: { ay: 'center', gap: '300', py: '100' },
                       children: [
                         { type: 'we-icon', props: { name: 'map-pin' } },
-                        { type: 'we-text', props: { color: 'neutral-600' }, children: ['Location'] },
+                        { type: 'we-text', props: { color: 'neutral-600', minWidth: '80px' }, children: ['Location'] },
                         { type: 'we-text', children: ['$space.location.address'] },
                       ],
                     },
                   },
+                },
+
+                // History
+                {
+                  type: 'Row',
+                  props: { ay: 'center', gap: '300', py: '100' },
+                  children: [
+                    { type: 'we-icon', props: { name: 'clock' } },
+                    { type: 'we-text', props: { color: 'neutral-600', minWidth: '80px' }, children: ['Created'] },
+                    { type: 'we-timestamp', props: { value: '$space.createdAt', relative: true } },
+                    { type: 'we-text', props: { color: 'neutral-500', fontSize: '300' }, children: ['by'] },
+                    { type: 'we-avatar', props: { hash: '$space.author', size: 'xs' } },
+                    {
+                      type: 'we-text',
+                      props: { color: 'neutral-500', fontSize: '300', truncate: true, maxWidth: '160px' },
+                      children: ['$space.author'],
+                    },
+                  ],
                 },
               ],
             },
