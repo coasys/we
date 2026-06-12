@@ -110,6 +110,7 @@ export default class Avatar extends LayoutElement {
   @property({ type: String }) icon = '';
   @property({ type: String, reflect: true }) size?: SizeValue;
   @property({ type: Boolean, reflect: true }) clickable = false;
+  @property({ type: String }) ring?: string;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   updated(props: Map<string, unknown>) {
@@ -118,6 +119,10 @@ export default class Avatar extends LayoutElement {
     // Handle custom size values (e.g., "20px", "2rem")
     if (props.has('size') && this.size && !['xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'].includes(this.size)) {
       this.style.setProperty('--we-avatar-size', this.size);
+    }
+
+    if (props.has('ring')) {
+      this.style.setProperty('--we-avatar-box-shadow', this.ring ?? 'none');
     }
   }
 

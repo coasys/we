@@ -132,6 +132,13 @@ Example: { "badge": { "$count": { "items": { "$store": "notificationStore.unread
 Finds the first matching item. where is optional (returns first item if omitted). select plucks a single field.
 Example: { "$find": { "items": { "$store": "spaceStore.members" }, "where": { "id": "$item.creatorId" }, "select": "name" } }
 
+{ "$plural": { "count": <number>, "one": "singular", "other": "plural" } }
+Returns "one" when count === 1, otherwise "other". Use in children arrays for count-noun labels.
+count is resolved through the prop system — any numeric expression ($count, $store, context ref) works.
+Example: { "$plural": { "count": { "$count": { "items": { "$store": "spaceStore.members" } } }, "one": "Member", "other": "Members" } }
+Compose with we-number for a full "N Members" display:
+  we-number (value: { "$count": ... }, shorten: true) + we-text (children: [{ "$plural": { "count": { "$count": ... }, "one": "Member", "other": "Members" } }])
+
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the local perspective for model instances. Always returns an array.
@@ -384,7 +391,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false
 - we-avatar (LayoutElement)
-  Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
+  Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false, ring?: string | undefined
 - we-badge (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
@@ -558,6 +565,8 @@ when `relative` is enabled.
   Props: children?: JSX.Element, renderContent?: ((item: AccordionItem, index: number) => JSX.Element), onChange?: ((openItems: string[]) => void), items?: AccordionItem[], multiple?: boolean, styles?: Record<string, string | number>
 - AudioVisualiser
   Props: src: string | undefined, bars?: number, height?: number, color?: string, activeColor?: string
+- AvatarStack
+  Props: avatars: AvatarInfo[], max?: number, size?: "sm" | "md" | "lg" | "xl" | "xxs" | "xs" | "xxl", overlap?: number, ring?: string, styles?: Record<string, string | number>
 - Breadcrumbs
   Props: onNavigate?: ((item: BreadcrumbItem, index: number) => void), items?: BreadcrumbItem[], separator?: string, styles?: Record<string, string | number>
 - Calendar

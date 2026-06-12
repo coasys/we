@@ -53,7 +53,7 @@ export const spaceHeader: SchemaNode = {
                 // Space Details
                 {
                   type: 'Column',
-                  props: { p: '400', gap: '200', maxWidth: '700px' },
+                  props: { p: '400', gap: '300', maxWidth: '700px' },
                   children: [
                     {
                       type: 'we-text',
@@ -75,6 +75,68 @@ export const spaceHeader: SchemaNode = {
                           children: ['No description...'],
                         },
                       },
+                    },
+                    {
+                      type: 'Row',
+                      props: { gap: '400', ay: 'center', mt: '200' },
+                      children: [
+                        {
+                          type: 'AvatarStack',
+                          props: {
+                            // avatars: [
+                            //   { initials: 'Alice Baker', hash: 'abc123' },
+                            //   { initials: 'Bob Carter', hash: 'def456' },
+                            //   { initials: 'Carol Davis', hash: 'ghi789' },
+                            //   { initials: 'Dan Evans', hash: 'jkl012' },
+                            //   { initials: 'Eva Foster', hash: 'mno345' },
+                            //   { initials: 'Frank Green', hash: 'pqr678' },
+                            //   { initials: 'Grace Hill', hash: 'stu901' },
+                            //   { initials: 'Harry Irving', hash: 'vwx234' },
+                            //   { initials: 'Isla Jones', hash: 'yz1234' },
+                            //   { initials: 'Jack King', hash: 'abc567' },
+                            // ],
+                            avatars: {
+                              $map: {
+                                items: { $store: 'spaceStore.members' },
+                                select: {
+                                  image: '$item.avatar',
+                                  initials: { $concat: ['$item.firstName', ' ', '$item.lastName'] },
+                                },
+                              },
+                            },
+                            max: 5,
+                            size: 'sm',
+                            ring: '0 0 0 2px var(--we-color-neutral-500)',
+                          },
+                        },
+                        {
+                          type: 'Row',
+                          props: { gap: '100', ay: 'center' },
+                          children: [
+                            {
+                              type: 'we-number',
+                              props: {
+                                value: { $count: { items: { $store: 'spaceStore.members' } } },
+                                shorten: true,
+                                color: 'neutral-600',
+                              },
+                            },
+                            {
+                              type: 'we-text',
+                              props: { color: 'neutral-500' },
+                              children: [
+                                {
+                                  $plural: {
+                                    count: { $count: { items: { $store: 'spaceStore.members' } } },
+                                    one: 'Member',
+                                    other: 'Members',
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
                     },
                   ],
                 },
@@ -149,7 +211,6 @@ export const spaceHeader: SchemaNode = {
                         items: [
                           { label: 'About', icon: 'book-open', segment: 'about', path: './about' },
                           { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
-                          { label: 'Members', icon: 'users-three', segment: 'members', path: './members' },
                           { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
                           { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
                           // { label: 'Signals', icon: 'heart', segment: 'signals', path: './signals' },

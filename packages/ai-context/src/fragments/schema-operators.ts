@@ -129,6 +129,13 @@ Example: { "badge": { "$count": { "items": { "$store": "notificationStore.unread
 Finds the first matching item. where is optional (returns first item if omitted). select plucks a single field.
 Example: { "$find": { "items": { "$store": "spaceStore.members" }, "where": { "id": "$item.creatorId" }, "select": "name" } }
 
+{ "$plural": { "count": <number>, "one": "singular", "other": "plural" } }
+Returns "one" when count === 1, otherwise "other". Use in children arrays for count-noun labels.
+count is resolved through the prop system — any numeric expression ($count, $store, context ref) works.
+Example: { "$plural": { "count": { "$count": { "items": { "$store": "spaceStore.members" } } }, "one": "Member", "other": "Members" } }
+Compose with we-number for a full "N Members" display:
+  we-number (value: { "$count": ... }, shorten: true) + we-text (children: [{ "$plural": { "count": { "$count": ... }, "one": "Member", "other": "Members" } }])
+
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the local perspective for model instances. Always returns an array.

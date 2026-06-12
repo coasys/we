@@ -225,11 +225,7 @@ export function AdamStoreProvider(props: ParentProps) {
           return;
         }
         if (perspective.name?.toLowerCase().startsWith('agent perspective')) {
-          console.log(
-            'AdamStore: suppressing agent perspective from sidebar',
-            perspective.name,
-            perspective.uuid,
-          );
+          console.log('AdamStore: suppressing agent perspective from sidebar', perspective.name, perspective.uuid);
           return;
         }
         // Re-check after the async gap: createSpace's eager update may have run while

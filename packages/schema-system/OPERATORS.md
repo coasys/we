@@ -29,7 +29,7 @@ The schema system has **two categories** of operators:
 **Prop-level operators** (resolved by `resolveProp` in `@we/schema-shared`) — these appear inside `props` and produce a value:
 
 - `$store`, `$concat`, `$action`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$in`, `$not`, `$and`, `$or`, `$lt`, `$gt`
-- Array operators: `$filter`, `$count`, `$find`
+- Array operators: `$filter`, `$count`, `$find`, `$plural`
 - Local state: `$local`, `$setLocal`, `$toggleLocal`, `$callLocal`, `$error`, `$valid`, `$touched`, `$formValid`, `$touch`, `$resetLocal`
 - Context reference strings: `$item.name`, `$space.uuid` (resolved inline by the dispatcher)
 
@@ -796,6 +796,76 @@ Find the first array item matching `where` conditions. Optionally pluck a single
 
 // Get just the name
 { $find: { items: { $store: 'spaceStore.members' }, where: { id: '$item.creatorId' }, select: 'name' } }
+```
+
+---
+
+### `$plural`
+
+Return a singular or plural string based on a count. Use in `children` arrays for count-noun labels.
+
+**Syntax:**
+
+```typescript
+{
+  $plural: {
+    count: <number-expression>,
+    one: '<singular>',
+    other: '<plural>',
+  }
+}
+```
+
+- `count` — resolved through the prop system; accepts any numeric expression (`$count`, `$store`, context ref, literal)
+- `one` — returned when `count === 1`
+- `other` — returned in all other cases
+
+**Example:**
+
+```typescript
+// "1 Member" or "12 Members"
+{
+  type: 'we-text',
+  children: [
+    {
+      $plural: {
+        count: { $count: { items: { $store: 'spaceStore.members' } } },
+        one: 'Member',
+        other: 'Members',
+      },
+    },
+  ],
+}
+```
+
+**Composing with `we-number` for a full "N Members" display:**
+
+```typescript
+{
+  type: 'Row',
+  props: { gap: '100', ay: 'center' },
+  children: [
+    {
+      type: 'we-number',
+      props: {
+        value: { $count: { items: { $store: 'spaceStore.members' } } },
+        shorten: true,
+      },
+    },
+    {
+      type: 'we-text',
+      children: [
+        {
+          $plural: {
+            count: { $count: { items: { $store: 'spaceStore.members' } } },
+            one: 'Member',
+            other: 'Members',
+          },
+        },
+      ],
+    },
+  ],
+}
 ```
 
 ---

@@ -10,6 +10,7 @@ import {
 } from '@we/cesium-layers';
 import {
   Accordion,
+  AvatarStack,
   Breadcrumbs,
   Calendar,
   CircleButton,
@@ -59,6 +60,7 @@ export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
 export const componentRegistry: ComponentRegistry = {
   // @we/components
   Accordion,
+  AvatarStack,
   Breadcrumbs,
   Calendar,
   CircleButton,

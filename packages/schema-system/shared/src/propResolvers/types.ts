@@ -6,5 +6,6 @@ export type ConcatProp = unknown[];
 export type FilterProp = { items: unknown; where: Record<string, unknown> };
 export type CountProp = { items: unknown };
 export type FindProp = { items: unknown; where?: Record<string, unknown>; select?: string };
+export type PluralProp = { count: unknown; one: string; other: string };
 export type Memo = <T>(fn: () => T) => T;
 export const noMemo: Memo = (fn) => fn();

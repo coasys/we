@@ -48,6 +48,7 @@ export const contextData: ContextData = {
           optional: true,
         },
         { name: 'clickable', type: 'boolean', optional: false, default: 'false' },
+        { name: 'ring', type: 'string | undefined', optional: true },
       ],
     },
     {
@@ -1029,6 +1030,18 @@ export const contextData: ContextData = {
         { name: 'height', type: 'number', optional: true },
         { name: 'color', type: 'string', optional: true },
         { name: 'activeColor', type: 'string', optional: true },
+      ],
+      source: 'components',
+    },
+    {
+      name: 'AvatarStack',
+      props: [
+        { name: 'avatars', type: 'AvatarInfo[]', optional: false },
+        { name: 'max', type: 'number', optional: true },
+        { name: 'size', type: '"sm" | "md" | "lg" | "xl" | "xxs" | "xs" | "xxl"', optional: true },
+        { name: 'overlap', type: 'number', optional: true },
+        { name: 'ring', type: 'string', optional: true },
+        { name: 'styles', type: 'Record<string, string | number>', optional: true },
       ],
       source: 'components',
     },

@@ -69,5 +69,12 @@ export {
   type SignalMode,
 } from '../../components/signals/SignalControl/SignalControl.solid';
 
+// People
+export {
+  AvatarStack,
+  type AvatarInfo,
+  type AvatarStackProps,
+} from '../../components/people/AvatarStack/AvatarStack.solid';
+
 // Testing
 export { RerenderLog, type RerenderLogProps } from '../../components/testing/RerenderLog/RerenderLog.solid';

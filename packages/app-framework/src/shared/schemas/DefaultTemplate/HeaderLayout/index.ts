@@ -4,10 +4,9 @@ import { aboutRoute } from '../routes/AboutRoute';
 import { cardsRoute } from '../routes/CardsRoute';
 import { fluxRoute } from '../routes/FluxRoute';
 import { globeRoute } from '../routes/GlobeRoute';
-// import { graphRoute } from '../routes/GraphRoute';
+import { graphRoute } from '../routes/GraphRoute';
 import { homeRoute } from '../routes/HomeRoute';
-import { membersRoute } from '../routes/MembersRoute';
-import { signalsRoute } from '../routes/SignalsRoute';
+// import { signalsRoute } from '../routes/SignalsRoute';
 import { spaceGate } from '../SpaceGate';
 import { spaceHeader } from './SpaceHeader';
 
@@ -42,9 +41,9 @@ export const headerLayout: TemplateSchema = {
         aboutRoute,
         globeRoute,
         cardsRoute,
-        membersRoute,
-        signalsRoute,
+        // signalsRoute,
         fluxRoute,
+        graphRoute,
       ],
     },
   ],
