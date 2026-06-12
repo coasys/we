@@ -3,34 +3,10 @@ import type { SchemaNode } from '@we/schema-shared';
 export const postsList: SchemaNode = {
   type: 'Column',
   props: { gap: '400' },
-  $localState: {
-    sortBy: { type: 'string', initial: 'DESC' },
-  },
   $queries: {
     signalTypes: { model: 'SignalType', subscribe: true },
   },
   children: [
-    // Header: sort controls
-    {
-      type: 'Row',
-      props: { ay: 'center', gap: '300', pb: '200' },
-      children: [
-        { type: 'we-text', props: { fontSize: '300', color: 'neutral-500' }, children: ['Sort by'] },
-        {
-          type: 'we-select',
-          props: {
-            value: { $local: 'sortBy' },
-            options: [
-              { label: 'Newest', value: 'DESC' },
-              { label: 'Oldest', value: 'ASC' },
-            ],
-            onChange: { $setLocal: 'sortBy', from: '$event.target.value' },
-          },
-        },
-      ],
-    },
-
-    // Post list
     {
       type: '$each',
       props: {
@@ -71,11 +47,6 @@ export const postsList: SchemaNode = {
                       props: { fontWeight: '600', color: 'neutral-800' },
                       children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
                     },
-                    // {
-                    //   type: 'we-text',
-                    //   props: { fontSize: '500', color: 'neutral-500' },
-                    //   children: [{ $concat: ['@', '$author.handle'] }],
-                    // },
                     {
                       type: 'we-timestamp',
                       props: { value: '$post.createdAt', relative: true, color: 'neutral-500' },
@@ -84,15 +55,26 @@ export const postsList: SchemaNode = {
                 },
               ],
             },
+            // Content — hidden in compact mode
             {
-              type: 'Column',
-              children: [
-                {
-                  type: 'BlockRenderer',
-                  props: { editorState: '$post.editorState', perspective: { $store: 'adamStore.currentPerspective' } },
+              type: '$if',
+              props: {
+                condition: { $ne: [{ $local: 'displayMode' }, 'compact'] },
+                then: {
+                  type: 'Column',
+                  children: [
+                    {
+                      type: 'BlockRenderer',
+                      props: {
+                        editorState: '$post.editorState',
+                        perspective: { $store: 'adamStore.currentPerspective' },
+                      },
+                    },
+                  ],
                 },
-              ],
+              },
             },
+            // Signals
             {
               type: '$if',
               props: {
@@ -109,9 +91,14 @@ export const postsList: SchemaNode = {
                           type: 'SignalControl',
                           props: {
                             signalType: '$sig',
-                            signals: { $filter: { items: '$post.signals', where: { signalTypeId: '$sig.id' } } },
+                            signals: {
+                              $filter: { items: '$post.signals', where: { signalTypeId: '$sig.id' } },
+                            },
                             myDid: { $store: 'adamStore.me.did' },
-                            onSignal: { $action: 'spaceStore.upsertSignal', args: ['$post.id', '$sig.id', '$arg'] },
+                            onSignal: {
+                              $action: 'spaceStore.upsertSignal',
+                              args: ['$post.id', '$sig.id', '$arg'],
+                            },
                           },
                         },
                       ],
