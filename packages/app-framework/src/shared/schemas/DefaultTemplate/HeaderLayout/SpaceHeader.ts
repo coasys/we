@@ -66,12 +66,12 @@ export const spaceHeader: SchemaNode = {
                         condition: '$space.description',
                         then: {
                           type: 'we-text',
-                          props: { fontSize: '400', truncate: true },
+                          props: { color: 'neutral-700', truncate: true },
                           children: ['$space.description'],
                         },
                         else: {
                           type: 'we-text',
-                          props: { fontSize: '400', color: 'neutral-500', italic: true },
+                          props: { color: 'neutral-500', italic: true },
                           children: ['No description...'],
                         },
                       },
@@ -181,7 +181,7 @@ export const spaceHeader: SchemaNode = {
               children: [
                 {
                   type: 'we-avatar',
-                  props: { image: '$space.avatar', initials: '$space.name', size: 'sm' },
+                  props: { image: '$space.avatar', initials: '$space.name', size: 'lg' },
                 },
                 {
                   type: 'we-text',

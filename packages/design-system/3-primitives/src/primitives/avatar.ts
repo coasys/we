@@ -18,7 +18,7 @@ const styles = css`
     --we-avatar-host-display: inline-flex;
     --we-avatar-width: var(--we-avatar-size);
     --we-avatar-height: var(--we-avatar-size);
-    --we-avatar-size: var(--we-size-md);
+    --we-avatar-size: var(--we-avatar-size-md);
     --we-avatar-box-shadow: none;
     --we-avatar-border: none;
     --we-avatar-color: var(--we-color-black);
@@ -49,6 +49,9 @@ const styles = css`
   }
   :host([size='sm']) {
     --we-avatar-size: var(--we-avatar-size-sm);
+  }
+  :host([size='md']) {
+    --we-avatar-size: var(--we-avatar-size-md);
   }
   :host([size='lg']) {
     --we-avatar-size: var(--we-avatar-size-lg);

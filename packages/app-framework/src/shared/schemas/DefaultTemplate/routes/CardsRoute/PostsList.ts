@@ -61,6 +61,7 @@ export const postsList: SchemaNode = {
                     {
                       type: 'we-avatar',
                       props: {
+                        size: 'sm',
                         image: '$author.avatar',
                         initials: { $concat: ['$author.firstName', ' ', '$author.lastName'] },
                       },

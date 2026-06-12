@@ -156,7 +156,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
             class="we-collapsible-sidebar__item-avatar"
             image={item.avatar!.src}
             initials={item.avatar!.name?.slice(0, 2)}
-            // size="26px"
+            size="sm"
             // status={item.avatar!.status}
           />
         </Show>
