@@ -730,6 +730,21 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           deepUnwrap(resolveProp({ $map: { ...mapSpec, items: itemsSignal } }, stores, effectiveContext, createMemo)),
         );
       }
+    } else if (isEventProp(key) && Array.isArray(rawValue)) {
+      // Event handler arrays: resolve each item lazily at call time so that
+      // $if conditions with $event.* references (e.g. '$event.detail') resolve
+      // against the actual event rather than the render-time context.
+      const items = rawValue as unknown[];
+      propMemos[key] =
+        () =>
+        (...args: unknown[]) => {
+          const callContext = args.length > 0 ? { ...effectiveContext, event: args[0] } : effectiveContext;
+          for (const item of items) {
+            let fn = resolveProp(item, stores, callContext, createMemo);
+            if (typeof fn === 'function' && REACTIVE_ACCESSOR in (fn as object)) fn = (fn as () => unknown)();
+            if (typeof fn === 'function') fn(...args);
+          }
+        };
     } else {
       const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
       const raw = getModel ? hoistMapQuerySignals(rawValue, stores, getModel, effectiveContext) : rawValue;
