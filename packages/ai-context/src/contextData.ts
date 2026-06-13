@@ -1078,6 +1078,21 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
+      name: 'CollapsedContent',
+      props: [
+        { name: 'collapsed', type: 'boolean', optional: false },
+        { name: 'onExpandClick', type: '(() => void)', optional: true },
+        { name: 'showToggle', type: 'boolean', optional: true },
+        { name: 'icon', type: 'string', optional: true },
+        { name: 'maxHeight', type: 'string', optional: true },
+        { name: 'fadeColor', type: 'string', optional: true },
+        { name: 'children', type: 'JSX.Element', optional: true },
+        { name: 'class', type: 'string', optional: true },
+        { name: 'styles', type: 'Record<string, string | number>', optional: true },
+      ],
+      source: 'components',
+    },
+    {
       name: 'Column',
       props: [
         { name: 'styles', type: 'JSX.CSSProperties', optional: true },
