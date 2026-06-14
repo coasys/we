@@ -985,7 +985,6 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
-  // TODO: install space SDNA on join if WE space?
   async function joinSpace(id: string): Promise<void> {
     const client = adamClient();
     if (!client) return;
@@ -1018,6 +1017,12 @@ export function AdamStoreProvider(props: ParentProps) {
         console.error('AdamStore: failed to get perspective proxy after joining');
         return;
       }
+
+      // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
+      // immediately. register() is idempotent — safe for non-WE neighbourhoods too.
+      await installSpaceSdna(joinedP);
+      // Give the SDNA write time to settle before reactive queries fire.
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // If this is the configured global space, update globalPerspective.
       const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
