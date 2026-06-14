@@ -75,6 +75,7 @@ export interface AdamStore {
   agentSettings: Accessor<AgentSettings | null>;
   creatingSpace: Accessor<boolean>;
   currentPerspective: Accessor<PerspectiveProxy | null>;
+  currentPerspectiveSharedUrl: Accessor<string | undefined>;
   currentPerspectiveModels: Accessor<ModelManifestEntry[]>;
   agents: Accessor<AgentProfileSummary[]>;
 
@@ -148,6 +149,12 @@ export function AdamStoreProvider(props: ParentProps) {
     const myDid = me()?.did;
     return myDid ? agents().find((a) => a.did === myDid) : undefined;
   });
+
+  // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,
+  // personal perspectives (no sharedUrl) produce {} rather than {"url":null}.
+  const currentPerspectiveSharedUrl = createMemo<string | undefined>(
+    () => currentPerspective()?.sharedUrl ?? undefined,
+  );
 
   const systemPerspectiveUuids = createMemo(() =>
     allPerspectives()
@@ -904,7 +911,9 @@ export function AdamStoreProvider(props: ParentProps) {
       // HACK: Model.register resolves before the SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // If shared, publish as neighbourhood
+      // If shared, publish as neighbourhood — capture the returned URL so it can be
+      // stored on the Space model (spacePerspective.sharedUrl is not updated in-place).
+      let neighbourhoodUrl: string | undefined;
       if (access === 'shared') {
         const uid = crypto.randomUUID();
         const languages = await client.runtime.knownLinkLanguageTemplates();
@@ -912,7 +921,7 @@ export function AdamStoreProvider(props: ParentProps) {
         if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
         const templateData = JSON.stringify({ uid, name: `${name}-link-language` });
         const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
-        await client.neighbourhood.publishFromPerspective(
+        neighbourhoodUrl = await client.neighbourhood.publishFromPerspective(
           spacePerspective.uuid,
           linkLanguage.address,
           new Perspective([]),
@@ -928,7 +937,7 @@ export function AdamStoreProvider(props: ParentProps) {
       // Assemble Space + optional location data — used for both own and parent perspectives
       const spaceData = {
         uuid: spacePerspective.uuid,
-        url: spacePerspective.sharedUrl ?? undefined,
+        url: neighbourhoodUrl,
         name,
         description,
         access,
@@ -1178,6 +1187,7 @@ export function AdamStoreProvider(props: ParentProps) {
     agentSettings,
     creatingSpace,
     currentPerspective,
+    currentPerspectiveSharedUrl,
     currentPerspectiveModels,
     agents,
     ownAgent,

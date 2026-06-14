@@ -11,7 +11,7 @@ export const aboutRoute: RouteSchema = {
         item: {
           $query: {
             model: 'Space',
-            where: { uuid: { $store: 'adamStore.currentPerspective.uuid' } },
+            where: { url: { $store: 'adamStore.currentPerspectiveSharedUrl' } },
             include: { location: true },
           },
         },

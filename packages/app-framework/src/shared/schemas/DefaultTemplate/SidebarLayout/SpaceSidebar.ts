@@ -3,7 +3,7 @@ import type { SchemaNode } from '@we/schema-shared';
 export const spaceSidebar: SchemaNode = {
   type: '$single',
   props: {
-    item: { $query: { model: 'Space', where: { uuid: { $store: 'adamStore.currentPerspective.uuid' } } } },
+    item: { $query: { model: 'Space', where: { url: { $store: 'adamStore.currentPerspectiveSharedUrl' } } } },
     as: 'space',
   },
   children: [
