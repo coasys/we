@@ -1,7 +1,7 @@
 import type { RouteSchema } from '@we/schema-shared';
 
+import { createSpaceModal } from '../../CreateSpaceModal';
 import { blocksList } from './BlocksList';
-import { createChildSpaceModal } from './CreateChildSpaceModal';
 import { createPostModal } from './CreatePostModal';
 import { cardsHeader } from './Header';
 import { postsList } from './PostsList';
@@ -28,7 +28,7 @@ export const cardsRoute: RouteSchema = {
         cardsHeader,
 
         { type: '$if', props: { condition: { $local: 'createPostOpen' }, then: createPostModal } },
-        { type: '$if', props: { condition: { $local: 'createSpaceModalOpen' }, then: createChildSpaceModal } },
+        { type: '$if', props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal } },
 
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'posts'] }, then: postsList } },
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'users'] }, then: usersList } },

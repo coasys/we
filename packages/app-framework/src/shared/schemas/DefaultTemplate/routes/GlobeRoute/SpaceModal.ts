@@ -22,6 +22,7 @@ export const spaceModal = {
       type: '$single',
       props: {
         item: { $query: { model: 'Space', where: { id: { $local: 'selectedPin.id' } }, include: { signals: true } } },
+        as: 'space',
       },
       children: [
         {
@@ -32,10 +33,10 @@ export const spaceModal = {
             {
               type: '$if',
               props: {
-                condition: '$item.coverImage',
+                condition: '$space.coverImage',
                 then: {
                   type: 'we-image',
-                  props: { src: '$item.coverImage', width: '100%', height: '160px', fit: 'cover', r: '300' },
+                  props: { src: '$space.coverImage', width: '100%', height: '160px', fit: 'cover', r: '300' },
                 },
               },
             },
@@ -48,10 +49,10 @@ export const spaceModal = {
                 {
                   type: '$if',
                   props: {
-                    condition: '$item.avatar',
+                    condition: '$space.avatar',
                     then: {
                       type: 'we-image',
-                      props: { src: '$item.avatar', width: '60px', height: '60px', fit: 'cover', r: 'full' },
+                      props: { src: '$space.avatar', width: '60px', height: '60px', fit: 'cover', r: 'full' },
                     },
                     else: { type: 'we-icon', props: { name: 'globe', size: '60px', color: 'neutral-400' } },
                   },
@@ -60,15 +61,15 @@ export const spaceModal = {
                   type: 'Column',
                   props: { gap: '100' },
                   children: [
-                    { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['$item.name'] },
+                    { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['$space.name'] },
                     {
                       type: '$if',
                       props: {
-                        condition: '$item.description',
+                        condition: '$space.description',
                         then: {
                           type: 'we-text',
                           props: { fontSize: '400', color: 'neutral-500' },
-                          children: ['$item.description'],
+                          children: ['$space.description'],
                         },
                       },
                     },
@@ -90,9 +91,9 @@ export const spaceModal = {
                       type: 'SignalControl',
                       props: {
                         signalType: '$sig',
-                        signals: { $filter: { items: '$item.signals', where: { signalTypeId: '$sig.id' } } },
+                        signals: { $filter: { items: '$space.signals', where: { signalTypeId: '$sig.id' } } },
                         myDid: { $store: 'adamStore.me.did' },
-                        onSignal: { $action: 'spaceStore.upsertSignal', args: ['$item.id', '$sig.id', '$arg'] },
+                        onSignal: { $action: 'spaceStore.upsertSignal', args: ['$space.id', '$sig.id', '$arg'] },
                       },
                     },
                   ],
@@ -100,18 +101,46 @@ export const spaceModal = {
               ],
             },
 
-            // Join Space CTA
+            // Enter / Join CTA — only shown for spaces with a neighbourhood URL.
+            // Spaces synced to the global perspective before the url fix may have url=null.
             {
-              type: 'we-button',
+              type: '$if',
               props: {
-                text: 'Enter Space',
-                bg: 'primary-500',
-                color: 'neutral-0',
-                height: '40px',
-                onClick: [
-                  { $action: 'adamStore.switchPerspective', args: ['$item.uuid'] },
-                  { $action: 'routeStore.navigate', args: [{ $concat: ['/space/', '$item.uuid', '/globe'] }] },
-                ],
+                condition: '$space.url',
+                then: {
+                  type: '$if',
+                  props: {
+                    condition: { $in: ['$space.url', { $store: 'adamStore.joinedSpaceCids' }] },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        text: 'Enter Space',
+                        variant: 'primary',
+                        height: '40px',
+                        onClick: [
+                          { $setLocal: 'selectedPin', value: null },
+                          { $action: 'spaceStore.enterSpace', args: ['$space.url'] },
+                        ],
+                      },
+                    },
+                    else: {
+                      type: 'we-button',
+                      props: {
+                        text: 'Join Space',
+                        variant: 'primary',
+                        height: '40px',
+                        onClick: {
+                          $action: 'adamStore.joinSpace',
+                          args: ['$space.url'],
+                          onSuccess: [
+                            { $setLocal: 'selectedPin', value: null },
+                            { $action: 'spaceStore.enterSpace', args: ['$space.url'] },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
           ],

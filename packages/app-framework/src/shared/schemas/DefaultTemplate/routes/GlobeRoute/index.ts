@@ -6,8 +6,8 @@
 
 import type { RouteSchema } from '@we/schema-shared';
 
+import { createSpaceModal } from '../../CreateSpaceModal';
 import { agentModal } from './AgentModal';
-import { createSpaceModal } from './CreateSpaceModal';
 import { spaceModal } from './SpaceModal';
 
 export const globeRoute: RouteSchema = {
@@ -222,7 +222,7 @@ export const globeRoute: RouteSchema = {
                     $query: {
                       model: 'Space',
                       where: {
-                        uuid: { not: { $store: 'adamStore.currentPerspective.uuid' } },
+                        url: { not: { $store: 'adamStore.currentPerspectiveSharedCid' } },
                         name: { contains: { $local: 'searchText' } },
                       },
                       include: { location: true },

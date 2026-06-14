@@ -10,7 +10,7 @@ import { getModelClasses, getModelManifest } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
 import { installRootSdna, installSpaceSdna } from '@shared/sdnaModels';
-import { removeSpaceFromParent } from '@shared/syncHelpers';
+import { removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
 import { AgentSettings, compressImageToFileData, type FileData, LocationBlock, Space } from '@we/models';
 
 // Space.avatar/coverImage are typed as string (resolved data URI on read) but accept FileData on write.
@@ -19,7 +19,16 @@ type SpaceInput = Omit<Partial<Space>, 'avatar' | 'coverImage'> & {
   avatar?: FileData | string;
   coverImage?: FileData | string;
 };
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  ParentProps,
+  untrack,
+  useContext,
+} from 'solid-js';
 
 import weSeedFile from '../../../../../../we-seed.json';
 import type { WeSeedFile } from '../../../types/seed';
@@ -68,12 +77,17 @@ export interface AdamStore {
   globalPerspective: Accessor<PerspectiveProxy | null>;
   systemPerspectiveUuids: Accessor<string[]>;
   orderedPerspectives: Accessor<PerspectiveProxy[]>;
-  orderedSidebarItems: Accessor<{ uuid: string; name: string; avatar?: string; spaceId: string }[]>;
+  orderedSidebarItems: Accessor<
+    { uuid: string; name: string; avatar?: string; spaceId: string; isGlobalPreJoin?: boolean }[]
+  >;
   globalSpaceId: () => string | null;
   agentSettings: Accessor<AgentSettings | null>;
   creatingSpace: Accessor<boolean>;
   currentPerspective: Accessor<PerspectiveProxy | null>;
+  currentPerspectiveSharedUrl: Accessor<string | undefined>;
+  currentPerspectiveSharedCid: Accessor<string | undefined>;
   currentPerspectiveModels: Accessor<ModelManifestEntry[]>;
+  joinedSpaceCids: Accessor<string[]>;
   agents: Accessor<AgentProfileSummary[]>;
 
   // Actions
@@ -147,6 +161,22 @@ export function AdamStoreProvider(props: ParentProps) {
     return myDid ? agents().find((a) => a.did === myDid) : undefined;
   });
 
+  // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,
+  // personal perspectives (no sharedUrl) produce {} rather than {"url":null}.
+  const currentPerspectiveSharedUrl = createMemo<string | undefined>(
+    () => currentPerspective()?.sharedUrl ?? undefined,
+  );
+  // CID-only form (neighbourhood:// stripped) for comparing against Space.url,
+  // which stores only the CID to avoid URI resolution in the AD4M triple store.
+  const currentPerspectiveSharedCid = createMemo<string | undefined>(
+    () => currentPerspective()?.sharedUrl?.replace('neighbourhood://', '') ?? undefined,
+  );
+  const joinedSpaceCids = createMemo<string[]>(() =>
+    allPerspectives()
+      .filter((p) => p.sharedUrl)
+      .map((p) => p.sharedUrl!.replace('neighbourhood://', '')),
+  );
+
   const systemPerspectiveUuids = createMemo(() =>
     allPerspectives()
       .filter((p) => ['we-root', 'we-test'].includes(p.name))
@@ -178,18 +208,38 @@ export function AdamStoreProvider(props: ParentProps) {
     return [...ordered, ...appended];
   });
 
-  // Derived: all non-system perspectives with Space avatar/name when available, plain perspective data otherwise
+  // Derived: all non-system perspectives with Space avatar/name when available, plain perspective data otherwise.
+  // Prepends a virtual pre-join entry for the global space when it is configured but the user hasn't joined yet.
   const orderedSidebarItems = createMemo(() => {
+    // For joined spaces, s.uuid is the creator's local UUID which never matches the
+    // joiner's p.uuid. Space.url stores only the CID (no neighbourhood:// prefix) to
+    // avoid URI resolution in the triple store; strip the prefix when looking up.
     const spaceByUuid = new Map(mySpaces().map((s) => [s.uuid, s]));
-    return orderedPerspectives().map((p) => {
-      const s = spaceByUuid.get(p.uuid);
-      return {
-        uuid: p.uuid,
-        name: s?.name ?? p.name,
-        avatar: typeof s?.avatar === 'string' ? s.avatar : undefined,
-        spaceId: p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid,
-      };
-    });
+    const spaceByUrl = new Map(
+      mySpaces()
+        .filter((s) => s.url)
+        .map((s) => [s.url!, s]),
+    );
+    const items: { uuid: string; name: string; avatar?: string; spaceId: string; isGlobalPreJoin?: boolean }[] =
+      orderedPerspectives().map((p) => {
+        const cid = p.sharedUrl?.replace('neighbourhood://', '');
+        const s = (cid ? spaceByUrl.get(cid) : undefined) ?? spaceByUuid.get(p.uuid);
+        return {
+          uuid: p.uuid,
+          name: s?.name ?? p.name,
+          avatar: typeof s?.avatar === 'string' ? s.avatar : undefined,
+          spaceId: p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid,
+        };
+      });
+
+    const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
+    const globalId = seedUrl ? seedUrl.replace('neighbourhood://', '') : null;
+    const alreadyJoined = globalId ? items.some((item) => item.spaceId === globalId) : true;
+    if (globalId && !alreadyJoined) {
+      items.unshift({ uuid: 'global-pre-join', name: 'WE Discovery', spaceId: globalId, isGlobalPreJoin: true });
+    }
+
+    return items;
   });
 
   // Derived: personal and shared spaces
@@ -879,8 +929,6 @@ export function AdamStoreProvider(props: ParentProps) {
   ): Promise<void> {
     const client = adamClient();
     if (!client) return;
-    // Capture the active perspective now — it becomes the parent once the new space is created
-    const parentPerspective = currentPerspective();
     setCreatingSpace(true);
 
     try {
@@ -893,7 +941,9 @@ export function AdamStoreProvider(props: ParentProps) {
       // HACK: Model.register resolves before the SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // If shared, publish as neighbourhood
+      // If shared, publish as neighbourhood — capture the returned URL so it can be
+      // stored on the Space model (spacePerspective.sharedUrl is not updated in-place).
+      let neighbourhoodUrl: string | undefined;
       if (access === 'shared') {
         const uid = crypto.randomUUID();
         const languages = await client.runtime.knownLinkLanguageTemplates();
@@ -901,7 +951,7 @@ export function AdamStoreProvider(props: ParentProps) {
         if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
         const templateData = JSON.stringify({ uid, name: `${name}-link-language` });
         const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
-        await client.neighbourhood.publishFromPerspective(
+        neighbourhoodUrl = await client.neighbourhood.publishFromPerspective(
           spacePerspective.uuid,
           linkLanguage.address,
           new Perspective([]),
@@ -917,7 +967,7 @@ export function AdamStoreProvider(props: ParentProps) {
       // Assemble Space + optional location data — used for both own and parent perspectives
       const spaceData = {
         uuid: spacePerspective.uuid,
-        url: spacePerspective.sharedUrl ?? undefined,
+        url: neighbourhoodUrl?.replace('neighbourhood://', ''),
         name,
         description,
         access,
@@ -942,11 +992,18 @@ export function AdamStoreProvider(props: ParentProps) {
       const spaceModel = await addSpaceToPerspective(spacePerspective, spaceData, locationData);
       console.log('AdamStore: Created space model for new perspective', spaceModel);
 
-      // Mirror into parent perspective — no re-fetch or findAll needed for a fresh creation
-      if (parentPerspective && parentPerspective.uuid !== spacePerspective.uuid) {
-        await addSpaceToPerspective(parentPerspective, spaceData, locationData).catch((err) =>
-          console.error('AdamStore: mirror space to parent failed', err),
-        );
+      // Sync to global discovery space when the user opted in.
+      // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
+      // and locationData directly rather than reading them back from spaceModel.
+      if (discovery === 'listed') {
+        const globalP = globalPerspective();
+        if (globalP) {
+          await syncSpaceToParent(spaceModel, globalP, {
+            locationData,
+            avatarData,
+            coverImageData,
+          }).catch((err) => console.error('AdamStore: sync space to global failed', err));
+        }
       }
 
       // Update sidebar and navigate.
@@ -967,10 +1024,13 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
-  // TODO: install space SDNA on join if WE space?
   async function joinSpace(id: string): Promise<void> {
     const client = adamClient();
     if (!client) return;
+    if (!id || typeof id !== 'string') {
+      console.warn('AdamStore: joinSpace called with invalid id', id);
+      return;
+    }
 
     // Normalise the identifier to a full neighbourhood URL when appropriate:
     //   - Full URL passed directly → use as-is
@@ -1001,10 +1061,24 @@ export function AdamStoreProvider(props: ParentProps) {
         return;
       }
 
+      // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
+      // immediately. register() is idempotent — safe for non-WE neighbourhoods too.
+      await installSpaceSdna(joinedP);
+      // Give the SDNA write time to settle before reactive queries fire.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       // If this is the configured global space, update globalPerspective.
       const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
       if (neighbourhoodUrl === seedUrl) {
         setGlobalPerspective(joinedP);
+      }
+
+      // Load the Space model and push into mySpaces so the sidebar shows the correct
+      // name immediately, without requiring a reboot.
+      const cid = neighbourhoodUrl.replace('neighbourhood://', '');
+      const joinedSpaceModel = await Space.findOne(joinedP, { where: { url: cid } }).catch(() => null);
+      if (joinedSpaceModel && !mySpaces().some((s) => s.url === joinedSpaceModel.url)) {
+        setMySpaces((prev) => [...prev, joinedSpaceModel]);
       }
 
       await switchPerspective(joinedP.uuid);
@@ -1041,25 +1115,53 @@ export function AdamStoreProvider(props: ParentProps) {
       const perspective = await client.perspective.byUUID(uuid);
       if (!perspective) return;
 
-      // Synthesise Ad4mModel classes from SHACL shapes and register them.
-      try {
-        const classes = await getModelClasses(perspective);
-        registerDynamicModels(uuid, classes);
-      } catch (err) {
-        console.warn('AdamStore: getModelClasses failed', err);
+      // Check whether SDNA is already installed. This is a fast local conductor
+      // lookup for already-joined spaces. If the perspective has no SHACL shapes
+      // yet (first-time join race: addPerspectiveAddedListener fires before
+      // joinSpace reaches installSpaceSdna), block here until SDNA is installed so
+      // schema queries don't immediately throw "No SHACL shape" errors.
+      let classes = await getModelClasses(perspective);
+      if (Object.keys(classes).length === 0) {
+        await installSpaceSdna(perspective);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        classes = await getModelClasses(perspective);
       }
 
-      // Populate currentPerspectiveModels with the full manifest (WE + external).
-      // The full list lets AiStore build a perspective-accurate validator allowlist.
-      try {
-        const manifest = await getModelManifest(perspective);
-        setCurrentPerspectiveModels(manifest);
-      } catch (err) {
-        console.warn('AdamStore: getModelManifest failed', err);
-        setCurrentPerspectiveModels([]);
-      }
-
+      // SDNA is installed — switch immediately so WE templates render.
+      // WE model classes are pre-registered at module load; no need to await
+      // registerDynamicModels before the UI is usable.
       setCurrentPerspective(perspective);
+
+      // Background: register dynamic (non-WE) model classes and update manifest.
+      // Also backfill mySpaces if the Space record wasn't synced from Holochain
+      // at join time (joinSpace's Space.findOne may have returned null if the
+      // creator's record hadn't propagated yet).
+      // Stale guard: if the user navigated away before this resolves, skip updates.
+      void (async () => {
+        try {
+          if (currentPerspective()?.uuid === uuid) registerDynamicModels(uuid, classes);
+        } catch (err) {
+          console.warn('AdamStore: registerDynamicModels failed', err);
+        }
+
+        try {
+          const manifest = await getModelManifest(perspective);
+          if (currentPerspective()?.uuid === uuid) setCurrentPerspectiveModels(manifest);
+        } catch (err) {
+          console.warn('AdamStore: getModelManifest failed', err);
+          if (currentPerspective()?.uuid === uuid) setCurrentPerspectiveModels([]);
+        }
+
+        if (perspective.sharedUrl) {
+          const sharedCid = perspective.sharedUrl.replace('neighbourhood://', '');
+          if (!mySpaces().some((s) => s.url === sharedCid)) {
+            const spaceModel = await Space.findOne(perspective, { where: { url: sharedCid } }).catch(() => null);
+            if (spaceModel && !mySpaces().some((s) => s.url === spaceModel.url)) {
+              setMySpaces((prev) => [...prev, spaceModel]);
+            }
+          }
+        }
+      })();
     } catch (error) {
       console.error('AdamStore: switchPerspective error', error);
     }
@@ -1080,7 +1182,7 @@ export function AdamStoreProvider(props: ParentProps) {
     if (!seg.includes('-')) {
       const p = allPerspectives().find((ap) => ap.sharedUrl === 'neighbourhood://' + seg);
       if (p) {
-        const current = currentPerspective();
+        const current = untrack(currentPerspective);
         if (current?.uuid !== p.uuid) void switchPerspective(p.uuid);
       } else {
         // No local perspective exists — clear current perspective so the join gate shows.
@@ -1090,7 +1192,7 @@ export function AdamStoreProvider(props: ParentProps) {
     }
 
     // UUID — local/private perspective: set directly
-    const current = currentPerspective();
+    const current = untrack(currentPerspective);
     if (current?.uuid !== seg) void switchPerspective(seg);
   });
 
@@ -1144,7 +1246,10 @@ export function AdamStoreProvider(props: ParentProps) {
     agentSettings,
     creatingSpace,
     currentPerspective,
+    currentPerspectiveSharedUrl,
+    currentPerspectiveSharedCid,
     currentPerspectiveModels,
+    joinedSpaceCids,
     agents,
     ownAgent,
 
