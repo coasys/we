@@ -16,7 +16,6 @@ export const createSpaceModal = {
     discovery: { type: 'string', initial: 'hidden' },
     avatar: { type: 'file', initial: null },
     coverImage: { type: 'file', initial: null },
-    globalPromptDismissed: { type: 'boolean', initial: false },
     locationLat: { type: 'number', initial: null },
     locationLng: { type: 'number', initial: null },
     locationCity: { type: 'string', initial: '' },
@@ -37,7 +36,6 @@ export const createSpaceModal = {
         width: '100%',
         height: '180px',
         aspect: 4 / 1,
-        // r: '300',
         placeholderIcon: 'panorama',
         onImageChange: { $setLocal: 'coverImage', from: '$event' },
       },
@@ -98,7 +96,7 @@ export const createSpaceModal = {
       ],
     },
 
-    // Location picker — only shown when listed globally (a globe pin needs coords)
+    // Location picker
     {
       type: 'Column',
       props: { gap: '400' },
@@ -227,67 +225,105 @@ export const createSpaceModal = {
 
     // Discovery toggle (Hidden vs Listed)
     {
-      type: 'Row',
-      props: { gap: '300', ay: 'center' },
+      type: 'Column',
+      props: { gap: '200' },
       children: [
         {
-          type: 'Column',
-          props: { gap: '100', flex: '1' },
+          type: 'Row',
+          props: { gap: '300', ay: 'center' },
           children: [
             {
-              type: 'we-text',
-              props: {
-                fontSize: '400',
-                fontWeight: 'medium',
-                color: {
-                  $if: {
-                    condition: { $eq: [{ $local: 'access' }, 'shared'] },
-                    then: 'neutral-800',
-                    else: 'neutral-400',
-                  },
-                },
-              },
+              type: 'Column',
+              props: { gap: '100', flex: '1' },
               children: [
                 {
-                  $if: {
-                    condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
-                    then: 'Listed in Global Discovery',
-                    else: 'Unlisted',
+                  type: 'we-text',
+                  props: {
+                    fontSize: '400',
+                    fontWeight: 'medium',
+                    color: {
+                      $if: {
+                        condition: {
+                          $and: [{ $eq: [{ $local: 'access' }, 'shared'] }, { $store: 'adamStore.globalPerspective' }],
+                        },
+                        then: 'neutral-800',
+                        else: 'neutral-400',
+                      },
+                    },
                   },
+                  children: [
+                    {
+                      $if: {
+                        condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
+                        then: 'Listed in Global Discovery',
+                        else: 'Unlisted',
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '300', color: 'neutral-400' },
+                  children: [
+                    {
+                      $if: {
+                        condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
+                        then: 'Appears on the WE discovery globe',
+                        else: 'Not shown in global discovery',
+                      },
+                    },
+                  ],
                 },
               ],
             },
             {
-              type: 'we-text',
-              props: { fontSize: '300', color: 'neutral-400' },
-              children: [
-                {
-                  $if: {
-                    condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
-                    then: 'Appears on the WE discovery globe',
-                    else: 'Not shown in global discovery',
-                  },
+              type: 'we-switch',
+              props: {
+                checked: { $eq: [{ $local: 'discovery' }, 'listed'] },
+                disabled: {
+                  $or: [
+                    { $not: { $eq: [{ $local: 'access' }, 'shared'] } },
+                    { $not: { $store: 'adamStore.globalPerspective' } },
+                  ],
                 },
-              ],
+                labelOff: 'Hidden',
+                labelOn: 'Public',
+                onChange: [
+                  {
+                    $if: {
+                      condition: '$event.detail',
+                      then: { $setLocal: 'discovery', value: 'listed' },
+                      else: { $setLocal: 'discovery', value: 'hidden' },
+                    },
+                  },
+                ],
+              },
             },
           ],
         },
+
+        // Hint shown when global space not yet joined
         {
-          type: 'we-switch',
+          type: '$if',
           props: {
-            checked: { $eq: [{ $local: 'discovery' }, 'listed'] },
-            disabled: { $not: { $eq: [{ $local: 'access' }, 'shared'] } },
-            labelOff: 'Hidden',
-            labelOn: 'Public',
-            onChange: [
-              {
-                $if: {
-                  condition: '$event.detail',
-                  then: { $setLocal: 'discovery', value: 'listed' },
-                  else: { $setLocal: 'discovery', value: 'hidden' },
+            condition: {
+              $and: [
+                { $store: 'adamStore.globalSpaceConfigured' },
+                { $not: { $store: 'adamStore.globalPerspective' } },
+              ],
+            },
+            then: {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                { type: 'we-icon', props: { name: 'info', size: 'sm', color: 'neutral-400' } },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '300', color: 'neutral-400' },
+                  children: ['Join the WE discovery space to list your space globally.'],
                 },
-              },
-            ],
+              ],
+            },
           },
         },
       ],

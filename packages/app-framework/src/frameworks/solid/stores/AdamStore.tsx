@@ -10,7 +10,7 @@ import { getModelClasses, getModelManifest } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
 import { installRootSdna, installSpaceSdna } from '@shared/sdnaModels';
-import { removeSpaceFromParent } from '@shared/syncHelpers';
+import { removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
 import { AgentSettings, compressImageToFileData, type FileData, LocationBlock, Space } from '@we/models';
 
 // Space.avatar/coverImage are typed as string (resolved data URI on read) but accept FileData on write.
@@ -68,7 +68,9 @@ export interface AdamStore {
   globalPerspective: Accessor<PerspectiveProxy | null>;
   systemPerspectiveUuids: Accessor<string[]>;
   orderedPerspectives: Accessor<PerspectiveProxy[]>;
-  orderedSidebarItems: Accessor<{ uuid: string; name: string; avatar?: string; spaceId: string }[]>;
+  orderedSidebarItems: Accessor<
+    { uuid: string; name: string; avatar?: string; spaceId: string; isGlobalPreJoin?: boolean }[]
+  >;
   globalSpaceId: () => string | null;
   agentSettings: Accessor<AgentSettings | null>;
   creatingSpace: Accessor<boolean>;
@@ -178,18 +180,29 @@ export function AdamStoreProvider(props: ParentProps) {
     return [...ordered, ...appended];
   });
 
-  // Derived: all non-system perspectives with Space avatar/name when available, plain perspective data otherwise
+  // Derived: all non-system perspectives with Space avatar/name when available, plain perspective data otherwise.
+  // Prepends a virtual pre-join entry for the global space when it is configured but the user hasn't joined yet.
   const orderedSidebarItems = createMemo(() => {
     const spaceByUuid = new Map(mySpaces().map((s) => [s.uuid, s]));
-    return orderedPerspectives().map((p) => {
-      const s = spaceByUuid.get(p.uuid);
-      return {
-        uuid: p.uuid,
-        name: s?.name ?? p.name,
-        avatar: typeof s?.avatar === 'string' ? s.avatar : undefined,
-        spaceId: p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid,
-      };
-    });
+    const items: { uuid: string; name: string; avatar?: string; spaceId: string; isGlobalPreJoin?: boolean }[] =
+      orderedPerspectives().map((p) => {
+        const s = spaceByUuid.get(p.uuid);
+        return {
+          uuid: p.uuid,
+          name: s?.name ?? p.name,
+          avatar: typeof s?.avatar === 'string' ? s.avatar : undefined,
+          spaceId: p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid,
+        };
+      });
+
+    const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
+    const globalId = seedUrl ? seedUrl.replace('neighbourhood://', '') : null;
+    const alreadyJoined = globalId ? items.some((item) => item.spaceId === globalId) : true;
+    if (globalId && !alreadyJoined) {
+      items.unshift({ uuid: 'global-pre-join', name: 'WE Discovery', spaceId: globalId, isGlobalPreJoin: true });
+    }
+
+    return items;
   });
 
   // Derived: personal and shared spaces
@@ -879,8 +892,6 @@ export function AdamStoreProvider(props: ParentProps) {
   ): Promise<void> {
     const client = adamClient();
     if (!client) return;
-    // Capture the active perspective now — it becomes the parent once the new space is created
-    const parentPerspective = currentPerspective();
     setCreatingSpace(true);
 
     try {
@@ -942,11 +953,18 @@ export function AdamStoreProvider(props: ParentProps) {
       const spaceModel = await addSpaceToPerspective(spacePerspective, spaceData, locationData);
       console.log('AdamStore: Created space model for new perspective', spaceModel);
 
-      // Mirror into parent perspective — no re-fetch or findAll needed for a fresh creation
-      if (parentPerspective && parentPerspective.uuid !== spacePerspective.uuid) {
-        await addSpaceToPerspective(parentPerspective, spaceData, locationData).catch((err) =>
-          console.error('AdamStore: mirror space to parent failed', err),
-        );
+      // Sync to global discovery space when the user opted in.
+      // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
+      // and locationData directly rather than reading them back from spaceModel.
+      if (discovery === 'listed') {
+        const globalP = globalPerspective();
+        if (globalP) {
+          await syncSpaceToParent(spaceModel, globalP, {
+            locationData,
+            avatarData,
+            coverImageData,
+          }).catch((err) => console.error('AdamStore: sync space to global failed', err));
+        }
       }
 
       // Update sidebar and navigate.

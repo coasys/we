@@ -158,10 +158,8 @@ export const aboutRoute: RouteSchema = {
                             onClick: [
                               { $setLocal: 'saving', value: true },
                               {
-                                $action: 'model.update',
+                                $action: 'spaceStore.updateSpaceMeta',
                                 args: [
-                                  'Space',
-                                  '$space.id',
                                   {
                                     name: { $local: 'editName' },
                                     description: { $local: 'editDescription' },

@@ -1,14 +1,22 @@
 import type { AgentProfileSummary } from '@shared/agentHelpers';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { SPACE_MODELS } from '@shared/sdnaModels';
+import { type LocationData, removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
 import { deriveSlug } from '@shared/utils';
 import { useAdamStore } from '@solid/stores';
 import { createBlocks } from '@we/block-shared';
-import { compressImageToFileData, Signal, SignalType, Space } from '@we/models';
+import { compressImageToFileData, LocationBlock, Signal, SignalType, Space } from '@we/models';
 import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useRouteStore } from './RouteStore';
 import { useTemplateStore } from './TemplateStore';
+
+export interface SpaceMetaUpdate {
+  name?: string;
+  description?: string;
+  discovery?: 'listed' | 'hidden';
+  location?: LocationData;
+}
 
 export interface SpaceStore {
   // State
@@ -18,6 +26,7 @@ export interface SpaceStore {
   // Actions
   createPost: (json: unknown) => Promise<void>;
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
+  updateSpaceMeta: (updates: SpaceMetaUpdate) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string) => void;
@@ -96,6 +105,71 @@ export function SpaceStoreProvider(props: ParentProps) {
     const [spaceModel] = await Space.findAll(currentPerspective, { where: { uuid: currentPerspective.uuid } });
     if (!spaceModel) return;
     await Space.update(currentPerspective, spaceModel.id, { [field]: fileData });
+    if (spaceModel.discovery === 'listed') {
+      const globalP = adamStore.globalPerspective();
+      if (globalP) {
+        const imageOpt = field === 'avatar' ? { avatarData: fileData } : { coverImageData: fileData };
+        await syncSpaceToParent(spaceModel, globalP, imageOpt).catch((err) =>
+          console.error('SpaceStore: sync image to global failed', err),
+        );
+      }
+    }
+  }
+
+  async function updateSpaceMeta(updates: SpaceMetaUpdate): Promise<void> {
+    const currentPerspective = adamStore.currentPerspective();
+    if (!currentPerspective) return;
+
+    const [spaceModel] = await Space.findAll(currentPerspective, {
+      where: { uuid: currentPerspective.uuid },
+      include: { location: true },
+    });
+    if (!spaceModel) return;
+
+    const previousDiscovery = spaceModel.discovery;
+
+    if (updates.name !== undefined) spaceModel.name = updates.name;
+    if (updates.description !== undefined) spaceModel.description = updates.description;
+    if (updates.discovery !== undefined) spaceModel.discovery = updates.discovery;
+    await spaceModel.save();
+
+    if (updates.location !== undefined) {
+      const loc = updates.location;
+      await LocationBlock.register(currentPerspective);
+      if (spaceModel.location) {
+        spaceModel.location.latitude = loc.latitude;
+        spaceModel.location.longitude = loc.longitude;
+        if (loc.name !== undefined) spaceModel.location.name = loc.name;
+        if (loc.city !== undefined) spaceModel.location.city = loc.city;
+        if (loc.country !== undefined) spaceModel.location.country = loc.country;
+        if (loc.countryCode !== undefined) spaceModel.location.countryCode = loc.countryCode;
+        await spaceModel.location.save();
+      } else {
+        const newLoc = await LocationBlock.create(currentPerspective, {
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+          ...(loc.name && { name: loc.name }),
+          ...(loc.city && { city: loc.city }),
+          ...(loc.country && { country: loc.country }),
+          ...(loc.countryCode && { countryCode: loc.countryCode }),
+        });
+        await spaceModel.setLocation(newLoc);
+      }
+    }
+
+    const globalP = adamStore.globalPerspective();
+    if (!globalP) return;
+
+    const effectiveDiscovery = updates.discovery ?? previousDiscovery;
+    if (effectiveDiscovery === 'listed') {
+      await syncSpaceToParent(spaceModel, globalP).catch((err) =>
+        console.error('SpaceStore: sync meta to global failed', err),
+      );
+    } else if (previousDiscovery === 'listed') {
+      await removeSpaceFromParent(spaceModel.uuid, globalP).catch((err) =>
+        console.error('SpaceStore: remove from global failed', err),
+      );
+    }
   }
 
   async function createSignalType(config: Partial<SignalType>): Promise<void> {
@@ -178,6 +252,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Actions
     createPost,
     updateSpaceImage,
+    updateSpaceMeta,
     createSignalType,
     upsertSignal,
     navigateToSpace,
