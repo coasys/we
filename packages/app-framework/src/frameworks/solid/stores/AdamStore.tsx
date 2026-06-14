@@ -190,10 +190,18 @@ export function AdamStoreProvider(props: ParentProps) {
   // Derived: all non-system perspectives with Space avatar/name when available, plain perspective data otherwise.
   // Prepends a virtual pre-join entry for the global space when it is configured but the user hasn't joined yet.
   const orderedSidebarItems = createMemo(() => {
+    // For joined spaces, s.uuid is the creator's local UUID which never matches the
+    // joiner's p.uuid. Use s.url (neighbourhood URL) as the primary lookup key for
+    // shared perspectives; fall back to uuid for personal spaces.
     const spaceByUuid = new Map(mySpaces().map((s) => [s.uuid, s]));
+    const spaceByUrl = new Map(
+      mySpaces()
+        .filter((s) => s.url)
+        .map((s) => [s.url!, s]),
+    );
     const items: { uuid: string; name: string; avatar?: string; spaceId: string; isGlobalPreJoin?: boolean }[] =
       orderedPerspectives().map((p) => {
-        const s = spaceByUuid.get(p.uuid);
+        const s = (p.sharedUrl ? spaceByUrl.get(p.sharedUrl) : undefined) ?? spaceByUuid.get(p.uuid);
         return {
           uuid: p.uuid,
           name: s?.name ?? p.name,
@@ -1037,6 +1045,13 @@ export function AdamStoreProvider(props: ParentProps) {
       const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
       if (neighbourhoodUrl === seedUrl) {
         setGlobalPerspective(joinedP);
+      }
+
+      // Load the Space model and push into mySpaces so the sidebar shows the correct
+      // name immediately, without requiring a reboot.
+      const joinedSpaceModel = await Space.findOne(joinedP, { where: { url: neighbourhoodUrl } }).catch(() => null);
+      if (joinedSpaceModel && !mySpaces().some((s) => s.url === joinedSpaceModel.url)) {
+        setMySpaces((prev) => [...prev, joinedSpaceModel]);
       }
 
       await switchPerspective(joinedP.uuid);
