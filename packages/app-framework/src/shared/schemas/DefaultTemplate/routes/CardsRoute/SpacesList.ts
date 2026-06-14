@@ -10,7 +10,7 @@ export const spacesList: SchemaNode = gridWrapper([
         $query: {
           model: 'Space',
           where: {
-            url: { not: { $store: 'adamStore.currentPerspectiveSharedUrl' } },
+            url: { not: { $store: 'adamStore.currentPerspectiveSharedCid' } },
             name: { contains: { $local: 'searchText' } },
           },
           order: { createdAt: { $local: 'sortBy' } },

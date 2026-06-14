@@ -222,7 +222,7 @@ export const globeRoute: RouteSchema = {
                     $query: {
                       model: 'Space',
                       where: {
-                        url: { not: { $store: 'adamStore.currentPerspectiveSharedUrl' } },
+                        url: { not: { $store: 'adamStore.currentPerspectiveSharedCid' } },
                         name: { contains: { $local: 'searchText' } },
                       },
                       include: { location: true },

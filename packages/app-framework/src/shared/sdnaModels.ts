@@ -1,4 +1,4 @@
-import { PerspectiveProxy } from '@coasys/ad4m';
+import { Ad4mModel, PerspectiveProxy } from '@coasys/ad4m';
 import {
   AgentSettings,
   AudioBlock,
@@ -39,7 +39,7 @@ export const ROOT_MODELS = [AgentSettings, ChatMessage, ChatSession, Template, T
  * that already have some models registered.
  */
 export async function installRootSdna(p: PerspectiveProxy): Promise<void> {
-  await Promise.all(ROOT_MODELS.map((M) => M.register(p)));
+  await Ad4mModel.registerAll(p, [...ROOT_MODELS]);
 }
 
 /**
@@ -75,5 +75,5 @@ export const SPACE_MODELS = [
  * that already have some models registered.
  */
 export async function installSpaceSdna(p: PerspectiveProxy): Promise<void> {
-  await Promise.all(SPACE_MODELS.map((M) => M.register(p)));
+  await Ad4mModel.registerAll(p, [...SPACE_MODELS]);
 }

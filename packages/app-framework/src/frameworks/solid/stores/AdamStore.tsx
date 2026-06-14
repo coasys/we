@@ -19,7 +19,16 @@ type SpaceInput = Omit<Partial<Space>, 'avatar' | 'coverImage'> & {
   avatar?: FileData | string;
   coverImage?: FileData | string;
 };
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  ParentProps,
+  untrack,
+  useContext,
+} from 'solid-js';
 
 import weSeedFile from '../../../../../../we-seed.json';
 import type { WeSeedFile } from '../../../types/seed';
@@ -76,7 +85,9 @@ export interface AdamStore {
   creatingSpace: Accessor<boolean>;
   currentPerspective: Accessor<PerspectiveProxy | null>;
   currentPerspectiveSharedUrl: Accessor<string | undefined>;
+  currentPerspectiveSharedCid: Accessor<string | undefined>;
   currentPerspectiveModels: Accessor<ModelManifestEntry[]>;
+  joinedSpaceCids: Accessor<string[]>;
   agents: Accessor<AgentProfileSummary[]>;
 
   // Actions
@@ -155,6 +166,16 @@ export function AdamStoreProvider(props: ParentProps) {
   const currentPerspectiveSharedUrl = createMemo<string | undefined>(
     () => currentPerspective()?.sharedUrl ?? undefined,
   );
+  // CID-only form (neighbourhood:// stripped) for comparing against Space.url,
+  // which stores only the CID to avoid URI resolution in the AD4M triple store.
+  const currentPerspectiveSharedCid = createMemo<string | undefined>(
+    () => currentPerspective()?.sharedUrl?.replace('neighbourhood://', '') ?? undefined,
+  );
+  const joinedSpaceCids = createMemo<string[]>(() =>
+    allPerspectives()
+      .filter((p) => p.sharedUrl)
+      .map((p) => p.sharedUrl!.replace('neighbourhood://', '')),
+  );
 
   const systemPerspectiveUuids = createMemo(() =>
     allPerspectives()
@@ -191,8 +212,8 @@ export function AdamStoreProvider(props: ParentProps) {
   // Prepends a virtual pre-join entry for the global space when it is configured but the user hasn't joined yet.
   const orderedSidebarItems = createMemo(() => {
     // For joined spaces, s.uuid is the creator's local UUID which never matches the
-    // joiner's p.uuid. Use s.url (neighbourhood URL) as the primary lookup key for
-    // shared perspectives; fall back to uuid for personal spaces.
+    // joiner's p.uuid. Space.url stores only the CID (no neighbourhood:// prefix) to
+    // avoid URI resolution in the triple store; strip the prefix when looking up.
     const spaceByUuid = new Map(mySpaces().map((s) => [s.uuid, s]));
     const spaceByUrl = new Map(
       mySpaces()
@@ -201,7 +222,8 @@ export function AdamStoreProvider(props: ParentProps) {
     );
     const items: { uuid: string; name: string; avatar?: string; spaceId: string; isGlobalPreJoin?: boolean }[] =
       orderedPerspectives().map((p) => {
-        const s = (p.sharedUrl ? spaceByUrl.get(p.sharedUrl) : undefined) ?? spaceByUuid.get(p.uuid);
+        const cid = p.sharedUrl?.replace('neighbourhood://', '');
+        const s = (cid ? spaceByUrl.get(cid) : undefined) ?? spaceByUuid.get(p.uuid);
         return {
           uuid: p.uuid,
           name: s?.name ?? p.name,
@@ -945,7 +967,7 @@ export function AdamStoreProvider(props: ParentProps) {
       // Assemble Space + optional location data — used for both own and parent perspectives
       const spaceData = {
         uuid: spacePerspective.uuid,
-        url: neighbourhoodUrl,
+        url: neighbourhoodUrl?.replace('neighbourhood://', ''),
         name,
         description,
         access,
@@ -1005,6 +1027,10 @@ export function AdamStoreProvider(props: ParentProps) {
   async function joinSpace(id: string): Promise<void> {
     const client = adamClient();
     if (!client) return;
+    if (!id || typeof id !== 'string') {
+      console.warn('AdamStore: joinSpace called with invalid id', id);
+      return;
+    }
 
     // Normalise the identifier to a full neighbourhood URL when appropriate:
     //   - Full URL passed directly → use as-is
@@ -1049,7 +1075,8 @@ export function AdamStoreProvider(props: ParentProps) {
 
       // Load the Space model and push into mySpaces so the sidebar shows the correct
       // name immediately, without requiring a reboot.
-      const joinedSpaceModel = await Space.findOne(joinedP, { where: { url: neighbourhoodUrl } }).catch(() => null);
+      const cid = neighbourhoodUrl.replace('neighbourhood://', '');
+      const joinedSpaceModel = await Space.findOne(joinedP, { where: { url: cid } }).catch(() => null);
       if (joinedSpaceModel && !mySpaces().some((s) => s.url === joinedSpaceModel.url)) {
         setMySpaces((prev) => [...prev, joinedSpaceModel]);
       }
@@ -1125,12 +1152,13 @@ export function AdamStoreProvider(props: ParentProps) {
           if (currentPerspective()?.uuid === uuid) setCurrentPerspectiveModels([]);
         }
 
-        if (perspective.sharedUrl && !mySpaces().some((s) => s.url === perspective.sharedUrl)) {
-          const spaceModel = await Space.findOne(perspective, { where: { url: perspective.sharedUrl } }).catch(
-            () => null,
-          );
-          if (spaceModel && !mySpaces().some((s) => s.url === spaceModel.url)) {
-            setMySpaces((prev) => [...prev, spaceModel]);
+        if (perspective.sharedUrl) {
+          const sharedCid = perspective.sharedUrl.replace('neighbourhood://', '');
+          if (!mySpaces().some((s) => s.url === sharedCid)) {
+            const spaceModel = await Space.findOne(perspective, { where: { url: sharedCid } }).catch(() => null);
+            if (spaceModel && !mySpaces().some((s) => s.url === spaceModel.url)) {
+              setMySpaces((prev) => [...prev, spaceModel]);
+            }
           }
         }
       })();
@@ -1154,7 +1182,7 @@ export function AdamStoreProvider(props: ParentProps) {
     if (!seg.includes('-')) {
       const p = allPerspectives().find((ap) => ap.sharedUrl === 'neighbourhood://' + seg);
       if (p) {
-        const current = currentPerspective();
+        const current = untrack(currentPerspective);
         if (current?.uuid !== p.uuid) void switchPerspective(p.uuid);
       } else {
         // No local perspective exists — clear current perspective so the join gate shows.
@@ -1164,7 +1192,7 @@ export function AdamStoreProvider(props: ParentProps) {
     }
 
     // UUID — local/private perspective: set directly
-    const current = currentPerspective();
+    const current = untrack(currentPerspective);
     if (current?.uuid !== seg) void switchPerspective(seg);
   });
 
@@ -1219,7 +1247,9 @@ export function AdamStoreProvider(props: ParentProps) {
     creatingSpace,
     currentPerspective,
     currentPerspectiveSharedUrl,
+    currentPerspectiveSharedCid,
     currentPerspectiveModels,
+    joinedSpaceCids,
     agents,
     ownAgent,
 

@@ -73,6 +73,36 @@ that work directly with AD4M model classes. They do NOT apply to JSON template s
 
 ---
 
+### Schema System — Before Suggesting New Operators
+
+Before proposing a new schema operator, read \`packages/schema-system/OPERATORS.md\` —
+the full operator set is documented there. Adding a new one is only warranted if the
+operator genuinely doesn't exist AND the workaround requires 3+ levels of nesting.
+
+Operators that are easy to miss:
+
+| Operator | Syntax | What it does |
+|---|---|---|
+| \`$in\` | \`{ $in: [value, array] }\` | True if array contains value — array membership check |
+| \`$find\` | \`{ $find: { items, where } }\` | Returns the first matching item (or null) |
+| \`$pick\` | \`{ $pick: { from, keys } }\` | Extracts a subset of keys from an object |
+| \`$map\` | \`{ $map: { items, as, value } }\` | Maps an array to a new array of values |
+| \`$ne\` | \`{ $ne: [a, b] }\` | Not-equal comparison |
+| \`$concat\` | \`{ $concat: [part, ...] }\` | Joins strings: \`['neighbourhood://', '$space.url']\` |
+
+**Common mistake:** reaching for \`$filter + $count + $gt\` to check array membership
+when \`$in\` already exists. Example:
+
+\`\`\`ts
+// ❌ Verbose — don't do this for a simple membership check
+{ $gt: [{ $count: { items: { $filter: { items: arr, where: { id: val } } } } }, 0] }
+
+// ✅ Use $in instead
+{ $in: [val, arr] }
+\`\`\`
+
+---
+
 ### Package Conventions
 
 Each package may have a \`CONVENTIONS.md\` at its root with package-specific rules.

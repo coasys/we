@@ -30,6 +30,7 @@ export interface SpaceStore {
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string) => void;
+  enterSpace: (url: string) => Promise<void>;
 
   // Testing
   test: () => Promise<void>;
@@ -74,6 +75,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = adamStore.currentPerspective();
     if (!p) return;
     await createBlocks(p, json);
+  }
+
+  async function enterSpace(url: string): Promise<void> {
+    const perspective = adamStore.allPerspectives().find((p) => p.sharedUrl === 'neighbourhood://' + url);
+    if (!perspective) return;
+    await adamStore.switchPerspective(perspective.uuid);
+    navigateToSpace(url);
   }
 
   function navigateToSpace(spaceId: string): void {
@@ -256,6 +264,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     createSignalType,
     upsertSignal,
     navigateToSpace,
+    enterSpace,
 
     test,
   };
