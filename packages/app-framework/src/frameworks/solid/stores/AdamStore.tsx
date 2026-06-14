@@ -1088,36 +1088,36 @@ export function AdamStoreProvider(props: ParentProps) {
       const perspective = await client.perspective.byUUID(uuid);
       if (!perspective) return;
 
-      // Synthesise Ad4mModel classes from SHACL shapes and register them.
-      // If no shapes exist yet (newly joined perspective whose SDNA hasn't been
-      // installed or synced), install the full WE SDNA and wait for it to settle
-      // before firing reactive queries via setCurrentPerspective below.
-      // This covers the race where addPerspectiveAddedListener updates
-      // allPerspectives — triggering this effect — before joinSpace has had a
-      // chance to call installSpaceSdna itself.
-      try {
-        let classes = await getModelClasses(perspective);
-        if (Object.keys(classes).length === 0) {
-          await installSpaceSdna(perspective);
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          classes = await getModelClasses(perspective);
-        }
-        registerDynamicModels(uuid, classes);
-      } catch (err) {
-        console.warn('AdamStore: getModelClasses failed', err);
-      }
-
-      // Populate currentPerspectiveModels with the full manifest (WE + external).
-      // The full list lets AiStore build a perspective-accurate validator allowlist.
-      try {
-        const manifest = await getModelManifest(perspective);
-        setCurrentPerspectiveModels(manifest);
-      } catch (err) {
-        console.warn('AdamStore: getModelManifest failed', err);
-        setCurrentPerspectiveModels([]);
-      }
-
+      // Switch immediately — WE model classes are pre-registered at module load so
+      // templates render without waiting for dynamic model discovery.
       setCurrentPerspective(perspective);
+
+      // Background: discover and register any dynamic (non-WE) model classes from
+      // SHACL shapes (e.g. Flux). If no shapes exist yet, install WE SDNA first —
+      // covers the race where addPerspectiveAddedListener fires before joinSpace
+      // has completed its own installSpaceSdna call.
+      // Stale guard: if the user navigated away before this resolves, skip updates.
+      void (async () => {
+        try {
+          let classes = await getModelClasses(perspective);
+          if (Object.keys(classes).length === 0) {
+            await installSpaceSdna(perspective);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            classes = await getModelClasses(perspective);
+          }
+          if (currentPerspective()?.uuid === uuid) registerDynamicModels(uuid, classes);
+        } catch (err) {
+          console.warn('AdamStore: getModelClasses failed', err);
+        }
+
+        try {
+          const manifest = await getModelManifest(perspective);
+          if (currentPerspective()?.uuid === uuid) setCurrentPerspectiveModels(manifest);
+        } catch (err) {
+          console.warn('AdamStore: getModelManifest failed', err);
+          if (currentPerspective()?.uuid === uuid) setCurrentPerspectiveModels([]);
+        }
+      })();
     } catch (error) {
       console.error('AdamStore: switchPerspective error', error);
     }
