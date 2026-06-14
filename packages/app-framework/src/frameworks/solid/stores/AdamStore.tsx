@@ -1065,8 +1065,19 @@ export function AdamStoreProvider(props: ParentProps) {
       if (!perspective) return;
 
       // Synthesise Ad4mModel classes from SHACL shapes and register them.
+      // If no shapes exist yet (newly joined perspective whose SDNA hasn't been
+      // installed or synced), install the full WE SDNA and wait for it to settle
+      // before firing reactive queries via setCurrentPerspective below.
+      // This covers the race where addPerspectiveAddedListener updates
+      // allPerspectives — triggering this effect — before joinSpace has had a
+      // chance to call installSpaceSdna itself.
       try {
-        const classes = await getModelClasses(perspective);
+        let classes = await getModelClasses(perspective);
+        if (Object.keys(classes).length === 0) {
+          await installSpaceSdna(perspective);
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          classes = await getModelClasses(perspective);
+        }
         registerDynamicModels(uuid, classes);
       } catch (err) {
         console.warn('AdamStore: getModelClasses failed', err);
