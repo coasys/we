@@ -1,4 +1,8 @@
 // Layout
+export {
+  CollapsedContent,
+  type CollapsedContentProps,
+} from '../../components/layout/CollapsedContent/CollapsedContent.solid';
 export { Column, type ColumnProps } from '../../components/layout/Column/Column.solid';
 export { Grid, type GridProps } from '../../components/layout/Grid/Grid.solid';
 export { Row, type RowProps } from '../../components/layout/Row/Row.solid';
@@ -68,6 +72,13 @@ export {
   type SignalTypeData,
   type SignalMode,
 } from '../../components/signals/SignalControl/SignalControl.solid';
+
+// People
+export {
+  AvatarStack,
+  type AvatarInfo,
+  type AvatarStackProps,
+} from '../../components/people/AvatarStack/AvatarStack.solid';
 
 // Testing
 export { RerenderLog, type RerenderLogProps } from '../../components/testing/RerenderLog/RerenderLog.solid';

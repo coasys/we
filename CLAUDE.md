@@ -64,7 +64,7 @@ To target a non-current perspective: { "$action": "model.update", "args": ["Mode
 model.delete — deletes a model instance:
 { "$action": "model.delete", "args": ["ModelName", "$item.id"] }
 
-Use perspective: 'adamStore.rootPerspective' for we-root models (AgentProfile, AgentSettings).
+Use perspective: 'adamStore.rootPerspective' for we-root models (AgentSettings, ChatSession, etc.).
 Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
 
 Conditional logic:
@@ -109,9 +109,20 @@ Boolean logic:
 
 Array operators:
 { "$filter": { "items": <array>, "where": { "field": "value", ... } } }
-Filters an array to items where all where conditions match (strict equality).
-Where values can be any resolvable token, including context refs.
-Example: { "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
+Filters an array to items where all where conditions match. Mirrors the AD4M model $query where operator set:
+
+  { "field": "value" }                                   — strict equality
+  { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
+  { "field": { "contains": "text" } }                    — case-insensitive substring match (strings only)
+  { "field": { "exists": true } }                        — non-null / non-undefined presence check
+  { "field": { "exists": false } }                       — null or undefined check
+
+Where values (including those inside operator objects) are resolved through the prop system,
+so $store, $local, and context refs like { "$local": "searchText" } all work.
+
+Examples:
+{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
+{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "location": { "exists": true }, "handle": { "contains": { "$local": "searchText" } } } } }
 
 { "$count": { "items": <array> } }
 Returns the length of an array.
@@ -120,6 +131,13 @@ Example: { "badge": { "$count": { "items": { "$store": "notificationStore.unread
 { "$find": { "items": <array>, "where"?: { ... }, "select"?: "fieldName" } }
 Finds the first matching item. where is optional (returns first item if omitted). select plucks a single field.
 Example: { "$find": { "items": { "$store": "spaceStore.members" }, "where": { "id": "$item.creatorId" }, "select": "name" } }
+
+{ "$plural": { "count": <number>, "one": "singular", "other": "plural" } }
+Returns "one" when count === 1, otherwise "other". Use in children arrays for count-noun labels.
+count is resolved through the prop system — any numeric expression ($count, $store, context ref) works.
+Example: { "$plural": { "count": { "$count": { "items": { "$store": "spaceStore.members" } } }, "one": "Member", "other": "Members" } }
+Compose with we-number for a full "N Members" display:
+  we-number (value: { "$count": ... }, shorten: true) + we-text (children: [{ "$plural": { "count": { "$count": ... }, "one": "Member", "other": "Members" } }])
 
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
@@ -303,15 +321,21 @@ fade controls opacity only; slide/scale control transform only. Compose effects 
 Example: enterTransition: [{ type: 'fade', duration: 300 }, { type: 'slide', direction: 'up', distance: '40px', duration: 400 }]
 
 Viewport / mount animation (child always in DOM):
-{ "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
+{ "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
 The child is always mounted. Animations are CSS-only (opacity / transform) — use this for scroll-reveal effects.
 Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
 scrollReveal: true fires enterTransition when the element enters the viewport.
 scrollReveal: -100 fires 100px before the element would enter (negative = earlier reveal).
 scrollLeave fires exitTransition when the element leaves the viewport.
-Without scrollReveal/scrollLeave, the enterTransition runs once on mount.
+scrollPast: "element-id" observes a sentinel element (by DOM id) instead of the $animate element itself.
+  enterTransition fires when the sentinel leaves the viewport (user scrolled past it).
+  exitTransition fires when the sentinel returns (user scrolled back up).
+  Use this for sticky headers: place a zero-height sentinel div at the bottom of the non-sticky header section,
+  then wrap the mini-profile in $animate with scrollPast pointing to that sentinel's id.
+  scrollPast is mutually exclusive with scrollReveal/scrollLeave.
+Without any scroll trigger, the enterTransition runs once on mount.
 Only one child node is supported.
-Example:
+Example (scroll-reveal):
 {
   "type": "$animate",
   "props": {
@@ -322,6 +346,21 @@ Example:
     ]
   },
   "children": [{ "type": "SomeCard", "children": [] }]
+}
+Example (sticky header mini-profile):
+Place a sentinel at the bottom of the header, reference it in the sticky nav:
+{ "type": "div", "props": { "id": "header-sentinel" }, "styles": { "height": "0px", "pointerEvents": "none" } }
+{
+  "type": "$animate",
+  "props": {
+    "scrollPast": "header-sentinel",
+    "enterTransition": { "type": "fade", "duration": 250 },
+    "exitTransition": { "type": "fade", "duration": 200 }
+  },
+  "children": [{ "type": "Row", "props": { "ay": "center", "gap": "300" }, "children": [
+    { "type": "we-avatar", "props": { "image": "$space.avatar", "size": "sm" } },
+    { "type": "we-text", "props": { "fontWeight": "600" }, "children": ["$space.name"] }
+  ]}]
 }
 
 Single model item (load one record, render children with it in context):
@@ -352,7 +391,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false
 - we-avatar (LayoutElement)
-  Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
+  Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false, ring?: string | undefined
 - we-badge (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
@@ -446,7 +485,7 @@ array of IDs.
 - we-tag (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, gradient: string = ''
+  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = ''
 - we-textarea (DesignSystemElement)
   Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute
@@ -526,12 +565,16 @@ when `relative` is enabled.
   Props: children?: JSX.Element, renderContent?: ((item: AccordionItem, index: number) => JSX.Element), onChange?: ((openItems: string[]) => void), items?: AccordionItem[], multiple?: boolean, styles?: Record<string, string | number>
 - AudioVisualiser
   Props: src: string | undefined, bars?: number, height?: number, color?: string, activeColor?: string
+- AvatarStack
+  Props: avatars: AvatarInfo[], max?: number, size?: "sm" | "md" | "lg" | "xl" | "xxs" | "xs" | "xxl", overlap?: number, ring?: string, styles?: Record<string, string | number>
 - Breadcrumbs
   Props: onNavigate?: ((item: BreadcrumbItem, index: number) => void), items?: BreadcrumbItem[], separator?: string, styles?: Record<string, string | number>
 - Calendar
   Props: onSelect?: ((date: string) => void), value?: string, events?: CalendarEvent[], styles?: Record<string, string | number>
 - CircleButton
   Props: label: string, icon?: string, image?: string, onClick?: (() => void), class?: string, styles?: Record<string, string | number>
+- CollapsedContent
+  Props: collapsed: boolean, onExpandClick?: (() => void), showToggle?: boolean, icon?: string, maxHeight?: string, fadeColor?: string, children?: JSX.Element, class?: string, styles?: Record<string, string | number>
 - Column
   Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexCrossAxis, ay?: FlexMainAxis
 - Dialog
@@ -772,17 +815,6 @@ zIndex: 'dropdown', 'sticky', 'modal', 'popover', 'toast', 'tooltip'
 
 Available data models for $query and store data:
 
-AgentProfile extends WeNode:
-  Fields:
-  - firstName: string [we://first_name]
-  - lastName: string [we://last_name]
-  - handle: string [we://handle]
-  - bio: string [we://bio]
-  - avatar: string [we://profile_image]
-  - coverImage: string [we://cover_image]
-  Relations:
-  - location: HasOne [we://location]
-
 AgentSettings extends Ad4mModel:
   Fields:
   - currentTemplateId: string = 'default' [we://current_template]
@@ -931,7 +963,8 @@ Space extends WeNode:
   - url: string [we://url]
   - name: string (required) [we://name]
   - description: string (required) [we://description]
-  - visibility: string [we://visibility]
+  - access: string = 'personal' [we://access]
+  - discovery: string = 'hidden' [we://discovery]
   - avatar: string [we://image]
   - coverImage: string [we://thumbnail]
   Relations:
@@ -1020,7 +1053,8 @@ AdamStore:
   - passwordError: string | undefined
   - loginLoading: boolean
   - creatingSpace: boolean (true while a new space is being created)
-  - agentProfile: AgentProfile | null (the current agent profile with name, bio, images, etc.)
+  - agents: AgentProfileSummary[] — cache of all fetched agent profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)
+  - ownAgent: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from agents cache)
 - Actions:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
@@ -1029,9 +1063,10 @@ AdamStore:
   - removePerspective(): unknown
   - login(password: string): logs in the agent with password
   - logout(): locks the agent and returns to login screen
-  - updateAgentProfile(updates: Partial<AgentProfile>): updates profile fields (firstName, lastName, handle, bio, location)
-  - updateAvatarImage(imageFile: File): uploads and sets the profile image
-  - updateCoverImage(imageFile: File): uploads and sets the cover image
+  - fetchAgent(did: string): fetches and caches an agent's profile from their public AD4M perspective
+  - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to public perspective
+  - updateProfileImage(field: "avatar" | "coverImage", imageFile: File): uploads image to FILE_STORAGE_LANGUAGE and publishes expression URL to public perspective
+  - updateAgentLocation(update: { latitude?, longitude?, city?, country?, countryCode? }): merges location update into cache and publishes to public perspective
 
 RouteStore:
 - State:
@@ -1065,19 +1100,16 @@ TemplateStore:
 
 SpaceStore:
 - State:
-  - perspective: PerspectiveProxy | null
-  - space: Partial<Space> (current space object)
+  - memberDids: string[] — DIDs of all members in the current space (includes own DID)
+  - members: AgentProfileSummary[] — cached profiles for all memberDids
   - signalTypes: array of SignalType objects (community-created reaction/vote types)
   - signalTypesBySlug: Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID
-  - loading: boolean
 - Actions:
-  - getSpace(): loads space data
   - createPost(editorState: unknown): creates a new post
-  - updateSpaceAvatar(): unknown
-  - updateSpaceCoverImage(): unknown
+  - updateSpaceImage(field: "avatar" | "coverImage", imageFile: File): uploads and sets the space avatar or cover image
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
-  - deriveSlug(name: string) => string: converts a name to a URL-safe slug (lowercase, hyphens)
+  - navigateToSpace(spaceId: string): navigates to a space by perspective UUID
 
 AiStore:
 - State:

@@ -43,6 +43,12 @@ const styles = css`
     --we-text-margin: 0 0 1em 0;
   }
 
+  :host([truncate]) [part='base'] {
+    overflow: hidden !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   :host([gradient]:not([gradient=''])) [part='base'] {
     background: var(--we-text-gradient) !important;
     -webkit-background-clip: text !important;
@@ -79,6 +85,7 @@ export default class Text extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) inline = false;
   @property({ type: Boolean, reflect: true }) uppercase = false;
   @property({ type: Boolean, reflect: true }) italic = false;
+  @property({ type: Boolean, reflect: true }) truncate = false;
   @property({ type: String, reflect: true }) gradient = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 

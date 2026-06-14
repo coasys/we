@@ -1,83 +1,101 @@
 import type { SchemaNode } from '@we/schema-shared';
 
-export const postsHeader: SchemaNode = {
+const contentTypeOptions = [
+  { label: 'Posts', value: 'posts' },
+  { label: 'Users', value: 'users' },
+  { label: 'Spaces', value: 'spaces' },
+  { label: 'Text', value: 'text-blocks' },
+  { label: 'Images', value: 'image-blocks' },
+  { label: 'Audio', value: 'audio-blocks' },
+  { label: 'Video', value: 'video-blocks' },
+  { label: 'Files', value: 'file-blocks' },
+  { label: 'Links', value: 'link-blocks' },
+  { label: 'Embeds', value: 'embed-blocks' },
+  { label: 'Events', value: 'event-blocks' },
+  { label: 'Tasks', value: 'task-blocks' },
+  { label: 'Code', value: 'code-blocks' },
+  { label: 'Callouts', value: 'callout-blocks' },
+  { label: 'Locations', value: 'location-blocks' },
+  { label: 'Tags', value: 'tag-blocks' },
+];
+
+const displayModeButton = (mode: string, icon: string): SchemaNode => ({
+  type: 'we-button',
+  props: {
+    variant: { $if: { condition: { $eq: [{ $local: 'displayMode' }, mode] }, then: 'secondary', else: 'ghost' } },
+    square: true,
+    onClick: { $setLocal: 'displayMode', value: mode },
+  },
+  children: [{ type: 'we-icon', props: { name: icon } }],
+});
+
+export const cardsHeader: SchemaNode = {
   type: 'Row',
-  props: { ax: 'between', ay: 'center', gap: '200' },
+  props: { ax: 'between', ay: 'center', gap: '300' },
   children: [
-    // Mode toggle
+    // Left: filter controls
     {
       type: 'Row',
-      props: { gap: '100' },
+      props: { gap: '300', ay: 'center', wrap: true },
       children: [
+        // Search
         {
-          type: 'we-button',
+          type: 'SearchInput',
           props: {
-            text: 'Posts',
-            height: '32px',
-            width: 'fit-content',
-            bg: {
-              $if: {
-                condition: { $eq: [{ $local: 'viewMode' }, 'posts'] },
-                then: 'primary-500',
-                else: 'neutral-100',
-              },
-            },
-            color: {
-              $if: {
-                condition: { $eq: [{ $local: 'viewMode' }, 'posts'] },
-                then: 'neutral-0',
-                else: 'neutral-600',
-              },
-            },
-            onClick: { $setLocal: 'viewMode', value: 'posts' },
+            placeholder: 'Search…',
+            value: { $local: 'searchText' },
+            onSearch: { $setLocal: 'searchText', from: '$event' },
           },
         },
+        // Content type
         {
-          type: 'we-button',
+          type: 'we-select',
           props: {
-            text: 'Blocks',
-            height: '32px',
-            width: 'fit-content',
-            bg: {
-              $if: {
-                condition: { $eq: [{ $local: 'viewMode' }, 'blocks'] },
-                then: 'primary-500',
-                else: 'neutral-100',
-              },
-            },
-            color: {
-              $if: {
-                condition: { $eq: [{ $local: 'viewMode' }, 'blocks'] },
-                then: 'neutral-0',
-                else: 'neutral-600',
-              },
-            },
-            onClick: { $setLocal: 'viewMode', value: 'blocks' },
+            value: { $local: 'contentType' },
+            searchable: true,
+            options: contentTypeOptions,
+            onChange: { $setLocal: 'contentType', from: '$event.target.value' },
+            // width: '100px',
           },
+        },
+        // Sort order
+        {
+          type: 'we-select',
+          props: {
+            value: { $local: 'sortBy' },
+            options: [
+              { label: 'Newest', value: 'DESC' },
+              { label: 'Oldest', value: 'ASC' },
+            ],
+            onChange: { $setLocal: 'sortBy', from: '$event.target.value' },
+          },
+        },
+        // Display mode toggle
+        {
+          type: 'Row',
+          props: { gap: '300' },
+          children: [
+            displayModeButton('expanded', 'list'),
+            displayModeButton('compact', 'list-dashes'),
+            displayModeButton('grid', 'squares-four'),
+          ],
         },
       ],
     },
-    // Create Post button
+    // Right: create actions
     {
-      type: 'we-button',
-      props: {
-        text: 'Create Post',
-        bg: 'primary-500',
-        color: 'neutral-0',
-        height: '40px',
-        onClick: { $setLocal: 'createPostOpen', value: true },
-      },
+      type: 'Row',
+      props: { gap: '300' },
+      children: [
+        {
+          type: 'we-button',
+          props: { text: 'Post', variant: 'primary', onClick: { $setLocal: 'createPostOpen', value: true } },
+        },
+        {
+          type: 'we-button',
+          props: { text: 'Space', variant: 'outline', onClick: { $setLocal: 'createSpaceModalOpen', value: true } },
+        },
+      ],
     },
-
-    // {
-    //   type: 'we-button',
-    //   props: {
-    //     text: 'Get collection blocks',
-    //     bg: 'primary-500',
-    //     color: 'neutral-0',
-    //     height: '40px',
-    //     onClick: { $action: 'spaceStore.getCollectionBlocks' },
-    //   },
-    // },
   ],
 };

@@ -1,4 +1,3 @@
-export { AgentProfile } from './AgentProfile';
 export { AgentSettings } from './AgentSettings';
 export { ChatMessage } from './ChatMessage';
 export { ChatSession } from './ChatSession';

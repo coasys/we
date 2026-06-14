@@ -598,6 +598,42 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     );
   }
 
+  // $agent: demand-fetch and inject an AgentProfileSummary into child context.
+  // Usage: { type: '$agent', props: { did: '$item.author', as: 'agent' }, children: [...] }
+  if (node.type === '$agent') {
+    const asKey = String(node.props?.as ?? 'agent');
+    const [hasAgent, setHasAgent] = createSignal(false);
+    const [agentStore, setAgentStore] = createStore<Record<string, unknown>>({});
+
+    createEffect(() => {
+      const rawDid = node.props?.did;
+      // resolveProp handles both '$post.author' strings and token objects like { $local: 'selectedPin.id' }
+      const did = rawDid ? String(resolveProp(rawDid, stores as Record<string, unknown>, effectiveContext) ?? '') : '';
+      if (!did) return;
+
+      const adamStore = (stores as Record<string, unknown>).adamStore as
+        | { agents: () => Array<Record<string, unknown>>; fetchAgent: (did: string) => Promise<void> }
+        | undefined;
+      if (!adamStore) return;
+
+      // Track agents() so this effect re-runs when a fetch completes
+      const cached = adamStore.agents().find((a) => a.did === did);
+      if (cached) {
+        setAgentStore(reconcile(cached, { merge: true }));
+        setHasAgent(true);
+      } else {
+        adamStore.fetchAgent(did);
+      }
+    });
+
+    const childContext = { ...effectiveContext, [asKey]: agentStore };
+    return (
+      <Show when={hasAgent()}>
+        <For each={node.children as SchemaNode[]}>{(child) => renderNode(child, childContext)}</For>
+      </Show>
+    );
+  }
+
   // Resolve component: registry entry > native HTML/custom element > error
   // Convention: PascalCase = registry component, hyphenated = web component, lowercase = HTML element
   const component = createMemo(() => {
@@ -694,6 +730,21 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           deepUnwrap(resolveProp({ $map: { ...mapSpec, items: itemsSignal } }, stores, effectiveContext, createMemo)),
         );
       }
+    } else if (isEventProp(key) && Array.isArray(rawValue)) {
+      // Event handler arrays: resolve each item lazily at call time so that
+      // $if conditions with $event.* references (e.g. '$event.detail') resolve
+      // against the actual event rather than the render-time context.
+      const items = rawValue as unknown[];
+      propMemos[key] =
+        () =>
+        (...args: unknown[]) => {
+          const callContext = args.length > 0 ? { ...effectiveContext, event: args[0] } : effectiveContext;
+          for (const item of items) {
+            let fn = resolveProp(item, stores, callContext, createMemo);
+            if (typeof fn === 'function' && REACTIVE_ACCESSOR in (fn as object)) fn = (fn as () => unknown)();
+            if (typeof fn === 'function') fn(...args);
+          }
+        };
     } else {
       const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
       const raw = getModel ? hoistMapQuerySignals(rawValue, stores, getModel, effectiveContext) : rawValue;

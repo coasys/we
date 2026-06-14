@@ -116,6 +116,7 @@ export type OrToken = { $or: unknown[] };
 export type FilterToken = { $filter: { items: unknown; where: Record<string, unknown> } };
 export type CountToken = { $count: { items: unknown } };
 export type FindToken = { $find: { items: unknown; where?: Record<string, unknown>; select?: string } };
+export type PluralToken = { $plural: { count: unknown; one: string; other: string } };
 export type QueryToken = {
   $query: {
     model: string;
@@ -201,4 +202,5 @@ export type OperatorToken =
   | CallLocalToken
   | FilterToken
   | CountToken
-  | FindToken;
+  | FindToken
+  | PluralToken;

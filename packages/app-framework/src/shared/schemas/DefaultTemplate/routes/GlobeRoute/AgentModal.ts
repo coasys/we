@@ -2,11 +2,10 @@
  * AgentModal
  *
  * Rendered when the user clicks an Agent pin on the discovery globe.
- * Fetches the selected AgentProfile via $each+$query bound to `$local.selectedPin.id`.
+ * Fetches the selected agent's profile via $agent bound to `$local.selectedPin.id` (DID).
  *
  * Layout:
- *   • Optional cover-image banner  ($item.coverImage)
- *   • Row: circular avatar  ($item.avatar)  + name / handle
+ *   • Row: circular avatar  ($agent.avatar)  + name / handle
  *   • Optional bio
  *   • Signal controls row
  *   • Close button
@@ -20,41 +19,13 @@ export const agentModal = {
   },
   children: [
     {
-      type: '$each',
-      props: {
-        as: 'item',
-        items: {
-          $query: {
-            model: 'AgentProfile',
-            where: { id: { $local: 'selectedPin.id' } },
-            include: { signals: true },
-            subscribe: false,
-          },
-        },
-      },
+      type: '$agent',
+      props: { did: { $local: 'selectedPin.id' }, as: 'agent' },
       children: [
         {
           type: 'Column',
           props: { gap: '400' },
           children: [
-            // ── Cover image banner ──────────────────────────────
-            {
-              type: '$if',
-              props: {
-                condition: '$item.coverImage',
-                then: {
-                  type: 'we-image',
-                  props: {
-                    src: '$item.coverImage',
-                    width: '100%',
-                    height: '140px',
-                    fit: 'cover',
-                    r: '300',
-                  },
-                },
-              },
-            },
-
             // ── Circular avatar + name / handle row ────────────
             {
               type: 'Row',
@@ -63,11 +34,11 @@ export const agentModal = {
                 {
                   type: '$if',
                   props: {
-                    condition: '$item.avatar',
+                    condition: '$agent.avatar',
                     then: {
                       type: 'we-image',
                       props: {
-                        src: '$item.avatar',
+                        src: '$agent.avatar',
                         width: '60px',
                         height: '60px',
                         fit: 'cover',
@@ -87,16 +58,12 @@ export const agentModal = {
                     {
                       type: 'we-text',
                       props: { fontSize: '600', fontWeight: 'bold' },
-                      children: [
-                        {
-                          $concat: ['$item.firstName', ' ', '$item.lastName'],
-                        },
-                      ],
+                      children: [{ $concat: ['$agent.firstName', ' ', '$agent.lastName'] }],
                     },
                     {
                       type: 'we-text',
                       props: { fontSize: '300', color: 'neutral-400' },
-                      children: [{ $concat: ['@', '$item.handle'] }],
+                      children: [{ $concat: ['@', '$agent.handle'] }],
                     },
                   ],
                 },
@@ -107,11 +74,11 @@ export const agentModal = {
             {
               type: '$if',
               props: {
-                condition: '$item.bio',
+                condition: '$agent.bio',
                 then: {
                   type: 'we-text',
                   props: { fontSize: '400', color: 'neutral-600' },
-                  children: ['$item.bio'],
+                  children: ['$agent.bio'],
                 },
               },
             },
@@ -129,11 +96,11 @@ export const agentModal = {
                       type: 'SignalControl',
                       props: {
                         signalType: '$sig',
-                        signals: { $filter: { items: '$item.signals', where: { signalTypeId: '$sig.id' } } },
+                        signals: [],
                         myDid: { $store: 'adamStore.me.did' },
                         onSignal: {
                           $action: 'spaceStore.upsertSignal',
-                          args: ['$item.id', '$sig.id', '$arg'],
+                          args: ['$agent.did', '$sig.id', '$arg'],
                         },
                       },
                     },

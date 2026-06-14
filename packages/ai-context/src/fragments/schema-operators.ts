@@ -61,7 +61,7 @@ To target a non-current perspective: { "$action": "model.update", "args": ["Mode
 model.delete — deletes a model instance:
 { "$action": "model.delete", "args": ["ModelName", "$item.id"] }
 
-Use perspective: 'adamStore.rootPerspective' for we-root models (AgentProfile, AgentSettings).
+Use perspective: 'adamStore.rootPerspective' for we-root models (AgentSettings, ChatSession, etc.).
 Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
 
 Conditional logic:
@@ -106,9 +106,20 @@ Boolean logic:
 
 Array operators:
 { "$filter": { "items": <array>, "where": { "field": "value", ... } } }
-Filters an array to items where all where conditions match (strict equality).
-Where values can be any resolvable token, including context refs.
-Example: { "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
+Filters an array to items where all where conditions match. Mirrors the AD4M model $query where operator set:
+
+  { "field": "value" }                                   — strict equality
+  { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
+  { "field": { "contains": "text" } }                    — case-insensitive substring match (strings only)
+  { "field": { "exists": true } }                        — non-null / non-undefined presence check
+  { "field": { "exists": false } }                       — null or undefined check
+
+Where values (including those inside operator objects) are resolved through the prop system,
+so $store, $local, and context refs like { "$local": "searchText" } all work.
+
+Examples:
+{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
+{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "location": { "exists": true }, "handle": { "contains": { "$local": "searchText" } } } } }
 
 { "$count": { "items": <array> } }
 Returns the length of an array.
@@ -117,6 +128,13 @@ Example: { "badge": { "$count": { "items": { "$store": "notificationStore.unread
 { "$find": { "items": <array>, "where"?: { ... }, "select"?: "fieldName" } }
 Finds the first matching item. where is optional (returns first item if omitted). select plucks a single field.
 Example: { "$find": { "items": { "$store": "spaceStore.members" }, "where": { "id": "$item.creatorId" }, "select": "name" } }
+
+{ "$plural": { "count": <number>, "one": "singular", "other": "plural" } }
+Returns "one" when count === 1, otherwise "other". Use in children arrays for count-noun labels.
+count is resolved through the prop system — any numeric expression ($count, $store, context ref) works.
+Example: { "$plural": { "count": { "$count": { "items": { "$store": "spaceStore.members" } } }, "one": "Member", "other": "Members" } }
+Compose with we-number for a full "N Members" display:
+  we-number (value: { "$count": ... }, shorten: true) + we-text (children: [{ "$plural": { "count": { "$count": ... }, "one": "Member", "other": "Members" } }])
 
 Query (data retrieval):
 { "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
@@ -300,15 +318,21 @@ fade controls opacity only; slide/scale control transform only. Compose effects 
 Example: enterTransition: [{ type: 'fade', duration: 300 }, { type: 'slide', direction: 'up', distance: '40px', duration: 400 }]
 
 Viewport / mount animation (child always in DOM):
-{ "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
+{ "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
 The child is always mounted. Animations are CSS-only (opacity / transform) — use this for scroll-reveal effects.
 Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
 scrollReveal: true fires enterTransition when the element enters the viewport.
 scrollReveal: -100 fires 100px before the element would enter (negative = earlier reveal).
 scrollLeave fires exitTransition when the element leaves the viewport.
-Without scrollReveal/scrollLeave, the enterTransition runs once on mount.
+scrollPast: "element-id" observes a sentinel element (by DOM id) instead of the $animate element itself.
+  enterTransition fires when the sentinel leaves the viewport (user scrolled past it).
+  exitTransition fires when the sentinel returns (user scrolled back up).
+  Use this for sticky headers: place a zero-height sentinel div at the bottom of the non-sticky header section,
+  then wrap the mini-profile in $animate with scrollPast pointing to that sentinel's id.
+  scrollPast is mutually exclusive with scrollReveal/scrollLeave.
+Without any scroll trigger, the enterTransition runs once on mount.
 Only one child node is supported.
-Example:
+Example (scroll-reveal):
 {
   "type": "$animate",
   "props": {
@@ -319,6 +343,21 @@ Example:
     ]
   },
   "children": [{ "type": "SomeCard", "children": [] }]
+}
+Example (sticky header mini-profile):
+Place a sentinel at the bottom of the header, reference it in the sticky nav:
+{ "type": "div", "props": { "id": "header-sentinel" }, "styles": { "height": "0px", "pointerEvents": "none" } }
+{
+  "type": "$animate",
+  "props": {
+    "scrollPast": "header-sentinel",
+    "enterTransition": { "type": "fade", "duration": 250 },
+    "exitTransition": { "type": "fade", "duration": 200 }
+  },
+  "children": [{ "type": "Row", "props": { "ay": "center", "gap": "300" }, "children": [
+    { "type": "we-avatar", "props": { "image": "$space.avatar", "size": "sm" } },
+    { "type": "we-text", "props": { "fontWeight": "600" }, "children": ["$space.name"] }
+  ]}]
 }
 
 Single model item (load one record, render children with it in context):

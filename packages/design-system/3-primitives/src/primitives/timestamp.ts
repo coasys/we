@@ -67,6 +67,7 @@ export default class WeTimestamp extends DesignSystemElement {
   }
 
   override updated(changed: Map<string, unknown>) {
+    super.updated(changed);
     if (changed.has('relative')) {
       if (this.relative) this._startLoop();
       else this._stopLoop();

@@ -27,9 +27,10 @@ import {
 } from './local';
 import { resolveMapProp } from './map';
 import { resolvePickProp } from './pick';
+import { resolvePluralProp } from './plural';
 import { REACTIVE_ACCESSOR } from './reactive';
 import { resolveStoreProp } from './store';
-import type { ConcatProp, CountProp, FilterProp, FindProp, MapProp, Memo, PickProp, Props } from './types';
+import type { ConcatProp, CountProp, FilterProp, FindProp, MapProp, Memo, PickProp, PluralProp, Props } from './types';
 import { noMemo } from './types';
 
 /**
@@ -92,6 +93,8 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
       return resolveCountProp((value as { $count: CountProp }).$count, stores, context, memo, resolveProp);
     if (hasToken(value, '$find', 'object'))
       return resolveFindProp((value as { $find: FindProp }).$find, stores, context, memo, resolveProp);
+    if (hasToken(value, '$plural', 'object'))
+      return resolvePluralProp((value as { $plural: PluralProp }).$plural, stores, context, memo, resolveProp);
   }
 
   // Recursively resolve arrays
@@ -108,9 +111,12 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
       // resolved values captured at render time.
       if (k.length > 2 && k.startsWith('on') && k[2] === k[2].toUpperCase() && Array.isArray(v)) {
         resolved[k] = (...args: unknown[]) => {
+          // Inject the event into context so $event.* references (e.g. '$event.detail')
+          // resolve correctly inside $if conditions within handler arrays.
+          const callContext = args.length > 0 ? { ...context, event: args[0] } : context;
           for (const item of v) {
             // Resolve lazily at call time so $if conditions read current store state
-            let fn = resolveProp(item, stores, context, memo, depth + 1);
+            let fn = resolveProp(item, stores, callContext, memo, depth + 1);
             // $if without $arg returns a reactive accessor (memo) wrapping the action fn — unwrap it
             if (typeof fn === 'function' && (fn as { [REACTIVE_ACCESSOR]?: boolean })[REACTIVE_ACCESSOR]) {
               fn = (fn as () => unknown)();

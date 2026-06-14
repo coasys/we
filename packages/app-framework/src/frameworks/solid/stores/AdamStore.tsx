@@ -1,20 +1,25 @@
 import { Ad4mClient, Agent, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
+import {
+  type AgentProfileSummary,
+  FILE_STORAGE_LANGUAGE,
+  getProfile,
+  type PublishProfileFields,
+  publishProfileToPublicPerspective,
+} from '@shared/agentHelpers';
 import { getModelClasses, getModelManifest } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
 import { installRootSdna, installSpaceSdna } from '@shared/sdnaModels';
-import { removeSpaceFromParent, syncAgentProfileToParent } from '@shared/syncHelpers';
-import { AgentProfile, AgentSettings, compressImageToFileData, LocationBlock, Space } from '@we/models';
-import {
-  Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  ParentProps,
-  useContext,
-} from 'solid-js';
+import { removeSpaceFromParent } from '@shared/syncHelpers';
+import { AgentSettings, compressImageToFileData, type FileData, LocationBlock, Space } from '@we/models';
+
+// Space.avatar/coverImage are typed as string (resolved data URI on read) but accept FileData on write.
+// This input type reflects the actual write-path contract.
+type SpaceInput = Omit<Partial<Space>, 'avatar' | 'coverImage'> & {
+  avatar?: FileData | string;
+  coverImage?: FileData | string;
+};
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import weSeedFile from '../../../../../../we-seed.json';
 import type { WeSeedFile } from '../../../types/seed';
@@ -69,15 +74,17 @@ export interface AdamStore {
   creatingSpace: Accessor<boolean>;
   currentPerspective: Accessor<PerspectiveProxy | null>;
   currentPerspectiveModels: Accessor<ModelManifestEntry[]>;
+  agents: Accessor<AgentProfileSummary[]>;
 
   // Actions
   login: (password: string) => Promise<void>;
+  fetchAgent: (did: string) => Promise<void>;
   logout: () => Promise<void>;
   createSpace: (
     name: string,
     description: string,
-    shared: boolean,
-    listed: boolean,
+    access: 'personal' | 'shared',
+    discovery: 'hidden' | 'listed',
     avatarFile?: File,
     coverImageFile?: File,
     latitude?: number,
@@ -93,13 +100,15 @@ export interface AdamStore {
   reorderPerspectives: (newOrder: string[]) => Promise<void>;
   joinSpace: (id: string) => Promise<void>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
-  updateAgentLocation: (
-    latitude: number,
-    longitude: number,
-    city?: string,
-    country?: string,
-    countryCode?: string,
-  ) => Promise<void>;
+  updateAgentLocation: (update: {
+    latitude?: number;
+    longitude?: number;
+    city?: string;
+    country?: string;
+    countryCode?: string;
+  }) => Promise<void>;
+  updateOwnProfile: (fields: Pick<AgentProfileSummary, 'firstName' | 'lastName' | 'handle' | 'bio'>) => Promise<void>;
+  ownAgent: Accessor<AgentProfileSummary | undefined>;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -128,6 +137,15 @@ export function AdamStoreProvider(props: ParentProps) {
   const [creatingSpace, setCreatingSpace] = createSignal(false);
   const [currentPerspective, setCurrentPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [currentPerspectiveModels, setCurrentPerspectiveModels] = createSignal<ModelManifestEntry[]>([]);
+  const [agents, setAgents] = createSignal<AgentProfileSummary[]>([]);
+
+  // In-flight deduplication for fetchAgent — prevents concurrent fetches for the same DID
+  const inflightFetches = new Map<string, Promise<void>>();
+
+  const ownAgent = createMemo(() => {
+    const myDid = me()?.did;
+    return myDid ? agents().find((a) => a.did === myDid) : undefined;
+  });
 
   const systemPerspectiveUuids = createMemo(() =>
     allPerspectives()
@@ -175,8 +193,8 @@ export function AdamStoreProvider(props: ParentProps) {
   });
 
   // Derived: personal and shared spaces
-  const personalSpaces = createMemo(() => mySpaces().filter((s) => s.visibility !== 'shared'));
-  const sharedSpaces = createMemo(() => mySpaces().filter((s) => s.visibility === 'shared'));
+  const personalSpaces = createMemo(() => mySpaces().filter((s) => s.access === 'personal'));
+  const sharedSpaces = createMemo(() => mySpaces().filter((s) => s.access === 'shared'));
 
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
@@ -195,6 +213,21 @@ export function AdamStoreProvider(props: ParentProps) {
       if (allPerspectives().some((p) => p.uuid === handle.uuid)) return null;
       client.perspective.byUUID(handle.uuid).then((perspective) => {
         if (!perspective) return;
+        // Log unexpected perspectives so we can identify and filter system ones
+        const meAgent = me();
+        const publicPerspectiveUuid = (meAgent?.perspective as { uuid?: string } | undefined)?.uuid;
+        if (publicPerspectiveUuid && perspective.uuid === publicPerspectiveUuid) {
+          console.log(
+            'AdamStore: suppressing agent public perspective from sidebar',
+            perspective.name,
+            perspective.uuid,
+          );
+          return;
+        }
+        if (perspective.name?.toLowerCase().startsWith('agent perspective')) {
+          console.log('AdamStore: suppressing agent perspective from sidebar', perspective.name, perspective.uuid);
+          return;
+        }
         // Re-check after the async gap: createSpace's eager update may have run while
         // we were waiting for byUUID to resolve, which would add a duplicate.
         if (allPerspectives().some((p) => p.uuid === handle.uuid)) return;
@@ -333,6 +366,10 @@ export function AdamStoreProvider(props: ParentProps) {
       await getMySpaces(client);
       subscribeToPerspectiveChanges(client);
       setBootState('ready');
+
+      // Seed own profile into the agents cache from the public perspective
+      const ownDid = me()?.did;
+      if (ownDid) fetchAgent(ownDid);
 
       // Restore the original URL (e.g. a deep link opened via refresh), falling back to '/'
       routeStore.navigate(initialPath || '/');
@@ -566,21 +603,36 @@ export function AdamStoreProvider(props: ParentProps) {
     };
   }
 
-  // Syncs the agent profile to the global perspective on every change.
-  // Fires on initial load and after every link-write to the root perspective that affects AgentProfile.
-  function subscribeToAgentProfile(p: PerspectiveProxy) {
-    const profileBuilder = AgentProfile.query(p, { include: { location: true } });
-    profileBuilder.subscribe((profiles: AgentProfile[]) => {
-      const profile = profiles[0];
-      if (!profile) return;
-      const globalP = globalPerspective();
-      if (globalP) {
-        syncAgentProfileToParent(profile, globalP).catch((err) =>
-          console.error('AdamStore: subscription sync agentProfile to global failed', err),
-        );
-      }
-    });
-    onCleanup(() => profileBuilder.dispose());
+  /**
+   * Fetch an agent's profile from their public perspective and add it to the agents cache.
+   * No-ops if the DID is already cached. Deduplicates concurrent calls for the same DID.
+   */
+  async function fetchAgent(did: string): Promise<void> {
+    const cleanedDid = did.replace('did://', '');
+    if (agents().some((a) => a.did === cleanedDid)) return;
+
+    const existing = inflightFetches.get(cleanedDid);
+    if (existing) return existing;
+
+    const client = adamClient();
+    if (!client) return;
+
+    const promise = getProfile(cleanedDid, client)
+      .then((summary) => {
+        setAgents((prev) => {
+          if (prev.some((a) => a.did === cleanedDid)) return prev;
+          return [...prev, summary];
+        });
+      })
+      .catch((err) => {
+        console.warn(`AdamStore: fetchAgent failed for ${cleanedDid}`, err);
+      })
+      .finally(() => {
+        inflightFetches.delete(cleanedDid);
+      });
+
+    inflightFetches.set(cleanedDid, promise);
+    return promise;
   }
 
   /** Find or create the root perspective and all other system perspectives.
@@ -594,7 +646,6 @@ export function AdamStoreProvider(props: ParentProps) {
         // Ensure all models are registered (handles new models added after initial creation)
         await installRootSdna(rootP);
         setRootPerspective(rootP);
-        subscribeToAgentProfile(rootP);
 
         const settings = await AgentSettings.findOne(rootP);
         if (settings) setAgentSettings(settings);
@@ -615,15 +666,6 @@ export function AdamStoreProvider(props: ParentProps) {
         if (existingGlobal) {
           setGlobalPerspective(existingGlobal);
           console.log('AdamStore: Restored global perspective', existingGlobal.uuid);
-          // Belt-and-suspenders boot sync — subscription will also fire but this ensures
-          // the global copy is refreshed immediately on startup.
-          AgentProfile.findOne(rootP, { include: { location: true } }).then((currentProfile) => {
-            if (currentProfile) {
-              syncAgentProfileToParent(currentProfile, existingGlobal).catch((err) =>
-                console.error('AdamStore: boot sync agentProfile to global failed', err),
-              );
-            }
-          });
         }
 
         return;
@@ -636,18 +678,13 @@ export function AdamStoreProvider(props: ParentProps) {
       // Model.register resolves before SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      const [settings] = await Promise.all([
-        AgentSettings.create(perspective, {
-          currentTemplateId: 'default',
-          currentThemeId: 'dark',
-        }),
-        AgentProfile.create(perspective, {}),
-      ]);
+      const settings = await AgentSettings.create(perspective, {
+        currentTemplateId: 'default',
+        currentThemeId: 'dark',
+      });
 
       setRootPerspective(perspective);
       setAgentSettings(settings);
-      // The subscription's initial fire will deliver the newly-created AgentProfile.
-      subscribeToAgentProfile(perspective);
 
       console.log('AdamStore: Created root perspective', perspective.uuid);
 
@@ -675,40 +712,90 @@ export function AdamStoreProvider(props: ParentProps) {
     setAgentSettings(settings);
   }
 
+  /**
+   * Upload a profile image and write its expression URL to the agent's public perspective.
+   * Optimistically updates the agents cache with the data URI for immediate display.
+   */
   async function updateProfileImage(field: 'avatar' | 'coverImage', imageFile: File): Promise<void> {
-    const rootP = rootPerspective();
-    if (!rootP) return;
-    const profile = await AgentProfile.findOne(rootP);
-    if (!profile) return;
+    const myDid = me()?.did;
+    const client = adamClient();
+    if (!myDid || !client) return;
+
     const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'profile-image' : 'cover-image');
-    await AgentProfile.update(rootP, profile.id, { [field]: fileData });
+    // data_base64 from compressImageToFileData is a full data URI (from FileReader.readAsDataURL)
+    const dataUri = fileData.data_base64;
+    const expressionUrl = await client.expression.create(JSON.stringify(fileData), FILE_STORAGE_LANGUAGE);
+
+    setAgents((prev) => {
+      const existing = prev.find((a) => a.did === myDid);
+      if (!existing) return prev;
+      return [...prev.filter((a) => a.did !== myDid), { ...existing, [field]: dataUri }];
+    });
+
+    const publishKey = field === 'avatar' ? 'avatarExpressionUrl' : 'coverImageExpressionUrl';
+    await publishProfileToPublicPerspective({ [publishKey]: expressionUrl } as PublishProfileFields, client);
   }
 
-  async function updateAgentLocation(
-    latitude: number,
-    longitude: number,
-    city?: string,
-    country?: string,
-    countryCode?: string,
-  ): Promise<void> {
-    const rootP = rootPerspective();
-    if (!rootP) return;
-    const profile = await AgentProfile.findOne(rootP);
-    if (!profile) return;
+  /**
+   * Update the agent's location in their public perspective.
+   * Pass a partial object — missing lat/lng are merged from the existing cached location.
+   */
+  async function updateAgentLocation(update: {
+    latitude?: number;
+    longitude?: number;
+    city?: string;
+    country?: string;
+    countryCode?: string;
+  }): Promise<void> {
+    const myDid = me()?.did;
+    const client = adamClient();
+    if (!myDid || !client) return;
 
-    const name = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
-    // Create a new LocationBlock (replace logic: delete old link first via setLocation)
-    const loc = await LocationBlock.create(rootP, {
-      latitude,
-      longitude,
-      ...(name && { name }),
-      ...(city && { city }),
-      ...(country && { country }),
-      ...(countryCode && { countryCode }),
+    const existingLoc = agents().find((a) => a.did === myDid)?.location;
+    const lat = update.latitude ?? existingLoc?.latitude;
+    const lng = update.longitude ?? existingLoc?.longitude;
+    if (lat == null || lng == null) return;
+
+    const merged = {
+      latitude: lat,
+      longitude: lng,
+      city: 'city' in update ? update.city : existingLoc?.city,
+      country: 'country' in update ? update.country : existingLoc?.country,
+    };
+
+    setAgents((prev) => {
+      const agent = prev.find((a) => a.did === myDid);
+      if (!agent) return prev;
+      return [...prev.filter((a) => a.did !== myDid), { ...agent, location: merged }];
     });
-    // HasOne generates setLocation — links the new block, removes any prior link.
-    // The subscription fires on the link change and delivers updated profile via $query.
-    await (profile as unknown as { setLocation: (v: LocationBlock) => Promise<void> }).setLocation(loc);
+
+    await publishProfileToPublicPerspective({ location: merged }, client);
+  }
+
+  /**
+   * Update one or more text fields of the own agent profile in the public perspective.
+   * Merges with the existing cached entry and writes only the provided fields.
+   */
+  async function updateOwnProfile(
+    fields: Pick<AgentProfileSummary, 'firstName' | 'lastName' | 'handle' | 'bio'>,
+  ): Promise<void> {
+    const myDid = me()?.did;
+    const client = adamClient();
+    if (!myDid || !client) return;
+
+    setAgents((prev) => {
+      const existing = prev.find((a) => a.did === myDid);
+      const base: AgentProfileSummary = existing ?? { did: myDid, firstName: '', lastName: '', handle: '', bio: '' };
+      return [...prev.filter((a) => a.did !== myDid), { ...base, ...fields }];
+    });
+
+    const publishFields: PublishProfileFields = {};
+    if ('firstName' in fields) publishFields.firstName = fields.firstName;
+    if ('lastName' in fields) publishFields.lastName = fields.lastName;
+    if ('handle' in fields) publishFields.handle = fields.handle;
+    if ('bio' in fields) publishFields.bio = fields.bio;
+
+    await publishProfileToPublicPerspective(publishFields, client);
   }
 
   async function login(password: string) {
@@ -731,6 +818,9 @@ export function AdamStoreProvider(props: ParentProps) {
       await getMySpaces(client);
       subscribeToPerspectiveChanges(client);
       setBootState('ready');
+
+      const ownDid = me()?.did;
+      if (ownDid) fetchAgent(ownDid);
 
       // Restore the original URL if the user was on a deep link before the login screen
       routeStore.navigate(initialPath || '/');
@@ -763,10 +853,10 @@ export function AdamStoreProvider(props: ParentProps) {
 
   async function addSpaceToPerspective(
     perspective: PerspectiveProxy,
-    space: Partial<Space>,
+    space: SpaceInput,
     location?: Partial<LocationBlock>,
   ): Promise<Space> {
-    const spaceModel = await Space.create(perspective, space);
+    const spaceModel = await Space.create(perspective, space as Partial<Space>);
     if (location) {
       const locationModel = await LocationBlock.create(perspective, location);
       await spaceModel.setLocation(locationModel);
@@ -777,8 +867,8 @@ export function AdamStoreProvider(props: ParentProps) {
   async function createSpace(
     name: string,
     description: string,
-    shared: boolean,
-    listed: boolean,
+    access: 'personal' | 'shared',
+    discovery: 'hidden' | 'listed',
     avatarFile?: File,
     coverImageFile?: File,
     latitude?: number,
@@ -787,7 +877,6 @@ export function AdamStoreProvider(props: ParentProps) {
     country?: string,
     countryCode?: string,
   ): Promise<void> {
-    const visibility: 'personal' | 'shared' | 'public' = shared && listed ? 'public' : shared ? 'shared' : 'personal';
     const client = adamClient();
     if (!client) return;
     // Capture the active perspective now — it becomes the parent once the new space is created
@@ -804,8 +893,8 @@ export function AdamStoreProvider(props: ParentProps) {
       // HACK: Model.register resolves before the SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
-      // If shared or public, publish as neighbourhood
-      if (visibility !== 'personal') {
+      // If shared, publish as neighbourhood
+      if (access === 'shared') {
         const uid = crypto.randomUUID();
         const languages = await client.runtime.knownLinkLanguageTemplates();
         const templateAddress = languages?.[0];
@@ -831,7 +920,8 @@ export function AdamStoreProvider(props: ParentProps) {
         url: spacePerspective.sharedUrl ?? undefined,
         name,
         description,
-        visibility,
+        access,
+        discovery,
         ...(avatarData && { avatar: avatarData }),
         ...(coverImageData && { coverImage: coverImageData }),
       };
@@ -911,20 +1001,10 @@ export function AdamStoreProvider(props: ParentProps) {
         return;
       }
 
-      // If this is the configured global space, update globalPerspective and sync profile.
+      // If this is the configured global space, update globalPerspective.
       const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
       if (neighbourhoodUrl === seedUrl) {
         setGlobalPerspective(joinedP);
-        const rootP = rootPerspective();
-        if (rootP) {
-          AgentProfile.findOne(rootP).then((currentProfile) => {
-            if (currentProfile) {
-              syncAgentProfileToParent(currentProfile, joinedP).catch((err) =>
-                console.error('AdamStore: post-join sync agentProfile to global failed', err),
-              );
-            }
-          });
-        }
       }
 
       await switchPerspective(joinedP.uuid);
@@ -1065,15 +1145,19 @@ export function AdamStoreProvider(props: ParentProps) {
     creatingSpace,
     currentPerspective,
     currentPerspectiveModels,
+    agents,
+    ownAgent,
 
     // Actions
     login,
+    fetchAgent,
     logout,
     createSpace,
     removePerspective,
     switchPerspective,
     updateAgentSettings,
     updateProfileImage,
+    updateOwnProfile,
     reorderPerspectives,
     joinSpace,
     updateAgentLocation,
