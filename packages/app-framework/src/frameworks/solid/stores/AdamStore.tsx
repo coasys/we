@@ -1088,26 +1088,33 @@ export function AdamStoreProvider(props: ParentProps) {
       const perspective = await client.perspective.byUUID(uuid);
       if (!perspective) return;
 
-      // Switch immediately — WE model classes are pre-registered at module load so
-      // templates render without waiting for dynamic model discovery.
+      // Check whether SDNA is already installed. This is a fast local conductor
+      // lookup for already-joined spaces. If the perspective has no SHACL shapes
+      // yet (first-time join race: addPerspectiveAddedListener fires before
+      // joinSpace reaches installSpaceSdna), block here until SDNA is installed so
+      // schema queries don't immediately throw "No SHACL shape" errors.
+      let classes = await getModelClasses(perspective);
+      if (Object.keys(classes).length === 0) {
+        await installSpaceSdna(perspective);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        classes = await getModelClasses(perspective);
+      }
+
+      // SDNA is installed — switch immediately so WE templates render.
+      // WE model classes are pre-registered at module load; no need to await
+      // registerDynamicModels before the UI is usable.
       setCurrentPerspective(perspective);
 
-      // Background: discover and register any dynamic (non-WE) model classes from
-      // SHACL shapes (e.g. Flux). If no shapes exist yet, install WE SDNA first —
-      // covers the race where addPerspectiveAddedListener fires before joinSpace
-      // has completed its own installSpaceSdna call.
+      // Background: register dynamic (non-WE) model classes and update manifest.
+      // Also backfill mySpaces if the Space record wasn't synced from Holochain
+      // at join time (joinSpace's Space.findOne may have returned null if the
+      // creator's record hadn't propagated yet).
       // Stale guard: if the user navigated away before this resolves, skip updates.
       void (async () => {
         try {
-          let classes = await getModelClasses(perspective);
-          if (Object.keys(classes).length === 0) {
-            await installSpaceSdna(perspective);
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            classes = await getModelClasses(perspective);
-          }
           if (currentPerspective()?.uuid === uuid) registerDynamicModels(uuid, classes);
         } catch (err) {
-          console.warn('AdamStore: getModelClasses failed', err);
+          console.warn('AdamStore: registerDynamicModels failed', err);
         }
 
         try {
@@ -1116,6 +1123,15 @@ export function AdamStoreProvider(props: ParentProps) {
         } catch (err) {
           console.warn('AdamStore: getModelManifest failed', err);
           if (currentPerspective()?.uuid === uuid) setCurrentPerspectiveModels([]);
+        }
+
+        if (perspective.sharedUrl && !mySpaces().some((s) => s.url === perspective.sharedUrl)) {
+          const spaceModel = await Space.findOne(perspective, { where: { url: perspective.sharedUrl } }).catch(
+            () => null,
+          );
+          if (spaceModel && !mySpaces().some((s) => s.url === spaceModel.url)) {
+            setMySpaces((prev) => [...prev, spaceModel]);
+          }
         }
       })();
     } catch (error) {
