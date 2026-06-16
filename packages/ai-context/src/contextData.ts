@@ -1177,22 +1177,6 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'Dialog',
-      props: [
-        { name: 'children', type: 'JSX.Element', optional: true },
-        { name: 'onConfirm', type: '(() => void)', optional: true },
-        { name: 'onCancel', type: '(() => void)', optional: true },
-        { name: 'open', type: 'boolean', optional: true },
-        { name: 'title', type: 'string', optional: true },
-        { name: 'description', type: 'string', optional: true },
-        { name: 'confirmLabel', type: 'string', optional: true },
-        { name: 'cancelLabel', type: 'string', optional: true },
-        { name: 'variant', type: '"default" | "danger"', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
-      ],
-      source: 'components',
-    },
-    {
       name: 'DropdownMenu',
       description:
         'Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.',
@@ -2399,7 +2383,7 @@ export const contextData: ContextData = {
         },
         signalTypesBySlug: { type: 'object' },
       },
-      actions: ['createPost', 'updateSpaceImage', 'createSignalType', 'upsertSignal', 'navigateToSpace'],
+      actions: ['createPost', 'deletePost', 'updateSpaceImage', 'createSignalType', 'upsertSignal', 'navigateToSpace'],
     },
     {
       name: 'aiStore',

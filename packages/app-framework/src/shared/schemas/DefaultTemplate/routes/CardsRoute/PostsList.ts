@@ -27,31 +27,104 @@ export const postsList: SchemaNode = {
           cardShell({
             header: [
               {
-                type: '$agent',
-                props: { did: '$post.author', as: 'author' },
+                type: 'Row',
+                props: { ax: 'between', ay: 'center', width: '100%' },
+                $localState: { confirmDeleteOpen: { type: 'boolean', initial: false } },
                 children: [
                   {
-                    type: 'Row',
-                    props: { ay: 'center', gap: '300' },
+                    type: '$agent',
+                    props: { did: '$post.author', as: 'author' },
                     children: [
                       {
-                        type: 'we-avatar',
-                        props: {
-                          size: 'sm',
-                          image: '$author.avatar',
-                          initials: { $concat: ['$author.firstName', ' ', '$author.lastName'] },
-                        },
-                      },
-                      {
-                        type: 'we-text',
-                        props: { fontWeight: '600', color: 'neutral-800' },
-                        children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
-                      },
-                      {
-                        type: 'we-timestamp',
-                        props: { value: '$post.createdAt', relative: true, color: 'neutral-500' },
+                        type: 'Row',
+                        props: { ay: 'center', gap: '300' },
+                        children: [
+                          {
+                            type: 'we-avatar',
+                            props: {
+                              size: 'sm',
+                              image: '$author.avatar',
+                              initials: { $concat: ['$author.firstName', ' ', '$author.lastName'] },
+                            },
+                          },
+                          {
+                            type: 'we-text',
+                            props: { fontWeight: '600', color: 'neutral-800' },
+                            children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
+                          },
+                          {
+                            type: 'we-timestamp',
+                            props: { value: '$post.createdAt', relative: true, color: 'neutral-500' },
+                          },
+                        ],
                       },
                     ],
+                  },
+                  {
+                    type: '$if',
+                    props: {
+                      condition: { $eq: ['$post.author', { $store: 'adamStore.me.did' }] },
+                      then: {
+                        type: 'Column',
+                        children: [
+                          {
+                            type: 'we-button',
+                            props: {
+                              variant: 'ghost',
+                              size: 'sm',
+                              onClick: { $setLocal: 'confirmDeleteOpen', value: true },
+                            },
+                            children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                          },
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $local: 'confirmDeleteOpen' },
+                              then: {
+                                type: 'we-modal',
+                                props: { close: { $setLocal: 'confirmDeleteOpen', value: false } },
+                                children: [
+                                  { type: 'we-text', props: { fontWeight: '600' }, children: ['Delete post?'] },
+                                  {
+                                    type: 'we-text',
+                                    props: { color: 'neutral-600' },
+                                    children: [
+                                      'This will permanently delete the post and everything inside it. This cannot be undone.',
+                                    ],
+                                  },
+                                  {
+                                    type: 'Row',
+                                    props: { ax: 'end', gap: '200' },
+                                    children: [
+                                      {
+                                        type: 'we-button',
+                                        props: {
+                                          variant: 'ghost',
+                                          onClick: { $setLocal: 'confirmDeleteOpen', value: false },
+                                        },
+                                        children: ['Cancel'],
+                                      },
+                                      {
+                                        type: 'we-button',
+                                        props: {
+                                          variant: 'danger',
+                                          onClick: {
+                                            $action: 'spaceStore.deletePost',
+                                            args: ['$post.id'],
+                                            onSuccess: [{ $setLocal: 'confirmDeleteOpen', value: false }],
+                                          },
+                                        },
+                                        children: ['Delete'],
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    },
                   },
                 ],
               },

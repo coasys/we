@@ -1,8 +1,8 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
-import { Ad4mModel, getPropertiesMetadata, LinkQuery, Literal } from '@coasys/ad4m';
+import { Ad4mModel, getPropertiesMetadata } from '@coasys/ad4m';
 import type { CollectionBlock, FileData } from '@we/models';
 
-import { getBlockModel, getBlockRegistration } from './registry';
+import { getBlockModel, getRegisteredBlockModels } from './registry';
 import type { SerializedBlockNode } from './types';
 
 /**
@@ -379,18 +379,21 @@ export async function createBlocks(
 }
 
 /**
- * Resolve the @Model type name for a given AD4M subject URI by querying
- * for its SHACL type link.
+ * Resolve the AD4M model class for an arbitrary block expression.
+ *
+ * Every block model carries a `@Flag({ through: 'we://flag', value: ... })`
+ * property identifying its concrete type, and flags are always required
+ * triples — so `isSubjectInstance` reliably discriminates between block
+ * classes via a real SPARQL ASK rather than a loose "has any links" check.
+ * This replaced an older `we://type`-link classifier that only worked for
+ * CollectionBlock/TextBlock (the two models that repurpose `we://type` for
+ * their own internal subtype field) and silently failed for every leaf
+ * block (ImageBlock, VideoBlock, etc.), which have no `type` property.
  */
-async function resolveBlockType(perspective: PerspectiveProxy, uri: string): Promise<string | undefined> {
-  const links = await perspective.get(new LinkQuery({ source: uri, predicate: 'we://type' }));
-  if (links.length > 0) {
-    const target = links[0].data.target;
-    try {
-      return Literal.fromUrl(target).get().data;
-    } catch {
-      return target;
-    }
+async function resolveBlockModel(perspective: PerspectiveProxy, uri: string): Promise<typeof Ad4mModel | undefined> {
+  for (const ModelClass of getRegisteredBlockModels()) {
+    const className = (ModelClass as unknown as { className: string }).className;
+    if (await perspective.isSubjectInstance(uri, className)) return ModelClass;
   }
   return undefined;
 }
@@ -398,19 +401,12 @@ async function resolveBlockType(perspective: PerspectiveProxy, uri: string): Pro
 /**
  * Reconstruct a block tree from AD4M.
  *
- * Takes a root block URI, resolves its type, hydrates it with the correct
- * model class from the block registry, then recursively loads children
- * via the `children` @HasMany relationship.
+ * Takes a root block URI, resolves its model class, hydrates it, then
+ * recursively loads children via the `children` @HasMany relationship.
  */
 export async function loadBlocks(perspective: PerspectiveProxy, rootUri: string): Promise<Ad4mModel | undefined> {
   async function loadNode(uri: string): Promise<Ad4mModel | undefined> {
-    // Resolve the model type from the SHACL type link
-    const typeName = await resolveBlockType(perspective, uri);
-    if (!typeName) return undefined;
-
-    // Look up the model class from the block registry by type name
-    const reg = getBlockRegistration(typeName);
-    const ModelClass = reg?.model;
+    const ModelClass = await resolveBlockModel(perspective, uri);
     if (!ModelClass) return undefined;
 
     // Hydrate the block with the correct concrete class
@@ -434,6 +430,37 @@ export async function loadBlocks(perspective: PerspectiveProxy, rootUri: string)
   }
 
   return loadNode(rootUri);
+}
+
+/**
+ * Recursively delete a block tree rooted at rootUri.
+ *
+ * Mirrors loadBlocks' traversal: resolve each node's model class via its
+ * `we://flag`, hydrate it, delete descendants before their parent so each
+ * `delete()` call only ever has to clean up links to blocks that still
+ * exist. Runs inside a transaction so a failure partway through doesn't
+ * leave the tree half-deleted.
+ */
+export async function deleteBlocks(perspective: PerspectiveProxy, rootUri: string): Promise<void> {
+  await Ad4mModel.transaction(perspective, async (tx) => {
+    async function deleteNode(uri: string): Promise<void> {
+      const ModelClass = await resolveBlockModel(perspective, uri);
+      if (!ModelClass) return;
+
+      const block = await ModelClass.findOne(perspective, { where: { id: uri } });
+      if (!block) return;
+
+      if (hasChildren(block)) {
+        for (const childUri of block.children) {
+          await deleteNode(childUri);
+        }
+      }
+
+      await block.delete(tx.batchId);
+    }
+
+    await deleteNode(rootUri);
+  });
 }
 
 // ---------------------------------------------------------------------------

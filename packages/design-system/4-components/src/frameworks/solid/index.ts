@@ -48,7 +48,6 @@ export { Table, type TableColumn, type TableProps } from '../../components/data/
 export { Timeline, type TimelineItem, type TimelineProps } from '../../components/data/Timeline/Timeline.solid';
 
 // Feedback
-export { Dialog, type DialogProps } from '../../components/feedback/Dialog/Dialog.solid';
 export {
   ToastContainer,
   toastService,

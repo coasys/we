@@ -45,6 +45,16 @@ export function getBlockModel(nodeType: string): typeof Ad4mModel | undefined {
 }
 
 /**
+ * Returns the distinct set of model classes across all registered block types
+ * (several node types, e.g. 'paragraph'/'heading'/'quote', map to the same model).
+ */
+export function getRegisteredBlockModels(): (typeof Ad4mModel)[] {
+  const models = new Set<typeof Ad4mModel>();
+  for (const reg of blockRegistry.values()) models.add(reg.model);
+  return [...models];
+}
+
+/**
  * Update an existing block registration with additional fields (e.g., display/input components).
  * Used by framework packages to add components to registrations created by `registerBlock()`.
  */

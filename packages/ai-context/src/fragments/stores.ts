@@ -106,7 +106,7 @@ export const storeEntries: StoreEntry[] = [
         type: 'object',
       },
     },
-    actions: ['createPost', 'updateSpaceImage', 'createSignalType', 'upsertSignal', 'navigateToSpace'],
+    actions: ['createPost', 'deletePost', 'updateSpaceImage', 'createSignalType', 'upsertSignal', 'navigateToSpace'],
   },
   {
     name: 'aiStore',
@@ -242,6 +242,8 @@ function generateStoresText(entries: StoreEntry[]): string {
       },
       actions: {
         createPost: '(editorState: unknown): creates a new post',
+        deletePost:
+          '(postId: string): permanently deletes a post and all of its contained blocks (recursive, atomic)',
         updateSpaceImage:
           '(field: "avatar" | "coverImage", imageFile: File): uploads and sets the space avatar or cover image',
         createSignalType:
