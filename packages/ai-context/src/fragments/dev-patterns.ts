@@ -34,6 +34,30 @@ To add or change documented schema fields, tokens, conventions, or rules:
 
 ---
 
+### Git Workflow — Default Branch & PR Summaries
+
+\`main\` is the production branch — it only receives periodic merges for releases.
+\`dev\` is where all active work happens. Always branch from \`dev\`, and always
+diff/compare against \`dev\` (e.g. \`git diff dev...HEAD\`, \`git log dev..HEAD\`) —
+never \`main\`, even though it exists.
+
+**PR summary convention:** when asked to write a PR summary document for a branch,
+create a new \`PR_<DESCRIPTIVE_NAME>.md\` file at the repo root (e.g.
+\`PR_COLLECTION_BLOCK_TEXT_CONTENT.md\`), based on \`git diff dev...<branch>\` and the
+branch's commit log, with these sections:
+
+- **Summary** — the problem being solved and the high-level approach, 1–2 paragraphs.
+- **Changes** — one entry per file or logical group, explaining *why* the change was
+  made, not just what changed (the diff already shows what).
+- **Known follow-ups** (optional) — gaps or pre-existing issues discovered during the
+  work that are intentionally out of scope for this branch.
+- **Test plan** — a checklist of what was actually verified (manual testing, builds,
+  etc.), not a hypothetical list of what could be tested.
+
+**Never commit \`PR_*.md\` files.** They're scratch documents for the PR description.
+
+---
+
 ### Building the AD4M Executor Binary (CRITICAL)
 
 The ad4m repo has two artefacts with confusingly similar names:
