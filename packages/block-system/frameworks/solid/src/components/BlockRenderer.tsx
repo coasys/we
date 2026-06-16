@@ -18,16 +18,17 @@ import { blockNodeClasses } from '../nodes';
 
 type Props = Omit<BlockRendererProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'ay'> & { rootClass?: string };
 
-function LoadEditorState({
-  editorState,
-  perspective,
-}: {
-  editorState?: SerializedBlockNode;
-  perspective?: PerspectiveProxy | null;
-}) {
+function LoadEditorState(props: { editorState?: SerializedBlockNode; perspective?: PerspectiveProxy | null }) {
   const [editor] = useLexicalComposerContext();
 
+  // Read props.editorState/props.perspective inside the effect (not destructured
+  // in the function signature) — Solid component functions run once, not on every
+  // update, so destructuring here would freeze the initial value and the effect
+  // would never re-run when a post is edited and the same BlockRenderer instance
+  // is reused (reconcile({ key: 'id' }) deliberately keeps it mounted).
   createEffect(() => {
+    const editorState = props.editorState;
+    const perspective = props.perspective;
     if (!editorState || !editor) return;
 
     const rootNode: SerializedBlockNode =
@@ -51,7 +52,12 @@ function LoadEditorState({
 }
 
 /** @superclass DesignSystemElement */
-export function BlockRenderer({ editorState, perspective, width = '100%', rootClass, ...rest }: Props) {
+export function BlockRenderer(props: Props) {
+  // editorState/perspective are read via props.* directly below (not destructured)
+  // so LoadEditorState keeps receiving a live, reactive value when an existing
+  // post is edited and this same component instance is reused — see
+  // LoadEditorState's own comment for why destructuring breaks that.
+  const { width = '100%', rootClass, editorState: _editorState, perspective: _perspective, ...rest } = props;
   const themeRoot = rootClass
     ? `we-block-renderer we-block-content ${rootClass}`
     : 'we-block-renderer we-block-content';
@@ -66,7 +72,7 @@ export function BlockRenderer({ editorState, perspective, width = '100%', rootCl
   return (
     <Column class="we-block-renderer-wrapper" width={width} {...rest}>
       <LexicalComposer initialConfig={initialConfig}>
-        <LoadEditorState editorState={editorState} perspective={perspective} />
+        <LoadEditorState editorState={props.editorState} perspective={props.perspective} />
         <RichTextPlugin
           contentEditable={
             <div>
