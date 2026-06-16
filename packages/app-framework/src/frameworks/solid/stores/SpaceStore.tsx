@@ -4,8 +4,8 @@ import { SPACE_MODELS } from '@shared/sdnaModels';
 import { type LocationData, removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
 import { deriveSlug } from '@shared/utils';
 import { useAdamStore } from '@solid/stores';
-import { createBlocks, deleteBlocks } from '@we/block-shared';
-import { compressImageToFileData, LocationBlock, Signal, SignalType, Space } from '@we/models';
+import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
+import { CollectionBlock, compressImageToFileData, LocationBlock, Signal, SignalType, Space } from '@we/models';
 import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useRouteStore } from './RouteStore';
@@ -25,6 +25,7 @@ export interface SpaceStore {
 
   // Actions
   createPost: (json: unknown) => Promise<void>;
+  updatePost: (postId: string, json: unknown) => Promise<void>;
   deletePost: (postId: string) => Promise<void>;
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
   updateSpaceMeta: (updates: SpaceMetaUpdate) => Promise<void>;
@@ -76,6 +77,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = adamStore.currentPerspective();
     if (!p) return;
     await createBlocks(p, json);
+  }
+
+  async function updatePost(postId: string, json: unknown): Promise<void> {
+    const p = adamStore.currentPerspective();
+    if (!p) return;
+    const existingRoot = await CollectionBlock.findOne(p, { where: { id: postId } });
+    if (!existingRoot) return;
+    await reconcileBlocks(p, existingRoot, json);
   }
 
   async function deletePost(postId: string): Promise<void> {
@@ -266,6 +275,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Actions
     createPost,
+    updatePost,
     deletePost,
     updateSpaceImage,
     updateSpaceMeta,
