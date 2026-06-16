@@ -1,4 +1,19 @@
-import { BlockComposer, BlockRenderer } from '@we/block-solid';
+import {
+  AudioDisplay,
+  BlockComposer,
+  BlockRenderer,
+  CalloutDisplay,
+  CodeDisplay,
+  EmbedDisplay,
+  EventDisplay,
+  FileDisplay,
+  ImageDisplay,
+  LinkDisplay,
+  LocationDisplay,
+  TagDisplay,
+  TaskDisplay,
+  VideoDisplay,
+} from '@we/block-solid';
 import {
   countryOutlinesLayer,
   h3HexagonsLayer,
@@ -93,6 +108,18 @@ export const componentRegistry: ComponentRegistry = {
   // @we/block-solid
   BlockComposer,
   BlockRenderer,
+  AudioDisplay,
+  CalloutDisplay,
+  CodeDisplay,
+  EmbedDisplay,
+  EventDisplay,
+  FileDisplay,
+  ImageDisplay,
+  LinkDisplay,
+  LocationDisplay,
+  TagDisplay,
+  TaskDisplay,
+  VideoDisplay,
 
   // Testing
   BenchmarkTimer,

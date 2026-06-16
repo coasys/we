@@ -58,7 +58,10 @@ export const blocksList: SchemaNode = {
     ),
 
     blockSection('image-blocks', 'ImageBlock', blockHeader('image', 'Image'), [
-      { type: 'we-image', props: { src: '$block.src', alt: '$block.altText', fit: 'contain', width: '100%' } },
+      {
+        type: 'ImageDisplay',
+        props: { src: '$block.src', altText: '$block.altText', width: '$block.width', height: '$block.height' },
+      },
     ]),
 
     blockSection('audio-blocks', 'AudioBlock', blockHeader('music-notes', 'Audio'), [

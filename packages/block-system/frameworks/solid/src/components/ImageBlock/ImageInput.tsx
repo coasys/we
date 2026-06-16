@@ -46,7 +46,7 @@ export function ImageInput(props: ImageInputProps) {
   const [pendingFile, setPendingFile] = createSignal<File | null>(null);
   let cropRef: ImageCropRef | undefined;
 
-  const activeWidth = () => props.width ?? 33;
+  const activeWidth = () => props.width || 33;
 
   // Derive a displayable URL from src (handles both string and FileData).
   const displaySrc = () => {

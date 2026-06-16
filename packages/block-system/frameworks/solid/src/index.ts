@@ -1,3 +1,4 @@
+export * from './components';
 export * from './components/BlockComposer';
 export * from './components/BlockDisplayOverrides';
 export * from './components/BlockRenderer';

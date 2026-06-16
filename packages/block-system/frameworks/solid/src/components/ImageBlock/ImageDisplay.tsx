@@ -14,7 +14,7 @@ interface ImageDisplayProps {
  */
 export function ImageDisplay(props: ImageDisplayProps) {
   // Width is stored as a percentage (33 / 66 / 100). Default to 33 (small). Center when narrower than full.
-  const resolvedWidth = () => props.width ?? 33;
+  const resolvedWidth = () => props.width || 33;
   const widthCss = () => `${resolvedWidth()}%`;
 
   return (
