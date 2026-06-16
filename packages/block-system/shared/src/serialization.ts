@@ -270,99 +270,18 @@ export async function createBlocks(
   perspective: PerspectiveProxy,
   node: SerializedBlockNode,
 ): Promise<Ad4mModel | undefined> {
-  // Pre-upload FileData values to get expression addresses for the editorState
-  // blob only.  The block tree itself is persisted from the original node so
-  // that FileData objects hit the deferred setProperty → createExpression →
-  // executeAction path, which stores clean URI references in the triple graph.
-  // (Passing pre-uploaded strings through initialValues → createSubject would
-  // JSON-encode them with quote characters, breaking resolveLanguage resolution.)
-  const patchedNode = await preUploadFileAssets(perspective, node);
-
   return Ad4mModel.transaction(perspective, async (tx) => {
-    async function persist(
-      node: SerializedBlockNode,
-      parent?: Ad4mModel,
-      inherited?: Record<string, unknown>,
-    ): Promise<Ad4mModel | undefined> {
-      // Pass-through containers (e.g. "list"): don't create a model,
-      // carry metadata down to children
-      if (PASSTHROUGH_TYPES.has(node.type)) {
-        const meta: Record<string, unknown> = {};
-        if ((node as Record<string, unknown>).listType) meta.listType = (node as Record<string, unknown>).listType;
-        if ((node as Record<string, unknown>).tag) meta.tag = (node as Record<string, unknown>).tag;
-        if ((node as Record<string, unknown>).start) meta.start = (node as Record<string, unknown>).start;
-        if (node.children) {
-          for (const child of node.children) {
-            await persist(child, parent, meta);
-          }
-        }
-        return undefined;
-      }
-
-      const ModelClass = getBlockModel(node.type);
-      let block: Ad4mModel | undefined;
-
-      if (ModelClass) {
-        const data = extractBlockData(ModelClass, node);
-
-        // Apply inherited metadata from pass-through parents (e.g. list → listitem)
-        if (inherited) {
-          for (const [k, v] of Object.entries(inherited)) {
-            if (!(k in data) || !data[k]) data[k] = v;
-          }
-        }
-
-        // Merge inline text children (e.g. Lexical "text" nodes inside a paragraph)
-        // into the parent block's `text` property instead of creating separate models.
-        if (node.children && node.children.some((c: SerializedBlockNode) => INLINE_TYPES.has(c.type))) {
-          data.text = extractInlineText(node.children);
-        }
-
-        block = await ModelClass.create(perspective, data, { batchId: tx.batchId });
-
-        if (parent && block && hasChildrenRelation(parent)) {
-          await parent.addChildren(block.id, tx.batchId);
-        }
-      }
-
-      // Special handling for collection blocks: the childEditorState is the
-      // sub-editor content embedded inline in the parent blob. Recurse into it
-      // to create AD4M models for the blocks inside (e.g. images, files).
-      if (node.type === 'collection' && block && node.childEditorState) {
-        const childRoot = node.childEditorState as SerializedBlockNode;
-        // Recurse into the ROOT's CHILDREN directly rather than passing the root
-        // node itself through persist(). The root node has type='root' which maps
-        // to CollectionBlock — persisting it would create a ghost CollectionBlock
-        // that appears as a duplicate post in queries filtered by { type: 'root' }.
-        if (childRoot.children) {
-          for (const child of childRoot.children) {
-            if (!INLINE_TYPES.has(child.type)) {
-              await persist(child, block);
-            }
-          }
-        }
-        // No separate editorState blob — it's embedded in the parent's blob.
-        return block;
-      }
-
-      // Only recurse into non-inline children (skip text/linebreak nodes)
-      if (node.children) {
-        for (const child of node.children) {
-          if (!INLINE_TYPES.has(child.type)) {
-            await persist(child, block ?? parent);
-          }
-        }
-      }
-
-      return block;
-    }
-
-    const root = await persist(node);
+    const root = await persistNode(perspective, tx.batchId, node);
 
     // Store the full Lexical serialized JSON as a file-storage blob on the
-    // root CollectionBlock for lossless roundtrip. Uses patchedNode (with CIDs
-    // instead of raw FileData objects) so the blob stays compact.
+    // root CollectionBlock for lossless roundtrip. preUploadFileAssets runs
+    // *after* persistNode (rather than before, against the original node) so
+    // its per-node shallow copies pick up the `id` fields persistNode just
+    // stamped onto `node` — giving every block a stable id in the blob for
+    // free, which edit-time reconciliation (reconcileBlocks) depends on to
+    // tell "this still exists, update it" apart from "this is brand new".
     if (root && 'editorState' in root) {
+      const patchedNode = await preUploadFileAssets(perspective, node);
       const jsonStr = JSON.stringify(patchedNode);
       const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
       (root as CollectionBlock).editorState = {
@@ -376,6 +295,94 @@ export async function createBlocks(
 
     return root;
   });
+}
+
+/**
+ * Recursively creates AD4M block models from a serialized block tree,
+ * mutating `node` in place with the `id` of each created block. Shared by
+ * `createBlocks` (no parent — first call) and `reconcileBlocks` (parent is
+ * an existing, already-persisted root).
+ */
+async function persistNode(
+  perspective: PerspectiveProxy,
+  batchId: string,
+  node: SerializedBlockNode,
+  parent?: Ad4mModel,
+  inherited?: Record<string, unknown>,
+): Promise<Ad4mModel | undefined> {
+  // Pass-through containers (e.g. "list"): don't create a model,
+  // carry metadata down to children
+  if (PASSTHROUGH_TYPES.has(node.type)) {
+    const meta: Record<string, unknown> = {};
+    if ((node as Record<string, unknown>).listType) meta.listType = (node as Record<string, unknown>).listType;
+    if ((node as Record<string, unknown>).tag) meta.tag = (node as Record<string, unknown>).tag;
+    if ((node as Record<string, unknown>).start) meta.start = (node as Record<string, unknown>).start;
+    if (node.children) {
+      for (const child of node.children) {
+        await persistNode(perspective, batchId, child, parent, meta);
+      }
+    }
+    return undefined;
+  }
+
+  const ModelClass = getBlockModel(node.type);
+  let block: Ad4mModel | undefined;
+
+  if (ModelClass) {
+    const data = extractBlockData(ModelClass, node);
+
+    // Apply inherited metadata from pass-through parents (e.g. list → listitem)
+    if (inherited) {
+      for (const [k, v] of Object.entries(inherited)) {
+        if (!(k in data) || !data[k]) data[k] = v;
+      }
+    }
+
+    // Merge inline text children (e.g. Lexical "text" nodes inside a paragraph)
+    // into the parent block's `text` property instead of creating separate models.
+    if (node.children && node.children.some((c: SerializedBlockNode) => INLINE_TYPES.has(c.type))) {
+      data.text = extractInlineText(node.children);
+    }
+
+    block = await ModelClass.create(perspective, data, { batchId });
+    node.id = block.id;
+
+    if (parent && block && hasChildrenRelation(parent)) {
+      await parent.addChildren(block.id, batchId);
+    }
+  }
+
+  // Special handling for collection blocks: the childEditorState is the
+  // sub-editor content embedded inline in the parent blob. Recurse into it
+  // to create AD4M models for the blocks inside (e.g. images, files).
+  if (node.type === 'collection' && block && node.childEditorState) {
+    const childRoot = node.childEditorState as SerializedBlockNode;
+    // Recurse into the ROOT's CHILDREN directly rather than passing the root
+    // node itself through persistNode(). The root node has type='root' which
+    // maps to CollectionBlock — persisting it would create a ghost
+    // CollectionBlock that appears as a duplicate post in queries filtered
+    // by { type: 'root' }.
+    if (childRoot.children) {
+      for (const child of childRoot.children) {
+        if (!INLINE_TYPES.has(child.type)) {
+          await persistNode(perspective, batchId, child, block);
+        }
+      }
+    }
+    // No separate editorState blob — it's embedded in the parent's blob.
+    return block;
+  }
+
+  // Only recurse into non-inline children (skip text/linebreak nodes)
+  if (node.children) {
+    for (const child of node.children) {
+      if (!INLINE_TYPES.has(child.type)) {
+        await persistNode(perspective, batchId, child, block ?? parent);
+      }
+    }
+  }
+
+  return block;
 }
 
 /**
@@ -460,6 +467,188 @@ export async function deleteBlocks(perspective: PerspectiveProxy, rootUri: strin
     }
 
     await deleteNode(rootUri);
+  });
+}
+
+/**
+ * Hydrates every descendant of `childUris` (recursively), keyed by id.
+ * Shared by `reconcileBlocks` for both matching (does this id still exist?)
+ * and cleanup (delete whatever never got claimed) without resolving each
+ * instance's model class twice.
+ */
+async function collectDescendants(perspective: PerspectiveProxy, childUris: string[]): Promise<Map<string, Ad4mModel>> {
+  const result = new Map<string, Ad4mModel>();
+
+  async function walk(uri: string): Promise<void> {
+    const ModelClass = await resolveBlockModel(perspective, uri);
+    if (!ModelClass) return;
+
+    const block = await ModelClass.findOne(perspective, { where: { id: uri } });
+    if (!block) return;
+
+    result.set(uri, block);
+
+    if (hasChildren(block)) {
+      for (const childUri of block.children) {
+        await walk(childUri);
+      }
+    }
+  }
+
+  for (const uri of childUris) {
+    await walk(uri);
+  }
+
+  return result;
+}
+
+/**
+ * Reconciles an existing post's block tree against a freshly-edited
+ * serialized tree, instead of deleting and recreating everything.
+ *
+ * `node` is expected to carry `id` fields on every block that already
+ * existed (round-tripped through Lexical's `__props` for our custom block
+ * nodes — see createBlocks/persistNode, which stamps them in at creation
+ * time) — anything without an `id`, or whose id is already claimed by an
+ * earlier node in this same save (e.g. a copy/pasted duplicate), is treated
+ * as brand new and gets a freshly created instance instead of reusing one.
+ * Existing descendants whose id is never claimed during the walk are
+ * deleted. Each parent's `children` relation is overwritten outright with
+ * the final ordered id list once its subtree is reconciled — relation
+ * assignment fully replaces the link set, so reordering and reparenting
+ * fall out for free without needing a separate move/diff step.
+ *
+ * Lexical's built-in node types used for text (ParagraphNode, HeadingNode,
+ * QuoteNode, ListItemNode) don't round-trip arbitrary extra JSON fields the
+ * way our custom block nodes do, so today every text block in a post is
+ * always treated as "no id" — i.e. text blocks are always recreated on
+ * edit, never updated in place. That's a known gap, not a correctness bug:
+ * text blocks (so far) carry no signals/comments of their own in the UI, so
+ * recreating them costs nothing observable yet, but it does mean any data
+ * generically attachable to a WeNode (comments, signals) would be lost on a
+ * text block specifically if something starts attaching it there before
+ * this gets addressed.
+ */
+export async function reconcileBlocks(
+  perspective: PerspectiveProxy,
+  existingRoot: Ad4mModel & BlockWithChildren,
+  node: SerializedBlockNode,
+): Promise<Ad4mModel> {
+  return Ad4mModel.transaction(perspective, async (tx) => {
+    const existing = await collectDescendants(perspective, existingRoot.children);
+    const claimed = new Set<string>();
+
+    // Returns the ids this node contributes to its caller's children list:
+    // a single id for a real block, the flattened ids of its own children
+    // for a pass-through/unrecognized node (mirrors persistNode's shape).
+    async function reconcileNode(node: SerializedBlockNode, inherited?: Record<string, unknown>): Promise<string[]> {
+      if (PASSTHROUGH_TYPES.has(node.type)) {
+        const meta: Record<string, unknown> = {};
+        if ((node as Record<string, unknown>).listType) meta.listType = (node as Record<string, unknown>).listType;
+        if ((node as Record<string, unknown>).tag) meta.tag = (node as Record<string, unknown>).tag;
+        if ((node as Record<string, unknown>).start) meta.start = (node as Record<string, unknown>).start;
+        const ids: string[] = [];
+        if (node.children) {
+          for (const child of node.children) {
+            ids.push(...(await reconcileNode(child, meta)));
+          }
+        }
+        return ids;
+      }
+
+      const ModelClass = getBlockModel(node.type);
+      if (!ModelClass) {
+        // Unrecognized type — same treatment as persistNode: contribute
+        // children's ids upward without creating anything for this node.
+        const ids: string[] = [];
+        if (node.children) {
+          for (const child of node.children) {
+            if (!INLINE_TYPES.has(child.type)) ids.push(...(await reconcileNode(child, inherited)));
+          }
+        }
+        return ids;
+      }
+
+      const data = extractBlockData(ModelClass, node);
+      if (inherited) {
+        for (const [k, v] of Object.entries(inherited)) {
+          if (!(k in data) || !data[k]) data[k] = v;
+        }
+      }
+      if (node.children && node.children.some((c: SerializedBlockNode) => INLINE_TYPES.has(c.type))) {
+        data.text = extractInlineText(node.children);
+      }
+
+      const existingId = typeof node.id === 'string' ? node.id : undefined;
+      let block: Ad4mModel | undefined;
+      if (existingId && !claimed.has(existingId)) {
+        block = existing.get(existingId);
+        if (block) {
+          claimed.add(existingId);
+          Object.assign(block, data);
+          await block.save(tx.batchId);
+        }
+      }
+      if (!block) {
+        block = await ModelClass.create(perspective, data, { batchId: tx.batchId });
+      }
+      node.id = block.id;
+
+      // Collection blocks keep their nested content in childEditorState
+      // rather than Lexical-level children — mirrors persistNode.
+      if (node.type === 'collection' && node.childEditorState) {
+        const childRoot = node.childEditorState as SerializedBlockNode;
+        const childIds: string[] = [];
+        if (childRoot.children) {
+          for (const child of childRoot.children) {
+            if (!INLINE_TYPES.has(child.type)) childIds.push(...(await reconcileNode(child)));
+          }
+        }
+        if (hasChildrenRelation(block)) {
+          block.children = childIds;
+          await block.save(tx.batchId);
+        }
+        return [block.id];
+      }
+
+      if (node.children) {
+        const childIds: string[] = [];
+        for (const child of node.children) {
+          if (!INLINE_TYPES.has(child.type)) childIds.push(...(await reconcileNode(child)));
+        }
+        if (hasChildrenRelation(block)) {
+          block.children = childIds;
+          await block.save(tx.batchId);
+        }
+      }
+
+      return [block.id];
+    }
+
+    const topLevelIds: string[] = [];
+    if (node.children) {
+      for (const child of node.children) {
+        if (!INLINE_TYPES.has(child.type)) topLevelIds.push(...(await reconcileNode(child)));
+      }
+    }
+    existingRoot.children = topLevelIds;
+
+    for (const [id, block] of existing) {
+      if (!claimed.has(id)) await block.delete(tx.batchId);
+    }
+
+    const patchedNode = await preUploadFileAssets(perspective, node);
+    const jsonStr = JSON.stringify(patchedNode);
+    const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
+    (existingRoot as CollectionBlock).editorState = {
+      data_base64: base64,
+      name: 'editor-state.json',
+      file_type: 'application/json',
+    } as any;
+    (existingRoot as CollectionBlock).textContent = extractTextContent(patchedNode);
+    await existingRoot.save(tx.batchId);
+
+    return existingRoot;
   });
 }
 
