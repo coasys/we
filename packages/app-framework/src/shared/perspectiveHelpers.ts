@@ -84,7 +84,7 @@ export async function getModelManifest(perspective: PerspectiveProxy): Promise<M
           isCollection: p.maxCount === undefined || p.maxCount > 1,
           required: (p.minCount ?? 0) >= 1,
           writable: p.writable ?? true,
-          ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
+          ...(p.resolveLiteral !== undefined && { resolveLiteral: p.resolveLiteral }),
           ...(p.class !== undefined && { relatedModel: shaclClassToLocalName(p.class) }),
         }),
       ),

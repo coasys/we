@@ -1,5 +1,6 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
 import { Ad4mModel, getPropertiesMetadata } from '@coasys/ad4m';
+import { FILE_STORAGE_LANGUAGE } from '@we/models';
 import type { CollectionBlock, FileData } from '@we/models';
 
 import { getBlockModel, getRegisteredBlockModels } from './registry';
@@ -146,7 +147,7 @@ function isFileData(value: unknown): value is FileData {
 
 /**
  * Walk a serialized block node tree, upload any FileData values on
- * resolveLanguage properties to file-storage, and return a patched copy
+ * file-storage properties (resolveLiteral: false) and return a patched copy
  * where those values are replaced with the resulting expression addresses
  * (e.g. "QmLang://QmHash").  This keeps the editorState blob small (CIDs
  * instead of raw base64 payloads) and ensures the AD4M model's create()
@@ -164,9 +165,9 @@ async function preUploadFileAssets(
   if (ModelClass) {
     const propsMeta = getPropertiesMetadata(ModelClass);
     for (const [propName, meta] of Object.entries(propsMeta)) {
-      if (meta.resolveLanguage && isFileData(patched[propName])) {
+      if (meta.resolveLiteral === false && isFileData(patched[propName])) {
         // Upload the file and replace the FileData with the expression address
-        const expressionAddress = await perspective.createExpression(patched[propName], meta.resolveLanguage);
+        const expressionAddress = await perspective.createExpression(patched[propName], FILE_STORAGE_LANGUAGE);
         patched[propName] = expressionAddress;
       }
     }
@@ -189,7 +190,7 @@ async function preUploadFileAssets(
 
 /**
  * Walk a serialized block node tree and resolve any expression-address strings
- * on resolveLanguage properties to data URIs via the perspective.
+ * on file-storage properties (resolveLiteral: false) to data URIs via the perspective.
  * This is the read-side counterpart to preUploadFileAssets — called by
  * BlockRenderer before loading the editorState blob into Lexical so that
  * stored CIDs (e.g. "QmLang://QmHash") are replaced with renderable data URIs.
@@ -205,9 +206,9 @@ export async function resolveExpressionAddresses(
     const propsMeta = getPropertiesMetadata(ModelClass);
     for (const [propName, meta] of Object.entries(propsMeta)) {
       const val = patched[propName];
-      // Only attempt resolution for resolveLanguage properties that hold a
-      // non-empty string containing "://" — the hallmark of an expression address.
-      if (meta.resolveLanguage && typeof val === 'string' && val.includes('://')) {
+      // Only attempt resolution for file-storage properties (resolveLiteral: false)
+      // that hold a non-empty string containing "://" — the hallmark of an expression address.
+      if (meta.resolveLiteral === false && typeof val === 'string' && val.includes('://')) {
         try {
           const expr = await perspective.getExpression(val);
           if (expr?.data) {
@@ -275,7 +276,7 @@ export async function createBlocks(
   // that FileData objects hit the deferred setProperty → createExpression →
   // executeAction path, which stores clean URI references in the triple graph.
   // (Passing pre-uploaded strings through initialValues → createSubject would
-  // JSON-encode them with quote characters, breaking resolveLanguage resolution.)
+  // JSON-encode them with quote characters, breaking file-storage resolution.)
   const patchedNode = await preUploadFileAssets(perspective, node);
 
   return Ad4mModel.transaction(perspective, async (tx) => {

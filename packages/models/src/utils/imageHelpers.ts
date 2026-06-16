@@ -105,7 +105,7 @@ export async function readFileAsFileData(file: File): Promise<FileData> {
 /**
  * Reconstruct a FileData value object from a resolved data URI string.
  *
- * After AgentProfile.findOne() / Space.findOne() the resolveLanguage transform
+ * After Space.findOne() the file-storage (resolveLiteral: false) transform
  * converts stored FileData objects to `data:<mime>;base64,<b64>` strings.
  * This function reverses that transform so the value can be safely passed back
  * through FILE_STORAGE_LANGUAGE — the storage is content-addressed

@@ -1,6 +1,5 @@
 import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
-import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { WeNode } from '../WeNode';
 import { ChatSession } from './ChatSession';
 
@@ -20,7 +19,7 @@ export class Template extends WeNode {
 
   @Property({
     through: 'we://template_schema',
-    resolveLanguage: FILE_STORAGE_LANGUAGE,
+    resolveLiteral: false,
   })
   schema: string | null = null;
 

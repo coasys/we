@@ -1,5 +1,5 @@
 /** Decode a file-storage resolved value into a plain string.
- * resolveLanguage always converts stored blobs to "data:<mime>;base64,<b64>" strings. */
+ * File-storage properties (resolveLiteral: false) convert stored blobs to "data:<mime>;base64,<b64>" strings. */
 export function decodeFileAsString(data: string | null | undefined): string {
   if (typeof data !== 'string' || !data.startsWith('data:') || !data.includes(';base64,')) return '';
   try {

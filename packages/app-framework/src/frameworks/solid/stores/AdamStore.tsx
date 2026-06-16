@@ -48,7 +48,7 @@ export interface ModelManifestProperty {
   isCollection: boolean;
   required: boolean;
   writable: boolean;
-  resolveLanguage?: string;
+  resolveLiteral?: boolean;
   relatedModel?: string;
 }
 
