@@ -8,7 +8,7 @@
   "scripts": {
     "build:icons": "tsx scripts/collect-icons.ts",
     "build:cem": "cem analyze --litelement --config custom-elements-manifest.config.mjs --globs src/**/*.ts",
-    "build:steps": "node scripts/generate-leaflet-css.cjs && pnpm build:icons && pnpm build:cem && tsup",
+    "build:steps": "node scripts/generate-leaflet-css.mjs && pnpm build:icons && pnpm build:cem && tsup",
     "build": "we-build",
     "start": "pnpm build:cem && storybook dev -p 6006",
     "storybook:build": "storybook build"
@@ -100,6 +100,7 @@
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "eslint-plugin-lit": "^2.1.1",
+    "prettier": "^3.4.2",
     "storybook": "8.4.6",
     "tsup": "^8.5.1",
     "tsx": "^4.19.3"
