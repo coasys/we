@@ -1,7 +1,7 @@
 import type { SerializedBlockNode } from './types';
 
 /**
- * Decode an editorState data URL (returned by resolveLanguage) into a
+ * Decode an editorState data URL (returned by file-storage resolution) into a
  * SerializedBlockNode (Lexical root node JSON).
  *
  * The ad4m model system resolves FILE_STORAGE_LANGUAGE CIDs into

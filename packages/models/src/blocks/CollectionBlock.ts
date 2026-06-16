@@ -1,6 +1,5 @@
 import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
-import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'CollectionBlock' })
@@ -11,7 +10,7 @@ export class CollectionBlock extends WeNode {
   @HasMany({ through: 'we://children' })
   children: string[] = [];
 
-  @Property({ through: 'we://editor_state', resolveLanguage: FILE_STORAGE_LANGUAGE })
+  @Property({ through: 'we://editor_state', resolveLiteral: false })
   editorState: string | null = null;
 
   @Property({ through: 'we://type' })

@@ -1,7 +1,6 @@
 import { fileToDataUri, Flag, HasOne, Model, Property } from '@coasys/ad4m';
 
 import { LocationBlock } from '../blocks/LocationBlock';
-import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'Space' })
@@ -27,10 +26,10 @@ export class Space extends WeNode {
   @Property({ through: 'we://discovery' })
   discovery: string = 'hidden';
 
-  @Property({ through: 'we://image', resolveLanguage: FILE_STORAGE_LANGUAGE, transform: fileToDataUri })
+  @Property({ through: 'we://image', resolveLiteral: false, transform: fileToDataUri })
   avatar?: string;
 
-  @Property({ through: 'we://thumbnail', resolveLanguage: FILE_STORAGE_LANGUAGE, transform: fileToDataUri })
+  @Property({ through: 'we://thumbnail', resolveLiteral: false, transform: fileToDataUri })
   coverImage?: string;
 
   @HasOne(() => LocationBlock, { through: 'we://location' })

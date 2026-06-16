@@ -27,7 +27,7 @@ export interface SpaceSyncOptions {
   /**
    * Raw FileData for avatar/coverImage.
    * Use when syncing after an image update so the target gets the same FileData
-   * written through its own resolveLanguage pipeline, rather than copying a
+   * written through its own file-storage pipeline, rather than copying a
    * resolved data-URI string (which would be stored incorrectly).
    */
   avatarData?: FileData;
