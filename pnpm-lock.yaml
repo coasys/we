@@ -315,6 +315,9 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../cli
+      prettier:
+        specifier: ^3.4.2
+        version: 3.8.4
       ts-morph:
         specifier: ^25.0.1
         version: 25.0.1
@@ -612,6 +615,9 @@ importers:
       eslint-plugin-lit:
         specifier: ^2.1.1
         version: 2.3.1(eslint@9.39.4)
+      prettier:
+        specifier: ^3.4.2
+        version: 3.8.4
       storybook:
         specifier: 8.4.6
         version: 8.4.6(prettier@3.8.4)

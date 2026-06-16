@@ -16,6 +16,8 @@ import { globSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { format, resolveConfig } from 'prettier';
+
 import type { ContextData, ContextFragment } from '@we/schema-shared';
 
 import { aggregateFragments } from './aggregate.js';
@@ -96,7 +98,20 @@ function discoverFragments(): ContextFragment[] {
   return fragments;
 }
 
-function main() {
+/**
+ * Formats generated content with the repo's Prettier config before writing.
+ * Raw JSON.stringify output doesn't collapse short arrays onto one line the
+ * way Prettier does, so re-running the generator with no source changes
+ * would otherwise produce a diff against the Prettier-formatted version
+ * already on disk.
+ */
+async function writeFormatted(filepath: string, content: string): Promise<void> {
+  const config = await resolveConfig(filepath);
+  const formatted = await format(content, { ...config, filepath });
+  writeFileSync(filepath, formatted, 'utf-8');
+}
+
+async function main() {
   console.log('Generating AI context...');
 
   // Discover and extract context from all workspace packages
@@ -159,7 +174,7 @@ function main() {
     tokens: context.tokens,
     storeEntries: context.storeEntries,
   };
-  writeFileSync(contextJsonPath, JSON.stringify(contextJson, null, 2), 'utf-8');
+  await writeFormatted(contextJsonPath, JSON.stringify(contextJson, null, 2));
   console.log(`  Written: ${contextJsonPath}`);
 
   // 6. Generate contextData.ts (runtime constant for schema validation)
@@ -172,7 +187,7 @@ function main() {
     `export const contextData: ContextData = ${JSON.stringify(contextJson)};`,
     '',
   ].join('\n');
-  writeFileSync(contextDataPath, contextDataContent, 'utf-8');
+  await writeFormatted(contextDataPath, contextDataContent);
   console.log(`  Written: ${contextDataPath}`);
 
   console.log('Done.');
@@ -193,4 +208,4 @@ ${reference}
 `;
 }
 
-main();
+await main();
