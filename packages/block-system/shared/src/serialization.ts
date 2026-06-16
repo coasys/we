@@ -507,27 +507,20 @@ async function collectDescendants(perspective: PerspectiveProxy, childUris: stri
  * serialized tree, instead of deleting and recreating everything.
  *
  * `node` is expected to carry `id` fields on every block that already
- * existed (round-tripped through Lexical's `__props` for our custom block
- * nodes — see createBlocks/persistNode, which stamps them in at creation
- * time) — anything without an `id`, or whose id is already claimed by an
- * earlier node in this same save (e.g. a copy/pasted duplicate), is treated
- * as brand new and gets a freshly created instance instead of reusing one.
- * Existing descendants whose id is never claimed during the walk are
- * deleted. Each parent's `children` relation is overwritten outright with
- * the final ordered id list once its subtree is reconciled — relation
- * assignment fully replaces the link set, so reordering and reparenting
- * fall out for free without needing a separate move/diff step.
- *
- * Lexical's built-in node types used for text (ParagraphNode, HeadingNode,
- * QuoteNode, ListItemNode) don't round-trip arbitrary extra JSON fields the
- * way our custom block nodes do, so today every text block in a post is
- * always treated as "no id" — i.e. text blocks are always recreated on
- * edit, never updated in place. That's a known gap, not a correctness bug:
- * text blocks (so far) carry no signals/comments of their own in the UI, so
- * recreating them costs nothing observable yet, but it does mean any data
- * generically attachable to a WeNode (comments, signals) would be lost on a
- * text block specifically if something starts attaching it there before
- * this gets addressed.
+ * existed — round-tripped through Lexical's `__props` for our custom block
+ * nodes (see createBlocks/persistNode, which stamps them in at creation
+ * time), and through Lexical's NodeState mechanism for the built-in text
+ * node types (ParagraphNode, HeadingNode, QuoteNode, ListItemNode), which
+ * don't preserve arbitrary extra JSON fields the way our custom nodes do —
+ * see block-system/frameworks/solid/src/nodes/blockIdState.ts. Anything
+ * without an `id`, or whose id is already claimed by an earlier node in
+ * this same save (e.g. a copy/pasted duplicate), is treated as brand new
+ * and gets a freshly created instance instead of reusing one. Existing
+ * descendants whose id is never claimed during the walk are deleted. Each
+ * parent's `children` relation is overwritten outright with the final
+ * ordered id list once its subtree is reconciled — relation assignment
+ * fully replaces the link set, so reordering and reparenting fall out for
+ * free without needing a separate move/diff step.
  */
 export async function reconcileBlocks(
   perspective: PerspectiveProxy,

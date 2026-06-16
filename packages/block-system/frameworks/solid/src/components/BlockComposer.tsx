@@ -6,6 +6,7 @@ import { decodeEditorState } from '@we/block-shared';
 import { registerCoreBlocks } from '@we/block-shared';
 import type { ColumnProps } from '@we/components/solid';
 import { Column, Row } from '@we/components/solid';
+import { $getRoot } from 'lexical';
 import {
   ContentEditable,
   HistoryPlugin,
@@ -20,6 +21,7 @@ import { createEffect, onMount } from 'solid-js';
 
 import { registerCoreBlockComponents } from '../core-block-components';
 import { blockNodeClasses } from '../nodes';
+import { promoteBlockIdState, stampBlockIdState } from '../nodes/blockIdState';
 import BlockHandlesPlugin from '../plugins/BlockHandlesPlugin';
 import BlockInsertPlugin from '../plugins/BlockInsertPlugin';
 import BlockKeyboardPlugin from '../plugins/BlockKeyboardPlugin';
@@ -38,7 +40,7 @@ function SaveButton({ onSave }: { onSave?: (json: SerializedBlockNode) => void }
       const editorState = editor.getEditorState();
       const { root } = editorState.toJSON();
       if (onSave) {
-        onSave(root);
+        onSave(promoteBlockIdState(root));
       } else {
         console.error('BlockComposer: no onSave callback provided.');
       }
@@ -67,6 +69,12 @@ function LoadEditorState({ editorState }: { editorState?: SerializedBlockNode })
     try {
       const lexicalState = editor.parseEditorState({ root: rootNode });
       editor.setEditorState(lexicalState);
+      // Re-attach each existing block's AD4M id (lost on load for built-in
+      // text node types — see blockIdState.ts) so saving this content back
+      // can reconcile against it instead of recreating it wholesale.
+      editor.update(() => {
+        stampBlockIdState($getRoot(), rootNode);
+      });
     } catch (error) {
       console.error('Error loading editor state:', error);
     }
@@ -112,7 +120,7 @@ function OnReadyPlugin({
         const editorState = editor.getEditorState();
         const { root } = editorState.toJSON();
         if (onSave) {
-          onSave(root);
+          onSave(promoteBlockIdState(root));
         } else {
           console.error('BlockComposer: no onSave callback provided.');
         }

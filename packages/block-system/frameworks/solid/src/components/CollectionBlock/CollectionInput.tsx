@@ -3,6 +3,7 @@ import { CHECK_LIST, HEADING, ORDERED_LIST, QUOTE, UNORDERED_LIST } from '@lexic
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import type { SerializedBlockNode } from '@we/block-shared';
 import { registerCoreBlocks } from '@we/block-shared';
+import { $getRoot } from 'lexical';
 import {
   ContentEditable,
   HistoryPlugin,
@@ -16,6 +17,7 @@ import {
 import { createEffect, For, onCleanup, Show } from 'solid-js';
 
 import { blockNodeClasses } from '../../nodes';
+import { promoteBlockIdState, stampBlockIdState } from '../../nodes/blockIdState';
 import { collectionNodeStates } from '../../nodes/CollectionBlockNode';
 import BlockHandlesPlugin from '../../plugins/BlockHandlesPlugin';
 import BlockInsertPlugin from '../../plugins/BlockInsertPlugin';
@@ -47,6 +49,12 @@ function LoadEditorState({ editorState }: { editorState?: SerializedBlockNode })
     try {
       const state = editor.parseEditorState({ root: editorState });
       editor.setEditorState(state);
+      // Re-attach each existing block's AD4M id (lost on load for built-in
+      // text node types — see blockIdState.ts) so saving this content back
+      // can reconcile against it instead of recreating it wholesale.
+      editor.update(() => {
+        stampBlockIdState($getRoot(), editorState);
+      });
     } catch (e) {
       console.error('CollectionInput: error loading state', e);
     }
@@ -61,7 +69,7 @@ function StateChangePlugin({ onStateChange }: { onStateChange: (root: Serialized
   createEffect(() => {
     const unregister = editor.registerUpdateListener(({ editorState }) => {
       const { root } = editorState.toJSON();
-      onStateChange(root);
+      onStateChange(promoteBlockIdState(root));
     });
     onCleanup(unregister);
   });
