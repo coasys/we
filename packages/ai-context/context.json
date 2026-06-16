@@ -5885,6 +5885,12 @@
           "type": "number",
           "predicate": "we://version",
           "required": false
+        },
+        {
+          "name": "textContent",
+          "type": "string",
+          "predicate": "we://text_content",
+          "required": false
         }
       ],
       "relations": [
