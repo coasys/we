@@ -2383,7 +2383,15 @@ export const contextData: ContextData = {
         },
         signalTypesBySlug: { type: 'object' },
       },
-      actions: ['createPost', 'deletePost', 'updateSpaceImage', 'createSignalType', 'upsertSignal', 'navigateToSpace'],
+      actions: [
+        'createPost',
+        'updatePost',
+        'deletePost',
+        'updateSpaceImage',
+        'createSignalType',
+        'upsertSignal',
+        'navigateToSpace',
+      ],
     },
     {
       name: 'aiStore',
