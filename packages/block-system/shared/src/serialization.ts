@@ -30,6 +30,89 @@ function extractInlineText(children: SerializedBlockNode[]): string {
     .join('');
 }
 
+/** Text properties to extract per block type for the textContent search index. */
+const TEXT_FIELDS_BY_TYPE: Record<string, string[]> = {
+  link: ['title', 'description'],
+  code: ['title'],
+  task: ['title', 'description'],
+  callout: ['text'],
+  audio: ['title'],
+  video: ['title'],
+  file: ['title', 'name'],
+  event: ['title', 'description', 'location'],
+  location: ['name', 'address'],
+  tag: ['name'],
+  image: ['altText'],
+};
+
+const TEXT_CONTENT_MAX_CHARS = 5000;
+
+/**
+ * Walk a serialized block node tree and concatenate all human-readable text
+ * into a single normalised string suitable for full-text search indexing.
+ * Whitespace is collapsed to single spaces and the result is capped at
+ * TEXT_CONTENT_MAX_CHARS, truncated at the nearest word boundary.
+ */
+function extractTextContent(node: SerializedBlockNode): string {
+  const parts: string[] = [];
+
+  function walk(n: SerializedBlockNode): void {
+    if (INLINE_TYPES.has(n.type)) return;
+
+    if (TEXT_CONTAINER_TYPES.has(n.type)) {
+      if (n.children) {
+        const text = extractInlineText(n.children).trim();
+        if (text) parts.push(text);
+      }
+      return;
+    }
+
+    if (n.type === 'root' || n.type === 'collection') {
+      if (n.type === 'collection' && n.childEditorState) {
+        walk(n.childEditorState as SerializedBlockNode);
+      }
+      if (n.children) {
+        for (const child of n.children) walk(child);
+      }
+      return;
+    }
+
+    // list passthrough — recurse into listitems
+    if (PASSTHROUGH_TYPES.has(n.type)) {
+      if (n.children) {
+        for (const child of n.children) walk(child);
+      }
+      return;
+    }
+
+    // Leaf blocks — extract typed text properties
+    const fields = TEXT_FIELDS_BY_TYPE[n.type] ?? [];
+    for (const field of fields) {
+      const val = (n as Record<string, unknown>)[field];
+      if (typeof val === 'string' && val.trim()) parts.push(val.trim());
+    }
+
+    // Recurse into any non-inline children (e.g. future composite blocks)
+    if (n.children) {
+      for (const child of n.children) {
+        if (!INLINE_TYPES.has(child.type)) walk(child);
+      }
+    }
+  }
+
+  walk(node);
+
+  // Collapse all whitespace runs (including newlines) to a single space
+  const normalised = parts.join(' ').replace(/\s+/g, ' ').trim();
+
+  if (normalised.length <= TEXT_CONTENT_MAX_CHARS) return normalised;
+
+  // Truncate at nearest word boundary below the cap
+  const truncated = normalised.slice(0, TEXT_CONTENT_MAX_CHARS);
+  const lastSpace = truncated.lastIndexOf(' ');
+  return lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated;
+}
+
 /** Block model instance that has a children @HasMany relation */
 interface BlockWithChildren extends Ad4mModel {
   children: string[];
@@ -287,6 +370,7 @@ export async function createBlocks(
         name: 'editor-state.json',
         file_type: 'application/json',
       } as any;
+      (root as CollectionBlock).textContent = extractTextContent(patchedNode);
       await root.save(tx.batchId);
     }
 

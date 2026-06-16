@@ -1871,6 +1871,7 @@ export const contextData: ContextData = {
         { name: 'columns', type: 'number', predicate: 'we://columns', required: false },
         { name: 'gap', type: 'string', predicate: 'we://gap', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },
+        { name: 'textContent', type: 'string', predicate: 'we://text_content', required: false },
       ],
       relations: [{ name: 'children', kind: 'HasMany', predicate: 'we://children' }],
     },

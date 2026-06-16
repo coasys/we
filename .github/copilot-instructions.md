@@ -873,6 +873,7 @@ CollectionBlock extends WeNode:
   - columns: number [we://columns]
   - gap: string [we://gap]
   - version: number [we://version]
+  - textContent: string [we://text_content]
   Relations:
   - children: HasMany [we://children]
 

@@ -16,7 +16,7 @@ export const postsList: SchemaNode = {
           items: {
             $query: {
               model: 'CollectionBlock',
-              where: { type: 'root' },
+              where: { type: 'root', textContent: { contains: { $local: 'searchText' } } },
               order: { createdAt: { $local: 'sortBy' } },
               include: { signals: true },
             },

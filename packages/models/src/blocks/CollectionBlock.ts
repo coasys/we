@@ -37,6 +37,9 @@ export class CollectionBlock extends WeNode {
 
   @Property({ through: 'we://version' })
   version: number = 0;
+
+  @Property({ through: 'we://text_content' })
+  textContent: string = '';
 }
 
 export interface CollectionBlock extends HasManyMethods<'children'> {}
