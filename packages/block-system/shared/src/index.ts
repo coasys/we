@@ -6,6 +6,7 @@ export {
   createBlocks,
   loadBlocks,
   deleteBlocks,
+  reconcileBlocks,
   blocksToLexicalJSON,
   resolveExpressionAddresses,
 } from './serialization';

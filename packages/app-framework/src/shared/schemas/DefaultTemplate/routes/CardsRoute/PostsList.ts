@@ -1,6 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 
 import { cardShell, gridWrapper } from './CardShell';
+import { postComposerModal } from './PostComposerModal';
 
 export const postsList: SchemaNode = {
   type: 'Column',
@@ -29,7 +30,10 @@ export const postsList: SchemaNode = {
               {
                 type: 'Row',
                 props: { ax: 'between', ay: 'center', width: '100%' },
-                $localState: { confirmDeleteOpen: { type: 'boolean', initial: false } },
+                $localState: {
+                  confirmDeleteOpen: { type: 'boolean', initial: false },
+                  editPostOpen: { type: 'boolean', initial: false },
+                },
                 children: [
                   {
                     type: '$agent',
@@ -65,8 +69,31 @@ export const postsList: SchemaNode = {
                     props: {
                       condition: { $eq: ['$post.author', { $store: 'adamStore.me.did' }] },
                       then: {
-                        type: 'Column',
+                        type: 'Row',
+                        props: { gap: '100' },
                         children: [
+                          {
+                            type: 'we-button',
+                            props: {
+                              variant: 'ghost',
+                              size: 'sm',
+                              onClick: { $setLocal: 'editPostOpen', value: true },
+                            },
+                            children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+                          },
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $local: 'editPostOpen' },
+                              then: postComposerModal({
+                                title: 'Edit Post',
+                                openLocal: 'editPostOpen',
+                                editorState: '$post.editorState',
+                                saveAction: { $action: 'spaceStore.updatePost', args: ['$post.id'] },
+                                saveLabel: 'Save',
+                              }),
+                            },
+                          },
                           {
                             type: 'we-button',
                             props: {

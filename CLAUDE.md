@@ -1105,6 +1105,7 @@ SpaceStore:
   - signalTypesBySlug: Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID
 - Actions:
   - createPost(editorState: unknown): creates a new post
+  - updatePost(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present
   - deletePost(postId: string): permanently deletes a post and all of its contained blocks (recursive, atomic)
   - updateSpaceImage(field: "avatar" | "coverImage", imageFile: File): uploads and sets the space avatar or cover image
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank

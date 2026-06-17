@@ -1,11 +1,13 @@
+import type { PerspectiveProxy } from '@coasys/ad4m';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { CHECK_LIST, HEADING, ORDERED_LIST, QUOTE, UNORDERED_LIST } from '@lexical/markdown';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import type { BlockComposerProps, SerializedBlockNode } from '@we/block-shared';
-import { decodeEditorState } from '@we/block-shared';
+import { decodeEditorState, resolveExpressionAddresses } from '@we/block-shared';
 import { registerCoreBlocks } from '@we/block-shared';
 import type { ColumnProps } from '@we/components/solid';
 import { Column, Row } from '@we/components/solid';
+import { $getRoot } from 'lexical';
 import {
   ContentEditable,
   HistoryPlugin,
@@ -20,6 +22,7 @@ import { createEffect, onMount } from 'solid-js';
 
 import { registerCoreBlockComponents } from '../core-block-components';
 import { blockNodeClasses } from '../nodes';
+import { promoteBlockIdState, stampBlockIdState } from '../nodes/blockIdState';
 import BlockHandlesPlugin from '../plugins/BlockHandlesPlugin';
 import BlockInsertPlugin from '../plugins/BlockInsertPlugin';
 import BlockKeyboardPlugin from '../plugins/BlockKeyboardPlugin';
@@ -38,7 +41,7 @@ function SaveButton({ onSave }: { onSave?: (json: SerializedBlockNode) => void }
       const editorState = editor.getEditorState();
       const { root } = editorState.toJSON();
       if (onSave) {
-        onSave(root);
+        onSave(promoteBlockIdState(root));
       } else {
         console.error('BlockComposer: no onSave callback provided.');
       }
@@ -54,7 +57,13 @@ function SaveButton({ onSave }: { onSave?: (json: SerializedBlockNode) => void }
   );
 }
 
-function LoadEditorState({ editorState }: { editorState?: SerializedBlockNode }) {
+function LoadEditorState({
+  editorState,
+  perspective,
+}: {
+  editorState?: SerializedBlockNode;
+  perspective?: PerspectiveProxy | null;
+}) {
   const [editor] = useLexicalComposerContext();
 
   createEffect(() => {
@@ -64,12 +73,28 @@ function LoadEditorState({ editorState }: { editorState?: SerializedBlockNode })
       typeof editorState === 'string' ? decodeEditorState(editorState) : editorState;
     if (!rootNode) return;
 
-    try {
-      const lexicalState = editor.parseEditorState({ root: rootNode });
-      editor.setEditorState(lexicalState);
-    } catch (error) {
-      console.error('Error loading editor state:', error);
-    }
+    const load = async (node: SerializedBlockNode) => {
+      // Resolve stored file-storage addresses (e.g. an image's CID) to
+      // renderable data URIs first — same as BlockRenderer does for
+      // read-only display. Without this, an existing post's image src is
+      // still its address ("qm...://Qm...") when loaded into the editor,
+      // which the browser can't render as <img src>.
+      const resolved = perspective ? await resolveExpressionAddresses(perspective, node) : node;
+      try {
+        const lexicalState = editor.parseEditorState({ root: resolved });
+        editor.setEditorState(lexicalState);
+        // Re-attach each existing block's AD4M id (lost on load for built-in
+        // text node types — see blockIdState.ts) so saving this content back
+        // can reconcile against it instead of recreating it wholesale.
+        editor.update(() => {
+          stampBlockIdState($getRoot(), resolved);
+        });
+      } catch (error) {
+        console.error('Error loading editor state:', error);
+      }
+    };
+
+    load(rootNode).catch((error) => console.error('Error resolving expression addresses:', error));
   });
 
   return null;
@@ -112,7 +137,7 @@ function OnReadyPlugin({
         const editorState = editor.getEditorState();
         const { root } = editorState.toJSON();
         if (onSave) {
-          onSave(root);
+          onSave(promoteBlockIdState(root));
         } else {
           console.error('BlockComposer: no onSave callback provided.');
         }
@@ -127,7 +152,7 @@ function OnReadyPlugin({
 type Props = Omit<BlockComposerProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'ay'>;
 
 /** @superclass DesignSystemElement */
-export function BlockComposer({ editorState, onSave, onReady, width = '100%', ...rest }: Props) {
+export function BlockComposer({ editorState, perspective, onSave, onReady, width = '100%', ...rest }: Props) {
   const initialConfig = {
     namespace: 'BlockComposer',
     theme: { root: 'we-block-composer-editor we-block-content' },
@@ -138,7 +163,7 @@ export function BlockComposer({ editorState, onSave, onReady, width = '100%', ..
   return (
     <Column class="we-block-composer-wrapper" width={width} {...rest}>
       <LexicalComposer initialConfig={initialConfig}>
-        <LoadEditorState editorState={editorState} />
+        <LoadEditorState editorState={editorState} perspective={perspective} />
         {onReady ? <OnReadyPlugin onSave={onSave} onReady={onReady} /> : <SaveButton onSave={onSave} />}
 
         {/* Lexical plugins */}

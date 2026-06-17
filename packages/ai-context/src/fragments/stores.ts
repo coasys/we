@@ -106,7 +106,15 @@ export const storeEntries: StoreEntry[] = [
         type: 'object',
       },
     },
-    actions: ['createPost', 'deletePost', 'updateSpaceImage', 'createSignalType', 'upsertSignal', 'navigateToSpace'],
+    actions: [
+      'createPost',
+      'updatePost',
+      'deletePost',
+      'updateSpaceImage',
+      'createSignalType',
+      'upsertSignal',
+      'navigateToSpace',
+    ],
   },
   {
     name: 'aiStore',
@@ -242,6 +250,8 @@ function generateStoresText(entries: StoreEntry[]): string {
       },
       actions: {
         createPost: '(editorState: unknown): creates a new post',
+        updatePost:
+          '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',
         deletePost:
           '(postId: string): permanently deletes a post and all of its contained blocks (recursive, atomic)',
         updateSpaceImage:
