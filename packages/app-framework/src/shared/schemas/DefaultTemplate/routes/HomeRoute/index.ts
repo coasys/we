@@ -56,10 +56,9 @@ export const homeRoute: RouteSchema = {
                     {
                       type: 'we-avatar',
                       props: {
-                        src: '$space.avatar',
-                        name: '$space.name',
+                        image: '$space.avatar',
+                        initials: '$space.name',
                         size: '56px',
-                        r: 'pill',
                       },
                     },
                     {
@@ -87,8 +86,8 @@ export const homeRoute: RouteSchema = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'adamStore.orderedSidebarItems' },
-            else: {
+            condition: { $not: { $store: 'adamStore.orderedSidebarItems.length' } },
+            then: {
               type: 'Column',
               props: { gap: '200', ax: 'center', p: '400', r: '400', bg: 'neutral-0', width: '100%' },
               children: [

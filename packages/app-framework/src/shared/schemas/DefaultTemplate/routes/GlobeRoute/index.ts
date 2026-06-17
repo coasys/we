@@ -154,16 +154,6 @@ export const globeRoute: RouteSchema = {
                     onClick: { $setLocal: 'createSpaceModalOpen', value: true },
                   },
                 },
-                // Space store test button
-                {
-                  type: 'we-button',
-                  props: {
-                    text: 'Test',
-                    variant: 'primary',
-                    height: '40px',
-                    onClick: { $action: 'spaceStore.test' },
-                  },
-                },
               ],
             },
           ],
@@ -289,7 +279,7 @@ export const globeRoute: RouteSchema = {
               width: 2,
               hoverColor: '#3388ff',
               hoverOpacity: 0.3,
-              onHexagonClick: { $action: 'consoleStore.log', args: ['Hexagon clicked:', '$arg'] },
+              onHexagonClick: null,
             },
           },
         ],

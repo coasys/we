@@ -30,13 +30,18 @@ export const storeEntries: StoreEntry[] = [
         type: 'object',
         properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
+      orderedSidebarItems: {
+        type: 'array',
+        properties: ['uuid', 'name', 'avatar', 'spaceId'],
+      },
     },
     actions: [
       'navigate',
       'addNewSpace',
       'createSpace',
-      'setCurrentPerspective',
+      'switchPerspective',
       'removePerspective',
+      'reorderPerspectives',
       'login',
       'logout',
       'fetchAgent',
@@ -68,6 +73,11 @@ export const storeEntries: StoreEntry[] = [
       shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       operationLoading: { type: 'boolean' },
+      activeShellView: { type: 'string' },
+      templateManagementList: {
+        type: 'array',
+        properties: ['id', 'name', 'icon', 'description', 'isCore', 'isInstalled', 'isDefault'],
+      },
     },
     actions: [
       'updateTemplate',
@@ -77,6 +87,8 @@ export const storeEntries: StoreEntry[] = [
       'toggleInstalled',
       'setDefaultTemplate',
       'deleteTemplate',
+      'openShellView',
+      'closeShellView',
     ],
   },
   {
@@ -146,6 +158,7 @@ export const storeEntries: StoreEntry[] = [
       'handleSchemaPrompt',
       'sendMessage',
       'close',
+      'toggle',
       'setApiKey',
       'startFork',
       'startFresh',
@@ -159,6 +172,14 @@ export const storeEntries: StoreEntry[] = [
       'undo',
       'redo',
     ],
+  },
+  {
+    name: 'appStore',
+    state: {
+      apps: { type: 'array', properties: ['id', 'name', 'image'] },
+      activeAppId: { type: 'string' },
+    },
+    actions: ['activateApp', 'deactivateApp'],
   },
 ];
 
@@ -191,14 +212,18 @@ function generateStoresText(entries: StoreEntry[]): string {
         ownAgent:
           "AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from agents cache)",
         creatingSpace: 'boolean (true while a new space is being created)',
+        orderedSidebarItems:
+          'array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged',
       },
       actions: {
         navigate: '(to: string, options?): navigates to a route',
         addNewSpace: '(space: Space): adds a new space',
         createSpace:
           '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
-        setCurrentPerspective:
-          '(uuid: string): sets the current perspective, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels',
+        switchPerspective:
+          '(uuid: string): switches to a perspective by UUID, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels',
+        removePerspective: '(uuid: string): removes a perspective by UUID',
+        reorderPerspectives: '(newOrder: string[]): reorders the sidebar items by UUID array',
         login: '(password: string): logs in the agent with password',
         logout: '(): locks the agent and returns to login screen',
         fetchAgent: "(did: string): fetches and caches an agent's profile from their public AD4M perspective",
@@ -232,12 +257,19 @@ function generateStoresText(entries: StoreEntry[]): string {
         templates: 'array of TemplateSchema objects (user-facing templates)',
         shellTemplates: 'array of TemplateSchema objects (static system pages: profile, settings, tests)',
         currentTemplate: 'TemplateSchema (the active template)',
+        activeShellView:
+          "string | null (id of the currently open shell overlay: 'profile' | 'settings' | 'schema-tests' | 'landing-page' | null)",
+        templateManagementList:
+          'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isCore, isInstalled, isDefault)',
       },
       actions: {
         updateTemplate: '(newTemplate: TemplateSchema): updates the current template',
         switchTemplate: '(newTemplateId: string): switches to another template',
         removeTemplate: '(): removes the current template',
         saveTemplate: '(name: string): saves the current template',
+        openShellView:
+          "(id: string): opens a shell overlay by id ('profile' | 'settings' | 'schema-tests' | 'landing-page')",
+        closeShellView: '(): closes the currently open shell overlay',
       },
     },
     spaceStore: {
@@ -252,8 +284,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         createPost: '(editorState: unknown): creates a new post',
         updatePost:
           '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',
-        deletePost:
-          '(postId: string): permanently deletes a post and all of its contained blocks (recursive, atomic)',
+        deletePost: '(postId: string): permanently deletes a post and all of its contained blocks (recursive, atomic)',
         updateSpaceImage:
           '(field: "avatar" | "coverImage", imageFile: File): uploads and sets the space avatar or cover image',
         createSignalType:
@@ -272,8 +303,19 @@ function generateStoresText(entries: StoreEntry[]): string {
       },
       actions: {
         handleSchemaPrompt: '(prompt: string): generates a schema from a prompt',
+        toggle: '(): toggles the AI chat panel open/closed',
         undo: '(): undoes the last schema edit',
         redo: '(): redoes the last undone schema edit',
+      },
+    },
+    appStore: {
+      state: {
+        apps: 'RegisteredApp[] — list of registered external apps (id, name, image)',
+        activeAppId: 'string | null — id of the currently active app, or null if none',
+      },
+      actions: {
+        activateApp: '(id: string): activates an app and switches to its view',
+        deactivateApp: '(): deactivates the current app and returns to the template view',
       },
     },
   };

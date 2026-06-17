@@ -6973,14 +6973,19 @@
         "ownAgent": {
           "type": "object",
           "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        },
+        "orderedSidebarItems": {
+          "type": "array",
+          "properties": ["uuid", "name", "avatar", "spaceId"]
         }
       },
       "actions": [
         "navigate",
         "addNewSpace",
         "createSpace",
-        "setCurrentPerspective",
+        "switchPerspective",
         "removePerspective",
+        "reorderPerspectives",
         "login",
         "logout",
         "fetchAgent",
@@ -7032,6 +7037,13 @@
         },
         "operationLoading": {
           "type": "boolean"
+        },
+        "activeShellView": {
+          "type": "string"
+        },
+        "templateManagementList": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "description", "isCore", "isInstalled", "isDefault"]
         }
       },
       "actions": [
@@ -7041,7 +7053,9 @@
         "saveTemplate",
         "toggleInstalled",
         "setDefaultTemplate",
-        "deleteTemplate"
+        "deleteTemplate",
+        "openShellView",
+        "closeShellView"
       ]
     },
     {
@@ -7160,6 +7174,7 @@
         "handleSchemaPrompt",
         "sendMessage",
         "close",
+        "toggle",
         "setApiKey",
         "startFork",
         "startFresh",
@@ -7173,6 +7188,19 @@
         "undo",
         "redo"
       ]
+    },
+    {
+      "name": "appStore",
+      "state": {
+        "apps": {
+          "type": "array",
+          "properties": ["id", "name", "image"]
+        },
+        "activeAppId": {
+          "type": "string"
+        }
+      },
+      "actions": ["activateApp", "deactivateApp"]
     }
   ]
 }

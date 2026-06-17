@@ -2341,13 +2341,15 @@ export const contextData: ContextData = {
           type: 'object',
           properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
         },
+        orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
       },
       actions: [
         'navigate',
         'addNewSpace',
         'createSpace',
-        'setCurrentPerspective',
+        'switchPerspective',
         'removePerspective',
+        'reorderPerspectives',
         'login',
         'logout',
         'fetchAgent',
@@ -2376,6 +2378,11 @@ export const contextData: ContextData = {
         shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         operationLoading: { type: 'boolean' },
+        activeShellView: { type: 'string' },
+        templateManagementList: {
+          type: 'array',
+          properties: ['id', 'name', 'icon', 'description', 'isCore', 'isInstalled', 'isDefault'],
+        },
       },
       actions: [
         'updateTemplate',
@@ -2385,6 +2392,8 @@ export const contextData: ContextData = {
         'toggleInstalled',
         'setDefaultTemplate',
         'deleteTemplate',
+        'openShellView',
+        'closeShellView',
       ],
     },
     {
@@ -2452,6 +2461,7 @@ export const contextData: ContextData = {
         'handleSchemaPrompt',
         'sendMessage',
         'close',
+        'toggle',
         'setApiKey',
         'startFork',
         'startFresh',
@@ -2465,6 +2475,11 @@ export const contextData: ContextData = {
         'undo',
         'redo',
       ],
+    },
+    {
+      name: 'appStore',
+      state: { apps: { type: 'array', properties: ['id', 'name', 'image'] }, activeAppId: { type: 'string' } },
+      actions: ['activateApp', 'deactivateApp'],
     },
   ],
 };

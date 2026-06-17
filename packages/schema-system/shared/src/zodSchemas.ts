@@ -33,7 +33,15 @@ const zDefined = z.custom<unknown>((v) => v !== undefined, 'Required');
 
 const zStoreToken = z.object({ $store: z.string().min(1) }).strict();
 const zConcatToken = z.object({ $concat: z.array(z.unknown()) }).strict();
-const zActionToken = z.object({ $action: z.string().min(1), args: z.array(z.unknown()).optional() }).strict();
+const zActionToken = z
+  .object({
+    $action: z.string().min(1),
+    args: z.array(z.unknown()).optional(),
+    onSuccess: z.array(z.unknown()).optional(),
+    onError: z.array(z.unknown()).optional(),
+    onFinally: z.array(z.unknown()).optional(),
+  })
+  .strict();
 const zIfToken = z
   .object({
     $if: z.object({
@@ -248,7 +256,11 @@ export const zSchemaProp: z.ZodType<SchemaProp> = z.union([
   z.boolean(),
   // Token objects — tried before the generic record fallback
   zPropToken,
-  // Fallback: plain objects/arrays that aren't tokens.
+  // Nested schema nodes (e.g. $if.then / $if.else containing a node with $localState).
+  // Must come before the plain-record fallback because the fallback rejects objects
+  // that have any $-prefixed key, which would incorrectly reject nodes with $localState.
+  lazySchemaNode,
+  // Fallback: plain objects/arrays that aren't tokens or schema nodes.
   // Rejects objects with $-prefixed keys at the parse level (not via superRefine)
   // so that the union properly rejects malformed tokens.
   z.custom<Record<string, unknown>>(

@@ -1062,12 +1062,14 @@ AdamStore:
   - creatingSpace: boolean (true while a new space is being created)
   - agents: AgentProfileSummary[] — cache of all fetched agent profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)
   - ownAgent: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from agents cache)
+  - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
 - Actions:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
   - createSpace(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup
-  - setCurrentPerspective(uuid: string): sets the current perspective, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels
-  - removePerspective(): unknown
+  - switchPerspective(uuid: string): switches to a perspective by UUID, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels
+  - removePerspective(uuid: string): removes a perspective by UUID
+  - reorderPerspectives(newOrder: string[]): reorders the sidebar items by UUID array
   - login(password: string): logs in the agent with password
   - logout(): locks the agent and returns to login screen
   - fetchAgent(did: string): fetches and caches an agent's profile from their public AD4M perspective
@@ -1096,6 +1098,8 @@ TemplateStore:
   - shellTemplates: array of TemplateSchema objects (static system pages: profile, settings, tests)
   - currentTemplate: TemplateSchema (the active template)
   - operationLoading: unknown
+  - activeShellView: string | null (id of the currently open shell overlay: 'profile' | 'settings' | 'schema-tests' | 'landing-page' | null)
+  - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isCore, isInstalled, isDefault)
 - Actions:
   - updateTemplate(newTemplate: TemplateSchema): updates the current template
   - switchTemplate(newTemplateId: string): switches to another template
@@ -1104,6 +1108,8 @@ TemplateStore:
   - toggleInstalled(): unknown
   - setDefaultTemplate(): unknown
   - deleteTemplate(): unknown
+  - openShellView(id: string): opens a shell overlay by id ('profile' | 'settings' | 'schema-tests' | 'landing-page')
+  - closeShellView(): closes the currently open shell overlay
 
 SpaceStore:
 - State:
@@ -1148,6 +1154,7 @@ AiStore:
   - handleSchemaPrompt(prompt: string): generates a schema from a prompt
   - sendMessage(): unknown
   - close(): unknown
+  - toggle(): toggles the AI chat panel open/closed
   - setApiKey(): unknown
   - startFork(): unknown
   - startFresh(): unknown
@@ -1160,6 +1167,14 @@ AiStore:
   - onSchemaEdit(): unknown
   - undo(): undoes the last schema edit
   - redo(): redoes the last undone schema edit
+
+AppStore:
+- State:
+  - apps: RegisteredApp[] — list of registered external apps (id, name, image)
+  - activeAppId: string | null — id of the currently active app, or null if none
+- Actions:
+  - activateApp(id: string): activates an app and switches to its view
+  - deactivateApp(): deactivates the current app and returns to the template view
 
 ---
 
