@@ -2,11 +2,7 @@ import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { deepClone } from '@shared/utils';
 import { useAdamStore, useTemplateStore } from '@solid/stores';
 import { contextData, schemaContext } from '@we/ai-context';
-import {
-  ChatMessage as ChatMessageModel,
-  ChatSession as ChatSessionModel,
-  Template as TemplateModel,
-} from '@we/models';
+import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import {
   buildValidationContext,
@@ -391,7 +387,7 @@ export function AiStoreProvider(props: ParentProps) {
     try {
       // Single query: sessions for this template with messages already hydrated
       const templateSessions = await ChatSessionModel.findAll(perspective, {
-        parent: { id: templateModel.id, predicate: 'we://chat_session' },
+        where: { templateId: templateModel.id },
         order: { updatedAt: 'DESC' },
         include: { messages: { order: { createdAt: 'ASC' } } },
       });
@@ -435,11 +431,11 @@ export function AiStoreProvider(props: ParentProps) {
     try {
       const sessionName = `Chat ${sessions().length + 1}`;
       const now = new Date().toISOString();
-      const session = await ChatSessionModel.create(
-        perspective,
-        { name: sessionName, updatedAt: now },
-        { parent: { model: TemplateModel, id: templateModel.id } },
-      );
+      const session = await ChatSessionModel.create(perspective, {
+        name: sessionName,
+        templateId: templateModel.id,
+        updatedAt: now,
+      });
 
       activeSessionModel = session;
       setActiveSessionId(session.id);
@@ -480,8 +476,6 @@ export function AiStoreProvider(props: ParentProps) {
         await (msg as ChatMessageModel).delete();
       }
 
-      // Remove session from template and delete it
-      await templateModel.removeChatSessions(target);
       await target.delete();
 
       // Update local state
@@ -768,7 +762,7 @@ export function AiStoreProvider(props: ParentProps) {
           'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: 'claude-sonnet-4-6',
           max_tokens: 16384,
           stream: true,
           tools: [updateSchemaTool],

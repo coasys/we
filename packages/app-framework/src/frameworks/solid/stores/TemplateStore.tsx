@@ -1,9 +1,10 @@
+import type { PerspectiveProxy } from '@coasys/ad4m';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
-import { decodeFileAsJson, Template } from '@we/models';
+import { decodeFileAsJson, Space, SpaceTemplatePreference, Template } from '@we/models';
 import type { StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
@@ -47,8 +48,10 @@ export interface TemplateStore {
   toggleInstalled: (templateId: string) => Promise<void>;
   setDefaultTemplate: (templateId: string) => void;
   saveTemplate: (name: string) => Promise<void>;
-  saveTemplateAs: (schema: TemplateSchema) => Promise<boolean>;
+  saveTemplateAs: (schema: TemplateSchema, destination?: 'root' | 'space') => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
+  loadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
+  clearSpaceTemplates: () => void;
   openShellView: (id: string) => void;
   closeShellView: () => void;
   scrollToId: (id: string) => void;
@@ -68,8 +71,10 @@ export function TemplateStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
   const routeStore = useRouteStore();
 
-  // Map template ID → AD4M model instance (for updates/deletes)
+  // Map template ID → AD4M model instance for we-root templates
   const savedTemplateMap = new Map<string, Template>();
+  // Map template ID → AD4M model instance for the current space's templates
+  const spaceTemplateMap = new Map<string, Template>();
 
   // Core templates from registry (always available)
   const coreTemplates: TemplateSchema[] = Object.entries(templateRegistry).map(([id, template]) => ({
@@ -168,12 +173,113 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   }
 
+  /** Remove all current-space templates from state — call before switching spaces */
+  function clearSpaceTemplates() {
+    const spaceIds = new Set(spaceTemplateMap.keys());
+    spaceTemplateMap.clear();
+    if (spaceIds.size === 0) return;
+    setAllTemplates((prev) => prev.filter((t) => !spaceIds.has(t.id || '')));
+    setInstalledIds((prev) => {
+      const next = new Set(prev);
+      spaceIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  }
+
+  /** Load templates from a space perspective and merge them into allTemplates */
+  async function loadSpaceTemplates(perspective: PerspectiveProxy): Promise<void> {
+    clearSpaceTemplates();
+    try {
+      const spaceDbTemplates = await Template.findAll(perspective);
+      const spaceTemplates: TemplateSchema[] = [];
+
+      for (const template of spaceDbTemplates) {
+        const decoded = decodeFileAsJson(template.schema);
+        if (!decoded || typeof decoded !== 'object') continue;
+        const stored = decoded as unknown as StoredTemplate;
+        const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+        const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
+
+        spaceTemplates.push({ ...schema, id: templateId });
+        spaceTemplateMap.set(templateId, template);
+      }
+
+      if (spaceTemplates.length === 0) return;
+
+      setAllTemplates((prev) => [...prev, ...spaceTemplates]);
+      setInstalledIds((prev) => {
+        const next = new Set(prev);
+        spaceTemplates.forEach((t) => t.id && next.add(t.id));
+        return next;
+      });
+    } catch (error) {
+      console.error('TemplateStore: loadSpaceTemplates error', error);
+    }
+  }
+
   // Load saved templates when root perspective becomes available
   createEffect(() => {
     if (adamStore.rootPerspective()) {
       loadSavedTemplates().finally(() => setLoading(false));
     }
   });
+
+  // On space switch: load that space's templates and apply its default if appropriate
+  let lastSpacePerspectiveUuid: string | null = null;
+  createEffect(() => {
+    const perspective = adamStore.currentPerspective();
+    if (!perspective) {
+      clearSpaceTemplates();
+      lastSpacePerspectiveUuid = null;
+      return;
+    }
+    if (perspective.uuid === lastSpacePerspectiveUuid) return;
+    lastSpacePerspectiveUuid = perspective.uuid;
+    void applySpaceTemplate(perspective);
+  });
+
+  async function applySpaceTemplate(perspective: PerspectiveProxy): Promise<void> {
+    await loadSpaceTemplates(perspective);
+
+    const sharedCid = perspective.sharedUrl?.replace('neighbourhood://', '');
+    const spaceModel = await Space.findOne(perspective, {
+      where: sharedCid ? { url: sharedCid } : { uuid: perspective.uuid },
+    }).catch(() => null);
+
+    if (!spaceModel?.defaultTemplateId) return;
+
+    const spaceTemplateId = spaceModel.defaultTemplateId;
+
+    // Check per-space preference stored in we-root
+    const rootPerspective = adamStore.rootPerspective();
+    const spaceUrl = sharedCid || perspective.uuid;
+    let perSpacePref: string | null = null;
+    if (rootPerspective) {
+      const prefs = await SpaceTemplatePreference.findAll(rootPerspective, {
+        where: { spaceUrl },
+      }).catch(() => [] as SpaceTemplatePreference[]);
+      if (prefs.length > 0) perSpacePref = prefs[0].preference;
+    }
+
+    // Per-space "user" means they explicitly chose their own template for this space
+    if (perSpacePref === 'user') return;
+
+    // Find the template in allTemplates (populated by loadSpaceTemplates above)
+    const spaceTemplate = allTemplates().find((t) => t.id === spaceTemplateId);
+    if (!spaceTemplate) return;
+
+    // Guard: if the user navigated away before the async work completed, skip
+    if (adamStore.currentPerspective()?.uuid !== perspective.uuid) return;
+
+    // Apply the space template without persisting it to AgentSettings
+    replaceTemplate(spaceTemplate);
+
+    // If user's global override is set, let them know they can switch back
+    const settings = adamStore.agentSettings();
+    if (settings && !settings.useSpaceTemplate && perSpacePref !== 'space') {
+      toastService.info(`Viewing with this space's template. Open Settings to use your own.`, 7000);
+    }
+  }
 
   // Restore persisted template choice on boot (runs once, then stops)
   let initialRestoreDone = false;
@@ -397,6 +503,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         const newTemplate = await Template.create(perspective, {
           name,
           origin: 'custom',
+          slug: templateId,
           version: 1,
           schema: schemaBlob as any,
         });
@@ -424,11 +531,13 @@ export function TemplateStoreProvider(props: ParentProps) {
   /**
    * Save a provided schema as a new (or updated) template, refresh the
    * templates list, and switch to it. Returns true on success.
+   * Pass destination='space' to save into the current space perspective instead of we-root.
    */
-  async function saveTemplateAs(schema: TemplateSchema): Promise<boolean> {
-    const perspective = adamStore.rootPerspective();
+  async function saveTemplateAs(schema: TemplateSchema, destination: 'root' | 'space' = 'root'): Promise<boolean> {
+    const isSpace = destination === 'space';
+    const perspective = isSpace ? adamStore.currentPerspective() : adamStore.rootPerspective();
     if (!perspective) {
-      toastService.error('Cannot save template: no root perspective available');
+      toastService.error(`Cannot save template: no ${isSpace ? 'space' : 'root'} perspective available`);
       return false;
     }
 
@@ -446,7 +555,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     } as FileData;
 
     try {
-      const existingTemplate = savedTemplateMap.get(templateId);
+      const targetMap = isSpace ? spaceTemplateMap : savedTemplateMap;
+      const existingTemplate = targetMap.get(templateId);
       if (existingTemplate) {
         existingTemplate.schema = schemaBlob as any;
         existingTemplate.name = schemaToSave.meta.name;
@@ -455,16 +565,19 @@ export function TemplateStoreProvider(props: ParentProps) {
       } else {
         const newTemplate = await Template.create(perspective, {
           name: schemaToSave.meta.name,
-          origin: 'custom',
+          origin: isSpace ? 'shared' : 'custom',
+          slug: templateId,
           version: 1,
           schema: schemaBlob as any,
         });
-        savedTemplateMap.set(templateId, newTemplate);
+        targetMap.set(templateId, newTemplate);
 
-        const prefs = adamStore.agentSettings();
-        if (prefs) await prefs.addInstalledTemplates(newTemplate);
+        if (!isSpace) {
+          // Link to AgentSettings so it appears in the sidebar
+          const prefs = adamStore.agentSettings();
+          if (prefs) await prefs.addInstalledTemplates(newTemplate);
+        }
 
-        // Immediately mark as installed so it shows in sidebar
         setInstalledIds((prev) => {
           const next = new Set(prev);
           next.add(templateId);
@@ -472,7 +585,11 @@ export function TemplateStoreProvider(props: ParentProps) {
         });
       }
 
-      await loadSavedTemplates();
+      if (isSpace) {
+        await loadSpaceTemplates(perspective);
+      } else {
+        await loadSavedTemplates();
+      }
 
       // Ensure the just-saved template appears in allTemplates even if
       // AD4M's file storage hasn't resolved the schema blob yet
@@ -503,7 +620,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   /** Persist the current in-memory template state to AD4M (for saved templates only) */
   async function persistCurrentTemplate(): Promise<void> {
     const templateId = currentTemplate.id;
-    if (!templateId || !savedTemplateMap.has(templateId)) return;
+    if (!templateId || (!savedTemplateMap.has(templateId) && !spaceTemplateMap.has(templateId))) return;
 
     const perspective = adamStore.rootPerspective();
     if (!perspective) return;
@@ -523,7 +640,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     } as FileData;
 
     try {
-      const existing = savedTemplateMap.get(templateId)!;
+      const existing = savedTemplateMap.get(templateId) ?? spaceTemplateMap.get(templateId);
+      if (!existing) return;
       existing.schema = schemaBlob as any;
       existing.version = (existing.version || 1) + 1;
       await existing.save();
@@ -558,9 +676,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     return installedIds().has(templateId);
   }
 
-  /** Get the AD4M Template model instance by slug ID (for HasMany operations) */
+  /** Get the AD4M Template model instance by slug ID */
   function getTemplateModel(templateId: string): Template | undefined {
-    return savedTemplateMap.get(templateId);
+    return savedTemplateMap.get(templateId) ?? spaceTemplateMap.get(templateId);
   }
 
   /** Toggle a custom template's installed state */
@@ -611,6 +729,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     saveTemplate,
     saveTemplateAs,
     persistCurrentTemplate,
+    loadSpaceTemplates,
+    clearSpaceTemplates,
     openShellView,
     closeShellView,
     scrollToId,
