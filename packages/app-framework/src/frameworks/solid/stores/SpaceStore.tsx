@@ -22,6 +22,7 @@ export interface SpaceStore {
   // State
   memberDids: Accessor<string[]>;
   members: Accessor<AgentProfileSummary[]>;
+  spaceDefaultTemplateId: Accessor<string>;
 
   // Actions
   createPost: (json: unknown) => Promise<void>;
@@ -29,6 +30,7 @@ export interface SpaceStore {
   deletePost: (postId: string) => Promise<void>;
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
   updateSpaceMeta: (updates: SpaceMetaUpdate) => Promise<void>;
+  setSpaceDefaultTemplate: (templateId: string) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string) => void;
@@ -228,6 +230,29 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   const [memberDids, setMemberDids] = createSignal<string[]>([]);
+  const [spaceDefaultTemplateId, setSpaceDefaultTemplateId] = createSignal<string>('');
+
+  // Load the space's default template ID whenever the perspective changes
+  createEffect(() => {
+    const p = adamStore.currentPerspective();
+    if (!p) {
+      setSpaceDefaultTemplateId('');
+      return;
+    }
+    Space.findAll(p, { where: { uuid: p.uuid } })
+      .then(([space]) => setSpaceDefaultTemplateId(space?.defaultTemplateId || ''))
+      .catch(() => setSpaceDefaultTemplateId(''));
+  });
+
+  async function setSpaceDefaultTemplate(templateId: string): Promise<void> {
+    setSpaceDefaultTemplateId(templateId);
+    const template = templateStore.allTemplates().find((t) => t.id === templateId);
+    if (template) templateStore.replaceTemplate(template);
+    const p = adamStore.currentPerspective();
+    if (!p) return;
+    const [space] = await Space.findAll(p, { where: { uuid: p.uuid } });
+    if (space) await Space.update(p, space.id, { defaultTemplateId: templateId });
+  }
 
   // Load neighbourhood members whenever the current perspective changes
   createEffect(() => {
@@ -272,6 +297,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // State
     memberDids,
     members,
+    spaceDefaultTemplateId,
 
     // Actions
     createPost,
@@ -279,6 +305,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     deletePost,
     updateSpaceImage,
     updateSpaceMeta,
+    setSpaceDefaultTemplate,
     createSignalType,
     upsertSignal,
     navigateToSpace,
