@@ -12,6 +12,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  onCleanup,
   ParentProps,
   untrack,
   useContext,
@@ -32,6 +33,7 @@ export interface SpaceStore {
   memberDids: Accessor<string[]>;
   members: Accessor<AgentProfileSummary[]>;
   spaceDefaultTemplateId: Accessor<string>;
+  currentSpace: Accessor<Space | null>;
 
   // Actions
   createPost: (json: unknown) => Promise<void>;
@@ -241,20 +243,31 @@ export function SpaceStoreProvider(props: ParentProps) {
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
 
-  const [memberDids, setMemberDids] = createSignal<string[]>([]);
-  const [spaceDefaultTemplateId, setSpaceDefaultTemplateId] = createSignal<string>('');
+  const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
 
-  // Load the space's default template ID whenever the perspective changes
+  // Subscribe to current space data reactively whenever the perspective changes.
+  // include: { location: true } so AboutRoute can access location without a separate query.
   createEffect(() => {
     const p = adamStore.currentPerspective();
     if (!p) {
-      setSpaceDefaultTemplateId('');
+      setCurrentSpace(null);
       return;
     }
-    Space.findAll(p, { where: { uuid: p.uuid } })
-      .then(([space]) => setSpaceDefaultTemplateId(space?.defaultTemplateId || ''))
-      .catch(() => setSpaceDefaultTemplateId(''));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const builder = (Space as any).query(p, { where: { uuid: p.uuid }, include: { location: true } }) as {
+      subscribe: (cb: (results: Space[]) => void) => Promise<Space[]>;
+      dispose: () => void;
+    };
+    const handleResult = (results: Space[]) => setCurrentSpace(results[0] ?? null);
+    builder.subscribe(handleResult).then(handleResult);
+    onCleanup(() => builder.dispose());
   });
+
+  const [memberDids, setMemberDids] = createSignal<string[]>([]);
+  const [spaceDefaultTemplateId, setSpaceDefaultTemplateId] = createSignal<string>('');
+
+  // Derive from currentSpace; setSpaceDefaultTemplateId remains writable for optimistic updates
+  createEffect(() => setSpaceDefaultTemplateId(currentSpace()?.defaultTemplateId ?? ''));
 
   async function setSpaceDefaultTemplate(templateId: string): Promise<void> {
     setSpaceDefaultTemplateId(templateId);
@@ -348,6 +361,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     memberDids,
     members,
     spaceDefaultTemplateId,
+    currentSpace,
 
     // Actions
     createPost,

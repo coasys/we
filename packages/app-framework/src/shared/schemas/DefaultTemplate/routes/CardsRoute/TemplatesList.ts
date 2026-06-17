@@ -5,9 +5,6 @@ import { cardShell, gridWrapper } from './CardShell';
 export const templatesList: SchemaNode = {
   type: 'Column',
   props: { gap: '0', width: '100%' },
-  $queries: {
-    spaceInfo: { model: 'Space', subscribe: false },
-  },
   children: [
     gridWrapper([
       {
@@ -85,10 +82,7 @@ export const templatesList: SchemaNode = {
                         type: '$if',
                         props: {
                           condition: {
-                            $eq: [
-                              { $find: { items: { $local: 'spaceInfo' }, select: 'author' } },
-                              { $store: 'adamStore.me.did' },
-                            ],
+                            $eq: [{ $store: 'spaceStore.currentSpace.author' }, { $store: 'adamStore.me.did' }],
                           },
                           then: {
                             type: 'we-button',
@@ -99,7 +93,7 @@ export const templatesList: SchemaNode = {
                                 $action: 'model.update',
                                 args: [
                                   'Space',
-                                  { $find: { items: { $local: 'spaceInfo' }, select: 'id' } },
+                                  { $store: 'spaceStore.currentSpace.id' },
                                   { defaultTemplateId: '$template.slug' },
                                 ],
                               },
@@ -127,10 +121,7 @@ export const templatesList: SchemaNode = {
                     type: '$if',
                     props: {
                       condition: {
-                        $eq: [
-                          '$template.slug',
-                          { $find: { items: { $local: 'spaceInfo' }, select: 'defaultTemplateId' } },
-                        ],
+                        $eq: ['$template.slug', { $store: 'spaceStore.currentSpace.defaultTemplateId' }],
                       },
                       then: {
                         type: 'we-badge',

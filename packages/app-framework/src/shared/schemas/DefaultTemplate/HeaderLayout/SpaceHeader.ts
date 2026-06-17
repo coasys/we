@@ -1,11 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 
 export const spaceHeader: SchemaNode = {
-  type: '$single',
-  props: {
-    item: { $query: { model: 'Space', where: { url: { $store: 'adamStore.currentPerspectiveSharedCid' } } } },
-    as: 'space',
-  },
+  type: 'Column',
   children: [
     // ─── Header ───────────────────────────────────────────────────────────────
     {
@@ -20,7 +16,7 @@ export const spaceHeader: SchemaNode = {
             {
               type: 'EditableImage',
               props: {
-                src: '$space.coverImage',
+                src: { $store: 'spaceStore.currentSpace.coverImage' },
                 alt: 'Cover image',
                 fit: 'cover',
                 width: '100%',
@@ -39,7 +35,7 @@ export const spaceHeader: SchemaNode = {
                 {
                   type: 'EditableImage',
                   props: {
-                    src: '$space.avatar',
+                    src: { $store: 'spaceStore.currentSpace.avatar' },
                     alt: 'Profile picture',
                     fit: 'cover',
                     width: '120px',
@@ -58,16 +54,16 @@ export const spaceHeader: SchemaNode = {
                     {
                       type: 'we-text',
                       props: { fontSize: '700', fontWeight: 'bold' },
-                      children: ['$space.name'],
+                      children: [{ $store: 'spaceStore.currentSpace.name' }],
                     },
                     {
                       type: '$if',
                       props: {
-                        condition: '$space.description',
+                        condition: { $store: 'spaceStore.currentSpace.description' },
                         then: {
                           type: 'we-text',
                           props: { color: 'neutral-700', truncate: true },
-                          children: ['$space.description'],
+                          children: [{ $store: 'spaceStore.currentSpace.description' }],
                         },
                         else: {
                           type: 'we-text',
@@ -83,18 +79,6 @@ export const spaceHeader: SchemaNode = {
                         {
                           type: 'AvatarStack',
                           props: {
-                            // avatars: [
-                            //   { initials: 'Alice Baker', hash: 'abc123' },
-                            //   { initials: 'Bob Carter', hash: 'def456' },
-                            //   { initials: 'Carol Davis', hash: 'ghi789' },
-                            //   { initials: 'Dan Evans', hash: 'jkl012' },
-                            //   { initials: 'Eva Foster', hash: 'mno345' },
-                            //   { initials: 'Frank Green', hash: 'pqr678' },
-                            //   { initials: 'Grace Hill', hash: 'stu901' },
-                            //   { initials: 'Harry Irving', hash: 'vwx234' },
-                            //   { initials: 'Isla Jones', hash: 'yz1234' },
-                            //   { initials: 'Jack King', hash: 'abc567' },
-                            // ],
                             avatars: {
                               $map: {
                                 items: { $store: 'spaceStore.members' },
@@ -181,12 +165,16 @@ export const spaceHeader: SchemaNode = {
               children: [
                 {
                   type: 'we-avatar',
-                  props: { image: '$space.avatar', initials: '$space.name', size: 'lg' },
+                  props: {
+                    image: { $store: 'spaceStore.currentSpace.avatar' },
+                    initials: { $store: 'spaceStore.currentSpace.name' },
+                    size: 'lg',
+                  },
                 },
                 {
                   type: 'we-text',
                   props: { fontWeight: '600' },
-                  children: ['$space.name'],
+                  children: [{ $store: 'spaceStore.currentSpace.name' }],
                 },
               ],
             },
