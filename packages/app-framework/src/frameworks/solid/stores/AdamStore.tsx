@@ -953,6 +953,7 @@ export function AdamStoreProvider(props: ParentProps) {
         description,
         access,
         discovery,
+        defaultTemplateId: 'default',
         ...(avatarData && { avatar: avatarData }),
         ...(coverImageData && { coverImage: coverImageData }),
       };

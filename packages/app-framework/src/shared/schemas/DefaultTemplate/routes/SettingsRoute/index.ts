@@ -105,7 +105,7 @@ export const settingsRoute: RouteSchema = {
               },
             },
 
-            // Personal + core templates
+            // Core templates
             {
               type: 'Column',
               props: { gap: '200' },
@@ -113,11 +113,11 @@ export const settingsRoute: RouteSchema = {
                 {
                   type: 'we-text',
                   props: { fontSize: '400', fontWeight: '600', color: 'neutral-500' },
-                  children: ['YOUR TEMPLATES'],
+                  children: ['CORE TEMPLATES'],
                 },
                 {
                   type: '$each',
-                  props: { items: { $store: 'templateStore.personalTemplates' }, as: 'template' },
+                  props: { items: { $store: 'templateStore.coreTemplates' }, as: 'template' },
                   children: [templateRow],
                 },
               ],

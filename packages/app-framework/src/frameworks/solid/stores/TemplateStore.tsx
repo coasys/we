@@ -29,9 +29,9 @@ export type TemplateManagementItem = {
 
 export interface TemplateStore {
   // State
-  templates: Accessor<TemplateSchema[]>;
   personalTemplates: Accessor<TemplateSchema[]>;
   spaceTemplates: Accessor<TemplateSchema[]>;
+  coreTemplates: Accessor<TemplateSchema[]>;
   allTemplates: Accessor<TemplateSchema[]>;
   templateManagementList: Accessor<TemplateManagementItem[]>;
   currentTemplate: TemplateSchema;
@@ -111,21 +111,20 @@ export function TemplateStoreProvider(props: ParentProps) {
   // Shell overlay: which shell view (if any) is currently shown above the active template
   const [activeShellView, setActiveShellView] = createSignal<string | null>('landing-page');
 
-  // Derived: core templates are always "installed", plus any custom templates in the installed set
-  const templates = () => {
-    const installed = installedIds();
-    return allTemplates().filter((t) => isCoreTemplateId(t.id || '') || installed.has(t.id || ''));
-  };
-
   const personalTemplates = () => {
+    const installed = installedIds();
     const spaceIds = spaceTemplateIdSet();
-    return templates().filter((t) => !spaceIds.has(t.id || ''));
+    return allTemplates().filter(
+      (t) => !spaceIds.has(t.id || '') && (isCoreTemplateId(t.id || '') || installed.has(t.id || '')),
+    );
   };
 
   const spaceTemplates = () => {
     const spaceIds = spaceTemplateIdSet();
     return allTemplates().filter((t) => spaceIds.has(t.id || ''));
   };
+
+  const coreTemplatesAccessor = () => allTemplates().filter((t) => isCoreTemplateId(t.id || ''));
 
   const defaultTemplateId = () => adamStore.agentSettings()?.defaultTemplateId || 'default';
 
@@ -307,7 +306,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     // 'landing-page' is now an overlay (activeShellView), not a template to restore.
     // Only restore explicitly non-default templates (e.g. a custom template the user was editing).
     if (bootId && bootId !== 'default' && bootId !== 'landing-page' && bootId !== currentTemplate.id) {
-      const persisted = templates().find((t) => t.id === bootId) || shellTemplates.find((t) => t.id === bootId);
+      const persisted = allTemplates().find((t) => t.id === bootId) || shellTemplates.find((t) => t.id === bootId);
       if (persisted) {
         setCurrentTemplate(reconcile(deepClone(persisted)));
         initialRestoreDone = true;
@@ -723,9 +722,9 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   const store: TemplateStore = {
     // State
-    templates,
     personalTemplates,
     spaceTemplates,
+    coreTemplates: coreTemplatesAccessor,
     allTemplates,
     templateManagementList,
     currentTemplate,
