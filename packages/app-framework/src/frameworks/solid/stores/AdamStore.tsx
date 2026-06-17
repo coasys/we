@@ -36,27 +36,8 @@ import { useRouteStore } from './RouteStore';
 
 export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 
-/**
- * Normalised description of a model class from a perspective's SHACL shapes.
- * Mirrors ModelManifestEntry from @coasys/ad4m (defined locally until the package
- * is built and linked with the new version).
- */
-export interface ModelManifestProperty {
-  name: string;
-  predicate: string;
-  type: 'string' | 'number' | 'boolean' | 'uri';
-  isCollection: boolean;
-  required: boolean;
-  writable: boolean;
-  resolveLanguage?: string;
-  relatedModel?: string;
-}
-
-export interface ModelManifestEntry {
-  name: string;
-  targetClass: string;
-  properties: ModelManifestProperty[];
-}
+export type { ModelManifestEntry, ModelManifestProperty } from '@shared/AdamStore';
+import type { ModelManifestEntry } from '@shared/AdamStore';
 
 export interface AdamStore {
   // State
@@ -232,7 +213,7 @@ export function AdamStoreProvider(props: ParentProps) {
         };
       });
 
-    const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
+    const seedUrl = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
     const globalId = seedUrl ? seedUrl.replace('neighbourhood://', '') : null;
     const alreadyJoined = globalId ? items.some((item) => item.spaceId === globalId) : true;
     if (globalId && !alreadyJoined) {
@@ -248,7 +229,7 @@ export function AdamStoreProvider(props: ParentProps) {
 
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
-  const globalSpaceConfigured = () => !!(weSeedFile as WeSeedFile).globalSpaceUrl;
+  const globalSpaceConfigured = () => !!(weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
 
   async function getMe(client: Ad4mClient): Promise<void> {
     try {
@@ -711,7 +692,7 @@ export function AdamStoreProvider(props: ParentProps) {
 
         // Restore the global perspective if previously joined — model registration is handled
         // by SpaceStore.installSpaceSdna when the perspective is navigated to.
-        const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
+        const seedUrl = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
         const existingGlobal = seedUrl ? perspectives.find((p) => p.sharedUrl === seedUrl) : undefined;
         if (existingGlobal) {
           setGlobalPerspective(existingGlobal);
@@ -1068,7 +1049,7 @@ export function AdamStoreProvider(props: ParentProps) {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       // If this is the configured global space, update globalPerspective.
-      const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
+      const seedUrl = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
       if (neighbourhoodUrl === seedUrl) {
         setGlobalPerspective(joinedP);
       }
@@ -1090,7 +1071,7 @@ export function AdamStoreProvider(props: ParentProps) {
 
   /** The neighbourhood CID (with `neighbourhood://` stripped) for the global space, or null if unconfigured. */
   const globalSpaceId = (): string | null => {
-    const url = (weSeedFile as WeSeedFile).globalSpaceUrl;
+    const url = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
     return url ? url.replace('neighbourhood://', '') : null;
   };
 

@@ -94,6 +94,16 @@ export interface WeSeedFile {
     /** AD4M capabilities/permissions this app requires */
     capabilities: Array<'perspectives' | 'languages' | 'agents' | 'filesystem' | 'network'>;
 
+    /** Build and install commands for this app */
+    commands: {
+      /** Command to install dependencies */
+      install: string;
+      /** Command to build the app */
+      build?: string;
+      /** Command to start the dev server */
+      dev?: string;
+    };
+
     /** File paths — used by generate-seed-config.cjs and resolveAppUrl */
     paths: {
       /** Root directory of the app (relative to workspace root) */

@@ -53,6 +53,15 @@ export function validateSeed(seed: unknown): SeedValidationResult {
         errors.push({ path: `${prefix}.icon`, message: 'App icon is required' });
       }
 
+      // Validate commands
+      if (!app.commands) {
+        errors.push({ path: `${prefix}.commands`, message: 'App commands configuration is required' });
+      } else {
+        if (!app.commands.install) {
+          errors.push({ path: `${prefix}.commands.install`, message: 'Install command is required' });
+        }
+      }
+
       // Validate paths
       if (!app.paths) {
         errors.push({ path: `${prefix}.paths`, message: 'App paths configuration is required' });
