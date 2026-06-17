@@ -1,6 +1,7 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
 import { Ad4mModel, getPropertiesMetadata } from '@coasys/ad4m';
 import type { CollectionBlock, FileData } from '@we/models';
+import { dataURIToFileData } from '@we/models';
 
 import { getBlockModel, getRegisteredBlockModels } from './registry';
 import type { SerializedBlockNode } from './types';
@@ -145,12 +146,21 @@ function isFileData(value: unknown): value is FileData {
 }
 
 /**
- * Walk a serialized block node tree, upload any FileData values on
- * resolveLanguage properties to file-storage, and return a patched copy
- * where those values are replaced with the resulting expression addresses
- * (e.g. "QmLang://QmHash").  This keeps the editorState blob small (CIDs
- * instead of raw base64 payloads) and ensures the AD4M model's create()
- * path receives a string it can store directly rather than a FileData object.
+ * Walk a serialized block node tree, upload any FileData values (or data:
+ * URIs round-tripped from resolveExpressionAddresses — see dataURIToFileData
+ * from @we/models) on resolveLanguage properties to file-storage, and return
+ * a patched copy where those values are replaced with the resulting
+ * expression addresses (e.g. "QmLang://QmHash"). This keeps the editorState
+ * blob small (CIDs instead of raw base64 payloads) and ensures the AD4M
+ * model's create() path receives a string it can store directly rather than
+ * a FileData object.
+ *
+ * For an unchanged asset round-tripped through resolveExpressionAddresses,
+ * __assetNames (stamped there) carries the *original* upload name forward —
+ * required because file storage is content-addressed on name + size +
+ * file_type + data_base64, so re-uploading identical bytes under a
+ * different name would produce a different address than the original,
+ * orphaning the old one for no reason.
  */
 async function preUploadFileAssets(
   perspective: PerspectiveProxy,
@@ -158,15 +168,24 @@ async function preUploadFileAssets(
 ): Promise<SerializedBlockNode> {
   // Shallow-copy so we don't mutate the original Lexical JSON
   const patched: SerializedBlockNode = { ...node };
+  const assetNames = patched.__assetNames as Record<string, string> | undefined;
+  delete patched.__assetNames;
 
   // Resolve the model class for this node type (if registered)
   const ModelClass = getBlockModel(node.type);
   if (ModelClass) {
     const propsMeta = getPropertiesMetadata(ModelClass);
     for (const [propName, meta] of Object.entries(propsMeta)) {
-      if (meta.resolveLanguage && isFileData(patched[propName])) {
+      if (!meta.resolveLanguage) continue;
+      const value = patched[propName];
+      const fileData = isFileData(value)
+        ? value
+        : typeof value === 'string' && value.startsWith('data:')
+          ? dataURIToFileData(value, assetNames?.[propName] ?? propName)
+          : undefined;
+      if (fileData) {
         // Upload the file and replace the FileData with the expression address
-        const expressionAddress = await perspective.createExpression(patched[propName], meta.resolveLanguage);
+        const expressionAddress = await perspective.createExpression(fileData, meta.resolveLanguage);
         patched[propName] = expressionAddress;
       }
     }
@@ -214,6 +233,15 @@ export async function resolveExpressionAddresses(
             const data = typeof expr.data === 'string' ? JSON.parse(expr.data) : expr.data;
             if (data?.data_base64 && data?.file_type) {
               patched[propName] = `data:${data.file_type};base64,${data.data_base64}`;
+              // Carry the original upload name forward — preUploadFileAssets
+              // needs it to reuse this exact address if the asset goes
+              // unchanged through an edit round trip (see its doc comment).
+              if (typeof data.name === 'string') {
+                patched.__assetNames = {
+                  ...(patched.__assetNames as Record<string, string> | undefined),
+                  [propName]: data.name,
+                };
+              }
             }
           }
         } catch {

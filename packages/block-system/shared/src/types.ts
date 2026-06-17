@@ -10,6 +10,7 @@ export type SerializedBlockNode = any;
 
 export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
   editorState?: SerializedBlockNode;
+  perspective?: PerspectiveProxy | null;
   onSave?: (json: SerializedBlockNode) => void;
   onReady?: (api: { save: () => void }) => void;
 };
