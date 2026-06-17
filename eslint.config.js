@@ -17,6 +17,11 @@ export default [
       '**/target/**',
       '**/dist-electron/**',
       '**/.storybook/**',
+      // The branch-aware ad4m build (scripts/build-with-ad4m-link.sh) and
+      // its CI counterpart clone the matching ad4m branch into ./ad4m and
+      // link it via pnpm.overrides.  ESLint must not walk into that
+      // checkout — it's not WE source, and walking it OOMs the linter.
+      'ad4m/**',
     ],
   },
   {

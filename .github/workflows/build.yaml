@@ -1,0 +1,128 @@
+name: Build
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # WE's .nvmrc pins Node 24 (uses Node 22+ features like `fs.globSync`).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      # ad4m's monorepo uses object-format pnpm.overrides which pnpm v10
+      # rejects.  Install pnpm 9.15.0 directly via npm and pin it for the
+      # whole workflow — WE's `packageManager: pnpm@10.18.3` works fine
+      # under pnpm 9 (the warning is cosmetic) and pnpm/action-setup@v4
+      # refuses to override packageManager without erroring.
+      - name: Install pnpm 9.15.0
+        run: npm install -g pnpm@9.15.0
+
+      - name: Detect branch
+        id: branch
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --heads \
+            https://github.com/coasys/ad4m.git "$BRANCH" >/dev/null 2>&1; then
+            echo "ad4m_branch=$BRANCH" >> "$GITHUB_OUTPUT"
+            echo "✅ Found matching AD4M branch: $BRANCH"
+          else
+            echo "ad4m_branch=dev" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ No matching AD4M branch — using dev"
+          fi
+
+      # --- AD4M linked build (published packages have broken workspace: refs) ---
+
+      - name: Clone AD4M
+        run: |
+          git clone --depth 1 --single-branch \
+            --branch "${{ steps.branch.outputs.ad4m_branch }}" \
+            https://github.com/coasys/ad4m.git ad4m
+
+      - name: Get AD4M commit hash
+        id: ad4m-hash
+        run: |
+          HASH=$(cd ad4m && git rev-parse HEAD)
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "AD4M commit: $HASH"
+
+      - name: Cache AD4M built outputs
+        id: ad4m-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ad4m/node_modules
+            ad4m/core/lib
+            ad4m/connect/dist
+          key: ad4m-sdk-${{ steps.ad4m-hash.outputs.hash }}
+
+      - name: Install & build AD4M packages
+        if: steps.ad4m-cache.outputs.cache-hit != 'true'
+        run: |
+          cd ad4m
+          pnpm install --no-frozen-lockfile
+
+          cd core && pnpm exec tsc && pnpm run bundle && cd ..
+          cd connect && pnpm run build && cd ..
+
+      # --- WE build ---
+
+      - name: Cache WE dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            */node_modules
+            !ad4m/node_modules
+          key: we-deps-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Override AD4M packages with local builds
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            pkg.pnpm = pkg.pnpm || {};
+            pkg.pnpm.overrides = pkg.pnpm.overrides || {};
+            pkg.pnpm.overrides['@coasys/ad4m'] = 'file:./ad4m/core';
+            pkg.pnpm.overrides['@coasys/ad4m-connect'] = 'file:./ad4m/connect';
+            require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Install WE dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Clear build caches for linked SDK
+        run: |
+          rm -rf .turbo node_modules/.cache
+          find . -name '.turbo' -type d -not -path './ad4m/*' -not -path './node_modules/*' -exec rm -rf {} + 2>/dev/null || true
+          find . -name '.vite' -type d -path '*/node_modules/.vite' -not -path './ad4m/*' -exec rm -rf {} + 2>/dev/null || true
+
+      # Non-blocking: this is the first CI workflow on the WE repo, so
+      # pre-existing lint debt on `dev` (mostly `no-explicit-any`
+      # warnings, plus the occasional unsorted import) shows up the
+      # moment lint actually runs.  Surface the warnings to reviewers
+      # via the run annotations, but don't fail the build until the
+      # backlog is cleared in a follow-up.
+      - name: Lint
+        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm lint
+        continue-on-error: true
+
+      - name: Build
+        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
+
+      # Non-blocking on first CI introduction.  Same rationale as Lint:
+      # `dev` carries pre-existing failures in unrelated packages (e.g.
+      # an app-framework test imports a file that no longer exists) and
+      # this PR is the first to actually run vitest in CI.  Surface the
+      # failures in the run summary so a follow-up can clear the
+      # backlog, but don't block the abort-controller work on unrelated
+      # test debt.
+      - name: Test
+        run: pnpm test
+        continue-on-error: true
