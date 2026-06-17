@@ -6,6 +6,7 @@ import { createPostModal } from './CreatePostModal';
 import { cardsHeader } from './Header';
 import { postsList } from './PostsList';
 import { spacesList } from './SpacesList';
+import { templatesList } from './TemplatesList';
 import { usersList } from './UsersList';
 
 export const cardsRoute: RouteSchema = {
@@ -33,10 +34,13 @@ export const cardsRoute: RouteSchema = {
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'posts'] }, then: postsList } },
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'users'] }, then: usersList } },
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'spaces'] }, then: spacesList } },
+        { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'templates'] }, then: templatesList } },
         {
           type: '$if',
           props: {
-            condition: { $not: { $in: [{ $local: 'contentType' }, ['posts', 'users', 'spaces']] } },
+            condition: {
+              $not: { $in: [{ $local: 'contentType' }, ['posts', 'users', 'spaces', 'templates']] },
+            },
             then: blocksList,
           },
         },
