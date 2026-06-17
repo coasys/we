@@ -502,7 +502,7 @@ when `relative` is enabled.
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: visibility?: Visibility, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, editorState?: any, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+  Props: visibility?: Visibility, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, editorState?: any, perspective?: PerspectiveProxy | null, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
 - BlockPlaceholder
   Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
@@ -822,9 +822,11 @@ AgentSettings extends Ad4mModel:
   - perspectiveOrder: string [we://perspective_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
   - globalSpaceUrl: string [we://global_space_url]
+  - useSpaceTemplate: boolean = true [we://use_space_template]
   Relations:
   - installedTemplates: HasMany → Template [we://installed_template]
   - installedThemes: HasMany → Theme [we://installed_theme]
+  - spaceTemplatePreferences: HasMany → SpaceTemplatePreference [we://space_template_preference]
 
 AudioBlock extends WeNode:
   Fields:
@@ -850,6 +852,7 @@ ChatMessage extends WeNode:
 ChatSession extends WeNode:
   Fields:
   - name: string [we://name]
+  - templateId: string [we://template_id]
   Relations:
   - messages: HasMany → ChatMessage [we://chat_message]
 
@@ -966,8 +969,14 @@ Space extends WeNode:
   - discovery: string = 'hidden' [we://discovery]
   - avatar: string [we://image]
   - coverImage: string [we://thumbnail]
+  - defaultTemplateId: string [we://default_template_id]
   Relations:
   - location: HasOne [we://location]
+
+SpaceTemplatePreference extends WeNode:
+  Fields:
+  - spaceUrl: string [we://space_url]
+  - preference: string [we://preference]
 
 TagBlock extends WeNode:
   Fields:
@@ -990,9 +999,8 @@ Template extends WeNode:
   - name: string [we://name]
   - origin: string [we://origin]
   - version: number = 1 [we://version]
+  - slug: string [we://slug]
   - schema: string = null [we://template_schema]
-  Relations:
-  - chatSessions: HasMany → ChatSession [we://chat_session]
 
 TextBlock extends WeNode:
   Fields:

@@ -686,6 +686,7 @@ export const contextData: ContextData = {
         { name: 'scrollbarWidth', type: 'ScrollbarWidth', optional: true },
         { name: 'scrollbarGutter', type: 'ScrollbarGutter', optional: true },
         { name: 'editorState', type: 'any', optional: true },
+        { name: 'perspective', type: 'PerspectiveProxy | null', optional: true },
         { name: 'onSave', type: '((json: SerializedBlockNode) => void)', optional: true },
         { name: 'onReady', type: '((api: { save: () => void; }) => void)', optional: true },
       ],
@@ -1780,10 +1781,23 @@ export const contextData: ContextData = {
           default: 'false',
         },
         { name: 'globalSpaceUrl', type: 'string', predicate: 'we://global_space_url', required: false },
+        {
+          name: 'useSpaceTemplate',
+          type: 'boolean',
+          predicate: 'we://use_space_template',
+          required: false,
+          default: 'true',
+        },
       ],
       relations: [
         { name: 'installedTemplates', kind: 'HasMany', predicate: 'we://installed_template', target: 'Template' },
         { name: 'installedThemes', kind: 'HasMany', predicate: 'we://installed_theme', target: 'Theme' },
+        {
+          name: 'spaceTemplatePreferences',
+          kind: 'HasMany',
+          predicate: 'we://space_template_preference',
+          target: 'SpaceTemplatePreference',
+        },
       ],
     },
     {
@@ -1826,7 +1840,10 @@ export const contextData: ContextData = {
       name: 'ChatSession',
       className: 'ChatSession',
       extends: 'WeNode',
-      fields: [{ name: 'name', type: 'string', predicate: 'we://name', required: false }],
+      fields: [
+        { name: 'name', type: 'string', predicate: 'we://name', required: false },
+        { name: 'templateId', type: 'string', predicate: 'we://template_id', required: false },
+      ],
       relations: [{ name: 'messages', kind: 'HasMany', predicate: 'we://chat_message', target: 'ChatMessage' }],
     },
     {
@@ -2010,8 +2027,19 @@ export const contextData: ContextData = {
         { name: 'discovery', type: 'string', predicate: 'we://discovery', required: false, default: "'hidden'" },
         { name: 'avatar', type: 'string', predicate: 'we://image', required: false },
         { name: 'coverImage', type: 'string', predicate: 'we://thumbnail', required: false },
+        { name: 'defaultTemplateId', type: 'string', predicate: 'we://default_template_id', required: false },
       ],
       relations: [{ name: 'location', kind: 'HasOne', predicate: 'we://location' }],
+    },
+    {
+      name: 'SpaceTemplatePreference',
+      className: 'SpaceTemplatePreference',
+      extends: 'WeNode',
+      fields: [
+        { name: 'spaceUrl', type: 'string', predicate: 'we://space_url', required: false },
+        { name: 'preference', type: 'string', predicate: 'we://preference', required: false },
+      ],
+      relations: [],
     },
     {
       name: 'TagBlock',
@@ -2047,9 +2075,10 @@ export const contextData: ContextData = {
         { name: 'name', type: 'string', predicate: 'we://name', required: false },
         { name: 'origin', type: 'string', predicate: 'we://origin', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false, default: '1' },
+        { name: 'slug', type: 'string', predicate: 'we://slug', required: false },
         { name: 'schema', type: 'string', predicate: 'we://template_schema', required: false, default: 'null' },
       ],
-      relations: [{ name: 'chatSessions', kind: 'HasMany', predicate: 'we://chat_session', target: 'ChatSession' }],
+      relations: [],
     },
     {
       name: 'TextBlock',

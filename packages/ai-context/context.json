@@ -1856,6 +1856,11 @@
           "optional": true
         },
         {
+          "name": "perspective",
+          "type": "PerspectiveProxy | null",
+          "optional": true
+        },
+        {
           "name": "onSave",
           "type": "((json: SerializedBlockNode) => void)",
           "optional": true
@@ -5603,6 +5608,13 @@
           "type": "string",
           "predicate": "we://global_space_url",
           "required": false
+        },
+        {
+          "name": "useSpaceTemplate",
+          "type": "boolean",
+          "predicate": "we://use_space_template",
+          "required": false,
+          "default": "true"
         }
       ],
       "relations": [
@@ -5617,6 +5629,12 @@
           "kind": "HasMany",
           "predicate": "we://installed_theme",
           "target": "Theme"
+        },
+        {
+          "name": "spaceTemplatePreferences",
+          "kind": "HasMany",
+          "predicate": "we://space_template_preference",
+          "target": "SpaceTemplatePreference"
         }
       ]
     },
@@ -5726,6 +5744,12 @@
           "name": "name",
           "type": "string",
           "predicate": "we://name",
+          "required": false
+        },
+        {
+          "name": "templateId",
+          "type": "string",
+          "predicate": "we://template_id",
           "required": false
         }
       ],
@@ -6306,6 +6330,12 @@
           "type": "string",
           "predicate": "we://thumbnail",
           "required": false
+        },
+        {
+          "name": "defaultTemplateId",
+          "type": "string",
+          "predicate": "we://default_template_id",
+          "required": false
         }
       ],
       "relations": [
@@ -6315,6 +6345,26 @@
           "predicate": "we://location"
         }
       ]
+    },
+    {
+      "name": "SpaceTemplatePreference",
+      "className": "SpaceTemplatePreference",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "spaceUrl",
+          "type": "string",
+          "predicate": "we://space_url",
+          "required": false
+        },
+        {
+          "name": "preference",
+          "type": "string",
+          "predicate": "we://preference",
+          "required": false
+        }
+      ],
+      "relations": []
     },
     {
       "name": "TagBlock",
@@ -6419,6 +6469,12 @@
           "default": "1"
         },
         {
+          "name": "slug",
+          "type": "string",
+          "predicate": "we://slug",
+          "required": false
+        },
+        {
           "name": "schema",
           "type": "string",
           "predicate": "we://template_schema",
@@ -6426,14 +6482,7 @@
           "default": "null"
         }
       ],
-      "relations": [
-        {
-          "name": "chatSessions",
-          "kind": "HasMany",
-          "predicate": "we://chat_session",
-          "target": "ChatSession"
-        }
-      ]
+      "relations": []
     },
     {
       "name": "TextBlock",
