@@ -1,5 +1,6 @@
 import { Ad4mModel, Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
+import { SpaceTemplatePreference } from './SpaceTemplatePreference';
 import { Template } from './Template';
 import { Theme } from './Theme';
 
@@ -29,11 +30,19 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://global_space_url' })
   globalSpaceUrl: string = '';
 
+  @Property({ through: 'we://use_space_template' })
+  useSpaceTemplate: boolean = true;
+
   @HasMany(() => Template, { through: 'we://installed_template' })
   installedTemplates: Template[] = [];
 
   @HasMany(() => Theme, { through: 'we://installed_theme' })
   installedThemes: Theme[] = [];
+
+  @HasMany(() => SpaceTemplatePreference, { through: 'we://space_template_preference' })
+  spaceTemplatePreferences: SpaceTemplatePreference[] = [];
 }
 
-export interface AgentSettings extends HasManyMethods<'installedTemplates' | 'installedThemes'> {}
+export interface AgentSettings extends HasManyMethods<
+  'installedTemplates' | 'installedThemes' | 'spaceTemplatePreferences'
+> {}

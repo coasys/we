@@ -1,8 +1,7 @@
-import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
+import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { WeNode } from '../WeNode';
-import { ChatSession } from './ChatSession';
 
 @Model({ name: 'Template' })
 export class Template extends WeNode {
@@ -18,14 +17,12 @@ export class Template extends WeNode {
   @Property({ through: 'we://version' })
   version: number = 1;
 
+  @Property({ through: 'we://slug' })
+  slug: string = '';
+
   @Property({
     through: 'we://template_schema',
     resolveLanguage: FILE_STORAGE_LANGUAGE,
   })
   schema: string | null = null;
-
-  @HasMany(() => ChatSession, { through: 'we://chat_session' })
-  chatSessions: ChatSession[] = [];
 }
-
-export interface Template extends HasManyMethods<'chatSessions'> {}
