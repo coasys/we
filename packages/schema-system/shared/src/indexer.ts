@@ -31,6 +31,25 @@ function isSchemaChild(child: string | SchemaNode | OperatorToken): child is Sch
   return !Object.keys(child).some((k) => k.startsWith('$'));
 }
 
+/**
+ * Call fn for each SchemaNode-shaped value directly embedded in node.props.
+ * Handles plain SchemaNode values (e.g. $if.props.then) and arrays of nodes.
+ * Does NOT recurse into non-SchemaNode objects to avoid walking operator tokens.
+ */
+function forEachPropsNode(node: SchemaNode, fn: (child: SchemaNode) => void): void {
+  if (!node.props) return;
+  for (const val of Object.values(node.props)) {
+    if (typeof val !== 'object' || val === null) continue;
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        if (isSchemaChild(item as SchemaNode)) fn(item as SchemaNode);
+      }
+    } else if (isSchemaChild(val as SchemaNode)) {
+      fn(val as SchemaNode);
+    }
+  }
+}
+
 /** A navigable region in the template tree */
 export interface SectionEntry {
   /** Human-readable key, e.g. "route:/", "navigation:left", "panel:/:stats-cards" */
@@ -280,6 +299,7 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
     if (node.slots) {
       for (const slotNode of Object.values(node.slots)) collectIds(slotNode);
     }
+    forEachPropsNode(node, collectIds);
   }
   collectIds(schema);
 
@@ -306,6 +326,7 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
     if (node.slots) {
       for (const slotNode of Object.values(node.slots)) assignIds(slotNode);
     }
+    forEachPropsNode(node, assignIds);
   }
   assignIds(schema);
 
@@ -342,6 +363,22 @@ export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResu
       for (const [slotName, slotNode] of Object.entries(node.slots)) {
         const result = search(slotNode, node, `slots.${slotName}`, 0);
         if (result) return result;
+      }
+    }
+    if (node.props) {
+      for (const [propName, val] of Object.entries(node.props)) {
+        if (typeof val !== 'object' || val === null) continue;
+        if (Array.isArray(val)) {
+          for (let i = 0; i < val.length; i++) {
+            if (isSchemaChild(val[i] as SchemaNode)) {
+              const result = search(val[i] as SchemaNode, node, `props.${propName}`, i);
+              if (result) return result;
+            }
+          }
+        } else if (isSchemaChild(val as SchemaNode)) {
+          const result = search(val as SchemaNode, node, `props.${propName}`, 0);
+          if (result) return result;
+        }
       }
     }
     return null;

@@ -930,6 +930,14 @@ export function AiStoreProvider(props: ParentProps) {
                     } else if (found.key.startsWith('slots.') && found.parent.slots) {
                       const slotName = found.key.slice(6);
                       found.parent.slots[slotName] = merged;
+                    } else if (found.key.startsWith('props.') && found.parent.props) {
+                      const propName = found.key.slice(6);
+                      const existing = (found.parent.props as Record<string, unknown>)[propName];
+                      if (Array.isArray(existing)) {
+                        (existing as SchemaNode[])[found.index] = merged;
+                      } else {
+                        (found.parent.props as Record<string, unknown>)[propName] = merged;
+                      }
                     }
                   } else {
                     // found.node IS the root — merge into accumulated
