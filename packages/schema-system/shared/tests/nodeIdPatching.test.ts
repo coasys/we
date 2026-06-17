@@ -108,20 +108,44 @@ describe('ensureNodeIds', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('does not assign IDs to operator tokens in props', () => {
+  it('does not assign IDs to non-SchemaNode objects in props', () => {
+    const stylesObj = { backgroundColor: '#0d2137' };
+    const transitionObj = { type: 'fade', duration: 250 };
+    const dataItem = { label: 'About', icon: 'book-open', segment: 'about' };
+    const operatorToken = { $store: 'someStore.value' };
     const schema: SchemaNode = {
-      type: 'we-button',
+      type: '$animate',
       props: {
-        variant: { $if: { condition: true, then: 'primary', else: 'ghost' } } as unknown as string,
-        onClick: { $action: 'routeStore.navigate', args: ['/home'] } as unknown as string,
+        enterTransition: transitionObj as unknown as string,
+        styles: stylesObj as unknown as string,
+        onClick: operatorToken as unknown as string,
       },
     };
 
     ensureNodeIds(schema);
 
-    // No crash, and the operator token objects should not have been mutated with IDs
-    expect((schema.props!.variant as unknown as Record<string, unknown>)['id']).toBeUndefined();
-    expect((schema.props!.onClick as unknown as Record<string, unknown>)['id']).toBeUndefined();
+    // None of the non-SchemaNode props objects should have been mutated with IDs
+    expect((stylesObj as Record<string, unknown>)['id']).toBeUndefined();
+    expect((transitionObj as Record<string, unknown>)['id']).toBeUndefined();
+    expect((dataItem as Record<string, unknown>)['id']).toBeUndefined();
+    expect((operatorToken as Record<string, unknown>)['id']).toBeUndefined();
+  });
+
+  it('does not assign IDs to data items in $each props.items', () => {
+    const item1 = { label: 'About', icon: 'book-open', segment: 'about' };
+    const item2 = { label: 'Cards', icon: 'cards-three', segment: 'cards' };
+    const schema: SchemaNode = {
+      type: '$each',
+      props: {
+        items: [item1, item2] as unknown as string,
+        as: 'view',
+      },
+    };
+
+    ensureNodeIds(schema);
+
+    expect((item1 as Record<string, unknown>)['id']).toBeUndefined();
+    expect((item2 as Record<string, unknown>)['id']).toBeUndefined();
   });
 });
 

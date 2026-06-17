@@ -32,9 +32,22 @@ function isSchemaChild(child: string | SchemaNode | OperatorToken): child is Sch
 }
 
 /**
+ * Returns true if val is a SchemaNode embedded as a prop value.
+ * Requires `type` to look like a component name: PascalCase, hyphenated (we-button),
+ * or $-prefixed ($if, $each). This distinguishes SchemaNodes from other objects that
+ * appear in props — TransitionConfig ({ type: 'fade' }), styles objects, data items,
+ * and operator tokens — which must not be assigned IDs.
+ */
+function isPropsSchemaNode(val: unknown): val is SchemaNode {
+  if (typeof val !== 'object' || val === null || Array.isArray(val)) return false;
+  const type = (val as Record<string, unknown>).type;
+  if (typeof type !== 'string') return false;
+  return /^[A-Z$]/.test(type) || type.includes('-');
+}
+
+/**
  * Call fn for each SchemaNode-shaped value directly embedded in node.props.
  * Handles plain SchemaNode values (e.g. $if.props.then) and arrays of nodes.
- * Does NOT recurse into non-SchemaNode objects to avoid walking operator tokens.
  */
 function forEachPropsNode(node: SchemaNode, fn: (child: SchemaNode) => void): void {
   if (!node.props) return;
@@ -42,9 +55,9 @@ function forEachPropsNode(node: SchemaNode, fn: (child: SchemaNode) => void): vo
     if (typeof val !== 'object' || val === null) continue;
     if (Array.isArray(val)) {
       for (const item of val) {
-        if (isSchemaChild(item as SchemaNode)) fn(item as SchemaNode);
+        if (isPropsSchemaNode(item)) fn(item as SchemaNode);
       }
-    } else if (isSchemaChild(val as SchemaNode)) {
+    } else if (isPropsSchemaNode(val)) {
       fn(val as SchemaNode);
     }
   }
@@ -370,12 +383,12 @@ export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResu
         if (typeof val !== 'object' || val === null) continue;
         if (Array.isArray(val)) {
           for (let i = 0; i < val.length; i++) {
-            if (isSchemaChild(val[i] as SchemaNode)) {
+            if (isPropsSchemaNode(val[i])) {
               const result = search(val[i] as SchemaNode, node, `props.${propName}`, i);
               if (result) return result;
             }
           }
-        } else if (isSchemaChild(val as SchemaNode)) {
+        } else if (isPropsSchemaNode(val)) {
           const result = search(val as SchemaNode, node, `props.${propName}`, 0);
           if (result) return result;
         }
