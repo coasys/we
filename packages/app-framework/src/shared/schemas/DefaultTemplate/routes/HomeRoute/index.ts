@@ -11,7 +11,7 @@ import type { RouteSchema } from '@we/schema-shared';
 export const homeRoute: RouteSchema = {
   path: '/',
   type: 'Column',
-  props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '500', p: '600', bg: 'neutral-50' },
+  props: { height: '100vh', ax: 'center', ay: 'center', gap: '500', p: '600', bg: 'neutral-50' },
   children: [
     {
       type: 'Column',
