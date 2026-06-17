@@ -5250,8 +5250,13 @@
           "optional": true
         },
         {
+          "name": "pickerShowDestination",
+          "type": "boolean",
+          "optional": true
+        },
+        {
           "name": "onPickerConfirm",
-          "type": "((name: string, icon: string) => void)",
+          "type": "((name: string, icon: string, destination: \"personal\" | \"space\") => void)",
           "optional": true
         },
         {
@@ -7023,7 +7028,19 @@
     {
       "name": "templateStore",
       "state": {
-        "templates": {
+        "personalTemplates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "spaceTemplates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "coreTemplates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "allTemplates": {
           "type": "array",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
         },

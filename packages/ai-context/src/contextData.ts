@@ -1663,7 +1663,12 @@ export const contextData: ContextData = {
         { name: 'pickerAction', type: '"fork" | "fresh"', optional: true },
         { name: 'pickerDefaultName', type: 'string', optional: true },
         { name: 'pickerDefaultIcon', type: 'string', optional: true },
-        { name: 'onPickerConfirm', type: '((name: string, icon: string) => void)', optional: true },
+        { name: 'pickerShowDestination', type: 'boolean', optional: true },
+        {
+          name: 'onPickerConfirm',
+          type: '((name: string, icon: string, destination: "personal" | "space") => void)',
+          optional: true,
+        },
         { name: 'onPickerCancel', type: '(() => void)', optional: true },
         { name: 'mode', type: '"chat" | "code"', optional: true },
         { name: 'schemaJson', type: 'string', optional: true },
@@ -2374,7 +2379,10 @@ export const contextData: ContextData = {
     {
       name: 'templateStore',
       state: {
-        templates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+        personalTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+        spaceTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+        coreTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+        allTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         operationLoading: { type: 'boolean' },

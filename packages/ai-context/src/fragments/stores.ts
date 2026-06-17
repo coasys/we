@@ -69,7 +69,10 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'templateStore',
     state: {
-      templates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+      personalTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+      spaceTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+      coreTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+      allTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       operationLoading: { type: 'boolean' },
@@ -254,7 +257,11 @@ function generateStoresText(entries: StoreEntry[]): string {
     },
     templateStore: {
       state: {
-        templates: 'array of TemplateSchema objects (user-facing templates)',
+        personalTemplates:
+          "array of TemplateSchema objects — user's installed custom templates (excludes core and space templates)",
+        spaceTemplates: 'array of TemplateSchema objects — templates loaded from the current space perspective',
+        coreTemplates: 'array of TemplateSchema objects — built-in system templates (always available)',
+        allTemplates: 'array of TemplateSchema objects — union of core + personal + space templates',
         shellTemplates: 'array of TemplateSchema objects (static system pages: profile, settings, tests)',
         currentTemplate: 'TemplateSchema (the active template)',
         activeShellView:
@@ -291,7 +298,8 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
         upsertSignal:
           '(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it',
-        navigateToSpace: '(spaceId: string): navigates to a space by perspective UUID',
+        navigateToSpace:
+          '(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together',
       },
     },
     aiStore: {

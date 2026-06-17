@@ -19,16 +19,7 @@ type SpaceInput = Omit<Partial<Space>, 'avatar' | 'coverImage'> & {
   avatar?: FileData | string;
   coverImage?: FileData | string;
 };
-import {
-  Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import weSeedFile from '../../../../../../we-seed.json';
 import type { WeSeedFile } from '../../../types/seed';
@@ -104,6 +95,8 @@ export interface AdamStore {
   }) => Promise<void>;
   updateOwnProfile: (fields: Pick<AgentProfileSummary, 'firstName' | 'lastName' | 'handle' | 'bio'>) => Promise<void>;
   ownAgent: Accessor<AgentProfileSummary | undefined>;
+  updateSpaceInCache: (perspectiveUuid: string, updates: Partial<Space>) => void;
+  clearCurrentPerspective: () => void;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -1151,33 +1144,6 @@ export function AdamStoreProvider(props: ParentProps) {
 
   createEffect(initialiseStore);
 
-  // Resolve the route segment to a local perspective whenever the route changes.
-  // Two cases:
-  //   CID  — neighbourhood space (no hyphens, no '://'): look up by sharedUrl
-  //   UUID — local/private perspective (contains '-'): set directly by UUID
-  createEffect(() => {
-    const segs = routeStore.segments();
-    if (segs[0] !== 'space' || !segs[1]) return;
-    const seg = segs[1];
-
-    // CID — neighbourhood space: find an already-joined local perspective by sharedUrl
-    if (!seg.includes('-')) {
-      const p = allPerspectives().find((ap) => ap.sharedUrl === 'neighbourhood://' + seg);
-      if (p) {
-        const current = untrack(currentPerspective);
-        if (current?.uuid !== p.uuid) void switchPerspective(p.uuid);
-      } else {
-        // No local perspective exists — clear current perspective so the join gate shows.
-        setCurrentPerspective(null);
-      }
-      return;
-    }
-
-    // UUID — local/private perspective: set directly
-    const current = untrack(currentPerspective);
-    if (current?.uuid !== seg) void switchPerspective(seg);
-  });
-
   // Send AD4M_CONFIG to iframes as soon as credentials are available AND the agent is unlocked.
   //
   // The two platforms have different timing:
@@ -1253,6 +1219,14 @@ export function AdamStoreProvider(props: ParentProps) {
       if (!globalP) return Promise.resolve();
       return removeSpaceFromParent(spaceUuid, globalP);
     },
+    updateSpaceInCache: (perspectiveUuid, updates) => {
+      setMySpaces((prev) =>
+        prev.map((s) =>
+          s.uuid === perspectiveUuid ? Object.assign(Object.create(Object.getPrototypeOf(s)), s, updates) : s,
+        ),
+      );
+    },
+    clearCurrentPerspective: () => setCurrentPerspective(null),
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;

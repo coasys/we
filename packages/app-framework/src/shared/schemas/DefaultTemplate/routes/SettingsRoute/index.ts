@@ -79,6 +79,24 @@ export const settingsRoute: RouteSchema = {
               ],
             },
 
+            // Core templates
+            {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { fontSize: '400', fontWeight: '600', color: 'neutral-500' },
+                  children: ['CORE TEMPLATES'],
+                },
+                {
+                  type: '$each',
+                  props: { items: { $store: 'templateStore.coreTemplates' }, as: 'template' },
+                  children: [templateRow],
+                },
+              ],
+            },
+
             // Space templates (saved directly to this space)
             {
               type: '$if',
@@ -103,24 +121,6 @@ export const settingsRoute: RouteSchema = {
                   ],
                 },
               },
-            },
-
-            // Core templates
-            {
-              type: 'Column',
-              props: { gap: '200' },
-              children: [
-                {
-                  type: 'we-text',
-                  props: { fontSize: '400', fontWeight: '600', color: 'neutral-500' },
-                  children: ['CORE TEMPLATES'],
-                },
-                {
-                  type: '$each',
-                  props: { items: { $store: 'templateStore.coreTemplates' }, as: 'template' },
-                  children: [templateRow],
-                },
-              ],
             },
           ],
         },

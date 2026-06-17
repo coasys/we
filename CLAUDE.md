@@ -620,7 +620,7 @@ Not schema-renderable — used directly in application code.
 Renders a list of messages with a text input, anchored to a screen edge.
 Supports streaming indicator, auto-scroll, and header/close controls.
 Includes template context header with fork/fresh actions and name+icon picker.
-  Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, streamingContent?: string, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, onPickerConfirm?: ((name: string, icon: string) => void), onPickerCancel?: (() => void), mode?: "chat" | "code", schemaJson?: string, onModeChange?: ((mode: "chat" | "code") => void), onSchemaEdit?: ((json: string) => void), canUndo?: boolean, canRedo?: boolean, onUndo?: (() => void), onRedo?: (() => void), sessions?: SessionInfo[], activeSessionId?: string | null, onNewChat?: (() => void), onSwitchSession?: ((sessionId: string) => void), onDeleteSession?: ((sessionId: string) => void), operationLoading?: string | null
+  Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, streamingContent?: string, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, pickerShowDestination?: boolean, onPickerConfirm?: ((name: string, icon: string, destination: "personal" | "space") => void), onPickerCancel?: (() => void), mode?: "chat" | "code", schemaJson?: string, onModeChange?: ((mode: "chat" | "code") => void), onSchemaEdit?: ((json: string) => void), canUndo?: boolean, canRedo?: boolean, onUndo?: (() => void), onRedo?: (() => void), sessions?: SessionInfo[], activeSessionId?: string | null, onNewChat?: (() => void), onSwitchSession?: ((sessionId: string) => void), onDeleteSession?: ((sessionId: string) => void), operationLoading?: string | null
 - CollapsibleSidebar
   Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "fixed" | "absolute" | "static", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
 - GraphWidget — 2D force-directed graph visualization using D3-force layout and Canvas rendering.
@@ -1094,7 +1094,10 @@ ThemeStore:
 
 TemplateStore:
 - State:
-  - templates: array of TemplateSchema objects (user-facing templates)
+  - personalTemplates: array of TemplateSchema objects — user's installed custom templates (excludes core and space templates)
+  - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space perspective
+  - coreTemplates: array of TemplateSchema objects — built-in system templates (always available)
+  - allTemplates: array of TemplateSchema objects — union of core + personal + space templates
   - shellTemplates: array of TemplateSchema objects (static system pages: profile, settings, tests)
   - currentTemplate: TemplateSchema (the active template)
   - operationLoading: unknown
@@ -1124,7 +1127,7 @@ SpaceStore:
   - updateSpaceImage(field: "avatar" | "coverImage", imageFile: File): uploads and sets the space avatar or cover image
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
-  - navigateToSpace(spaceId: string): navigates to a space by perspective UUID
+  - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
 
 AiStore:
 - State:
