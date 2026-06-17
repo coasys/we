@@ -63,7 +63,8 @@ export interface ChatPanelProps {
   pickerAction?: 'fork' | 'fresh';
   pickerDefaultName?: string;
   pickerDefaultIcon?: string;
-  onPickerConfirm?: (name: string, icon: string) => void;
+  pickerShowDestination?: boolean;
+  onPickerConfirm?: (name: string, icon: string, destination: 'personal' | 'space') => void;
   onPickerCancel?: () => void;
 
   // Panel mode: chat or code (JSON viewer)

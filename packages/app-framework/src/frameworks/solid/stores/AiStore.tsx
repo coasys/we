@@ -54,6 +54,7 @@ export interface AiStore {
   pickerAction: Accessor<'fork' | 'fresh'>;
   pickerDefaultName: Accessor<string>;
   pickerDefaultIcon: Accessor<string>;
+  pickerShowDestination: Accessor<boolean>;
 
   // --- Session management ---
   sessions: Accessor<ChatSessionModel[]>;
@@ -77,7 +78,7 @@ export interface AiStore {
   // --- Template actions ---
   startFork: () => void;
   startFresh: () => void;
-  confirmPicker: (name: string, icon: string) => void;
+  confirmPicker: (name: string, icon: string, destination: 'personal' | 'space') => void;
   cancelPicker: () => void;
 
   // --- Panel control ---
@@ -356,6 +357,7 @@ export function AiStoreProvider(props: ParentProps) {
   const [pickerAction, setPickerAction] = createSignal<'fork' | 'fresh'>('fork');
   const [pickerDefaultName, setPickerDefaultName] = createSignal('');
   const [pickerDefaultIcon, setPickerDefaultIcon] = createSignal('cube');
+  const pickerShowDestination = () => !!adamStore.currentPerspective();
 
   // ----------------------------------------------------------------
   // Session management — load, create, switch, delete
@@ -564,7 +566,7 @@ export function AiStoreProvider(props: ParentProps) {
     setPickerOpen(true);
   }
 
-  async function confirmPicker(name: string, icon: string) {
+  async function confirmPicker(name: string, icon: string, destination: 'personal' | 'space') {
     // Don't close picker yet — let it show loading state
     const action = pickerAction();
     const templateId = `${name.toLowerCase().replace(/\s+/g, '-')}-${crypto.randomUUID().slice(0, 8)}`;
@@ -586,7 +588,8 @@ export function AiStoreProvider(props: ParentProps) {
       } as TemplateSchema;
     }
 
-    const success = await templateStore.saveTemplateAs(schema);
+    const saveDestination = destination === 'space' ? 'space' : 'root';
+    const success = await templateStore.saveTemplateAs(schema, saveDestination);
     setPickerOpen(false);
     if (!success) {
       setMessages((prev) => [...prev, createMessage('assistant', `Failed to save template "${name}".`)]);
@@ -1275,6 +1278,7 @@ export function AiStoreProvider(props: ParentProps) {
     pickerAction,
     pickerDefaultName,
     pickerDefaultIcon,
+    pickerShowDestination,
 
     // Session management
     sessions,
