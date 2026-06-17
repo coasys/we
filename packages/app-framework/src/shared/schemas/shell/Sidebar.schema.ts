@@ -143,7 +143,7 @@ export const sidebar: SchemaNode = {
             label: 'Templates',
             items: {
               $map: {
-                items: { $store: 'templateStore.templates' },
+                items: { $store: 'templateStore.personalTemplates' },
                 select: {
                   id: '$item.id',
                   icon: '$item.meta.icon',

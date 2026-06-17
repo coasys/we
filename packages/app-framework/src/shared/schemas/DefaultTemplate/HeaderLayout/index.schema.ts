@@ -6,6 +6,7 @@ import { fluxRoute } from '../routes/FluxRoute';
 import { globeRoute } from '../routes/GlobeRoute';
 import { graphRoute } from '../routes/GraphRoute';
 import { homeRoute } from '../routes/HomeRoute';
+import { settingsRoute } from '../routes/SettingsRoute';
 // import { signalsRoute } from '../routes/SignalsRoute';
 import { spaceGate } from '../SpaceGate';
 import { spaceHeader } from './SpaceHeader';
@@ -44,6 +45,7 @@ export const headerLayout: TemplateSchema = {
         // signalsRoute,
         fluxRoute,
         graphRoute,
+        settingsRoute,
       ],
     },
   ],

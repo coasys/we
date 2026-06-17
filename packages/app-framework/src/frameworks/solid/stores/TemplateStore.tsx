@@ -30,6 +30,8 @@ export type TemplateManagementItem = {
 export interface TemplateStore {
   // State
   templates: Accessor<TemplateSchema[]>;
+  personalTemplates: Accessor<TemplateSchema[]>;
+  spaceTemplates: Accessor<TemplateSchema[]>;
   allTemplates: Accessor<TemplateSchema[]>;
   templateManagementList: Accessor<TemplateManagementItem[]>;
   currentTemplate: TemplateSchema;
@@ -102,6 +104,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   // State
   const [allTemplates, setAllTemplates] = createSignal<TemplateSchema[]>([...coreTemplates]);
   const [installedIds, setInstalledIds] = createSignal<Set<string>>(new Set());
+  const [spaceTemplateIdSet, setSpaceTemplateIdSet] = createSignal<Set<string>>(new Set());
   const [loading, setLoading] = createSignal(true);
   const [currentTemplate, setCurrentTemplate] = createStore<TemplateSchema>(initialTemplate);
   const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
@@ -112,6 +115,16 @@ export function TemplateStoreProvider(props: ParentProps) {
   const templates = () => {
     const installed = installedIds();
     return allTemplates().filter((t) => isCoreTemplateId(t.id || '') || installed.has(t.id || ''));
+  };
+
+  const personalTemplates = () => {
+    const spaceIds = spaceTemplateIdSet();
+    return templates().filter((t) => !spaceIds.has(t.id || ''));
+  };
+
+  const spaceTemplates = () => {
+    const spaceIds = spaceTemplateIdSet();
+    return allTemplates().filter((t) => spaceIds.has(t.id || ''));
   };
 
   const defaultTemplateId = () => adamStore.agentSettings()?.defaultTemplateId || 'default';
@@ -177,6 +190,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   function clearSpaceTemplates() {
     const spaceIds = new Set(spaceTemplateMap.keys());
     spaceTemplateMap.clear();
+    setSpaceTemplateIdSet(new Set<string>());
     if (spaceIds.size === 0) return;
     setAllTemplates((prev) => prev.filter((t) => !spaceIds.has(t.id || '')));
     setInstalledIds((prev) => {
@@ -212,6 +226,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         spaceTemplates.forEach((t) => t.id && next.add(t.id));
         return next;
       });
+      setSpaceTemplateIdSet(new Set(spaceTemplates.map((t) => t.id || '').filter(Boolean)));
     } catch (error) {
       console.error('TemplateStore: loadSpaceTemplates error', error);
     }
@@ -709,6 +724,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   const store: TemplateStore = {
     // State
     templates,
+    personalTemplates,
+    spaceTemplates,
     allTemplates,
     templateManagementList,
     currentTemplate,
