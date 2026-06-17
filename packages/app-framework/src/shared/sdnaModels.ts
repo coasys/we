@@ -17,6 +17,7 @@ import {
   Signal,
   SignalType,
   Space,
+  SpaceTemplatePreference,
   TagBlock,
   TaskBlock,
   Template,
@@ -31,7 +32,15 @@ import {
  * Centralised here so both AdamStore branches (create vs restore) always
  * register the same complete set.
  */
-export const ROOT_MODELS = [AgentSettings, ChatMessage, ChatSession, Template, Theme, LocationBlock] as const;
+export const ROOT_MODELS = [
+  AgentSettings,
+  ChatMessage,
+  ChatSession,
+  SpaceTemplatePreference,
+  Template,
+  Theme,
+  LocationBlock,
+] as const;
 
 /**
  * Registers all root SDNA models on the given perspective.
@@ -49,6 +58,7 @@ export async function installRootSdna(p: PerspectiveProxy): Promise<void> {
  */
 export const SPACE_MODELS = [
   Space,
+  Template,
   WeNode,
   AudioBlock,
   CalloutBlock,

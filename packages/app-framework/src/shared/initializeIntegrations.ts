@@ -15,7 +15,7 @@ import { launcherUIRegistry } from './registries/launcherUIRegistry';
 
 export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
   try {
-    const seed = weSeedFile as WeSeedFile;
+    const seed = weSeedFile as unknown as WeSeedFile;
 
     const validation = validateSeedForLauncher(seed);
     if (!validation.valid) {

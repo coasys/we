@@ -4,6 +4,7 @@ const contentTypeOptions = [
   { label: 'Posts', value: 'posts' },
   { label: 'Users', value: 'users' },
   { label: 'Spaces', value: 'spaces' },
+  { label: 'Templates', value: 'templates' },
   { label: 'Text', value: 'text-blocks' },
   { label: 'Images', value: 'image-blocks' },
   { label: 'Audio', value: 'audio-blocks' },

@@ -11,7 +11,7 @@ import type { RouteSchema } from '@we/schema-shared';
 export const homeRoute: RouteSchema = {
   path: '/',
   type: 'Column',
-  props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '500', p: '600', bg: 'neutral-50' },
+  props: { height: '100vh', ax: 'center', ay: 'center', gap: '500', p: '600', bg: 'neutral-50' },
   children: [
     {
       type: 'Column',
@@ -56,10 +56,9 @@ export const homeRoute: RouteSchema = {
                     {
                       type: 'we-avatar',
                       props: {
-                        src: '$space.avatar',
-                        name: '$space.name',
+                        image: '$space.avatar',
+                        initials: '$space.name',
                         size: '56px',
-                        r: 'pill',
                       },
                     },
                     {
@@ -87,8 +86,8 @@ export const homeRoute: RouteSchema = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'adamStore.orderedSidebarItems' },
-            else: {
+            condition: { $not: { $store: 'adamStore.orderedSidebarItems.length' } },
+            then: {
               type: 'Column',
               props: { gap: '200', ax: 'center', p: '400', r: '400', bg: 'neutral-0', width: '100%' },
               children: [

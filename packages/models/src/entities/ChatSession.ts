@@ -11,6 +11,9 @@ export class ChatSession extends WeNode {
   @Property({ through: 'we://name' })
   name: string = '';
 
+  @Property({ through: 'we://template_id' })
+  templateId: string = '';
+
   @HasMany(() => ChatMessage, { through: 'we://chat_message' })
   messages: ChatMessage[] = [];
 }

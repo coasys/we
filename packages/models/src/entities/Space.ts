@@ -33,6 +33,9 @@ export class Space extends WeNode {
   @Property({ through: 'we://thumbnail', resolveLanguage: FILE_STORAGE_LANGUAGE, transform: fileToDataUri })
   coverImage?: string;
 
+  @Property({ through: 'we://default_template_id' })
+  defaultTemplateId: string = '';
+
   @HasOne(() => LocationBlock, { through: 'we://location' })
   location?: LocationBlock;
 }

@@ -405,13 +405,7 @@ export const settingsTemplate: TemplateSchema = {
                             gap: '200',
                             width: '200px',
                             cursor: 'pointer',
-                            onClick: [
-                              { $action: 'adamStore.switchPerspective', args: ['$space.uuid'] },
-                              {
-                                $action: 'routeStore.navigate',
-                                args: [{ $concat: ['/space/', '$space.uuid'] }],
-                              },
-                            ],
+                            onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.uuid'] },
                           },
                           children: [
                             {
@@ -485,23 +479,10 @@ export const settingsTemplate: TemplateSchema = {
                             gap: '200',
                             width: '200px',
                             cursor: 'pointer',
-                            onClick: [
-                              {
-                                $action: 'adamStore.switchPerspective',
-                                args: [{ $if: { condition: '$space.url', then: '$space.uuid', else: '$space.uuid' } }],
-                              },
-                              {
-                                $action: 'routeStore.navigate',
-                                args: [
-                                  {
-                                    $concat: [
-                                      '/space/',
-                                      { $if: { condition: '$space.url', then: '$space.url', else: '$space.uuid' } },
-                                    ],
-                                  },
-                                ],
-                              },
-                            ],
+                            onClick: {
+                              $action: 'spaceStore.navigateToSpace',
+                              args: [{ $if: { condition: '$space.url', then: '$space.url', else: '$space.uuid' } }],
+                            },
                           },
                           children: [
                             {

@@ -119,7 +119,7 @@ export const spaceModal = {
                         height: '40px',
                         onClick: [
                           { $setLocal: 'selectedPin', value: null },
-                          { $action: 'spaceStore.enterSpace', args: ['$space.url'] },
+                          { $action: 'spaceStore.navigateToSpace', args: ['$space.url'] },
                         ],
                       },
                     },
@@ -134,7 +134,7 @@ export const spaceModal = {
                           args: ['$space.url'],
                           onSuccess: [
                             { $setLocal: 'selectedPin', value: null },
-                            { $action: 'spaceStore.enterSpace', args: ['$space.url'] },
+                            { $action: 'spaceStore.navigateToSpace', args: ['$space.url'] },
                           ],
                         },
                       },

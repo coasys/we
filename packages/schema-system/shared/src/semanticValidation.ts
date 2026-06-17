@@ -261,7 +261,8 @@ export function buildValidationContext(data: ContextData): ValidationContext {
   }
 
   // Universal props
-  const universalProps = new Set(['style', 'styles', 'children', 'ref', 'key']);
+  // Includes HTML global attributes that pass through to the DOM on all components
+  const universalProps = new Set(['style', 'styles', 'children', 'ref', 'key', 'title', 'id', 'class', 'tabindex']);
 
   // Stores
   const storeNames = new Set<string>();

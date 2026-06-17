@@ -19,16 +19,7 @@ type SpaceInput = Omit<Partial<Space>, 'avatar' | 'coverImage'> & {
   avatar?: FileData | string;
   coverImage?: FileData | string;
 };
-import {
-  Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import weSeedFile from '../../../../../../we-seed.json';
 import type { WeSeedFile } from '../../../types/seed';
@@ -36,27 +27,8 @@ import { useRouteStore } from './RouteStore';
 
 export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 
-/**
- * Normalised description of a model class from a perspective's SHACL shapes.
- * Mirrors ModelManifestEntry from @coasys/ad4m (defined locally until the package
- * is built and linked with the new version).
- */
-export interface ModelManifestProperty {
-  name: string;
-  predicate: string;
-  type: 'string' | 'number' | 'boolean' | 'uri';
-  isCollection: boolean;
-  required: boolean;
-  writable: boolean;
-  resolveLanguage?: string;
-  relatedModel?: string;
-}
-
-export interface ModelManifestEntry {
-  name: string;
-  targetClass: string;
-  properties: ModelManifestProperty[];
-}
+export type { ModelManifestEntry, ModelManifestProperty } from '@shared/AdamStore';
+import type { ModelManifestEntry } from '@shared/AdamStore';
 
 export interface AdamStore {
   // State
@@ -123,6 +95,8 @@ export interface AdamStore {
   }) => Promise<void>;
   updateOwnProfile: (fields: Pick<AgentProfileSummary, 'firstName' | 'lastName' | 'handle' | 'bio'>) => Promise<void>;
   ownAgent: Accessor<AgentProfileSummary | undefined>;
+  updateSpaceInCache: (perspectiveUuid: string, updates: Partial<Space>) => void;
+  clearCurrentPerspective: () => void;
 }
 
 type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
@@ -232,7 +206,7 @@ export function AdamStoreProvider(props: ParentProps) {
         };
       });
 
-    const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
+    const seedUrl = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
     const globalId = seedUrl ? seedUrl.replace('neighbourhood://', '') : null;
     const alreadyJoined = globalId ? items.some((item) => item.spaceId === globalId) : true;
     if (globalId && !alreadyJoined) {
@@ -248,7 +222,7 @@ export function AdamStoreProvider(props: ParentProps) {
 
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
-  const globalSpaceConfigured = () => !!(weSeedFile as WeSeedFile).globalSpaceUrl;
+  const globalSpaceConfigured = () => !!(weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
 
   async function getMe(client: Ad4mClient): Promise<void> {
     try {
@@ -711,7 +685,7 @@ export function AdamStoreProvider(props: ParentProps) {
 
         // Restore the global perspective if previously joined — model registration is handled
         // by SpaceStore.installSpaceSdna when the perspective is navigated to.
-        const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
+        const seedUrl = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
         const existingGlobal = seedUrl ? perspectives.find((p) => p.sharedUrl === seedUrl) : undefined;
         if (existingGlobal) {
           setGlobalPerspective(existingGlobal);
@@ -972,6 +946,7 @@ export function AdamStoreProvider(props: ParentProps) {
         description,
         access,
         discovery,
+        defaultTemplateId: 'default',
         ...(avatarData && { avatar: avatarData }),
         ...(coverImageData && { coverImage: coverImageData }),
       };
@@ -1068,7 +1043,7 @@ export function AdamStoreProvider(props: ParentProps) {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       // If this is the configured global space, update globalPerspective.
-      const seedUrl = (weSeedFile as WeSeedFile).globalSpaceUrl;
+      const seedUrl = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
       if (neighbourhoodUrl === seedUrl) {
         setGlobalPerspective(joinedP);
       }
@@ -1090,7 +1065,7 @@ export function AdamStoreProvider(props: ParentProps) {
 
   /** The neighbourhood CID (with `neighbourhood://` stripped) for the global space, or null if unconfigured. */
   const globalSpaceId = (): string | null => {
-    const url = (weSeedFile as WeSeedFile).globalSpaceUrl;
+    const url = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
     return url ? url.replace('neighbourhood://', '') : null;
   };
 
@@ -1169,33 +1144,6 @@ export function AdamStoreProvider(props: ParentProps) {
 
   createEffect(initialiseStore);
 
-  // Resolve the route segment to a local perspective whenever the route changes.
-  // Two cases:
-  //   CID  — neighbourhood space (no hyphens, no '://'): look up by sharedUrl
-  //   UUID — local/private perspective (contains '-'): set directly by UUID
-  createEffect(() => {
-    const segs = routeStore.segments();
-    if (segs[0] !== 'space' || !segs[1]) return;
-    const seg = segs[1];
-
-    // CID — neighbourhood space: find an already-joined local perspective by sharedUrl
-    if (!seg.includes('-')) {
-      const p = allPerspectives().find((ap) => ap.sharedUrl === 'neighbourhood://' + seg);
-      if (p) {
-        const current = untrack(currentPerspective);
-        if (current?.uuid !== p.uuid) void switchPerspective(p.uuid);
-      } else {
-        // No local perspective exists — clear current perspective so the join gate shows.
-        setCurrentPerspective(null);
-      }
-      return;
-    }
-
-    // UUID — local/private perspective: set directly
-    const current = untrack(currentPerspective);
-    if (current?.uuid !== seg) void switchPerspective(seg);
-  });
-
   // Send AD4M_CONFIG to iframes as soon as credentials are available AND the agent is unlocked.
   //
   // The two platforms have different timing:
@@ -1271,6 +1219,14 @@ export function AdamStoreProvider(props: ParentProps) {
       if (!globalP) return Promise.resolve();
       return removeSpaceFromParent(spaceUuid, globalP);
     },
+    updateSpaceInCache: (perspectiveUuid, updates) => {
+      setMySpaces((prev) =>
+        prev.map((s) =>
+          s.uuid === perspectiveUuid ? Object.assign(Object.create(Object.getPrototypeOf(s)), s, updates) : s,
+        ),
+      );
+    },
+    clearCurrentPerspective: () => setCurrentPerspective(null),
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;

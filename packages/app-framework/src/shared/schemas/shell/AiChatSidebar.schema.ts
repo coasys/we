@@ -45,6 +45,7 @@ export const aiChatSidebar: SchemaNode = {
         pickerAction: { $store: 'aiStore.pickerAction' },
         pickerDefaultName: { $store: 'aiStore.pickerDefaultName' },
         pickerDefaultIcon: { $store: 'aiStore.pickerDefaultIcon' },
+        pickerShowDestination: { $store: 'aiStore.pickerShowDestination' },
         onPickerConfirm: { $action: 'aiStore.confirmPicker' },
         onPickerCancel: { $action: 'aiStore.cancelPicker' },
 

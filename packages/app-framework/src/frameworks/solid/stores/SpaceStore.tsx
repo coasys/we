@@ -6,7 +6,17 @@ import { deriveSlug } from '@shared/utils';
 import { useAdamStore } from '@solid/stores';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import { CollectionBlock, compressImageToFileData, LocationBlock, Signal, SignalType, Space } from '@we/models';
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  ParentProps,
+  untrack,
+  useContext,
+} from 'solid-js';
 
 import { useRouteStore } from './RouteStore';
 import { useTemplateStore } from './TemplateStore';
@@ -22,6 +32,8 @@ export interface SpaceStore {
   // State
   memberDids: Accessor<string[]>;
   members: Accessor<AgentProfileSummary[]>;
+  spaceDefaultTemplateId: Accessor<string>;
+  currentSpace: Accessor<Space | null>;
 
   // Actions
   createPost: (json: unknown) => Promise<void>;
@@ -29,10 +41,10 @@ export interface SpaceStore {
   deletePost: (postId: string) => Promise<void>;
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
   updateSpaceMeta: (updates: SpaceMetaUpdate) => Promise<void>;
+  setSpaceDefaultTemplate: (templateId: string) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
-  navigateToSpace: (spaceId: string) => void;
-  enterSpace: (url: string) => Promise<void>;
+  navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
 
   // Testing
   test: () => Promise<void>;
@@ -93,21 +105,25 @@ export function SpaceStoreProvider(props: ParentProps) {
     await deleteBlocks(p, postId);
   }
 
-  async function enterSpace(url: string): Promise<void> {
-    const perspective = adamStore.allPerspectives().find((p) => p.sharedUrl === 'neighbourhood://' + url);
-    if (!perspective) return;
-    await adamStore.switchPerspective(perspective.uuid);
-    navigateToSpace(url);
-  }
+  async function navigateToSpace(spaceId: string, view?: string): Promise<void> {
+    // Resolve perspective from spaceId (CID has no hyphens, UUID does)
+    const perspective = spaceId.includes('-')
+      ? adamStore.allPerspectives().find((p) => p.uuid === spaceId)
+      : adamStore.allPerspectives().find((p) => p.sharedUrl === 'neighbourhood://' + spaceId);
 
-  function navigateToSpace(spaceId: string): void {
+    if (perspective) {
+      // Pre-load space templates before switching so the template and data arrive together
+      await templateStore.preloadSpaceTemplates(perspective);
+      await adamStore.switchPerspective(perspective.uuid);
+    }
+    // If no perspective found, route change alone will show the join gate
+
     const segs = routeStore.segments();
-    const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'cards';
+    const currentView = view ?? (segs[0] === 'space' && segs[2] ? segs[2] : 'cards');
     const targetPath = '/space/' + spaceId + '/' + currentView;
-    // Close any shell overlay (landing page, profile, settings, etc.) before navigating
     templateStore.closeShellView();
     routeStore.navigate(targetPath);
-    // Notify embedded app iframes (e.g. Flux) so they can navigate to the matching community
+    // Notify embedded app iframes (e.g. Flux) after perspective has switched
     broadcastPerspectiveNavigation(spaceId);
   }
 
@@ -227,7 +243,43 @@ export function SpaceStoreProvider(props: ParentProps) {
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
 
+  const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
+
+  // Subscribe to current space data reactively whenever the perspective changes.
+  // include: { location: true } so AboutRoute can access location without a separate query.
+  createEffect(() => {
+    const p = adamStore.currentPerspective();
+    if (!p) {
+      setCurrentSpace(null);
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const builder = (Space as any).query(p, { where: { uuid: p.uuid }, include: { location: true } }) as {
+      subscribe: (cb: (results: Space[]) => void) => Promise<Space[]>;
+      dispose: () => void;
+    };
+    const handleResult = (results: Space[]) => setCurrentSpace(results[0] ?? null);
+    builder.subscribe(handleResult).then(handleResult);
+    onCleanup(() => builder.dispose());
+  });
+
   const [memberDids, setMemberDids] = createSignal<string[]>([]);
+  const [spaceDefaultTemplateId, setSpaceDefaultTemplateId] = createSignal<string>('');
+
+  // Derive from currentSpace; setSpaceDefaultTemplateId remains writable for optimistic updates
+  createEffect(() => setSpaceDefaultTemplateId(currentSpace()?.defaultTemplateId ?? ''));
+
+  async function setSpaceDefaultTemplate(templateId: string): Promise<void> {
+    setSpaceDefaultTemplateId(templateId);
+    const template = templateStore.allTemplates().find((t) => t.id === templateId);
+    if (template) templateStore.replaceTemplate(template);
+    const p = adamStore.currentPerspective();
+    if (!p) return;
+    // Keep mySpaces cache in sync so template pre-loading uses the fresh defaultTemplateId
+    adamStore.updateSpaceInCache(p.uuid, { defaultTemplateId: templateId } as never);
+    const [space] = await Space.findAll(p, { where: { uuid: p.uuid } });
+    if (space) await Space.update(p, space.id, { defaultTemplateId: templateId });
+  }
 
   // Load neighbourhood members whenever the current perspective changes
   createEffect(() => {
@@ -260,6 +312,42 @@ export function SpaceStoreProvider(props: ParentProps) {
       .filter((a): a is AgentProfileSummary => a != null);
   });
 
+  // Resolve the route segment to a local perspective whenever the route changes.
+  // Handles deep links, page refresh, and browser back/forward navigation.
+  // For intentional navigation via navigateToSpace, this becomes a no-op
+  // (perspective already switched; guard prevents double-call).
+  createEffect(() => {
+    const segs = routeStore.segments();
+    if (segs[0] !== 'space' || !segs[1]) return;
+    const seg = segs[1];
+
+    // CID — neighbourhood space: find an already-joined local perspective by sharedUrl
+    if (!seg.includes('-')) {
+      const p = adamStore.allPerspectives().find((ap) => ap.sharedUrl === 'neighbourhood://' + seg);
+      if (!p) {
+        adamStore.clearCurrentPerspective();
+        return;
+      }
+      const current = untrack(adamStore.currentPerspective);
+      if (current?.uuid === p.uuid) return;
+      void (async () => {
+        await templateStore.preloadSpaceTemplates(p);
+        await adamStore.switchPerspective(p.uuid);
+      })();
+      return;
+    }
+
+    // UUID — local/private perspective
+    const current = untrack(adamStore.currentPerspective);
+    if (current?.uuid === seg) return;
+    const p = adamStore.allPerspectives().find((ap) => ap.uuid === seg);
+    if (!p) return;
+    void (async () => {
+      await templateStore.preloadSpaceTemplates(p);
+      await adamStore.switchPerspective(p.uuid);
+    })();
+  });
+
   // Detect when entering a WE perspective with a Space model
   createEffect(() => {
     const models = adamStore.currentPerspectiveModels();
@@ -272,6 +360,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     // State
     memberDids,
     members,
+    spaceDefaultTemplateId,
+    currentSpace,
 
     // Actions
     createPost,
@@ -279,10 +369,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     deletePost,
     updateSpaceImage,
     updateSpaceMeta,
+    setSpaceDefaultTemplate,
     createSignalType,
     upsertSignal,
     navigateToSpace,
-    enterSpace,
 
     test,
   };

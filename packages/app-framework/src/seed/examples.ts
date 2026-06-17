@@ -47,6 +47,11 @@ export const fluxSeedExample: WeSeedFile = {
       name: 'Flux',
       icon: 'camera',
       capabilities: ['perspectives', 'languages', 'agents'],
+      commands: {
+        install: 'pnpm install',
+        build: 'pnpm build',
+        dev: 'pnpm dev',
+      },
       paths: {
         projectRoot: './',
         dist: 'dist',
@@ -77,6 +82,10 @@ export const communityAppExample: WeSeedFile = {
       name: 'Community Hub',
       icon: 'users',
       capabilities: ['perspectives', 'agents'],
+      commands: {
+        install: 'npm install',
+        build: 'npm run build',
+      },
       paths: {
         projectRoot: './',
         dist: 'build',
@@ -105,6 +114,10 @@ export const minimalExample: WeSeedFile = {
       name: 'My App',
       icon: 'app-window',
       capabilities: [],
+      commands: {
+        install: 'pnpm install',
+        build: 'pnpm build',
+      },
       paths: {
         projectRoot: './',
         dist: 'dist',

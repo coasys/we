@@ -18,6 +18,7 @@ export function ChatPanel(props: ChatPanelProps) {
   const [apiKeyInput, setApiKeyInput] = createSignal('');
   const [pickerName, setPickerName] = createSignal('');
   const [pickerIcon, setPickerIcon] = createSignal('');
+  const [pickerDestination, setPickerDestination] = createSignal<'personal' | 'space'>('personal');
   let messagesEndRef: HTMLDivElement | undefined;
 
   // Reset picker fields when picker opens
@@ -25,6 +26,7 @@ export function ChatPanel(props: ChatPanelProps) {
     if (props.pickerOpen) {
       setPickerName(props.pickerDefaultName ?? '');
       setPickerIcon(props.pickerDefaultIcon ?? 'cube');
+      setPickerDestination('personal');
     }
   });
 
@@ -47,7 +49,7 @@ export function ChatPanel(props: ChatPanelProps) {
   function handlePickerConfirm() {
     const name = pickerName().trim();
     if (!name) return;
-    props.onPickerConfirm?.(name, pickerIcon() || 'cube');
+    props.onPickerConfirm?.(name, pickerIcon() || 'cube', pickerDestination());
   }
 
   return (
@@ -240,6 +242,31 @@ export function ChatPanel(props: ChatPanelProps) {
             </we-text>
             <we-icon-picker value={pickerIcon()} size="sm" on:change={(e: CustomEvent) => setPickerIcon(e.detail)} />
           </Column>
+
+          {/* Destination toggle — only shown when inside a space */}
+          <Show when={props.pickerShowDestination}>
+            <Column gap="100">
+              <we-text fontSize="200" fontWeight="600" color="neutral-600">
+                Save to
+              </we-text>
+              <Row gap="200">
+                <we-button
+                  size="sm"
+                  variant={pickerDestination() === 'personal' ? 'secondary' : 'ghost'}
+                  onClick={() => setPickerDestination('personal')}
+                >
+                  My templates
+                </we-button>
+                <we-button
+                  size="sm"
+                  variant={pickerDestination() === 'space' ? 'secondary' : 'ghost'}
+                  onClick={() => setPickerDestination('space')}
+                >
+                  This space
+                </we-button>
+              </Row>
+            </Column>
+          </Show>
 
           {/* Actions */}
           <Row ax="end" gap="200">

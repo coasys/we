@@ -502,7 +502,7 @@ when `relative` is enabled.
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: visibility?: Visibility, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, editorState?: any, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+  Props: visibility?: Visibility, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, editorState?: any, perspective?: PerspectiveProxy | null, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
 - BlockPlaceholder
   Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
@@ -620,7 +620,7 @@ Not schema-renderable — used directly in application code.
 Renders a list of messages with a text input, anchored to a screen edge.
 Supports streaming indicator, auto-scroll, and header/close controls.
 Includes template context header with fork/fresh actions and name+icon picker.
-  Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, streamingContent?: string, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, onPickerConfirm?: ((name: string, icon: string) => void), onPickerCancel?: (() => void), mode?: "chat" | "code", schemaJson?: string, onModeChange?: ((mode: "chat" | "code") => void), onSchemaEdit?: ((json: string) => void), canUndo?: boolean, canRedo?: boolean, onUndo?: (() => void), onRedo?: (() => void), sessions?: SessionInfo[], activeSessionId?: string | null, onNewChat?: (() => void), onSwitchSession?: ((sessionId: string) => void), onDeleteSession?: ((sessionId: string) => void), operationLoading?: string | null
+  Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, streamingContent?: string, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, pickerShowDestination?: boolean, onPickerConfirm?: ((name: string, icon: string, destination: "personal" | "space") => void), onPickerCancel?: (() => void), mode?: "chat" | "code", schemaJson?: string, onModeChange?: ((mode: "chat" | "code") => void), onSchemaEdit?: ((json: string) => void), canUndo?: boolean, canRedo?: boolean, onUndo?: (() => void), onRedo?: (() => void), sessions?: SessionInfo[], activeSessionId?: string | null, onNewChat?: (() => void), onSwitchSession?: ((sessionId: string) => void), onDeleteSession?: ((sessionId: string) => void), operationLoading?: string | null
 - CollapsibleSidebar
   Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "fixed" | "absolute" | "static", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
 - GraphWidget — 2D force-directed graph visualization using D3-force layout and Canvas rendering.
@@ -822,9 +822,11 @@ AgentSettings extends Ad4mModel:
   - perspectiveOrder: string [we://perspective_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
   - globalSpaceUrl: string [we://global_space_url]
+  - useSpaceTemplate: boolean = true [we://use_space_template]
   Relations:
   - installedTemplates: HasMany → Template [we://installed_template]
   - installedThemes: HasMany → Theme [we://installed_theme]
+  - spaceTemplatePreferences: HasMany → SpaceTemplatePreference [we://space_template_preference]
 
 AudioBlock extends WeNode:
   Fields:
@@ -850,6 +852,7 @@ ChatMessage extends WeNode:
 ChatSession extends WeNode:
   Fields:
   - name: string [we://name]
+  - templateId: string [we://template_id]
   Relations:
   - messages: HasMany → ChatMessage [we://chat_message]
 
@@ -966,8 +969,14 @@ Space extends WeNode:
   - discovery: string = 'hidden' [we://discovery]
   - avatar: string [we://image]
   - coverImage: string [we://thumbnail]
+  - defaultTemplateId: string [we://default_template_id]
   Relations:
   - location: HasOne [we://location]
+
+SpaceTemplatePreference extends WeNode:
+  Fields:
+  - spaceUrl: string [we://space_url]
+  - preference: string [we://preference]
 
 TagBlock extends WeNode:
   Fields:
@@ -990,9 +999,8 @@ Template extends WeNode:
   - name: string [we://name]
   - origin: string [we://origin]
   - version: number = 1 [we://version]
+  - slug: string [we://slug]
   - schema: string = null [we://template_schema]
-  Relations:
-  - chatSessions: HasMany → ChatSession [we://chat_session]
 
 TextBlock extends WeNode:
   Fields:
@@ -1054,12 +1062,14 @@ AdamStore:
   - creatingSpace: boolean (true while a new space is being created)
   - agents: AgentProfileSummary[] — cache of all fetched agent profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)
   - ownAgent: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from agents cache)
+  - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
 - Actions:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
   - createSpace(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup
-  - setCurrentPerspective(uuid: string): sets the current perspective, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels
-  - removePerspective(): unknown
+  - switchPerspective(uuid: string): switches to a perspective by UUID, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels
+  - removePerspective(uuid: string): removes a perspective by UUID
+  - reorderPerspectives(newOrder: string[]): reorders the sidebar items by UUID array
   - login(password: string): logs in the agent with password
   - logout(): locks the agent and returns to login screen
   - fetchAgent(did: string): fetches and caches an agent's profile from their public AD4M perspective
@@ -1084,10 +1094,15 @@ ThemeStore:
 
 TemplateStore:
 - State:
-  - templates: array of TemplateSchema objects (user-facing templates)
+  - personalTemplates: array of TemplateSchema objects — user's installed custom templates (excludes core and space templates)
+  - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space perspective
+  - coreTemplates: array of TemplateSchema objects — built-in system templates (always available)
+  - allTemplates: array of TemplateSchema objects — union of core + personal + space templates
   - shellTemplates: array of TemplateSchema objects (static system pages: profile, settings, tests)
   - currentTemplate: TemplateSchema (the active template)
   - operationLoading: unknown
+  - activeShellView: string | null (id of the currently open shell overlay: 'profile' | 'settings' | 'schema-tests' | 'landing-page' | null)
+  - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isCore, isInstalled, isDefault)
 - Actions:
   - updateTemplate(newTemplate: TemplateSchema): updates the current template
   - switchTemplate(newTemplateId: string): switches to another template
@@ -1096,6 +1111,8 @@ TemplateStore:
   - toggleInstalled(): unknown
   - setDefaultTemplate(): unknown
   - deleteTemplate(): unknown
+  - openShellView(id: string): opens a shell overlay by id ('profile' | 'settings' | 'schema-tests' | 'landing-page')
+  - closeShellView(): closes the currently open shell overlay
 
 SpaceStore:
 - State:
@@ -1110,7 +1127,7 @@ SpaceStore:
   - updateSpaceImage(field: "avatar" | "coverImage", imageFile: File): uploads and sets the space avatar or cover image
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
-  - navigateToSpace(spaceId: string): navigates to a space by perspective UUID
+  - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
 
 AiStore:
 - State:
@@ -1140,6 +1157,7 @@ AiStore:
   - handleSchemaPrompt(prompt: string): generates a schema from a prompt
   - sendMessage(): unknown
   - close(): unknown
+  - toggle(): toggles the AI chat panel open/closed
   - setApiKey(): unknown
   - startFork(): unknown
   - startFresh(): unknown
@@ -1152,6 +1170,14 @@ AiStore:
   - onSchemaEdit(): unknown
   - undo(): undoes the last schema edit
   - redo(): redoes the last undone schema edit
+
+AppStore:
+- State:
+  - apps: RegisteredApp[] — list of registered external apps (id, name, image)
+  - activeAppId: string | null — id of the currently active app, or null if none
+- Actions:
+  - activateApp(id: string): activates an app and switches to its view
+  - deactivateApp(): deactivates the current app and returns to the template view
 
 ---
 

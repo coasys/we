@@ -84,6 +84,69 @@ describe('ensureNodeIds', () => {
     ];
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  it('assigns IDs to SchemaNodes embedded in props (e.g. $if then/else)', () => {
+    const thenNode: SchemaNode = { type: 'Column', children: [{ type: 'we-text' }] };
+    const elseNode: SchemaNode = { type: 'Row' };
+    const schema: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: { $store: 'someStore.flag' } as unknown as string,
+        then: thenNode as unknown as string,
+        else: elseNode as unknown as string,
+      },
+    };
+
+    ensureNodeIds(schema);
+
+    expect(schema.id).toBeTruthy();
+    expect(thenNode.id).toBeTruthy();
+    expect((thenNode.children![0] as SchemaNode).id).toBeTruthy();
+    expect(elseNode.id).toBeTruthy();
+
+    const ids = [schema.id, thenNode.id, (thenNode.children![0] as SchemaNode).id, elseNode.id];
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('does not assign IDs to non-SchemaNode objects in props', () => {
+    const stylesObj = { backgroundColor: '#0d2137' };
+    const transitionObj = { type: 'fade', duration: 250 };
+    const dataItem = { label: 'About', icon: 'book-open', segment: 'about' };
+    const operatorToken = { $store: 'someStore.value' };
+    const schema: SchemaNode = {
+      type: '$animate',
+      props: {
+        enterTransition: transitionObj as unknown as string,
+        styles: stylesObj as unknown as string,
+        onClick: operatorToken as unknown as string,
+      },
+    };
+
+    ensureNodeIds(schema);
+
+    // None of the non-SchemaNode props objects should have been mutated with IDs
+    expect((stylesObj as Record<string, unknown>)['id']).toBeUndefined();
+    expect((transitionObj as Record<string, unknown>)['id']).toBeUndefined();
+    expect((dataItem as Record<string, unknown>)['id']).toBeUndefined();
+    expect((operatorToken as Record<string, unknown>)['id']).toBeUndefined();
+  });
+
+  it('does not assign IDs to data items in $each props.items', () => {
+    const item1 = { label: 'About', icon: 'book-open', segment: 'about' };
+    const item2 = { label: 'Cards', icon: 'cards-three', segment: 'cards' };
+    const schema: SchemaNode = {
+      type: '$each',
+      props: {
+        items: [item1, item2] as unknown as string,
+        as: 'view',
+      },
+    };
+
+    ensureNodeIds(schema);
+
+    expect((item1 as Record<string, unknown>)['id']).toBeUndefined();
+    expect((item2 as Record<string, unknown>)['id']).toBeUndefined();
+  });
 });
 
 // ── findNodeById ───────────────────────────────────────────────────
@@ -153,6 +216,38 @@ describe('findNodeById', () => {
     expect(result).not.toBeNull();
     expect(result!.node.id).toBe('root');
     expect(result!.parent).toBeNull();
+  });
+
+  it('finds a node embedded in props (e.g. $if then/else)', () => {
+    const thenNode: SchemaNode = { type: 'Column', id: 'then1', children: [{ type: 'we-text', id: 'inner1' }] };
+    const elseNode: SchemaNode = { type: 'Row', id: 'else1' };
+    const schema: SchemaNode = {
+      type: '$if',
+      id: 'root',
+      props: {
+        condition: { $store: 'someStore.flag' } as unknown as string,
+        then: thenNode as unknown as string,
+        else: elseNode as unknown as string,
+      },
+    };
+
+    const thenResult = findNodeById(schema, 'then1');
+    expect(thenResult).not.toBeNull();
+    expect(thenResult!.node.id).toBe('then1');
+    expect(thenResult!.parent!.id).toBe('root');
+    expect(thenResult!.key).toBe('props.then');
+
+    const elseResult = findNodeById(schema, 'else1');
+    expect(elseResult).not.toBeNull();
+    expect(elseResult!.node.id).toBe('else1');
+    expect(elseResult!.key).toBe('props.else');
+
+    // Descendants inside the props-embedded node are also reachable
+    const innerResult = findNodeById(schema, 'inner1');
+    expect(innerResult).not.toBeNull();
+    expect(innerResult!.node.id).toBe('inner1');
+    expect(innerResult!.parent!.id).toBe('then1');
+    expect(innerResult!.key).toBe('children');
   });
 
   it('finds a node that has $localState (not an operator token)', () => {

@@ -31,6 +31,38 @@ function isSchemaChild(child: string | SchemaNode | OperatorToken): child is Sch
   return !Object.keys(child).some((k) => k.startsWith('$'));
 }
 
+/**
+ * Returns true if val is a SchemaNode embedded as a prop value.
+ * Requires `type` to look like a component name: PascalCase, hyphenated (we-button),
+ * or $-prefixed ($if, $each). This distinguishes SchemaNodes from other objects that
+ * appear in props — TransitionConfig ({ type: 'fade' }), styles objects, data items,
+ * and operator tokens — which must not be assigned IDs.
+ */
+function isPropsSchemaNode(val: unknown): val is SchemaNode {
+  if (typeof val !== 'object' || val === null || Array.isArray(val)) return false;
+  const type = (val as Record<string, unknown>).type;
+  if (typeof type !== 'string') return false;
+  return /^[A-Z$]/.test(type) || type.includes('-');
+}
+
+/**
+ * Call fn for each SchemaNode-shaped value directly embedded in node.props.
+ * Handles plain SchemaNode values (e.g. $if.props.then) and arrays of nodes.
+ */
+function forEachPropsNode(node: SchemaNode, fn: (child: SchemaNode) => void): void {
+  if (!node.props) return;
+  for (const val of Object.values(node.props)) {
+    if (typeof val !== 'object' || val === null) continue;
+    if (Array.isArray(val)) {
+      for (const item of val) {
+        if (isPropsSchemaNode(item)) fn(item as SchemaNode);
+      }
+    } else if (isPropsSchemaNode(val)) {
+      fn(val as SchemaNode);
+    }
+  }
+}
+
 /** A navigable region in the template tree */
 export interface SectionEntry {
   /** Human-readable key, e.g. "route:/", "navigation:left", "panel:/:stats-cards" */
@@ -280,6 +312,7 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
     if (node.slots) {
       for (const slotNode of Object.values(node.slots)) collectIds(slotNode);
     }
+    forEachPropsNode(node, collectIds);
   }
   collectIds(schema);
 
@@ -306,6 +339,7 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
     if (node.slots) {
       for (const slotNode of Object.values(node.slots)) assignIds(slotNode);
     }
+    forEachPropsNode(node, assignIds);
   }
   assignIds(schema);
 
@@ -342,6 +376,22 @@ export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResu
       for (const [slotName, slotNode] of Object.entries(node.slots)) {
         const result = search(slotNode, node, `slots.${slotName}`, 0);
         if (result) return result;
+      }
+    }
+    if (node.props) {
+      for (const [propName, val] of Object.entries(node.props)) {
+        if (typeof val !== 'object' || val === null) continue;
+        if (Array.isArray(val)) {
+          for (let i = 0; i < val.length; i++) {
+            if (isPropsSchemaNode(val[i])) {
+              const result = search(val[i] as SchemaNode, node, `props.${propName}`, i);
+              if (result) return result;
+            }
+          }
+        } else if (isPropsSchemaNode(val)) {
+          const result = search(val as SchemaNode, node, `props.${propName}`, 0);
+          if (result) return result;
+        }
       }
     }
     return null;
