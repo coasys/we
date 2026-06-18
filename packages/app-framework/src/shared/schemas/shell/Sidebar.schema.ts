@@ -108,12 +108,7 @@ export const sidebar: SchemaNode = {
                   active: {
                     $if: {
                       condition: { $eq: ['$item.id', 'we'] },
-                      then: {
-                        $and: [
-                          { $not: { $store: 'appStore.activeAppId' } },
-                          { $not: { $store: 'templateStore.activeShellView' } },
-                        ],
-                      },
+                      then: { $not: { $store: 'appStore.activeAppId' } },
                       else: { $eq: ['$item.id', { $store: 'appStore.activeAppId' }] },
                     },
                   },

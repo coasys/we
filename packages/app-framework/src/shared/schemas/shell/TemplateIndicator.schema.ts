@@ -33,13 +33,12 @@ export const templateIndicator: SchemaNode = {
         right: '16px',
         zIndex: 10,
         ay: 'center',
-        gap: '200',
+        gap: '300',
         bg: 'neutral-50',
         border: '1px solid neutral-200',
         r: '400',
         px: '300',
         py: '100',
-        shadow: 'sm',
       },
       children: [
         {
@@ -48,23 +47,23 @@ export const templateIndicator: SchemaNode = {
         },
         {
           type: 'we-text',
-          props: { fontSize: '300', fontWeight: '500', color: 'neutral-700' },
+          props: { color: 'neutral-700' },
           children: [{ $store: 'aiStore.templateName' }],
         },
         {
           type: 'we-divider',
-          props: { orientation: 'vertical', color: 'neutral-200', styles: { height: '16px' } },
+          props: { orientation: 'vertical', color: 'neutral-200', ml: '300', styles: { height: '16px' } },
         },
         {
           type: 'we-button',
           props: {
             variant: 'ghost',
-            size: 'sm',
+            // size: 'sm',
             square: true,
             title: 'Edit template',
             onClick: { $action: 'aiStore.toggle' },
           },
-          children: [{ type: 'we-icon', props: { name: 'pencil-simple', weight: 'bold' } }],
+          children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
         },
       ],
     },
