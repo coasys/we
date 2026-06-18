@@ -7,7 +7,7 @@ import { templatesRoute } from './routes/TemplatesRoute';
 import { themesRoute } from './routes/ThemesRoute';
 
 const tabs = [
-  { key: '', label: 'Templates', path: '/' },
+  { key: 'templates', label: 'Templates', path: '/templates' },
   { key: 'themes', label: 'Themes', path: '/themes' },
   { key: 'blocks', label: 'Blocks', path: '/blocks' },
   { key: 'components', label: 'Components', path: '/components' },
@@ -35,26 +35,32 @@ const marketplaceBrowser = {
     // Header
     {
       type: 'Column',
-      props: { px: '500', pt: '600', pb: '400', gap: '100', borderBottom: '1px solid neutral-200', bg: 'neutral-50' },
+      props: { bg: 'neutral-100', ax: 'center', px: '500', pt: '900', borderBottom: '1px solid neutral-200' },
       children: [
         {
-          type: 'Row',
-          props: { gap: '300', ay: 'center', mb: '300' },
+          type: 'Column',
+          props: { gap: '100', width: '100%', maxWidth: '1200px' },
           children: [
-            { type: 'we-icon', props: { name: 'storefront', size: 'md', color: 'primary-500' } },
+            {
+              type: 'Row',
+              props: { gap: '400', ay: 'center', mb: '300' },
+              children: [
+                { type: 'we-icon', props: { name: 'storefront', size: 'lg', gradient: 'primary' } },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '700', fontWeight: 'bold' },
+                  children: ['Module Marketplace'],
+                },
+              ],
+            },
             {
               type: 'we-text',
-              props: { fontSize: '700', fontWeight: 'bold' },
-              children: ['Module Marketplace'],
+              props: { color: 'neutral-500', mb: '500' },
+              children: ['Browse and install community modules for your WE spaces.'],
             },
+            tabBar,
           ],
         },
-        {
-          type: 'we-text',
-          props: { fontSize: '400', color: 'neutral-500', mb: '300' },
-          children: ['Browse and install community modules for your WE spaces.'],
-        },
-        tabBar,
       ],
     },
 
@@ -67,12 +73,6 @@ export const marketplaceTemplate: TemplateSchema = {
   meta: { name: 'Module Marketplace', description: 'Browse and install community modules', icon: 'storefront' },
   type: 'Column',
   props: { width: '100%', minHeight: '100%', bg: 'neutral-50' },
-  routes: [
-    { path: '/', ...templatesRoute },
-    { path: '/themes', ...themesRoute },
-    { path: '/blocks', ...blocksRoute },
-    { path: '/components', ...componentsRoute },
-  ],
   children: [
     {
       type: '$if',
@@ -82,5 +82,12 @@ export const marketplaceTemplate: TemplateSchema = {
         else: marketplaceGate,
       },
     },
+  ],
+  routes: [
+    { path: '/', redirect: '/templates' },
+    { path: '/templates', ...templatesRoute },
+    { path: '/themes', ...themesRoute },
+    { path: '/blocks', ...blocksRoute },
+    { path: '/components', ...componentsRoute },
   ],
 };

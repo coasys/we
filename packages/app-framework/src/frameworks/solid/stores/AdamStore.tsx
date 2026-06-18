@@ -218,7 +218,10 @@ export function AdamStoreProvider(props: ParentProps) {
       items.unshift({ uuid: 'global-pre-join', name: 'WE Discovery', spaceId: globalId, isGlobalPreJoin: true });
     }
 
-    return items;
+    const mktUrl = (weSeedFile as unknown as WeSeedFile).marketplaceUrl;
+    const mktId = mktUrl ? mktUrl.replace('neighbourhood://', '') : null;
+
+    return mktId ? items.filter((item) => item.spaceId !== mktId) : items;
   });
 
   // Derived: personal and shared spaces

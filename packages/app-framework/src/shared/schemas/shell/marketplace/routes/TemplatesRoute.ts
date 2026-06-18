@@ -106,16 +106,24 @@ const emptyState: SchemaNode = {
 
 export const templatesRoute: SchemaNode = {
   type: 'Column',
-  props: { flex: '1', p: '500', gap: '400', overflowY: 'auto' },
+  props: { flex: '1', p: '500', gap: '400', ax: 'center', minHeight: '100%' },
   $localState: {
     search: { type: 'string', initial: '' },
     sort: { type: 'string', initial: 'desc' },
+  },
+  $queries: {
+    templates: {
+      model: 'Template',
+      perspective: 'adamStore.marketplacePerspective',
+      order: { createdAt: { $local: 'sort' } },
+      subscribe: true,
+    },
   },
   children: [
     // Filters
     {
       type: 'Row',
-      props: { gap: '300', ay: 'center' },
+      props: { gap: '300', ay: 'center', maxWidth: '1200px', width: '100%' },
       children: [
         {
           type: 'SearchInput',
@@ -123,14 +131,14 @@ export const templatesRoute: SchemaNode = {
             placeholder: 'Search templates…',
             value: { $local: 'search' },
             onSearch: { $setLocal: 'search', from: '$arg' },
-            styles: { flex: '1' },
+            width: '100%',
+            maxWidth: '300px',
           },
         },
         {
           type: 'we-select',
           props: {
             value: { $local: 'sort' },
-            size: 'sm',
             options: [
               { value: 'desc', label: 'Newest first' },
               { value: 'asc', label: 'Oldest first' },
@@ -145,10 +153,10 @@ export const templatesRoute: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $store: 'adamStore.marketplacePerspective' },
+        condition: { $count: { items: { $local: 'templates' } } },
         then: {
           type: 'Column',
-          props: { flex: '1', gap: '0' },
+          props: { flex: '1', gap: '0', maxWidth: '1200px', width: '100%' },
           children: [
             {
               type: 'Grid',
@@ -159,14 +167,7 @@ export const templatesRoute: SchemaNode = {
                   props: {
                     items: {
                       $filter: {
-                        items: {
-                          $query: {
-                            model: 'Template',
-                            perspective: 'adamStore.marketplacePerspective',
-                            order: { createdAt: { $local: 'sort' } },
-                            subscribe: true,
-                          },
-                        },
+                        items: { $local: 'templates' },
                         where: { name: { contains: { $local: 'search' } } },
                       },
                     },
