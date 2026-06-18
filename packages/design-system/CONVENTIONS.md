@@ -118,6 +118,58 @@ export interface DropdownMenuProps { ... }
 
 **Skip `@ai` when:** Name + props are self-describing (CircleButton, Row, PostCard).
 
+## Extending Utility Components with Layout Props
+
+Utility components that appear in schemas and need layout control (width, flex sizing, margins, etc.) should support the full Design System prop set via `LayoutProps`.
+
+### When to apply
+
+Add this pattern when a component is used inline in schemas and authors need to control its size or position — e.g. `SearchInput` inside a `Row`, where `flex: '1'` or `maxWidth` is needed.
+
+### Pattern
+
+**`ComponentName.types.ts`** — no change. Keep it framework-agnostic with only component-specific props.
+
+**`ComponentName.solid.tsx`** — extend with `LayoutProps` and wrap content in a layout div:
+
+```tsx
+import type { LayoutProps } from '@we/design-utils/solid';
+import { buildLayoutStyles } from '@we/design-utils/solid';
+import { createMemo, splitProps } from 'solid-js';
+import type { ComponentNameProps as ComponentNameOwnProps } from './ComponentName.types';
+
+// Omit 'children' (Solid-specific) and 'styles' (type conflict with base) from LayoutProps.
+export type ComponentNameProps = Omit<LayoutProps, 'children' | 'styles'> & ComponentNameOwnProps;
+
+// List only the component's own prop keys — everything else falls through to layoutProps.
+const ownKeys = ['propA', 'propB', 'class'] as const;
+
+export function ComponentName(allProps: ComponentNameProps) {
+  const [props, layoutProps] = splitProps(allProps, ownKeys);
+
+  // Default display to 'block' — buildLayoutStyles defaults to 'flex', which is wrong for non-layout components.
+  const wrapperStyle = createMemo(() =>
+    buildLayoutStyles({ ...layoutProps, display: layoutProps.display ?? 'block' } as LayoutProps, 'column'),
+  );
+
+  return (
+    <div style={wrapperStyle()}>
+      {/* Inner element fills the wrapper */}
+      <inner-element style={{ width: '100%' }} ... />
+    </div>
+  );
+}
+```
+
+### Rules
+
+- **`ownKeys`** lists only the component's own props. All unrecognised props (layout, visual, flex, typography, state, `styles`) automatically route to the wrapper div.
+- **`class`** goes in `ownKeys` so it forwards to the inner element, not the wrapper — unless you want it on the wrapper.
+- **Default `display: 'block'`** on the wrapper. `buildLayoutStyles` defaults to `'flex'`, which is wrong for components that aren't flex containers. Users can still pass `display: 'flex'` explicitly to override.
+- **Inner element gets `width: 100%`** so it fills whatever size the wrapper is given.
+- **Don't add `LayoutProps` to `*.types.ts`** — it's Solid-specific. The extended type lives only in `*.solid.tsx`.
+- **After any change**, rebuild the package (`pnpm --filter @we/components build`) and regenerate docs (`pnpm --filter @we/ai-context generate-context`) so CLAUDE.md reflects the new props.
+
 ## Widget-Specific Patterns
 
 Widgets have additional affordances that components don't:
