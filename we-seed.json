@@ -13,6 +13,7 @@
   },
 
   "globalSpaceUrl": "neighbourhood://QmzSYwdgvYU7LXPAMGJXihMah1ws4YbT3ZcJpUD3fYjGBRmd3QV",
+  "marketplaceUrl": "neighbourhood://QmzSYwdb7hLKJ94Ky2828Kc1tvsA56Gv4cmpFhFuBaVtQ8wuhPz",
 
   "electron": {
     "appDistPath": "dist",

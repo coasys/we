@@ -47,6 +47,7 @@ export interface TemplateStore {
   deleteTemplate: (templateId: string) => Promise<void>;
   installTemplate: (templateId: string) => Promise<void>;
   uninstallTemplate: (templateId: string) => Promise<void>;
+  installFromMarketplace: (marketplaceTemplateId: string) => Promise<void>;
   toggleInstalled: (templateId: string) => Promise<void>;
   setDefaultTemplate: (templateId: string) => void;
   saveTemplate: (name: string) => Promise<void>;
@@ -534,6 +535,72 @@ export function TemplateStoreProvider(props: ParentProps) {
     setOperationLoading(null);
   }
 
+  /** Fetch a template from the marketplace perspective and save it to the user's root perspective */
+  async function installFromMarketplace(marketplaceTemplateId: string): Promise<void> {
+    const marketplacePerspective = adamStore.marketplacePerspective();
+    const rootPerspective = adamStore.rootPerspective();
+    if (!marketplacePerspective || !rootPerspective) {
+      toastService.error('Cannot install: marketplace not connected');
+      return;
+    }
+
+    setOperationLoading(`marketplace-install:${marketplaceTemplateId}`);
+    try {
+      const marketplaceTemplate = await Template.findOne(marketplacePerspective, {
+        where: { id: marketplaceTemplateId },
+      });
+      if (!marketplaceTemplate) {
+        toastService.error('Template not found in marketplace');
+        return;
+      }
+
+      const decoded = decodeFileAsJson(marketplaceTemplate.schema);
+      if (!decoded || typeof decoded !== 'object') {
+        toastService.error('Could not read template data');
+        return;
+      }
+
+      const stored = decoded as unknown as StoredTemplate;
+      const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+      const templateId = schema.id || marketplaceTemplate.name?.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId;
+      const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId };
+
+      // Create the template in the user's root perspective
+      const schemaBlob = (() => {
+        const storedTemplate = createStoredTemplate(schemaToInstall);
+        const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+        const base64 = btoa(String.fromCharCode(...jsonBytes));
+        return { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' };
+      })();
+
+      const newTemplate = await Template.create(rootPerspective, {
+        name: schemaToInstall.meta.name,
+        origin: 'marketplace',
+        slug: templateId,
+        version: marketplaceTemplate.version || 1,
+        schema: schemaBlob as any,
+      });
+      savedTemplateMap.set(templateId, newTemplate);
+
+      const prefs = adamStore.agentSettings();
+      if (prefs) await prefs.addInstalledTemplates(newTemplate);
+
+      setInstalledIds((prev) => {
+        const next = new Set(prev);
+        next.add(templateId);
+        return next;
+      });
+
+      await loadSavedTemplates();
+      toastService.success(`"${schemaToInstall.meta.name}" installed`);
+    } catch (error) {
+      console.error('TemplateStore: installFromMarketplace error', error);
+      toastService.error(`Failed to install template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
   /** Set a template as the default (loaded on boot) */
   function setDefaultTemplate(templateId: string): void {
     adamStore.updateAgentSettings({ defaultTemplateId: templateId });
@@ -797,6 +864,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     deleteTemplate,
     installTemplate,
     uninstallTemplate,
+    installFromMarketplace,
     toggleInstalled,
     setDefaultTemplate,
     saveTemplate,

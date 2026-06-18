@@ -82,6 +82,18 @@ export const sidebar: SchemaNode = {
           //   label: { $store: 'routeStore.currentPath' },
           // },
 
+          // Marketplace
+          {
+            id: 'marketplace',
+            icon: 'storefront',
+            label: 'Module Marketplace',
+            active: { $eq: [{ $store: 'templateStore.activeShellView' }, 'marketplace'] },
+            onClick: [
+              { $action: 'appStore.deactivateApp' },
+              { $action: 'templateStore.openShellView', args: ['marketplace'] },
+            ],
+          },
+
           // Profile
           {
             id: 'profile',

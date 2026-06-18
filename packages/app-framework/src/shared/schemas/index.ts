@@ -7,6 +7,7 @@ export {
   bootScreen,
   createTestStore,
   landingPageTemplate,
+  marketplaceTemplate,
   profileTemplate,
   schemaTestsTemplate,
   schemaMutationActions,
