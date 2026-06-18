@@ -94,11 +94,16 @@ export default function TemplateProvider() {
     return [getModel(modelName), resolvePerspective(opts?.perspective) ?? adamStore.currentPerspective()!] as const;
   }
 
-  // Shell chrome — boot screen + sidebar + AI chat panel.
+  // Shell chrome — boot screen + sidebar + AI chat panel + template indicator.
   // Rendered once outside the keyed Router so it never remounts on template switches.
   const shellSchema: TemplateSchema = {
     meta: { name: 'Shell', description: 'App shell chrome', icon: '' },
-    children: [launcherUIRegistry.bootScreen, launcherUIRegistry.shell, launcherUIRegistry.aiChatSidebar],
+    children: [
+      launcherUIRegistry.bootScreen,
+      launcherUIRegistry.shell,
+      launcherUIRegistry.aiChatSidebar,
+      launcherUIRegistry.templateIndicator,
+    ],
   };
 
   const notFoundNode = {

@@ -1,5 +1,6 @@
 export { aiChatSidebar } from './AiChatSidebar.schema';
 export { bootScreen } from './BootScreen.schema';
+export { templateIndicator } from './TemplateIndicator.schema';
 export { landingPageTemplate } from './about';
 export { marketplaceTemplate } from './marketplace';
 export { profileTemplate } from './Profile.schema';

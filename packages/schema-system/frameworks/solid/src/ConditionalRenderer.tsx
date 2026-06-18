@@ -114,6 +114,9 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
     const style: Record<string, string | number> = {
       opacity: opacity(),
       transition: transitionCSS(),
+      // The wrapper is a pure animation container — never capture pointer events.
+      // The content inside handles its own interactions.
+      'pointer-events': 'none',
     };
 
     const t = transform();
@@ -137,7 +140,9 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
 
   return (
     <Show when={shouldRender()} fallback={renderNode(node.props?.else as SchemaNode | undefined)}>
-      <div style={wrapperStyle()}>{renderNode(contentNode)}</div>
+      <div style={wrapperStyle()}>
+        <div style={{ 'pointer-events': 'auto' }}>{renderNode(contentNode)}</div>
+      </div>
     </Show>
   );
 }

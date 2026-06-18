@@ -181,6 +181,7 @@ export const storeEntries: StoreEntry[] = [
     name: 'appStore',
     state: {
       apps: { type: 'array', properties: ['id', 'name', 'image'] },
+      appsWithWe: { type: 'array', properties: ['id', 'name', 'icon', 'image'] },
       activeAppId: { type: 'string' },
     },
     actions: ['activateApp', 'deactivateApp'],

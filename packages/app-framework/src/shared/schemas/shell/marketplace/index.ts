@@ -17,6 +17,7 @@ const tabBar = {
   type: 'we-tabs',
   props: {
     selectedKey: { $store: 'routeStore.segments.0' },
+    gap: '300',
   },
   children: tabs.map((tab) => ({
     type: 'we-tab',
