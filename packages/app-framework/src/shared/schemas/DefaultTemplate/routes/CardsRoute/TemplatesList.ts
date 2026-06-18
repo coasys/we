@@ -1,6 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
 
-import { cardShell, gridWrapper } from './CardShell';
+import { cardShell, gridWrapper } from './CardShell.ts';
 
 export const templatesList: SchemaNode = {
   type: 'Column',

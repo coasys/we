@@ -7165,6 +7165,9 @@
         "pickerDefaultIcon": {
           "type": "string"
         },
+        "pickerShowDestination": {
+          "type": "boolean"
+        },
         "sessions": {
           "type": "array"
         },

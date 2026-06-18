@@ -1,7 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 
-import { cardShell, gridWrapper } from './CardShell';
-import { postComposerModal } from './PostComposerModal';
+import { cardShell, gridWrapper } from './CardShell.ts';
+import { postComposerModal } from './PostComposerModal.ts';
 
 export const postsList: SchemaNode = {
   type: 'Column',

@@ -149,6 +149,7 @@ export const storeEntries: StoreEntry[] = [
       pickerAction: { type: 'string' },
       pickerDefaultName: { type: 'string' },
       pickerDefaultIcon: { type: 'string' },
+      pickerShowDestination: { type: 'boolean' },
       sessions: { type: 'array' },
       activeSessionId: { type: 'string' },
       panelMode: { type: 'string' },

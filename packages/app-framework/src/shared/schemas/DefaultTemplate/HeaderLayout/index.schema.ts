@@ -1,15 +1,15 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
-import { aboutRoute } from '../routes/AboutRoute';
-import { cardsRoute } from '../routes/CardsRoute';
-import { fluxRoute } from '../routes/FluxRoute';
-import { globeRoute } from '../routes/GlobeRoute';
-import { graphRoute } from '../routes/GraphRoute';
-import { homeRoute } from '../routes/HomeRoute';
-import { settingsRoute } from '../routes/SettingsRoute';
-// import { signalsRoute } from '../routes/SignalsRoute';
-import { spaceGate } from '../SpaceGate';
-import { spaceHeader } from './SpaceHeader';
+import { aboutRoute } from '../routes/AboutRoute/index.ts';
+import { cardsRoute } from '../routes/CardsRoute/index.ts';
+import { fluxRoute } from '../routes/FluxRoute/index.ts';
+import { globeRoute } from '../routes/GlobeRoute/index.ts';
+import { graphRoute } from '../routes/GraphRoute/index.ts';
+import { homeRoute } from '../routes/HomeRoute/index.ts';
+import { settingsRoute } from '../routes/SettingsRoute/index.ts';
+// import { signalsRoute } from '../routes/SignalsRoute/index.ts';
+import { spaceGate } from '../SpaceGate.ts';
+import { spaceHeader } from './SpaceHeader.ts';
 
 export const headerLayout: TemplateSchema = {
   meta: {

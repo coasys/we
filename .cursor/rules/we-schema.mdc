@@ -1146,6 +1146,7 @@ AiStore:
   - pickerAction: unknown
   - pickerDefaultName: unknown
   - pickerDefaultIcon: unknown
+  - pickerShowDestination: unknown
   - sessions: unknown
   - activeSessionId: unknown
   - panelMode: unknown

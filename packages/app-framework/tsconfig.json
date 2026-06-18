@@ -5,6 +5,7 @@
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "experimentalDecorators": true,
     "paths": { "@shared/*": ["./src/shared/*"], "@solid/*": ["./src/frameworks/solid/*"] },

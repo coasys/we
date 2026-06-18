@@ -1,13 +1,13 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
-import { cardsRoute } from '../routes/CardsRoute';
-import { fluxRoute } from '../routes/FluxRoute';
-import { globeRoute } from '../routes/GlobeRoute';
-// import { graphRoute } from '../routes/GraphRoute';
-import { homeRoute } from '../routes/HomeRoute';
-import { signalsRoute } from '../routes/SignalsRoute';
-import { spaceGate } from '../SpaceGate';
-import { spaceSidebar } from './SpaceSidebar';
+import { cardsRoute } from '../routes/CardsRoute/index.ts';
+import { fluxRoute } from '../routes/FluxRoute/index.ts';
+import { globeRoute } from '../routes/GlobeRoute/index.ts';
+// import { graphRoute } from '../routes/GraphRoute/index.ts';
+import { homeRoute } from '../routes/HomeRoute/index.ts';
+import { signalsRoute } from '../routes/SignalsRoute/index.ts';
+import { spaceGate } from '../SpaceGate.ts';
+import { spaceSidebar } from './SpaceSidebar.ts';
 
 export const sidebarLayout: TemplateSchema = {
   meta: {

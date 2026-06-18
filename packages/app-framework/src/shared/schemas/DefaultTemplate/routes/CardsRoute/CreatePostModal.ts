@@ -1,4 +1,4 @@
-import { postComposerModal } from './PostComposerModal';
+import { postComposerModal } from './PostComposerModal.ts';
 
 export const createPostModal = postComposerModal({
   title: 'Create Post',

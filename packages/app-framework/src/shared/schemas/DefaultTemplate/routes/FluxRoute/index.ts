@@ -1,7 +1,7 @@
 import type { RouteSchema } from '@we/schema-shared';
 
-import { channelList } from './ChannelList';
-import { conversationList } from './ConversationList';
+import { channelList } from './ChannelList.ts';
+import { conversationList } from './ConversationList.ts';
 
 export const fluxRoute: RouteSchema = {
   path: '/flux',
