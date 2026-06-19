@@ -25,7 +25,8 @@ import {
  */
 
 const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
-const DEFAULT_TRANSITION = '0.2s';
+
+const DEFAULT_TRANSITION = 'all var(--we-transition-200, 150ms) ease';
 
 // ────────────────────────────────────────────
 // Runtime: CSS custom property updates
@@ -271,9 +272,11 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
   const styles: string[] = [];
 
   // ── Host (:host) ──
+  // Transition lives on [part='base'], not :host. The host is the outer positioning shell
+  // (width, height, margin) — these properties rarely animate and hosting a transition
+  // here would add a redundant animation layer for every nested content primitive.
   const hostLines: string[] = [`display: var(${p}host-display, flex);`];
   if (l.has('layout')) hostLines.push(joinDecls(p, HOST_LAYOUT));
-  if (l.has('visual')) hostLines.push(`transition: var(${p}transition, ${DEFAULT_TRANSITION});`);
   styles.push(`:host { ${hostLines.join('\n    ')} }`);
 
   // ── Base ([part="base"]) ──
@@ -305,12 +308,10 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
     for (const state of ELEMENT_STATES) {
       const sp = `${p}${state}-`;
 
-      // Host state
-      if (hostSpecs.length > 0 || l.has('visual')) {
+      // Host state — layout props only, no transition (see :host comment above)
+      if (hostSpecs.length > 0) {
         const lines: string[] = [];
-        if (l.has('visual'))
-          lines.push(`transition: var(${sp}transition, var(${p}transition, ${DEFAULT_TRANSITION}));`);
-        if (hostSpecs.length > 0) lines.push(joinStateDecls(sp, p, hostSpecs));
+        lines.push(joinStateDecls(sp, p, hostSpecs));
         const sel =
           state === 'disabled' ? ':host([disabled])' : `:host(:${state === 'focus' ? 'focus-within' : state})`;
         styles.push(`${sel} { ${lines.join('\n    ')} }`);
