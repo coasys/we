@@ -88,8 +88,8 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
   if (props.maxWidth) style['max-width'] = props.maxWidth;
   if (props.maxHeight) style['max-height'] = props.maxHeight;
   const { main, cross } = mapFlexAxes(props, props.reverse ? `${direction}-reverse` : direction);
-  style['justify-content'] = main;
-  style['align-items'] = cross;
+  if (main !== undefined) style['justify-content'] = main;
+  if (cross !== undefined) style['align-items'] = cross;
   if (props.gap) style.gap = tokenVar('space', props.gap);
   if (props.overflow) style.overflow = props.overflow;
   if (props.overflowX) style['overflow-x'] = props.overflowX;

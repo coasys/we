@@ -42,11 +42,27 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
   const [opacity, setOpacity] = createSignal(startVisible ? 1 : initialHiddenOpacity);
   const [transform, setTransform] = createSignal(startVisible ? '' : initialHiddenTransform);
 
+  // Mutable timer refs — must live outside createEffect so they can be cancelled
+  // when the condition reverses mid-transition. onCleanup inside setTimeout is a
+  // no-op (not in a reactive context), so we cancel manually on enter and unmount.
+  let exitTimerOuter: ReturnType<typeof setTimeout> | undefined;
+  let exitTimerInner: ReturnType<typeof setTimeout> | undefined;
+
+  const cancelExitTimers = () => {
+    clearTimeout(exitTimerOuter);
+    clearTimeout(exitTimerInner);
+    exitTimerOuter = undefined;
+    exitTimerInner = undefined;
+  };
+
+  onCleanup(cancelExitTimers);
+
   // ── Condition change → animate in / out ──────────────────────────────────────
   createEffect(() => {
     const newCondition = effectiveCondition();
 
     if (newCondition && !isVisible()) {
+      cancelExitTimers(); // cancel any in-progress exit before re-entering
       setShouldRender(true);
       setIsVisible(true);
 
@@ -72,12 +88,11 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
         const duration = firstEffect?.duration ?? 300;
         const delay = firstEffect?.delay ?? 0;
 
-        setTimeout(() => {
+        exitTimerOuter = setTimeout(() => {
           setOpacity(hiddenOpacity(exitTransition));
           setTransform(hiddenTransform(exitTransition));
 
-          const timer = setTimeout(() => setShouldRender(false), duration);
-          onCleanup(() => clearTimeout(timer));
+          exitTimerInner = setTimeout(() => setShouldRender(false), duration);
         }, delay);
       } else {
         setShouldRender(false);

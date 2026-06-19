@@ -1,10 +1,13 @@
-import type { SchemaNode } from '@we/schema-shared';
+import type { TemplateSchema } from '@we/schema-shared';
 
 /**
  * Shell Template Indicator
  *
  * Fixed top-right chip showing the active WE template name and icon.
- * Clicking the edit button opens the AI chat panel.
+ * Clicking the icon/name area opens a dropdown to switch templates, grouped
+ * into Space templates, My templates, and Core with a live search filter.
+ * A star marks whichever template is set as the space default.
+ * Clicking the pencil button opens the AI chat panel.
  *
  * Only visible when:
  * - The user is logged in (boot state === 'ready')
@@ -12,7 +15,13 @@ import type { SchemaNode } from '@we/schema-shared';
  * - No shell overlay is open (marketplace, profile, settings, etc.)
  * - The AI chat panel is closed (the panel itself shows template context when open)
  */
-export const templateIndicator: SchemaNode = {
+export const templateIndicator: TemplateSchema = {
+  meta: {
+    name: 'Template Indicator',
+    description: 'Fixed chip for switching active template',
+    icon: 'circles-four',
+    components: ['TemplateSwitcherChip'],
+  },
   type: '$if',
   props: {
     condition: {
@@ -23,49 +32,8 @@ export const templateIndicator: SchemaNode = {
         { $not: { $store: 'aiStore.isOpen' } },
       ],
     },
-    enterTransition: { type: 'fade', duration: 1000 },
-    exitTransition: { type: 'fade', duration: 1000 },
     then: {
-      type: 'Row',
-      props: {
-        position: 'fixed',
-        top: '16px',
-        right: '16px',
-        zIndex: 10,
-        ay: 'center',
-        gap: '300',
-        bg: 'neutral-50',
-        border: '1px solid neutral-200',
-        r: '400',
-        px: '300',
-        py: '100',
-      },
-      children: [
-        {
-          type: 'we-icon',
-          props: { name: { $store: 'aiStore.templateIcon' }, size: 'sm', color: 'neutral-500' },
-        },
-        {
-          type: 'we-text',
-          props: { color: 'neutral-700' },
-          children: [{ $store: 'aiStore.templateName' }],
-        },
-        {
-          type: 'we-divider',
-          props: { orientation: 'vertical', color: 'neutral-200', ml: '300', styles: { height: '16px' } },
-        },
-        {
-          type: 'we-button',
-          props: {
-            variant: 'ghost',
-            // size: 'sm',
-            square: true,
-            title: 'Edit template',
-            onClick: { $action: 'aiStore.toggle' },
-          },
-          children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
-        },
-      ],
+      type: 'TemplateSwitcherChip',
     },
   },
 };

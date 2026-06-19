@@ -7420,6 +7420,10 @@
           "type": "array",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
+        "myTemplates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
         "allTemplates": {
           "type": "array",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
@@ -7441,6 +7445,10 @@
         "templateManagementList": {
           "type": "array",
           "properties": ["id", "name", "icon", "description", "isCore", "isInstalled", "isDefault"]
+        },
+        "switcherGroups": {
+          "type": "array",
+          "properties": ["label", "items"]
         }
       },
       "actions": [
@@ -7465,6 +7473,13 @@
         "members": {
           "type": "array",
           "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        },
+        "spaceDefaultTemplateId": {
+          "type": "string"
+        },
+        "currentSpace": {
+          "type": "object",
+          "properties": ["uuid", "name", "description", "avatar", "defaultTemplateId"]
         },
         "signalTypes": {
           "type": "array",
@@ -7595,6 +7610,10 @@
         "apps": {
           "type": "array",
           "properties": ["id", "name", "image"]
+        },
+        "appsWithWe": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "image"]
         },
         "activeAppId": {
           "type": "string"

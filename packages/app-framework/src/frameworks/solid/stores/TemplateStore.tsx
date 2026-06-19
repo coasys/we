@@ -27,13 +27,18 @@ export type TemplateManagementItem = {
   isDefault: boolean;
 };
 
+export type TemplateSwitcherItem = { id: string; name: string; icon: string };
+export type TemplateSwitcherGroup = { label: string; items: TemplateSwitcherItem[] };
+
 export interface TemplateStore {
   // State
   personalTemplates: Accessor<TemplateSchema[]>;
   spaceTemplates: Accessor<TemplateSchema[]>;
   coreTemplates: Accessor<TemplateSchema[]>;
+  myTemplates: Accessor<TemplateSchema[]>;
   allTemplates: Accessor<TemplateSchema[]>;
   templateManagementList: Accessor<TemplateManagementItem[]>;
+  switcherGroups: Accessor<TemplateSwitcherGroup[]>;
   currentTemplate: TemplateSchema;
   loading: Accessor<boolean>;
   defaultTemplateId: Accessor<string>;
@@ -136,6 +141,25 @@ export function TemplateStoreProvider(props: ParentProps) {
   };
 
   const coreTemplatesAccessor = () => allTemplates().filter((t) => isCoreTemplateId(t.id || ''));
+
+  // User-installed templates that are neither built-in core nor from the current space
+  const myTemplates = () => {
+    const installed = installedIds();
+    const spaceIds = spaceTemplateIdSet();
+    return allTemplates().filter(
+      (t) => !isCoreTemplateId(t.id || '') && !spaceIds.has(t.id || '') && installed.has(t.id || ''),
+    );
+  };
+
+  const toSwitcherItems = (templates: TemplateSchema[]): TemplateSwitcherItem[] =>
+    templates.map((t) => ({ id: t.id || '', name: t.meta?.name || '', icon: t.meta?.icon || '' }));
+
+  // Grouped template data for the template switcher UI — flat name/icon fields allow $filter in schemas
+  const switcherGroups = (): TemplateSwitcherGroup[] => [
+    { label: 'Space templates', items: toSwitcherItems(spaceTemplates()) },
+    { label: 'My templates', items: toSwitcherItems(myTemplates()) },
+    { label: 'Core', items: toSwitcherItems(coreTemplatesAccessor()) },
+  ];
 
   const defaultTemplateId = () => adamStore.agentSettings()?.defaultTemplateId || 'default';
 
@@ -562,7 +586,8 @@ export function TemplateStoreProvider(props: ParentProps) {
 
       const stored = decoded as unknown as StoredTemplate;
       const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
-      const templateId = schema.id || marketplaceTemplate.name?.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId;
+      const templateId =
+        schema.id || marketplaceTemplate.name?.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId;
       const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId };
 
       // Create the template in the user's root perspective
@@ -849,8 +874,10 @@ export function TemplateStoreProvider(props: ParentProps) {
     personalTemplates,
     spaceTemplates,
     coreTemplates: coreTemplatesAccessor,
+    myTemplates,
     allTemplates,
     templateManagementList,
+    switcherGroups,
     currentTemplate,
     loading,
     defaultTemplateId,

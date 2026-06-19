@@ -31,9 +31,7 @@ const joinPrompt: SchemaNode = {
     {
       type: 'we-text',
       props: { fontSize: '400', color: 'neutral-500', textAlign: 'center', maxWidth: '420px' },
-      children: [
-        'Browse and install templates, themes, blocks, and components shared by the WE community.',
-      ],
+      children: ['Browse and install templates, themes, blocks, and components shared by the WE community.'],
     },
     {
       type: 'we-button',

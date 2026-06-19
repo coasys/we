@@ -72,6 +72,7 @@ export const storeEntries: StoreEntry[] = [
       personalTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       spaceTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       coreTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+      myTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       allTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
@@ -81,6 +82,7 @@ export const storeEntries: StoreEntry[] = [
         type: 'array',
         properties: ['id', 'name', 'icon', 'description', 'isCore', 'isInstalled', 'isDefault'],
       },
+      switcherGroups: { type: 'array', properties: ['label', 'items'] },
     },
     actions: [
       'updateTemplate',
@@ -102,6 +104,8 @@ export const storeEntries: StoreEntry[] = [
         type: 'array',
         properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
+      spaceDefaultTemplateId: { type: 'string' },
+      currentSpace: { type: 'object', properties: ['uuid', 'name', 'description', 'avatar', 'defaultTemplateId'] },
       signalTypes: {
         type: 'array',
         properties: [
@@ -260,9 +264,11 @@ function generateStoresText(entries: StoreEntry[]): string {
     templateStore: {
       state: {
         personalTemplates:
-          "array of TemplateSchema objects — user's installed custom templates (excludes core and space templates)",
+          "array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)",
         spaceTemplates: 'array of TemplateSchema objects — templates loaded from the current space perspective',
         coreTemplates: 'array of TemplateSchema objects — built-in system templates (always available)',
+        myTemplates:
+          "array of TemplateSchema objects — user's installed custom templates only (excludes core and space templates)",
         allTemplates: 'array of TemplateSchema objects — union of core + personal + space templates',
         shellTemplates: 'array of TemplateSchema objects (static system pages: profile, settings, tests)',
         currentTemplate: 'TemplateSchema (the active template)',
@@ -270,6 +276,8 @@ function generateStoresText(entries: StoreEntry[]): string {
           "string | null (id of the currently open shell overlay: 'profile' | 'settings' | 'schema-tests' | 'landing-page' | null)",
         templateManagementList:
           'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isCore, isInstalled, isDefault)',
+        switcherGroups:
+          'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Core". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.',
       },
       actions: {
         updateTemplate: '(newTemplate: TemplateSchema): updates the current template',
@@ -285,6 +293,9 @@ function generateStoresText(entries: StoreEntry[]): string {
       state: {
         memberDids: 'string[] — DIDs of all members in the current space (includes own DID)',
         members: 'AgentProfileSummary[] — cached profiles for all memberDids',
+        spaceDefaultTemplateId:
+          "string — the current space's default template ID (empty string when no space is active)",
+        currentSpace: 'Space | null — the current space model (uuid, name, description, avatar, defaultTemplateId)',
         signalTypes: 'array of SignalType objects (community-created reaction/vote types)',
         signalTypesBySlug:
           'Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID',

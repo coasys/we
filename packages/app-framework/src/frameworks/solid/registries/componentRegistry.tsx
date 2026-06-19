@@ -59,6 +59,7 @@ import {
 
 import WeCube from '../components/3d/WeCube';
 import { BenchmarkTimer } from '../components/BenchmarkTimer';
+import { TemplateSwitcherChip } from '../components/TemplateSwitcherChip';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
@@ -118,6 +119,9 @@ export const componentRegistry: ComponentRegistry = {
   TagDisplay,
   TaskDisplay,
   VideoDisplay,
+
+  // Shell
+  TemplateSwitcherChip,
 
   // Testing
   BenchmarkTimer,

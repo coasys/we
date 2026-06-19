@@ -333,7 +333,11 @@ export const aboutRoute: RouteSchema = {
                         },
                         {
                           type: 'we-timestamp',
-                          props: { value: { $store: 'spaceStore.currentSpace.createdAt' }, relative: true, fontWeight: 'bold' },
+                          props: {
+                            value: { $store: 'spaceStore.currentSpace.createdAt' },
+                            relative: true,
+                            fontWeight: 'bold',
+                          },
                         },
                       ],
                     },
@@ -348,7 +352,11 @@ export const aboutRoute: RouteSchema = {
                           children: [
                             {
                               type: 'we-avatar',
-                              props: { image: '$agent.avatar', hash: { $store: 'spaceStore.currentSpace.author' }, size: 'xs' },
+                              props: {
+                                image: '$agent.avatar',
+                                hash: { $store: 'spaceStore.currentSpace.author' },
+                                size: 'xs',
+                              },
                             },
                             {
                               type: 'we-text',

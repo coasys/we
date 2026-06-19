@@ -2458,6 +2458,7 @@ export const contextData: ContextData = {
         personalTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         spaceTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         coreTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+        myTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         allTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
@@ -2467,6 +2468,7 @@ export const contextData: ContextData = {
           type: 'array',
           properties: ['id', 'name', 'icon', 'description', 'isCore', 'isInstalled', 'isDefault'],
         },
+        switcherGroups: { type: 'array', properties: ['label', 'items'] },
       },
       actions: [
         'updateTemplate',
@@ -2488,6 +2490,8 @@ export const contextData: ContextData = {
           type: 'array',
           properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
         },
+        spaceDefaultTemplateId: { type: 'string' },
+        currentSpace: { type: 'object', properties: ['uuid', 'name', 'description', 'avatar', 'defaultTemplateId'] },
         signalTypes: {
           type: 'array',
           properties: [
@@ -2563,7 +2567,11 @@ export const contextData: ContextData = {
     },
     {
       name: 'appStore',
-      state: { apps: { type: 'array', properties: ['id', 'name', 'image'] }, activeAppId: { type: 'string' } },
+      state: {
+        apps: { type: 'array', properties: ['id', 'name', 'image'] },
+        appsWithWe: { type: 'array', properties: ['id', 'name', 'icon', 'image'] },
+        activeAppId: { type: 'string' },
+      },
       actions: ['activateApp', 'deactivateApp'],
     },
   ],

@@ -710,7 +710,9 @@ export function AdamStoreProvider(props: ParentProps) {
         }
 
         const marketplaceUrl = (weSeedFile as unknown as WeSeedFile).marketplaceUrl;
-        const existingMarketplace = marketplaceUrl ? perspectives.find((p) => p.sharedUrl === marketplaceUrl) : undefined;
+        const existingMarketplace = marketplaceUrl
+          ? perspectives.find((p) => p.sharedUrl === marketplaceUrl)
+          : undefined;
         if (existingMarketplace) {
           setMarketplacePerspective(existingMarketplace);
           console.log('AdamStore: Restored marketplace perspective', existingMarketplace.uuid);
