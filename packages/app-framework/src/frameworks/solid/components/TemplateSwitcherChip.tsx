@@ -10,25 +10,50 @@ export function TemplateSwitcherChip() {
   const spaceStore = useSpaceStore();
   const aiStore = useAiStore();
 
+  // Template switcher dropdown
   const [open, setOpen] = createSignal(false);
   const [search, setSearch] = createSignal('');
   let containerRef: HTMLDivElement | undefined;
 
-  const close = () => {
+  // Picker local state
+  const [pickerName, setPickerName] = createSignal('');
+  const [pickerIcon, setPickerIcon] = createSignal('cube');
+  const [pickerDestination, setPickerDestination] = createSignal<'personal' | 'space'>('personal');
+  const [pickerSaving, setPickerSaving] = createSignal(false);
+
+  // When picker opens, seed fields from store defaults and close the switcher
+  createEffect(() => {
+    if (aiStore.pickerOpen()) {
+      setPickerName(aiStore.pickerDefaultName());
+      setPickerIcon(aiStore.pickerDefaultIcon());
+      setPickerDestination('personal');
+      setOpen(false);
+      setSearch('');
+    }
+  });
+
+  const closeSwitcher = () => {
     setOpen(false);
     setSearch('');
   };
 
-  const toggle = () => {
-    const nowOpen = !open();
-    if (!nowOpen) setSearch('');
-    setOpen(nowOpen);
+  const toggleSwitcher = () => {
+    if (open()) {
+      closeSwitcher();
+    } else {
+      if (aiStore.pickerOpen()) aiStore.cancelPicker();
+      setOpen(true);
+    }
   };
 
+  // Close switcher or picker when clicking outside the chip
   createEffect(() => {
-    if (!open()) return;
+    if (!open() && !aiStore.pickerOpen()) return;
     const onOutside = (e: MouseEvent) => {
-      if (!containerRef?.contains(e.target as Node)) close();
+      if (!containerRef?.contains(e.target as Node)) {
+        if (open()) closeSwitcher();
+        if (aiStore.pickerOpen()) aiStore.cancelPicker();
+      }
     };
     document.addEventListener('mousedown', onOutside);
     onCleanup(() => document.removeEventListener('mousedown', onOutside));
@@ -45,8 +70,29 @@ export function TemplateSwitcherChip() {
       .filter((group) => group.items.length > 0);
   });
 
+  // Can the user directly edit this template (i.e. it's not read-only/core)?
+  const canEdit = () => !aiStore.isReadOnly();
+
+  // Icon representing the currently active edit action
+  const editActionIcon = () => {
+    if (aiStore.editAction() === 'fork') return 'git-fork';
+    if (aiStore.editAction() === 'fresh') return 'file-plus';
+    return 'pencil-simple';
+  };
+
   // Slide the whole row left when the AI panel is open
   const rowRight = () => (aiStore.isOpen() ? '410px' : '10px');
+
+  async function handlePickerConfirm() {
+    const name = pickerName().trim();
+    if (!name) return;
+    setPickerSaving(true);
+    try {
+      await aiStore.confirmPicker(name, pickerIcon() || 'cube', pickerDestination());
+    } finally {
+      setPickerSaving(false);
+    }
+  }
 
   return (
     <div style={{ position: 'fixed', inset: '0', 'pointer-events': 'none', 'z-index': '10' }}>
@@ -63,7 +109,7 @@ export function TemplateSwitcherChip() {
         {/* ── Edit-mode toolbar ── */}
         <Show when={aiStore.isEditMode()}>
           <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
-            {/* Mode buttons */}
+            {/* View mode buttons */}
             <we-button
               variant={aiStore.contentMode() === 'preview' ? 'secondary' : 'ghost'}
               square
@@ -103,8 +149,8 @@ export function TemplateSwitcherChip() {
         {/* ── Template switcher chip ── */}
         <Column>
           <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
-            {/* Template button */}
-            <we-button variant="ghost" onClick={toggle} p="200">
+            {/* Template dropdown trigger */}
+            <we-button variant="ghost" onClick={toggleSwitcher} p="200">
               <we-icon name={aiStore.templateIcon()} />
               <we-text>{aiStore.templateName()}</we-text>
               <we-icon name={open() ? 'caret-up' : 'caret-down'} color="neutral-500" />
@@ -112,17 +158,33 @@ export function TemplateSwitcherChip() {
 
             <we-divider orientation="vertical" color="neutral-200" height="28px" />
 
-            {/* Edit / exit-edit button */}
-            <we-button
-              variant={aiStore.isEditMode() ? 'secondary' : 'ghost'}
-              square
-              onClick={() => (aiStore.isEditMode() ? aiStore.exitEditMode() : aiStore.enterEditMode())}
-            >
-              <we-icon name="pencil-simple" />
-            </we-button>
+            {/* Browse mode: Edit (if owner) + Fork + Start Fresh */}
+            <Show when={!aiStore.isEditMode()}>
+              <Show when={canEdit()}>
+                <we-button variant="ghost" square onClick={() => aiStore.enterEditMode('edit')}>
+                  <we-icon name="pencil-simple" />
+                </we-button>
+              </Show>
+              <we-button variant="ghost" square onClick={() => aiStore.startFork()}>
+                <we-icon name="git-fork" />
+              </we-button>
+              <we-button variant="ghost" square onClick={() => aiStore.startFresh()}>
+                <we-icon name="file-plus" />
+              </we-button>
+            </Show>
+
+            {/* Edit mode: active action icon (highlighted) + close */}
+            <Show when={aiStore.isEditMode()}>
+              <we-button variant="secondary" square>
+                <we-icon name={editActionIcon()} />
+              </we-button>
+              <we-button variant="ghost" square onClick={() => aiStore.exitEditMode()}>
+                <we-icon name="x" />
+              </we-button>
+            </Show>
           </Row>
 
-          {/* Dropdown */}
+          {/* Template switcher dropdown */}
           <Show when={open()}>
             <Column
               position="absolute"
@@ -165,7 +227,7 @@ export function TemplateSwitcherChip() {
                                 hoverProps={{ bg: 'neutral-100' }}
                                 onClick={() => {
                                   templateStore.switchTemplate(template.id);
-                                  close();
+                                  closeSwitcher();
                                 }}
                               >
                                 <we-icon name={template.icon} size="sm" color="neutral-600" />
@@ -184,6 +246,92 @@ export function TemplateSwitcherChip() {
                   </For>
                 </Column>
               </we-scroll-area>
+            </Column>
+          </Show>
+
+          {/* Name + icon picker dropdown (fork / start fresh) */}
+          <Show when={aiStore.pickerOpen()}>
+            <Column
+              position="absolute"
+              top="100%"
+              right="0"
+              mt="100"
+              bg="neutral-0"
+              border="1px solid neutral-200"
+              r="400"
+              shadow="md"
+              p="400"
+              gap="300"
+              minWidth="280px"
+            >
+              <we-text fontSize="400" fontWeight="600" color="neutral-800">
+                {aiStore.pickerAction() === 'fresh' ? 'Create New Template' : 'Name Your Fork'}
+              </we-text>
+
+              <Column gap="100">
+                <we-text fontSize="200" fontWeight="600" color="neutral-600">
+                  Name
+                </we-text>
+                <we-input
+                  value={pickerName()}
+                  placeholder="My Template"
+                  size="sm"
+                  on:input={(e: CustomEvent) => setPickerName(e.detail)}
+                  on:keydown={(e: CustomEvent) => {
+                    if (e.detail.key === 'Enter') handlePickerConfirm();
+                    if (e.detail.key === 'Escape') aiStore.cancelPicker();
+                  }}
+                />
+              </Column>
+
+              <Column gap="100">
+                <we-text fontSize="200" fontWeight="600" color="neutral-600">
+                  Icon
+                </we-text>
+                <we-icon-picker
+                  value={pickerIcon()}
+                  size="sm"
+                  on:change={(e: CustomEvent) => setPickerIcon(e.detail)}
+                />
+              </Column>
+
+              <Show when={aiStore.pickerShowDestination()}>
+                <Column gap="100">
+                  <we-text fontSize="200" fontWeight="600" color="neutral-600">
+                    Save to
+                  </we-text>
+                  <Row gap="200">
+                    <we-button
+                      size="sm"
+                      variant={pickerDestination() === 'personal' ? 'secondary' : 'ghost'}
+                      onClick={() => setPickerDestination('personal')}
+                    >
+                      My templates
+                    </we-button>
+                    <we-button
+                      size="sm"
+                      variant={pickerDestination() === 'space' ? 'secondary' : 'ghost'}
+                      onClick={() => setPickerDestination('space')}
+                    >
+                      This space
+                    </we-button>
+                  </Row>
+                </Column>
+              </Show>
+
+              <Row ax="end" gap="200">
+                <we-button size="sm" variant="ghost" onClick={() => aiStore.cancelPicker()} disabled={pickerSaving()}>
+                  Cancel
+                </we-button>
+                <we-button
+                  size="sm"
+                  disabled={!pickerName().trim()}
+                  loading={pickerSaving()}
+                  onClick={handlePickerConfirm}
+                >
+                  {pickerSaving() ? 'Saving...' : aiStore.pickerAction() === 'fresh' ? 'Create' : 'Fork'}
+                </we-button>
+              </Row>
             </Column>
           </Show>
         </Column>

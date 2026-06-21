@@ -14,7 +14,6 @@ import {
   validateSemantic,
   validateStructure,
 } from '@we/schema-shared';
-import type { ChatMessage } from '../components/ChatPanel.types';
 import {
   Accessor,
   createContext,
@@ -26,6 +25,7 @@ import {
   useContext,
 } from 'solid-js';
 
+import type { ChatMessage } from '../components/ChatPanel.types';
 import type { ModelManifestEntry } from './AdamStore';
 
 // Re-export for convenience
@@ -78,12 +78,13 @@ export interface AiStore {
   // --- Template actions ---
   startFork: () => void;
   startFresh: () => void;
-  confirmPicker: (name: string, icon: string, destination: 'personal' | 'space') => void;
+  confirmPicker: (name: string, icon: string, destination: 'personal' | 'space') => Promise<void>;
   cancelPicker: () => void;
 
   // --- Edit mode ---
   isEditMode: Accessor<boolean>;
-  enterEditMode: () => void;
+  editAction: Accessor<'edit' | 'fork' | 'fresh' | null>;
+  enterEditMode: (action?: 'edit' | 'fork' | 'fresh') => void;
   exitEditMode: () => void;
 
   // --- Panel control ---
@@ -528,14 +529,17 @@ export function AiStoreProvider(props: ParentProps) {
   // Edit mode
   // ----------------------------------------------------------------
   const [isEditMode, setIsEditMode] = createSignal(false);
+  const [editAction, setEditAction] = createSignal<'edit' | 'fork' | 'fresh' | null>(null);
 
-  function enterEditMode() {
+  function enterEditMode(action: 'edit' | 'fork' | 'fresh' = 'edit') {
+    setEditAction(action);
     setIsEditMode(true);
     setIsOpen(true);
   }
 
   function exitEditMode() {
     setIsEditMode(false);
+    setEditAction(null);
     setIsOpen(false);
     setContentMode('preview');
   }
@@ -628,6 +632,9 @@ export function AiStoreProvider(props: ParentProps) {
       const suffix = hadPending ? ' Pending changes have been applied.' : '';
       setMessages((prev) => [...prev, createMessage('assistant', `Forked as "${name}".${suffix}`)]);
     }
+
+    // Enter edit mode on the newly created template
+    enterEditMode(action as 'fork' | 'fresh');
   }
 
   function cancelPicker() {
@@ -1254,6 +1261,7 @@ export function AiStoreProvider(props: ParentProps) {
       loadSessionsForTemplate(templateId);
       setContentMode('preview');
       setIsEditMode(false);
+      setEditAction(null);
     }
   });
 
@@ -1330,6 +1338,7 @@ export function AiStoreProvider(props: ParentProps) {
 
     // Edit mode
     isEditMode,
+    editAction,
     enterEditMode,
     exitEditMode,
 
