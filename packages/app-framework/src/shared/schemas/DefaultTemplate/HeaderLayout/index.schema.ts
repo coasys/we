@@ -9,7 +9,7 @@ import { homeRoute } from '../routes/HomeRoute/index.ts';
 import { settingsRoute } from '../routes/SettingsRoute/index.ts';
 // import { signalsRoute } from '../routes/SignalsRoute/index.ts';
 import { spaceGate } from '../SpaceGate.ts';
-import { spaceHeader } from './SpaceHeader.ts';
+import { spaceHeader, spaceNavBar } from './SpaceHeader.ts';
 
 export const headerLayout: TemplateSchema = {
   meta: {
@@ -32,7 +32,7 @@ export const headerLayout: TemplateSchema = {
           type: '$if',
           props: {
             condition: { $store: 'adamStore.currentPerspective' },
-            then: { type: 'Column', children: [spaceHeader, { type: '$routes' }] },
+            then: { type: 'Column', children: [spaceHeader, spaceNavBar, { type: '$routes' }] },
             else: spaceGate,
           },
         },
