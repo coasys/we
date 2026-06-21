@@ -1,8 +1,6 @@
 import { tokenVar } from '@we/design-utils';
-import { createEffect, createSignal, For, Show } from 'solid-js';
-
-export type * from './ChatPanel.types';
 import { Column, Row } from '@we/components/solid';
+import { createEffect, createSignal, For, Show } from 'solid-js';
 
 import type { ChatMessage, ChatPanelProps } from './ChatPanel.types';
 
@@ -86,47 +84,17 @@ export function ChatPanel(props: ChatPanelProps) {
         borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
         styles={{ 'flex-shrink': '0' }}
       >
-        <Row ay="center" gap="200">
-          <we-text fontSize="500" fontWeight="600">
-            {title()}
-          </we-text>
-          <Show when={props.onModeChange}>
-            <Row r="sm" border={`1px solid ${tokenVar('color', 'ui-200')}`} overflow="hidden" ml="200">
-              <we-button
-                size="xs"
-                variant={(props.mode ?? 'chat') === 'chat' ? 'primary' : 'ghost'}
-                onClick={() => props.onModeChange?.('chat')}
-              >
-                Chat
-              </we-button>
-              <we-button
-                size="xs"
-                variant={(props.mode ?? 'chat') === 'code' ? 'primary' : 'ghost'}
-                onClick={() => props.onModeChange?.('code')}
-              >
-                Code
-              </we-button>
-            </Row>
-          </Show>
-        </Row>
+        <we-text fontSize="500" fontWeight="600">
+          {title()}
+        </we-text>
         <Row ay="center" gap="100">
           <Show when={props.onUndo}>
-            <we-button
-              variant="ghost"
-              size="sm"
-              disabled={!props.canUndo || props.loading}
-              onClick={() => props.onUndo?.()}
-            >
+            <we-button variant="ghost" size="sm" disabled={!props.canUndo || props.loading} onClick={() => props.onUndo?.()}>
               <we-icon name="arrow-u-up-left" size="sm" />
             </we-button>
           </Show>
           <Show when={props.onRedo}>
-            <we-button
-              variant="ghost"
-              size="sm"
-              disabled={!props.canRedo || props.loading}
-              onClick={() => props.onRedo?.()}
-            >
+            <we-button variant="ghost" size="sm" disabled={!props.canRedo || props.loading} onClick={() => props.onRedo?.()}>
               <we-icon name="arrow-u-up-right" size="sm" />
             </we-button>
           </Show>
@@ -185,7 +153,7 @@ export function ChatPanel(props: ChatPanelProps) {
           </Row>
         </Row>
 
-        {/* Pending changes banner (for read-only templates) */}
+        {/* Pending changes banner */}
         <Show when={props.isReadOnly && props.hasPendingChanges}>
           <Row
             ay="center"
@@ -216,8 +184,6 @@ export function ChatPanel(props: ChatPanelProps) {
           <we-text fontSize="400" fontWeight="600" color="neutral-800">
             {props.pickerAction === 'fresh' ? 'Create New Template' : 'Name Your Fork'}
           </we-text>
-
-          {/* Name input */}
           <Column gap="100">
             <we-text fontSize="200" fontWeight="600" color="neutral-600">
               Name
@@ -234,56 +200,32 @@ export function ChatPanel(props: ChatPanelProps) {
               }}
             />
           </Column>
-
-          {/* Icon picker */}
           <Column gap="100">
             <we-text fontSize="200" fontWeight="600" color="neutral-600">
               Icon
             </we-text>
             <we-icon-picker value={pickerIcon()} size="sm" on:change={(e: CustomEvent) => setPickerIcon(e.detail)} />
           </Column>
-
-          {/* Destination toggle — only shown when inside a space */}
           <Show when={props.pickerShowDestination}>
             <Column gap="100">
               <we-text fontSize="200" fontWeight="600" color="neutral-600">
                 Save to
               </we-text>
               <Row gap="200">
-                <we-button
-                  size="sm"
-                  variant={pickerDestination() === 'personal' ? 'secondary' : 'ghost'}
-                  onClick={() => setPickerDestination('personal')}
-                >
+                <we-button size="sm" variant={pickerDestination() === 'personal' ? 'secondary' : 'ghost'} onClick={() => setPickerDestination('personal')}>
                   My templates
                 </we-button>
-                <we-button
-                  size="sm"
-                  variant={pickerDestination() === 'space' ? 'secondary' : 'ghost'}
-                  onClick={() => setPickerDestination('space')}
-                >
+                <we-button size="sm" variant={pickerDestination() === 'space' ? 'secondary' : 'ghost'} onClick={() => setPickerDestination('space')}>
                   This space
                 </we-button>
               </Row>
             </Column>
           </Show>
-
-          {/* Actions */}
           <Row ax="end" gap="200">
-            <we-button
-              size="sm"
-              variant="ghost"
-              onClick={() => props.onPickerCancel?.()}
-              disabled={!!props.operationLoading}
-            >
+            <we-button size="sm" variant="ghost" onClick={() => props.onPickerCancel?.()} disabled={!!props.operationLoading}>
               Cancel
             </we-button>
-            <we-button
-              size="sm"
-              disabled={!pickerName().trim()}
-              loading={!!props.operationLoading}
-              onClick={handlePickerConfirm}
-            >
+            <we-button size="sm" disabled={!pickerName().trim()} loading={!!props.operationLoading} onClick={handlePickerConfirm}>
               {props.operationLoading ? 'Saving...' : props.pickerAction === 'fresh' ? 'Create' : 'Fork'}
             </we-button>
           </Row>
@@ -315,14 +257,7 @@ export function ChatPanel(props: ChatPanelProps) {
                 }
               }}
             />
-            <we-button
-              size="sm"
-              disabled={!apiKeyInput().trim()}
-              onClick={() => {
-                props.onSetApiKey!(apiKeyInput().trim());
-                setApiKeyInput('');
-              }}
-            >
+            <we-button size="sm" disabled={!apiKeyInput().trim()} onClick={() => { props.onSetApiKey!(apiKeyInput().trim()); setApiKeyInput(''); }}>
               Save
             </we-button>
           </Row>
@@ -362,17 +297,7 @@ export function ChatPanel(props: ChatPanelProps) {
                     {session.name || 'Chat'}
                   </we-text>
                   <Show when={props.onDeleteSession && props.sessions!.length > 1}>
-                    <we-button
-                      variant="ghost"
-                      size="xs"
-                      onClick={(e: MouseEvent) => {
-                        e.stopPropagation();
-                        props.onDeleteSession?.(session.id);
-                      }}
-                      opacity={0.5}
-                      p="0"
-                      minWidth="unset"
-                    >
+                    <we-button variant="ghost" size="xs" onClick={(e: MouseEvent) => { e.stopPropagation(); props.onDeleteSession?.(session.id); }} opacity={0.5} p="0" minWidth="unset">
                       <we-icon name="x" size="xs" />
                     </we-button>
                   </Show>
@@ -383,72 +308,52 @@ export function ChatPanel(props: ChatPanelProps) {
         </Row>
       </Show>
 
-      {/* Messages (Chat mode) */}
-      <Show when={(props.mode ?? 'chat') === 'chat'}>
-        <Column gap="400" p="400" pr="300" flex="1" overflow="auto">
-          <For each={props.messages}>
-            {(msg) => (
-              <MessageBubble
-                message={msg}
-                isStreaming={props.loading && msg.status === 'streaming'}
-                streamingContent={msg.status === 'streaming' ? props.streamingContent : undefined}
-              />
-            )}
-          </For>
+      {/* Messages */}
+      <Column gap="400" p="400" pr="300" flex="1" overflow="auto">
+        <For each={props.messages}>
+          {(msg) => (
+            <MessageBubble
+              message={msg}
+              isStreaming={props.loading && msg.status === 'streaming'}
+              streamingContent={msg.status === 'streaming' ? props.streamingContent : undefined}
+            />
+          )}
+        </For>
+        <div ref={messagesEndRef} />
+      </Column>
 
-          <div ref={messagesEndRef} />
-        </Column>
-      </Show>
-
-      {/* Code mode — JSON viewer */}
-      <Show when={(props.mode ?? 'chat') === 'code'}>
-        <CodeViewer
-          json={props.schemaJson ?? '{}'}
-          onSave={(json) => props.onSchemaEdit?.(json)}
-          readOnly={props.isReadOnly}
+      {/* Input area */}
+      <Row
+        ay="end"
+        gap="200"
+        p="400"
+        borderTop={`1px solid ${tokenVar('color', 'ui-200')}`}
+        styles={{ 'flex-shrink': '0' }}
+      >
+        <we-textarea
+          value={inputValue()}
+          placeholder={placeholder()}
+          disabled={props.disabled || props.loading}
+          rows={1}
+          resize="none"
+          flex="1"
+          on:input={(e: CustomEvent) => setInputValue(e.detail)}
+          onKeyDown={(e: KeyboardEvent) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          maxHeight="160px"
+          styles={{ 'overflow-y': 'auto' }}
         />
-      </Show>
-
-      {/* Input area (only in chat mode) */}
-      <Show when={(props.mode ?? 'chat') === 'chat'}>
-        <Row
-          ay="end"
-          gap="200"
-          p="400"
-          borderTop={`1px solid ${tokenVar('color', 'ui-200')}`}
-          styles={{ 'flex-shrink': '0' }}
-        >
-          <we-textarea
-            value={inputValue()}
-            placeholder={placeholder()}
-            disabled={props.disabled || props.loading}
-            rows={1}
-            resize="none"
-            flex="1"
-            on:input={(e: CustomEvent) => setInputValue(e.detail)}
-            onKeyDown={(e: KeyboardEvent) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            maxHeight="160px"
-            styles={{ 'overflow-y': 'auto' }}
-          />
-          <we-button
-            size="sm"
-            onClick={handleSend}
-            disabled={props.disabled || props.loading || inputValue().trim() === ''}
-          >
-            <we-icon name="paper-plane-tilt" size="sm" />
-          </we-button>
-        </Row>
-      </Show>
+        <we-button size="sm" onClick={handleSend} disabled={props.disabled || props.loading || inputValue().trim() === ''}>
+          <we-icon name="paper-plane-tilt" size="sm" />
+        </we-button>
+      </Row>
     </Column>
   );
 }
-
-// ----- Message Bubble Component -----
 
 function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; streamingContent?: string }) {
   const isUser = () => props.message.role === 'user';
@@ -475,121 +380,6 @@ function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; str
         <we-text fontSize="300" color="danger-500" style={{ 'margin-top': '4px' }}>
           Failed to send
         </we-text>
-      </Show>
-    </Column>
-  );
-}
-
-// ----- Code Viewer Component (JSON viewer/editor) -----
-
-function CodeViewer(props: { json: string; onSave?: (json: string) => void; readOnly?: boolean }) {
-  const [editing, setEditing] = createSignal(false);
-  const [editValue, setEditValue] = createSignal('');
-  const [error, setError] = createSignal('');
-
-  function startEdit() {
-    setEditValue(props.json);
-    setError('');
-    setEditing(true);
-  }
-
-  function cancelEdit() {
-    setEditing(false);
-    setError('');
-  }
-
-  function saveEdit() {
-    try {
-      JSON.parse(editValue());
-      props.onSave?.(editValue());
-      setEditing(false);
-      setError('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Invalid JSON');
-    }
-  }
-
-  return (
-    <Column flex="1" overflow="hidden">
-      {/* Toolbar */}
-      <Row
-        ax="end"
-        ay="center"
-        gap="200"
-        px="400"
-        py="200"
-        borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
-        styles={{ 'flex-shrink': '0' }}
-      >
-        <Show
-          when={editing()}
-          fallback={
-            <Show when={!props.readOnly && props.onSave}>
-              <we-button size="xs" variant="ghost" onClick={startEdit}>
-                <we-icon name="pencil-simple" size="xs" />
-                Edit
-              </we-button>
-            </Show>
-          }
-        >
-          <Show when={error()}>
-            <we-text fontSize="200" color="danger-500">
-              {error()}
-            </we-text>
-          </Show>
-          <we-button size="xs" variant="ghost" onClick={cancelEdit}>
-            Cancel
-          </we-button>
-          <we-button size="xs" onClick={saveEdit}>
-            Save
-          </we-button>
-        </Show>
-        <we-button
-          size="xs"
-          variant="ghost"
-          onClick={() => navigator.clipboard.writeText(editing() ? editValue() : props.json)}
-        >
-          <we-icon name="copy" size="xs" />
-          Copy
-        </we-button>
-      </Row>
-
-      {/* Content */}
-      <Show
-        when={editing()}
-        fallback={
-          <pre
-            style={{
-              flex: '1',
-              margin: '0',
-              padding: tokenVar('space', '400'),
-              'overflow-y': 'auto',
-              'font-size': tokenVar('font-size', '200'),
-              'line-height': '1.5',
-              background: tokenVar('color', 'neutral-50'),
-              color: tokenVar('color', 'neutral-800'),
-              'white-space': 'pre-wrap',
-              'word-break': 'break-all',
-              'font-family': 'monospace',
-            }}
-          >
-            {props.json}
-          </pre>
-        }
-      >
-        <we-textarea
-          value={editValue()}
-          resize="none"
-          flex="1"
-          bg="neutral-50"
-          on:input={(e: CustomEvent) => setEditValue(e.detail)}
-          styles={{
-            'font-family': 'monospace',
-            'font-size': tokenVar('font-size', '200'),
-            'line-height': '1.5',
-            border: 'none',
-          }}
-        />
       </Show>
     </Column>
   );

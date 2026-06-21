@@ -48,17 +48,11 @@ import {
   ToastContainer,
 } from '@we/components/solid';
 import type { ComponentRegistry } from '@we/schema-solid';
-import {
-  CesiumGlobe,
-  ChatPanel,
-  CollapsibleSidebar,
-  GraphWidget,
-  mockGraphData,
-  SpaceSidebarWidget,
-} from '@we/widgets/solid';
+import { CesiumGlobe, CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSidebarWidget } from '@we/widgets/solid';
 
 import WeCube from '../components/3d/WeCube';
 import { BenchmarkTimer } from '../components/BenchmarkTimer';
+import { ChatPanel } from '../components/ChatPanel';
 import { TemplateSwitcherChip } from '../components/TemplateSwitcherChip';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

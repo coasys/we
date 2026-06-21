@@ -14,7 +14,7 @@ import {
   validateSemantic,
   validateStructure,
 } from '@we/schema-shared';
-import type { ChatMessage } from '@we/widgets/solid';
+import type { ChatMessage } from '../components/ChatPanel.types';
 import {
   Accessor,
   createContext,
@@ -29,7 +29,7 @@ import {
 import type { ModelManifestEntry } from './AdamStore';
 
 // Re-export for convenience
-export type { ChatMessage } from '@we/widgets/solid';
+export type { ChatMessage } from '../components/ChatPanel.types';
 
 // Base validation context built once from the static generated context data.
 // External perspective models are merged in reactively inside AiStoreProvider.
@@ -63,10 +63,10 @@ export interface AiStore {
   switchSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;
 
-  // --- Panel mode (chat / code) ---
-  panelMode: Accessor<'chat' | 'code'>;
+  // --- Content mode (preview / visual / code) ---
+  contentMode: Accessor<'preview' | 'visual' | 'code'>;
+  setContentMode: (mode: 'preview' | 'visual' | 'code') => void;
   schemaJson: Accessor<string>;
-  setPanelMode: (mode: 'chat' | 'code') => void;
   onSchemaEdit: (json: string) => void;
 
   // --- Undo / Redo ---
@@ -80,6 +80,11 @@ export interface AiStore {
   startFresh: () => void;
   confirmPicker: (name: string, icon: string, destination: 'personal' | 'space') => void;
   cancelPicker: () => void;
+
+  // --- Edit mode ---
+  isEditMode: Accessor<boolean>;
+  enterEditMode: () => void;
+  exitEditMode: () => void;
 
   // --- Panel control ---
   toggle: () => void;
@@ -268,8 +273,8 @@ export function AiStoreProvider(props: ParentProps) {
   // Track the AD4M ChatSession model instance for the active session
   let activeSessionModel: ChatSessionModel | null = null;
 
-  // --- Panel mode (chat / code) ---
-  const [panelMode, setPanelMode] = createSignal<'chat' | 'code'>('chat');
+  // --- Content mode (preview / visual / code) ---
+  const [contentMode, setContentMode] = createSignal<'preview' | 'visual' | 'code'>('preview');
   const schemaJson = () => JSON.stringify(templateStore.currentTemplate, null, 2);
 
   // --- Template context (computed) ---
@@ -517,6 +522,22 @@ export function AiStoreProvider(props: ParentProps) {
     } catch (err) {
       console.error('Failed to persist message', err);
     }
+  }
+
+  // ----------------------------------------------------------------
+  // Edit mode
+  // ----------------------------------------------------------------
+  const [isEditMode, setIsEditMode] = createSignal(false);
+
+  function enterEditMode() {
+    setIsEditMode(true);
+    setIsOpen(true);
+  }
+
+  function exitEditMode() {
+    setIsEditMode(false);
+    setIsOpen(false);
+    setContentMode('preview');
   }
 
   // ----------------------------------------------------------------
@@ -1231,6 +1252,8 @@ export function AiStoreProvider(props: ParentProps) {
     const templateId = templateStore.currentTemplate.id;
     if (templateId && adamStore.rootPerspective()) {
       loadSessionsForTemplate(templateId);
+      setContentMode('preview');
+      setIsEditMode(false);
     }
   });
 
@@ -1287,10 +1310,10 @@ export function AiStoreProvider(props: ParentProps) {
     switchSession,
     deleteSession,
 
-    // Panel mode (chat / code)
-    panelMode,
+    // Content mode (preview / visual / code)
+    contentMode,
+    setContentMode,
     schemaJson,
-    setPanelMode,
     onSchemaEdit,
 
     // Undo / Redo
@@ -1304,6 +1327,11 @@ export function AiStoreProvider(props: ParentProps) {
     startFresh,
     confirmPicker,
     cancelPicker,
+
+    // Edit mode
+    isEditMode,
+    enterEditMode,
+    exitEditMode,
 
     // Panel control
     toggle,

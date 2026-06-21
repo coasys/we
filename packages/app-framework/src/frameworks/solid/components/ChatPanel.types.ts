@@ -1,6 +1,3 @@
-/**
- * Chat message displayed in the panel
- */
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -9,9 +6,6 @@ export interface ChatMessage {
   status?: 'sending' | 'streaming' | 'sent' | 'error';
 }
 
-/**
- * Summary of a chat session for the session list
- */
 export interface SessionInfo {
   id: string;
   name: string;
@@ -66,12 +60,6 @@ export interface ChatPanelProps {
   pickerShowDestination?: boolean;
   onPickerConfirm?: (name: string, icon: string, destination: 'personal' | 'space') => void;
   onPickerCancel?: () => void;
-
-  // Panel mode: chat or code (JSON viewer)
-  mode?: 'chat' | 'code';
-  schemaJson?: string;
-  onModeChange?: (mode: 'chat' | 'code') => void;
-  onSchemaEdit?: (json: string) => void;
 
   // Undo / Redo
   canUndo?: boolean;

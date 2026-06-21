@@ -56,12 +56,6 @@ export const aiChatSidebar: SchemaNode = {
         onSwitchSession: { $action: 'aiStore.switchSession' },
         onDeleteSession: { $action: 'aiStore.deleteSession' },
 
-        // Panel mode (chat / code)
-        mode: { $store: 'aiStore.panelMode' },
-        schemaJson: { $store: 'aiStore.schemaJson' },
-        onModeChange: { $action: 'aiStore.setPanelMode' },
-        onSchemaEdit: { $action: 'aiStore.onSchemaEdit' },
-
         // Undo / Redo
         canUndo: { $store: 'aiStore.canUndo' },
         canRedo: { $store: 'aiStore.canRedo' },

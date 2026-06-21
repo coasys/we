@@ -36,6 +36,7 @@ import type { ParentProps } from 'solid-js';
 import { createEffect, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
+import { TemplateEditorOverlay } from '../components/TemplateEditorOverlay';
 import { buildRoutes } from '../utils/buildRoutes';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
@@ -146,6 +147,9 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
             />
           </Show>
         </Column>
+
+        {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11) */}
+        <TemplateEditorOverlay />
 
         {/* Shell overlay rendered above the template */}
         <Show when={stores.templateStore.activeShellView()} keyed>

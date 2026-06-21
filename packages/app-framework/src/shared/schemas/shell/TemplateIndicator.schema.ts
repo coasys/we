@@ -29,7 +29,6 @@ export const templateIndicator: TemplateSchema = {
         { $eq: [{ $store: 'adamStore.bootState' }, 'ready'] },
         { $not: { $store: 'appStore.activeAppId' } },
         { $not: { $store: 'templateStore.activeShellView' } },
-        { $not: { $store: 'aiStore.isOpen' } },
       ],
     },
     then: {
