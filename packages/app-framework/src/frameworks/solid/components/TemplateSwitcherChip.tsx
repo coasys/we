@@ -110,39 +110,49 @@ export function TemplateSwitcherChip() {
         <Show when={aiStore.isEditMode()}>
           <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
             {/* View mode buttons */}
-            <we-button
-              variant={aiStore.contentMode() === 'preview' ? 'secondary' : 'ghost'}
-              square
-              onClick={() => aiStore.setContentMode('preview')}
-            >
-              <we-icon name="eye" />
-            </we-button>
-            <we-button
-              variant={aiStore.contentMode() === 'visual' ? 'secondary' : 'ghost'}
-              square
-              onClick={() => aiStore.setContentMode('visual')}
-            >
-              <we-icon name="pencil-ruler" />
-            </we-button>
-            <we-button
-              variant={aiStore.contentMode() === 'code' ? 'secondary' : 'ghost'}
-              square
-              onClick={() => aiStore.setContentMode('code')}
-            >
-              <we-icon name="code" />
-            </we-button>
+            <we-tooltip title="Preview" placement="bottom">
+              <we-button
+                variant={aiStore.contentMode() === 'preview' ? 'secondary' : 'ghost'}
+                square
+                onClick={() => aiStore.setContentMode('preview')}
+              >
+                <we-icon name="eye" />
+              </we-button>
+            </we-tooltip>
+            <we-tooltip title="Visual editor" placement="bottom">
+              <we-button
+                variant={aiStore.contentMode() === 'visual' ? 'secondary' : 'ghost'}
+                square
+                onClick={() => aiStore.setContentMode('visual')}
+              >
+                <we-icon name="pencil-ruler" />
+              </we-button>
+            </we-tooltip>
+            <we-tooltip title="Code editor" placement="bottom">
+              <we-button
+                variant={aiStore.contentMode() === 'code' ? 'secondary' : 'ghost'}
+                square
+                onClick={() => aiStore.setContentMode('code')}
+              >
+                <we-icon name="code" />
+              </we-button>
+            </we-tooltip>
 
             <we-divider orientation="vertical" color="neutral-200" height="28px" />
 
             {/* Publish placeholder */}
-            <we-button variant="ghost" square disabled>
-              <we-icon name="upload-simple" />
-            </we-button>
+            <we-tooltip title="Publish" placement="bottom">
+              <we-button variant="ghost" square disabled>
+                <we-icon name="upload-simple" />
+              </we-button>
+            </we-tooltip>
 
             {/* AI chat toggle */}
-            <we-button variant={aiStore.isOpen() ? 'secondary' : 'ghost'} square onClick={() => aiStore.toggle()}>
-              <we-icon name="chat-circle" />
-            </we-button>
+            <we-tooltip title="AI chat" placement="bottom">
+              <we-button variant={aiStore.isOpen() ? 'secondary' : 'ghost'} square onClick={() => aiStore.toggle()}>
+                <we-icon name="chat-circle" />
+              </we-button>
+            </we-tooltip>
           </Row>
         </Show>
 
@@ -150,27 +160,35 @@ export function TemplateSwitcherChip() {
         <Column>
           <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
             {/* Template dropdown trigger */}
-            <we-button variant="ghost" onClick={toggleSwitcher} p="200">
-              <we-icon name={aiStore.templateIcon()} />
-              <we-text>{aiStore.templateName()}</we-text>
-              <we-icon name={open() ? 'caret-up' : 'caret-down'} color="neutral-500" />
-            </we-button>
+            <we-tooltip title="Select a template" placement="left">
+              <we-button variant="ghost" onClick={toggleSwitcher} p="200">
+                <we-icon name={aiStore.templateIcon()} />
+                <we-text>{aiStore.templateName()}</we-text>
+                <we-icon name={open() ? 'caret-up' : 'caret-down'} color="neutral-500" />
+              </we-button>
+            </we-tooltip>
 
             <we-divider orientation="vertical" color="neutral-200" height="28px" />
 
             {/* Browse mode: Edit (if owner) + Fork + Start Fresh */}
             <Show when={!aiStore.isEditMode()}>
               <Show when={canEdit()}>
-                <we-button variant="ghost" square onClick={() => aiStore.enterEditMode('edit')}>
-                  <we-icon name="pencil-simple" />
-                </we-button>
+                <we-tooltip title="Edit template" placement="bottom">
+                  <we-button variant="ghost" square onClick={() => aiStore.enterEditMode('edit')}>
+                    <we-icon name="pencil-simple" />
+                  </we-button>
+                </we-tooltip>
               </Show>
-              <we-button variant="ghost" square onClick={() => aiStore.startFork()}>
-                <we-icon name="git-fork" />
-              </we-button>
-              <we-button variant="ghost" square onClick={() => aiStore.startFresh()}>
-                <we-icon name="file-plus" />
-              </we-button>
+              <we-tooltip title="Fork template" placement="bottom">
+                <we-button variant="ghost" square onClick={() => aiStore.startFork()}>
+                  <we-icon name="git-fork" />
+                </we-button>
+              </we-tooltip>
+              <we-tooltip title="New template" placement="bottom">
+                <we-button variant="ghost" square onClick={() => aiStore.startFresh()}>
+                  <we-icon name="file-plus" />
+                </we-button>
+              </we-tooltip>
             </Show>
 
             {/* Edit mode: active action icon (highlighted) + close */}
@@ -178,9 +196,11 @@ export function TemplateSwitcherChip() {
               <we-button variant="secondary" square>
                 <we-icon name={editActionIcon()} />
               </we-button>
-              <we-button variant="ghost" square onClick={() => aiStore.exitEditMode()}>
-                <we-icon name="x" />
-              </we-button>
+              <we-tooltip title="Exit edit mode" placement="bottom">
+                <we-button variant="ghost" square onClick={() => aiStore.exitEditMode()}>
+                  <we-icon name="x" />
+                </we-button>
+              </we-tooltip>
             </Show>
           </Row>
 
