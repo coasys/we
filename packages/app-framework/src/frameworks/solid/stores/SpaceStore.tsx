@@ -119,7 +119,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // If no perspective found, route change alone will show the join gate
 
     const segs = routeStore.segments();
-    const currentView = view ?? (segs[0] === 'space' && segs[2] ? segs[2] : 'cards');
+    const currentView = view ?? (segs[0] === 'space' && segs[2] ? segs[2] : 'about');
     const targetPath = '/space/' + spaceId + '/' + currentView;
     templateStore.closeShellView();
     routeStore.navigate(targetPath);

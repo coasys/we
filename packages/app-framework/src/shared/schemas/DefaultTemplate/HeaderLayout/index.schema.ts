@@ -38,7 +38,7 @@ export const headerLayout: TemplateSchema = {
         },
       ],
       routes: [
-        { path: '/', redirect: './cards' },
+        { path: '/', redirect: './about' },
         aboutRoute,
         globeRoute,
         cardsRoute,
