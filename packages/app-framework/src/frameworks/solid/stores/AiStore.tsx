@@ -988,7 +988,14 @@ export function AiStoreProvider(props: ParentProps) {
                   : insertSpec.before
                     ? { before: insertSpec.before }
                     : undefined;
-                const err = insertChild(accumulatedSchema, patch.targetId, arrayKey, insertSpec.node, position);
+                // Strip positioning keys that the AI sometimes misplaces inside the node body.
+                // These are patch directives, not valid SchemaNode fields — leaving them on the
+                // node causes zSchemaNode.strict() to reject the schema with "Unrecognized key".
+                const cleanNode = { ...(insertSpec.node as Record<string, unknown>) };
+                delete cleanNode.after;
+                delete cleanNode.before;
+                const nodeToInsert = cleanNode as SchemaNode;
+                const err = insertChild(accumulatedSchema, patch.targetId, arrayKey, nodeToInsert, position);
                 if (err) {
                   patchError = err.error;
                   break;
