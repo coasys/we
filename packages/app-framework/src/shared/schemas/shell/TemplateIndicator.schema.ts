@@ -20,7 +20,7 @@ export const templateIndicator: TemplateSchema = {
     name: 'Template Indicator',
     description: 'Fixed chip for switching active template',
     icon: 'circles-four',
-    components: ['TemplateSwitcherChip'],
+    components: ['TemplateToolbar'],
   },
   type: '$if',
   props: {
@@ -32,7 +32,7 @@ export const templateIndicator: TemplateSchema = {
       ],
     },
     then: {
-      type: 'TemplateSwitcherChip',
+      type: 'TemplateToolbar',
     },
   },
 };

@@ -1,11 +1,11 @@
 import { Column, Row, SearchInput } from '@we/components/solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
-import { useAiStore } from '../stores/AiStore';
-import { useSpaceStore } from '../stores/SpaceStore';
-import { useTemplateStore } from '../stores/TemplateStore';
+import { useAiStore } from '../../stores/AiStore';
+import { useSpaceStore } from '../../stores/SpaceStore';
+import { useTemplateStore } from '../../stores/TemplateStore';
 
-export function TemplateSwitcherChip() {
+export function TemplateToolbar() {
   const templateStore = useTemplateStore();
   const spaceStore = useSpaceStore();
   const aiStore = useAiStore();
@@ -140,6 +140,20 @@ export function TemplateSwitcherChip() {
 
             <we-divider orientation="vertical" color="neutral-200" height="28px" />
 
+            {/* Undo / Redo */}
+            <we-tooltip title="Undo" placement="bottom">
+              <we-button variant="ghost" square disabled={!aiStore.canUndo()} onClick={() => aiStore.undo()}>
+                <we-icon name="arrow-u-up-left" />
+              </we-button>
+            </we-tooltip>
+            <we-tooltip title="Redo" placement="bottom">
+              <we-button variant="ghost" square disabled={!aiStore.canRedo()} onClick={() => aiStore.redo()}>
+                <we-icon name="arrow-u-up-right" />
+              </we-button>
+            </we-tooltip>
+
+            <we-divider orientation="vertical" color="neutral-200" height="28px" />
+
             {/* Publish placeholder */}
             <we-tooltip title="Publish" placement="bottom">
               <we-button variant="ghost" square disabled>
@@ -160,7 +174,7 @@ export function TemplateSwitcherChip() {
         <Column>
           <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
             {/* Template dropdown trigger */}
-            <we-tooltip title="Select a template" placement="left">
+            <we-tooltip title="Select a template" placement="bottom">
               <we-button variant="ghost" onClick={toggleSwitcher} p="200">
                 <we-icon name={aiStore.templateIcon()} />
                 <we-text>{aiStore.templateName()}</we-text>

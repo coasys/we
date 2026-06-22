@@ -1,10 +1,10 @@
 import { Column } from '@we/components/solid';
-import { CodeViewer } from './CodeViewer';
 import { Show } from 'solid-js';
 
-import { useAiStore } from '../stores/AiStore';
+import { useAiStore } from '../../stores/AiStore';
+import { CodeViewer } from './CodeViewer';
 
-export function TemplateEditorOverlay() {
+export function EditorOverlay() {
   const aiStore = useAiStore();
 
   return (

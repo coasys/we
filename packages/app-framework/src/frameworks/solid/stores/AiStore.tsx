@@ -25,11 +25,15 @@ import {
   useContext,
 } from 'solid-js';
 
-import type { ChatMessage } from '../components/ChatPanel.types';
 import type { ModelManifestEntry } from './AdamStore';
 
-// Re-export for convenience
-export type { ChatMessage } from '../components/ChatPanel.types';
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  createdAt?: string;
+  status?: 'sending' | 'streaming' | 'sent' | 'error';
+}
 
 // Base validation context built once from the static generated context data.
 // External perspective models are merged in reactively inside AiStoreProvider.
