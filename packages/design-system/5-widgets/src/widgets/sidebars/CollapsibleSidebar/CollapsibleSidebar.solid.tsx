@@ -1,5 +1,5 @@
 import { parseBorder, tokenVar } from '@we/design-utils';
-import { createContext, createEffect, createMemo, createSignal, Index, type JSX, Show } from 'solid-js';
+import { createContext, createEffect, createMemo, createSignal, Index, type JSX, onCleanup, Show } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 
 export type * from './CollapsibleSidebar.types';
@@ -52,12 +52,28 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
   const border = () => parseBorder(props.border, '1px solid ui-200');
 
   // State
+  let sidebarRef!: HTMLDivElement;
   const [isExpanded, setIsExpanded] = createSignal(props.defaultExpanded ?? false);
   const [groupStates, setGroupStates] = createSignal<Record<string, boolean>>({});
 
   // Notify parent of expansion changes
   createEffect(() => {
     props.onExpandedChange?.(isExpanded());
+  });
+
+  // Fallback collapse: if the browser drops mouseleave during heavy DOM work
+  // (template switch, large content load), pointermove will still collapse the
+  // sidebar once the pointer is clearly outside its bounds.
+  createEffect(() => {
+    if (!expandOnHover() || !isExpanded()) return;
+    const handlePointerMove = (e: PointerEvent) => {
+      const rect = sidebarRef.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+        setIsExpanded(false);
+      }
+    };
+    document.addEventListener('pointermove', handlePointerMove, { passive: true });
+    onCleanup(() => document.removeEventListener('pointermove', handlePointerMove));
   });
 
   // Event handlers
@@ -279,7 +295,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
 
   return (
     <CollapsibleSidebarContext.Provider value={contextValue}>
-      <div class={classes()} style={cssVars()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+      <div ref={sidebarRef} class={classes()} style={cssVars()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
         {/* Header slot */}
         <Show when={props.header}>{props.header}</Show>
 
