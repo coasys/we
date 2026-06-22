@@ -31,8 +31,6 @@ export const templateIndicator: TemplateSchema = {
         { $not: { $store: 'templateStore.activeShellView' } },
       ],
     },
-    then: {
-      type: 'TemplateToolbar',
-    },
+    then: { type: 'TemplateToolbar' },
   },
 };

@@ -14,8 +14,6 @@ export const aiChatSidebar: SchemaNode = {
   type: '$if',
   props: {
     condition: { $eq: [{ $store: 'adamStore.bootState' }, 'ready'] },
-    then: {
-      type: 'AiChatPanel',
-    },
+    then: { type: 'RightPanelContainer' },
   },
 };

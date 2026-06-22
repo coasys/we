@@ -31,17 +31,9 @@ export function AiChatPanel() {
   return (
     <Column
       bg="neutral-25"
-      position="fixed"
-      top="0"
-      width="400px"
-      height="100vh"
-      zIndex={20}
+      width="100%"
+      height="100%"
       borderLeft={`1px solid ${tokenVar('color', 'ui-200')}`}
-      transition="right 300ms ease"
-      styles={{
-        right: aiStore.isOpen() ? '0' : '-400px',
-        'box-shadow': aiStore.isOpen() ? '-4px 0 24px rgba(0,0,0,0.08)' : 'none',
-      }}
       data-testid="chat-panel"
       onKeyDown={(e: KeyboardEvent) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') {

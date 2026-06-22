@@ -1,0 +1,191 @@
+import { Column, Row } from '@we/components/solid';
+import { tokenVar } from '@we/design-utils';
+import { createSignal, JSX } from 'solid-js';
+
+import { useAiStore } from '../../stores/AiStore';
+import { AiChatPanel } from './AiChatPanel';
+import { CodePanel } from './CodePanel';
+
+export const RAIL_STRIP_WIDTH = 32; // px per strip
+export const TOTAL_RAIL_WIDTH = RAIL_STRIP_WIDTH * 2; // code + ai strips
+
+/**
+ * True while any panel rail is being dragged to resize. Module-level so
+ * TemplateLayout and TemplateToolbar can disable their CSS transitions during
+ * drag, keeping the canvas edge in sync with the panel edge.
+ */
+export const [panelResizing, setPanelResizing] = createSignal(false);
+
+/** Minimum pixel movement before a mousedown is treated as a drag rather than a click. */
+const DRAG_THRESHOLD_PX = 5;
+
+interface PanelUnitProps {
+  icon: string;
+  tooltip: string;
+  isOpen: () => boolean;
+  panelWidth: () => number;
+  toggle: () => void;
+  setPanelWidth: (w: number) => void;
+  children: JSX.Element;
+}
+
+/**
+ * A panel paired with its rail — the thin handle on the panel's left edge.
+ *
+ * The rail serves two purposes:
+ *   - Short press (< DRAG_THRESHOLD_PX of movement): toggles the panel open/closed.
+ *   - Drag left/right: resizes the panel width.
+ *
+ * The CSS transition is disabled during drag so the panel tracks the cursor
+ * exactly without lag, then re-enabled on release so open/close still animates.
+ */
+function PanelUnit(props: PanelUnitProps) {
+  // Controls whether the width transition is active. Disabled during drag to
+  // prevent the CSS animation fighting against live mousemove updates.
+  const [resizing, setResizing] = createSignal(false);
+  let startX = 0;
+  let startWidth = 0;
+  let moved = false; // plain boolean — no reactive overhead needed
+
+  function onMouseDown(e: MouseEvent) {
+    e.preventDefault();
+    startX = e.clientX;
+    const openAtStart = props.isOpen(); // capture once — avoids reading a stale closure
+    // When closed, treat start width as 0 so the panel grows from the drag position
+    // rather than jumping to the previously stored width.
+    startWidth = openAtStart ? props.panelWidth() : 0;
+    moved = false;
+
+    const onMove = (e: MouseEvent) => {
+      // positive delta = mouse moved left = panel grows wider
+      const delta = startX - e.clientX;
+
+      if (!moved) {
+        if (Math.abs(delta) < DRAG_THRESHOLD_PX) return; // not yet a drag
+        moved = true;
+        setResizing(true); // disable local panel transition — fires only once per drag
+        setPanelResizing(true); // disable canvas/toolbar transitions — fires only once per drag
+        // Drag left on a closed panel → open it before the first width update
+        if (!openAtStart && delta > 0) props.toggle();
+      }
+
+      if (props.isOpen()) {
+        // When dragging from closed, skip the minimum so the panel tracks the cursor
+        // exactly from the start. The minimum is enforced on mouseup instead.
+        const min = openAtStart ? 240 : 1;
+        props.setPanelWidth(Math.max(min, Math.min(900, startWidth + delta)));
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      setResizing(false); // re-enable local transition for open/close animation
+      setPanelResizing(false); // re-enable canvas/toolbar transitions
+      if (!moved) {
+        props.toggle(); // short press = click → toggle
+      } else if (!openAtStart && props.isOpen() && props.panelWidth() < 240) {
+        // Released below minimum after drag-from-closed: snap to minimum.
+        // Transition is re-enabled above so this animates in smoothly.
+        props.setPanelWidth(240);
+      }
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  return (
+    <Row height="100%" styles={{ 'flex-shrink': '0', 'user-select': 'none' }}>
+      {/* Rail — always visible in edit mode, handles both click (toggle) and drag (resize) */}
+      <we-tooltip title={props.tooltip} placement="left">
+        <Column
+          width={`${RAIL_STRIP_WIDTH}px`}
+          height="100vh"
+          ax="center"
+          ay="center"
+          bg={props.isOpen() ? 'neutral-100' : 'neutral-50'}
+          borderLeft={`1px solid ${tokenVar('color', 'neutral-200')}`}
+          hoverProps={{ bg: 'neutral-100' }}
+          styles={{ cursor: 'ew-resize', 'flex-shrink': '0' }}
+          onMouseDown={onMouseDown}
+        >
+          <we-icon name={props.icon} size="sm" color={props.isOpen() ? 'neutral-700' : 'neutral-400'} />
+        </Column>
+      </we-tooltip>
+
+      {/* Panel content — slides out to the right of its rail on open */}
+      <div
+        style={{
+          width: props.isOpen() ? `${props.panelWidth()}px` : '0px',
+          'min-width': '0px',
+          overflow: 'hidden',
+          // Only animate during open/close clicks. During drag the transition is
+          // disabled so the outer clip boundary matches the inner content exactly,
+          // preventing the "content overflows then jumps" artifact.
+          transition: resizing() ? 'none' : 'width 300ms ease',
+          'flex-shrink': '0',
+        }}
+      >
+        {/* Inner div holds the panel at its full layout width while the outer clips it.
+            This prevents panel content from being squished to 0 during close animation. */}
+        <div style={{ width: `${props.panelWidth()}px`, height: '100%' }}>{props.children}</div>
+      </div>
+    </Row>
+  );
+}
+
+export function RightPanelContainer() {
+  const aiStore = useAiStore();
+
+  // When not in edit mode, translate the entire container off-screen to the
+  // right by exactly its own width. This keeps the transform-based slide
+  // perfectly in sync with the canvas's right-offset transition: both move
+  // the same number of pixels over the same 300ms ease, so the rail left edge
+  // and the canvas right edge track each other throughout. pointer-events is
+  // disabled during the exit slide so the departing rails don't capture clicks.
+  const containerTransform = () => {
+    if (aiStore.isEditMode()) return 'translateX(0)';
+    let w = TOTAL_RAIL_WIDTH;
+    if (aiStore.isOpen()) w += aiStore.aiPanelWidth();
+    if (aiStore.codePanelOpen()) w += aiStore.codePanelWidth();
+    return `translateX(${w}px)`;
+  };
+
+  return (
+    <Row
+      position="fixed"
+      top="0"
+      right="0"
+      height="100vh"
+      zIndex={20}
+      styles={{
+        transform: containerTransform(),
+        transition: panelResizing() ? 'none' : 'transform 300ms ease',
+        'pointer-events': aiStore.isEditMode() ? 'auto' : 'none',
+      }}
+    >
+      <PanelUnit
+        icon="code"
+        tooltip="Code editor"
+        isOpen={() => aiStore.codePanelOpen()}
+        panelWidth={() => aiStore.codePanelWidth()}
+        toggle={() => aiStore.toggleCodePanel()}
+        setPanelWidth={(w) => aiStore.setCodePanelWidth(w)}
+      >
+        <CodePanel />
+      </PanelUnit>
+
+      <PanelUnit
+        icon="chat-circle"
+        tooltip="AI chat"
+        isOpen={() => aiStore.isOpen()}
+        panelWidth={() => aiStore.aiPanelWidth()}
+        toggle={() => aiStore.toggle()}
+        setPanelWidth={(w) => aiStore.setAiPanelWidth(w)}
+      >
+        <AiChatPanel />
+      </PanelUnit>
+    </Row>
+  );
+}

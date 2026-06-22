@@ -67,9 +67,9 @@ export interface AiStore {
   switchSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;
 
-  // --- Content mode (preview / visual / code) ---
-  contentMode: Accessor<'preview' | 'visual' | 'code'>;
-  setContentMode: (mode: 'preview' | 'visual' | 'code') => void;
+  // --- Content mode (preview / visual) ---
+  contentMode: Accessor<'preview' | 'visual'>;
+  setContentMode: (mode: 'preview' | 'visual') => void;
   schemaJson: Accessor<string>;
   onSchemaEdit: (json: string) => void;
 
@@ -91,10 +91,22 @@ export interface AiStore {
   enterEditMode: (action?: 'edit' | 'fork' | 'fresh') => void;
   exitEditMode: () => void;
 
-  // --- Panel control ---
+  // --- Panel control (AI chat) ---
   toggle: () => void;
   open: () => void;
   close: () => void;
+
+  // --- Code panel ---
+  codePanelOpen: Accessor<boolean>;
+  toggleCodePanel: () => void;
+  openCodePanel: () => void;
+  closeCodePanel: () => void;
+
+  // --- Panel widths (persisted) ---
+  aiPanelWidth: Accessor<number>;
+  codePanelWidth: Accessor<number>;
+  setAiPanelWidth: (w: number) => void;
+  setCodePanelWidth: (w: number) => void;
 
   // --- Chat actions ---
   sendMessage: (text: string) => Promise<void>;
@@ -279,7 +291,7 @@ export function AiStoreProvider(props: ParentProps) {
   let activeSessionModel: ChatSessionModel | null = null;
 
   // --- Content mode (preview / visual / code) ---
-  const [contentMode, setContentMode] = createSignal<'preview' | 'visual' | 'code'>('preview');
+  const [contentMode, setContentMode] = createSignal<'preview' | 'visual'>('preview');
   const schemaJson = () => JSON.stringify(templateStore.currentTemplate, null, 2);
 
   // --- Template context (computed) ---
@@ -545,6 +557,7 @@ export function AiStoreProvider(props: ParentProps) {
     setIsEditMode(false);
     setEditAction(null);
     setIsOpen(false);
+    setCodePanelOpen(false);
     setContentMode('preview');
   }
 
@@ -559,6 +572,39 @@ export function AiStoreProvider(props: ParentProps) {
   }
   function close() {
     setIsOpen(false);
+  }
+
+  // Code panel
+  const [codePanelOpen, setCodePanelOpen] = createSignal(false);
+  function toggleCodePanel() {
+    setCodePanelOpen((v) => !v);
+  }
+  function openCodePanel() {
+    setCodePanelOpen(true);
+  }
+  function closeCodePanel() {
+    setCodePanelOpen(false);
+  }
+
+  // Panel widths — signal updates immediately; localStorage write is debounced to avoid
+  // blocking the main thread on every mousemove pixel during drag-to-resize.
+  const [aiPanelWidth, setAiPanelWidthSignal] = createSignal(
+    parseInt(localStorage.getItem('we-ai-panel-width') ?? '400', 10),
+  );
+  const [codePanelWidth, setCodePanelWidthSignal] = createSignal(
+    parseInt(localStorage.getItem('we-code-panel-width') ?? '480', 10),
+  );
+  let aiWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
+  let codeWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
+  function setAiPanelWidth(w: number) {
+    setAiPanelWidthSignal(w);
+    clearTimeout(aiWidthPersistTimer);
+    aiWidthPersistTimer = setTimeout(() => localStorage.setItem('we-ai-panel-width', String(w)), 500);
+  }
+  function setCodePanelWidth(w: number) {
+    setCodePanelWidthSignal(w);
+    clearTimeout(codeWidthPersistTimer);
+    codeWidthPersistTimer = setTimeout(() => localStorage.setItem('we-code-panel-width', String(w)), 500);
   }
 
   // ----------------------------------------------------------------
@@ -1353,10 +1399,22 @@ export function AiStoreProvider(props: ParentProps) {
     enterEditMode,
     exitEditMode,
 
-    // Panel control
+    // Panel control (AI chat)
     toggle,
     open,
     close,
+
+    // Code panel
+    codePanelOpen,
+    toggleCodePanel,
+    openCodePanel,
+    closeCodePanel,
+
+    // Panel widths
+    aiPanelWidth,
+    codePanelWidth,
+    setAiPanelWidth,
+    setCodePanelWidth,
 
     // Chat actions
     sendMessage,

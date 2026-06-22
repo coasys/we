@@ -4,6 +4,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'so
 import { useAiStore } from '../../stores/AiStore';
 import { useSpaceStore } from '../../stores/SpaceStore';
 import { useTemplateStore } from '../../stores/TemplateStore';
+import { panelResizing, TOTAL_RAIL_WIDTH } from './RightPanelContainer';
 
 export function TemplateToolbar() {
   const templateStore = useTemplateStore();
@@ -80,8 +81,16 @@ export function TemplateToolbar() {
     return 'pencil-simple';
   };
 
-  // Slide the whole row left when the AI panel is open
-  const rowRight = () => (aiStore.isOpen() ? '410px' : '10px');
+  // Keep the toolbar clear of the right panel area (rail + any open panels)
+  const rowRight = () => {
+    let offset = 10;
+    if (aiStore.isEditMode()) {
+      offset += TOTAL_RAIL_WIDTH;
+      if (aiStore.isOpen()) offset += aiStore.aiPanelWidth();
+      if (aiStore.codePanelOpen()) offset += aiStore.codePanelWidth();
+    }
+    return `${offset}px`;
+  };
 
   async function handlePickerConfirm() {
     const name = pickerName().trim();
@@ -101,7 +110,7 @@ export function TemplateToolbar() {
         ref={containerRef}
         position="absolute"
         top="10px"
-        styles={{ right: rowRight(), transition: 'right 300ms ease' }}
+        styles={{ right: rowRight(), transition: panelResizing() ? 'none' : 'right 300ms ease' }}
         pointerEvents="auto"
         ay="start"
         gap="200"
@@ -128,18 +137,6 @@ export function TemplateToolbar() {
                 <we-icon name="pencil-ruler" />
               </we-button>
             </we-tooltip>
-            <we-tooltip title="Code editor" placement="bottom">
-              <we-button
-                variant={aiStore.contentMode() === 'code' ? 'secondary' : 'ghost'}
-                square
-                onClick={() => aiStore.setContentMode('code')}
-              >
-                <we-icon name="code" />
-              </we-button>
-            </we-tooltip>
-
-            <we-divider orientation="vertical" color="neutral-200" height="28px" />
-
             {/* Undo / Redo */}
             <we-tooltip title="Undo" placement="bottom">
               <we-button variant="ghost" square disabled={!aiStore.canUndo()} onClick={() => aiStore.undo()}>
@@ -158,13 +155,6 @@ export function TemplateToolbar() {
             <we-tooltip title="Publish" placement="bottom">
               <we-button variant="ghost" square disabled>
                 <we-icon name="upload-simple" />
-              </we-button>
-            </we-tooltip>
-
-            {/* AI chat toggle */}
-            <we-tooltip title="AI chat" placement="bottom">
-              <we-button variant={aiStore.isOpen() ? 'secondary' : 'ghost'} square onClick={() => aiStore.toggle()}>
-                <we-icon name="chat-circle" />
               </we-button>
             </we-tooltip>
           </Row>

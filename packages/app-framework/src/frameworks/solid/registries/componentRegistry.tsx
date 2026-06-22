@@ -53,6 +53,7 @@ import { CesiumGlobe, CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSideb
 import WeCube from '../components/3d/WeCube';
 import { BenchmarkTimer } from '../components/BenchmarkTimer';
 import { AiChatPanel } from '../components/template-editor/AiChatPanel';
+import { RightPanelContainer } from '../components/template-editor/RightPanelContainer';
 import { TemplateToolbar } from '../components/template-editor/TemplateToolbar';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,6 +93,7 @@ export const componentRegistry: ComponentRegistry = {
 
   // @we/widgets
   AiChatPanel,
+  RightPanelContainer,
   SpaceSidebarWidget,
   CollapsibleSidebar,
   CesiumGlobe: (props) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
