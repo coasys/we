@@ -102,6 +102,27 @@ export const templatesList: SchemaNode = {
                           },
                         },
                       },
+                      // Delete — only the template author
+                      {
+                        type: '$if',
+                        props: {
+                          condition: {
+                            $eq: ['$template.author', { $store: 'adamStore.me.did' }],
+                          },
+                          then: {
+                            type: 'we-button',
+                            props: {
+                              variant: 'ghost',
+                              size: 'sm',
+                              onClick: {
+                                $action: 'model.delete',
+                                args: ['Template', '$template.id'],
+                              },
+                            },
+                            children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                          },
+                        },
+                      },
                     ],
                   },
                 ],

@@ -12,16 +12,42 @@ const templateCard: SchemaNode = {
     transition: 'box-shadow 150ms ease',
   },
   children: [
-    // Header: icon + name
+    // Header: icon + name + delete
     {
       type: 'Row',
-      props: { gap: '300', ay: 'center' },
+      props: { ay: 'center', ax: 'between' },
       children: [
-        { type: 'we-icon', props: { name: 'layout', size: 'md', color: 'primary-500' } },
         {
-          type: 'we-text',
-          props: { fontWeight: '600', truncate: true },
-          children: ['$template.name'],
+          type: 'Row',
+          props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
+          children: [
+            { type: 'we-icon', props: { name: 'layout', size: 'md', color: 'primary-500' } },
+            {
+              type: 'we-text',
+              props: { fontWeight: '600', truncate: true },
+              children: ['$template.name'],
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: {
+              $eq: ['$template.author', { $store: 'adamStore.me.did' }],
+            },
+            then: {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                size: 'sm',
+                onClick: {
+                  $action: 'model.delete',
+                  args: ['Template', '$template.id', { perspective: 'adamStore.marketplacePerspective' }],
+                },
+              },
+              children: [{ type: 'we-icon', props: { name: 'trash' } }],
+            },
+          },
         },
       ],
     },
