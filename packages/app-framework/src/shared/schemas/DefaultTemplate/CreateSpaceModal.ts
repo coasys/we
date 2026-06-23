@@ -16,11 +16,7 @@ export const createSpaceModal = {
     discovery: { type: 'string', initial: 'hidden' },
     avatar: { type: 'file', initial: null },
     coverImage: { type: 'file', initial: null },
-    locationLat: { type: 'number', initial: null },
-    locationLng: { type: 'number', initial: null },
-    locationCity: { type: 'string', initial: '' },
-    locationCountry: { type: 'string', initial: '' },
-    locationCountryCode: { type: 'string', initial: '' },
+    location: { type: 'object', initial: null },
     submitting: { type: 'boolean', initial: false },
   },
   children: [
@@ -108,16 +104,10 @@ export const createSpaceModal = {
             {
               type: 'we-location-picker',
               props: {
-                latitude: { $local: 'locationLat' },
-                longitude: { $local: 'locationLng' },
+                latitude: { $local: 'location.latitude' },
+                longitude: { $local: 'location.longitude' },
                 placeholder: 'Pin your space on the globe…',
-                onChange: [
-                  { $setLocal: 'locationLat', from: '$event.detail.latitude' },
-                  { $setLocal: 'locationLng', from: '$event.detail.longitude' },
-                  { $setLocal: 'locationCity', from: '$event.detail.city' },
-                  { $setLocal: 'locationCountry', from: '$event.detail.country' },
-                  { $setLocal: 'locationCountryCode', from: '$event.detail.countryCode' },
-                ],
+                onChange: { $setLocal: 'location', from: '$event.detail' },
               },
             },
           ],
@@ -125,7 +115,7 @@ export const createSpaceModal = {
         {
           type: '$if',
           props: {
-            condition: { $local: 'locationLat' },
+            condition: { $local: 'location' },
             then: {
               type: 'Row',
               props: { gap: '400' },
@@ -137,9 +127,9 @@ export const createSpaceModal = {
                     {
                       type: 'we-input',
                       props: {
-                        value: { $local: 'locationCity' },
+                        value: { $local: 'location.city' },
                         placeholder: 'City…',
-                        onInput: { $setLocal: 'locationCity', from: '$event.detail' },
+                        onInput: { $setLocal: 'location', merge: { city: '$event.detail' } },
                       },
                     },
                   ],
@@ -151,9 +141,9 @@ export const createSpaceModal = {
                     {
                       type: 'we-input',
                       props: {
-                        value: { $local: 'locationCountry' },
+                        value: { $local: 'location.country' },
                         placeholder: 'Country…',
-                        onInput: { $setLocal: 'locationCountry', from: '$event.detail' },
+                        onInput: { $setLocal: 'location', merge: { country: '$event.detail' } },
                       },
                     },
                   ],
@@ -366,11 +356,7 @@ export const createSpaceModal = {
                       { $local: 'discovery' },
                       { $local: 'avatar' },
                       { $local: 'coverImage' },
-                      { $local: 'locationLat' },
-                      { $local: 'locationLng' },
-                      { $local: 'locationCity' },
-                      { $local: 'locationCountry' },
-                      { $local: 'locationCountryCode' },
+                      { $local: 'location' },
                     ],
                     onSuccess: [{ $setLocal: 'createSpaceModalOpen', value: false }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],

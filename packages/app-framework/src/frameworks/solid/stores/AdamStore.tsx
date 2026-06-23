@@ -10,7 +10,7 @@ import { getModelClasses, getModelManifest } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
 import { installRootSdna, installSpaceSdna } from '@shared/sdnaModels';
-import { removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
+import { type LocationData, removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
 import { AgentSettings, compressImageToFileData, type FileData, LocationBlock, Space } from '@we/models';
 
 // Space.avatar/coverImage are typed as string (resolved data URI on read) but accept FileData on write.
@@ -77,11 +77,7 @@ export interface AdamStore {
     discovery: 'hidden' | 'listed',
     avatarFile?: File,
     coverImageFile?: File,
-    latitude?: number,
-    longitude?: number,
-    city?: string,
-    country?: string,
-    countryCode?: string,
+    location?: LocationData | null,
   ) => Promise<void>;
   removePerspective: (uuid: string) => Promise<void>;
   switchPerspective: (uuid: string) => Promise<void>;
@@ -921,11 +917,7 @@ export function AdamStoreProvider(props: ParentProps) {
     discovery: 'hidden' | 'listed',
     avatarFile?: File,
     coverImageFile?: File,
-    latitude?: number,
-    longitude?: number,
-    city?: string,
-    country?: string,
-    countryCode?: string,
+    location?: LocationData | null,
   ): Promise<void> {
     const client = adamClient();
     if (!client) return;
@@ -976,18 +968,7 @@ export function AdamStoreProvider(props: ParentProps) {
         ...(avatarData && { avatar: avatarData }),
         ...(coverImageData && { coverImage: coverImageData }),
       };
-      const locationName = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
-      const locationData =
-        latitude != null && longitude != null
-          ? {
-              latitude,
-              longitude,
-              ...(locationName && { name: locationName }),
-              ...(city && { city }),
-              ...(country && { country }),
-              ...(countryCode && { countryCode }),
-            }
-          : undefined;
+      const locationData = location ?? undefined;
 
       // Write to own perspective
       const spaceModel = await addSpaceToPerspective(spacePerspective, spaceData, locationData);
