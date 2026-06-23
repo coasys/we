@@ -134,7 +134,8 @@ export type QueryToken = {
 
 export type LocalStateField = {
   type: 'string' | 'boolean' | 'number' | 'file' | 'function' | 'object';
-  initial: string | boolean | number | null;
+  /** Literal seed value, or any schema expression token (e.g. { $store: '...' }) evaluated once at mount. */
+  initial: string | boolean | number | null | Record<string, unknown>;
   validate?: ValidationRule[];
 };
 

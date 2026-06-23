@@ -189,7 +189,7 @@ const zPropToken = z.union([
 
 const zLocalStateField = z.object({
   type: z.enum(['string', 'boolean', 'number', 'file', 'function', 'object']),
-  initial: z.union([z.string(), z.boolean(), z.number(), z.null()]),
+  initial: z.union([z.string(), z.boolean(), z.number(), z.null(), zPropToken]),
   validate: z.array(zValidationRule).optional(),
 });
 const zLocalStateDeclaration = z.record(z.string(), zLocalStateField);
