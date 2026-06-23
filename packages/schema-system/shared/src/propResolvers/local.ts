@@ -75,12 +75,13 @@ export function resolveLocalProp(value: { $local: string }, context: Props, memo
   return markReactive(memo(() => walkPath(accessor(), nestedPath)));
 }
 
-/** Resolves $setLocal tokens: { $setLocal: "name", from: "$event.target.value" } or { $setLocal: "name", value: <literal> } → event handler */
+/** Resolves $setLocal tokens: { $setLocal: "name", from: "$event.target.value" }, { $setLocal: "name", value: <literal> }, or { $setLocal: "name", merge: { field: "$event.detail" } } → event handler */
 export function resolveSetLocalProp(
-  value: { $setLocal: string; from?: string; value?: unknown },
+  value: { $setLocal: string; from?: string; value?: unknown; merge?: Record<string, unknown> },
   context: Props,
 ): (event: unknown) => void {
   const localSetters = context.$localSetters as Record<string, (v: unknown) => void> | undefined;
+  const localState = context.$local as Record<string, () => unknown> | undefined;
   if (!localSetters) {
     console.warn(`Schema $setLocal: no $localState in scope for "${value.$setLocal}"`);
     return () => {};
@@ -95,6 +96,18 @@ export function resolveSetLocalProp(
   if ('value' in value) {
     return () => {
       setter(value.value);
+    };
+  }
+  if ('merge' in value && value.merge) {
+    const getter = localState?.[value.$setLocal];
+    const mergeSpec = value.merge;
+    return (event: unknown) => {
+      const current = getter ? (getter() as Record<string, unknown> | null | undefined) : undefined;
+      const resolved: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(mergeSpec)) {
+        resolved[k] = typeof v === 'string' ? extractFromPath(event, v, context) : v;
+      }
+      setter({ ...(current ?? {}), ...resolved });
     };
   }
   return (event: unknown) => {

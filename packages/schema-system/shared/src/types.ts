@@ -155,7 +155,10 @@ export type MatchRule = { rule: 'match'; field: string; message?: string };
 export type ValidationRule = RequiredRule | MinLengthRule | MaxLengthRule | MinRule | MaxRule | PatternRule | MatchRule;
 
 export type LocalToken = { $local: string };
-export type SetLocalToken = { $setLocal: string; from: string } | { $setLocal: string; value: unknown };
+export type SetLocalToken =
+  | { $setLocal: string; from: string }
+  | { $setLocal: string; value: unknown }
+  | { $setLocal: string; merge: Record<string, unknown> };
 export type ErrorToken = { $error: string };
 export type ValidToken = { $valid: string };
 export type TouchedToken = { $touched: string };

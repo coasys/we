@@ -119,6 +119,7 @@ const zLocalToken = z.object({ $local: z.string().min(1) }).strict();
 const zSetLocalToken = z.union([
   z.object({ $setLocal: z.string().min(1), from: z.string().min(1) }).strict(),
   z.object({ $setLocal: z.string().min(1), value: z.unknown() }).strict(),
+  z.object({ $setLocal: z.string().min(1), merge: z.record(z.string(), z.unknown()) }).strict(),
 ]);
 const zErrorToken = z.object({ $error: z.string().min(1) }).strict();
 const zValidToken = z.object({ $valid: z.string().min(1) }).strict();
