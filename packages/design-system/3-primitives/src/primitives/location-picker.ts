@@ -67,22 +67,6 @@ const styles = css`
     color: var(--we-color-neutral-400);
   }
 
-  [part='clear'] {
-    all: unset;
-    cursor: pointer;
-    color: var(--we-color-neutral-400);
-    display: flex;
-    align-items: center;
-    line-height: 1;
-    padding: 2px;
-    border-radius: var(--we-radius-200);
-  }
-
-  [part='clear']:hover {
-    color: var(--we-color-neutral-600);
-    background: var(--we-color-neutral-100);
-  }
-
   [part='popover'] {
     position: fixed;
     z-index: var(--we-z-dropdown, 9999);
@@ -308,15 +292,6 @@ export default class LocationPicker extends DesignSystemElement {
     this._destroyMap();
   }
 
-  private _clear(e: Event) {
-    e.stopPropagation();
-    this.latitude = undefined;
-    this.longitude = undefined;
-    this._pendingLat = undefined;
-    this._pendingLng = undefined;
-    this.dispatchEvent(new CustomEvent('change', { detail: null, bubbles: true, composed: true }));
-  }
-
   private _formatCoords(lat: number, lng: number): string {
     const latStr = `${Math.abs(lat).toFixed(4)}°${lat >= 0 ? 'N' : 'S'}`;
     const lngStr = `${Math.abs(lng).toFixed(4)}°${lng >= 0 ? 'E' : 'W'}`;
@@ -357,23 +332,6 @@ export default class LocationPicker extends DesignSystemElement {
           ${hasValue
             ? html`<span part="label">${this._formatCoords(this.latitude!, this.longitude!)}</span>`
             : html`<span part="placeholder">${this.placeholder}</span>`}
-          ${hasValue
-            ? html`
-                <button part="clear" @click=${this._clear} title="Clear location" tabindex="0">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 256 256"
-                    fill="currentColor"
-                  >
-                    <path
-                      d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"
-                    />
-                  </svg>
-                </button>
-              `
-            : null}
         </button>
 
         ${this._open

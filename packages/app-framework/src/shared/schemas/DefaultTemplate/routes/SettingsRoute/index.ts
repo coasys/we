@@ -345,87 +345,24 @@ export const settingsRoute: RouteSchema = {
                         latitude: { $local: 'locationLat' },
                         longitude: { $local: 'locationLng' },
                         onChange: [
-                          // Null event fires internally before geocoding when picking a new pin —
-                          // only clear local state here, never touch the store (avoids race with confirm)
+                          { $setLocal: 'locationLat', from: '$event.detail.latitude' },
+                          { $setLocal: 'locationLng', from: '$event.detail.longitude' },
+                          { $setLocal: 'locationCity', from: '$event.detail.city' },
+                          { $setLocal: 'locationCountry', from: '$event.detail.country' },
+                          { $setLocal: 'locationCountryCode', from: '$event.detail.countryCode' },
                           {
-                            $if: {
-                              condition: { $not: '$event.detail' },
-                              then: { $setLocal: 'locationLat', value: null },
-                            },
-                          },
-                          {
-                            $if: {
-                              condition: { $not: '$event.detail' },
-                              then: { $setLocal: 'locationLng', value: null },
-                            },
-                          },
-                          {
-                            $if: {
-                              condition: { $not: '$event.detail' },
-                              then: { $setLocal: 'locationCity', value: '' },
-                            },
-                          },
-                          {
-                            $if: {
-                              condition: { $not: '$event.detail' },
-                              then: { $setLocal: 'locationCountry', value: '' },
-                            },
-                          },
-                          {
-                            $if: {
-                              condition: { $not: '$event.detail' },
-                              then: { $setLocal: 'locationCountryCode', value: '' },
-                            },
-                          },
-                          // Confirm — populate local state then save to store
-                          {
-                            $if: {
-                              condition: '$event.detail',
-                              then: { $setLocal: 'locationLat', from: '$event.detail.latitude' },
-                            },
-                          },
-                          {
-                            $if: {
-                              condition: '$event.detail',
-                              then: { $setLocal: 'locationLng', from: '$event.detail.longitude' },
-                            },
-                          },
-                          {
-                            $if: {
-                              condition: '$event.detail',
-                              then: { $setLocal: 'locationCity', from: '$event.detail.city' },
-                            },
-                          },
-                          {
-                            $if: {
-                              condition: '$event.detail',
-                              then: { $setLocal: 'locationCountry', from: '$event.detail.country' },
-                            },
-                          },
-                          {
-                            $if: {
-                              condition: '$event.detail',
-                              then: { $setLocal: 'locationCountryCode', from: '$event.detail.countryCode' },
-                            },
-                          },
-                          {
-                            $if: {
-                              condition: '$event.detail',
-                              then: {
-                                $action: 'spaceStore.updateSpaceMeta',
-                                args: [
-                                  {
-                                    location: {
-                                      latitude: { $local: 'locationLat' },
-                                      longitude: { $local: 'locationLng' },
-                                      city: { $local: 'locationCity' },
-                                      country: { $local: 'locationCountry' },
-                                      countryCode: { $local: 'locationCountryCode' },
-                                    },
-                                  },
-                                ],
+                            $action: 'spaceStore.updateSpaceMeta',
+                            args: [
+                              {
+                                location: {
+                                  latitude: { $local: 'locationLat' },
+                                  longitude: { $local: 'locationLng' },
+                                  city: { $local: 'locationCity' },
+                                  country: { $local: 'locationCountry' },
+                                  countryCode: { $local: 'locationCountryCode' },
+                                },
                               },
-                            },
+                            ],
                           },
                         ],
                       },
