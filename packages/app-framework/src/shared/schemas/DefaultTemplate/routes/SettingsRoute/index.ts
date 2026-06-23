@@ -56,17 +56,7 @@ const saveLocationOnBlur = [
       condition: { $local: 'locationDirty' },
       then: {
         $action: 'spaceStore.updateSpaceMeta',
-        args: [
-          {
-            location: {
-              latitude: { $local: 'locationLat' },
-              longitude: { $local: 'locationLng' },
-              city: { $local: 'locationCity' },
-              country: { $local: 'locationCountry' },
-              countryCode: { $local: 'locationCountryCode' },
-            },
-          },
-        ],
+        args: [{ location: { $local: 'location' } }],
         onFinally: [{ $setLocal: 'locationDirty', value: false }],
       },
     },
@@ -100,56 +90,7 @@ export const settingsRoute: RouteSchema = {
     editDescription: { type: 'string', initial: { $store: 'spaceStore.currentSpace.description' } },
     saving: { type: 'boolean', initial: false },
     isDirty: { type: 'boolean', initial: false },
-    locationCity: {
-      type: 'string',
-      initial: {
-        $if: {
-          condition: { $store: 'spaceStore.currentSpace.location' },
-          then: { $store: 'spaceStore.currentSpace.location.city' },
-          else: '',
-        },
-      },
-    },
-    locationCountry: {
-      type: 'string',
-      initial: {
-        $if: {
-          condition: { $store: 'spaceStore.currentSpace.location' },
-          then: { $store: 'spaceStore.currentSpace.location.country' },
-          else: '',
-        },
-      },
-    },
-    locationCountryCode: {
-      type: 'string',
-      initial: {
-        $if: {
-          condition: { $store: 'spaceStore.currentSpace.location' },
-          then: { $store: 'spaceStore.currentSpace.location.countryCode' },
-          else: '',
-        },
-      },
-    },
-    locationLat: {
-      type: 'number',
-      initial: {
-        $if: {
-          condition: { $store: 'spaceStore.currentSpace.location' },
-          then: { $store: 'spaceStore.currentSpace.location.latitude' },
-          else: null,
-        },
-      },
-    },
-    locationLng: {
-      type: 'number',
-      initial: {
-        $if: {
-          condition: { $store: 'spaceStore.currentSpace.location' },
-          then: { $store: 'spaceStore.currentSpace.location.longitude' },
-          else: null,
-        },
-      },
-    },
+    location: { type: 'object', initial: { $store: 'spaceStore.currentSpace.location' } },
     locationDirty: { type: 'boolean', initial: false },
   },
   children: [
@@ -342,27 +283,13 @@ export const settingsRoute: RouteSchema = {
                     {
                       type: 'we-location-picker',
                       props: {
-                        latitude: { $local: 'locationLat' },
-                        longitude: { $local: 'locationLng' },
+                        latitude: { $local: 'location.latitude' },
+                        longitude: { $local: 'location.longitude' },
                         onChange: [
-                          { $setLocal: 'locationLat', from: '$event.detail.latitude' },
-                          { $setLocal: 'locationLng', from: '$event.detail.longitude' },
-                          { $setLocal: 'locationCity', from: '$event.detail.city' },
-                          { $setLocal: 'locationCountry', from: '$event.detail.country' },
-                          { $setLocal: 'locationCountryCode', from: '$event.detail.countryCode' },
+                          { $setLocal: 'location', from: '$event.detail' },
                           {
                             $action: 'spaceStore.updateSpaceMeta',
-                            args: [
-                              {
-                                location: {
-                                  latitude: { $local: 'locationLat' },
-                                  longitude: { $local: 'locationLng' },
-                                  city: { $local: 'locationCity' },
-                                  country: { $local: 'locationCountry' },
-                                  countryCode: { $local: 'locationCountryCode' },
-                                },
-                              },
-                            ],
+                            args: [{ location: { $local: 'location' } }],
                           },
                         ],
                       },
@@ -372,7 +299,7 @@ export const settingsRoute: RouteSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $local: 'locationLat' },
+                    condition: { $local: 'location' },
                     then: {
                       type: 'Column',
                       props: { gap: '300' },
@@ -388,10 +315,10 @@ export const settingsRoute: RouteSchema = {
                                 {
                                   type: 'we-input',
                                   props: {
-                                    value: { $local: 'locationCity' },
+                                    value: { $local: 'location.city' },
                                     placeholder: 'City…',
                                     onInput: [
-                                      { $setLocal: 'locationCity', from: '$event.detail' },
+                                      { $setLocal: 'location', merge: { city: '$event.detail' } },
                                       { $setLocal: 'locationDirty', value: true },
                                     ],
                                     onBlur: saveLocationOnBlur,
@@ -406,10 +333,10 @@ export const settingsRoute: RouteSchema = {
                                 {
                                   type: 'we-input',
                                   props: {
-                                    value: { $local: 'locationCountry' },
+                                    value: { $local: 'location.country' },
                                     placeholder: 'Country…',
                                     onInput: [
-                                      { $setLocal: 'locationCountry', from: '$event.detail' },
+                                      { $setLocal: 'location', merge: { country: '$event.detail' } },
                                       { $setLocal: 'locationDirty', value: true },
                                     ],
                                     onBlur: saveLocationOnBlur,
@@ -425,11 +352,7 @@ export const settingsRoute: RouteSchema = {
                             variant: 'ghost',
                             size: 'sm',
                             onClick: [
-                              { $setLocal: 'locationLat', value: null },
-                              { $setLocal: 'locationLng', value: null },
-                              { $setLocal: 'locationCity', value: '' },
-                              { $setLocal: 'locationCountry', value: '' },
-                              { $setLocal: 'locationCountryCode', value: '' },
+                              { $setLocal: 'location', value: null },
                               { $action: 'spaceStore.updateSpaceMeta', args: [{ location: null }] },
                             ],
                           },

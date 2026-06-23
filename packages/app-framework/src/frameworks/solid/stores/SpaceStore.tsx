@@ -157,7 +157,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function updateSpaceMeta(updates: SpaceMetaUpdate): Promise<void> {
-    console.log('[SpaceStore] updateSpaceMeta called with:', JSON.stringify(updates, null, 2));
     const currentPerspective = adamStore.currentPerspective();
     if (!currentPerspective) return;
 
@@ -166,8 +165,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       include: { location: true },
     });
     if (!spaceModel) return;
-
-    console.log('[SpaceStore] existing spaceModel.location:', spaceModel.location);
 
     const previousDiscovery = spaceModel.discovery;
 
@@ -178,37 +175,21 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     if (updates.location !== undefined) {
       if (updates.location === null) {
-        console.log('[SpaceStore] deleting location');
-        // Use findAll for a directly-fetched instance — included reference doesn't support delete()
-        const allLocs = await LocationBlock.findAll(currentPerspective);
-        console.log(
-          '[SpaceStore] LocationBlock.findAll for delete found:',
-          allLocs.length,
-          'ids:',
-          allLocs.map((l) => l.id),
-        );
-        const [existingLoc] = allLocs;
+        const [existingLoc] = await LocationBlock.findAll(currentPerspective);
         if (existingLoc) {
           try {
             await existingLoc.delete();
-            console.log('[SpaceStore] location deleted successfully');
           } catch (err) {
             console.error('[SpaceStore] location delete failed:', err);
           }
-        } else {
-          console.log('[SpaceStore] no LocationBlock found to delete');
         }
       } else {
         const loc = updates.location;
-        console.log('[SpaceStore] saving location:', JSON.stringify(loc));
         // Always delete + recreate so setLocation updates the Space's we://location triple,
         // which triggers the reactive currentSpace subscription to re-query with fresh data.
         // LocationBlock.update only changes nested triples and doesn't trigger the Space query.
         const [existingLoc] = await LocationBlock.findAll(currentPerspective);
-        if (existingLoc) {
-          console.log('[SpaceStore] deleting old LocationBlock before recreate');
-          await existingLoc.delete();
-        }
+        if (existingLoc) await existingLoc.delete();
         await LocationBlock.register(currentPerspective);
         const newLoc = await LocationBlock.create(currentPerspective, {
           latitude: loc.latitude,
@@ -219,7 +200,6 @@ export function SpaceStoreProvider(props: ParentProps) {
           ...(loc.countryCode && { countryCode: loc.countryCode }),
         });
         await spaceModel.setLocation(newLoc);
-        console.log('[SpaceStore] LocationBlock saved:', JSON.stringify(newLoc));
       }
     }
 
