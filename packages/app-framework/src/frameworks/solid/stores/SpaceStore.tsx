@@ -25,7 +25,7 @@ export interface SpaceMetaUpdate {
   name?: string;
   description?: string;
   discovery?: 'listed' | 'hidden';
-  location?: LocationData;
+  location?: LocationData | null;
 }
 
 export interface SpaceStore {
@@ -157,6 +157,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function updateSpaceMeta(updates: SpaceMetaUpdate): Promise<void> {
+    console.log('[SpaceStore] updateSpaceMeta called with:', JSON.stringify(updates, null, 2));
     const currentPerspective = adamStore.currentPerspective();
     if (!currentPerspective) return;
 
@@ -166,6 +167,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     });
     if (!spaceModel) return;
 
+    console.log('[SpaceStore] existing spaceModel.location:', spaceModel.location);
+
     const previousDiscovery = spaceModel.discovery;
 
     if (updates.name !== undefined) spaceModel.name = updates.name;
@@ -174,17 +177,39 @@ export function SpaceStoreProvider(props: ParentProps) {
     await spaceModel.save();
 
     if (updates.location !== undefined) {
-      const loc = updates.location;
-      await LocationBlock.register(currentPerspective);
-      if (spaceModel.location) {
-        spaceModel.location.latitude = loc.latitude;
-        spaceModel.location.longitude = loc.longitude;
-        if (loc.name !== undefined) spaceModel.location.name = loc.name;
-        if (loc.city !== undefined) spaceModel.location.city = loc.city;
-        if (loc.country !== undefined) spaceModel.location.country = loc.country;
-        if (loc.countryCode !== undefined) spaceModel.location.countryCode = loc.countryCode;
-        await spaceModel.location.save();
+      if (updates.location === null) {
+        console.log('[SpaceStore] deleting location');
+        // Use findAll for a directly-fetched instance — included reference doesn't support delete()
+        const allLocs = await LocationBlock.findAll(currentPerspective);
+        console.log(
+          '[SpaceStore] LocationBlock.findAll for delete found:',
+          allLocs.length,
+          'ids:',
+          allLocs.map((l) => l.id),
+        );
+        const [existingLoc] = allLocs;
+        if (existingLoc) {
+          try {
+            await existingLoc.delete();
+            console.log('[SpaceStore] location deleted successfully');
+          } catch (err) {
+            console.error('[SpaceStore] location delete failed:', err);
+          }
+        } else {
+          console.log('[SpaceStore] no LocationBlock found to delete');
+        }
       } else {
+        const loc = updates.location;
+        console.log('[SpaceStore] saving location:', JSON.stringify(loc));
+        // Always delete + recreate so setLocation updates the Space's we://location triple,
+        // which triggers the reactive currentSpace subscription to re-query with fresh data.
+        // LocationBlock.update only changes nested triples and doesn't trigger the Space query.
+        const [existingLoc] = await LocationBlock.findAll(currentPerspective);
+        if (existingLoc) {
+          console.log('[SpaceStore] deleting old LocationBlock before recreate');
+          await existingLoc.delete();
+        }
+        await LocationBlock.register(currentPerspective);
         const newLoc = await LocationBlock.create(currentPerspective, {
           latitude: loc.latitude,
           longitude: loc.longitude,
@@ -194,6 +219,7 @@ export function SpaceStoreProvider(props: ParentProps) {
           ...(loc.countryCode && { countryCode: loc.countryCode }),
         });
         await spaceModel.setLocation(newLoc);
+        console.log('[SpaceStore] LocationBlock saved:', JSON.stringify(newLoc));
       }
     }
 
@@ -202,7 +228,10 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     const effectiveDiscovery = updates.discovery ?? previousDiscovery;
     if (effectiveDiscovery === 'listed') {
-      await syncSpaceToParent(spaceModel, globalP).catch((err) =>
+      // Pass locationData explicitly when location changed — the included spaceModel.location
+      // snapshot is stale after our delete+recreate. null signals explicit removal to syncSpaceToParent.
+      const syncOpts = updates.location !== undefined ? { locationData: updates.location } : {};
+      await syncSpaceToParent(spaceModel, globalP, syncOpts).catch((err) =>
         console.error('SpaceStore: sync meta to global failed', err),
       );
     } else if (previousDiscovery === 'listed') {
