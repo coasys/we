@@ -1106,6 +1106,19 @@ export function AdamStoreProvider(props: ParentProps) {
     if (!client) return;
 
     try {
+      const globalP = globalPerspective();
+      const myDid = me()?.did;
+      if (globalP && myDid) {
+        // Only remove from global discovery if the current user is the author of that
+        // space entry — a peer who joined and later deletes their local copy should not
+        // affect the global listing.
+        const spaceInGlobal = await Space.findOne(globalP, { where: { uuid } }).catch(() => null);
+        if (spaceInGlobal && spaceInGlobal.author === myDid) {
+          await removeSpaceFromParent(uuid, globalP).catch((err) =>
+            console.error('AdamStore: removeSpaceFromParent on delete error', err),
+          );
+        }
+      }
       await client.perspective.remove(uuid);
       setAllPerspectives((prev) => prev.filter((p) => p.uuid !== uuid));
       setMySpaces((prev) => prev.filter((s) => s.uuid !== uuid));
