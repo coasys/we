@@ -10,7 +10,6 @@ export {
   type CollapsibleSidebarItem,
 } from '../../widgets/sidebars/CollapsibleSidebar';
 
-
 // Cesium
 export { CesiumGlobe, type CesiumGlobeProps } from '../../widgets/cesium/CesiumGlobe/CesiumGlobe.solid';
 export type {

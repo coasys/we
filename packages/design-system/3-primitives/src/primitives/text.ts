@@ -27,12 +27,10 @@ const styles = css`
     /* we-text is a content primitive often nested inside interactive components (e.g. we-button)
        that animate color. Excluding color here prevents we-text from starting its own
        independent ease curve on the inherited color value, which would compound the easing. */
-    --we-text-transition: background var(--we-transition-200, 150ms) ease,
-      border-color var(--we-transition-200, 150ms) ease,
-      opacity var(--we-transition-200, 150ms) ease,
-      box-shadow var(--we-transition-200, 150ms) ease,
-      transform var(--we-transition-200, 150ms) ease,
-      border-radius var(--we-transition-200, 150ms) ease;
+    --we-text-transition:
+      background var(--we-transition-200, 150ms) ease, border-color var(--we-transition-200, 150ms) ease,
+      opacity var(--we-transition-200, 150ms) ease, box-shadow var(--we-transition-200, 150ms) ease,
+      transform var(--we-transition-200, 150ms) ease, border-radius var(--we-transition-200, 150ms) ease;
   }
 
   :host([uppercase]) {

@@ -146,6 +146,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
         class="we-collapsible-sidebar__item"
         onClick={() => handleItemClick(getItem())}
         disabled={isDisabled()}
+        variant="ghost"
         height="auto"
         size="lg"
         width="100%"
@@ -295,7 +296,13 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
 
   return (
     <CollapsibleSidebarContext.Provider value={contextValue}>
-      <div ref={sidebarRef} class={classes()} style={cssVars()} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+      <div
+        ref={sidebarRef}
+        class={classes()}
+        style={cssVars()}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
         {/* Header slot */}
         <Show when={props.header}>{props.header}</Show>
 
