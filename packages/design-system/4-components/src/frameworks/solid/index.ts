@@ -21,6 +21,11 @@ export { PostCard, type PostCardProps } from '../../components/cards/PostCard/Po
 
 // Inputs
 export { SearchInput, type SearchInputProps } from '../../components/inputs/SearchInput/SearchInput.solid';
+export {
+  GroupedSelect,
+  type GroupedSelectOption,
+  type GroupedSelectProps,
+} from '../../components/inputs/GroupedSelect/GroupedSelect.solid';
 
 // Buttons
 export { CircleButton, type CircleButtonProps } from '../../components/buttons/CircleButton/CircleButton.solid';

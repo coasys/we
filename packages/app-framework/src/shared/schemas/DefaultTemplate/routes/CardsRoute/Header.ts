@@ -1,23 +1,23 @@
 import type { SchemaNode } from '@we/schema-shared';
 
 const contentTypeOptions = [
-  { label: 'Posts', value: 'posts' },
-  { label: 'Users', value: 'users' },
-  { label: 'Spaces', value: 'spaces' },
-  { label: 'Templates', value: 'templates' },
-  { label: 'Text', value: 'text-blocks' },
-  { label: 'Images', value: 'image-blocks' },
-  { label: 'Audio', value: 'audio-blocks' },
-  { label: 'Video', value: 'video-blocks' },
-  { label: 'Files', value: 'file-blocks' },
-  { label: 'Links', value: 'link-blocks' },
-  { label: 'Embeds', value: 'embed-blocks' },
-  { label: 'Events', value: 'event-blocks' },
-  { label: 'Tasks', value: 'task-blocks' },
-  { label: 'Code', value: 'code-blocks' },
-  { label: 'Callouts', value: 'callout-blocks' },
-  { label: 'Locations', value: 'location-blocks' },
-  { label: 'Tags', value: 'tag-blocks' },
+  { label: 'Posts', value: 'posts', icon: 'newspaper' },
+  { label: 'Users', value: 'users', icon: 'user' },
+  { label: 'Spaces', value: 'spaces', icon: 'users-three' },
+  { label: 'Templates', value: 'templates', icon: 'layout' },
+  { label: 'Text', value: 'text-blocks', icon: 'text-aa', group: 'Blocks' },
+  { label: 'Images', value: 'image-blocks', icon: 'image', group: 'Blocks' },
+  { label: 'Audio', value: 'audio-blocks', icon: 'music-note', group: 'Blocks' },
+  { label: 'Video', value: 'video-blocks', icon: 'video-camera', group: 'Blocks' },
+  { label: 'Files', value: 'file-blocks', icon: 'file', group: 'Blocks' },
+  { label: 'Links', value: 'link-blocks', icon: 'link', group: 'Blocks' },
+  { label: 'Embeds', value: 'embed-blocks', icon: 'frame-corners', group: 'Blocks' },
+  { label: 'Events', value: 'event-blocks', icon: 'calendar', group: 'Blocks' },
+  { label: 'Tasks', value: 'task-blocks', icon: 'check-square', group: 'Blocks' },
+  { label: 'Code', value: 'code-blocks', icon: 'code', group: 'Blocks' },
+  { label: 'Callouts', value: 'callout-blocks', icon: 'megaphone', group: 'Blocks' },
+  { label: 'Locations', value: 'location-blocks', icon: 'map-pin', group: 'Blocks' },
+  { label: 'Tags', value: 'tag-blocks', icon: 'tag', group: 'Blocks' },
 ];
 
 const displayModeButton = (mode: string, icon: string): SchemaNode => ({
@@ -50,25 +50,25 @@ export const cardsHeader: SchemaNode = {
         },
         // Content type
         {
-          type: 'we-select',
+          type: 'GroupedSelect',
           props: {
             value: { $local: 'contentType' },
-            searchable: true,
             options: contentTypeOptions,
-            onChange: { $setLocal: 'contentType', from: '$event.target.value' },
-            // width: '100px',
+            placeholder: 'All content',
+            onChange: { $setLocal: 'contentType', from: '$event' },
           },
         },
         // Sort order
         {
-          type: 'we-select',
+          type: 'GroupedSelect',
           props: {
             value: { $local: 'sortBy' },
+            searchable: false,
             options: [
-              { label: 'Newest', value: 'DESC' },
-              { label: 'Oldest', value: 'ASC' },
+              { label: 'Newest', value: 'DESC', icon: 'sort-descending' },
+              { label: 'Oldest', value: 'ASC', icon: 'sort-ascending' },
             ],
-            onChange: { $setLocal: 'sortBy', from: '$event.target.value' },
+            onChange: { $setLocal: 'sortBy', from: '$event' },
           },
         },
         // Display mode toggle

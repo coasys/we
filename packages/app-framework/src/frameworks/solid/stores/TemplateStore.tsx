@@ -838,7 +838,15 @@ export function TemplateStoreProvider(props: ParentProps) {
       });
 
       setCurrentTemplate(reconcile(deepClone(schemaToSave)));
-      routeStore.navigate('/');
+      const p = adamStore.currentPerspective();
+      if (p) {
+        const spaceId = p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid;
+        const segs = routeStore.segments();
+        const view = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
+        routeStore.navigate('/space/' + spaceId + '/' + view);
+      } else {
+        routeStore.navigate('/');
+      }
       adamStore.updateAgentSettings({ currentTemplateId: templateId });
       setOperationLoading(null);
       return true;

@@ -23,27 +23,32 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     bg: 'primary-500',
     color: 'neutral-0',
     hoverProps: { bg: 'primary-600', color: 'neutral-0' },
+    activeProps: { bg: 'primary-700', color: 'neutral-0' },
   },
   secondary: {
     bg: 'neutral-200',
     color: 'neutral-800',
     hoverProps: { bg: 'neutral-300', color: 'neutral-900' },
+    activeProps: { bg: 'neutral-400', color: 'neutral-900' },
   },
   ghost: {
     bg: 'transparent',
     color: 'neutral-700',
     hoverProps: { bg: 'neutral-100', color: 'neutral-900' },
+    activeProps: { bg: 'neutral-200', color: 'neutral-900' },
   },
   danger: {
     bg: 'danger-500',
     color: 'neutral-0',
     hoverProps: { bg: 'danger-600', color: 'neutral-0' },
+    activeProps: { bg: 'danger-700', color: 'neutral-0' },
   },
   outline: {
     bg: 'transparent',
     color: 'neutral-700',
     border: '1px solid var(--we-color-neutral-300)',
-    hoverProps: { bg: 'neutral-50', color: 'neutral-900' },
+    hoverProps: { bg: 'neutral-100', color: 'neutral-900', border: '1px solid var(--we-color-neutral-500)' },
+    activeProps: { bg: 'neutral-200', color: 'neutral-900', border: '1px solid var(--we-color-neutral-500)' },
   },
 };
 
