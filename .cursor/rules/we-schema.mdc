@@ -1788,6 +1788,20 @@ that work directly with AD4M model classes. They do NOT apply to JSON template s
 
 ---
 
+### Running Schema Validation (no build needed)
+
+During codebase work, use the `pnpm validate` script in `schema-system/shared` — it runs
+the validator directly from TypeScript source via `tsx`, so no build step is required:
+
+```sh
+pnpm --filter @we/schema-shared validate
+```
+
+This validates all `.schema.ts` files under `packages/app-framework/src/shared/schemas/`.
+For per-file validation or other options, see the **Schema Validation** section above.
+
+---
+
 ### Schema System — Before Suggesting New Operators
 
 Before proposing a new schema operator, read `packages/schema-system/OPERATORS.md` —

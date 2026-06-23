@@ -2614,4 +2614,5 @@ export const contextData: ContextData = {
       actions: ['activateApp', 'deactivateApp'],
     },
   ],
+  shellComponents: ['AiChatPanel', 'BenchmarkTimer', 'RightPanelContainer', 'TemplateToolbar', 'WeCube'],
 };

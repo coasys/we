@@ -7825,5 +7825,6 @@
       },
       "actions": ["activateApp", "deactivateApp"]
     }
-  ]
+  ],
+  "shellComponents": ["AiChatPanel", "BenchmarkTimer", "RightPanelContainer", "TemplateToolbar", "WeCube"]
 }

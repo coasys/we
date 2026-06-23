@@ -287,6 +287,10 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     modelNames.add(model.name);
   }
 
+  for (const name of data.shellComponents ?? []) {
+    componentNames.add(name);
+  }
+
   return {
     componentNames,
     componentProps,

@@ -86,6 +86,8 @@ export interface ContextData {
   models: ModelEntry[];
   tokens: TokenCategory[];
   storeEntries: StoreEntry[];
+  /** Shell/internal component names known to the validator but excluded from AI docs. */
+  shellComponents?: string[];
 }
 
 /** A partial context fragment that a single package exports at build time */
