@@ -117,6 +117,7 @@ export const templatesList: SchemaNode = {
                               onClick: {
                                 $action: 'model.delete',
                                 args: ['Template', '$template.id'],
+                                onSuccess: [{ $action: 'templateStore.refreshSpaceTemplates' }],
                               },
                             },
                             children: [{ type: 'we-icon', props: { name: 'trash' } }],

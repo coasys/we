@@ -1,5 +1,7 @@
 import type { RouteSchema, SchemaNode } from '@we/schema-shared';
 
+import { marketplaceBrowser } from './MarketplaceBrowser.ts';
+
 const templateRow: SchemaNode = {
   type: 'Row',
   props: {
@@ -52,6 +54,9 @@ export const settingsRoute: RouteSchema = {
   path: '/settings',
   type: 'Column',
   props: { width: '100%', ax: 'center', height: 'calc(100vh - 72px)' },
+  $localState: {
+    showMarketplace: { type: 'boolean', initial: false },
+  },
   children: [
     {
       type: 'Column',
@@ -120,6 +125,61 @@ export const settingsRoute: RouteSchema = {
                     },
                   ],
                 },
+              },
+            },
+          ],
+        },
+
+        // ─── Browse Marketplace ─────────────────────────────────────────────────
+        {
+          type: 'Column',
+          props: { gap: '400', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          children: [
+            {
+              type: 'Row',
+              props: { ax: 'between', ay: 'center' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '700', fontWeight: 'bold', color: 'primary-700' },
+                      children: ['Browse Marketplace'],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { color: 'neutral-600' },
+                      children: ['Install templates from the marketplace directly into this space.'],
+                    },
+                  ],
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'secondary',
+                    size: 'sm',
+                    onClick: { $toggleLocal: 'showMarketplace' },
+                  },
+                  children: [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $local: 'showMarketplace' },
+                        then: { type: 'we-text', children: ['Hide'] },
+                        else: { type: 'we-text', children: ['Browse'] },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $local: 'showMarketplace' },
+                then: marketplaceBrowser,
               },
             },
           ],

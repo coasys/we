@@ -53,6 +53,7 @@ export interface TemplateStore {
   installTemplate: (templateId: string) => Promise<void>;
   uninstallTemplate: (templateId: string) => Promise<void>;
   installFromMarketplace: (marketplaceTemplateId: string) => Promise<void>;
+  installToSpace: (marketplaceTemplateId: string) => Promise<void>;
   toggleInstalled: (templateId: string) => Promise<void>;
   setDefaultTemplate: (templateId: string) => void;
   saveTemplate: (name: string) => Promise<void>;
@@ -62,6 +63,7 @@ export interface TemplateStore {
   persistCurrentTemplate: () => Promise<void>;
   preloadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
   loadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
+  refreshSpaceTemplates: () => Promise<void>;
   clearSpaceTemplates: () => void;
   openShellView: (id: string) => void;
   closeShellView: () => void;
@@ -263,7 +265,10 @@ export function TemplateStoreProvider(props: ParentProps) {
 
       if (schemas.length === 0) return;
 
-      setAllTemplates((prev) => [...prev, ...schemas]);
+      setAllTemplates((prev) => {
+        const existingIds = new Set(prev.map((t) => t.id || ''));
+        return [...prev, ...schemas.filter((s) => !existingIds.has(s.id || ''))];
+      });
       setInstalledIds((prev) => {
         const next = new Set(prev);
         schemas.forEach((t) => t.id && next.add(t.id));
@@ -628,6 +633,69 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   }
 
+  /** Re-fetch space templates for the current perspective — call after any mutation (delete, install) */
+  async function refreshSpaceTemplates(): Promise<void> {
+    const perspective = adamStore.currentPerspective();
+    if (!perspective) return;
+    await loadSpaceTemplates(perspective);
+  }
+
+  /** Fetch a template from the marketplace and install it into the current space's perspective */
+  async function installToSpace(marketplaceTemplateId: string): Promise<void> {
+    const marketplacePerspective = adamStore.marketplacePerspective();
+    const spacePerspective = adamStore.currentPerspective();
+    if (!marketplacePerspective || !spacePerspective) {
+      toastService.error('Cannot install: no active space or marketplace not connected');
+      return;
+    }
+
+    setOperationLoading(`space-install:${marketplaceTemplateId}`);
+    try {
+      const marketplaceTemplate = await Template.findOne(marketplacePerspective, {
+        where: { id: marketplaceTemplateId },
+      });
+      if (!marketplaceTemplate) {
+        toastService.error('Template not found in marketplace');
+        return;
+      }
+
+      const decoded = decodeFileAsJson(marketplaceTemplate.schema);
+      if (!decoded || typeof decoded !== 'object') {
+        toastService.error('Could not read template data');
+        return;
+      }
+
+      const stored = decoded as unknown as StoredTemplate;
+      const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+      const templateId =
+        schema.id || marketplaceTemplate.name?.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId;
+      const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId };
+
+      const schemaBlob = (() => {
+        const storedTemplate = createStoredTemplate(schemaToInstall);
+        const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+        const base64 = btoa(String.fromCharCode(...jsonBytes));
+        return { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' };
+      })();
+
+      await Template.create(spacePerspective, {
+        name: schemaToInstall.meta.name,
+        origin: 'marketplace',
+        slug: templateId,
+        version: marketplaceTemplate.version || 1,
+        schema: schemaBlob as any,
+      });
+
+      await loadSpaceTemplates(spacePerspective);
+      toastService.success(`"${schemaToInstall.meta.name}" installed to space`);
+    } catch (error) {
+      console.error('TemplateStore: installToSpace error', error);
+      toastService.error(`Failed to install template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
   /** Set a template as the default (loaded on boot) */
   function setDefaultTemplate(templateId: string): void {
     adamStore.updateAgentSettings({ defaultTemplateId: templateId });
@@ -980,6 +1048,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     installTemplate,
     uninstallTemplate,
     installFromMarketplace,
+    installToSpace,
+    refreshSpaceTemplates,
     toggleInstalled,
     setDefaultTemplate,
     saveTemplate,
