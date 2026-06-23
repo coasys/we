@@ -1,6 +1,7 @@
 import { Column, Row, SearchInput } from '@we/components/solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
+import { useAdamStore } from '../../stores/AdamStore';
 import { useAiStore } from '../../stores/AiStore';
 import { useSpaceStore } from '../../stores/SpaceStore';
 import { useTemplateStore } from '../../stores/TemplateStore';
@@ -10,6 +11,7 @@ export function TemplateToolbar() {
   const templateStore = useTemplateStore();
   const spaceStore = useSpaceStore();
   const aiStore = useAiStore();
+  const adamStore = useAdamStore();
 
   // Template switcher dropdown
   const [open, setOpen] = createSignal(false);
@@ -21,6 +23,13 @@ export function TemplateToolbar() {
   const [pickerIcon, setPickerIcon] = createSignal('cube');
   const [pickerDestination, setPickerDestination] = createSignal<'personal' | 'space'>('personal');
   const [pickerSaving, setPickerSaving] = createSignal(false);
+
+  // Share dropdown state
+  const [shareOpen, setShareOpen] = createSignal(false);
+  const [shareView, setShareView] = createSignal<'main' | 'space'>('main');
+  const [spaceSearch, setSpaceSearch] = createSignal('');
+  // Tracks which destination is loading: 'marketplace' | space uuid | null
+  const [shareLoading, setShareLoading] = createSignal<string | null>(null);
 
   // When picker opens, seed fields from store defaults and close the switcher
   createEffect(() => {
@@ -38,22 +47,40 @@ export function TemplateToolbar() {
     setSearch('');
   };
 
+  const closeShare = () => {
+    setShareOpen(false);
+    setShareView('main');
+    setSpaceSearch('');
+  };
+
   const toggleSwitcher = () => {
     if (open()) {
       closeSwitcher();
     } else {
       if (aiStore.pickerOpen()) aiStore.cancelPicker();
+      closeShare();
       setOpen(true);
     }
   };
 
-  // Close switcher or picker when clicking outside the chip
+  const toggleShare = () => {
+    if (shareOpen()) {
+      closeShare();
+    } else {
+      if (open()) closeSwitcher();
+      if (aiStore.pickerOpen()) aiStore.cancelPicker();
+      setShareOpen(true);
+    }
+  };
+
+  // Close switcher, picker, or share when clicking outside the chip
   createEffect(() => {
-    if (!open() && !aiStore.pickerOpen()) return;
+    if (!open() && !aiStore.pickerOpen() && !shareOpen()) return;
     const onOutside = (e: MouseEvent) => {
       if (!containerRef?.contains(e.target as Node)) {
         if (open()) closeSwitcher();
         if (aiStore.pickerOpen()) aiStore.cancelPicker();
+        if (shareOpen()) closeShare();
       }
     };
     document.addEventListener('mousedown', onOutside);
@@ -69,6 +96,12 @@ export function TemplateToolbar() {
         items: q ? group.items.filter((item) => item.name.toLowerCase().includes(q)) : group.items,
       }))
       .filter((group) => group.items.length > 0);
+  });
+
+  const filteredSpaces = createMemo(() => {
+    const q = spaceSearch().toLowerCase();
+    const items = adamStore.orderedSidebarItems();
+    return q ? items.filter((s) => s.name.toLowerCase().includes(q)) : items;
   });
 
   // Can the user directly edit this template (i.e. it's not read-only/core)?
@@ -103,6 +136,39 @@ export function TemplateToolbar() {
     }
   }
 
+  function handleExportJson() {
+    const json = aiStore.schemaJson();
+    const name = aiStore.templateName();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name.toLowerCase().replace(/\s+/g, '-')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    closeShare();
+  }
+
+  async function handleShareToSpace(uuid: string, spaceName: string) {
+    setShareLoading(uuid);
+    try {
+      const success = await templateStore.publishToSpace(uuid, spaceName);
+      if (success) closeShare();
+    } finally {
+      setShareLoading(null);
+    }
+  }
+
+  async function handlePublishToMarketplace() {
+    setShareLoading('marketplace');
+    try {
+      const success = await templateStore.publishToMarketplace();
+      if (success) closeShare();
+    } finally {
+      setShareLoading(null);
+    }
+  }
+
   return (
     <div style={{ position: 'fixed', inset: '0', 'pointer-events': 'none', 'z-index': '10' }}>
       {/* Outer row: edit toolbar (left, edit mode only) + chip (right, always) */}
@@ -117,47 +183,182 @@ export function TemplateToolbar() {
       >
         {/* ── Edit-mode toolbar ── */}
         <Show when={aiStore.isEditMode()}>
-          <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
-            {/* View mode buttons */}
-            <we-tooltip title="Preview" placement="bottom">
-              <we-button
-                variant={aiStore.contentMode() === 'preview' ? 'secondary' : 'ghost'}
-                square
-                onClick={() => aiStore.setContentMode('preview')}
-              >
-                <we-icon name="eye" />
-              </we-button>
-            </we-tooltip>
-            <we-tooltip title="Visual editor" placement="bottom">
-              <we-button
-                variant={aiStore.contentMode() === 'visual' ? 'secondary' : 'ghost'}
-                square
-                onClick={() => aiStore.setContentMode('visual')}
-              >
-                <we-icon name="pencil-ruler" />
-              </we-button>
-            </we-tooltip>
-            {/* Undo / Redo */}
-            <we-tooltip title="Undo" placement="bottom">
-              <we-button variant="ghost" square disabled={!aiStore.canUndo()} onClick={() => aiStore.undo()}>
-                <we-icon name="arrow-u-up-left" />
-              </we-button>
-            </we-tooltip>
-            <we-tooltip title="Redo" placement="bottom">
-              <we-button variant="ghost" square disabled={!aiStore.canRedo()} onClick={() => aiStore.redo()}>
-                <we-icon name="arrow-u-up-right" />
-              </we-button>
-            </we-tooltip>
+          <Column position="relative">
+            <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
+              {/* View mode buttons */}
+              <we-tooltip title="Preview" placement="bottom">
+                <we-button
+                  variant={aiStore.contentMode() === 'preview' ? 'secondary' : 'ghost'}
+                  square
+                  onClick={() => aiStore.setContentMode('preview')}
+                >
+                  <we-icon name="eye" />
+                </we-button>
+              </we-tooltip>
+              <we-tooltip title="Visual editor" placement="bottom">
+                <we-button
+                  variant={aiStore.contentMode() === 'visual' ? 'secondary' : 'ghost'}
+                  square
+                  onClick={() => aiStore.setContentMode('visual')}
+                >
+                  <we-icon name="pencil-ruler" />
+                </we-button>
+              </we-tooltip>
 
-            <we-divider orientation="vertical" color="neutral-200" height="28px" />
+              <we-divider orientation="vertical" color="neutral-200" height="28px" />
 
-            {/* Publish placeholder */}
-            <we-tooltip title="Publish" placement="bottom">
-              <we-button variant="ghost" square disabled>
-                <we-icon name="upload-simple" />
+              {/* Undo / Redo */}
+              <we-tooltip title="Undo" placement="bottom">
+                <we-button variant="ghost" square disabled={!aiStore.canUndo()} onClick={() => aiStore.undo()}>
+                  <we-icon name="arrow-u-up-left" />
+                </we-button>
+              </we-tooltip>
+              <we-tooltip title="Redo" placement="bottom">
+                <we-button variant="ghost" square disabled={!aiStore.canRedo()} onClick={() => aiStore.redo()}>
+                  <we-icon name="arrow-u-up-right" />
+                </we-button>
+              </we-tooltip>
+
+              <we-divider orientation="vertical" color="neutral-200" height="28px" />
+
+              {/* Share */}
+              <we-button variant={shareOpen() ? 'secondary' : 'ghost'} p="200" onClick={toggleShare}>
+                <we-icon name="share-network" />
+                <we-text>Share</we-text>
               </we-button>
-            </we-tooltip>
-          </Row>
+            </Row>
+
+            {/* Share dropdown */}
+            <Show when={shareOpen()}>
+              <Column
+                position="absolute"
+                top="100%"
+                right="0"
+                mt="100"
+                bg="neutral-0"
+                border="1px solid neutral-200"
+                r="400"
+                shadow="md"
+                overflow="hidden"
+                minWidth="240px"
+              >
+                {/* Main view */}
+                <Show when={shareView() === 'main'}>
+                  <Column py="200">
+                    {/* Export JSON */}
+                    <Row
+                      ay="center"
+                      gap="400"
+                      px="300"
+                      py="200"
+                      cursor="pointer"
+                      hoverProps={{ bg: 'neutral-100' }}
+                      onClick={handleExportJson}
+                    >
+                      <we-icon name="download-simple" color="neutral-600" />
+                      <Column>
+                        <we-text color="neutral-800">Export as JSON</we-text>
+                        <we-text fontSize="300" color="neutral-500">
+                          Download template file
+                        </we-text>
+                      </Column>
+                    </Row>
+
+                    {/* Upload to marketplace */}
+                    <Row
+                      ay="center"
+                      gap="400"
+                      px="300"
+                      py="200"
+                      cursor={adamStore.marketplaceJoined() ? 'pointer' : 'not-allowed'}
+                      opacity={adamStore.marketplaceJoined() ? 1 : 0.4}
+                      hoverProps={adamStore.marketplaceJoined() ? { bg: 'neutral-100' } : undefined}
+                      onClick={adamStore.marketplaceJoined() ? handlePublishToMarketplace : undefined}
+                    >
+                      <we-icon name="storefront" color="neutral-600" />
+                      <Column gap="0">
+                        <we-text color="neutral-800">Upload to marketplace</we-text>
+                        <we-text fontSize="300" color="neutral-500">
+                          {adamStore.marketplaceJoined()
+                            ? 'Publish for others to install'
+                            : 'Marketplace not connected'}
+                        </we-text>
+                      </Column>
+                      <Show when={shareLoading() === 'marketplace'}>
+                        <we-spinner size="sm" />
+                      </Show>
+                    </Row>
+
+                    {/* Share to a space */}
+                    <Row
+                      ay="center"
+                      gap="400"
+                      px="300"
+                      py="200"
+                      cursor="pointer"
+                      hoverProps={{ bg: 'neutral-100' }}
+                      onClick={() => setShareView('space')}
+                    >
+                      <we-icon name="users" color="neutral-600" />
+                      <Column gap="0" flex="1">
+                        <we-text color="neutral-800">Share to a space</we-text>
+                        <we-text fontSize="300" color="neutral-500">
+                          Copy to a space's templates
+                        </we-text>
+                      </Column>
+                      <we-icon name="caret-right" color="neutral-400" size="sm" />
+                    </Row>
+                  </Column>
+                </Show>
+
+                {/* Space picker sub-view */}
+                <Show when={shareView() === 'space'}>
+                  <Column>
+                    <Row ay="center" gap="200" px="200" pt="200">
+                      <we-button variant="ghost" square size="sm" onClick={() => setShareView('main')}>
+                        <we-icon name="arrow-left" />
+                      </we-button>
+                      <we-text fontWeight="600" color="neutral-800">
+                        Choose a space
+                      </we-text>
+                    </Row>
+                    <SearchInput value={spaceSearch()} placeholder="Search spaces…" m="200" onSearch={setSpaceSearch} />
+                    <we-divider />
+                    <we-scroll-area maxHeight="280px">
+                      <Column py="200">
+                        <For each={filteredSpaces()}>
+                          {(space) => (
+                            <Row
+                              ay="center"
+                              gap="200"
+                              px="300"
+                              py="200"
+                              cursor="pointer"
+                              hoverProps={{ bg: 'neutral-100' }}
+                              onClick={() => handleShareToSpace(space.uuid, space.name)}
+                            >
+                              <we-avatar image={space.avatar} initials={space.name} size="sm" />
+                              <we-text color="neutral-700" flex="1">
+                                {space.name}
+                              </we-text>
+                              <Show when={shareLoading() === space.uuid}>
+                                <we-spinner size="sm" />
+                              </Show>
+                            </Row>
+                          )}
+                        </For>
+                        <Show when={filteredSpaces().length === 0}>
+                          <we-text variant="footnote" color="neutral-400" px="300" py="200">
+                            No spaces found
+                          </we-text>
+                        </Show>
+                      </Column>
+                    </we-scroll-area>
+                  </Column>
+                </Show>
+              </Column>
+            </Show>
+          </Column>
         </Show>
 
         {/* ── Template switcher chip ── */}

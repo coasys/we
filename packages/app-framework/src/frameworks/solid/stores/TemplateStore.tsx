@@ -57,6 +57,8 @@ export interface TemplateStore {
   setDefaultTemplate: (templateId: string) => void;
   saveTemplate: (name: string) => Promise<void>;
   saveTemplateAs: (schema: TemplateSchema, destination?: 'root' | 'space') => Promise<boolean>;
+  publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
+  publishToMarketplace: () => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
   preloadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
   loadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
@@ -824,6 +826,92 @@ export function TemplateStoreProvider(props: ParentProps) {
     setAllTemplates((prev) => prev.map((t) => (t.id === templateId ? schemaToSave : t)));
   }
 
+  /** Copy the current template into a specific space perspective */
+  async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
+    const perspective = adamStore.allPerspectives().find((p) => p.uuid === perspectiveUuid);
+    if (!perspective) {
+      toastService.error('Space not found');
+      return false;
+    }
+
+    const schema = currentTemplate;
+    const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+
+    const existing = await Template.findOne(perspective, { where: { slug: templateId } });
+    if (existing) {
+      toastService.error(`Template "${schema.meta.name}" is already in "${spaceName}"`);
+      return false;
+    }
+
+    setOperationLoading('publish-space');
+
+    const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: templateId });
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
+
+    try {
+      await Template.create(perspective, {
+        name: schema.meta.name,
+        origin: 'shared',
+        slug: templateId,
+        version: 1,
+        schema: schemaBlob as any,
+      });
+      toastService.success(`Template "${schema.meta.name}" shared to space "${spaceName}"`);
+      return true;
+    } catch (error) {
+      console.error('TemplateStore: publishToSpace error', error);
+      toastService.error('Failed to share template to space');
+      return false;
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
+  /** Publish the current template to the marketplace perspective */
+  async function publishToMarketplace(): Promise<boolean> {
+    const marketplacePerspective = adamStore.marketplacePerspective();
+    if (!marketplacePerspective) {
+      toastService.error('Marketplace not connected');
+      return false;
+    }
+
+    const schema = currentTemplate;
+    const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+
+    const existing = await Template.findOne(marketplacePerspective, { where: { slug: templateId } });
+    if (existing) {
+      toastService.error(`Template "${schema.meta.name}" is already in the marketplace`);
+      return false;
+    }
+
+    setOperationLoading('publish-marketplace');
+
+    const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: templateId });
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
+
+    try {
+      await Template.create(marketplacePerspective, {
+        name: schema.meta.name,
+        origin: 'marketplace',
+        slug: templateId,
+        version: 1,
+        schema: schemaBlob as any,
+      });
+      toastService.success(`Template "${schema.meta.name}" published to marketplace`);
+      return true;
+    } catch (error) {
+      console.error('TemplateStore: publishToMarketplace error', error);
+      toastService.error('Failed to publish template to marketplace');
+      return false;
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
   /** Check if a template ID belongs to a built-in core template */
   function isCoreTemplateId(templateId: string): boolean {
     return coreTemplates.some((t) => t.id === templateId);
@@ -896,6 +984,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     setDefaultTemplate,
     saveTemplate,
     saveTemplateAs,
+    publishToSpace,
+    publishToMarketplace,
     persistCurrentTemplate,
     preloadSpaceTemplates,
     loadSpaceTemplates,
