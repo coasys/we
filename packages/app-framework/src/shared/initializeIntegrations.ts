@@ -11,7 +11,7 @@ import type { WeSeedFile } from '../types/seed';
 import { generateIframePermissions, validateSeedForLauncher } from './integrationComposer';
 import type { PlatformAdapter } from './platform/types';
 import { appRegistry } from './registries/appRegistry';
-import { launcherUIRegistry } from './registries/launcherUIRegistry';
+import { shellRegistry } from './registries/shellRegistry';
 
 export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
   try {
@@ -25,7 +25,7 @@ export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
 
     // Apply optional white-label boot screen override
     if (seed.host?.ui?.bootScreen) {
-      launcherUIRegistry.bootScreen = seed.host.ui.bootScreen;
+      shellRegistry.bootScreen = seed.host.ui.bootScreen;
     }
 
     // Resolve each app URL once and register it
