@@ -183,9 +183,12 @@ For external-app perspectives, always add perspective: "spaceStore.perspective".
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
+Supported types: "string", "boolean", "number", "function", "object".
 Read:  { "$local": "name" } — returns the signal value (reactive).
+       { "$local": "name.nested.path" } — dot-notation reads into object-typed fields (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
-       { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean).
+       { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
+       { "$setLocal": "name", "merge": { "field": "$event.detail" } } — shallow-merges fields into an object-typed signal. Values are resolved as event paths (e.g. "$event.detail") or passed as literals. Use for partial updates to object state.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
 Call function: { "$callLocal": "fieldName" } — event handler that calls the function stored in a function-typed local field.
   Used when a child component needs to trigger a callback passed in via $localState.
@@ -193,6 +196,17 @@ Call function: { "$callLocal": "fieldName" } — event handler that calls the fu
   Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
 $local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
+
+Object-typed local state (consolidating related scalar fields):
+When several related fields share a common condition on their initial values (e.g. all null/empty when a store value is absent), prefer a single "object" field seeded from the store, then read sub-fields with dot-notation and write with merge.
+Example — location object (replaces 5 separate scalar fields with $if guards):
+  "$localState": { "location": { "type": "object", "initial": { "$store": "spaceStore.currentSpace.location" } } }
+  Read:  { "$local": "location.latitude" }, { "$local": "location.city" }
+  Write (picker confirm): { "$setLocal": "location", "from": "$event.detail" }
+  Write (partial edit):   { "$setLocal": "location", "merge": { "city": "$event.detail" } }
+  Write (clear):          { "$setLocal": "location", "value": null }
+  Condition (has location): { "$local": "location" }
+Use "object" whenever you would otherwise write 3+ related scalar fields each needing $if on their initial value.
 
 Hoisted query state ($queries):
 Declare on any node to run reactive subscriptions at the node root and expose results in $local.
