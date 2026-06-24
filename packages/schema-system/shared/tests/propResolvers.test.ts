@@ -700,6 +700,21 @@ describe('extractFromPath', () => {
     const event = { detail: ['only'] };
     expect(extractFromPath(event, '$event.detail.5')).toBeUndefined();
   });
+
+  it('$arg returns raw first callback argument (alias for $event)', () => {
+    const value = 'hello';
+    expect(extractFromPath(value, '$arg')).toBe(value);
+  });
+
+  it('$arg.path extracts nested property from first callback argument', () => {
+    const event = new CustomEvent('input', { detail: 'typed value' });
+    expect(extractFromPath(event, '$arg.detail')).toBe('typed value');
+  });
+
+  it('$arg.deep.path extracts deeply nested property', () => {
+    const event = { target: { value: 'x' } };
+    expect(extractFromPath(event, '$arg.target.value')).toBe('x');
+  });
 });
 
 describe('$local/$setLocal via dispatcher', () => {

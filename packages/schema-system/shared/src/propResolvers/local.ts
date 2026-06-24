@@ -37,11 +37,11 @@ export function extractFromPath(event: unknown, from: string, context?: Props): 
     }
   }
 
-  // "$event" alone returns the raw event
-  if (from === '$event') return event;
+  // "$event" or "$arg" alone returns the raw first callback argument
+  if (from === '$event' || from === '$arg') return event;
 
-  // Strip the "$event." prefix and walk the path
-  const path = from.startsWith('$event.') ? from.slice(7) : from;
+  // Strip "$event." or "$arg." prefix and walk the path
+  const path = from.startsWith('$event.') ? from.slice(7) : from.startsWith('$arg.') ? from.slice(5) : from;
   let current: unknown = event;
   for (const segment of path.split('.')) {
     if (/^\d+$/.test(segment)) {
