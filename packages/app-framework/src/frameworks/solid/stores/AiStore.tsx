@@ -1169,14 +1169,17 @@ export function AiStoreProvider(props: ParentProps) {
           } else if (isReadOnly()) {
             console.log('[AiStore] Semantic validation passed — buffering (read-only template)');
             pushSnapshot();
-            setPendingTemplate(stripNodeIds(mergedTemplate));
+            setPendingTemplate(stripNodeIds(mergedTemplate) as TemplateSchema);
             for (const tr of toolResults) {
               tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
             }
           } else {
             console.log('[AiStore] Semantic validation passed — applying to store');
             pushSnapshot();
-            templateStore.updateTemplate(stripNodeIds(mergedTemplate));
+            templateStore.updateTemplate({
+              ...stripNodeIds(mergedTemplate),
+              id: templateStore.currentTemplate.id,
+            } as TemplateSchema);
             await templateStore.persistCurrentTemplate();
             setPendingTemplate(null);
             for (const tr of toolResults) {
@@ -1282,7 +1285,10 @@ export function AiStoreProvider(props: ParentProps) {
     try {
       const parsed = JSON.parse(json);
       pushSnapshot();
-      templateStore.updateTemplate(stripNodeIds(parsed as SchemaNode) as TemplateSchema);
+      // stripNodeIds deletes the root node's id, but at the TemplateSchema level that
+      // id is the template identifier, not an internal node id — restore it.
+      const schema = { ...stripNodeIds(parsed as SchemaNode), id: templateStore.currentTemplate.id } as TemplateSchema;
+      templateStore.updateTemplate(schema);
       templateStore.persistCurrentTemplate();
       setMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
     } catch {

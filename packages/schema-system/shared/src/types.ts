@@ -8,7 +8,14 @@ export type TemplateMeta = {
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };
-export type TemplateSchema = SchemaNode & { id?: string; schemaVersion?: number; meta: TemplateMeta };
+export type TemplateSchema = SchemaNode & {
+  id?: string;
+  author?: string;
+  templateVersion?: number;
+  schemaVersion?: number;
+  meta: TemplateMeta;
+  _fromSpace?: boolean;
+};
 export type RouteSchema = SchemaNode & { path: string; redirect?: string; keepAlive?: boolean };
 
 /**

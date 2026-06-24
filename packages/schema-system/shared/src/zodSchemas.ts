@@ -302,6 +302,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
 export const zTemplateSchema: z.ZodType<TemplateSchema> = z
   .object({
     ...schemaNodeShape(),
+    author: z.string().optional(),
+    templateVersion: z.number().optional(),
     schemaVersion: z.number().optional(),
     meta: zTemplateMeta,
   })

@@ -48,7 +48,11 @@ export function TemplateCard(props: Props) {
 
   const isOwnTemplate = createMemo(() => props.template.author === adamStore.me()?.did);
 
-  const isInstalled = createMemo(() => !!props.installed);
+  const installedVersion = createMemo(() =>
+    typeof props.installed === 'number' ? props.installed : props.installed ? 1 : 0,
+  );
+  const isInstalled = createMemo(() => installedVersion() > 0);
+  const hasUpdate = createMemo(() => isInstalled() && installedVersion() < (props.template.version ?? 1));
 
   const installLoading = createMemo(() => {
     const id = props.template.id;
@@ -107,9 +111,18 @@ export function TemplateCard(props: Props) {
             </we-button>
           }
         >
-          <we-badge variant="success" size="sm">
-            Installed
-          </we-badge>
+          <Show
+            when={hasUpdate()}
+            fallback={
+              <we-badge variant="success" size="sm">
+                Installed
+              </we-badge>
+            }
+          >
+            <we-button variant="secondary" size="sm" loading={installLoading()} onClick={handleInstall}>
+              Update
+            </we-button>
+          </Show>
         </Show>
       </Row>
     );
@@ -198,9 +211,18 @@ export function TemplateCard(props: Props) {
               </we-button>
             }
           >
-            <we-badge variant="success" size="sm">
-              Installed
-            </we-badge>
+            <Show
+              when={hasUpdate()}
+              fallback={
+                <we-badge variant="success" size="sm">
+                  Installed
+                </we-badge>
+              }
+            >
+              <we-button variant="secondary" size="sm" loading={installLoading()} onClick={handleInstall}>
+                Update
+              </we-button>
+            </Show>
           </Show>
         </Show>
       </Row>

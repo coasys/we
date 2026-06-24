@@ -93,7 +93,17 @@ export const templatesRoute: SchemaNode = {
                   children: [
                     {
                       type: 'TemplateCard',
-                      props: { template: '$template', mode: 'marketplace' },
+                      props: {
+                        template: '$template',
+                        mode: 'marketplace',
+                        installed: {
+                          $find: {
+                            items: { $store: 'templateStore.myTemplates' },
+                            where: { id: '$template.slug', author: '$template.author' },
+                            select: 'templateVersion',
+                          },
+                        },
+                      },
                     },
                   ],
                 },

@@ -124,7 +124,10 @@ export function resolveFindProp(
   memo: Memo,
   resolvePropFn: typeof resolveProp,
 ): unknown {
-  const arr = resolvePropFn(token.items, stores, context, memo) as unknown[];
+  let arr = resolvePropFn(token.items, stores, context, memo);
+  if (typeof arr === 'function' && REACTIVE_ACCESSOR in (arr as object)) {
+    arr = (arr as () => unknown)();
+  }
   if (!Array.isArray(arr)) return undefined;
   const match = token.where
     ? arr.find((item) => matchesWhere(item, token.where!, stores, context, memo, resolvePropFn))

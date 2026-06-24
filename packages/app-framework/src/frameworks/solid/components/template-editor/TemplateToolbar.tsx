@@ -431,7 +431,14 @@ export function TemplateToolbar() {
                         </we-text>
                         <For each={group.items}>
                           {(template) => {
-                            const isCurrent = createMemo(() => template.id === templateStore.currentTemplate.id);
+                            const isCurrent = createMemo(() => {
+                              const isSpaceItem = template.id.startsWith('space::');
+                              const realId = isSpaceItem ? template.id.slice('space::'.length) : template.id;
+                              return (
+                                realId === templateStore.currentTemplate.id &&
+                                !!templateStore.currentTemplate._fromSpace === isSpaceItem
+                              );
+                            });
                             const isDefault = createMemo(
                               () =>
                                 !!spaceStore.spaceDefaultTemplateId() &&
