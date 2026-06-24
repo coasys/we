@@ -9,11 +9,10 @@ const templateRow: SchemaNode = {
     ax: 'between',
     p: '300',
     r: '300',
-    border: '1px solid neutral-200',
     bg: {
       $if: {
         condition: { $eq: ['$template.id', { $store: 'spaceStore.spaceDefaultTemplateId' }] },
-        then: 'primary-200',
+        then: 'neutral-200',
         else: 'neutral-50',
       },
     },
@@ -33,7 +32,7 @@ const templateRow: SchemaNode = {
         condition: { $eq: ['$template.id', { $store: 'spaceStore.spaceDefaultTemplateId' }] },
         then: {
           type: 'we-badge',
-          props: { variant: 'primary', fontSize: '300' },
+          props: { variant: 'primary', size: 'sm' },
           children: ['Default'],
         },
         else: {

@@ -13,9 +13,9 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   color: 'neutral-500',
   fontSize: '400',
   fontWeight: '400',
-  r: '300',
-  px: '300',
-  py: '200',
+  r: '400',
+  px: '400',
+  cursor: 'default',
   ax: 'center',
   ay: 'center',
 };
@@ -29,11 +29,11 @@ const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200', px: '100', py: '50' },
-  sm: { fontSize: '300', px: '200', py: '100' },
-  md: { fontSize: '400', px: '300', py: '200' },
-  lg: { fontSize: '500', px: '500', py: '300' },
-  xl: { fontSize: '500', px: '600', py: '400' },
+  xs: { fontSize: '200', px: '200', height: 'var(--we-component-height-xs)' },
+  sm: { fontSize: '300', px: '300', height: 'var(--we-component-height-sm)' },
+  md: { fontSize: '400', px: '400', height: 'var(--we-component-height-md)' },
+  lg: { fontSize: '500', px: '500', height: 'var(--we-component-height-lg)' },
+  xl: { fontSize: '500', px: '600', height: 'var(--we-component-height-xl)' },
 };
 
 const styles = css`

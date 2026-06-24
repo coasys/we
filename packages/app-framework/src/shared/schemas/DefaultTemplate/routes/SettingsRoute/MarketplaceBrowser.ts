@@ -78,7 +78,7 @@ export const marketplaceBrowser: SchemaNode = {
                               children: [
                                 {
                                   type: 'we-badge',
-                                  props: { variant: 'neutral', size: 'sm' },
+                                  props: { variant: 'neutral', size: 'xs' },
                                   children: [{ $concat: ['v', '$marketplaceTemplate.version'] }],
                                 },
                                 {
@@ -108,7 +108,7 @@ export const marketplaceBrowser: SchemaNode = {
                         },
                         then: {
                           type: 'we-badge',
-                          props: { variant: 'success', fontSize: '300' },
+                          props: { variant: 'success', size: 'sm' },
                           children: ['Installed'],
                         },
                         else: {
