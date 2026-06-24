@@ -6946,6 +6946,12 @@
           "type": "string",
           "predicate": "we://default_template_id",
           "required": false
+        },
+        {
+          "name": "defaultThemeId",
+          "type": "string",
+          "predicate": "we://default_theme_id",
+          "required": false
         }
       ],
       "relations": [
@@ -7096,6 +7102,12 @@
           "predicate": "we://template_schema",
           "required": false,
           "default": "null"
+        },
+        {
+          "name": "themeId",
+          "type": "string",
+          "predicate": "we://theme_id",
+          "required": false
         }
       ],
       "relations": [
@@ -7226,7 +7238,14 @@
           "default": "null"
         }
       ],
-      "relations": []
+      "relations": [
+        {
+          "name": "screenshots",
+          "kind": "HasMany",
+          "predicate": "we://screenshot",
+          "target": "ImageBlock"
+        }
+      ]
     },
     {
       "name": "VideoBlock",

@@ -30,6 +30,9 @@ export class Template extends WeNode {
   })
   schema: string | null = null;
 
+  @Property({ through: 'we://theme_id' })
+  themeId: string = '';
+
   @HasMany(() => ImageBlock, { through: 'we://screenshot' })
   screenshots: string[] = [];
 }

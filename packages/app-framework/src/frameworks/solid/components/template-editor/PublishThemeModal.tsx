@@ -2,9 +2,7 @@ import { Column, EditableImage, Row } from '@we/components/solid';
 import { createMemo, createSignal, For, Show } from 'solid-js';
 
 import { useAdamStore } from '../../stores/AdamStore';
-import { useTemplateStore } from '../../stores/TemplateStore';
 import { useThemeStore } from '../../stores/ThemeStore';
-import { TemplateCard } from '../marketplace/TemplateCard';
 
 const MAX_SCREENSHOTS = 4;
 
@@ -12,25 +10,17 @@ interface Props {
   onClose: () => void;
 }
 
-export function PublishToMarketplaceModal(props: Props) {
+export function PublishThemeModal(props: Props) {
   const adamStore = useAdamStore();
-  const templateStore = useTemplateStore();
   const themeStore = useThemeStore();
 
-  const initialName = templateStore.currentTemplate.meta?.name ?? '';
-  const initialDescription = templateStore.currentTemplate.meta?.description ?? '';
+  const base = themeStore.editingTheme() ?? themeStore.currentTheme();
 
-  const [name, setName] = createSignal(initialName);
-  const [description, setDescription] = createSignal(initialDescription);
-  const [themeId, setThemeId] = createSignal('');
+  const [name, setName] = createSignal(base.name ?? '');
+  const [description, setDescription] = createSignal('');
   const [screenshots, setScreenshots] = createSignal<File[]>([]);
   const [screenshotPreviews, setScreenshotPreviews] = createSignal<string[]>([]);
   const [publishing, setPublishing] = createSignal(false);
-
-  const themeOptions = createMemo(() => [
-    { value: '', label: 'No associated theme' },
-    ...themeStore.allThemes().map((t) => ({ value: t.id, label: t.name })),
-  ]);
 
   const canPublish = createMemo(() => name().trim().length > 0);
 
@@ -49,23 +39,13 @@ export function PublishToMarketplaceModal(props: Props) {
     });
   };
 
-  const previewTemplate = createMemo(() => ({
-    name: name() || 'Template name',
-    description: description(),
-    version: 1,
-    slug: templateStore.currentTemplate.id,
-    author: adamStore.me()?.did,
-    screenshots: screenshotPreviews(),
-  }));
-
   async function handlePublish() {
     if (!canPublish()) return;
     setPublishing(true);
     try {
-      const success = await templateStore.publishToMarketplace({
+      const success = await themeStore.publishToMarketplace({
         name: name().trim(),
         description: description().trim(),
-        themeId: themeId() || undefined,
         screenshots: screenshots(),
       });
       if (success) props.onClose();
@@ -75,11 +55,11 @@ export function PublishToMarketplaceModal(props: Props) {
   }
 
   return (
-    <we-modal close={props.onClose} width="100%" maxWidth="600px">
+    <we-modal close={props.onClose} width="100%" maxWidth="560px">
       <Column ax="center" gap="200">
-        <we-icon name="cloud-arrow-up" size="xl" color="primary-700" />
+        <we-icon name="paint-bucket" size="xl" color="primary-700" />
         <we-text fontSize="700" fontWeight="bold">
-          Publish to marketplace
+          Publish theme to marketplace
         </we-text>
       </Column>
 
@@ -87,7 +67,7 @@ export function PublishToMarketplaceModal(props: Props) {
         {/* Name */}
         <Column gap="100">
           <we-text variant="label">Name</we-text>
-          <we-input value={name()} placeholder="Template name" on:input={(e: CustomEvent) => setName(e.detail)} />
+          <we-input value={name()} placeholder="Theme name" on:input={(e: CustomEvent) => setName(e.detail)} />
         </Column>
 
         {/* Description */}
@@ -95,19 +75,10 @@ export function PublishToMarketplaceModal(props: Props) {
           <we-text variant="label">Description</we-text>
           <we-textarea
             value={description()}
-            placeholder="Describe what this template is for…"
+            placeholder="Describe this theme…"
             rows={3}
             on:input={(e: CustomEvent) => setDescription(e.detail)}
           />
-        </Column>
-
-        {/* Associated theme */}
-        <Column gap="100">
-          <we-text variant="label">Associated theme (optional)</we-text>
-          <we-select value={themeId()} options={themeOptions()} onChange={(e: CustomEvent) => setThemeId(e.detail)} />
-          <we-text variant="footnote" color="neutral-500">
-            Link a theme so users can install it alongside this template.
-          </we-text>
         </Column>
 
         {/* Screenshots */}
@@ -152,16 +123,16 @@ export function PublishToMarketplaceModal(props: Props) {
           </Row>
         </Column>
 
-        {/* Card preview */}
-        <Column gap="200">
-          <we-text variant="label" color="neutral-500">
-            Preview
-          </we-text>
-          <TemplateCard template={previewTemplate()} mode="preview" />
-        </Column>
+        {/* Author info */}
+        <Row gap="200" ay="center" bg="neutral-50" r="300" p="300">
+          <we-avatar initials={adamStore.me()?.did ?? ''} size="sm" />
+          <Column gap="0">
+            <we-text variant="label">Publishing as</we-text>
+            <we-text variant="footnote">{adamStore.me()?.did}</we-text>
+          </Column>
+        </Row>
       </Column>
 
-      {/* Actions */}
       <Row ax="end" gap="200" pt="400" mt="100">
         <we-button variant="ghost" onClick={props.onClose} disabled={publishing()}>
           Cancel

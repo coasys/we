@@ -565,6 +565,82 @@ export const settingsRoute: RouteSchema = {
             },
           ],
         },
+
+        // Default Theme
+        {
+          type: 'Column',
+          props: { gap: '400', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '100' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { fontSize: '700', fontWeight: 'bold', color: 'primary-700' },
+                  children: ['Default Theme'],
+                },
+                {
+                  type: 'we-text',
+                  props: { color: 'neutral-600' },
+                  children: ['Choose the theme members see when they enter this space.'],
+                },
+              ],
+            },
+            {
+              type: '$each',
+              props: { items: { $store: 'themeStore.allThemes' }, as: 'theme' },
+              children: [
+                {
+                  type: 'Row',
+                  props: {
+                    ay: 'center',
+                    ax: 'between',
+                    p: '300',
+                    r: '300',
+                    bg: {
+                      $if: {
+                        condition: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
+                        then: 'neutral-200',
+                        else: 'neutral-50',
+                      },
+                    },
+                  },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { ay: 'center', gap: '300' },
+                      children: [
+                        { type: 'we-icon', props: { name: '$theme.icon' } },
+                        { type: 'we-text', props: { fontWeight: '600' }, children: ['$theme.name'] },
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
+                        then: {
+                          type: 'we-badge',
+                          props: { variant: 'primary', size: 'sm' },
+                          children: ['Default'],
+                        },
+                        else: {
+                          type: 'we-button',
+                          props: {
+                            variant: 'secondary',
+                            size: 'sm',
+                            onClick: { $action: 'spaceStore.setSpaceDefaultTheme', args: ['$theme.id'] },
+                          },
+                          children: ['Set as default'],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       ],
     },
   ],

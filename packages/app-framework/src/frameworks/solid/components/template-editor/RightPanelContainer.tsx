@@ -5,9 +5,10 @@ import { createSignal, JSX } from 'solid-js';
 import { useAiStore } from '../../stores/AiStore';
 import { AiChatPanel } from './AiChatPanel';
 import { CodePanel } from './CodePanel';
+import { ThemePanel } from './ThemePanel';
 
 export const RAIL_STRIP_WIDTH = 32; // px per strip
-export const TOTAL_RAIL_WIDTH = RAIL_STRIP_WIDTH * 2; // code + ai strips
+export const TOTAL_RAIL_WIDTH = RAIL_STRIP_WIDTH * 3; // theme + code + ai strips
 
 /**
  * True while any panel rail is being dragged to resize. Module-level so
@@ -149,6 +150,7 @@ export function RightPanelContainer() {
     let w = TOTAL_RAIL_WIDTH;
     if (aiStore.isOpen()) w += aiStore.aiPanelWidth();
     if (aiStore.codePanelOpen()) w += aiStore.codePanelWidth();
+    if (aiStore.themePanelOpen()) w += aiStore.themePanelWidth();
     return `translateX(${w}px)`;
   };
 
@@ -165,6 +167,17 @@ export function RightPanelContainer() {
         'pointer-events': aiStore.isEditMode() ? 'auto' : 'none',
       }}
     >
+      <PanelUnit
+        icon="paint-bucket"
+        tooltip="Theme editor"
+        isOpen={() => aiStore.themePanelOpen()}
+        panelWidth={() => aiStore.themePanelWidth()}
+        toggle={() => aiStore.toggleThemePanel()}
+        setPanelWidth={(w) => aiStore.setThemePanelWidth(w)}
+      >
+        <ThemePanel />
+      </PanelUnit>
+
       <PanelUnit
         icon="code"
         tooltip="Code editor"

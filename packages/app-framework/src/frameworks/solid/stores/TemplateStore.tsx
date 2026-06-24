@@ -60,7 +60,12 @@ export interface TemplateStore {
   saveTemplateAs: (schema: TemplateSchema, destination?: 'root' | 'space') => Promise<boolean>;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   deleteMarketplaceTemplate: (templateId: string) => Promise<void>;
-  publishToMarketplace: (options: { name: string; description: string; screenshots: File[] }) => Promise<boolean>;
+  publishToMarketplace: (options: {
+    name: string;
+    description: string;
+    themeId?: string;
+    screenshots: File[];
+  }) => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
   preloadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
   loadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
@@ -995,6 +1000,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   async function publishToMarketplace(options: {
     name: string;
     description: string;
+    themeId?: string;
     screenshots: File[];
   }): Promise<boolean> {
     const marketplacePerspective = adamStore.marketplacePerspective();
@@ -1026,6 +1032,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         existing.description = options.description;
         existing.version = (existing.version || 1) + 1;
         existing.schema = schemaBlob as any;
+        if (options.themeId !== undefined) existing.themeId = options.themeId;
         await existing.save();
 
         await existing.setScreenshots([]);
@@ -1048,6 +1055,7 @@ export function TemplateStoreProvider(props: ParentProps) {
           slug: templateId,
           version: 1,
           schema: schemaBlob as any,
+          ...(options.themeId ? { themeId: options.themeId } : {}),
         });
 
         for (const file of options.screenshots) {

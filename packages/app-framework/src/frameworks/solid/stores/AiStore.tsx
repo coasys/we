@@ -103,11 +103,19 @@ export interface AiStore {
   openCodePanel: () => void;
   closeCodePanel: () => void;
 
+  // --- Theme panel ---
+  themePanelOpen: Accessor<boolean>;
+  toggleThemePanel: () => void;
+  openThemePanel: () => void;
+  closeThemePanel: () => void;
+
   // --- Panel widths (persisted) ---
   aiPanelWidth: Accessor<number>;
   codePanelWidth: Accessor<number>;
+  themePanelWidth: Accessor<number>;
   setAiPanelWidth: (w: number) => void;
   setCodePanelWidth: (w: number) => void;
+  setThemePanelWidth: (w: number) => void;
 
   // --- Chat actions ---
   sendMessage: (text: string) => Promise<void>;
@@ -560,6 +568,7 @@ export function AiStoreProvider(props: ParentProps) {
     setEditAction(null);
     setIsOpen(false);
     setCodePanelOpen(false);
+    setThemePanelOpen(false);
     setContentMode('preview');
   }
 
@@ -588,6 +597,18 @@ export function AiStoreProvider(props: ParentProps) {
     setCodePanelOpen(false);
   }
 
+  // Theme panel
+  const [themePanelOpen, setThemePanelOpen] = createSignal(false);
+  function toggleThemePanel() {
+    setThemePanelOpen((v) => !v);
+  }
+  function openThemePanel() {
+    setThemePanelOpen(true);
+  }
+  function closeThemePanel() {
+    setThemePanelOpen(false);
+  }
+
   // Panel widths — signal updates immediately; localStorage write is debounced to avoid
   // blocking the main thread on every mousemove pixel during drag-to-resize.
   const [aiPanelWidth, setAiPanelWidthSignal] = createSignal(
@@ -596,8 +617,12 @@ export function AiStoreProvider(props: ParentProps) {
   const [codePanelWidth, setCodePanelWidthSignal] = createSignal(
     parseInt(localStorage.getItem('we-code-panel-width') ?? '480', 10),
   );
+  const [themePanelWidth, setThemePanelWidthSignal] = createSignal(
+    parseInt(localStorage.getItem('we-theme-panel-width') ?? '320', 10),
+  );
   let aiWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
   let codeWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
+  let themeWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
   function setAiPanelWidth(w: number) {
     setAiPanelWidthSignal(w);
     clearTimeout(aiWidthPersistTimer);
@@ -607,6 +632,11 @@ export function AiStoreProvider(props: ParentProps) {
     setCodePanelWidthSignal(w);
     clearTimeout(codeWidthPersistTimer);
     codeWidthPersistTimer = setTimeout(() => localStorage.setItem('we-code-panel-width', String(w)), 500);
+  }
+  function setThemePanelWidth(w: number) {
+    setThemePanelWidthSignal(w);
+    clearTimeout(themeWidthPersistTimer);
+    themeWidthPersistTimer = setTimeout(() => localStorage.setItem('we-theme-panel-width', String(w)), 500);
   }
 
   // ----------------------------------------------------------------
@@ -1418,11 +1448,19 @@ export function AiStoreProvider(props: ParentProps) {
     openCodePanel,
     closeCodePanel,
 
+    // Theme panel
+    themePanelOpen,
+    toggleThemePanel,
+    openThemePanel,
+    closeThemePanel,
+
     // Panel widths
     aiPanelWidth,
     codePanelWidth,
+    themePanelWidth,
     setAiPanelWidth,
     setCodePanelWidth,
+    setThemePanelWidth,
 
     // Chat actions
     sendMessage,

@@ -983,6 +983,7 @@ Space extends WeNode:
   - avatar: string [we://image]
   - coverImage: string [we://thumbnail]
   - defaultTemplateId: string [we://default_template_id]
+  - defaultThemeId: string [we://default_theme_id]
   Relations:
   - location: HasOne [we://location]
 
@@ -1015,6 +1016,7 @@ Template extends WeNode:
   - version: number = 1 [we://version]
   - slug: string [we://slug]
   - schema: string = null [we://template_schema]
+  - themeId: string [we://theme_id]
   Relations:
   - screenshots: HasMany → ImageBlock [we://screenshot]
 
@@ -1040,6 +1042,8 @@ Theme extends WeNode:
   - version: number = 1 [we://version]
   - css: string = null [we://stylesheet]
   - overrides: string = null [we://token_overrides]
+  Relations:
+  - screenshots: HasMany → ImageBlock [we://screenshot]
 
 VideoBlock extends WeNode:
   Fields:

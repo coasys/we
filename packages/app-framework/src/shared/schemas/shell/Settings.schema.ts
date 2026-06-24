@@ -241,14 +241,14 @@ export const settingsTemplate: TemplateSchema = {
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'themeStore.themes' }, as: 'theme' },
+                  props: { items: { $store: 'themeStore.allThemes' }, as: 'theme' },
                   children: [
                     {
                       type: 'we-button',
                       props: {
                         variant: {
                           $if: {
-                            condition: { $eq: ['$theme.id', { $store: 'themeStore.currentTheme.id' }] },
+                            condition: { $eq: ['$theme.id', { $store: 'themeStore.currentThemeId' }] },
                             then: 'primary',
                             else: 'secondary',
                           },

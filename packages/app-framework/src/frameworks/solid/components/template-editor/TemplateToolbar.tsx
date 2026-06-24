@@ -6,6 +6,8 @@ import { useAdamStore } from '../../stores/AdamStore';
 import { useAiStore } from '../../stores/AiStore';
 import { useSpaceStore } from '../../stores/SpaceStore';
 import { useTemplateStore } from '../../stores/TemplateStore';
+import { useThemeStore } from '../../stores/ThemeStore';
+import { PublishThemeModal } from './PublishThemeModal';
 import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
 import { panelResizing, TOTAL_RAIL_WIDTH } from './RightPanelContainer';
 
@@ -14,6 +16,7 @@ export function TemplateToolbar() {
   const spaceStore = useSpaceStore();
   const aiStore = useAiStore();
   const adamStore = useAdamStore();
+  const themeStore = useThemeStore();
 
   // Template switcher dropdown
   const [open, setOpen] = createSignal(false);
@@ -34,6 +37,22 @@ export function TemplateToolbar() {
   const [shareLoading, setShareLoading] = createSignal<string | null>(null);
 
   const [publishModalOpen, setPublishModalOpen] = createSignal(false);
+
+  // Theme picker state
+  const [themeOpen, setThemeOpen] = createSignal(false);
+  const [publishThemeModalOpen, setPublishThemeModalOpen] = createSignal(false);
+
+  const closeThemePicker = () => setThemeOpen(false);
+  const toggleThemePicker = () => {
+    if (themeOpen()) {
+      closeThemePicker();
+    } else {
+      if (open()) closeSwitcher();
+      if (shareOpen()) closeShare();
+      if (aiStore.pickerOpen()) aiStore.cancelPicker();
+      setThemeOpen(true);
+    }
+  };
 
   // When picker opens, seed fields from store defaults and close the switcher
   createEffect(() => {
@@ -77,14 +96,15 @@ export function TemplateToolbar() {
     }
   };
 
-  // Close switcher, picker, or share when clicking outside the chip
+  // Close switcher, picker, share, or theme picker when clicking outside the chip
   createEffect(() => {
-    if (!open() && !aiStore.pickerOpen() && !shareOpen()) return;
+    if (!open() && !aiStore.pickerOpen() && !shareOpen() && !themeOpen()) return;
     const onOutside = (e: MouseEvent) => {
       if (!containerRef?.contains(e.target as Node)) {
         if (open()) closeSwitcher();
         if (aiStore.pickerOpen()) aiStore.cancelPicker();
         if (shareOpen()) closeShare();
+        if (themeOpen()) closeThemePicker();
       }
     };
     document.addEventListener('mousedown', onOutside);
@@ -125,6 +145,7 @@ export function TemplateToolbar() {
       offset += TOTAL_RAIL_WIDTH;
       if (aiStore.isOpen()) offset += aiStore.aiPanelWidth();
       if (aiStore.codePanelOpen()) offset += aiStore.codePanelWidth();
+      if (aiStore.themePanelOpen()) offset += aiStore.themePanelWidth();
     }
     return `${offset}px`;
   };
@@ -357,6 +378,158 @@ export function TemplateToolbar() {
           </Column>
         </Show>
 
+        {/* ── Theme picker chip ── */}
+        <Column>
+          <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
+            <we-tooltip title="Switch theme" placement="bottom">
+              <we-button variant={themeOpen() ? 'secondary' : 'ghost'} onClick={toggleThemePicker} p="200">
+                <we-icon name={themeStore.currentTheme().icon || 'paint-bucket'} />
+                <we-text>{themeStore.currentTheme().name}</we-text>
+                <we-icon name={themeOpen() ? 'caret-up' : 'caret-down'} color="neutral-500" />
+              </we-button>
+            </we-tooltip>
+
+            <we-divider orientation="vertical" color="neutral-200" height="28px" />
+
+            <we-tooltip title="Edit theme" placement="bottom">
+              <we-button
+                variant={aiStore.themePanelOpen() ? 'secondary' : 'ghost'}
+                square
+                onClick={() => {
+                  themeStore.startEditing(themeStore.currentThemeId());
+                  aiStore.openThemePanel();
+                  closeThemePicker();
+                }}
+              >
+                <we-icon name="paint-brush" />
+              </we-button>
+            </we-tooltip>
+          </Row>
+
+          {/* Theme picker dropdown */}
+          <Show when={themeOpen()}>
+            <Column
+              position="absolute"
+              top="100%"
+              right="0"
+              mt="100"
+              bg="neutral-0"
+              border="1px solid neutral-200"
+              r="400"
+              shadow="md"
+              overflow="hidden"
+              minWidth="220px"
+            >
+              <we-scroll-area maxHeight="320px">
+                <Column py="200">
+                  {/* Built-in themes */}
+                  <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
+                    Built-in
+                  </we-text>
+                  <For each={themeStore.builtInThemes()}>
+                    {(theme) => (
+                      <Row
+                        ay="center"
+                        gap="200"
+                        px="300"
+                        py="200"
+                        cursor="pointer"
+                        bg={theme.id === themeStore.currentThemeId() ? 'primary-100' : 'neutral-0'}
+                        hoverProps={{ bg: 'neutral-100' }}
+                        onClick={() => {
+                          themeStore.setCurrentTheme(theme.id);
+                          closeThemePicker();
+                        }}
+                      >
+                        <we-icon name={theme.icon} size="sm" color="neutral-600" />
+                        <we-text color="neutral-700" flex="1">
+                          {theme.name}
+                        </we-text>
+                      </Row>
+                    )}
+                  </For>
+
+                  {/* Custom / installed themes */}
+                  <Show when={themeStore.installedThemes().length > 0}>
+                    <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
+                      My themes
+                    </we-text>
+                    <For each={themeStore.installedThemes()}>
+                      {(theme) => (
+                        <Row
+                          ay="center"
+                          gap="200"
+                          px="300"
+                          py="200"
+                          cursor="pointer"
+                          bg={theme.id === themeStore.currentThemeId() ? 'primary-100' : 'neutral-0'}
+                          hoverProps={{ bg: 'neutral-100' }}
+                          onClick={() => {
+                            themeStore.setCurrentTheme(theme.id);
+                            closeThemePicker();
+                          }}
+                        >
+                          <we-icon name={theme.icon || 'paint-bucket'} size="sm" color="neutral-600" />
+                          <we-text color="neutral-700" flex="1">
+                            {theme.name}
+                          </we-text>
+                        </Row>
+                      )}
+                    </For>
+                  </Show>
+
+                  <we-divider />
+
+                  {/* Create new */}
+                  <Row
+                    ay="center"
+                    gap="400"
+                    px="300"
+                    py="200"
+                    cursor="pointer"
+                    hoverProps={{ bg: 'neutral-100' }}
+                    onClick={() => {
+                      themeStore.startEditing();
+                      aiStore.openThemePanel();
+                      closeThemePicker();
+                    }}
+                  >
+                    <we-icon name="plus" color="neutral-600" />
+                    <we-text color="neutral-700">New theme from current</we-text>
+                  </Row>
+
+                  {/* Publish to marketplace */}
+                  <Row
+                    ay="center"
+                    gap="400"
+                    px="300"
+                    py="200"
+                    cursor={adamStore.marketplaceJoined() ? 'pointer' : 'not-allowed'}
+                    opacity={adamStore.marketplaceJoined() ? 1 : 0.4}
+                    hoverProps={adamStore.marketplaceJoined() ? { bg: 'neutral-100' } : undefined}
+                    onClick={
+                      adamStore.marketplaceJoined()
+                        ? () => {
+                            setPublishThemeModalOpen(true);
+                            closeThemePicker();
+                          }
+                        : undefined
+                    }
+                  >
+                    <we-icon name="storefront" color="neutral-600" />
+                    <Column gap="0">
+                      <we-text color="neutral-800">Upload to marketplace</we-text>
+                      <we-text fontSize="300" color="neutral-500">
+                        {adamStore.marketplaceJoined() ? 'Publish for others to install' : 'Marketplace not connected'}
+                      </we-text>
+                    </Column>
+                  </Row>
+                </Column>
+              </we-scroll-area>
+            </Column>
+          </Show>
+        </Column>
+
         {/* ── Template switcher chip ── */}
         <Column>
           <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
@@ -568,6 +741,12 @@ export function TemplateToolbar() {
       <Show when={publishModalOpen()}>
         <Portal>
           <PublishToMarketplaceModal onClose={() => setPublishModalOpen(false)} />
+        </Portal>
+      </Show>
+
+      <Show when={publishThemeModalOpen()}>
+        <Portal>
+          <PublishThemeModal onClose={() => setPublishThemeModalOpen(false)} />
         </Portal>
       </Show>
     </div>

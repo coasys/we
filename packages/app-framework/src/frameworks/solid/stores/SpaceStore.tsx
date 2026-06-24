@@ -33,6 +33,7 @@ export interface SpaceStore {
   memberDids: Accessor<string[]>;
   members: Accessor<AgentProfileSummary[]>;
   spaceDefaultTemplateId: Accessor<string>;
+  spaceDefaultThemeId: Accessor<string>;
   currentSpace: Accessor<Space | null>;
 
   // Actions
@@ -42,6 +43,7 @@ export interface SpaceStore {
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
   updateSpaceMeta: (updates: SpaceMetaUpdate) => Promise<void>;
   setSpaceDefaultTemplate: (templateId: string) => Promise<void>;
+  setSpaceDefaultTheme: (themeId: string) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
@@ -274,9 +276,11 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const [memberDids, setMemberDids] = createSignal<string[]>([]);
   const [spaceDefaultTemplateId, setSpaceDefaultTemplateId] = createSignal<string>('');
+  const [spaceDefaultThemeId, setSpaceDefaultThemeId] = createSignal<string>('');
 
-  // Derive from currentSpace; setSpaceDefaultTemplateId remains writable for optimistic updates
+  // Derive from currentSpace; signals remain writable for optimistic updates
   createEffect(() => setSpaceDefaultTemplateId(currentSpace()?.defaultTemplateId ?? ''));
+  createEffect(() => setSpaceDefaultThemeId(currentSpace()?.defaultThemeId ?? ''));
 
   async function setSpaceDefaultTemplate(templateId: string): Promise<void> {
     setSpaceDefaultTemplateId(templateId);
@@ -288,6 +292,15 @@ export function SpaceStoreProvider(props: ParentProps) {
     adamStore.updateSpaceInCache(p.uuid, { defaultTemplateId: templateId } as never);
     const [space] = await Space.findAll(p, { where: { uuid: p.uuid } });
     if (space) await Space.update(p, space.id, { defaultTemplateId: templateId });
+  }
+
+  async function setSpaceDefaultTheme(themeId: string): Promise<void> {
+    setSpaceDefaultThemeId(themeId);
+    const p = adamStore.currentPerspective();
+    if (!p) return;
+    adamStore.updateSpaceInCache(p.uuid, { defaultThemeId: themeId } as never);
+    const [space] = await Space.findAll(p, { where: { uuid: p.uuid } });
+    if (space) await Space.update(p, space.id, { defaultThemeId: themeId });
   }
 
   // Load neighbourhood members whenever the current perspective changes
@@ -370,6 +383,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     memberDids,
     members,
     spaceDefaultTemplateId,
+    spaceDefaultThemeId,
     currentSpace,
 
     // Actions
@@ -379,6 +393,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceImage,
     updateSpaceMeta,
     setSpaceDefaultTemplate,
+    setSpaceDefaultTheme,
     createSignalType,
     upsertSignal,
     navigateToSpace,
