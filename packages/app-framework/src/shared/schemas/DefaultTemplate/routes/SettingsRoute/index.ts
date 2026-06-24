@@ -449,7 +449,7 @@ export const settingsRoute: RouteSchema = {
           ],
         },
 
-        // ─── Default Template ───────────────────────────────────────────────────
+        // Default Template
         {
           type: 'Column',
           props: { gap: '500', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
@@ -493,9 +493,7 @@ export const settingsRoute: RouteSchema = {
             {
               type: '$if',
               props: {
-                condition: {
-                  $gt: [{ $count: { items: { $store: 'templateStore.spaceTemplates' } } }, 0],
-                },
+                condition: { $count: { items: { $store: 'templateStore.spaceTemplates' } } },
                 then: {
                   type: 'Column',
                   props: { gap: '200' },
@@ -515,7 +513,7 @@ export const settingsRoute: RouteSchema = {
               },
             },
 
-            // Browse Marketplace (merged into this section)
+            // Browse Marketplace
             {
               type: 'Row',
               props: { ax: 'between', ay: 'center' },
@@ -561,10 +559,7 @@ export const settingsRoute: RouteSchema = {
             },
             {
               type: '$if',
-              props: {
-                condition: { $local: 'showMarketplace' },
-                then: marketplaceBrowser,
-              },
+              props: { condition: { $local: 'showMarketplace' }, then: marketplaceBrowser },
             },
           ],
         },

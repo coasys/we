@@ -26,9 +26,7 @@ export const marketplaceBrowser: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: {
-          $gt: [{ $count: { items: { $local: 'marketplaceTemplates' } } }, 0],
-        },
+        condition: { $count: { items: { $local: 'marketplaceTemplates' } } },
         then: {
           type: 'Column',
           props: { gap: '200' },
