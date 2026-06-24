@@ -66,92 +66,92 @@ export function PublishToMarketplaceModal(props: Props) {
   }
 
   return (
-    <we-modal close={props.onClose} style={{ '--we-modal-max-width': '780px' }}>
-      <Column p="500" gap="500">
-        <we-text variant="heading-sm">Publish to marketplace</we-text>
-
-        <Row gap="500" ay="start">
-          {/* Left: form fields */}
-          <Column gap="400" flex="1" minWidth="0">
-            {/* Name */}
-            <Column gap="100">
-              <we-text variant="label">Name</we-text>
-              <we-input value={name()} placeholder="Template name" on:input={(e: CustomEvent) => setName(e.detail)} />
-            </Column>
-
-            {/* Description */}
-            <Column gap="100">
-              <we-text variant="label">Description</we-text>
-              <we-textarea
-                value={description()}
-                placeholder="Describe what this template is for…"
-                rows={3}
-                on:input={(e: CustomEvent) => setDescription(e.detail)}
-              />
-            </Column>
-
-            {/* Screenshots */}
-            <Column gap="200">
-              <Row ay="center" ax="between">
-                <we-text variant="label">Screenshots</we-text>
-                <we-text variant="footnote">
-                  {screenshotPreviews().length}/{MAX_SCREENSHOTS}
-                </we-text>
-              </Row>
-              <Row gap="200" wrap>
-                <For each={screenshotPreviews()}>
-                  {(src, i) => (
-                    <Column position="relative" width="120px" height="80px">
-                      <we-image src={src} fit="cover" r="200" width="120px" height="80px" />
-                      <we-button
-                        variant="danger"
-                        size="xs"
-                        square
-                        position="absolute"
-                        top="-6px"
-                        right="-6px"
-                        onClick={() => removeScreenshot(i())}
-                      >
-                        <we-icon name="x" />
-                      </we-button>
-                    </Column>
-                  )}
-                </For>
-                <Show when={screenshotPreviews().length < MAX_SCREENSHOTS}>
-                  <EditableImage
-                    width="120px"
-                    height="80px"
-                    r="200"
-                    border="1px dashed neutral-300"
-                    bg="neutral-50"
-                    placeholderIcon="image"
-                    aspect={3 / 2}
-                    onImageChange={addScreenshot}
-                  />
-                </Show>
-              </Row>
-            </Column>
-          </Column>
-
-          {/* Right: card preview */}
-          <Column gap="200" width="260px">
-            <we-text variant="label" color="neutral-500">
-              Preview
-            </we-text>
-            <TemplateCard template={previewTemplate()} mode="preview" />
-          </Column>
-        </Row>
-
-        {/* Actions */}
-        <Row ax="end" gap="200" borderTop="1px solid neutral-200" pt="400" mt="100">
-          <we-button variant="ghost" onClick={props.onClose} disabled={publishing()}>
-            Cancel
-          </we-button>
-          <we-button variant="primary" disabled={!canPublish()} loading={publishing()} onClick={handlePublish}>
-            Publish
-          </we-button>
-        </Row>
+    <we-modal close={props.onClose} width="100%" maxWidth="600px">
+      <Column ax="center" gap="200">
+        <we-icon name="cloud-arrow-up" size="xl" color="primary-700" />
+        <we-text fontSize="700" fontWeight="bold">
+          Publish to marketplace
+        </we-text>
       </Column>
+
+      <Column gap="400">
+        {/* Name */}
+        <Column gap="100">
+          <we-text variant="label">Name</we-text>
+          <we-input value={name()} placeholder="Template name" on:input={(e: CustomEvent) => setName(e.detail)} />
+        </Column>
+
+        {/* Description */}
+        <Column gap="100">
+          <we-text variant="label">Description</we-text>
+          <we-textarea
+            value={description()}
+            placeholder="Describe what this template is for…"
+            rows={3}
+            on:input={(e: CustomEvent) => setDescription(e.detail)}
+          />
+        </Column>
+
+        {/* Screenshots */}
+        <Column gap="200">
+          <Row ay="center" ax="between">
+            <we-text variant="label">Screenshots</we-text>
+            <we-text variant="footnote">
+              {screenshotPreviews().length}/{MAX_SCREENSHOTS}
+            </we-text>
+          </Row>
+          <Row gap="200" wrap>
+            <For each={screenshotPreviews()}>
+              {(src, i) => (
+                <Column position="relative" width="120px" height="80px">
+                  <we-image src={src} fit="cover" r="200" width="120px" height="80px" />
+                  <we-button
+                    variant="danger"
+                    size="xs"
+                    square
+                    position="absolute"
+                    top="-6px"
+                    right="-6px"
+                    onClick={() => removeScreenshot(i())}
+                  >
+                    <we-icon name="x" />
+                  </we-button>
+                </Column>
+              )}
+            </For>
+            <Show when={screenshotPreviews().length < MAX_SCREENSHOTS}>
+              <EditableImage
+                width="120px"
+                height="80px"
+                r="200"
+                border="1px dashed neutral-300"
+                bg="neutral-50"
+                placeholderIcon="image"
+                aspect={3 / 2}
+                onImageChange={addScreenshot}
+              />
+            </Show>
+          </Row>
+        </Column>
+
+        {/* Card preview */}
+        <Column gap="200">
+          <we-text variant="label" color="neutral-500">
+            Preview
+          </we-text>
+          <TemplateCard template={previewTemplate()} mode="preview" />
+        </Column>
+      </Column>
+
+      {/* Actions */}
+      <Row ax="end" gap="200" pt="400" mt="100">
+        <we-button variant="ghost" onClick={props.onClose} disabled={publishing()}>
+          Cancel
+        </we-button>
+        <we-button variant="primary" disabled={!canPublish()} loading={publishing()} onClick={handlePublish}>
+          Publish
+        </we-button>
+      </Row>
     </we-modal>
   );
 }
