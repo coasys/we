@@ -1,0 +1,209 @@
+import type { AgentProfileSummary } from '@shared/agentHelpers';
+import { Column, Row } from '@we/components/solid';
+import { createMemo, For, onMount, Show } from 'solid-js';
+
+import { useAdamStore } from '../../stores/AdamStore';
+import { useTemplateStore } from '../../stores/TemplateStore';
+
+export interface TemplateCardData {
+  id?: string;
+  name: string;
+  description?: string;
+  version: number;
+  slug?: string;
+  author?: string;
+  createdAt?: string;
+  screenshots?: string[]; // resolved data URIs (from ImageBlock.src via fileToDataUri)
+}
+
+interface Props {
+  template: TemplateCardData;
+  mode?: 'marketplace' | 'compact' | 'preview';
+  /** Show "Installed" badge instead of the install button. Accepts boolean or count (from $count). */
+  installed?: boolean | number;
+  /** Override the default installFromMarketplace action. */
+  onInstall?: () => void;
+  /** Label for the install button. Defaults to "Install". */
+  installLabel?: string;
+}
+
+export function TemplateCard(props: Props) {
+  const adamStore = useAdamStore();
+  const templateStore = useTemplateStore();
+  const mode = () => props.mode ?? 'marketplace';
+
+  onMount(() => {
+    if (props.template.author) adamStore.fetchAgent(props.template.author);
+  });
+
+  const author = createMemo<AgentProfileSummary | undefined>(() =>
+    adamStore.agents().find((a) => a.did === props.template.author),
+  );
+
+  const authorName = createMemo(() => {
+    const a = author();
+    if (!a) return '';
+    return [a.firstName, a.lastName].filter(Boolean).join(' ');
+  });
+
+  const isOwnTemplate = createMemo(() => props.template.author === adamStore.me()?.did);
+
+  const isInstalled = createMemo(() => !!props.installed);
+
+  const installLoading = createMemo(() => {
+    const id = props.template.id;
+    return !!id && templateStore.operationLoading() === `marketplace-install:${id}`;
+  });
+
+  const handleInstall = () => {
+    if (props.onInstall) {
+      props.onInstall();
+    } else if (props.template.id) {
+      templateStore.installFromMarketplace(props.template.id);
+    }
+  };
+
+  // In schema context, include: { screenshots: true } hydrates ImageBlock instances at runtime
+  // despite the static type being string[]. In preview context they're plain data URI strings.
+  const screenshots = createMemo(() =>
+    (props.template.screenshots ?? []).map((item) =>
+      typeof item === 'string' ? item : (item as unknown as { src: string }).src,
+    ),
+  );
+
+  // ── Compact (list-row) mode ──────────────────────────────────────────────
+  if (mode() === 'compact') {
+    return (
+      <Row ay="center" ax="between" p="400" r="300" border="1px solid neutral-200" bg="neutral-50" gap="300">
+        <Row ay="center" gap="400" flex="1" minWidth="0">
+          <we-icon name="layout" color="primary-500" />
+          <Column gap="100" flex="1" minWidth="0">
+            <Row gap="300" ay="center">
+              <we-text fontWeight="600" truncate>
+                {props.template.name}
+              </we-text>
+              <we-badge variant="neutral" size="xs">
+                v{props.template.version}
+              </we-badge>
+            </Row>
+            <Show when={author()}>
+              <Row ay="center" gap="200">
+                <we-avatar size="xs" image={author()?.avatar} initials={authorName()} />
+                <we-text fontSize="300" color="neutral-500" truncate>
+                  {authorName()}
+                </we-text>
+                <Show when={props.template.createdAt}>
+                  <we-timestamp value={props.template.createdAt} relative color="neutral-400" fontSize="300" />
+                </Show>
+              </Row>
+            </Show>
+          </Column>
+        </Row>
+        <Show
+          when={isInstalled()}
+          fallback={
+            <we-button variant="primary" size="sm" loading={installLoading()} onClick={handleInstall}>
+              {props.installLabel ?? 'Install'}
+            </we-button>
+          }
+        >
+          <we-badge variant="success" size="sm">
+            Installed
+          </we-badge>
+        </Show>
+      </Row>
+    );
+  }
+
+  // ── Grid card mode (marketplace + preview) ───────────────────────────────
+  return (
+    <Column
+      bg="neutral-0"
+      r="400"
+      border="1px solid neutral-200"
+      p="400"
+      gap="300"
+      transition="box-shadow 150ms ease"
+      hoverProps={mode() === 'marketplace' ? { border: '1px solid primary-300', shadow: 'sm' } : undefined}
+    >
+      {/* Header */}
+      <Row ay="center" ax="between">
+        <Row gap="300" ay="center" flex="1" minWidth="0">
+          <we-icon name="layout" size="md" color="primary-500" />
+          <we-text fontWeight="600" truncate>
+            {props.template.name}
+          </we-text>
+        </Row>
+        <Show when={mode() === 'marketplace' && isOwnTemplate() && !!props.template.id}>
+          <we-button
+            variant="ghost"
+            size="sm"
+            onClick={() => templateStore.deleteMarketplaceTemplate(props.template.id!)}
+          >
+            <we-icon name="trash" />
+          </we-button>
+        </Show>
+      </Row>
+
+      {/* Version + slug */}
+      <Row gap="200" ay="center">
+        <we-badge variant="neutral" size="sm">
+          v{props.template.version}
+        </we-badge>
+        <Show when={props.template.slug}>
+          <we-text fontSize="300" color="neutral-400" truncate>
+            {props.template.slug}
+          </we-text>
+        </Show>
+      </Row>
+
+      {/* Screenshots strip */}
+      <Show when={screenshots().length > 0}>
+        <Row gap="200" overflow="hidden" r="200" height="120px">
+          <For each={screenshots().slice(0, 3)}>
+            {(src) => <we-image src={src} fit="cover" r="200" flex="1" minWidth="0" height="120px" />}
+          </For>
+        </Row>
+      </Show>
+
+      {/* Description */}
+      <Show when={props.template.description}>
+        <we-text fontSize="300" color="neutral-500">
+          {props.template.description}
+        </we-text>
+      </Show>
+
+      {/* Spacer */}
+      <Column flex="1" />
+
+      {/* Footer */}
+      <Row ax="between" ay="center" mt="100">
+        <Row ay="center" gap="200" flex="1" minWidth="0">
+          <Show when={author()}>
+            <we-avatar size="xs" image={author()?.avatar} initials={authorName()} />
+            <we-text fontSize="400" color="neutral-600" truncate>
+              {authorName()}
+            </we-text>
+          </Show>
+          <Show when={props.template.createdAt}>
+            <we-timestamp value={props.template.createdAt} relative color="neutral-400" fontSize="400" />
+          </Show>
+        </Row>
+        <Show when={mode() === 'marketplace'}>
+          <Show
+            when={isInstalled()}
+            fallback={
+              <we-button variant="primary" size="sm" loading={installLoading()} onClick={handleInstall}>
+                {props.installLabel ?? 'Install'}
+              </we-button>
+            }
+          >
+            <we-badge variant="success" size="sm">
+              Installed
+            </we-badge>
+          </Show>
+        </Show>
+      </Row>
+    </Column>
+  );
+}

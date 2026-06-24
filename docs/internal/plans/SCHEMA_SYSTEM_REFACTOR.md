@@ -22,14 +22,20 @@ The schema system has two ways to express a dynamic value:
 
 ```ts
 // Object tokens — explicit, structured, validatable without string parsing
-{ $store: 'adamStore.me.name' }
-{ $local: 'search' }
-{ $concat: ['v', { $local: 'version' }] }
+{
+  $store: 'adamStore.me.name';
+}
+{
+  $local: 'search';
+}
+{
+  $concat: ['v', { $local: 'version' }];
+}
 
 // Magic strings — parsed at runtime, invisible to the validator
-'$item.name'           // context ref in children / props
-'$event.detail'        // arg path in $setLocal.from
-'$arg.id'              // arg path in $action.args
+('$item.name'); // context ref in children / props
+('$event.detail'); // arg path in $setLocal.from
+('$arg.id'); // arg path in $action.args
 ```
 
 Both resolve values but through entirely separate mechanisms. The validator can find every object token without string parsing; it cannot find magic strings without regex scanning. The `$arg` bug happened precisely because adding `$arg` to `processArgValue` didn't automatically add it to `extractFromPath` — two separate systems, two separate places to update.
@@ -46,8 +52,8 @@ Magic strings in `children` arrays are visually unambiguous — a string startin
 
 ```ts
 // Fine — in children, '$' strings are clearly not literals
-children: ['$template.name']
-children: ['$item.author']
+children: ['$template.name'];
+children: ['$item.author'];
 ```
 
 In `props` and `args`, however, strings and dynamic expressions are mixed — `'primary'` is a literal, `'$item.name'` is a lookup, and the difference isn't obvious without knowing the convention. The fix is to make every dynamic value in a prop position an explicit object token.
@@ -73,7 +79,7 @@ onClick: { $action: 'store.method', args: [{ $ctx: 'item.id' }] }
 Magic strings in `children` arrays are left unchanged — they remain the natural syntax there:
 
 ```ts
-children: ['$template.name']   // unchanged, still the idiomatic form
+children: ['$template.name']; // unchanged, still the idiomatic form
 ```
 
 **Why keep `$store` and `$local` as separate tokens rather than collapsing all three into `$get: 'store.x'`?**
@@ -84,7 +90,7 @@ The separation is semantically meaningful, not just cosmetic:
 - `$local` — ephemeral state scoped to a single node's lifetime, destroyed on unmount
 - `$ctx` — per-iteration value injected by a parent loop or route, read-only
 
-When reading a schema, the token immediately communicates the data's origin and lifetime. For AI generation, the distinction matters: the model needs to know *where* to declare state, not just how to read it. Collapsing into `$get: 'store.x'` saves one token name at the cost of that signal.
+When reading a schema, the token immediately communicates the data's origin and lifetime. For AI generation, the distinction matters: the model needs to know _where_ to declare state, not just how to read it. Collapsing into `$get: 'store.x'` saves one token name at the cost of that signal.
 
 ---
 
@@ -141,14 +147,14 @@ With Change 2 landed, `$arg` / `$arg.path` becomes the single canonical way to r
 
 After all three changes, the expression system is fully coherent:
 
-| Operation | Token | Notes |
-|---|---|---|
-| Read global state | `{ $store: 'store.path' }` | unchanged |
-| Read local state | `{ $local: 'field' }` | unchanged |
-| Read context variable | `{ $ctx: 'item.name' }` | **new** (replaces `'$item.name'` in props) |
+| Operation               | Token                                | Notes                                            |
+| ----------------------- | ------------------------------------ | ------------------------------------------------ |
+| Read global state       | `{ $store: 'store.path' }`           | unchanged                                        |
+| Read local state        | `{ $local: 'field' }`                | unchanged                                        |
+| Read context variable   | `{ $ctx: 'item.name' }`              | **new** (replaces `'$item.name'` in props)       |
 | Read first callback arg | `{ $arg: '' }` or `{ $arg: 'path' }` | **new** (replaces `'$arg'` / `'$event'` strings) |
-| Context ref in children | `'$item.name'` | unchanged — still idiomatic in children |
-| Set local on event | `{ $setLocal: 'x', from: <token> }` | **extended** to accept any token |
+| Context ref in children | `'$item.name'`                       | unchanged — still idiomatic in children          |
+| Set local on event      | `{ $setLocal: 'x', from: <token> }`  | **extended** to accept any token                 |
 
 Every dynamic value in a prop object is an explicit token. Magic strings exist only in children arrays where they are unambiguous. The validator can find every reference without string parsing. The AI has one consistent pattern to learn: objects with `$`-keys are tokens; strings in children arrays may be context refs; strings everywhere else are literals.
 
@@ -160,12 +166,18 @@ The migration is mechanical. The bulk of it is replacing magic string context re
 
 ```ts
 // Before
-props: { value: '$item.name' }
-args: ['$template.id']
+props: {
+  value: '$item.name';
+}
+args: ['$template.id'];
 
 // After
-props: { value: { $ctx: 'item.name' } }
-args: [{ $ctx: 'template.id' }]
+props: {
+  value: {
+    $ctx: 'item.name';
+  }
+}
+args: [{ $ctx: 'template.id' }];
 ```
 
 Children arrays require no changes. `$store` and `$local` tokens require no changes.
@@ -187,12 +199,12 @@ Children arrays require no changes. `$store` and `$local` tokens require no chan
 
 ## Files Affected
 
-| File | Change |
-|---|---|
-| `packages/schema-system/shared/src/propResolvers/dispatcher.ts` | Add `$ctx` token routing |
-| `packages/schema-system/shared/src/propResolvers/local.ts` | Extend `$setLocal.from` to accept tokens |
-| `packages/schema-system/shared/src/zodSchemas.ts` | Add `$ctx` to valid prop token shapes |
-| `packages/schema-system/shared/src/semanticValidation.ts` | Warn on magic strings in prop positions |
-| `packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx` | Handle `$ctx` in renderer |
-| `packages/ai-context/src/fragments/schema-operators.ts` | Document `$ctx`, update `$arg` / `$setLocal` docs |
-| `packages/app-framework/src/shared/schemas/**` | Migrate magic strings in prop/args positions |
+| File                                                             | Change                                            |
+| ---------------------------------------------------------------- | ------------------------------------------------- |
+| `packages/schema-system/shared/src/propResolvers/dispatcher.ts`  | Add `$ctx` token routing                          |
+| `packages/schema-system/shared/src/propResolvers/local.ts`       | Extend `$setLocal.from` to accept tokens          |
+| `packages/schema-system/shared/src/zodSchemas.ts`                | Add `$ctx` to valid prop token shapes             |
+| `packages/schema-system/shared/src/semanticValidation.ts`        | Warn on magic strings in prop positions           |
+| `packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx` | Handle `$ctx` in renderer                         |
+| `packages/ai-context/src/fragments/schema-operators.ts`          | Document `$ctx`, update `$arg` / `$setLocal` docs |
+| `packages/app-framework/src/shared/schemas/**`                   | Migrate magic strings in prop/args positions      |

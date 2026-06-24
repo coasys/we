@@ -1,10 +1,12 @@
 import { Column, Row, SearchInput } from '@we/components/solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 
 import { useAdamStore } from '../../stores/AdamStore';
 import { useAiStore } from '../../stores/AiStore';
 import { useSpaceStore } from '../../stores/SpaceStore';
 import { useTemplateStore } from '../../stores/TemplateStore';
+import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
 import { panelResizing, TOTAL_RAIL_WIDTH } from './RightPanelContainer';
 
 export function TemplateToolbar() {
@@ -28,8 +30,10 @@ export function TemplateToolbar() {
   const [shareOpen, setShareOpen] = createSignal(false);
   const [shareView, setShareView] = createSignal<'main' | 'space'>('main');
   const [spaceSearch, setSpaceSearch] = createSignal('');
-  // Tracks which destination is loading: 'marketplace' | space uuid | null
+  // Tracks which destination is loading: space uuid | null
   const [shareLoading, setShareLoading] = createSignal<string | null>(null);
+
+  const [publishModalOpen, setPublishModalOpen] = createSignal(false);
 
   // When picker opens, seed fields from store defaults and close the switcher
   createEffect(() => {
@@ -159,14 +163,9 @@ export function TemplateToolbar() {
     }
   }
 
-  async function handlePublishToMarketplace() {
-    setShareLoading('marketplace');
-    try {
-      const success = await templateStore.publishToMarketplace();
-      if (success) closeShare();
-    } finally {
-      setShareLoading(null);
-    }
+  function handlePublishToMarketplace() {
+    closeShare();
+    setPublishModalOpen(true);
   }
 
   return (
@@ -284,9 +283,6 @@ export function TemplateToolbar() {
                             : 'Marketplace not connected'}
                         </we-text>
                       </Column>
-                      <Show when={shareLoading() === 'marketplace'}>
-                        <we-spinner size="sm" />
-                      </Show>
                     </Row>
 
                     {/* Share to a space */}
@@ -561,6 +557,12 @@ export function TemplateToolbar() {
           </Show>
         </Column>
       </Row>
+
+      <Show when={publishModalOpen()}>
+        <Portal>
+          <PublishToMarketplaceModal onClose={() => setPublishModalOpen(false)} />
+        </Portal>
+      </Show>
     </div>
   );
 }

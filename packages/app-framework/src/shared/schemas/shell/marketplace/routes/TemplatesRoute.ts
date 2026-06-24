@@ -1,141 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
 
-const templateCard: SchemaNode = {
-  type: 'Column',
-  props: {
-    bg: 'neutral-0',
-    r: '400',
-    border: '1px solid neutral-200',
-    p: '400',
-    gap: '300',
-    hoverProps: { border: '1px solid primary-300', shadow: 'sm' },
-    transition: 'box-shadow 150ms ease',
-  },
-  children: [
-    // Header: icon + name + delete
-    {
-      type: 'Row',
-      props: { ay: 'center', ax: 'between' },
-      children: [
-        {
-          type: 'Row',
-          props: { gap: '300', ay: 'center', flex: '1', minWidth: '0' },
-          children: [
-            { type: 'we-icon', props: { name: 'layout', size: 'md', color: 'primary-500' } },
-            {
-              type: 'we-text',
-              props: { fontWeight: '600', truncate: true },
-              children: ['$template.name'],
-            },
-          ],
-        },
-        {
-          type: '$if',
-          props: {
-            condition: {
-              $eq: ['$template.author', { $store: 'adamStore.me.did' }],
-            },
-            then: {
-              type: 'we-button',
-              props: {
-                variant: 'ghost',
-                size: 'sm',
-                onClick: {
-                  $action: 'model.delete',
-                  args: ['Template', '$template.id', { perspective: 'adamStore.marketplacePerspective' }],
-                },
-              },
-              children: [{ type: 'we-icon', props: { name: 'trash' } }],
-            },
-          },
-        },
-      ],
-    },
-
-    // Version + origin row
-    {
-      type: 'Row',
-      props: { gap: '200', ay: 'center' },
-      children: [
-        {
-          type: 'we-badge',
-          props: { variant: 'neutral', size: 'sm' },
-          children: [{ $concat: ['v', '$template.version'] }],
-        },
-        {
-          type: '$if',
-          props: {
-            condition: '$template.slug',
-            then: {
-              type: 'we-text',
-              props: { fontSize: '300', color: 'neutral-400', truncate: true },
-              children: ['$template.slug'],
-            },
-          },
-        },
-      ],
-    },
-
-    // Spacer
-    { type: 'Column', props: { flex: '1' } },
-
-    // Footer: author + install button
-    {
-      type: 'Row',
-      props: { ax: 'between', ay: 'center', mt: '100' },
-      children: [
-        {
-          type: '$agent',
-          props: { did: '$template.author', as: 'author' },
-          children: [
-            {
-              type: 'Row',
-              props: { ay: 'center', gap: '200', flex: '1', minWidth: '0' },
-              children: [
-                {
-                  type: 'we-avatar',
-                  props: {
-                    size: 'xs',
-                    image: '$author.avatar',
-                    initials: { $concat: ['$author.firstName', ' ', '$author.lastName'] },
-                  },
-                },
-                {
-                  type: 'we-text',
-                  props: { fontSize: '400', color: 'neutral-600', truncate: true },
-                  children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
-                },
-                {
-                  type: 'we-timestamp',
-                  props: { value: '$template.createdAt', relative: true, color: 'neutral-400', fontSize: '400' },
-                },
-              ],
-            },
-          ],
-        },
-        {
-          type: 'we-button',
-          props: {
-            variant: 'primary',
-            size: 'sm',
-            loading: {
-              $eq: [
-                { $store: 'templateStore.operationLoading' },
-                { $concat: ['marketplace-install:', '$template.id'] },
-              ],
-            },
-            onClick: {
-              $action: 'templateStore.installFromMarketplace',
-              args: ['$template.id'],
-            },
-          },
-          children: ['Install'],
-        },
-      ],
-    },
-  ],
-};
-
 const emptyState: SchemaNode = {
   type: 'Column',
   props: { flex: '1', ax: 'center', ay: 'center', gap: '300', p: '600' },
@@ -166,6 +30,7 @@ export const templatesRoute: SchemaNode = {
       model: 'Template',
       perspective: 'adamStore.marketplacePerspective',
       order: { createdAt: { $local: 'sort' } },
+      include: { screenshots: true },
       subscribe: true,
     },
   },
@@ -225,7 +90,12 @@ export const templatesRoute: SchemaNode = {
                     },
                     as: 'template',
                   },
-                  children: [templateCard],
+                  children: [
+                    {
+                      type: 'TemplateCard',
+                      props: { template: '$template', mode: 'marketplace' },
+                    },
+                  ],
                 },
               ],
             },

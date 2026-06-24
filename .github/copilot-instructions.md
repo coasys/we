@@ -1008,10 +1008,13 @@ TaskBlock extends WeNode:
 Template extends WeNode:
   Fields:
   - name: string [we://name]
+  - description: string [we://description]
   - origin: string [we://origin]
   - version: number = 1 [we://version]
   - slug: string [we://slug]
   - schema: string = null [we://template_schema]
+  Relations:
+  - screenshots: HasMany → ImageBlock [we://screenshot]
 
 TextBlock extends WeNode:
   Fields:

@@ -2193,12 +2193,13 @@ export const contextData: ContextData = {
       extends: 'WeNode',
       fields: [
         { name: 'name', type: 'string', predicate: 'we://name', required: false },
+        { name: 'description', type: 'string', predicate: 'we://description', required: false },
         { name: 'origin', type: 'string', predicate: 'we://origin', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false, default: '1' },
         { name: 'slug', type: 'string', predicate: 'we://slug', required: false },
         { name: 'schema', type: 'string', predicate: 'we://template_schema', required: false, default: 'null' },
       ],
-      relations: [],
+      relations: [{ name: 'screenshots', kind: 'HasMany', predicate: 'we://screenshot', target: 'ImageBlock' }],
     },
     {
       name: 'TextBlock',

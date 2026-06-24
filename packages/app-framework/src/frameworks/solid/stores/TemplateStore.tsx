@@ -4,7 +4,7 @@ import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
-import { decodeFileAsJson, SpaceTemplatePreference, Template } from '@we/models';
+import { compressImageToFileData, decodeFileAsJson, ImageBlock, SpaceTemplatePreference, Template } from '@we/models';
 import type { StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
@@ -59,7 +59,8 @@ export interface TemplateStore {
   saveTemplate: (name: string) => Promise<void>;
   saveTemplateAs: (schema: TemplateSchema, destination?: 'root' | 'space') => Promise<boolean>;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
-  publishToMarketplace: () => Promise<boolean>;
+  deleteMarketplaceTemplate: (templateId: string) => Promise<void>;
+  publishToMarketplace: (options: { name: string; description: string; screenshots: File[] }) => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
   preloadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
   loadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
@@ -946,7 +947,33 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   /** Publish the current template to the marketplace perspective */
-  async function publishToMarketplace(): Promise<boolean> {
+  async function deleteMarketplaceTemplate(templateId: string): Promise<void> {
+    const marketplacePerspective = adamStore.marketplacePerspective();
+    if (!marketplacePerspective) {
+      toastService.error('Marketplace not connected');
+      return;
+    }
+    setOperationLoading(`marketplace-delete:${templateId}`);
+    try {
+      const template = await Template.findOne(marketplacePerspective, { where: { id: templateId } });
+      if (!template) {
+        toastService.error('Template not found');
+        return;
+      }
+      await template.delete();
+    } catch (error) {
+      console.error('TemplateStore: deleteMarketplaceTemplate error', error);
+      toastService.error('Failed to delete template');
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
+  async function publishToMarketplace(options: {
+    name: string;
+    description: string;
+    screenshots: File[];
+  }): Promise<boolean> {
     const marketplacePerspective = adamStore.marketplacePerspective();
     if (!marketplacePerspective) {
       toastService.error('Marketplace not connected');
@@ -958,7 +985,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     const existing = await Template.findOne(marketplacePerspective, { where: { slug: templateId } });
     if (existing) {
-      toastService.error(`Template "${schema.meta.name}" is already in the marketplace`);
+      toastService.error(`Template "${options.name}" is already in the marketplace`);
       return false;
     }
 
@@ -970,14 +997,26 @@ export function TemplateStoreProvider(props: ParentProps) {
     const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
 
     try {
-      await Template.create(marketplacePerspective, {
-        name: schema.meta.name,
+      const template = await Template.create(marketplacePerspective, {
+        name: options.name,
+        description: options.description,
         origin: 'marketplace',
         slug: templateId,
         version: 1,
         schema: schemaBlob as any,
       });
-      toastService.success(`Template "${schema.meta.name}" published to marketplace`);
+
+      for (const file of options.screenshots) {
+        const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
+        const imageBlock = await ImageBlock.create(marketplacePerspective, {
+          src: fileData as any,
+          altText: 'Screenshot',
+          version: 1,
+        });
+        await template.addScreenshots(imageBlock);
+      }
+
+      toastService.success(`Template "${options.name}" published to marketplace`);
       return true;
     } catch (error) {
       console.error('TemplateStore: publishToMarketplace error', error);
@@ -1056,6 +1095,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     installTemplate,
     uninstallTemplate,
     installFromMarketplace,
+    deleteMarketplaceTemplate,
     installToSpace,
     refreshSpaceTemplates,
     toggleInstalled,

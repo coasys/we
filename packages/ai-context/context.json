@@ -7045,6 +7045,12 @@
           "required": false
         },
         {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        },
+        {
           "name": "origin",
           "type": "string",
           "predicate": "we://origin",
@@ -7071,7 +7077,14 @@
           "default": "null"
         }
       ],
-      "relations": []
+      "relations": [
+        {
+          "name": "screenshots",
+          "kind": "HasMany",
+          "predicate": "we://screenshot",
+          "target": "ImageBlock"
+        }
+      ]
     },
     {
       "name": "TextBlock",
