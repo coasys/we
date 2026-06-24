@@ -11,6 +11,7 @@ import {
   insertChild,
   mergeNode,
   removeChild,
+  stripNodeIds,
   validateSemantic,
   validateStructure,
 } from '@we/schema-shared';
@@ -292,7 +293,8 @@ export function AiStoreProvider(props: ParentProps) {
 
   // --- Content mode (preview / visual / code) ---
   const [contentMode, setContentMode] = createSignal<'preview' | 'visual'>('preview');
-  const schemaJson = () => JSON.stringify(templateStore.currentTemplate, null, 2);
+  const schemaJson = () =>
+    JSON.stringify(stripNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode), null, 2);
 
   // --- Template context (computed) ---
   const templateName = () => templateStore.currentTemplate.meta?.name || templateStore.currentTemplate.id || 'Template';
@@ -1167,14 +1169,14 @@ export function AiStoreProvider(props: ParentProps) {
           } else if (isReadOnly()) {
             console.log('[AiStore] Semantic validation passed — buffering (read-only template)');
             pushSnapshot();
-            setPendingTemplate(mergedTemplate);
+            setPendingTemplate(stripNodeIds(mergedTemplate));
             for (const tr of toolResults) {
               tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
             }
           } else {
             console.log('[AiStore] Semantic validation passed — applying to store');
             pushSnapshot();
-            templateStore.updateTemplate(mergedTemplate);
+            templateStore.updateTemplate(stripNodeIds(mergedTemplate));
             await templateStore.persistCurrentTemplate();
             setPendingTemplate(null);
             for (const tr of toolResults) {
@@ -1280,7 +1282,7 @@ export function AiStoreProvider(props: ParentProps) {
     try {
       const parsed = JSON.parse(json);
       pushSnapshot();
-      templateStore.updateTemplate(parsed as TemplateSchema);
+      templateStore.updateTemplate(stripNodeIds(parsed as SchemaNode) as TemplateSchema);
       templateStore.persistCurrentTemplate();
       setMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
     } catch {
