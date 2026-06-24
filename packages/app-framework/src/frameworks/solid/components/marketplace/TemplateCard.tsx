@@ -1,6 +1,6 @@
 import type { AgentProfileSummary } from '@shared/agentHelpers';
-import { Column, Row } from '@we/components/solid';
-import { createMemo, For, onMount, Show } from 'solid-js';
+import { Column, ImageLightbox, Row } from '@we/components/solid';
+import { createMemo, createSignal, For, onMount, Show } from 'solid-js';
 
 import { useAdamStore } from '../../stores/AdamStore';
 import { useTemplateStore } from '../../stores/TemplateStore';
@@ -74,6 +74,8 @@ export function TemplateCard(props: Props) {
       typeof item === 'string' ? item : (item as unknown as { src: string }).src,
     ),
   );
+
+  const [lightboxIndex, setLightboxIndex] = createSignal<number | null>(null);
 
   // ── Compact (list-row) mode ──────────────────────────────────────────────
   if (mode() === 'compact') {
@@ -181,9 +183,23 @@ export function TemplateCard(props: Props) {
       <Show when={screenshots().length > 0}>
         <Row gap="200" overflow="hidden" r="200" height="120px">
           <For each={screenshots().slice(0, 3)}>
-            {(src) => <we-image src={src} fit="cover" r="200" flex="1" minWidth="0" height="120px" />}
+            {(src, i) => (
+              <we-image
+                src={src}
+                fit="cover"
+                r="200"
+                flex="1"
+                minWidth="0"
+                height="120px"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setLightboxIndex(i())}
+              />
+            )}
           </For>
         </Row>
+        <Show when={lightboxIndex() !== null}>
+          <ImageLightbox srcs={screenshots()} initialIndex={lightboxIndex()!} onClose={() => setLightboxIndex(null)} />
+        </Show>
       </Show>
 
       {/* Footer */}

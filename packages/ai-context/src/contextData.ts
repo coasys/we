@@ -1532,6 +1532,15 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
+      name: 'ImageLightbox',
+      props: [
+        { name: 'srcs', type: 'string[]', optional: false },
+        { name: 'initialIndex', type: 'number', optional: false },
+        { name: 'onClose', type: '() => void', optional: false },
+      ],
+      source: 'components',
+    },
+    {
       name: 'List',
       props: [
         { name: 'children', type: 'JSX.Element', optional: true },

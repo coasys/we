@@ -14,6 +14,7 @@ export {
 } from '../../components/media/AudioVisualiser/AudioVisualiser.solid';
 export { EditableImage, type EditableImageProps } from '../../components/media/EditableImage/EditableImage.solid';
 export { ImageCrop, type ImageCropProps, type ImageCropRef } from '../../components/media/ImageCrop/ImageCrop.solid';
+export { ImageLightbox, type ImageLightboxProps } from '../../components/media/ImageLightbox/ImageLightbox.solid';
 
 // Cards
 export { FlipCard, type FlipCardProps } from '../../components/cards/FlipCard/FlipCard.solid';

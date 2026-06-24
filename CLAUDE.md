@@ -605,6 +605,8 @@ when `relative` is enabled.
   Props: icon: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
 - ImageCrop
   Props: src: string, fileName?: string, aspect?: number, maxSize?: number, outputType?: string, quality?: number, onReady?: ((ref: ImageCropRef) => void)
+- ImageLightbox
+  Props: srcs: string[], initialIndex: number, onClose: () => void
 - List
   Props: children?: JSX.Element, renderItem?: ((item: ListItem, index: number) => JSX.Element), items?: ListItem[], ordered?: boolean, gap?: string, styles?: Record<string, string | number>
 - PostCard
