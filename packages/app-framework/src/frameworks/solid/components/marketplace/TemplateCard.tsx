@@ -162,14 +162,14 @@ export function TemplateCard(props: Props) {
 
       {/* Description */}
       <Show when={props.template.description}>
-        <we-text fontSize="300" color="neutral-500">
+        <we-text fontSize="400" color="neutral-500">
           {props.template.description}
         </we-text>
       </Show>
 
       {/* Version + slug */}
       <Row gap="200" ay="center">
-        <we-badge variant="neutral" size="sm">
+        <we-badge variant="neutral" size="xs" fontSize="300">
           v{props.template.version}
         </we-badge>
         <Show when={props.template.slug}>
