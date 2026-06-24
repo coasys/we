@@ -1102,19 +1102,21 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   }
 
-  /** Pre-computed list for Settings UI with status flags */
+  /** Pre-computed list for Settings UI with status flags — excludes space templates */
   const templateManagementList = () => {
     const defaultId = defaultTemplateId();
     const installed = installedIds();
-    return allTemplates().map((t) => ({
-      id: t.id || '',
-      name: t.meta?.name || '',
-      icon: t.meta?.icon || '',
-      description: t.meta?.description || '',
-      isCore: isCoreTemplateId(t.id || ''),
-      isInstalled: isCoreTemplateId(t.id || '') || installed.has(t.id || ''),
-      isDefault: (t.id || '') === defaultId,
-    }));
+    return allTemplates()
+      .filter((t) => !t._fromSpace)
+      .map((t) => ({
+        id: t.id || '',
+        name: t.meta?.name || '',
+        icon: t.meta?.icon || '',
+        description: t.meta?.description || '',
+        isCore: isCoreTemplateId(t.id || ''),
+        isInstalled: isCoreTemplateId(t.id || '') || installed.has(t.id || ''),
+        isDefault: (t.id || '') === defaultId,
+      }));
   };
 
   const store: TemplateStore = {
