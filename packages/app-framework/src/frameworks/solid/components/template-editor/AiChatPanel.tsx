@@ -54,15 +54,19 @@ export function AiChatPanel() {
         styles={{ 'flex-shrink': '0' }}
       >
         <we-text fontSize="500" fontWeight="600">
-          AI Template Editor
+          AI Chat
         </we-text>
         <Row ay="center" gap="100">
-          <we-button variant="ghost" size="sm" onClick={() => aiStore.newChat()}>
-            <we-icon name="plus" size="sm" />
-          </we-button>
-          <we-button variant="ghost" size="sm" onClick={() => aiStore.close()}>
-            <we-icon name="x" size="sm" />
-          </we-button>
+          <we-tooltip title="New chat session">
+            <we-button variant="ghost" size="sm" onClick={() => aiStore.newChat()}>
+              <we-icon name="file-plus" size="sm" />
+            </we-button>
+          </we-tooltip>
+          <we-tooltip title="Close chat panel">
+            <we-button variant="ghost" size="sm" onClick={() => aiStore.close()}>
+              <we-icon name="x" size="sm" />
+            </we-button>
+          </we-tooltip>
         </Row>
       </Row>
 
@@ -116,8 +120,8 @@ export function AiChatPanel() {
         <Row
           ay="center"
           gap="100"
-          p="300"
-          borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
+          px="300"
+          borderBottom={`1px solid ${tokenVar('color', 'neutral-200')}`}
           styles={{ 'overflow-x': 'auto', 'flex-shrink': '0' }}
         >
           <For each={aiStore.sessions()}>
@@ -127,17 +131,17 @@ export function AiChatPanel() {
                 <Row
                   ay="center"
                   gap="200"
-                  r="400"
-                  px="200"
-                  py="100"
-                  bg={isActive() ? 'primary-200' : 'primary-100'}
+                  rt="400"
+                  px="12px"
+                  height="32px"
+                  bg={isActive() ? 'neutral-200' : 'neutral-100'}
                   cursor="pointer"
                   styles={{ 'white-space': 'nowrap', 'flex-shrink': '0' }}
                 >
                   <we-text
-                    fontSize="200"
+                    fontSize="300"
                     fontWeight={isActive() ? '600' : '400'}
-                    color={isActive() ? 'primary-700' : 'neutral-600'}
+                    color={isActive() ? 'neutral-900' : 'neutral-700'}
                     onClick={() => aiStore.switchSession(session.id)}
                     cursor="pointer"
                   >
@@ -151,11 +155,10 @@ export function AiChatPanel() {
                         e.stopPropagation();
                         aiStore.deleteSession(session.id);
                       }}
-                      opacity={0.5}
-                      p="0"
-                      minWidth="unset"
+                      mr="-8px"
+                      square
                     >
-                      <we-icon name="x" size="xs" />
+                      <we-icon name="x" size="xs" weight="bold" />
                     </we-button>
                   </Show>
                 </Row>

@@ -32,11 +32,13 @@ export function CodePanel() {
         styles={{ 'flex-shrink': '0' }}
       >
         <we-text fontSize="500" fontWeight="600">
-          JSON Schema
+          Code Editor
         </we-text>
-        <we-button variant="ghost" size="sm" onClick={() => aiStore.closeCodePanel()}>
-          <we-icon name="x" size="sm" />
-        </we-button>
+        <we-tooltip title="Close code panel">
+          <we-button variant="ghost" size="sm" onClick={() => aiStore.closeCodePanel()}>
+            <we-icon name="x" size="sm" />
+          </we-button>
+        </we-tooltip>
       </Row>
 
       {/* Code viewer */}
