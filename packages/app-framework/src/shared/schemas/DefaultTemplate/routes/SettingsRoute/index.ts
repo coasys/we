@@ -63,18 +63,20 @@ const saveLocationOnBlur = [
 ];
 
 const saveOnBlur = [
-  { $if: { condition: { $local: 'isDirty' }, then: { $setLocal: 'saving', value: true } } },
   {
     $if: {
       condition: { $local: 'isDirty' },
-      then: {
-        $action: 'spaceStore.updateSpaceMeta',
-        args: [{ name: { $local: 'editName' }, description: { $local: 'editDescription' } }],
-        onFinally: [
-          { $setLocal: 'saving', value: false },
-          { $setLocal: 'isDirty', value: false },
-        ],
-      },
+      then: [
+        { $setLocal: 'saving', value: true },
+        {
+          $action: 'spaceStore.updateSpaceMeta',
+          args: [{ name: { $local: 'editName' }, description: { $local: 'editDescription' } }],
+          onFinally: [
+            { $setLocal: 'saving', value: false },
+            { $setLocal: 'isDirty', value: false },
+          ],
+        },
+      ],
     },
   },
 ];

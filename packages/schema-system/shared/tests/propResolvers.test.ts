@@ -136,6 +136,63 @@ describe('propResolvers (combined)', () => {
     expect(typeof result).toBe('function');
   });
 
+  it('handler array dispatches all actions when $if.then is an array', () => {
+    const setLocal = vi.fn();
+    const save = vi.fn();
+    const stores = { spaceStore: { save } };
+    const isDirty = { isDirty: true };
+    const localCtx = {
+      ...isDirty,
+      $localSignals: { isDirty: () => true },
+      $setLocalSignal: (_k: string, _v: unknown) => setLocal(_k, _v),
+    };
+    // Simulate the pattern: onClick resolves an object with an onClick handler array
+    const schema = {
+      onClick: [
+        {
+          $if: {
+            condition: '$isDirty',
+            then: [
+              { $setLocal: 'saving', value: true },
+              { $action: 'spaceStore.save', args: [] },
+            ],
+          },
+        },
+      ],
+    };
+    const resolved = resolveProp(schema, stores, localCtx) as { onClick: () => void };
+    resolved.onClick();
+    expect(save).toHaveBeenCalled();
+  });
+
+  it('handler array $if.then array: only dispatches when condition is true', () => {
+    const actionA = vi.fn();
+    const actionB = vi.fn();
+    const stores = { s: { a: actionA, b: actionB } };
+    const schema = {
+      onClick: [
+        {
+          $if: {
+            condition: '$flag',
+            then: [
+              { $action: 's.a', args: [] },
+              { $action: 's.b', args: [] },
+            ],
+          },
+        },
+      ],
+    };
+    const resolvedFalse = resolveProp(schema, stores, { flag: false }) as { onClick: () => void };
+    resolvedFalse.onClick();
+    expect(actionA).not.toHaveBeenCalled();
+    expect(actionB).not.toHaveBeenCalled();
+
+    const resolvedTrue = resolveProp(schema, stores, { flag: true }) as { onClick: () => void };
+    resolvedTrue.onClick();
+    expect(actionA).toHaveBeenCalled();
+    expect(actionB).toHaveBeenCalled();
+  });
+
   it('routeStore.navigate with absolute path does not normalize', () => {
     const navigate = vi.fn();
     const stores = { routeStore: { navigate } };
