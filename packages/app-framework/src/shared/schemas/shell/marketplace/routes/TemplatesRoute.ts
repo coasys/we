@@ -178,6 +178,8 @@ export const templatesRoute: SchemaNode = {
         {
           type: 'SearchInput',
           props: {
+            bg: 'neutral-0',
+            border: '1px solid neutral-300',
             placeholder: 'Search templates…',
             value: { $local: 'search' },
             onSearch: { $setLocal: 'search', from: '$arg' },

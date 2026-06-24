@@ -126,11 +126,13 @@ Utility components that appear in schemas and need layout control (width, flex s
 
 Add this pattern when a component is used inline in schemas and authors need to control its size or position — e.g. `SearchInput` inside a `Row`, where `flex: '1'` or `maxWidth` is needed.
 
-### Pattern
+### Two variants
 
-**`ComponentName.types.ts`** — no change. Keep it framework-agnostic with only component-specific props.
+#### Variant A — inner element is a Solid component (Column, Row, etc.)
 
-**`ComponentName.solid.tsx`** — extend with `LayoutProps` and wrap content in a layout div:
+The inner element handles its own DS props, so the wrapper takes all of `layoutProps`.
+
+**`ComponentName.solid.tsx`**:
 
 ```tsx
 import type { LayoutProps } from '@we/design-utils/solid';
@@ -138,34 +140,91 @@ import { buildLayoutStyles } from '@we/design-utils/solid';
 import { createMemo, splitProps } from 'solid-js';
 import type { ComponentNameProps as ComponentNameOwnProps } from './ComponentName.types';
 
-// Omit 'children' (Solid-specific) and 'styles' (type conflict with base) from LayoutProps.
 export type ComponentNameProps = Omit<LayoutProps, 'children' | 'styles'> & ComponentNameOwnProps;
 
-// List only the component's own prop keys — everything else falls through to layoutProps.
 const ownKeys = ['propA', 'propB', 'class'] as const;
 
 export function ComponentName(allProps: ComponentNameProps) {
   const [props, layoutProps] = splitProps(allProps, ownKeys);
 
-  // Default display to 'block' — buildLayoutStyles defaults to 'flex', which is wrong for non-layout components.
   const wrapperStyle = createMemo(() =>
     buildLayoutStyles({ ...layoutProps, display: layoutProps.display ?? 'block' } as LayoutProps, 'column'),
   );
 
   return (
     <div style={wrapperStyle()}>
-      {/* Inner element fills the wrapper */}
-      <inner-element style={{ width: '100%' }} ... />
+      <inner-solid-component style={{ width: '100%' }} ... />
     </div>
   );
 }
 ```
 
-### Rules
+#### Variant B — inner element is a web component (we-input, we-button, etc.)
 
-- **`ownKeys`** lists only the component's own props. All unrecognised props (layout, visual, flex, typography, state, `styles`) automatically route to the wrapper div.
+Web components (Lit `DesignSystemElement`) have their own built-in DS defaults (e.g. `we-input` defaults to `bg: 'neutral-50'`). If the wrapper div receives `bg`, `r`, etc., the web component's shadow DOM overrides them. The fix: split DS props into two groups — container props on the wrapper div, visual/typography/state props forwarded to the web component via DOM property assignment.
+
+**`ComponentName.solid.tsx`**:
+
+```tsx
+import type { LayoutProps } from '@we/design-utils/solid';
+import { buildLayoutStyles } from '@we/design-utils/solid';
+import { createEffect, createMemo, createSignal, splitProps } from 'solid-js';
+import type { ComponentNameProps as ComponentNameOwnProps } from './ComponentName.types';
+
+export type ComponentNameProps = Omit<LayoutProps, 'children'> & Omit<ComponentNameOwnProps, 'styles'>;
+
+const ownKeys = ['propA', 'propB', 'class'] as const;
+
+// Layout/positioning props that stay on the outer wrapper div.
+// Everything else (bg, color, r, border, typography, state, padding, height) is forwarded to the WC.
+const containerKeys = [
+  'display', 'flex', 'alignSelf',
+  'width', 'minWidth', 'maxWidth',
+  'm', 'mx', 'my', 'mt', 'mr', 'mb', 'ml',
+  'position', 'top', 'right', 'bottom', 'left', 'zIndex',
+  'overflow', 'overflowX', 'overflowY', 'scrollbarWidth', 'scrollbarGutter',
+] as const;
+
+export function ComponentName(allProps: ComponentNameProps) {
+  const [props, rest] = splitProps(allProps, ownKeys);
+  const [containerProps, inputProps] = splitProps(rest, containerKeys);
+
+  const wrapperStyle = createMemo(() =>
+    buildLayoutStyles({ ...containerProps, display: containerProps.display ?? 'block' } as LayoutProps, 'column'),
+  );
+
+  let wcRef: (HTMLElement & Record<string, unknown>) | undefined;
+
+  // Forward visual DS props to the web component as DOM properties.
+  // DesignSystemElement registers all DS keys as reactive Lit properties, so property
+  // assignment triggers its updated() cycle and applies the new CSS custom vars.
+  createEffect(() => {
+    if (!wcRef) return;
+    for (const key of Object.keys(inputProps as object)) {
+      const val = (inputProps as Record<string, unknown>)[key];
+      if (val !== undefined) wcRef[key] = val;
+    }
+  });
+
+  return (
+    <div style={wrapperStyle()}>
+      <we-web-component
+        ref={wcRef}
+        style={{ width: '100%' }}
+        ...
+      />
+    </div>
+  );
+}
+```
+
+**Why property assignment, not JSX attributes?** DS state props (`hoverProps`, `activeProps`, `focusProps`) are registered as `@property({ type: Object, attribute: false })` in the Lit mixin — they must be set as JS properties, not HTML attributes. Using DOM property assignment via `ref` + `createEffect` handles both string and object props uniformly.
+
+### Rules (both variants)
+
+- **`ownKeys`** lists only the component's own props. All unrecognised props route to the wrapper (Variant A) or to the WC (Variant B).
 - **`class`** goes in `ownKeys` so it forwards to the inner element, not the wrapper — unless you want it on the wrapper.
-- **Default `display: 'block'`** on the wrapper. `buildLayoutStyles` defaults to `'flex'`, which is wrong for components that aren't flex containers. Users can still pass `display: 'flex'` explicitly to override.
+- **Default `display: 'block'`** on the wrapper. `buildLayoutStyles` defaults to `'flex'`, which is wrong for non-layout components. Users can still pass `display: 'flex'` explicitly to override.
 - **Inner element gets `width: 100%`** so it fills whatever size the wrapper is given.
 - **Don't add `LayoutProps` to `*.types.ts`** — it's Solid-specific. The extended type lives only in `*.solid.tsx`.
 - **After any change**, rebuild the package (`pnpm --filter @we/components build`) and regenerate docs (`pnpm --filter @we/ai-context generate-context`) so CLAUDE.md reflects the new props.
