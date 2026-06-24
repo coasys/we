@@ -85,9 +85,33 @@ const templateCard: SchemaNode = {
       props: { ax: 'between', ay: 'center', mt: '100' },
       children: [
         {
-          type: 'we-text',
-          props: { fontSize: '200', color: 'neutral-400', truncate: true, maxWidth: '140px' },
-          children: ['$template.author'],
+          type: '$agent',
+          props: { did: '$template.author', as: 'author' },
+          children: [
+            {
+              type: 'Row',
+              props: { ay: 'center', gap: '200', flex: '1', minWidth: '0' },
+              children: [
+                {
+                  type: 'we-avatar',
+                  props: {
+                    size: 'xs',
+                    image: '$author.avatar',
+                    initials: { $concat: ['$author.firstName', ' ', '$author.lastName'] },
+                  },
+                },
+                {
+                  type: 'we-text',
+                  props: { fontSize: '400', color: 'neutral-600', truncate: true },
+                  children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
+                },
+                {
+                  type: 'we-timestamp',
+                  props: { value: '$template.createdAt', relative: true, color: 'neutral-400', fontSize: '400' },
+                },
+              ],
+            },
+          ],
         },
         {
           type: 'we-button',

@@ -48,7 +48,7 @@ export const marketplaceBrowser: SchemaNode = {
                   props: {
                     ay: 'center',
                     ax: 'between',
-                    p: '300',
+                    p: '400',
                     r: '300',
                     border: '1px solid neutral-200',
                     bg: 'neutral-50',
@@ -58,31 +58,60 @@ export const marketplaceBrowser: SchemaNode = {
                     // Left: icon + name + author
                     {
                       type: 'Row',
-                      props: { ay: 'center', gap: '300', flex: '1', minWidth: '0' },
+                      props: { ay: 'center', gap: '400' },
                       children: [
                         { type: 'we-icon', props: { name: 'layout', color: 'primary-500' } },
                         {
                           type: 'Column',
-                          props: { gap: '50', flex: '1', minWidth: '0' },
+                          props: { gap: '300' },
                           children: [
                             {
-                              type: 'we-text',
-                              props: { fontWeight: '600', truncate: true },
-                              children: ['$marketplaceTemplate.name'],
-                            },
-                            {
                               type: 'Row',
-                              props: { gap: '200', ay: 'center' },
+                              props: { gap: '300', ay: 'center' },
                               children: [
+                                {
+                                  type: 'we-text',
+                                  props: { fontWeight: '600', truncate: true },
+                                  children: ['$marketplaceTemplate.name'],
+                                },
                                 {
                                   type: 'we-badge',
                                   props: { variant: 'neutral', size: 'xs' },
                                   children: [{ $concat: ['v', '$marketplaceTemplate.version'] }],
                                 },
+                              ],
+                            },
+                            {
+                              type: '$agent',
+                              props: { did: '$marketplaceTemplate.author', as: 'author' },
+                              children: [
                                 {
-                                  type: 'we-text',
-                                  props: { fontSize: '300', color: 'neutral-400', truncate: true },
-                                  children: ['$marketplaceTemplate.author'],
+                                  type: 'Row',
+                                  props: { ay: 'center', gap: '300' },
+                                  children: [
+                                    {
+                                      type: 'we-avatar',
+                                      props: {
+                                        size: 'xs',
+                                        image: '$author.avatar',
+                                        initials: { $concat: ['$author.firstName', ' ', '$author.lastName'] },
+                                      },
+                                    },
+                                    {
+                                      type: 'we-text',
+                                      props: { fontSize: '400', color: 'neutral-600', truncate: true },
+                                      children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
+                                    },
+                                    {
+                                      type: 'we-timestamp',
+                                      props: {
+                                        value: '$marketplaceTemplate.createdAt',
+                                        relative: true,
+                                        color: 'neutral-400',
+                                        fontSize: '400',
+                                      },
+                                    },
+                                  ],
                                 },
                               ],
                             },
