@@ -109,6 +109,11 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
   createEffect(() => stores.routeStore.setNavigateFunction(() => navigate));
   createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
 
+  // Exit edit mode when a shell view (settings, profile, marketplace) opens.
+  createEffect(() => {
+    if (stores.templateStore.activeShellView()) stores.aiStore.exitEditMode();
+  });
+
   const rightOffset = () => {
     if (!stores.aiStore.isEditMode()) return '0px';
     let offset = TOTAL_RAIL_WIDTH;

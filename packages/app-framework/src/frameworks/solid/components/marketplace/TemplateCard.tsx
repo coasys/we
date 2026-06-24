@@ -158,6 +158,13 @@ export function TemplateCard(props: Props) {
         </Show>
       </Row>
 
+      {/* Description */}
+      <Show when={props.template.description}>
+        <we-text fontSize="300" color="neutral-500">
+          {props.template.description}
+        </we-text>
+      </Show>
+
       {/* Version + slug */}
       <Row gap="200" ay="center">
         <we-badge variant="neutral" size="sm">
@@ -179,18 +186,8 @@ export function TemplateCard(props: Props) {
         </Row>
       </Show>
 
-      {/* Description */}
-      <Show when={props.template.description}>
-        <we-text fontSize="300" color="neutral-500">
-          {props.template.description}
-        </we-text>
-      </Show>
-
-      {/* Spacer */}
-      <Column flex="1" />
-
       {/* Footer */}
-      <Row ax="between" ay="center" mt="100">
+      <Row ax="between" ay="center">
         <Row ay="center" gap="200" flex="1" minWidth="0">
           <Show when={author()}>
             <we-avatar size="xs" image={author()?.avatar} initials={authorName()} />
