@@ -53,7 +53,7 @@ export const marketplaceBrowser: SchemaNode = {
                     p: '300',
                     r: '300',
                     border: '1px solid neutral-200',
-                    bg: 'neutral-0',
+                    bg: 'neutral-50',
                     gap: '300',
                   },
                   children: [
@@ -108,7 +108,7 @@ export const marketplaceBrowser: SchemaNode = {
                         },
                         then: {
                           type: 'we-badge',
-                          props: { variant: 'success' },
+                          props: { variant: 'success', fontSize: '300' },
                           children: ['Installed'],
                         },
                         else: {
@@ -122,10 +122,7 @@ export const marketplaceBrowser: SchemaNode = {
                                 { $concat: ['space-install:', '$marketplaceTemplate.id'] },
                               ],
                             },
-                            onClick: {
-                              $action: 'templateStore.installToSpace',
-                              args: ['$marketplaceTemplate.id'],
-                            },
+                            onClick: { $action: 'templateStore.installToSpace', args: ['$marketplaceTemplate.id'] },
                           },
                           children: ['Install to Space'],
                         },

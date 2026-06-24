@@ -13,8 +13,8 @@ const templateRow: SchemaNode = {
     bg: {
       $if: {
         condition: { $eq: ['$template.id', { $store: 'spaceStore.spaceDefaultTemplateId' }] },
-        then: 'primary-50',
-        else: 'neutral-0',
+        then: 'primary-200',
+        else: 'neutral-50',
       },
     },
   },
@@ -33,7 +33,7 @@ const templateRow: SchemaNode = {
         condition: { $eq: ['$template.id', { $store: 'spaceStore.spaceDefaultTemplateId' }] },
         then: {
           type: 'we-badge',
-          props: { variant: 'primary' },
+          props: { variant: 'primary', fontSize: '300' },
           children: ['Default'],
         },
         else: {
@@ -90,6 +90,7 @@ export const settingsRoute: RouteSchema = {
     editDescription: { type: 'string', initial: { $store: 'spaceStore.currentSpace.description' } },
     saving: { type: 'boolean', initial: false },
     isDirty: { type: 'boolean', initial: false },
+    editLocation: { type: 'boolean', initial: false },
     location: { type: 'object', initial: { $store: 'spaceStore.currentSpace.location' } },
     locationDirty: { type: 'boolean', initial: false },
   },
@@ -98,10 +99,10 @@ export const settingsRoute: RouteSchema = {
       type: 'Column',
       props: { width: '100%', maxWidth: '1200px', gap: '500', px: '400', pt: '500' },
       children: [
-        // ─── About this space ───────────────────────────────────────────────────
+        // About this space
         {
           type: 'Column',
-          props: { gap: '400', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          props: { gap: '500', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
           children: [
             // Header row — title + saving spinner
             {
@@ -188,8 +189,7 @@ export const settingsRoute: RouteSchema = {
               ],
             },
 
-            // { type: 'we-divider', props: { my: '400' } },
-
+            // Discovery
             {
               type: 'Row',
               props: { ay: 'center', ax: 'between', wrap: true },
@@ -273,99 +273,179 @@ export const settingsRoute: RouteSchema = {
 
             // Location
             {
-              type: 'Column',
-              props: { gap: '300' },
+              type: 'Row',
+              props: { ay: 'center', ax: 'between', wrap: true },
               children: [
                 {
-                  type: 'we-form-field',
-                  props: { label: 'Location' },
+                  type: 'Row',
+                  props: { ay: 'center', gap: '400', py: '100' },
                   children: [
+                    { type: 'we-icon', props: { name: 'map-pin', color: 'primary-600' } },
                     {
-                      type: 'we-location-picker',
-                      props: {
-                        latitude: { $local: 'location.latitude' },
-                        longitude: { $local: 'location.longitude' },
-                        onChange: [
-                          { $setLocal: 'location', from: '$event.detail' },
-                          {
-                            $action: 'spaceStore.updateSpaceMeta',
-                            args: [{ location: { $local: 'location' } }],
-                          },
-                        ],
-                      },
-                    },
-                  ],
-                },
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $local: 'location' },
-                    then: {
                       type: 'Column',
-                      props: { gap: '300' },
+                      props: { gap: '100' },
                       children: [
                         {
                           type: 'Row',
                           props: { gap: '300' },
                           children: [
                             {
-                              type: 'we-form-field',
-                              props: { label: 'City', flex: '1' },
-                              children: [
-                                {
-                                  type: 'we-input',
-                                  props: {
-                                    value: { $local: 'location.city' },
-                                    placeholder: 'City…',
-                                    onInput: [
-                                      { $setLocal: 'location', merge: { city: '$event.detail' } },
-                                      { $setLocal: 'locationDirty', value: true },
-                                    ],
-                                    onBlur: saveLocationOnBlur,
-                                  },
-                                },
-                              ],
+                              type: 'we-text',
+                              props: { color: 'neutral-700', fontWeight: 'bold' },
+                              children: ['Location:'],
                             },
                             {
-                              type: 'we-form-field',
-                              props: { label: 'Country', flex: '1' },
-                              children: [
-                                {
-                                  type: 'we-input',
-                                  props: {
-                                    value: { $local: 'location.country' },
-                                    placeholder: 'Country…',
-                                    onInput: [
-                                      { $setLocal: 'location', merge: { country: '$event.detail' } },
-                                      { $setLocal: 'locationDirty', value: true },
-                                    ],
-                                    onBlur: saveLocationOnBlur,
-                                  },
+                              type: '$if',
+                              props: {
+                                condition: { $store: 'spaceStore.currentSpace.location' },
+                                then: {
+                                  type: 'we-text',
+                                  props: { fontWeight: 'bold' },
+                                  children: [
+                                    {
+                                      $concat: [
+                                        { $store: 'spaceStore.currentSpace.location.city' },
+                                        ', ',
+                                        { $store: 'spaceStore.currentSpace.location.country' },
+                                      ],
+                                    },
+                                  ],
                                 },
-                              ],
+                                else: {
+                                  type: 'we-text',
+                                  props: { fontWeight: 'bold' },
+                                  children: ['Not set'],
+                                },
+                              },
                             },
-                          ],
-                        },
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: 'ghost',
-                            size: 'sm',
-                            onClick: [
-                              { $setLocal: 'location', value: null },
-                              { $action: 'spaceStore.updateSpaceMeta', args: [{ location: null }] },
-                            ],
-                          },
-                          children: [
-                            { type: 'we-icon', props: { name: 'trash', color: 'danger-400' } },
-                            { type: 'we-text', props: { color: 'danger-400' }, children: ['Remove location'] },
                           ],
                         },
                       ],
                     },
-                  },
+                  ],
+                },
+                {
+                  type: 'Row',
+                  props: { ay: 'center', gap: '300' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: 'editLocation' } },
+                      children: [
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $local: 'editLocation' },
+                            then: { type: 'we-text', children: ['Hide'] },
+                            else: { type: 'we-text', children: ['Edit'] },
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: 'danger',
+                        onClick: [
+                          { $setLocal: 'location', value: null },
+                          { $action: 'spaceStore.updateSpaceMeta', args: [{ location: null }] },
+                        ],
+                      },
+                      children: [
+                        { type: 'we-icon', props: { name: 'trash' } },
+                        { type: 'we-text', children: ['Remove'] },
+                      ],
+                    },
+                  ],
                 },
               ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $local: 'editLocation' },
+                then: {
+                  type: 'Column',
+                  props: { gap: '300' },
+                  children: [
+                    {
+                      type: 'we-form-field',
+                      props: { label: 'Location' },
+                      children: [
+                        {
+                          type: 'we-location-picker',
+                          props: {
+                            latitude: { $local: 'location.latitude' },
+                            longitude: { $local: 'location.longitude' },
+                            onChange: [
+                              { $setLocal: 'location', from: '$event.detail' },
+                              {
+                                $action: 'spaceStore.updateSpaceMeta',
+                                args: [{ location: { $local: 'location' } }],
+                              },
+                            ],
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $local: 'location' },
+                        then: {
+                          type: 'Column',
+                          props: { gap: '300' },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: { gap: '300' },
+                              children: [
+                                {
+                                  type: 'we-form-field',
+                                  props: { label: 'City', flex: '1' },
+                                  children: [
+                                    {
+                                      type: 'we-input',
+                                      props: {
+                                        value: { $local: 'location.city' },
+                                        placeholder: 'City…',
+                                        onInput: [
+                                          { $setLocal: 'location', merge: { city: '$event.detail' } },
+                                          { $setLocal: 'locationDirty', value: true },
+                                        ],
+                                        onBlur: saveLocationOnBlur,
+                                      },
+                                    },
+                                  ],
+                                },
+                                {
+                                  type: 'we-form-field',
+                                  props: { label: 'Country', flex: '1' },
+                                  children: [
+                                    {
+                                      type: 'we-input',
+                                      props: {
+                                        value: { $local: 'location.country' },
+                                        placeholder: 'Country…',
+                                        onInput: [
+                                          { $setLocal: 'location', merge: { country: '$event.detail' } },
+                                          { $setLocal: 'locationDirty', value: true },
+                                        ],
+                                        onBlur: saveLocationOnBlur,
+                                      },
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
             },
           ],
         },
@@ -373,7 +453,7 @@ export const settingsRoute: RouteSchema = {
         // ─── Default Template ───────────────────────────────────────────────────
         {
           type: 'Column',
-          props: { gap: '400', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          props: { gap: '500', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
           children: [
             {
               type: 'Column',
