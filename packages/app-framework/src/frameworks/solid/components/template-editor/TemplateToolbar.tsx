@@ -35,6 +35,7 @@ export function TemplateToolbar() {
 
   // ── Theme picker ──
   const [themeOpen, setThemeOpen] = createSignal(false);
+  const [themeSearch, setThemeSearch] = createSignal('');
 
   // ── Theme edit dropdown (pencil menu, inactive state) ──
   const [themeEditOpen, setThemeEditOpen] = createSignal(false);
@@ -69,6 +70,7 @@ export function TemplateToolbar() {
     setShareView('main');
     setSpaceSearch('');
     setThemeOpen(false);
+    setThemeSearch('');
     setThemeEditOpen(false);
     setThemeShareOpen(false);
     setThemePickerOpen(false);
@@ -152,6 +154,18 @@ export function TemplateToolbar() {
     const q = spaceSearch().toLowerCase();
     const items = adamStore.orderedSidebarItems();
     return q ? items.filter((s) => s.name.toLowerCase().includes(q)) : items;
+  });
+
+  const filteredBuiltInThemes = createMemo(() => {
+    const q = themeSearch().toLowerCase();
+    return q ? themeStore.builtInThemes().filter((t) => t.name.toLowerCase().includes(q)) : themeStore.builtInThemes();
+  });
+
+  const filteredInstalledThemes = createMemo(() => {
+    const q = themeSearch().toLowerCase();
+    return q
+      ? themeStore.installedThemes().filter((t) => t.name.toLowerCase().includes(q))
+      : themeStore.installedThemes();
   });
 
   const canEdit = () => !aiStore.isReadOnly();
@@ -335,39 +349,54 @@ export function TemplateToolbar() {
               overflow="hidden"
               minWidth="220px"
             >
+              <SearchInput value={themeSearch()} placeholder="Search themes…" m="200" onSearch={setThemeSearch} />
+              <we-divider />
               <we-scroll-area maxHeight="320px">
                 <Column py="200">
-                  <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
-                    Built-in
-                  </we-text>
-                  <For each={themeStore.builtInThemes()}>
-                    {(theme) => (
-                      <Row
-                        ay="center"
-                        gap="200"
-                        px="300"
-                        py="200"
-                        cursor="pointer"
-                        bg={theme.id === themeStore.currentThemeId() ? 'primary-100' : 'neutral-0'}
-                        hoverProps={{ bg: 'neutral-100' }}
-                        onClick={() => {
-                          themeStore.setCurrentTheme(theme.id);
-                          closeAllDropdowns();
-                        }}
-                      >
-                        <we-icon name={theme.icon} size="sm" color="neutral-600" />
-                        <we-text color="neutral-700" flex="1">
-                          {theme.name}
-                        </we-text>
-                      </Row>
-                    )}
-                  </For>
-                  <Show when={themeStore.installedThemes().length > 0}>
+                  <Show when={filteredInstalledThemes().length > 0}>
                     <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
                       My themes
                     </we-text>
-                    <For each={themeStore.installedThemes()}>
-                      {(theme) => (
+                    <For each={filteredInstalledThemes()}>
+                      {(theme) => {
+                        const isDefault = createMemo(
+                          () => !!spaceStore.spaceDefaultThemeId() && theme.id === spaceStore.spaceDefaultThemeId(),
+                        );
+                        return (
+                          <Row
+                            ay="center"
+                            gap="200"
+                            px="300"
+                            py="200"
+                            cursor="pointer"
+                            bg={theme.id === themeStore.currentThemeId() ? 'primary-100' : 'neutral-0'}
+                            hoverProps={{ bg: 'neutral-100' }}
+                            onClick={() => {
+                              themeStore.setCurrentTheme(theme.id);
+                              closeAllDropdowns();
+                            }}
+                          >
+                            <we-icon name={theme.icon || 'paint-bucket'} size="sm" color="neutral-600" />
+                            <we-text color="neutral-700" flex="1">
+                              {theme.name}
+                            </we-text>
+                            <Show when={isDefault()}>
+                              <we-icon name="star" weight="fill" color="warning-500" size="sm" />
+                            </Show>
+                          </Row>
+                        );
+                      }}
+                    </For>
+                  </Show>
+                  <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
+                    Built-in
+                  </we-text>
+                  <For each={filteredBuiltInThemes()}>
+                    {(theme) => {
+                      const isDefault = createMemo(
+                        () => !!spaceStore.spaceDefaultThemeId() && theme.id === spaceStore.spaceDefaultThemeId(),
+                      );
+                      return (
                         <Row
                           ay="center"
                           gap="200"
@@ -381,14 +410,17 @@ export function TemplateToolbar() {
                             closeAllDropdowns();
                           }}
                         >
-                          <we-icon name={theme.icon || 'paint-bucket'} size="sm" color="neutral-600" />
+                          <we-icon name={theme.icon} size="sm" color="neutral-600" />
                           <we-text color="neutral-700" flex="1">
                             {theme.name}
                           </we-text>
+                          <Show when={isDefault()}>
+                            <we-icon name="star" weight="fill" color="warning-500" size="sm" />
+                          </Show>
                         </Row>
-                      )}
-                    </For>
-                  </Show>
+                      );
+                    }}
+                  </For>
                 </Column>
               </we-scroll-area>
             </Column>

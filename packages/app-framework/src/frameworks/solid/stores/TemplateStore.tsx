@@ -164,7 +164,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   const switcherGroups = (): TemplateSwitcherGroup[] => [
     { label: 'Space templates', items: toSwitcherItems(spaceTemplates(), SPACE_PREFIX) },
     { label: 'My templates', items: toSwitcherItems(myTemplates()) },
-    { label: 'Core', items: toSwitcherItems(coreTemplatesAccessor()) },
+    { label: 'Built-in', items: toSwitcherItems(coreTemplatesAccessor()) },
   ];
 
   const defaultTemplateId = () => adamStore.agentSettings()?.defaultTemplateId || 'default';
