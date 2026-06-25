@@ -32,7 +32,7 @@ export const spaceSidebar: SchemaNode = {
             width: '120px',
             height: '120px',
             r: 'pill',
-            ring: '0 0 0 3px var(--we-color-neutral-500)',
+            ring: '0 0 0 2px var(--we-ring-color)',
             placeholderIcon: 'users-three',
             onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['avatar', '$arg'] },
           },

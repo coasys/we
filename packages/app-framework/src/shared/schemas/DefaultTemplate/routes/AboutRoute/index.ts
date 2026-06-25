@@ -71,7 +71,7 @@ export const aboutRoute: RouteSchema = {
                       children: [
                         {
                           type: 'we-text',
-                          props: { color: 'neutral-700', fontWeight: 'bold' },
+                          props: { fontWeight: 'bold' },
                           children: ['Access:'],
                         },
                         {
@@ -91,7 +91,7 @@ export const aboutRoute: RouteSchema = {
                     },
                     {
                       type: 'we-text',
-                      props: { variant: 'body', color: 'neutral-700' },
+                      props: { variant: 'body', color: 'neutral-600' },
                       children: [
                         {
                           $if: {
@@ -123,7 +123,7 @@ export const aboutRoute: RouteSchema = {
                       children: [
                         {
                           type: 'we-text',
-                          props: { color: 'neutral-700', fontWeight: 'bold' },
+                          props: { fontWeight: 'bold' },
                           children: ['Discovery:'],
                         },
                         {
@@ -143,7 +143,7 @@ export const aboutRoute: RouteSchema = {
                     },
                     {
                       type: 'we-text',
-                      props: { variant: 'body', color: 'neutral-700' },
+                      props: { variant: 'body', color: 'neutral-600' },
                       children: [
                         {
                           $if: {
@@ -179,7 +179,7 @@ export const aboutRoute: RouteSchema = {
                           children: [
                             {
                               type: 'we-text',
-                              props: { color: 'neutral-700', fontWeight: 'bold' },
+                              props: { fontWeight: 'bold' },
                               children: ['Location:'],
                             },
                             {
@@ -220,7 +220,7 @@ export const aboutRoute: RouteSchema = {
                       children: [
                         {
                           type: 'we-text',
-                          props: { color: 'neutral-700', fontWeight: 'bold' },
+                          props: { fontWeight: 'bold' },
                           children: ['Created:'],
                         },
                         {
@@ -237,7 +237,7 @@ export const aboutRoute: RouteSchema = {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
                       children: [
-                        { type: 'we-text', props: { variant: 'body', color: 'neutral-700' }, children: ['By'] },
+                        { type: 'we-text', props: { variant: 'body', color: 'neutral-600' }, children: ['By'] },
                         {
                           type: '$agent',
                           props: { did: { $store: 'spaceStore.currentSpace.author' }, as: 'agent' },
@@ -252,7 +252,7 @@ export const aboutRoute: RouteSchema = {
                             },
                             {
                               type: 'we-text',
-                              props: { variant: 'body', color: 'neutral-700', truncate: true, maxWidth: '160px' },
+                              props: { variant: 'body', truncate: true, maxWidth: '160px' },
                               children: [{ $concat: ['$agent.firstName', ' ', '$agent.lastName'] }],
                             },
                           ],

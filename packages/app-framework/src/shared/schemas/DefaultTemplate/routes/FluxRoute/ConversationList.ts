@@ -12,7 +12,7 @@ export const conversationList: SchemaNode = {
         { type: 'we-icon', props: { name: 'chats-circle', size: 'sm', color: 'neutral-500' } },
         {
           type: 'we-text',
-          props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-700' },
+          props: { fontSize: '400', fontWeight: 'semibold' },
           children: ['Recent Conversations'],
         },
       ],
@@ -60,7 +60,6 @@ export const conversationList: SchemaNode = {
                       props: {
                         variant: 'label',
                         fontWeight: 'semibold',
-                        color: 'neutral-800',
                         overflow: 'hidden',
                         styles: { 'text-overflow': 'ellipsis', 'white-space': 'nowrap' },
                       },

@@ -36,7 +36,7 @@ export const spacesList: SchemaNode = gridWrapper([
                   },
                   {
                     type: 'we-text',
-                    props: { fontWeight: 'semibold', color: 'neutral-800' },
+                    props: { fontWeight: 'semibold' },
                     children: ['$space.name'],
                   },
                 ],

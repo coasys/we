@@ -63,7 +63,7 @@ export const channelList: SchemaNode = {
                 { type: 'we-icon', props: { name: 'hash', size: 'sm', color: 'neutral-500' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-700' },
+                  props: { fontSize: '400', fontWeight: 'semibold' },
                   children: ['All messages'],
                 },
               ],
@@ -116,7 +116,7 @@ export const channelList: SchemaNode = {
                 { type: 'we-icon', props: { name: 'hash', size: 'sm', color: 'neutral-500' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-700' },
+                  props: { fontSize: '400', fontWeight: 'semibold' },
                   children: ['Messages grouped by channel'],
                 },
               ],
@@ -154,11 +154,11 @@ export const channelList: SchemaNode = {
                         { type: 'we-icon', props: { name: 'hash', size: 'sm', color: 'primary-500' } },
                         {
                           type: 'Column',
-                          props: { flex: '1', gap: '50' },
+                          props: { flex: '1', gap: '100' },
                           children: [
                             {
                               type: 'we-text',
-                              props: { fontSize: '400', fontWeight: 'bold', color: 'neutral-900' },
+                              props: { fontSize: '400', fontWeight: 'bold' },
                               children: ['$channel.conversations[0].conversationName'],
                             },
                             {

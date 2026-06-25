@@ -31,11 +31,11 @@ export const usersList: SchemaNode = gridWrapper([
               },
               {
                 type: 'Column',
-                props: { gap: '50', flex: '1' },
+                props: { gap: '100', flex: '1' },
                 children: [
                   {
                     type: 'we-text',
-                    props: { fontWeight: 'semibold', color: 'neutral-800' },
+                    props: { fontWeight: 'semibold' },
                     children: [{ $concat: ['$user.firstName', ' ', '$user.lastName'] }],
                   },
                   {

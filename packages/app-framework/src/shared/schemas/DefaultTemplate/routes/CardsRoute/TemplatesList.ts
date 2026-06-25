@@ -41,11 +41,11 @@ export const templatesList: SchemaNode = {
                           },
                           {
                             type: 'Column',
-                            props: { gap: '50' },
+                            props: { gap: '100' },
                             children: [
                               {
                                 type: 'we-text',
-                                props: { fontWeight: 'semibold', color: 'neutral-800' },
+                                props: { fontWeight: 'semibold' },
                                 children: ['$template.name'],
                               },
                               {

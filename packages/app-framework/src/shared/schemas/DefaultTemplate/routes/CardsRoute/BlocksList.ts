@@ -47,7 +47,7 @@ export const blocksList: SchemaNode = {
       'text-blocks',
       'TextBlock',
       blockHeader('file-text', 'Text'),
-      [{ type: 'we-text', props: { color: 'neutral-800' }, children: ['$block.text'] }],
+      [{ type: 'we-text', children: ['$block.text'] }],
       {
         $if: {
           condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },

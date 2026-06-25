@@ -51,7 +51,7 @@ export const createSpaceModal = {
             width: '120px',
             height: '120px',
             r: 'full',
-            ring: '0 0 0 3px var(--we-color-neutral-500)',
+            ring: '0 0 0 2px var(--we-ring-color)',
             placeholderIcon: 'image',
             onImageChange: { $setLocal: 'avatar', from: '$event' },
           },
@@ -227,29 +227,38 @@ export const createSpaceModal = {
               props: { gap: '100', flex: '1' },
               children: [
                 {
-                  type: 'we-text',
+                  type: '$if',
                   props: {
-                    fontSize: '400',
-                    fontWeight: 'medium',
-                    color: {
-                      $if: {
-                        condition: {
-                          $and: [{ $eq: [{ $local: 'access' }, 'shared'] }, { $store: 'adamStore.globalPerspective' }],
+                    condition: {
+                      $and: [{ $eq: [{ $local: 'access' }, 'shared'] }, { $store: 'adamStore.globalPerspective' }],
+                    },
+                    then: {
+                      type: 'we-text',
+                      props: { fontSize: '400', fontWeight: 'medium' },
+                      children: [
+                        {
+                          $if: {
+                            condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
+                            then: 'Listed in Global Discovery',
+                            else: 'Unlisted',
+                          },
                         },
-                        then: 'neutral-800',
-                        else: 'neutral-400',
-                      },
+                      ],
+                    },
+                    else: {
+                      type: 'we-text',
+                      props: { fontSize: '400', fontWeight: 'medium', color: 'neutral-400' },
+                      children: [
+                        {
+                          $if: {
+                            condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
+                            then: 'Listed in Global Discovery',
+                            else: 'Unlisted',
+                          },
+                        },
+                      ],
                     },
                   },
-                  children: [
-                    {
-                      $if: {
-                        condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
-                        then: 'Listed in Global Discovery',
-                        else: 'Unlisted',
-                      },
-                    },
-                  ],
                 },
                 {
                   type: 'we-text',

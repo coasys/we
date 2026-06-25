@@ -15,7 +15,7 @@ export const signalsRoute: RouteSchema = {
     // Description
     {
       type: 'we-text',
-      props: { variant: 'body', color: 'neutral-700', mb: '400' },
+      props: { variant: 'body', color: 'neutral-600', mb: '400' },
       children: ['Create and manage custom signal types to categorize and enrich your signals.'],
     },
 

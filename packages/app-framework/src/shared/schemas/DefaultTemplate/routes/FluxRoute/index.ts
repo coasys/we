@@ -16,11 +16,11 @@ export const fluxRoute: RouteSchema = {
         { type: 'we-icon', props: { name: 'chat-circle-dots', size: 'lg', color: 'primary-500' } },
         {
           type: 'Column',
-          props: { gap: '50' },
+          props: { gap: '100' },
           children: [
             {
               type: 'we-text',
-              props: { variant: 'heading-md', color: 'neutral-900' },
+              props: { variant: 'heading-md' },
               children: ['Flux'],
             },
             {

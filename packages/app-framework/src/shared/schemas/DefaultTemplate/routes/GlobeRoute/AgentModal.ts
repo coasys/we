@@ -47,7 +47,7 @@ export const agentModal = {
                     },
                     else: {
                       type: 'we-icon',
-                      props: { name: 'user-circle', size: '60px', color: 'neutral-400' },
+                      props: { name: 'user-circle', size: 'xl', color: 'neutral-400' },
                     },
                   },
                 },

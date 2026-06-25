@@ -53,7 +53,7 @@ export const postsList: SchemaNode = {
                           },
                           {
                             type: 'we-text',
-                            props: { fontWeight: 'semibold', color: 'neutral-800' },
+                            props: { fontWeight: 'semibold' },
                             children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
                           },
                           {

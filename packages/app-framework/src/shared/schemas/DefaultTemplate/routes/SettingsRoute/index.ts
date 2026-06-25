@@ -259,7 +259,7 @@ export const settingsRoute: RouteSchema = {
                           children: [
                             {
                               type: 'we-text',
-                              props: { color: 'neutral-700', fontWeight: 'bold' },
+                              props: { fontWeight: 'bold' },
                               children: ['Discovery:'],
                             },
                             {
@@ -279,7 +279,7 @@ export const settingsRoute: RouteSchema = {
                         },
                         {
                           type: 'we-text',
-                          props: { variant: 'body', color: 'neutral-700' },
+                          props: { variant: 'body', color: 'neutral-600' },
                           children: [
                             {
                               $if: {
@@ -341,7 +341,7 @@ export const settingsRoute: RouteSchema = {
                           children: [
                             {
                               type: 'we-text',
-                              props: { color: 'neutral-700', fontWeight: 'bold' },
+                              props: { fontWeight: 'bold' },
                               children: ['Location:'],
                             },
                             {
@@ -580,7 +580,7 @@ export const settingsRoute: RouteSchema = {
                     },
                     {
                       type: 'we-text',
-                      props: { variant: 'body', color: 'neutral-800' },
+                      props: { variant: 'body', color: 'neutral-600' },
                       children: ['Install templates from the marketplace into this space.'],
                     },
                   ],
@@ -695,7 +695,7 @@ export const settingsRoute: RouteSchema = {
                     },
                     {
                       type: 'we-text',
-                      props: { variant: 'body', color: 'neutral-800' },
+                      props: { variant: 'body', color: 'neutral-600' },
                       children: ['Install themes from the marketplace into this space.'],
                     },
                   ],
