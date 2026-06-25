@@ -7,9 +7,6 @@
   --we-border-radius: 0px;
   --we-border-color: var(--we-color-primary-200);
   --we-border-color-strong: var(--we-color-primary-400);
-  --we-size-sm: 30px;
-  --we-size-md: 40px;
-  --we-size-lg: 50px;
 }
 
 [data-we-theme='cyberpunk'] we-text[variant^='heading'] {

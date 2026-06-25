@@ -10,9 +10,6 @@
   --we-border-radius: 0px;
   --we-border-color: silver;
   --we-font-family: monospace;
-  --we-size-sm: 30px;
-  --we-size-md: 40px;
-  --we-size-lg: 50px;
   --we-scrollbar-thumb-box-shadow:
     inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px grey, inset 2px 2px #dfdfdf;
   --we-scrollbar-thumb-background: #dfdfdf;
