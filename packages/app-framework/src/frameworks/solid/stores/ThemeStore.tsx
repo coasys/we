@@ -36,6 +36,10 @@ export interface ThemeStore {
 
   // Actions
   setCurrentTheme: (themeId: string) => void;
+  /** Apply a theme temporarily (space default) without persisting to AgentSettings. */
+  replaceTheme: (themeId: string) => void;
+  /** Restore the persisted personal theme (called when leaving a space with a default theme). */
+  restorePersonalTheme: () => void;
   startEditing: (themeId?: string) => void;
   updateEditingOverrides: (overrides: Partial<ThemeOverrides>) => void;
   updateEditingCss: (css: string) => void;
@@ -75,19 +79,27 @@ function getInitialThemeId(): string {
 }
 
 function applyThemeToDOM(theme: ThemeData) {
-  if (isValidThemeKey(theme.id)) {
+  const overrides: ThemeOverrides = theme.overrides ? JSON.parse(theme.overrides) : {};
+  const hasOverrides = Object.keys(overrides).length > 0;
+
+  // Fast path: pure built-in theme with no overrides or custom CSS
+  if (!hasOverrides && !theme.css && isValidThemeKey(theme.id)) {
     document.documentElement.setAttribute('data-we-theme', theme.id);
-    document.documentElement.removeAttribute('style');
+    clearCustomThemeCSS();
     return;
   }
 
-  // Custom theme: base on named preset if overrides.themeName is set, then inject CSS vars
-  const overrides: ThemeOverrides = theme.overrides ? JSON.parse(theme.overrides) : {};
-  if (overrides.themeName && isValidThemeKey(overrides.themeName)) {
-    document.documentElement.setAttribute('data-we-theme', overrides.themeName);
-  } else {
-    document.documentElement.setAttribute('data-we-theme', 'light');
-  }
+  // Set base preset: prefer overrides.themeName, fall back to built-in id, then 'light'
+  const baseName =
+    overrides.themeName && isValidThemeKey(overrides.themeName)
+      ? overrides.themeName
+      : isValidThemeKey(theme.id)
+        ? theme.id
+        : 'light';
+  document.documentElement.setAttribute('data-we-theme', baseName);
+
+  // Clear previous inline overrides before re-applying so stale vars don't bleed through
+  document.documentElement.style.cssText = '';
 
   // Inject CSS vars derived from overrides
   const styles = themeToStyle(overrides);
@@ -171,18 +183,28 @@ export function ThemeStoreProvider(props: ParentProps) {
     document.documentElement.setAttribute('data-we-theme', initialId);
   }
 
+  function resolveThemeData(themeId: string): ThemeData {
+    return (
+      allThemes().find((t) => t.id === themeId) ?? registryToThemeData(isValidThemeKey(themeId) ? themeId : 'light')
+    );
+  }
+
   function setCurrentTheme(themeId: string) {
     setCurrentThemeId(themeId);
     localStorage.setItem(THEME_KEY, themeId);
     adamStore.updateAgentSettings({ currentThemeId: themeId });
+    applyThemeToDOM(resolveThemeData(themeId));
+  }
 
-    const theme = allThemes().find((t) => t.id === themeId);
-    if (theme && theme.origin !== 'built-in') {
-      applyThemeToDOM(theme);
-    } else {
-      clearCustomThemeCSS();
-      document.documentElement.setAttribute('data-we-theme', isValidThemeKey(themeId) ? themeId : 'light');
-    }
+  function replaceTheme(themeId: string) {
+    setCurrentThemeId(themeId);
+    applyThemeToDOM(resolveThemeData(themeId));
+  }
+
+  function restorePersonalTheme() {
+    const id = localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.currentThemeId ?? getInitialThemeId();
+    setCurrentThemeId(id);
+    applyThemeToDOM(resolveThemeData(id));
   }
 
   function startEditing(themeId?: string) {
@@ -436,6 +458,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     currentTheme,
     editingTheme,
     setCurrentTheme,
+    replaceTheme,
+    restorePersonalTheme,
     startEditing,
     updateEditingOverrides,
     updateEditingCss,

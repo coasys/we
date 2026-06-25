@@ -20,6 +20,7 @@ import {
 
 import { useRouteStore } from './RouteStore';
 import { useTemplateStore } from './TemplateStore';
+import { useThemeStore } from './ThemeStore';
 
 export interface SpaceMetaUpdate {
   name?: string;
@@ -64,6 +65,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
   const routeStore = useRouteStore();
   const templateStore = useTemplateStore();
+  const themeStore = useThemeStore();
 
   async function test() {
     const p = adamStore.currentPerspective();
@@ -281,6 +283,18 @@ export function SpaceStoreProvider(props: ParentProps) {
   // Derive from currentSpace; signals remain writable for optimistic updates
   createEffect(() => setSpaceDefaultTemplateId(currentSpace()?.defaultTemplateId ?? ''));
   createEffect(() => setSpaceDefaultThemeId(currentSpace()?.defaultThemeId ?? ''));
+
+  // Apply the space's default theme when entering a space, restore personal theme when leaving
+  createEffect(() => {
+    const themeId = spaceDefaultThemeId();
+    if (themeId) {
+      themeStore.replaceTheme(themeId);
+    } else if (currentSpace() !== null) {
+      // Space loaded but has no default theme — nothing to override
+    } else {
+      themeStore.restorePersonalTheme();
+    }
+  });
 
   async function setSpaceDefaultTemplate(templateId: string): Promise<void> {
     setSpaceDefaultTemplateId(templateId);

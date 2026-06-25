@@ -111,7 +111,7 @@ export function ThemePanel() {
           min={0}
           max={359}
           step={1}
-          on:change={(e: CustomEvent) => setOverride(key, Number(e.detail))}
+          on:input={(e: CustomEvent) => setOverride(key, Number(e.detail))}
         />
         <we-text
           style={{
@@ -150,7 +150,7 @@ export function ThemePanel() {
           min={min}
           max={max}
           step={1}
-          on:change={(e: CustomEvent) => setOverride(key, `${e.detail}%`)}
+          on:input={(e: CustomEvent) => setOverride(key, `${e.detail}%`)}
         />
         <we-text
           style={{
