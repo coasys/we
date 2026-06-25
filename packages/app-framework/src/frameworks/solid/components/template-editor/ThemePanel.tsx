@@ -1,10 +1,12 @@
 import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import type { ThemeOverrides } from '@we/schema-shared';
-import { createMemo, createSignal, Show } from 'solid-js';
+import { createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
 import { useAiStore } from '../../stores/AiStore';
 import { useThemeStore } from '../../stores/ThemeStore';
+
+const SAVE_DEBOUNCE_MS = 600;
 
 const FONT_OPTIONS = [
   { value: 'base', label: 'System default' },
@@ -65,6 +67,25 @@ export function ThemePanel() {
   const [cssEditing, setCssEditing] = createSignal(false);
   const [cssValue, setCssValue] = createSignal('');
 
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function saveTheme() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => themeStore.saveEditingTheme(), SAVE_DEBOUNCE_MS);
+  }
+
+  function saveThemeNow() {
+    clearTimeout(saveTimer);
+    themeStore.saveEditingTheme();
+  }
+
+  onCleanup(() => {
+    if (saveTimer !== undefined) {
+      clearTimeout(saveTimer);
+      themeStore.saveEditingTheme();
+    }
+  });
+
   function startCssEdit() {
     setCssValue(editing()?.css ?? '');
     setCssEditing(true);
@@ -73,15 +94,11 @@ export function ThemePanel() {
   function commitCssEdit() {
     themeStore.updateEditingCss(cssValue());
     setCssEditing(false);
-    saveTheme();
+    saveThemeNow();
   }
 
   function cancelCssEdit() {
     setCssEditing(false);
-  }
-
-  function saveTheme() {
-    themeStore.saveEditingTheme();
   }
 
   function setOverride<K extends keyof ThemeOverrides>(key: K, value: ThemeOverrides[K] | undefined) {
@@ -94,7 +111,7 @@ export function ThemePanel() {
     }
   }
 
-  function hueSlider(label: string, key: keyof ThemeOverrides, defaultVal = 220) {
+  function hueSlider(label: string, key: keyof ThemeOverrides, defaultVal = 0) {
     const val = () => (overrides()[key] as number | undefined) ?? defaultVal;
     return (
       <Row ay="center" gap="300">

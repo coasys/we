@@ -136,6 +136,46 @@ function clearCustomThemeCSS() {
   if (styleEl) styleEl.textContent = '';
 }
 
+const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
+  primaryHue: '--we-color-primary-hue',
+  successHue: '--we-color-success-hue',
+  warningHue: '--we-color-warning-hue',
+  dangerHue: '--we-color-danger-hue',
+  neutralHue: '--we-color-neutral-hue',
+  saturation: '--we-color-saturation',
+  neutralSaturation: '--we-color-neutral-saturation',
+  subtractor: '--we-color-subtractor',
+  multiplier: '--we-color-multiplier',
+};
+
+/**
+ * For any override keys missing from `overrides`, reads their actual computed CSS values so
+ * sliders initialise at the position matching what the user sees, not hardcoded defaults.
+ * Must be called while the target theme is already applied to the DOM.
+ */
+function populateMissingOverrides(overrides: ThemeOverrides): ThemeOverrides {
+  const result = { ...overrides };
+  const styles = getComputedStyle(document.documentElement);
+
+  for (const [key, cssVar] of Object.entries(OVERRIDE_CSS_VARS) as [keyof ThemeOverrides, string][]) {
+    if (result[key] !== undefined) continue;
+    let raw = styles.getPropertyValue(cssVar).trim();
+    // neutral-hue is defined as var(--we-color-primary-hue) in the token CSS —
+    // getComputedStyle returns the var() reference, not the resolved number
+    if (!raw || raw.startsWith('var(')) raw = styles.getPropertyValue('--we-color-primary-hue').trim();
+    if (!raw || raw.startsWith('var(')) continue;
+
+    if (key === 'multiplier' || (key as string).endsWith('Hue')) {
+      const n = Number(raw);
+      if (!isNaN(n)) (result as any)[key] = n;
+    } else {
+      (result as any)[key] = raw; // percentage string e.g. '60%'
+    }
+  }
+
+  return result;
+}
+
 export function ThemeStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
 
@@ -309,7 +349,9 @@ export function ThemeStoreProvider(props: ParentProps) {
     const base = themeId ? allThemes().find((t) => t.id === themeId) : currentTheme();
     if (!base) return;
     clearHistory();
-    setEditingTheme({ ...base, isDirty: false });
+    const storedOverrides: ThemeOverrides = base.overrides ? JSON.parse(base.overrides) : {};
+    const initialOverrides = populateMissingOverrides(storedOverrides);
+    setEditingTheme({ ...base, overrides: JSON.stringify(initialOverrides), isDirty: false });
     sessionStorage.setItem(EDITING_THEME_KEY, themeId ?? currentThemeId());
   }
 
@@ -369,7 +411,14 @@ export function ThemeStoreProvider(props: ParentProps) {
           : null,
       });
       themeModelMap.set(model.id, model);
-      const data = modelToThemeData(model);
+      const data: ThemeData = {
+        id: model.id,
+        name,
+        icon,
+        origin: 'custom',
+        overrides: source?.overrides ?? null,
+        css: source?.css ?? null,
+      };
       setInstalledThemes((prev) => [...prev, data]);
       setCurrentTheme(data.id);
       setEditingTheme({ ...data, isDirty: false });
@@ -414,11 +463,21 @@ export function ThemeStoreProvider(props: ParentProps) {
           ? (encodeToFileData(editing.css, 'theme.css', 'text/css') as any)
           : null;
         await existing.save();
-        const updated = modelToThemeData(existing);
-        setInstalledThemes((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-        setEditingTheme({ ...updated, isDirty: false });
-        setCurrentTheme(updated.id);
-        return updated;
+        // Use the current signal state (not the captured `editing`) to avoid overwriting
+        // changes made while this async save was in flight.
+        const current = editingTheme();
+        const saved: ThemeData = {
+          id: existing.id,
+          name: current?.name ?? editing.name,
+          icon: current?.icon ?? editing.icon,
+          origin: existing.origin as ThemeData['origin'],
+          overrides: current?.overrides ?? editing.overrides,
+          css: current?.css ?? editing.css,
+        };
+        setInstalledThemes((prev) => prev.map((t) => (t.id === saved.id ? saved : t)));
+        setEditingTheme((prev) => (prev ? { ...prev, isDirty: false } : prev));
+        setCurrentTheme(saved.id);
+        return saved;
       } else {
         return saveEditingThemeAs(editing.name, editing.icon);
       }
@@ -449,7 +508,14 @@ export function ThemeStoreProvider(props: ParentProps) {
           : null,
       });
       themeModelMap.set(model.id, model);
-      const data = modelToThemeData(model);
+      const data: ThemeData = {
+        id: model.id,
+        name,
+        icon,
+        origin: 'custom',
+        overrides: editing.overrides,
+        css: editing.css,
+      };
       setInstalledThemes((prev) => [...prev, data]);
       setEditingTheme({ ...data, isDirty: false });
       setCurrentTheme(data.id);
