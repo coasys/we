@@ -8,7 +8,20 @@ export type FontFamilyToken = 'base' | 'mozilla' | 'boldonse';
 export type FontFamilyValue = FontFamilyToken | (string & {});
 export type FontSizeToken = 'base' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '1000';
 export type FontSizeValue = FontSizeToken | (string & {});
-export type FontWeightToken = '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900';
+export type FontWeightToken =
+  | '100'
+  | '200'
+  | '300'
+  | '400'
+  | '500'
+  | '600'
+  | '700'
+  | '800'
+  | '900'
+  | 'regular'
+  | 'medium'
+  | 'semibold'
+  | 'bold';
 export type LineHeightToken = 'none' | 'tight' | 'snug' | 'normal' | 'relaxed' | 'loose';
 export type LineHeightValue = LineHeightToken | (string & {});
 export type LetterSpacingToken = 'tighter' | 'tight' | 'normal' | 'wide' | 'wider' | 'widest';
@@ -57,6 +70,10 @@ export const fontWeight = {
   '700': '700',
   '800': '800',
   '900': '900',
+  regular: '400',
+  medium: '500',
+  semibold: '600',
+  bold: '700',
 } satisfies Record<FontWeightToken, string>;
 
 /**

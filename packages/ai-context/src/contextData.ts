@@ -2399,6 +2399,10 @@ export const contextData: ContextData = {
         '700': '700',
         '800': '800',
         '900': '900',
+        regular: '400',
+        medium: '500',
+        semibold: '600',
+        bold: '700',
       },
     },
     {
