@@ -289,8 +289,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     const themeId = spaceDefaultThemeId();
     if (themeId) {
       themeStore.replaceTheme(themeId);
-    } else if (currentSpace() !== null) {
-      // Space loaded but has no default theme — nothing to override
     } else {
       themeStore.restorePersonalTheme();
     }

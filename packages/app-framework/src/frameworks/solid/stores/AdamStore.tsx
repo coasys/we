@@ -965,6 +965,7 @@ export function AdamStoreProvider(props: ParentProps) {
         access,
         discovery,
         defaultTemplateId: 'default',
+        defaultThemeId: 'dark',
         ...(avatarData && { avatar: avatarData }),
         ...(coverImageData && { coverImage: coverImageData }),
       };

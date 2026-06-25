@@ -177,6 +177,11 @@ export function DesignToolbar() {
       : themeStore.installedThemes();
   });
 
+  const filteredSpaceThemes = createMemo(() => {
+    const q = themeSearch().toLowerCase();
+    return q ? themeStore.spaceThemes().filter((t) => t.name.toLowerCase().includes(q)) : themeStore.spaceThemes();
+  });
+
   const canEdit = () => !aiStore.isReadOnly();
 
   // Toolbar right offset — accounts for whichever rails/panels are visible
@@ -383,52 +388,16 @@ export function DesignToolbar() {
               border="1px solid neutral-200"
               r="400"
               shadow="md"
-              overflow="hidden"
               minWidth="220px"
             >
               <SearchInput value={themeSearch()} placeholder="Search themes…" m="200" onSearch={setThemeSearch} />
               <we-divider />
-              <we-scroll-area maxHeight="320px">
-                <Column py="200">
-                  <Show when={filteredInstalledThemes().length > 0}>
-                    <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
-                      My themes
-                    </we-text>
-                    <For each={filteredInstalledThemes()}>
-                      {(theme) => {
-                        const isDefault = createMemo(
-                          () => !!spaceStore.spaceDefaultThemeId() && theme.id === spaceStore.spaceDefaultThemeId(),
-                        );
-                        return (
-                          <Row
-                            ay="center"
-                            gap="200"
-                            px="300"
-                            py="200"
-                            cursor="pointer"
-                            bg={theme.id === themeStore.currentThemeId() ? 'primary-100' : 'neutral-0'}
-                            hoverProps={{ bg: 'neutral-100' }}
-                            onClick={() => {
-                              themeStore.setCurrentTheme(theme.id);
-                              closeAllDropdowns();
-                            }}
-                          >
-                            <we-icon name={theme.icon || 'paint-bucket'} size="sm" color="neutral-600" />
-                            <we-text color="neutral-700" flex="1">
-                              {theme.name}
-                            </we-text>
-                            <Show when={isDefault()}>
-                              <we-icon name="star" weight="fill" color="warning-500" size="sm" />
-                            </Show>
-                          </Row>
-                        );
-                      }}
-                    </For>
-                  </Show>
+              <Column py="200" maxHeight="320px" overflowY="auto">
+                <Show when={filteredSpaceThemes().length > 0}>
                   <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
-                    Built-in
+                    Space themes
                   </we-text>
-                  <For each={filteredBuiltInThemes()}>
+                  <For each={filteredSpaceThemes()}>
                     {(theme) => {
                       const isDefault = createMemo(
                         () => !!spaceStore.spaceDefaultThemeId() && theme.id === spaceStore.spaceDefaultThemeId(),
@@ -447,7 +416,7 @@ export function DesignToolbar() {
                             closeAllDropdowns();
                           }}
                         >
-                          <we-icon name={theme.icon} size="sm" color="neutral-600" />
+                          <we-icon name={theme.icon || 'paint-bucket'} size="sm" color="neutral-600" />
                           <we-text color="neutral-700" flex="1">
                             {theme.name}
                           </we-text>
@@ -458,8 +427,76 @@ export function DesignToolbar() {
                       );
                     }}
                   </For>
-                </Column>
-              </we-scroll-area>
+                </Show>
+                <Show when={filteredInstalledThemes().length > 0}>
+                  <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
+                    My themes
+                  </we-text>
+                  <For each={filteredInstalledThemes()}>
+                    {(theme) => {
+                      const isDefault = createMemo(
+                        () => !!spaceStore.spaceDefaultThemeId() && theme.id === spaceStore.spaceDefaultThemeId(),
+                      );
+                      return (
+                        <Row
+                          ay="center"
+                          gap="200"
+                          px="300"
+                          py="200"
+                          cursor="pointer"
+                          bg={theme.id === themeStore.currentThemeId() ? 'primary-100' : 'neutral-0'}
+                          hoverProps={{ bg: 'neutral-100' }}
+                          onClick={() => {
+                            themeStore.setCurrentTheme(theme.id);
+                            closeAllDropdowns();
+                          }}
+                        >
+                          <we-icon name={theme.icon || 'paint-bucket'} size="sm" color="neutral-600" />
+                          <we-text color="neutral-700" flex="1">
+                            {theme.name}
+                          </we-text>
+                          <Show when={isDefault()}>
+                            <we-icon name="star" weight="fill" color="warning-500" size="sm" />
+                          </Show>
+                        </Row>
+                      );
+                    }}
+                  </For>
+                </Show>
+                <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
+                  Built-in
+                </we-text>
+                <For each={filteredBuiltInThemes()}>
+                  {(theme) => {
+                    const isDefault = createMemo(
+                      () => !!spaceStore.spaceDefaultThemeId() && theme.id === spaceStore.spaceDefaultThemeId(),
+                    );
+                    return (
+                      <Row
+                        ay="center"
+                        gap="200"
+                        px="300"
+                        py="200"
+                        cursor="pointer"
+                        bg={theme.id === themeStore.currentThemeId() ? 'primary-100' : 'neutral-0'}
+                        hoverProps={{ bg: 'neutral-100' }}
+                        onClick={() => {
+                          themeStore.setCurrentTheme(theme.id);
+                          closeAllDropdowns();
+                        }}
+                      >
+                        <we-icon name={theme.icon} size="sm" color="neutral-600" />
+                        <we-text color="neutral-700" flex="1">
+                          {theme.name}
+                        </we-text>
+                        <Show when={isDefault()}>
+                          <we-icon name="star" weight="fill" color="warning-500" size="sm" />
+                        </Show>
+                      </Row>
+                    );
+                  }}
+                </For>
+              </Column>
             </Column>
           </Show>
 
