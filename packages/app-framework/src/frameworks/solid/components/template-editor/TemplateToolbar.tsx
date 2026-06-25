@@ -305,6 +305,22 @@ export function TemplateToolbar() {
           </Row>
         </Show>
 
+        {/* ── Edit-mode toolbar (theme editing only) ── */}
+        <Show when={aiStore.isEditingTheme()}>
+          <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
+            <we-tooltip title="Undo" placement="bottom">
+              <we-button variant="ghost" square disabled={!themeStore.canUndo()} onClick={() => themeStore.undo()}>
+                <we-icon name="arrow-u-up-left" />
+              </we-button>
+            </we-tooltip>
+            <we-tooltip title="Redo" placement="bottom">
+              <we-button variant="ghost" square disabled={!themeStore.canRedo()} onClick={() => themeStore.redo()}>
+                <we-icon name="arrow-u-up-right" />
+              </we-button>
+            </we-tooltip>
+          </Row>
+        </Show>
+
         {/* ── Theme chip ── */}
         <Column position="relative">
           <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">

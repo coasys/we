@@ -10,6 +10,7 @@ import { useAdamStore } from './AdamStore';
 
 const THEME_KEY = 'we.theme';
 const EDITING_THEME_KEY = 'we.editing-theme';
+const MAX_UNDO = 50;
 
 /** Unified theme representation covering registry presets and custom AD4M-stored themes. */
 export type ThemeData = {
@@ -34,6 +35,8 @@ export interface ThemeStore {
   currentThemeId: Accessor<string>;
   currentTheme: Accessor<ThemeData>;
   editingTheme: Accessor<EditingTheme | null>;
+  canUndo: Accessor<boolean>;
+  canRedo: Accessor<boolean>;
 
   // Actions
   setCurrentTheme: (themeId: string) => void;
@@ -46,6 +49,8 @@ export interface ThemeStore {
   updateEditingCss: (css: string) => void;
   updateEditingMeta: (fields: { name?: string; icon?: string }) => void;
   cancelEditing: () => void;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
   createAndStartEditing: (name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space') => Promise<boolean>;
   saveEditingTheme: () => Promise<ThemeData | null>;
   saveEditingThemeAs: (name: string, icon: string) => Promise<ThemeData | null>;
@@ -140,6 +145,69 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
   const [currentThemeId, setCurrentThemeId] = createSignal<string>(getInitialThemeId());
   const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
+
+  // ── Undo / redo ──
+  const [undoStack, setUndoStack] = createSignal<EditingTheme[]>([]);
+  const [redoStack, setRedoStack] = createSignal<EditingTheme[]>([]);
+  let pendingSnapshot: EditingTheme | null = null;
+  let applyingHistoryOp = false;
+
+  const canUndo: Accessor<boolean> = () => undoStack().length > 0;
+  const canRedo: Accessor<boolean> = () => redoStack().length > 0;
+
+  function captureSnapshot() {
+    if (applyingHistoryOp || pendingSnapshot !== null) return;
+    const current = editingTheme();
+    if (!current) return;
+    pendingSnapshot = { ...current };
+  }
+
+  function commitSnapshot() {
+    if (applyingHistoryOp || !pendingSnapshot) return;
+    const s = pendingSnapshot;
+    pendingSnapshot = null;
+    setUndoStack((prev) => {
+      const next = [...prev, s];
+      return next.length > MAX_UNDO ? next.slice(-MAX_UNDO) : next;
+    });
+    setRedoStack([]);
+  }
+
+  function clearHistory() {
+    setUndoStack([]);
+    setRedoStack([]);
+    pendingSnapshot = null;
+  }
+
+  async function undo() {
+    const stack = undoStack();
+    if (!stack.length) return;
+    const snapshot = stack[stack.length - 1];
+    const current = editingTheme();
+    setUndoStack((prev) => prev.slice(0, -1));
+    if (current) setRedoStack((prev) => [...prev, { ...current }]);
+    pendingSnapshot = null;
+    applyingHistoryOp = true;
+    setEditingTheme(snapshot);
+    applyThemeToDOM(snapshot);
+    await saveEditingTheme();
+    applyingHistoryOp = false;
+  }
+
+  async function redo() {
+    const stack = redoStack();
+    if (!stack.length) return;
+    const snapshot = stack[stack.length - 1];
+    const current = editingTheme();
+    setRedoStack((prev) => prev.slice(0, -1));
+    if (current) setUndoStack((prev) => [...prev, { ...current }]);
+    pendingSnapshot = null;
+    applyingHistoryOp = true;
+    setEditingTheme(snapshot);
+    applyThemeToDOM(snapshot);
+    await saveEditingTheme();
+    applyingHistoryOp = false;
+  }
 
   const allThemes: Accessor<ThemeData[]> = () => [...builtInThemes(), ...installedThemes(), ...spaceThemes()];
 
@@ -240,11 +308,13 @@ export function ThemeStoreProvider(props: ParentProps) {
   function startEditing(themeId?: string) {
     const base = themeId ? allThemes().find((t) => t.id === themeId) : currentTheme();
     if (!base) return;
+    clearHistory();
     setEditingTheme({ ...base, isDirty: false });
     sessionStorage.setItem(EDITING_THEME_KEY, themeId ?? currentThemeId());
   }
 
   function updateEditingOverrides(patch: Partial<ThemeOverrides>) {
+    captureSnapshot();
     setEditingTheme((prev) => {
       if (!prev) return prev;
       const existing: ThemeOverrides = prev.overrides ? JSON.parse(prev.overrides) : {};
@@ -256,6 +326,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   function updateEditingCss(css: string) {
+    captureSnapshot();
     setEditingTheme((prev) => {
       if (!prev) return prev;
       const next = { ...prev, css, isDirty: true };
@@ -265,6 +336,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   function updateEditingMeta(fields: { name?: string; icon?: string }) {
+    captureSnapshot();
     setEditingTheme((prev) => {
       if (!prev) return prev;
       return { ...prev, ...fields, isDirty: true };
@@ -311,6 +383,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   function cancelEditing() {
+    clearHistory();
     setEditingTheme(null);
     sessionStorage.removeItem(EDITING_THEME_KEY);
     // Restore actual current theme
@@ -323,6 +396,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function saveEditingTheme(): Promise<ThemeData | null> {
+    commitSnapshot();
     const editing = editingTheme();
     if (!editing) return null;
     const perspective = adamStore.rootPerspective();
@@ -546,6 +620,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     currentThemeId,
     currentTheme,
     editingTheme,
+    canUndo,
+    canRedo,
     setCurrentTheme,
     replaceTheme,
     restorePersonalTheme,
@@ -554,6 +630,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     updateEditingCss,
     updateEditingMeta,
     cancelEditing,
+    undo,
+    redo,
     createAndStartEditing,
     saveEditingTheme,
     saveEditingThemeAs,
