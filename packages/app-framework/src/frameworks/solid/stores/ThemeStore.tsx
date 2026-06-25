@@ -12,6 +12,15 @@ const THEME_KEY = 'we.theme';
 const EDITING_THEME_KEY = 'we.editing-theme';
 const MAX_UNDO = 50;
 
+export type ThemeManagementItem = {
+  id: string;
+  name: string;
+  icon: string;
+  isBuiltIn: boolean;
+  isInstalled: boolean;
+  isDefault: boolean;
+};
+
 /** Unified theme representation covering registry presets and custom AD4M-stored themes. */
 export type ThemeData = {
   id: string;
@@ -34,12 +43,16 @@ export interface ThemeStore {
   allThemes: Accessor<ThemeData[]>;
   currentThemeId: Accessor<string>;
   currentTheme: Accessor<ThemeData>;
+  defaultThemeId: Accessor<string>;
+  themeManagementList: Accessor<ThemeManagementItem[]>;
   editingTheme: Accessor<EditingTheme | null>;
   canUndo: Accessor<boolean>;
   canRedo: Accessor<boolean>;
 
   // Actions
   setCurrentTheme: (themeId: string) => void;
+  setDefaultTheme: (themeId: string) => void;
+  toggleThemeInstalled: (themeId: string) => Promise<void>;
   /** Apply a theme temporarily (space default) without persisting to AgentSettings. */
   replaceTheme: (themeId: string) => void;
   /** Restore the persisted personal theme (called when leaving a space with a default theme). */
@@ -183,6 +196,8 @@ export function ThemeStoreProvider(props: ParentProps) {
   const builtInThemes: Accessor<ThemeData[]> = () => Object.keys(themeRegistry).map(registryToThemeData);
 
   const [installedThemes, setInstalledThemes] = createSignal<ThemeData[]>([]);
+  // IDs of custom themes visible in pickers (subset of installedThemes)
+  const [visibleThemeIds, setVisibleThemeIds] = createSignal<Set<string>>(new Set());
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
   const [currentThemeId, setCurrentThemeId] = createSignal<string>(getInitialThemeId());
   // Space theme requested before loadSpaceThemes completes — held here until it can be applied.
@@ -252,7 +267,11 @@ export function ThemeStoreProvider(props: ParentProps) {
     applyingHistoryOp = false;
   }
 
-  const allThemes: Accessor<ThemeData[]> = () => [...builtInThemes(), ...installedThemes(), ...spaceThemes()];
+  const allThemes: Accessor<ThemeData[]> = () => {
+    const ids = visibleThemeIds();
+    const visible = ids.size > 0 ? installedThemes().filter((t) => ids.has(t.id)) : installedThemes();
+    return [...builtInThemes(), ...visible, ...spaceThemes()];
+  };
 
   const currentTheme: Accessor<ThemeData> = () =>
     allThemes().find((t) => t.id === currentThemeId()) ?? registryToThemeData('light');
@@ -282,6 +301,27 @@ export function ThemeStoreProvider(props: ParentProps) {
       const models = await Theme.findAll(perspective);
       for (const model of models) themeModelMap.set(model.id, model);
       setInstalledThemes(models.map(modelToThemeData));
+
+      // Build visible set from AgentSettings.installedThemes HasMany
+      const prefs = adamStore.agentSettings();
+      if (prefs) {
+        const refs = prefs.installedThemes || [];
+        const trackedIds = new Set<string>();
+        for (const ref of refs) {
+          const id = typeof ref === 'string' ? ref : (ref as any).id;
+          if (id) trackedIds.add(id);
+        }
+        if (trackedIds.size === 0 && models.length > 0) {
+          // First run: auto-register all existing themes as visible
+          for (const model of models) {
+            await prefs.addInstalledThemes(model).catch(() => {});
+            trackedIds.add(model.id);
+          }
+        }
+        setVisibleThemeIds(trackedIds);
+      } else {
+        setVisibleThemeIds(new Set(models.map((m) => m.id)));
+      }
     } catch (e) {
       console.error('ThemeStore: failed to load installed themes', e);
     }
@@ -344,11 +384,56 @@ export function ThemeStoreProvider(props: ParentProps) {
     );
   }
 
+  const defaultThemeId: Accessor<string> = () => adamStore.agentSettings()?.defaultThemeId || 'light';
+
+  const themeManagementList: Accessor<ThemeManagementItem[]> = () => {
+    const defaultId = defaultThemeId();
+    const visible = visibleThemeIds();
+    const builtIn = builtInThemes().map((t) => ({
+      id: t.id,
+      name: t.name,
+      icon: t.icon,
+      isBuiltIn: true,
+      isInstalled: true,
+      isDefault: t.id === defaultId,
+    }));
+    const custom = installedThemes().map((t) => ({
+      id: t.id,
+      name: t.name,
+      icon: t.icon,
+      isBuiltIn: false,
+      isInstalled: visible.has(t.id),
+      isDefault: t.id === defaultId,
+    }));
+    return [...builtIn, ...custom];
+  };
+
   function setCurrentTheme(themeId: string) {
     setCurrentThemeId(themeId);
     localStorage.setItem(THEME_KEY, themeId);
     adamStore.updateAgentSettings({ currentThemeId: themeId });
     applyThemeToDOM(resolveThemeData(themeId));
+  }
+
+  function setDefaultTheme(themeId: string) {
+    adamStore.updateAgentSettings({ defaultThemeId: themeId });
+  }
+
+  async function toggleThemeInstalled(themeId: string) {
+    const model = themeModelMap.get(themeId);
+    const prefs = adamStore.agentSettings();
+    if (!model || !prefs) return;
+    if (visibleThemeIds().has(themeId)) {
+      await prefs.removeInstalledThemes(model).catch(() => {});
+      setVisibleThemeIds((prev) => {
+        const next = new Set(prev);
+        next.delete(themeId);
+        return next;
+      });
+    } else {
+      await prefs.addInstalledThemes(model).catch(() => {});
+      setVisibleThemeIds((prev) => new Set([...prev, themeId]));
+    }
   }
 
   function replaceTheme(themeId: string) {
@@ -447,6 +532,9 @@ export function ThemeStoreProvider(props: ParentProps) {
         css: source?.css ?? null,
       };
       setInstalledThemes((prev) => [...prev, data]);
+      setVisibleThemeIds((prev) => new Set([...prev, model.id]));
+      const prefs = adamStore.agentSettings();
+      if (prefs) await prefs.addInstalledThemes(model).catch(() => {});
       setCurrentTheme(data.id);
       setEditingTheme({ ...data, isDirty: false });
       sessionStorage.setItem(EDITING_THEME_KEY, data.id);
@@ -751,10 +839,14 @@ export function ThemeStoreProvider(props: ParentProps) {
     allThemes,
     currentThemeId,
     currentTheme,
+    defaultThemeId,
+    themeManagementList,
     editingTheme,
     canUndo,
     canRedo,
     setCurrentTheme,
+    setDefaultTheme,
+    toggleThemeInstalled,
     replaceTheme,
     restorePersonalTheme,
     startEditing,

@@ -1900,6 +1900,13 @@ export const contextData: ContextData = {
           required: false,
           default: "'default'",
         },
+        {
+          name: 'defaultThemeId',
+          type: 'string',
+          predicate: 'we://default_theme',
+          required: false,
+          default: "'default'",
+        },
         { name: 'claudeApiKey', type: 'string', predicate: 'we://claude_api_key', required: false },
         { name: 'perspectiveOrder', type: 'string', predicate: 'we://perspective_order', required: false },
         {
@@ -2504,8 +2511,20 @@ export const contextData: ContextData = {
         allThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
         currentThemeId: { type: 'string' },
         currentTheme: { type: 'object', properties: ['id', 'name', 'icon', 'origin'] },
+        defaultThemeId: { type: 'string' },
+        themeManagementList: {
+          type: 'array',
+          properties: ['id', 'name', 'icon', 'isBuiltIn', 'isInstalled', 'isDefault'],
+        },
       },
-      actions: ['setCurrentTheme', 'installFromMarketplace', 'uninstallTheme'],
+      actions: [
+        'setCurrentTheme',
+        'setDefaultTheme',
+        'toggleThemeInstalled',
+        'installFromMarketplace',
+        'uninstallTheme',
+        'deleteTheme',
+      ],
     },
     {
       name: 'templateStore',

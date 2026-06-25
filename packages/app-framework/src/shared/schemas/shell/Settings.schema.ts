@@ -229,36 +229,148 @@ export const settingsTemplate: TemplateSchema = {
           ],
         },
 
-        // Theme Selection
+        // Theme Management
         {
           type: 'Column',
           props: { gap: '300' },
           children: [
-            { type: 'we-text', props: { fontSize: '600', fontWeight: 'semibold' }, children: ['Theme'] },
+            { type: 'we-text', props: { fontSize: '600', fontWeight: 'semibold' }, children: ['Themes'] },
             {
-              type: 'Row',
-              props: { gap: '200', wrap: true },
+              type: 'Column',
+              props: { gap: '100' },
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'themeStore.allThemes' }, as: 'theme' },
+                  props: { items: { $store: 'themeStore.themeManagementList' }, as: 'theme' },
                   children: [
                     {
-                      type: 'we-button',
+                      type: 'Row',
                       props: {
-                        variant: {
+                        gap: '300',
+                        ay: 'center',
+                        p: '300',
+                        r: '200',
+                        bg: {
                           $if: {
-                            condition: { $eq: ['$theme.id', { $store: 'themeStore.currentThemeId' }] },
-                            then: 'primary',
-                            else: 'secondary',
+                            condition: '$theme.isDefault',
+                            then: 'neutral-100',
+                            else: 'transparent',
                           },
                         },
-                        gap: '200',
-                        onClick: { $action: 'themeStore.setCurrentTheme', args: ['$theme.id'] },
                       },
                       children: [
-                        { type: 'we-icon', props: { name: '$theme.icon', size: '18px' } },
-                        { type: 'we-text', props: { fontSize: '400' }, children: ['$theme.name'] },
+                        // Theme icon + name
+                        {
+                          type: 'Row',
+                          props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
+                          children: [
+                            { type: 'we-icon', props: { name: '$theme.icon', size: '20px', color: 'neutral-500' } },
+                            {
+                              type: 'we-text',
+                              props: { fontSize: '400', fontWeight: 'medium' },
+                              children: ['$theme.name'],
+                            },
+                          ],
+                        },
+
+                        // Built-in badge
+                        {
+                          type: '$if',
+                          props: {
+                            condition: '$theme.isBuiltIn',
+                            then: {
+                              type: 'we-tag',
+                              props: { variant: 'neutral' },
+                              children: ['Built-in'],
+                            },
+                          },
+                        },
+
+                        // Install toggle (custom themes only)
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $not: '$theme.isBuiltIn' },
+                            then: {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { fontSize: '300', color: 'neutral-400' },
+                                  children: ['Installed'],
+                                },
+                                {
+                                  type: 'we-switch',
+                                  props: {
+                                    checked: '$theme.isInstalled',
+                                    size: 'sm',
+                                    onChange: {
+                                      $action: 'themeStore.toggleThemeInstalled',
+                                      args: ['$theme.id'],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          },
+                        },
+
+                        // Default radio button (only shown if theme is installed)
+                        {
+                          type: '$if',
+                          props: {
+                            condition: '$theme.isInstalled',
+                            then: {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { fontSize: '300', color: 'neutral-400' },
+                                  children: ['Default'],
+                                },
+                                {
+                                  type: 'we-radio',
+                                  props: {
+                                    checked: '$theme.isDefault',
+                                    name: 'default-theme',
+                                    value: '$theme.id',
+                                    onChange: {
+                                      $action: 'themeStore.setDefaultTheme',
+                                      args: ['$theme.id'],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          },
+                        },
+
+                        // Delete button (custom themes only)
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $not: '$theme.isBuiltIn' },
+                            then: {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: {
+                                  $action: 'themeStore.deleteTheme',
+                                  args: ['$theme.id'],
+                                },
+                              },
+                              children: [
+                                {
+                                  type: 'we-icon',
+                                  props: { name: 'trash', size: '16px', color: 'danger-400' },
+                                },
+                              ],
+                            },
+                          },
+                        },
                       ],
                     },
                   ],

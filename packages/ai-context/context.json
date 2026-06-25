@@ -6195,6 +6195,13 @@
           "default": "'default'"
         },
         {
+          "name": "defaultThemeId",
+          "type": "string",
+          "predicate": "we://default_theme",
+          "required": false,
+          "default": "'default'"
+        },
+        {
           "name": "claudeApiKey",
           "type": "string",
           "predicate": "we://claude_api_key",
@@ -7673,9 +7680,23 @@
         "currentTheme": {
           "type": "object",
           "properties": ["id", "name", "icon", "origin"]
+        },
+        "defaultThemeId": {
+          "type": "string"
+        },
+        "themeManagementList": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "isBuiltIn", "isInstalled", "isDefault"]
         }
       },
-      "actions": ["setCurrentTheme", "installFromMarketplace", "uninstallTheme"]
+      "actions": [
+        "setCurrentTheme",
+        "setDefaultTheme",
+        "toggleThemeInstalled",
+        "installFromMarketplace",
+        "uninstallTheme",
+        "deleteTheme"
+      ]
     },
     {
       "name": "templateStore",

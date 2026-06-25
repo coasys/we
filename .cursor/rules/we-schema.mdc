@@ -831,6 +831,7 @@ AgentSettings extends Ad4mModel:
   - currentTemplateId: string = 'default' [we://current_template]
   - defaultTemplateId: string = 'default' [we://default_template]
   - currentThemeId: string = 'default' [we://current_theme]
+  - defaultThemeId: string = 'default' [we://default_theme]
   - claudeApiKey: string [we://claude_api_key]
   - perspectiveOrder: string [we://perspective_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
@@ -1109,13 +1110,18 @@ ThemeStore:
   - builtInThemes: array of ThemeData objects — built-in registry themes (origin: "built-in", always available)
   - installedThemes: array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")
   - spaceThemes: array of ThemeData objects — themes stored in the current space perspective (origin: "custom")
-  - allThemes: array of ThemeData objects — union of builtInThemes + installedThemes + spaceThemes
+  - allThemes: array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)
   - currentThemeId: string — id of the currently active theme
   - currentTheme: ThemeData — the currently active theme object (id, name, icon, origin)
+  - defaultThemeId: string — id of the user's preferred default theme (used for bootscreen, shell, and future space-override). Persisted to AgentSettings.defaultThemeId
+  - themeManagementList: ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)
 - Actions:
   - setCurrentTheme(themeId: string): sets and persists the active theme
+  - setDefaultTheme(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)
+  - toggleThemeInstalled(themeId: string): toggles a custom theme visible/hidden in pickers; does not delete the theme
   - installFromMarketplace(marketplaceThemeId: string): installs a marketplace theme into installedThemes
-  - uninstallTheme(themeId: string): removes an installed theme
+  - uninstallTheme(themeId: string): removes an installed theme (deletes the model)
+  - deleteTheme(themeId: string): permanently deletes a custom theme
 
 TemplateStore:
 - State:

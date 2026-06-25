@@ -67,8 +67,13 @@ export const storeEntries: StoreEntry[] = [
       allThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
       currentThemeId: { type: 'string' },
       currentTheme: { type: 'object', properties: ['id', 'name', 'icon', 'origin'] },
+      defaultThemeId: { type: 'string' },
+      themeManagementList: {
+        type: 'array',
+        properties: ['id', 'name', 'icon', 'isBuiltIn', 'isInstalled', 'isDefault'],
+      },
     },
-    actions: ['setCurrentTheme', 'installFromMarketplace', 'uninstallTheme'],
+    actions: ['setCurrentTheme', 'setDefaultTheme', 'toggleThemeInstalled', 'installFromMarketplace', 'uninstallTheme', 'deleteTheme'],
   },
   {
     name: 'templateStore',
@@ -262,14 +267,24 @@ function generateStoresText(entries: StoreEntry[]): string {
           'array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")',
         spaceThemes:
           'array of ThemeData objects — themes stored in the current space perspective (origin: "custom")',
-        allThemes: 'array of ThemeData objects — union of builtInThemes + installedThemes + spaceThemes',
+        allThemes:
+          'array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)',
         currentThemeId: 'string — id of the currently active theme',
         currentTheme: 'ThemeData — the currently active theme object (id, name, icon, origin)',
+        defaultThemeId:
+          "string — id of the user's preferred default theme (used for bootscreen, shell, and future space-override). Persisted to AgentSettings.defaultThemeId",
+        themeManagementList:
+          'ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)',
       },
       actions: {
         setCurrentTheme: '(themeId: string): sets and persists the active theme',
+        setDefaultTheme:
+          '(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)',
+        toggleThemeInstalled:
+          '(themeId: string): toggles a custom theme visible/hidden in pickers; does not delete the theme',
         installFromMarketplace: '(marketplaceThemeId: string): installs a marketplace theme into installedThemes',
-        uninstallTheme: '(themeId: string): removes an installed theme',
+        uninstallTheme: '(themeId: string): removes an installed theme (deletes the model)',
+        deleteTheme: '(themeId: string): permanently deletes a custom theme',
       },
     },
     templateStore: {
