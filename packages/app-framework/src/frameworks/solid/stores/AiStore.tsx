@@ -567,6 +567,7 @@ export function AiStoreProvider(props: ParentProps) {
     setEditAction(action);
     setIsEditingTemplate(true);
     setIsOpen(true);
+    setThemePanelOpen(false);
   }
 
   function exitTemplateEditing() {
@@ -586,6 +587,8 @@ export function AiStoreProvider(props: ParentProps) {
   function enterThemeEditing() {
     setIsEditingTheme(true);
     setThemePanelOpen(true);
+    setIsOpen(false);
+    setCodePanelOpen(false);
   }
 
   function exitThemeEditing() {
