@@ -1,5 +1,5 @@
 import { Column, Row, SearchInput } from '@we/components/solid';
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 import { useAdamStore } from '../../stores/AdamStore';
@@ -108,6 +108,12 @@ export function TemplateToolbar() {
     closeAllDropdowns();
     if (!was) setThemeShareOpen(true);
   };
+
+  // Exit theme editing when the active theme changes (untrack the guard so entering edit mode doesn't re-trigger this)
+  createEffect(() => {
+    themeStore.currentThemeId();
+    if (untrack(() => aiStore.isEditingTheme())) aiStore.exitThemeEditing();
+  });
 
   // Seed picker fields when it opens
   createEffect(() => {
