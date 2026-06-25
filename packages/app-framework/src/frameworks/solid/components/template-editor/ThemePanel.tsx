@@ -179,7 +179,7 @@ export function ThemePanel() {
       >
         <we-text style={{ 'font-size': tokenVar('font-size', '500'), 'font-weight': '600' }}>Theme Editor</we-text>
         <we-tooltip title="Close theme panel">
-          <we-button variant="ghost" size="sm" onClick={() => aiStore.closeThemePanel()}>
+          <we-button variant="ghost" size="sm" onClick={() => aiStore.exitThemeEditing()}>
             <we-icon name="x" size="sm" />
           </we-button>
         </we-tooltip>

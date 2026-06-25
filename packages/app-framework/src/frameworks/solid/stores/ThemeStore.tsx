@@ -45,6 +45,7 @@ export interface ThemeStore {
   updateEditingCss: (css: string) => void;
   updateEditingMeta: (fields: { name?: string; icon?: string }) => void;
   cancelEditing: () => void;
+  createAndStartEditing: (name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space') => Promise<boolean>;
   saveEditingTheme: () => Promise<ThemeData | null>;
   saveEditingThemeAs: (name: string, icon: string) => Promise<ThemeData | null>;
   deleteTheme: (themeId: string) => Promise<void>;
@@ -239,6 +240,41 @@ export function ThemeStoreProvider(props: ParentProps) {
       if (!prev) return prev;
       return { ...prev, ...fields, isDirty: true };
     });
+  }
+
+  async function createAndStartEditing(
+    name: string,
+    icon: string,
+    sourceId?: string,
+    destination: 'personal' | 'space' = 'personal',
+  ): Promise<boolean> {
+    const source = sourceId ? allThemes().find((t) => t.id === sourceId) : null;
+    const perspective = destination === 'space' ? adamStore.currentPerspective() : adamStore.rootPerspective();
+    if (!perspective) {
+      toastService.error(`Cannot save theme: no ${destination} perspective available`);
+      return false;
+    }
+    try {
+      const model = await Theme.create(perspective, {
+        name,
+        icon,
+        origin: 'custom',
+        version: 1,
+        overrides: source?.overrides ?? null,
+        css: source?.css ?? null,
+      });
+      themeModelMap.set(model.id, model);
+      const data = modelToThemeData(model);
+      setInstalledThemes((prev) => [...prev, data]);
+      setCurrentTheme(data.id);
+      setEditingTheme({ ...data, isDirty: false });
+      sessionStorage.setItem(EDITING_THEME_KEY, data.id);
+      return true;
+    } catch (e) {
+      console.error('ThemeStore: createAndStartEditing error', e);
+      toastService.error('Failed to create theme');
+      return false;
+    }
   }
 
   function cancelEditing() {
@@ -465,6 +501,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     updateEditingCss,
     updateEditingMeta,
     cancelEditing,
+    createAndStartEditing,
     saveEditingTheme,
     saveEditingThemeAs,
     deleteTheme,

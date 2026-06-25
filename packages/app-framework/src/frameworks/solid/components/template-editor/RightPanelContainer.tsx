@@ -1,6 +1,6 @@
 import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
-import { createSignal, JSX } from 'solid-js';
+import { createSignal, JSX, Show } from 'solid-js';
 
 import { useAiStore } from '../../stores/AiStore';
 import { AiChatPanel } from './AiChatPanel';
@@ -8,7 +8,9 @@ import { CodePanel } from './CodePanel';
 import { ThemePanel } from './ThemePanel';
 
 export const RAIL_STRIP_WIDTH = 32; // px per strip
-export const TOTAL_RAIL_WIDTH = RAIL_STRIP_WIDTH * 3; // theme + code + ai strips
+export const TOTAL_RAIL_WIDTH = RAIL_STRIP_WIDTH * 3; // all three strips (used by TemplateLayout)
+export const TEMPLATE_RAILS_WIDTH = RAIL_STRIP_WIDTH * 2; // code + AI strips only
+export const THEME_RAIL_WIDTH = RAIL_STRIP_WIDTH; // theme strip only
 
 /**
  * True while any panel rail is being dragged to resize. Module-level so
@@ -139,14 +141,10 @@ function PanelUnit(props: PanelUnitProps) {
 export function RightPanelContainer() {
   const aiStore = useAiStore();
 
-  // When not in edit mode, translate the entire container off-screen to the
-  // right by exactly its own width. This keeps the transform-based slide
-  // perfectly in sync with the canvas's right-offset transition: both move
-  // the same number of pixels over the same 300ms ease, so the rail left edge
-  // and the canvas right edge track each other throughout. pointer-events is
-  // disabled during the exit slide so the departing rails don't capture clicks.
+  // Slide the container off-screen when neither editing mode is active.
+  // When either mode is active, translateX(0) keeps it visible.
   const containerTransform = () => {
-    if (aiStore.isEditMode()) return 'translateX(0)';
+    if (aiStore.isEditingTemplate() || aiStore.isEditingTheme()) return 'translateX(0)';
     let w = TOTAL_RAIL_WIDTH;
     if (aiStore.isOpen()) w += aiStore.aiPanelWidth();
     if (aiStore.codePanelOpen()) w += aiStore.codePanelWidth();
@@ -164,41 +162,47 @@ export function RightPanelContainer() {
       styles={{
         transform: containerTransform(),
         transition: panelResizing() ? 'none' : 'transform 300ms ease',
-        'pointer-events': aiStore.isEditMode() ? 'auto' : 'none',
+        'pointer-events': aiStore.isEditingTemplate() || aiStore.isEditingTheme() ? 'auto' : 'none',
       }}
     >
-      <PanelUnit
-        icon="paint-bucket"
-        tooltip="Theme editor"
-        isOpen={() => aiStore.themePanelOpen()}
-        panelWidth={() => aiStore.themePanelWidth()}
-        toggle={() => aiStore.toggleThemePanel()}
-        setPanelWidth={(w) => aiStore.setThemePanelWidth(w)}
-      >
-        <ThemePanel />
-      </PanelUnit>
+      {/* Theme panel — visible when isEditingTheme */}
+      <Show when={aiStore.isEditingTheme()}>
+        <PanelUnit
+          icon="paint-bucket"
+          tooltip="Theme editor"
+          isOpen={() => aiStore.themePanelOpen()}
+          panelWidth={() => aiStore.themePanelWidth()}
+          toggle={() => aiStore.toggleThemePanel()}
+          setPanelWidth={(w) => aiStore.setThemePanelWidth(w)}
+        >
+          <ThemePanel />
+        </PanelUnit>
+      </Show>
 
-      <PanelUnit
-        icon="code"
-        tooltip="Code editor"
-        isOpen={() => aiStore.codePanelOpen()}
-        panelWidth={() => aiStore.codePanelWidth()}
-        toggle={() => aiStore.toggleCodePanel()}
-        setPanelWidth={(w) => aiStore.setCodePanelWidth(w)}
-      >
-        <CodePanel />
-      </PanelUnit>
+      {/* Code + AI panels — visible when isEditingTemplate */}
+      <Show when={aiStore.isEditingTemplate()}>
+        <PanelUnit
+          icon="code"
+          tooltip="Code editor"
+          isOpen={() => aiStore.codePanelOpen()}
+          panelWidth={() => aiStore.codePanelWidth()}
+          toggle={() => aiStore.toggleCodePanel()}
+          setPanelWidth={(w) => aiStore.setCodePanelWidth(w)}
+        >
+          <CodePanel />
+        </PanelUnit>
 
-      <PanelUnit
-        icon="chat-circle"
-        tooltip="AI chat"
-        isOpen={() => aiStore.isOpen()}
-        panelWidth={() => aiStore.aiPanelWidth()}
-        toggle={() => aiStore.toggle()}
-        setPanelWidth={(w) => aiStore.setAiPanelWidth(w)}
-      >
-        <AiChatPanel />
-      </PanelUnit>
+        <PanelUnit
+          icon="chat-circle"
+          tooltip="AI chat"
+          isOpen={() => aiStore.isOpen()}
+          panelWidth={() => aiStore.aiPanelWidth()}
+          toggle={() => aiStore.toggle()}
+          setPanelWidth={(w) => aiStore.setAiPanelWidth(w)}
+        >
+          <AiChatPanel />
+        </PanelUnit>
+      </Show>
     </Row>
   );
 }

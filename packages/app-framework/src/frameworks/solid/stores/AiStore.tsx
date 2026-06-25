@@ -86,11 +86,11 @@ export interface AiStore {
   confirmPicker: (name: string, icon: string, destination: 'personal' | 'space') => Promise<void>;
   cancelPicker: () => void;
 
-  // --- Edit mode ---
-  isEditMode: Accessor<boolean>;
+  // --- Template editing mode ---
+  isEditingTemplate: Accessor<boolean>;
   editAction: Accessor<'edit' | 'fork' | 'fresh' | null>;
-  enterEditMode: (action?: 'edit' | 'fork' | 'fresh') => void;
-  exitEditMode: () => void;
+  enterTemplateEditing: (action?: 'edit' | 'fork' | 'fresh') => void;
+  exitTemplateEditing: () => void;
 
   // --- Panel control (AI chat) ---
   toggle: () => void;
@@ -108,6 +108,12 @@ export interface AiStore {
   toggleThemePanel: () => void;
   openThemePanel: () => void;
   closeThemePanel: () => void;
+
+  // --- Theme editing mode (independent of template editing) ---
+  isEditingTheme: Accessor<boolean>;
+  enterThemeEditing: () => void;
+  exitThemeEditing: () => void;
+  toggleThemeEditing: () => void;
 
   // --- Panel widths (persisted) ---
   aiPanelWidth: Accessor<number>;
@@ -552,24 +558,47 @@ export function AiStoreProvider(props: ParentProps) {
   }
 
   // ----------------------------------------------------------------
-  // Edit mode
+  // Template editing mode
   // ----------------------------------------------------------------
-  const [isEditMode, setIsEditMode] = createSignal(false);
+  const [isEditingTemplate, setIsEditingTemplate] = createSignal(false);
   const [editAction, setEditAction] = createSignal<'edit' | 'fork' | 'fresh' | null>(null);
 
-  function enterEditMode(action: 'edit' | 'fork' | 'fresh' = 'edit') {
+  function enterTemplateEditing(action: 'edit' | 'fork' | 'fresh' = 'edit') {
     setEditAction(action);
-    setIsEditMode(true);
+    setIsEditingTemplate(true);
     setIsOpen(true);
   }
 
-  function exitEditMode() {
-    setIsEditMode(false);
+  function exitTemplateEditing() {
+    setIsEditingTemplate(false);
     setEditAction(null);
     setIsOpen(false);
     setCodePanelOpen(false);
-    setThemePanelOpen(false);
     setContentMode('preview');
+    // Theme editing is independent — not closed here
+  }
+
+  // ----------------------------------------------------------------
+  // Theme editing mode (independent of template editing)
+  // ----------------------------------------------------------------
+  const [isEditingTheme, setIsEditingTheme] = createSignal(false);
+
+  function enterThemeEditing() {
+    setIsEditingTheme(true);
+    setThemePanelOpen(true);
+  }
+
+  function exitThemeEditing() {
+    setIsEditingTheme(false);
+    setThemePanelOpen(false);
+  }
+
+  function toggleThemeEditing() {
+    if (isEditingTheme()) {
+      exitThemeEditing();
+    } else {
+      enterThemeEditing();
+    }
   }
 
   // ----------------------------------------------------------------
@@ -715,8 +744,8 @@ export function AiStoreProvider(props: ParentProps) {
       setMessages((prev) => [...prev, createMessage('assistant', `Forked as "${name}".${suffix}`)]);
     }
 
-    // Enter edit mode on the newly created template
-    enterEditMode(action as 'fork' | 'fresh');
+    // Enter template editing on the newly created template
+    enterTemplateEditing(action as 'fork' | 'fresh');
   }
 
   function cancelPicker() {
@@ -1355,7 +1384,7 @@ export function AiStoreProvider(props: ParentProps) {
     if (templateId && adamStore.rootPerspective()) {
       loadSessionsForTemplate(templateId);
       setContentMode('preview');
-      setIsEditMode(false);
+      setIsEditingTemplate(false);
       setEditAction(null);
     }
   });
@@ -1431,11 +1460,17 @@ export function AiStoreProvider(props: ParentProps) {
     confirmPicker,
     cancelPicker,
 
-    // Edit mode
-    isEditMode,
+    // Template editing
+    isEditingTemplate,
     editAction,
-    enterEditMode,
-    exitEditMode,
+    enterTemplateEditing,
+    exitTemplateEditing,
+
+    // Theme editing
+    isEditingTheme,
+    enterThemeEditing,
+    exitThemeEditing,
+    toggleThemeEditing,
 
     // Panel control (AI chat)
     toggle,
