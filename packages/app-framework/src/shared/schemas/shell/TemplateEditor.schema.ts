@@ -28,7 +28,7 @@ export const templateEditor: SchemaNode = {
                 { $not: { $store: 'templateStore.activeShellView' } },
               ],
             },
-            then: { type: 'TemplateToolbar' },
+            then: { type: 'DesignToolbar' },
           },
         },
         { type: 'RightPanelContainer' },

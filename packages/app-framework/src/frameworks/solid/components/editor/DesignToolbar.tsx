@@ -11,7 +11,7 @@ import { PublishThemeModal } from './PublishThemeModal';
 import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
 import { panelResizing, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from './RightPanelContainer';
 
-export function TemplateToolbar() {
+export function DesignToolbar() {
   const templateStore = useTemplateStore();
   const spaceStore = useSpaceStore();
   const aiStore = useAiStore();

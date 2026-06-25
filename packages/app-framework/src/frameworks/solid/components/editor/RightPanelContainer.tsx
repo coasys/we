@@ -14,7 +14,7 @@ export const THEME_RAIL_WIDTH = RAIL_STRIP_WIDTH; // theme strip only
 
 /**
  * True while any panel rail is being dragged to resize. Module-level so
- * TemplateLayout and TemplateToolbar can disable their CSS transitions during
+ * TemplateLayout and DesignToolbar can disable their CSS transitions during
  * drag, keeping the canvas edge in sync with the panel edge.
  */
 export const [panelResizing, setPanelResizing] = createSignal(false);

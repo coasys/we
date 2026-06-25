@@ -36,8 +36,8 @@ import type { ParentProps } from 'solid-js';
 import { createEffect, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
-import { EditorOverlay } from '../components/template-editor/EditorOverlay';
-import { panelResizing, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from '../components/template-editor/RightPanelContainer';
+import { EditorOverlay } from '../components/editor/EditorOverlay';
+import { panelResizing, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from '../components/editor/RightPanelContainer';
 import { buildRoutes } from '../utils/buildRoutes';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
