@@ -16,7 +16,7 @@ export const aboutRoute: RouteSchema = {
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '700', fontWeight: 'bold', color: 'primary-700' },
+              props: { variant: 'heading-md', color: 'primary-700' },
               children: ['About this space'],
             },
 
@@ -28,7 +28,7 @@ export const aboutRoute: RouteSchema = {
                 { type: 'we-text', props: { fontSize: '500', color: 'neutral-600' }, children: ['Name'] },
                 {
                   type: 'we-text',
-                  props: { fontSize: '700', fontWeight: 'bold' },
+                  props: { variant: 'heading-md' },
                   children: [{ $store: 'spaceStore.currentSpace.name' }],
                 },
               ],
@@ -91,7 +91,7 @@ export const aboutRoute: RouteSchema = {
                     },
                     {
                       type: 'we-text',
-                      props: { color: 'neutral-700', fontSize: '400' },
+                      props: { variant: 'body', color: 'neutral-700' },
                       children: [
                         {
                           $if: {
@@ -143,7 +143,7 @@ export const aboutRoute: RouteSchema = {
                     },
                     {
                       type: 'we-text',
-                      props: { color: 'neutral-700', fontSize: '400' },
+                      props: { variant: 'body', color: 'neutral-700' },
                       children: [
                         {
                           $if: {
@@ -237,7 +237,7 @@ export const aboutRoute: RouteSchema = {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
                       children: [
-                        { type: 'we-text', props: { color: 'neutral-700', fontSize: '400' }, children: ['By'] },
+                        { type: 'we-text', props: { variant: 'body', color: 'neutral-700' }, children: ['By'] },
                         {
                           type: '$agent',
                           props: { did: { $store: 'spaceStore.currentSpace.author' }, as: 'agent' },
@@ -252,7 +252,7 @@ export const aboutRoute: RouteSchema = {
                             },
                             {
                               type: 'we-text',
-                              props: { color: 'neutral-700', fontSize: '400', truncate: true, maxWidth: '160px' },
+                              props: { variant: 'body', color: 'neutral-700', truncate: true, maxWidth: '160px' },
                               children: [{ $concat: ['$agent.firstName', ' ', '$agent.lastName'] }],
                             },
                           ],

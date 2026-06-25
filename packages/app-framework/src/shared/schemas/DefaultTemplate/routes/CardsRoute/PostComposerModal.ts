@@ -28,7 +28,7 @@ export function postComposerModal(opts: PostComposerModalOptions): SchemaNode {
       submitting: { type: 'boolean', initial: false },
     },
     children: [
-      { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: [opts.title] },
+      { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
       {
         type: 'Column',
         props: { width: '100%', bg: 'neutral-25', p: '600', pl: '1000', r: '400', overflow: 'auto' },

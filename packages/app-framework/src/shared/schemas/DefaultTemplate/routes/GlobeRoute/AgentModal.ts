@@ -57,12 +57,12 @@ export const agentModal = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '600', fontWeight: 'bold' },
+                      props: { variant: 'heading-sm' },
                       children: [{ $concat: ['$agent.firstName', ' ', '$agent.lastName'] }],
                     },
                     {
                       type: 'we-text',
-                      props: { fontSize: '300', color: 'neutral-400' },
+                      props: { variant: 'footnote' },
                       children: [{ $concat: ['@', '$agent.handle'] }],
                     },
                   ],
@@ -77,7 +77,7 @@ export const agentModal = {
                 condition: '$agent.bio',
                 then: {
                   type: 'we-text',
-                  props: { fontSize: '400', color: 'neutral-600' },
+                  props: { variant: 'body', color: 'neutral-600' },
                   children: ['$agent.bio'],
                 },
               },

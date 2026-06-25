@@ -17,7 +17,7 @@ export const createSignalTypeModal = {
     // Title
     {
       type: 'we-text',
-      props: { fontSize: '700', fontWeight: 'bold', textAlign: 'center' },
+      props: { variant: 'heading-md', textAlign: 'center' },
       children: ['New Signal Type'],
     },
 

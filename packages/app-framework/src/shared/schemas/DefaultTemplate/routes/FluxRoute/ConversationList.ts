@@ -58,7 +58,7 @@ export const conversationList: SchemaNode = {
                     {
                       type: 'we-text',
                       props: {
-                        fontSize: '300',
+                        variant: 'label',
                         fontWeight: 'semibold',
                         color: 'neutral-800',
                         overflow: 'hidden',
@@ -76,7 +76,7 @@ export const conversationList: SchemaNode = {
                     then: {
                       type: 'we-text',
                       props: {
-                        fontSize: '200',
+                        variant: 'footnote',
                         color: 'neutral-500',
                         styles: {
                           display: '-webkit-box',

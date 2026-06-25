@@ -24,7 +24,7 @@ const templateRow: SchemaNode = {
       props: { ay: 'center', gap: '300' },
       children: [
         { type: 'we-icon', props: { name: '$template.meta.icon' } },
-        { type: 'we-text', props: { fontWeight: '600' }, children: ['$template.meta.name'] },
+        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$template.meta.name'] },
       ],
     },
     {
@@ -71,7 +71,7 @@ const themeRow: SchemaNode = {
       props: { ay: 'center', gap: '300' },
       children: [
         { type: 'we-icon', props: { name: '$theme.icon' } },
-        { type: 'we-text', props: { fontWeight: '600' }, children: ['$theme.name'] },
+        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$theme.name'] },
       ],
     },
     {
@@ -165,7 +165,7 @@ export const settingsRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '700', fontWeight: 'bold', color: 'primary-700' },
+                      props: { variant: 'heading-md', color: 'primary-700' },
                       children: ['About this space'],
                     },
                     {
@@ -279,7 +279,7 @@ export const settingsRoute: RouteSchema = {
                         },
                         {
                           type: 'we-text',
-                          props: { color: 'neutral-700', fontSize: '400' },
+                          props: { variant: 'body', color: 'neutral-700' },
                           children: [
                             {
                               $if: {
@@ -511,7 +511,7 @@ export const settingsRoute: RouteSchema = {
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '700', fontWeight: 'bold', color: 'primary-700' },
+                  props: { variant: 'heading-md', color: 'primary-700' },
                   children: ['Default Template'],
                 },
                 {
@@ -529,7 +529,7 @@ export const settingsRoute: RouteSchema = {
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
+                  props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-500', textTransform: 'uppercase' },
                   children: ['Built-in Templates'],
                 },
                 {
@@ -551,7 +551,7 @@ export const settingsRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
+                      props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-500', textTransform: 'uppercase' },
                       children: ['Space Templates'],
                     },
                     {
@@ -575,12 +575,12 @@ export const settingsRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
+                      props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-500', textTransform: 'uppercase' },
                       children: ['Browse Marketplace'],
                     },
                     {
                       type: 'we-text',
-                      props: { color: 'neutral-800', fontSize: '400' },
+                      props: { variant: 'body', color: 'neutral-800' },
                       children: ['Install templates from the marketplace into this space.'],
                     },
                   ],
@@ -626,7 +626,7 @@ export const settingsRoute: RouteSchema = {
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '700', fontWeight: 'bold', color: 'primary-700' },
+                  props: { variant: 'heading-md', color: 'primary-700' },
                   children: ['Default Theme'],
                 },
                 {
@@ -644,7 +644,7 @@ export const settingsRoute: RouteSchema = {
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
+                  props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-500', textTransform: 'uppercase' },
                   children: ['Built-in Themes'],
                 },
                 {
@@ -666,7 +666,7 @@ export const settingsRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
+                      props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-500', textTransform: 'uppercase' },
                       children: ['Space Themes'],
                     },
                     {
@@ -690,12 +690,12 @@ export const settingsRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
+                      props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-500', textTransform: 'uppercase' },
                       children: ['Browse Marketplace'],
                     },
                     {
                       type: 'we-text',
-                      props: { color: 'neutral-800', fontSize: '400' },
+                      props: { variant: 'body', color: 'neutral-800' },
                       children: ['Install themes from the marketplace into this space.'],
                     },
                   ],

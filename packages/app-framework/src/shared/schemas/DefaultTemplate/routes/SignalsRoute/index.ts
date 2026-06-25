@@ -10,12 +10,12 @@ export const signalsRoute: RouteSchema = {
   $localState: { createOpen: { type: 'boolean', initial: false } },
   children: [
     // Title
-    { type: 'we-text', props: { fontSize: '600', fontWeight: 'bold' }, children: ['Signal Types'] },
+    { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Signal Types'] },
 
     // Description
     {
       type: 'we-text',
-      props: { fontSize: '400', color: 'neutral-700', mb: '400' },
+      props: { variant: 'body', color: 'neutral-700', mb: '400' },
       children: ['Create and manage custom signal types to categorize and enrich your signals.'],
     },
 

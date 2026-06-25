@@ -11,12 +11,12 @@ const globalSpaceJoinPrompt: SchemaNode = {
     { type: 'we-icon', props: { name: 'globe-hemisphere-west', size: 'xl' } },
     {
       type: 'we-text',
-      props: { fontSize: '700', fontWeight: 'bold', textAlign: 'center' },
+      props: { variant: 'heading-md', textAlign: 'center' },
       children: ['Join WE Discovery'],
     },
     {
       type: 'we-text',
-      props: { fontSize: '400', color: 'neutral-500', textAlign: 'center', maxWidth: '420px' },
+      props: { variant: 'body', color: 'neutral-500', textAlign: 'center', maxWidth: '420px' },
       children: [
         "This is the WE network's global discovery space — find communities and people from across the network. Join to explore spaces on the globe and connect with others.",
       ],
@@ -42,12 +42,12 @@ const regularSpaceJoinPrompt: SchemaNode = {
     { type: 'we-icon', props: { name: 'lock', size: 'xl' } },
     {
       type: 'we-text',
-      props: { fontSize: '700', fontWeight: 'bold' },
+      props: { variant: 'heading-md' },
       children: ['Join this Space'],
     },
     {
       type: 'we-text',
-      props: { fontSize: '400', color: 'neutral-500', textAlign: 'center', maxWidth: '400px' },
+      props: { variant: 'body', color: 'neutral-500', textAlign: 'center', maxWidth: '400px' },
       children: ["You haven't joined this space yet. Click below to connect and start collaborating."],
     },
     {
@@ -71,12 +71,12 @@ const notConfiguredPrompt: SchemaNode = {
     { type: 'we-icon', props: { name: 'warning', size: 'xl' } },
     {
       type: 'we-text',
-      props: { fontSize: '700', fontWeight: 'bold' },
+      props: { variant: 'heading-md' },
       children: ['Global space not configured'],
     },
     {
       type: 'we-text',
-      props: { fontSize: '400', color: 'neutral-500', textAlign: 'center', maxWidth: '400px' },
+      props: { variant: 'body', color: 'neutral-500', textAlign: 'center', maxWidth: '400px' },
       children: ['No global space URL has been set in we-seed.json. Add a globalSpaceUrl to enable joining.'],
     },
   ],

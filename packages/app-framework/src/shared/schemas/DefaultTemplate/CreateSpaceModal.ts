@@ -20,7 +20,7 @@ export const createSpaceModal = {
     submitting: { type: 'boolean', initial: false },
   },
   children: [
-    { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create a New Space'] },
+    { type: 'we-text', props: { variant: 'heading-md' }, children: ['Create a New Space'] },
 
     // Cover image
     {
@@ -179,7 +179,7 @@ export const createSpaceModal = {
             },
             {
               type: 'we-text',
-              props: { fontSize: '300', color: 'neutral-400' },
+              props: { variant: 'footnote' },
               children: [
                 {
                   $if: {
@@ -253,7 +253,7 @@ export const createSpaceModal = {
                 },
                 {
                   type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-400' },
+                  props: { variant: 'footnote' },
                   children: [
                     {
                       $if: {
@@ -309,7 +309,7 @@ export const createSpaceModal = {
                 { type: 'we-icon', props: { name: 'info', size: 'sm', color: 'neutral-400' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-400' },
+                  props: { variant: 'footnote' },
                   children: ['Join the WE discovery space to list your space globally.'],
                 },
               ],

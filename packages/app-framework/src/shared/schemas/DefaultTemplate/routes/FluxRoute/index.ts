@@ -20,12 +20,12 @@ export const fluxRoute: RouteSchema = {
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900' },
+              props: { variant: 'heading-md', color: 'neutral-900' },
               children: ['Flux'],
             },
             {
               type: 'we-text',
-              props: { fontSize: '300', color: 'neutral-500' },
+              props: { variant: 'label', color: 'neutral-500' },
               children: ['Your community at a glance'],
             },
           ],

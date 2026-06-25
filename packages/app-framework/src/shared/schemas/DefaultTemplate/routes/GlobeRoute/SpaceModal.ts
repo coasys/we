@@ -61,14 +61,14 @@ export const spaceModal = {
                   type: 'Column',
                   props: { gap: '100' },
                   children: [
-                    { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['$space.name'] },
+                    { type: 'we-text', props: { variant: 'heading-md' }, children: ['$space.name'] },
                     {
                       type: '$if',
                       props: {
                         condition: '$space.description',
                         then: {
                           type: 'we-text',
-                          props: { fontSize: '400', color: 'neutral-500' },
+                          props: { variant: 'body', color: 'neutral-500' },
                           children: ['$space.description'],
                         },
                       },

@@ -45,12 +45,12 @@ export const templatesList: SchemaNode = {
                             children: [
                               {
                                 type: 'we-text',
-                                props: { fontWeight: '600', color: 'neutral-800' },
+                                props: { fontWeight: 'semibold', color: 'neutral-800' },
                                 children: ['$template.name'],
                               },
                               {
                                 type: 'we-text',
-                                props: { fontSize: '300', color: 'neutral-500' },
+                                props: { variant: 'label', color: 'neutral-500' },
                                 children: [{ $concat: ['@', '$templateAuthor.handle'] }],
                               },
                             ],

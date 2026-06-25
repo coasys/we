@@ -36,7 +36,7 @@ export const spacesList: SchemaNode = gridWrapper([
                   },
                   {
                     type: 'we-text',
-                    props: { fontWeight: '600', color: 'neutral-800' },
+                    props: { fontWeight: 'semibold', color: 'neutral-800' },
                     children: ['$space.name'],
                   },
                 ],
@@ -68,7 +68,7 @@ export const spacesList: SchemaNode = gridWrapper([
                             children: [
                               {
                                 type: 'we-text',
-                                props: { fontWeight: '600' },
+                                props: { fontWeight: 'semibold' },
                                 children: ['Remove from discovery?'],
                               },
                               {
@@ -122,7 +122,7 @@ export const spacesList: SchemaNode = gridWrapper([
               condition: '$space.description',
               then: {
                 type: 'we-text',
-                props: { fontSize: '300', color: 'neutral-500' },
+                props: { variant: 'label', color: 'neutral-500' },
                 children: ['$space.description'],
               },
             },

@@ -559,7 +559,7 @@ export const contextData: ContextData = {
         { name: 'text', type: 'string | undefined', optional: true },
         {
           name: 'variant',
-          type: "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg'",
+          type: "'' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl'",
           optional: false,
           default: "''",
         },

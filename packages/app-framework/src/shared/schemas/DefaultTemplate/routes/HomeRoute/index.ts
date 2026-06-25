@@ -19,12 +19,12 @@ export const homeRoute: RouteSchema = {
       children: [
         {
           type: 'we-text',
-          props: { fontSize: '700', fontWeight: 'bold', textAlign: 'center' },
+          props: { variant: 'heading-md', textAlign: 'center' },
           children: ['Your Spaces'],
         },
         {
           type: 'we-text',
-          props: { fontSize: '400', color: 'neutral-500', textAlign: 'center' },
+          props: { variant: 'body', color: 'neutral-500', textAlign: 'center' },
           children: ['Select a space to open it, or create and join new ones.'],
         },
         // Space cards grid
@@ -94,12 +94,12 @@ export const homeRoute: RouteSchema = {
                 { type: 'we-icon', props: { name: 'plus-circle', size: 'xl', color: 'neutral-400' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '500', fontWeight: 'medium', textAlign: 'center' },
+                  props: { variant: 'subheading', textAlign: 'center' },
                   children: ['No spaces yet'],
                 },
                 {
                   type: 'we-text',
-                  props: { fontSize: '400', color: 'neutral-500', textAlign: 'center' },
+                  props: { variant: 'body', color: 'neutral-500', textAlign: 'center' },
                   children: ['Create or join a space to get started.'],
                 },
               ],

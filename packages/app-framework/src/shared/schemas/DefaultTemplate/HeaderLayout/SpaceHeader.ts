@@ -53,7 +53,7 @@ export const spaceHeader: SchemaNode = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '700', fontWeight: 'bold' },
+                      props: { variant: 'heading-md' },
                       children: [{ $store: 'spaceStore.currentSpace.name' }],
                     },
                     {
@@ -177,7 +177,7 @@ export const spaceNavBar: SchemaNode = {
             },
             {
               type: 'we-text',
-              props: { fontWeight: '600' },
+              props: { fontWeight: 'semibold' },
               children: [{ $store: 'spaceStore.currentSpace.name' }],
             },
           ],

@@ -53,7 +53,7 @@ export const postsList: SchemaNode = {
                           },
                           {
                             type: 'we-text',
-                            props: { fontWeight: '600', color: 'neutral-800' },
+                            props: { fontWeight: 'semibold', color: 'neutral-800' },
                             children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
                           },
                           {
@@ -111,7 +111,7 @@ export const postsList: SchemaNode = {
                                 type: 'we-modal',
                                 props: { close: { $setLocal: 'confirmDeleteOpen', value: false } },
                                 children: [
-                                  { type: 'we-text', props: { fontWeight: '600' }, children: ['Delete post?'] },
+                                  { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Delete post?'] },
                                   {
                                     type: 'we-text',
                                     props: { color: 'neutral-600' },
