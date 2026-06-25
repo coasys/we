@@ -42,6 +42,8 @@ export function TemplateToolbar() {
 
   // ── Theme share dropdown (active editing state) ──
   const [themeShareOpen, setThemeShareOpen] = createSignal(false);
+  const [themeShareView, setThemeShareView] = createSignal<'main' | 'space'>('main');
+  const [themeShareLoading, setThemeShareLoading] = createSignal<string | null>(null);
 
   // ── Theme picker (fork / new) ──
   const [themePickerOpen, setThemePickerOpen] = createSignal(false);
@@ -73,6 +75,7 @@ export function TemplateToolbar() {
     setThemeSearch('');
     setThemeEditOpen(false);
     setThemeShareOpen(false);
+    setThemeShareView('main');
     setThemePickerOpen(false);
     if (aiStore.pickerOpen()) aiStore.cancelPicker();
   }
@@ -223,6 +226,16 @@ export function TemplateToolbar() {
       if (success) closeAllDropdowns();
     } finally {
       setShareLoading(null);
+    }
+  }
+
+  async function handleShareThemeToSpace(uuid: string, spaceName: string) {
+    setThemeShareLoading(uuid);
+    try {
+      const success = await themeStore.publishToSpace(uuid, spaceName);
+      if (success) closeAllDropdowns();
+    } finally {
+      setThemeShareLoading(null);
     }
   }
 
@@ -642,28 +655,92 @@ export function TemplateToolbar() {
               r="400"
               shadow="md"
               overflow="hidden"
-              minWidth="200px"
+              minWidth="260px"
             >
-              <Column py="200">
-                <Row
-                  ay="center"
-                  gap="400"
-                  px="300"
-                  py="200"
-                  cursor={adamStore.marketplaceJoined() ? 'pointer' : 'not-allowed'}
-                  opacity={adamStore.marketplaceJoined() ? 1 : 0.4}
-                  hoverProps={adamStore.marketplaceJoined() ? { bg: 'neutral-100' } : undefined}
-                  onClick={adamStore.marketplaceJoined() ? handlePublishThemeToMarketplace : undefined}
-                >
-                  <we-icon name="storefront" color="neutral-600" />
-                  <Column gap="0">
-                    <we-text color="neutral-800">Upload to marketplace</we-text>
-                    <we-text fontSize="300" color="neutral-500">
-                      {adamStore.marketplaceJoined() ? 'Publish for others to install' : 'Marketplace not connected'}
+              <Show when={themeShareView() === 'main'}>
+                <Column py="200">
+                  <Row
+                    ay="center"
+                    gap="400"
+                    px="300"
+                    py="200"
+                    cursor={adamStore.marketplaceJoined() ? 'pointer' : 'not-allowed'}
+                    opacity={adamStore.marketplaceJoined() ? 1 : 0.4}
+                    hoverProps={adamStore.marketplaceJoined() ? { bg: 'neutral-100' } : undefined}
+                    onClick={adamStore.marketplaceJoined() ? handlePublishThemeToMarketplace : undefined}
+                  >
+                    <we-icon name="storefront" color="neutral-600" />
+                    <Column gap="0">
+                      <we-text color="neutral-800">Upload to marketplace</we-text>
+                      <we-text fontSize="300" color="neutral-500">
+                        {adamStore.marketplaceJoined() ? 'Publish for others to install' : 'Marketplace not connected'}
+                      </we-text>
+                    </Column>
+                  </Row>
+                  <Row
+                    ay="center"
+                    gap="400"
+                    px="300"
+                    py="200"
+                    cursor="pointer"
+                    hoverProps={{ bg: 'neutral-100' }}
+                    onClick={() => setThemeShareView('space')}
+                  >
+                    <we-icon name="users" color="neutral-600" />
+                    <Column gap="0" flex="1">
+                      <we-text color="neutral-800">Share to a space</we-text>
+                      <we-text fontSize="300" color="neutral-500">
+                        Copy to a space's themes
+                      </we-text>
+                    </Column>
+                    <we-icon name="caret-right" color="neutral-400" size="sm" />
+                  </Row>
+                </Column>
+              </Show>
+              <Show when={themeShareView() === 'space'}>
+                <Column>
+                  <Row ay="center" gap="200" px="200" pt="200">
+                    <we-button variant="ghost" square size="sm" onClick={() => setThemeShareView('main')}>
+                      <we-icon name="arrow-left" />
+                    </we-button>
+                    <we-text fontWeight="600" color="neutral-800">
+                      Choose a space
                     </we-text>
-                  </Column>
-                </Row>
-              </Column>
+                  </Row>
+                  <SearchInput value={spaceSearch()} placeholder="Search spaces…" m="200" onSearch={setSpaceSearch} />
+                  <we-divider />
+                  <we-scroll-area maxHeight="280px">
+                    <Column py="200">
+                      <For each={filteredSpaces()}>
+                        {(space) => (
+                          <Row
+                            ay="center"
+                            gap="200"
+                            px="300"
+                            py="200"
+                            cursor="pointer"
+                            hoverProps={{ bg: 'neutral-100' }}
+                            onClick={() => handleShareThemeToSpace(space.uuid, space.name)}
+                          >
+                            <we-avatar image={space.avatar} initials={space.name} size="sm" />
+                            <we-text color="neutral-700" flex="1">
+                              {space.name}
+                            </we-text>
+                            <Show when={themeShareLoading() === space.uuid}>
+                              <we-spinner size="sm" />
+                            </Show>
+                          </Row>
+                        )}
+                      </For>
+                      <Show when={filteredSpaces().length === 0}>
+                        <we-text variant="footnote" color="neutral-400" px="300" py="200">
+                          No spaces found
+                        </we-text>
+                      </Show>
+                    </Column>
+                  </we-scroll-area>
+                </Column>
+              </Show>
             </Column>
           </Show>
         </Column>
@@ -879,7 +956,7 @@ export function TemplateToolbar() {
               r="400"
               shadow="md"
               overflow="hidden"
-              minWidth="240px"
+              minWidth="260px"
             >
               <Show when={shareView() === 'main'}>
                 <Column py="200">

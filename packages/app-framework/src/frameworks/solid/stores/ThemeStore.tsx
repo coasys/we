@@ -58,6 +58,7 @@ export interface ThemeStore {
   installFromMarketplace: (marketplaceThemeId: string) => Promise<void>;
   uninstallTheme: (themeId: string) => Promise<void>;
   publishToMarketplace: (options: { name: string; description: string; screenshots: File[] }) => Promise<boolean>;
+  publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   loadInstalledThemes: () => Promise<void>;
 }
 
@@ -184,6 +185,8 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [installedThemes, setInstalledThemes] = createSignal<ThemeData[]>([]);
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
   const [currentThemeId, setCurrentThemeId] = createSignal<string>(getInitialThemeId());
+  // Space theme requested before loadSpaceThemes completes — held here until it can be applied.
+  const [pendingSpaceThemeId, setPendingSpaceThemeId] = createSignal<string | null>(null);
   const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
 
   // ── Undo / redo ──
@@ -295,6 +298,20 @@ export function ThemeStoreProvider(props: ParentProps) {
     else setSpaceThemes([]);
   });
 
+  // Once spaceThemes finish loading, flush any pending space theme that replaceTheme
+  // couldn't apply yet (race: SpaceStore fires before loadSpaceThemes completes).
+  createEffect(() => {
+    const themes = spaceThemes();
+    const pending = pendingSpaceThemeId();
+    if (!pending) return;
+    const match = themes.find((t) => t.id === pending);
+    if (match) {
+      setPendingSpaceThemeId(null);
+      setCurrentThemeId(pending);
+      applyThemeToDOM(match);
+    }
+  });
+
   // Apply persisted theme from AgentSettings when available
   createEffect(() => {
     const prefs = adamStore.agentSettings();
@@ -335,11 +352,21 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   function replaceTheme(themeId: string) {
-    setCurrentThemeId(themeId);
-    applyThemeToDOM(resolveThemeData(themeId));
+    const theme = allThemes().find((t) => t.id === themeId);
+    if (theme) {
+      // Theme already loaded — apply immediately and clear any pending state.
+      setPendingSpaceThemeId(null);
+      setCurrentThemeId(themeId);
+      applyThemeToDOM(theme);
+    } else {
+      // spaceThemes not loaded yet — park the ID. The createEffect below will
+      // apply it (and commit currentThemeId) once the space themes arrive.
+      setPendingSpaceThemeId(themeId);
+    }
   }
 
   function restorePersonalTheme() {
+    setPendingSpaceThemeId(null);
     const id = localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.currentThemeId ?? getInitialThemeId();
     setCurrentThemeId(id);
     applyThemeToDOM(resolveThemeData(id));
@@ -678,6 +705,45 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
   }
 
+  async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
+    const perspective = adamStore.allPerspectives().find((p) => p.uuid === perspectiveUuid);
+    if (!perspective) {
+      toastService.error('Space not found');
+      return false;
+    }
+
+    const editing = editingTheme();
+    if (!editing) {
+      toastService.error('No theme is being edited');
+      return false;
+    }
+
+    const existing = await Theme.findOne(perspective, { where: { name: editing.name } });
+    if (existing) {
+      toastService.error(`Theme "${editing.name}" is already in "${spaceName}"`);
+      return false;
+    }
+
+    try {
+      await Theme.create(perspective, {
+        name: editing.name,
+        icon: editing.icon,
+        origin: 'shared',
+        version: 1,
+        overrides: editing.overrides
+          ? (encodeToFileData(editing.overrides, 'overrides.json', 'application/json') as any)
+          : null,
+        css: editing.css ? (encodeToFileData(editing.css, 'theme.css', 'text/css') as any) : null,
+      });
+      toastService.success(`Theme "${editing.name}" shared to space "${spaceName}"`);
+      return true;
+    } catch (e) {
+      console.error('ThemeStore: publishToSpace error', e);
+      toastService.error('Failed to share theme to space');
+      return false;
+    }
+  }
+
   const store: ThemeStore = {
     builtInThemes,
     installedThemes,
@@ -705,6 +771,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     installFromMarketplace,
     uninstallTheme,
     publishToMarketplace,
+    publishToSpace,
     loadInstalledThemes,
   };
 
