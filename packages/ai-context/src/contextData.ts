@@ -2498,10 +2498,14 @@ export const contextData: ContextData = {
     {
       name: 'themeStore',
       state: {
-        themes: { type: 'array', properties: ['id', 'name', 'icon'] },
-        currentTheme: { type: 'object', properties: ['id', 'name', 'icon'] },
+        builtInThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
+        installedThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
+        spaceThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
+        allThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
+        currentThemeId: { type: 'string' },
+        currentTheme: { type: 'object', properties: ['id', 'name', 'icon', 'origin'] },
       },
-      actions: ['setThemes', 'setCurrentTheme'],
+      actions: ['setCurrentTheme', 'installFromMarketplace', 'uninstallTheme'],
     },
     {
       name: 'templateStore',

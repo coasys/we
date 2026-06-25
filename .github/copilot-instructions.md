@@ -1106,11 +1106,16 @@ RouteStore:
 
 ThemeStore:
 - State:
-  - themes: array of ThemeWithId objects
-  - currentTheme: ThemeWithId (the active theme)
+  - builtInThemes: array of ThemeData objects — built-in registry themes (origin: "built-in", always available)
+  - installedThemes: array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")
+  - spaceThemes: array of ThemeData objects — themes stored in the current space perspective (origin: "custom")
+  - allThemes: array of ThemeData objects — union of builtInThemes + installedThemes + spaceThemes
+  - currentThemeId: string — id of the currently active theme
+  - currentTheme: ThemeData — the currently active theme object (id, name, icon, origin)
 - Actions:
-  - setThemes(themes: ThemeWithId[]): sets available themes
-  - setCurrentTheme(theme: ThemeWithId): sets the active theme
+  - setCurrentTheme(themeId: string): sets and persists the active theme
+  - installFromMarketplace(marketplaceThemeId: string): installs a marketplace theme into installedThemes
+  - uninstallTheme(themeId: string): removes an installed theme
 
 TemplateStore:
 - State:

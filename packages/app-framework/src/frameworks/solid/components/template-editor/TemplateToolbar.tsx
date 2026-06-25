@@ -309,11 +309,13 @@ export function TemplateToolbar() {
         <Column position="relative">
           <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
             {/* Theme selector */}
-            <we-button variant={themeOpen() ? 'secondary' : 'ghost'} onClick={toggleThemePicker} p="200">
-              <we-icon name={themeStore.currentTheme().icon || 'paint-bucket'} />
-              <we-text>{themeStore.currentTheme().name}</we-text>
-              <we-icon name={themeOpen() ? 'caret-up' : 'caret-down'} color="neutral-500" />
-            </we-button>
+            <we-tooltip title="Select a theme" placement="bottom">
+              <we-button variant={themeOpen() ? 'secondary' : 'ghost'} onClick={toggleThemePicker} p="200">
+                <we-icon name={themeStore.currentTheme().icon || 'paint-bucket'} />
+                <we-text>{themeStore.currentTheme().name}</we-text>
+                <we-icon name={themeOpen() ? 'caret-up' : 'caret-down'} color="neutral-500" />
+              </we-button>
+            </we-tooltip>
 
             <we-divider orientation="vertical" color="neutral-200" height="28px" />
 

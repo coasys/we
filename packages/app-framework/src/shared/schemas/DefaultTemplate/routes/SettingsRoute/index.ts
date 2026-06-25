@@ -1,6 +1,7 @@
 import type { RouteSchema, SchemaNode } from '@we/schema-shared';
 
 import { marketplaceBrowser } from './MarketplaceBrowser.ts';
+import { themeMarketplaceBrowser } from './ThemeMarketplaceBrowser.ts';
 
 const templateRow: SchemaNode = {
   type: 'Row',
@@ -49,6 +50,53 @@ const templateRow: SchemaNode = {
   ],
 };
 
+const themeRow: SchemaNode = {
+  type: 'Row',
+  props: {
+    ay: 'center',
+    ax: 'between',
+    p: '300',
+    r: '300',
+    bg: {
+      $if: {
+        condition: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
+        then: 'neutral-200',
+        else: 'neutral-50',
+      },
+    },
+  },
+  children: [
+    {
+      type: 'Row',
+      props: { ay: 'center', gap: '300' },
+      children: [
+        { type: 'we-icon', props: { name: '$theme.icon' } },
+        { type: 'we-text', props: { fontWeight: '600' }, children: ['$theme.name'] },
+      ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
+        then: {
+          type: 'we-badge',
+          props: { variant: 'primary', size: 'sm' },
+          children: ['Default'],
+        },
+        else: {
+          type: 'we-button',
+          props: {
+            variant: 'secondary',
+            size: 'sm',
+            onClick: { $action: 'spaceStore.setSpaceDefaultTheme', args: ['$theme.id'] },
+          },
+          children: ['Set as default'],
+        },
+      },
+    },
+  ],
+};
+
 const saveLocationOnBlur = [
   {
     $if: {
@@ -87,6 +135,7 @@ export const settingsRoute: RouteSchema = {
   props: { width: '100%', ax: 'center', height: 'calc(100vh - 72px)' },
   $localState: {
     showMarketplace: { type: 'boolean', initial: false },
+    showThemeMarketplace: { type: 'boolean', initial: false },
     editName: { type: 'string', initial: { $store: 'spaceStore.currentSpace.name' } },
     editDescription: { type: 'string', initial: { $store: 'spaceStore.currentSpace.description' } },
     saving: { type: 'boolean', initial: false },
@@ -98,7 +147,7 @@ export const settingsRoute: RouteSchema = {
   children: [
     {
       type: 'Column',
-      props: { width: '100%', maxWidth: '1200px', gap: '500', px: '400', pt: '500' },
+      props: { width: '100%', maxWidth: '1200px', gap: '500', px: '400', py: '500' },
       children: [
         // About this space
         {
@@ -481,7 +530,7 @@ export const settingsRoute: RouteSchema = {
                 {
                   type: 'we-text',
                   props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
-                  children: ['Core Templates'],
+                  children: ['Built-in Templates'],
                 },
                 {
                   type: '$each',
@@ -569,7 +618,7 @@ export const settingsRoute: RouteSchema = {
         // Default Theme
         {
           type: 'Column',
-          props: { gap: '400', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          props: { gap: '500', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
           children: [
             {
               type: 'Column',
@@ -587,57 +636,96 @@ export const settingsRoute: RouteSchema = {
                 },
               ],
             },
+
+            // Built-in themes
             {
-              type: '$each',
-              props: { items: { $store: 'themeStore.allThemes' }, as: 'theme' },
+              type: 'Column',
+              props: { gap: '200' },
               children: [
                 {
-                  type: 'Row',
-                  props: {
-                    ay: 'center',
-                    ax: 'between',
-                    p: '300',
-                    r: '300',
-                    bg: {
-                      $if: {
-                        condition: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
-                        then: 'neutral-200',
-                        else: 'neutral-50',
-                      },
-                    },
-                  },
+                  type: 'we-text',
+                  props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
+                  children: ['Built-in Themes'],
+                },
+                {
+                  type: '$each',
+                  props: { items: { $store: 'themeStore.builtInThemes' }, as: 'theme' },
+                  children: [themeRow],
+                },
+              ],
+            },
+
+            // Space themes (only shown when present)
+            {
+              type: '$if',
+              props: {
+                condition: { $count: { items: { $store: 'themeStore.spaceThemes' } } },
+                then: {
+                  type: 'Column',
+                  props: { gap: '200' },
                   children: [
                     {
-                      type: 'Row',
-                      props: { ay: 'center', gap: '300' },
-                      children: [
-                        { type: 'we-icon', props: { name: '$theme.icon' } },
-                        { type: 'we-text', props: { fontWeight: '600' }, children: ['$theme.name'] },
-                      ],
+                      type: 'we-text',
+                      props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
+                      children: ['Space Themes'],
                     },
+                    {
+                      type: '$each',
+                      props: { items: { $store: 'themeStore.spaceThemes' }, as: 'theme' },
+                      children: [themeRow],
+                    },
+                  ],
+                },
+              },
+            },
+
+            // Browse Marketplace
+            {
+              type: 'Row',
+              props: { ax: 'between', ay: 'center' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
+                      children: ['Browse Marketplace'],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { color: 'neutral-800', fontSize: '400' },
+                      children: ['Install themes from the marketplace into this space.'],
+                    },
+                  ],
+                },
+                {
+                  type: 'we-button',
+                  props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: 'showThemeMarketplace' } },
+                  children: [
                     {
                       type: '$if',
                       props: {
-                        condition: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
-                        then: {
-                          type: 'we-badge',
-                          props: { variant: 'primary', size: 'sm' },
-                          children: ['Default'],
-                        },
+                        condition: { $local: 'showThemeMarketplace' },
+                        then: { type: 'we-text', children: ['Hide'] },
                         else: {
-                          type: 'we-button',
-                          props: {
-                            variant: 'secondary',
-                            size: 'sm',
-                            onClick: { $action: 'spaceStore.setSpaceDefaultTheme', args: ['$theme.id'] },
-                          },
-                          children: ['Set as default'],
+                          type: 'Row',
+                          props: { gap: '200', ay: 'center' },
+                          children: [
+                            { type: 'we-icon', props: { name: 'magnifying-glass' } },
+                            { type: 'we-text', children: ['Browse'] },
+                          ],
                         },
                       },
                     },
                   ],
                 },
               ],
+            },
+            {
+              type: '$if',
+              props: { condition: { $local: 'showThemeMarketplace' }, then: themeMarketplaceBrowser },
             },
           ],
         },

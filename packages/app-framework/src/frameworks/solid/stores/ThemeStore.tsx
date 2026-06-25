@@ -29,6 +29,7 @@ export interface ThemeStore {
   // State
   builtInThemes: Accessor<ThemeData[]>;
   installedThemes: Accessor<ThemeData[]>;
+  spaceThemes: Accessor<ThemeData[]>;
   allThemes: Accessor<ThemeData[]>;
   currentThemeId: Accessor<string>;
   currentTheme: Accessor<ThemeData>;
@@ -130,16 +131,32 @@ export function ThemeStoreProvider(props: ParentProps) {
   const builtInThemes: Accessor<ThemeData[]> = () => Object.keys(themeRegistry).map(registryToThemeData);
 
   const [installedThemes, setInstalledThemes] = createSignal<ThemeData[]>([]);
+  const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
   const [currentThemeId, setCurrentThemeId] = createSignal<string>(getInitialThemeId());
   const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
 
-  const allThemes: Accessor<ThemeData[]> = () => [...builtInThemes(), ...installedThemes()];
+  const allThemes: Accessor<ThemeData[]> = () => [...builtInThemes(), ...installedThemes(), ...spaceThemes()];
 
   const currentTheme: Accessor<ThemeData> = () =>
     allThemes().find((t) => t.id === currentThemeId()) ?? registryToThemeData('light');
 
   // Map theme AD4M model UUID → model instance for save/delete
   const themeModelMap = new Map<string, Theme>();
+
+  async function loadSpaceThemes() {
+    const perspective = adamStore.currentPerspective();
+    if (!perspective) {
+      setSpaceThemes([]);
+      return;
+    }
+    try {
+      const models = await Theme.findAll(perspective);
+      for (const model of models) themeModelMap.set(model.id, model);
+      setSpaceThemes(models.map(modelToThemeData));
+    } catch (e) {
+      console.error('ThemeStore: failed to load space themes', e);
+    }
+  }
 
   async function loadInstalledThemes() {
     const perspective = adamStore.rootPerspective();
@@ -156,6 +173,12 @@ export function ThemeStoreProvider(props: ParentProps) {
   // Load installed themes when root perspective is ready
   createEffect(() => {
     if (adamStore.rootPerspective()) loadInstalledThemes();
+  });
+
+  // Load space themes when the current space perspective changes
+  createEffect(() => {
+    if (adamStore.currentPerspective()) loadSpaceThemes();
+    else setSpaceThemes([]);
   });
 
   // Apply persisted theme from AgentSettings when available
@@ -489,6 +512,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   const store: ThemeStore = {
     builtInThemes,
     installedThemes,
+    spaceThemes,
     allThemes,
     currentThemeId,
     currentTheme,
