@@ -147,10 +147,10 @@ export default class Slider extends DesignSystemElement {
           <input
             part="native"
             type="range"
-            .value=${String(this.value)}
             min=${this.min}
             max=${this.max}
             step=${this.step}
+            .value=${String(this.value)}
             ?disabled=${this.disabled}
             @input=${this._onInput}
             @change=${this._onChange}

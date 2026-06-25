@@ -52,8 +52,8 @@ export const colorConfig = {
  * Values represent positions on the color wheel (standard range is 0-360).
  */
 export const colorHues = {
-  neutral: 610,
-  primary: 610,
+  neutral: 250,
+  primary: 250,
   success: 130,
   warning: 45,
   danger: 350,

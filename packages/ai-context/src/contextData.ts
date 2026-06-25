@@ -2295,7 +2295,7 @@ export const contextData: ContextData = {
     {
       name: 'color.hues',
       type: 'Record<ColorHueToken, number>',
-      values: { neutral: '610', primary: '610', success: '130', warning: '45', danger: '350' },
+      values: { neutral: '250', primary: '250', success: '130', warning: '45', danger: '350' },
     },
     {
       name: 'color.lightness',
