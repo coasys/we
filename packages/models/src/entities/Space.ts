@@ -36,6 +36,9 @@ export class Space extends WeNode {
   @Property({ through: 'we://default_template_id' })
   defaultTemplateId: string = '';
 
+  @Property({ through: 'we://default_theme_id' })
+  defaultThemeId: string = '';
+
   @HasOne(() => LocationBlock, { through: 'we://location' })
   location?: LocationBlock;
 }

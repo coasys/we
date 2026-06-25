@@ -121,6 +121,11 @@ async function main() {
   // Store entries stay manually authored for now
   contextData.storeEntries = storeEntries;
 
+  // Shell/internal components registered in the runtime componentRegistry but intentionally
+  // excluded from AI docs (no public props, not for user schemas). Listed here so the
+  // validator doesn't flag them as unknown when they appear in shell schemas.
+  contextData.shellComponents = ['AiChatPanel', 'BenchmarkTimer', 'RightPanelContainer', 'TemplateToolbar', 'WeCube'];
+
   const context = {
     ...contextData,
     fragments: { schemaOperators, designSystemProps, routing, stores, storePatterns, rules },
@@ -173,6 +178,7 @@ async function main() {
     models: context.models,
     tokens: context.tokens,
     storeEntries: context.storeEntries,
+    shellComponents: context.shellComponents,
   };
   await writeFormatted(contextJsonPath, JSON.stringify(contextJson, null, 2));
   console.log(`  Written: ${contextJsonPath}`);

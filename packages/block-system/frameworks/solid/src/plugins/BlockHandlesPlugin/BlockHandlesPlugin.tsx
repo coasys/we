@@ -560,6 +560,15 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
         }
       }
 
+      // If the cursor is inside a droppable BlockPlaceholder, suppress the drop
+      // line — the placeholder handles the drop itself.
+      if ((e.target as Element)?.closest('[data-file-droppable="true"]')) {
+        setDropSpot((prev) => ({ ...prev, visible: false }));
+        root?.removeAttribute(ATTR_DROP_TARGET);
+        root?.removeAttribute(ATTR_DROP_POSITION);
+        return;
+      }
+
       let targetElement: HTMLElement | null = null;
       let insertBefore = true;
 
@@ -624,9 +633,12 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
       root?.removeAttribute(ATTR_DROP_POSITION);
 
       // OS file drop — create media/file blocks at the indicated position.
+      // Skip if the drop landed on a BlockPlaceholder; it handles its own drops.
       const droppedFiles = e.dataTransfer?.files;
       if (droppedFiles && droppedFiles.length > 0 && targetKey) {
-        void handleFileDrop(editor, Array.from(droppedFiles), targetKey, insertBefore);
+        if (!(e.target as Element)?.closest('[data-file-droppable="true"]')) {
+          void handleFileDrop(editor, Array.from(droppedFiles), targetKey, insertBefore);
+        }
         return;
       }
 

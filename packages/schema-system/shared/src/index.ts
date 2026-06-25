@@ -79,6 +79,7 @@ export {
   validatePatches,
   ensureSections,
   ensureNodeIds,
+  stripNodeIds,
   findNodeById,
   mergeNode,
   insertChild,

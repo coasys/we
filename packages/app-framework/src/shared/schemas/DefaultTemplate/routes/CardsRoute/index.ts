@@ -1,13 +1,13 @@
 import type { RouteSchema } from '@we/schema-shared';
 
-import { createSpaceModal } from '../../CreateSpaceModal';
-import { blocksList } from './BlocksList';
-import { createPostModal } from './CreatePostModal';
-import { cardsHeader } from './Header';
-import { postsList } from './PostsList';
-import { spacesList } from './SpacesList';
-import { templatesList } from './TemplatesList';
-import { usersList } from './UsersList';
+import { createSpaceModal } from '../../CreateSpaceModal.ts';
+import { blocksList } from './BlocksList.ts';
+import { createPostModal } from './CreatePostModal.ts';
+import { cardsHeader } from './Header.ts';
+import { postsList } from './PostsList.ts';
+import { spacesList } from './SpacesList.ts';
+import { templatesList } from './TemplatesList.ts';
+import { usersList } from './UsersList.ts';
 
 export const cardsRoute: RouteSchema = {
   path: '/cards',

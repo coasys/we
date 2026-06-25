@@ -13,10 +13,10 @@
  */
 import type { RouteSchema, SchemaNode, TemplateSchema } from '@we/schema-shared';
 
-import { schemaBenchmarkTemplate } from './tests/SchemaBenchmark.schema';
-import { schemaMutationsTemplate } from './tests/SchemaMutations.schema';
-import { schemaRoutingTemplate } from './tests/SchemaRouting.schema';
-import { schemaTokensTemplate } from './tests/SchemaTokens.schema';
+import { schemaBenchmarkTemplate } from './tests/SchemaBenchmark.schema.ts';
+import { schemaMutationsTemplate } from './tests/SchemaMutations.schema.ts';
+import { schemaRoutingTemplate } from './tests/SchemaRouting.schema.ts';
+import { schemaTokensTemplate } from './tests/SchemaTokens.schema.ts';
 
 // ---------------------------------------------------------------------------
 // Test sections metadata

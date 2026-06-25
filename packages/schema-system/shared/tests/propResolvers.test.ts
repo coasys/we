@@ -136,6 +136,63 @@ describe('propResolvers (combined)', () => {
     expect(typeof result).toBe('function');
   });
 
+  it('handler array dispatches all actions when $if.then is an array', () => {
+    const setLocal = vi.fn();
+    const save = vi.fn();
+    const stores = { spaceStore: { save } };
+    const isDirty = { isDirty: true };
+    const localCtx = {
+      ...isDirty,
+      $localSignals: { isDirty: () => true },
+      $setLocalSignal: (_k: string, _v: unknown) => setLocal(_k, _v),
+    };
+    // Simulate the pattern: onClick resolves an object with an onClick handler array
+    const schema = {
+      onClick: [
+        {
+          $if: {
+            condition: '$isDirty',
+            then: [
+              { $setLocal: 'saving', value: true },
+              { $action: 'spaceStore.save', args: [] },
+            ],
+          },
+        },
+      ],
+    };
+    const resolved = resolveProp(schema, stores, localCtx) as { onClick: () => void };
+    resolved.onClick();
+    expect(save).toHaveBeenCalled();
+  });
+
+  it('handler array $if.then array: only dispatches when condition is true', () => {
+    const actionA = vi.fn();
+    const actionB = vi.fn();
+    const stores = { s: { a: actionA, b: actionB } };
+    const schema = {
+      onClick: [
+        {
+          $if: {
+            condition: '$flag',
+            then: [
+              { $action: 's.a', args: [] },
+              { $action: 's.b', args: [] },
+            ],
+          },
+        },
+      ],
+    };
+    const resolvedFalse = resolveProp(schema, stores, { flag: false }) as { onClick: () => void };
+    resolvedFalse.onClick();
+    expect(actionA).not.toHaveBeenCalled();
+    expect(actionB).not.toHaveBeenCalled();
+
+    const resolvedTrue = resolveProp(schema, stores, { flag: true }) as { onClick: () => void };
+    resolvedTrue.onClick();
+    expect(actionA).toHaveBeenCalled();
+    expect(actionB).toHaveBeenCalled();
+  });
+
   it('routeStore.navigate with absolute path does not normalize', () => {
     const navigate = vi.fn();
     const stores = { routeStore: { navigate } };
@@ -642,6 +699,21 @@ describe('extractFromPath', () => {
   it('returns undefined for out-of-bounds array index', () => {
     const event = { detail: ['only'] };
     expect(extractFromPath(event, '$event.detail.5')).toBeUndefined();
+  });
+
+  it('$arg returns raw first callback argument (alias for $event)', () => {
+    const value = 'hello';
+    expect(extractFromPath(value, '$arg')).toBe(value);
+  });
+
+  it('$arg.path extracts nested property from first callback argument', () => {
+    const event = new CustomEvent('input', { detail: 'typed value' });
+    expect(extractFromPath(event, '$arg.detail')).toBe('typed value');
+  });
+
+  it('$arg.deep.path extracts deeply nested property', () => {
+    const event = { target: { value: 'x' } };
+    expect(extractFromPath(event, '$arg.target.value')).toBe('x');
   });
 });
 

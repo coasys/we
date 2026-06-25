@@ -1,6 +1,6 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
-import { launcherUIRegistry } from '@shared/registries/launcherUIRegistry';
 import { getModel, getModelForPerspective } from '@shared/registries/modelRegistry';
+import { shellRegistry } from '@shared/registries/shellRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAdamStore,
@@ -94,11 +94,11 @@ export default function TemplateProvider() {
     return [getModel(modelName), resolvePerspective(opts?.perspective) ?? adamStore.currentPerspective()!] as const;
   }
 
-  // Shell chrome — boot screen + sidebar + AI chat panel.
+  // Shell chrome — boot screen + sidebar + template editor.
   // Rendered once outside the keyed Router so it never remounts on template switches.
   const shellSchema: TemplateSchema = {
     meta: { name: 'Shell', description: 'App shell chrome', icon: '' },
-    children: [launcherUIRegistry.bootScreen, launcherUIRegistry.shell, launcherUIRegistry.aiChatSidebar],
+    children: [shellRegistry.bootScreen, shellRegistry.sidebar, shellRegistry.templateEditor],
   };
 
   const notFoundNode = {

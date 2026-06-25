@@ -13,12 +13,12 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   px: '300',
   py: '200',
   fontSize: '400',
-  bg: 'neutral-75',
+  bg: 'neutral-50',
   r: '300',
   color: 'neutral-1000',
-  hoverProps: { bg: 'neutral-100', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
-  activeProps: { bg: 'neutral-100', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
-  focusProps: { bg: 'neutral-100', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
+  hoverProps: { bg: 'neutral-75', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
+  activeProps: { bg: 'neutral-75', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
+  focusProps: { bg: 'neutral-75', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {

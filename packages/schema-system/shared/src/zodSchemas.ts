@@ -119,6 +119,7 @@ const zLocalToken = z.object({ $local: z.string().min(1) }).strict();
 const zSetLocalToken = z.union([
   z.object({ $setLocal: z.string().min(1), from: z.string().min(1) }).strict(),
   z.object({ $setLocal: z.string().min(1), value: z.unknown() }).strict(),
+  z.object({ $setLocal: z.string().min(1), merge: z.record(z.string(), z.unknown()) }).strict(),
 ]);
 const zErrorToken = z.object({ $error: z.string().min(1) }).strict();
 const zValidToken = z.object({ $valid: z.string().min(1) }).strict();
@@ -189,7 +190,7 @@ const zPropToken = z.union([
 
 const zLocalStateField = z.object({
   type: z.enum(['string', 'boolean', 'number', 'file', 'function', 'object']),
-  initial: z.union([z.string(), z.boolean(), z.number(), z.null()]),
+  initial: z.union([z.string(), z.boolean(), z.number(), z.null(), zPropToken]),
   validate: z.array(zValidationRule).optional(),
 });
 const zLocalStateDeclaration = z.record(z.string(), zLocalStateField);
@@ -301,6 +302,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
 export const zTemplateSchema: z.ZodType<TemplateSchema> = z
   .object({
     ...schemaNodeShape(),
+    author: z.string().optional(),
+    templateVersion: z.number().optional(),
     schemaVersion: z.number().optional(),
     meta: zTemplateMeta,
   })

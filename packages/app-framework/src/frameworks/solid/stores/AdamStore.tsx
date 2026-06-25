@@ -10,7 +10,7 @@ import { getModelClasses, getModelManifest } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
 import { installRootSdna, installSpaceSdna } from '@shared/sdnaModels';
-import { removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
+import { type LocationData, removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
 import { AgentSettings, compressImageToFileData, type FileData, LocationBlock, Space } from '@we/models';
 
 // Space.avatar/coverImage are typed as string (resolved data URI on read) but accept FileData on write.
@@ -44,6 +44,10 @@ export interface AdamStore {
   ad4mToken: Accessor<string | undefined>;
   isDevelopment: Accessor<boolean>;
   globalSpaceConfigured: Accessor<boolean>;
+  marketplaceConfigured: Accessor<boolean>;
+  marketplaceId: () => string | null;
+  marketplaceJoined: Accessor<boolean>;
+  marketplacePerspective: Accessor<PerspectiveProxy | null>;
   rootPerspective: Accessor<PerspectiveProxy | null>;
   testPerspective: Accessor<PerspectiveProxy | null>;
   globalPerspective: Accessor<PerspectiveProxy | null>;
@@ -73,11 +77,7 @@ export interface AdamStore {
     discovery: 'hidden' | 'listed',
     avatarFile?: File,
     coverImageFile?: File,
-    latitude?: number,
-    longitude?: number,
-    city?: string,
-    country?: string,
-    countryCode?: string,
+    location?: LocationData | null,
   ) => Promise<void>;
   removePerspective: (uuid: string) => Promise<void>;
   switchPerspective: (uuid: string) => Promise<void>;
@@ -119,6 +119,7 @@ export function AdamStoreProvider(props: ParentProps) {
   const [rootPerspective, setRootPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [testPerspective, setTestPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [globalPerspective, setGlobalPerspective] = createSignal<PerspectiveProxy | null>(null);
+  const [marketplacePerspective, setMarketplacePerspective] = createSignal<PerspectiveProxy | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
   const [allPerspectives, setAllPerspectives] = createSignal<PerspectiveProxy[]>([]);
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
@@ -213,7 +214,10 @@ export function AdamStoreProvider(props: ParentProps) {
       items.unshift({ uuid: 'global-pre-join', name: 'WE Discovery', spaceId: globalId, isGlobalPreJoin: true });
     }
 
-    return items;
+    const mktUrl = (weSeedFile as unknown as WeSeedFile).marketplaceUrl;
+    const mktId = mktUrl ? mktUrl.replace('neighbourhood://', '') : null;
+
+    return mktId ? items.filter((item) => item.spaceId !== mktId) : items;
   });
 
   // Derived: personal and shared spaces
@@ -223,6 +227,15 @@ export function AdamStoreProvider(props: ParentProps) {
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
   const globalSpaceConfigured = () => !!(weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
+  const marketplaceConfigured = () => !!(weSeedFile as unknown as WeSeedFile).marketplaceUrl;
+  const marketplaceId = (): string | null => {
+    const url = (weSeedFile as unknown as WeSeedFile).marketplaceUrl;
+    return url ? url.replace('neighbourhood://', '') : null;
+  };
+  const marketplaceJoined = createMemo(() => {
+    const id = marketplaceId();
+    return id ? joinedSpaceCids().includes(id) : false;
+  });
 
   async function getMe(client: Ad4mClient): Promise<void> {
     try {
@@ -692,6 +705,15 @@ export function AdamStoreProvider(props: ParentProps) {
           console.log('AdamStore: Restored global perspective', existingGlobal.uuid);
         }
 
+        const marketplaceUrl = (weSeedFile as unknown as WeSeedFile).marketplaceUrl;
+        const existingMarketplace = marketplaceUrl
+          ? perspectives.find((p) => p.sharedUrl === marketplaceUrl)
+          : undefined;
+        if (existingMarketplace) {
+          setMarketplacePerspective(existingMarketplace);
+          console.log('AdamStore: Restored marketplace perspective', existingMarketplace.uuid);
+        }
+
         return;
       }
 
@@ -895,11 +917,7 @@ export function AdamStoreProvider(props: ParentProps) {
     discovery: 'hidden' | 'listed',
     avatarFile?: File,
     coverImageFile?: File,
-    latitude?: number,
-    longitude?: number,
-    city?: string,
-    country?: string,
-    countryCode?: string,
+    location?: LocationData | null,
   ): Promise<void> {
     const client = adamClient();
     if (!client) return;
@@ -950,18 +968,7 @@ export function AdamStoreProvider(props: ParentProps) {
         ...(avatarData && { avatar: avatarData }),
         ...(coverImageData && { coverImage: coverImageData }),
       };
-      const locationName = city && country ? `${city}, ${country}` : (city ?? country ?? undefined);
-      const locationData =
-        latitude != null && longitude != null
-          ? {
-              latitude,
-              longitude,
-              ...(locationName && { name: locationName }),
-              ...(city && { city }),
-              ...(country && { country }),
-              ...(countryCode && { countryCode }),
-            }
-          : undefined;
+      const locationData = location ?? undefined;
 
       // Write to own perspective
       const spaceModel = await addSpaceToPerspective(spacePerspective, spaceData, locationData);
@@ -1048,6 +1055,12 @@ export function AdamStoreProvider(props: ParentProps) {
         setGlobalPerspective(joinedP);
       }
 
+      // If this is the configured marketplace, update marketplacePerspective.
+      const mktUrl = (weSeedFile as unknown as WeSeedFile).marketplaceUrl;
+      if (neighbourhoodUrl === mktUrl) {
+        setMarketplacePerspective(joinedP);
+      }
+
       // Load the Space model and push into mySpaces so the sidebar shows the correct
       // name immediately, without requiring a reboot.
       const cid = neighbourhoodUrl.replace('neighbourhood://', '');
@@ -1074,6 +1087,19 @@ export function AdamStoreProvider(props: ParentProps) {
     if (!client) return;
 
     try {
+      const globalP = globalPerspective();
+      const myDid = me()?.did;
+      if (globalP && myDid) {
+        // Only remove from global discovery if the current user is the author of that
+        // space entry — a peer who joined and later deletes their local copy should not
+        // affect the global listing.
+        const spaceInGlobal = await Space.findOne(globalP, { where: { uuid } }).catch(() => null);
+        if (spaceInGlobal && spaceInGlobal.author === myDid) {
+          await removeSpaceFromParent(uuid, globalP).catch((err) =>
+            console.error('AdamStore: removeSpaceFromParent on delete error', err),
+          );
+        }
+      }
       await client.perspective.remove(uuid);
       setAllPerspectives((prev) => prev.filter((p) => p.uuid !== uuid));
       setMySpaces((prev) => prev.filter((s) => s.uuid !== uuid));
@@ -1187,6 +1213,10 @@ export function AdamStoreProvider(props: ParentProps) {
     isDevelopment,
     globalSpaceConfigured,
     globalSpaceId,
+    marketplaceConfigured,
+    marketplaceId,
+    marketplaceJoined,
+    marketplacePerspective,
     rootPerspective,
     testPerspective,
     globalPerspective,

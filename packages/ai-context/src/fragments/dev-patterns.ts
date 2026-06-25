@@ -97,6 +97,20 @@ that work directly with AD4M model classes. They do NOT apply to JSON template s
 
 ---
 
+### Running Schema Validation (no build needed)
+
+During codebase work, use the \`pnpm validate\` script in \`schema-system/shared\` — it runs
+the validator directly from TypeScript source via \`tsx\`, so no build step is required:
+
+\`\`\`sh
+pnpm --filter @we/schema-shared validate
+\`\`\`
+
+This validates all \`.schema.ts\` files under \`packages/app-framework/src/shared/schemas/\`.
+For per-file validation or other options, see the **Schema Validation** section above.
+
+---
+
 ### Schema System — Before Suggesting New Operators
 
 Before proposing a new schema operator, read \`packages/schema-system/OPERATORS.md\` —
@@ -124,6 +138,21 @@ when \`$in\` already exists. Example:
 // ✅ Use $in instead
 { $in: [val, arr] }
 \`\`\`
+
+**Common mistake:** wrapping \`$count\` in \`$gt [..., 0]\` when used as a \`$if\` condition.
+\`$if\` conditions use standard JavaScript truthiness — \`0\` is falsy, any positive number is truthy.
+The \`$gt\` layer is redundant nesting that produces no change in behaviour.
+
+\`\`\`ts
+// ❌ Unnecessary — $gt adds nothing here
+{ "condition": { "$gt": [{ "$count": { "items": { "$local": "items" } } }, 0] } }
+
+// ✅ $count alone is truthy/falsy in a condition
+{ "condition": { "$count": { "items": { "$local": "items" } } } }
+\`\`\`
+
+Note: \`$gt\` is still needed when you want an explicit boolean value outside a condition context
+(e.g. as a prop that expects \`boolean\`, not just any truthy value).
 
 ---
 

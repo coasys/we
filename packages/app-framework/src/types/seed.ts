@@ -79,6 +79,12 @@ export interface WeSeedFile {
    */
   globalSpaceUrl?: string;
 
+  /**
+   * The neighbourhood URL of the module marketplace.
+   * When set, users get a marketplace icon in the sidebar. First click prompts them to join.
+   */
+  marketplaceUrl?: string;
+
   /** Embedded applications shown in the shell sidebar */
   apps: Array<{
     /** Unique app identifier (e.g., "flux") */

@@ -8,7 +8,14 @@ export type TemplateMeta = {
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };
-export type TemplateSchema = SchemaNode & { id?: string; schemaVersion?: number; meta: TemplateMeta };
+export type TemplateSchema = SchemaNode & {
+  id?: string;
+  author?: string;
+  templateVersion?: number;
+  schemaVersion?: number;
+  meta: TemplateMeta;
+  _fromSpace?: boolean;
+};
 export type RouteSchema = SchemaNode & { path: string; redirect?: string; keepAlive?: boolean };
 
 /**
@@ -134,7 +141,8 @@ export type QueryToken = {
 
 export type LocalStateField = {
   type: 'string' | 'boolean' | 'number' | 'file' | 'function' | 'object';
-  initial: string | boolean | number | null;
+  /** Literal seed value, or any schema expression token (e.g. { $store: '...' }) evaluated once at mount. */
+  initial: string | boolean | number | null | Record<string, unknown>;
   validate?: ValidationRule[];
 };
 
@@ -154,7 +162,10 @@ export type MatchRule = { rule: 'match'; field: string; message?: string };
 export type ValidationRule = RequiredRule | MinLengthRule | MaxLengthRule | MinRule | MaxRule | PatternRule | MatchRule;
 
 export type LocalToken = { $local: string };
-export type SetLocalToken = { $setLocal: string; from: string } | { $setLocal: string; value: unknown };
+export type SetLocalToken =
+  | { $setLocal: string; from: string }
+  | { $setLocal: string; value: unknown }
+  | { $setLocal: string; merge: Record<string, unknown> };
 export type ErrorToken = { $error: string };
 export type ValidToken = { $valid: string };
 export type TouchedToken = { $touched: string };

@@ -121,7 +121,13 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
             if (typeof fn === 'function' && (fn as { [REACTIVE_ACCESSOR]?: boolean })[REACTIVE_ACCESSOR]) {
               fn = (fn as () => unknown)();
             }
-            if (typeof fn === 'function') fn(...args);
+            if (Array.isArray(fn)) {
+              for (const subFn of fn) {
+                if (typeof subFn === 'function') (subFn as (...a: unknown[]) => unknown)(...args);
+              }
+            } else if (typeof fn === 'function') {
+              fn(...args);
+            }
           }
         };
       } else {

@@ -1,5 +1,6 @@
-import { Flag, Model, Property } from '@coasys/ad4m';
+import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
+import { ImageBlock } from '../blocks/ImageBlock';
 import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { WeNode } from '../WeNode';
 
@@ -33,4 +34,9 @@ export class Theme extends WeNode {
     resolveLanguage: FILE_STORAGE_LANGUAGE,
   })
   overrides: string | null = null;
+
+  @HasMany(() => ImageBlock, { through: 'we://screenshot' })
+  screenshots: string[] = [];
 }
+
+export interface Theme extends HasManyMethods<'screenshots'> {}

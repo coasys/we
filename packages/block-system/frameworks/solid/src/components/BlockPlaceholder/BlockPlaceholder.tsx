@@ -93,6 +93,7 @@ export function BlockPlaceholder(props: BlockPlaceholderProps) {
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       onClick={props.onClick}
+      data-file-droppable={droppable() ? 'true' : undefined}
     >
       <we-icon name={props.icon} color={dragOver() ? 'primary-500' : 'neutral-400'} size="lg" />
       <we-text color={dragOver() ? 'primary-700' : 'neutral-600'} fontSize="400" fontWeight="500" textAlign="center">

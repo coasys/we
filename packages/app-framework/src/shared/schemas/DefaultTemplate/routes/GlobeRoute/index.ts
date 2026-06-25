@@ -6,9 +6,9 @@
 
 import type { RouteSchema } from '@we/schema-shared';
 
-import { createSpaceModal } from '../../CreateSpaceModal';
-import { agentModal } from './AgentModal';
-import { spaceModal } from './SpaceModal';
+import { createSpaceModal } from '../../CreateSpaceModal.ts';
+import { agentModal } from './AgentModal.ts';
+import { spaceModal } from './SpaceModal.ts';
 
 export const globeRoute: RouteSchema = {
   path: '/globe',

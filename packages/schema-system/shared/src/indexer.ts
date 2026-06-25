@@ -347,6 +347,31 @@ export function ensureNodeIds(schema: SchemaNode): SchemaNode {
 }
 
 /**
+ * Remove all auto-assigned node IDs from the tree.
+ * IDs are transient — only needed when passing the schema to the AI for patch editing.
+ * Mutates the schema in place and returns it.
+ */
+export function stripNodeIds(schema: SchemaNode): SchemaNode {
+  function strip(node: SchemaNode): void {
+    delete node.id;
+    if (node.children) {
+      for (const child of node.children) {
+        if (isSchemaChild(child)) strip(child);
+      }
+    }
+    if (node.routes) {
+      for (const route of node.routes) strip(route as SchemaNode);
+    }
+    if (node.slots) {
+      for (const slotNode of Object.values(node.slots)) strip(slotNode);
+    }
+    forEachPropsNode(node, strip);
+  }
+  strip(schema);
+  return schema;
+}
+
+/**
  * Find a node by its ID in the tree.
  * Returns the node, its parent, which array key it lives in, and its index.
  * Returns null if the ID is not found or is empty string.

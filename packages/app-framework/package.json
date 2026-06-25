@@ -38,6 +38,7 @@
     "@we/cesium-layers": "workspace:*",
     "@we/components": "workspace:*",
     "@we/design-types": "workspace:*",
+    "@we/design-utils": "workspace:*",
     "@we/primitives": "workspace:*",
     "@we/models": "workspace:*",
     "@we/schema-shared": "workspace:*",

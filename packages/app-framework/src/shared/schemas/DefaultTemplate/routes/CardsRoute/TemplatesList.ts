@@ -1,6 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
 
-import { cardShell, gridWrapper } from './CardShell';
+import { cardShell, gridWrapper } from './CardShell.ts';
 
 export const templatesList: SchemaNode = {
   type: 'Column',
@@ -64,25 +64,36 @@ export const templatesList: SchemaNode = {
                     type: 'Row',
                     props: { gap: '100' },
                     children: [
-                      // Apply — switch to this template
-                      {
-                        type: 'we-button',
-                        props: {
-                          variant: 'ghost',
-                          size: 'sm',
-                          onClick: {
-                            $action: 'templateStore.switchTemplate',
-                            args: ['$template.slug'],
-                          },
-                        },
-                        children: ['Apply'],
-                      },
-                      // Set as default — only the space author
+                      // Apply — switch to this template (hidden if already active)
                       {
                         type: '$if',
                         props: {
                           condition: {
-                            $eq: [{ $store: 'spaceStore.currentSpace.author' }, { $store: 'adamStore.me.did' }],
+                            $ne: ['$template.slug', { $store: 'templateStore.currentTemplate.id' }],
+                          },
+                          then: {
+                            type: 'we-button',
+                            props: {
+                              variant: 'ghost',
+                              size: 'sm',
+                              onClick: {
+                                $action: 'templateStore.switchTemplate',
+                                args: ['$template.slug'],
+                              },
+                            },
+                            children: ['Apply'],
+                          },
+                        },
+                      },
+                      // Set as default — only the space author, only if not already default
+                      {
+                        type: '$if',
+                        props: {
+                          condition: {
+                            $and: [
+                              { $eq: [{ $store: 'spaceStore.currentSpace.author' }, { $store: 'adamStore.me.did' }] },
+                              { $ne: ['$template.slug', { $store: 'spaceStore.currentSpace.defaultTemplateId' }] },
+                            ],
                           },
                           then: {
                             type: 'we-button',
@@ -99,6 +110,28 @@ export const templatesList: SchemaNode = {
                               },
                             },
                             children: ['Set as default'],
+                          },
+                        },
+                      },
+                      // Delete — only the template author
+                      {
+                        type: '$if',
+                        props: {
+                          condition: {
+                            $eq: ['$template.author', { $store: 'adamStore.me.did' }],
+                          },
+                          then: {
+                            type: 'we-button',
+                            props: {
+                              variant: 'ghost',
+                              size: 'sm',
+                              onClick: {
+                                $action: 'model.delete',
+                                args: ['Template', '$template.id'],
+                                onSuccess: [{ $action: 'templateStore.refreshSpaceTemplates' }],
+                              },
+                            },
+                            children: [{ type: 'we-icon', props: { name: 'trash' } }],
                           },
                         },
                       },

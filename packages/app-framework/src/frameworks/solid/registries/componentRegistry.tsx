@@ -35,6 +35,7 @@ import {
   EditableImage,
   FlipCard,
   Grid,
+  GroupedSelect,
   IconLabelButton,
   List,
   PostCard,
@@ -48,17 +49,14 @@ import {
   ToastContainer,
 } from '@we/components/solid';
 import type { ComponentRegistry } from '@we/schema-solid';
-import {
-  CesiumGlobe,
-  ChatPanel,
-  CollapsibleSidebar,
-  GraphWidget,
-  mockGraphData,
-  SpaceSidebarWidget,
-} from '@we/widgets/solid';
+import { CesiumGlobe, CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSidebarWidget } from '@we/widgets/solid';
 
 import WeCube from '../components/3d/WeCube';
 import { BenchmarkTimer } from '../components/BenchmarkTimer';
+import { TemplateCard } from '../components/marketplace/TemplateCard';
+import { AiChatPanel } from '../components/template-editor/AiChatPanel';
+import { RightPanelContainer } from '../components/template-editor/RightPanelContainer';
+import { TemplateToolbar } from '../components/template-editor/TemplateToolbar';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
@@ -85,6 +83,7 @@ export const componentRegistry: ComponentRegistry = {
   EditableImage,
   FlipCard,
   Grid,
+  GroupedSelect,
   IconLabelButton,
   List,
   PostCard,
@@ -96,7 +95,8 @@ export const componentRegistry: ComponentRegistry = {
   ToastContainer,
 
   // @we/widgets
-  ChatPanel,
+  AiChatPanel,
+  RightPanelContainer,
   SpaceSidebarWidget,
   CollapsibleSidebar,
   CesiumGlobe: (props) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
@@ -118,6 +118,12 @@ export const componentRegistry: ComponentRegistry = {
   TagDisplay,
   TaskDisplay,
   VideoDisplay,
+
+  // Marketplace
+  TemplateCard,
+
+  // Shell
+  TemplateToolbar,
 
   // Testing
   BenchmarkTimer,

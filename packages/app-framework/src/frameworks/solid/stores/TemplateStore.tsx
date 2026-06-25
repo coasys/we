@@ -4,7 +4,7 @@ import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
-import { decodeFileAsJson, SpaceTemplatePreference, Template } from '@we/models';
+import { compressImageToFileData, decodeFileAsJson, ImageBlock, SpaceTemplatePreference, Template } from '@we/models';
 import type { StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
@@ -27,13 +27,18 @@ export type TemplateManagementItem = {
   isDefault: boolean;
 };
 
+export type TemplateSwitcherItem = { id: string; name: string; icon: string };
+export type TemplateSwitcherGroup = { label: string; items: TemplateSwitcherItem[] };
+
 export interface TemplateStore {
   // State
   personalTemplates: Accessor<TemplateSchema[]>;
   spaceTemplates: Accessor<TemplateSchema[]>;
   coreTemplates: Accessor<TemplateSchema[]>;
+  myTemplates: Accessor<TemplateSchema[]>;
   allTemplates: Accessor<TemplateSchema[]>;
   templateManagementList: Accessor<TemplateManagementItem[]>;
+  switcherGroups: Accessor<TemplateSwitcherGroup[]>;
   currentTemplate: TemplateSchema;
   loading: Accessor<boolean>;
   defaultTemplateId: Accessor<string>;
@@ -47,13 +52,24 @@ export interface TemplateStore {
   deleteTemplate: (templateId: string) => Promise<void>;
   installTemplate: (templateId: string) => Promise<void>;
   uninstallTemplate: (templateId: string) => Promise<void>;
+  installFromMarketplace: (marketplaceTemplateId: string) => Promise<void>;
+  installToSpace: (marketplaceTemplateId: string) => Promise<void>;
   toggleInstalled: (templateId: string) => Promise<void>;
   setDefaultTemplate: (templateId: string) => void;
   saveTemplate: (name: string) => Promise<void>;
   saveTemplateAs: (schema: TemplateSchema, destination?: 'root' | 'space') => Promise<boolean>;
+  publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
+  deleteMarketplaceTemplate: (templateId: string) => Promise<void>;
+  publishToMarketplace: (options: {
+    name: string;
+    description: string;
+    themeId?: string;
+    screenshots: File[];
+  }) => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
   preloadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
   loadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
+  refreshSpaceTemplates: () => Promise<void>;
   clearSpaceTemplates: () => void;
   openShellView: (id: string) => void;
   closeShellView: () => void;
@@ -69,6 +85,8 @@ export interface TemplateStore {
 }
 
 const TemplateContext = createContext<TemplateStore>();
+
+const SPACE_PREFIX = 'space::';
 
 export function TemplateStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
@@ -129,12 +147,25 @@ export function TemplateStoreProvider(props: ParentProps) {
     );
   };
 
-  const spaceTemplates = () => {
-    const spaceIds = spaceTemplateIdSet();
-    return allTemplates().filter((t) => spaceIds.has(t.id || ''));
-  };
+  const spaceTemplates = () => allTemplates().filter((t) => t._fromSpace);
 
   const coreTemplatesAccessor = () => allTemplates().filter((t) => isCoreTemplateId(t.id || ''));
+
+  // User-installed templates that are neither built-in core nor from the current space
+  const myTemplates = () => {
+    const installed = installedIds();
+    return allTemplates().filter((t) => !isCoreTemplateId(t.id || '') && !t._fromSpace && installed.has(t.id || ''));
+  };
+
+  const toSwitcherItems = (templates: TemplateSchema[], prefix = ''): TemplateSwitcherItem[] =>
+    templates.map((t) => ({ id: prefix + (t.id || ''), name: t.meta?.name || '', icon: t.meta?.icon || '' }));
+
+  // Grouped template data for the template switcher UI — flat name/icon fields allow $filter in schemas
+  const switcherGroups = (): TemplateSwitcherGroup[] => [
+    { label: 'Space templates', items: toSwitcherItems(spaceTemplates(), SPACE_PREFIX) },
+    { label: 'My templates', items: toSwitcherItems(myTemplates()) },
+    { label: 'Core', items: toSwitcherItems(coreTemplatesAccessor()) },
+  ];
 
   const defaultTemplateId = () => adamStore.agentSettings()?.defaultTemplateId || 'default';
 
@@ -159,7 +190,8 @@ export function TemplateStoreProvider(props: ParentProps) {
         // Prefer the ID embedded in the schema (set during save) over deriving from name
         const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
 
-        savedTemplates.push({ ...schema, id: templateId });
+        const entry = { ...schema, id: templateId, templateVersion: template.version ?? 1 };
+        savedTemplates.push(entry);
         savedTemplateMap.set(templateId, template);
       }
 
@@ -201,10 +233,14 @@ export function TemplateStoreProvider(props: ParentProps) {
     spaceTemplateMap.clear();
     setSpaceTemplateIdSet(new Set<string>());
     if (spaceIds.size === 0) return;
-    setAllTemplates((prev) => prev.filter((t) => !spaceIds.has(t.id || '')));
+    // Remove only _fromSpace entries — personal templates with the same slug must stay
+    setAllTemplates((prev) => prev.filter((t) => !t._fromSpace));
     setInstalledIds((prev) => {
       const next = new Set(prev);
-      spaceIds.forEach((id) => next.delete(id));
+      // Only drop from installedIds if the ID isn't also a personal template
+      spaceIds.forEach((id) => {
+        if (!savedTemplateMap.has(id)) next.delete(id);
+      });
       return next;
     });
   }
@@ -224,7 +260,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
         const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
 
-        schemas.push({ ...schema, id: templateId });
+        schemas.push({ ...schema, id: templateId, _fromSpace: true });
         models.set(templateId, template);
         spaceTemplateMap.set(templateId, template);
       }
@@ -236,7 +272,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
       if (schemas.length === 0) return;
 
-      setAllTemplates((prev) => [...prev, ...schemas]);
+      setAllTemplates((prev) => [...prev.filter((t) => !t._fromSpace), ...schemas]);
       setInstalledIds((prev) => {
         const next = new Set(prev);
         schemas.forEach((t) => t.id && next.add(t.id));
@@ -259,7 +295,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       clearSpaceTemplates();
       if (cached.schemas.length > 0) {
         cached.models.forEach((model, id) => spaceTemplateMap.set(id, model));
-        setAllTemplates((prev) => [...prev, ...cached.schemas]);
+        setAllTemplates((prev) => [...prev.filter((t) => !t._fromSpace), ...cached.schemas]);
         setInstalledIds((prev) => {
           const next = new Set(prev);
           cached.ids.forEach((id) => next.add(id));
@@ -305,7 +341,9 @@ export function TemplateStoreProvider(props: ParentProps) {
       // Templates were pre-loaded by navigateToSpace — apply synchronously
       const cachedSpace = resolveSpaceFromPerspective(perspective);
       if (cachedSpace?.defaultTemplateId) {
-        const template = allTemplates().find((t) => t.id === cachedSpace.defaultTemplateId);
+        const template =
+          allTemplates().find((t) => t.id === cachedSpace.defaultTemplateId && t._fromSpace) ||
+          allTemplates().find((t) => t.id === cachedSpace.defaultTemplateId);
         if (template) replaceTemplate(template);
       }
     } else {
@@ -338,7 +376,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     // Per-space "user" means they explicitly chose their own template for this space
     if (perSpacePref === 'user') return;
 
-    const spaceTemplate = allTemplates().find((t) => t.id === spaceTemplateId);
+    const spaceTemplate =
+      allTemplates().find((t) => t.id === spaceTemplateId && t._fromSpace) ||
+      allTemplates().find((t) => t.id === spaceTemplateId);
     if (!spaceTemplate) return;
 
     // Guard: if the user navigated away before the async work completed, skip
@@ -393,8 +433,10 @@ export function TemplateStoreProvider(props: ParentProps) {
   const lastViewByTemplate = new Map<string, string>();
 
   function switchTemplate(newTemplateId: string) {
-    // No-op if already on this template
-    if (currentTemplate.id === newTemplateId) return;
+    const isSpace = newTemplateId.startsWith(SPACE_PREFIX);
+    const realId = isSpace ? newTemplateId.slice(SPACE_PREFIX.length) : newTemplateId;
+    // No-op if already on this template from the same source
+    if (currentTemplate.id === realId && !!currentTemplate._fromSpace === isSpace) return;
     // If user manually switches before the boot restore fires, skip the restore
     initialRestoreDone = true;
     // Save current view segment before leaving (not the full path — space stays independent)
@@ -403,15 +445,14 @@ export function TemplateStoreProvider(props: ParentProps) {
       const view = segs[0] === 'space' && segs[2] ? segs[2] : null;
       if (view) lastViewByTemplate.set(currentTemplate.id, view);
     }
-    const newTemplate =
-      allTemplates().find((t) => t.id === newTemplateId) || shellTemplates.find((t) => t.id === newTemplateId);
+    const newTemplate = isSpace
+      ? allTemplates().find((t) => t.id === realId && t._fromSpace)
+      : allTemplates().find((t) => t.id === realId && !t._fromSpace) || shellTemplates.find((t) => t.id === realId);
     if (newTemplate) {
       setCurrentTemplate(reconcile(deepClone(newTemplate)));
-      // Always navigate using the current perspective so space selection is not affected.
-      // Restore only the view segment for this template if one was previously saved.
       const segs = routeStore.segments();
       const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
-      const view = lastViewByTemplate.get(newTemplateId) ?? currentView;
+      const view = lastViewByTemplate.get(realId) ?? currentView;
       const p = adamStore.currentPerspective();
       if (p) {
         const spaceId = p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid;
@@ -419,8 +460,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       } else {
         routeStore.navigate('/');
       }
-      // Persist choice to Ad4m
-      adamStore.updateAgentSettings({ currentTemplateId: newTemplateId });
+      adamStore.updateAgentSettings({ currentTemplateId: realId });
     } else {
       console.error(`TemplateStore: switchTemplate - Invalid templateId "${newTemplateId}"`);
     }
@@ -534,6 +574,145 @@ export function TemplateStoreProvider(props: ParentProps) {
     setOperationLoading(null);
   }
 
+  /** Fetch a template from the marketplace perspective and save it to the user's root perspective */
+  async function installFromMarketplace(marketplaceTemplateId: string): Promise<void> {
+    const marketplacePerspective = adamStore.marketplacePerspective();
+    const rootPerspective = adamStore.rootPerspective();
+    if (!marketplacePerspective || !rootPerspective) {
+      toastService.error('Cannot install: marketplace not connected');
+      return;
+    }
+
+    setOperationLoading(`marketplace-install:${marketplaceTemplateId}`);
+    try {
+      const marketplaceTemplate = await Template.findOne(marketplacePerspective, {
+        where: { id: marketplaceTemplateId },
+      });
+      if (!marketplaceTemplate) {
+        toastService.error('Template not found in marketplace');
+        return;
+      }
+
+      const decoded = decodeFileAsJson(marketplaceTemplate.schema);
+      if (!decoded || typeof decoded !== 'object') {
+        toastService.error('Could not read template data');
+        return;
+      }
+
+      const stored = decoded as unknown as StoredTemplate;
+      const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+      const templateId =
+        schema.id || marketplaceTemplate.name?.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId;
+      const newVersion = marketplaceTemplate.version || 1;
+      const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId, templateVersion: newVersion };
+
+      const schemaBlob = (() => {
+        const storedTemplate = createStoredTemplate(schemaToInstall);
+        const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+        const base64 = btoa(String.fromCharCode(...jsonBytes));
+        return { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' };
+      })();
+
+      const existingLocal = savedTemplateMap.get(templateId);
+      if (existingLocal) {
+        // Already installed — update schema and version in place
+        existingLocal.schema = schemaBlob as any;
+        existingLocal.version = newVersion;
+        await existingLocal.save();
+        toastService.success(`"${schemaToInstall.meta.name}" updated to v${newVersion}`);
+      } else {
+        const newTemplate = await Template.create(rootPerspective, {
+          name: schemaToInstall.meta.name,
+          origin: 'marketplace',
+          slug: templateId,
+          version: newVersion,
+          schema: schemaBlob as any,
+        });
+        savedTemplateMap.set(templateId, newTemplate);
+
+        const prefs = adamStore.agentSettings();
+        if (prefs) await prefs.addInstalledTemplates(newTemplate);
+
+        setInstalledIds((prev) => {
+          const next = new Set(prev);
+          next.add(templateId);
+          return next;
+        });
+        toastService.success(`"${schemaToInstall.meta.name}" installed`);
+      }
+
+      await loadSavedTemplates();
+    } catch (error) {
+      console.error('TemplateStore: installFromMarketplace error', error);
+      toastService.error(`Failed to install template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
+  /** Re-fetch space templates for the current perspective — call after any mutation (delete, install) */
+  async function refreshSpaceTemplates(): Promise<void> {
+    const perspective = adamStore.currentPerspective();
+    if (!perspective) return;
+    await loadSpaceTemplates(perspective);
+  }
+
+  /** Fetch a template from the marketplace and install it into the current space's perspective */
+  async function installToSpace(marketplaceTemplateId: string): Promise<void> {
+    const marketplacePerspective = adamStore.marketplacePerspective();
+    const spacePerspective = adamStore.currentPerspective();
+    if (!marketplacePerspective || !spacePerspective) {
+      toastService.error('Cannot install: no active space or marketplace not connected');
+      return;
+    }
+
+    setOperationLoading(`space-install:${marketplaceTemplateId}`);
+    try {
+      const marketplaceTemplate = await Template.findOne(marketplacePerspective, {
+        where: { id: marketplaceTemplateId },
+      });
+      if (!marketplaceTemplate) {
+        toastService.error('Template not found in marketplace');
+        return;
+      }
+
+      const decoded = decodeFileAsJson(marketplaceTemplate.schema);
+      if (!decoded || typeof decoded !== 'object') {
+        toastService.error('Could not read template data');
+        return;
+      }
+
+      const stored = decoded as unknown as StoredTemplate;
+      const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+      const templateId =
+        schema.id || marketplaceTemplate.name?.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId;
+      const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId };
+
+      const schemaBlob = (() => {
+        const storedTemplate = createStoredTemplate(schemaToInstall);
+        const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+        const base64 = btoa(String.fromCharCode(...jsonBytes));
+        return { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' };
+      })();
+
+      await Template.create(spacePerspective, {
+        name: schemaToInstall.meta.name,
+        origin: 'marketplace',
+        slug: templateId,
+        version: marketplaceTemplate.version || 1,
+        schema: schemaBlob as any,
+      });
+
+      await loadSpaceTemplates(spacePerspective);
+      toastService.success(`"${schemaToInstall.meta.name}" installed to space`);
+    } catch (error) {
+      console.error('TemplateStore: installToSpace error', error);
+      toastService.error(`Failed to install template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
   /** Set a template as the default (loaded on boot) */
   function setDefaultTemplate(templateId: string): void {
     adamStore.updateAgentSettings({ defaultTemplateId: templateId });
@@ -550,6 +729,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     const schemaToSave: TemplateSchema = {
       ...deepClone(currentTemplate),
       id: templateId,
+      author: adamStore.me()?.did,
       meta: { ...currentTemplate.meta, name },
     };
 
@@ -614,7 +794,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
     setOperationLoading('save');
-    const schemaToSave: TemplateSchema = { ...deepClone(schema), id: templateId };
+    const schemaToSave: TemplateSchema = { ...deepClone(schema), id: templateId, author: adamStore.me()?.did };
 
     const storedTemplate = createStoredTemplate(schemaToSave);
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
@@ -666,7 +846,8 @@ export function TemplateStoreProvider(props: ParentProps) {
       // AD4M's file storage hasn't resolved the schema blob yet
       setAllTemplates((prev) => {
         if (prev.some((t) => t.id === templateId)) return prev;
-        return [...prev, deepClone(schemaToSave)];
+        const savedModel = savedTemplateMap.get(templateId);
+        return [...prev, { ...deepClone(schemaToSave), templateVersion: savedModel?.version ?? 1 }];
       });
       setInstalledIds((prev) => {
         if (prev.has(templateId)) return prev;
@@ -676,7 +857,15 @@ export function TemplateStoreProvider(props: ParentProps) {
       });
 
       setCurrentTemplate(reconcile(deepClone(schemaToSave)));
-      routeStore.navigate('/');
+      const p = adamStore.currentPerspective();
+      if (p) {
+        const spaceId = p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid;
+        const segs = routeStore.segments();
+        const view = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
+        routeStore.navigate('/space/' + spaceId + '/' + view);
+      } else {
+        routeStore.navigate('/');
+      }
       adamStore.updateAgentSettings({ currentTemplateId: templateId });
       setOperationLoading(null);
       return true;
@@ -696,7 +885,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     const perspective = adamStore.rootPerspective();
     if (!perspective) return;
 
-    const schemaToSave: TemplateSchema = deepClone(currentTemplate);
+    const cloned = deepClone(currentTemplate);
+    delete cloned._fromSpace;
+    const schemaToSave: TemplateSchema = { ...cloned, author: adamStore.me()?.did };
     const storedTemplate = createStoredTemplate(schemaToSave);
     // Include a timestamp so the content hash is unique per save — avoids
     // "Key already exists" rejections from the content-addressed store when
@@ -729,7 +920,164 @@ export function TemplateStoreProvider(props: ParentProps) {
     // Update the in-memory templates signal so switching away and back preserves changes.
     // Use schemaToSave (captured before any await) — currentTemplate may have changed
     // if the user navigated to a different template while the save was in flight.
-    setAllTemplates((prev) => prev.map((t) => (t.id === templateId ? schemaToSave : t)));
+    // Preserve templateVersion from the existing entry — it's sourced from the model record
+    // and may not be present on currentTemplate if the fallback path was taken.
+    setAllTemplates((prev) =>
+      prev.map((t) => {
+        if (t.id !== templateId) return t;
+        const tv = t.templateVersion ?? savedTemplateMap.get(templateId)?.version ?? 1;
+        return { ...schemaToSave, templateVersion: tv };
+      }),
+    );
+  }
+
+  /** Copy the current template into a specific space perspective */
+  async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
+    const perspective = adamStore.allPerspectives().find((p) => p.uuid === perspectiveUuid);
+    if (!perspective) {
+      toastService.error('Space not found');
+      return false;
+    }
+
+    const schema = currentTemplate;
+    const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+
+    const existing = await Template.findOne(perspective, { where: { slug: templateId } });
+    if (existing) {
+      toastService.error(`Template "${schema.meta.name}" is already in "${spaceName}"`);
+      return false;
+    }
+
+    setOperationLoading('publish-space');
+
+    const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: templateId });
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
+
+    try {
+      await Template.create(perspective, {
+        name: schema.meta.name,
+        origin: 'shared',
+        slug: templateId,
+        version: 1,
+        schema: schemaBlob as any,
+      });
+      toastService.success(`Template "${schema.meta.name}" shared to space "${spaceName}"`);
+      return true;
+    } catch (error) {
+      console.error('TemplateStore: publishToSpace error', error);
+      toastService.error('Failed to share template to space');
+      return false;
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
+  /** Publish the current template to the marketplace perspective */
+  async function deleteMarketplaceTemplate(templateId: string): Promise<void> {
+    const marketplacePerspective = adamStore.marketplacePerspective();
+    if (!marketplacePerspective) {
+      toastService.error('Marketplace not connected');
+      return;
+    }
+    setOperationLoading(`marketplace-delete:${templateId}`);
+    try {
+      const template = await Template.findOne(marketplacePerspective, { where: { id: templateId } });
+      if (!template) {
+        toastService.error('Template not found');
+        return;
+      }
+      await template.delete();
+    } catch (error) {
+      console.error('TemplateStore: deleteMarketplaceTemplate error', error);
+      toastService.error('Failed to delete template');
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
+  async function publishToMarketplace(options: {
+    name: string;
+    description: string;
+    themeId?: string;
+    screenshots: File[];
+  }): Promise<boolean> {
+    const marketplacePerspective = adamStore.marketplacePerspective();
+    if (!marketplacePerspective) {
+      toastService.error('Marketplace not connected');
+      return false;
+    }
+
+    const schema = currentTemplate;
+    const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+
+    const existing = await Template.findOne(marketplacePerspective, { where: { slug: templateId } });
+    if (existing && existing.author !== adamStore.me()?.did) {
+      toastService.error(`A template with this slug already exists in the marketplace by a different author`);
+      return false;
+    }
+
+    setOperationLoading('publish-marketplace');
+
+    const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: templateId, author: adamStore.me()?.did });
+    const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
+    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
+
+    try {
+      if (existing) {
+        // Update existing marketplace entry in place — bump version, replace schema and screenshots
+        existing.name = options.name;
+        existing.description = options.description;
+        existing.version = (existing.version || 1) + 1;
+        existing.schema = schemaBlob as any;
+        if (options.themeId !== undefined) existing.themeId = options.themeId;
+        await existing.save();
+
+        await existing.setScreenshots([]);
+        for (const file of options.screenshots) {
+          const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
+          const imageBlock = await ImageBlock.create(marketplacePerspective, {
+            src: fileData as any,
+            altText: 'Screenshot',
+            version: 1,
+          });
+          await existing.addScreenshots(imageBlock);
+        }
+
+        toastService.success(`Template "${options.name}" updated in marketplace (v${existing.version})`);
+      } else {
+        const template = await Template.create(marketplacePerspective, {
+          name: options.name,
+          description: options.description,
+          origin: 'marketplace',
+          slug: templateId,
+          version: 1,
+          schema: schemaBlob as any,
+          ...(options.themeId ? { themeId: options.themeId } : {}),
+        });
+
+        for (const file of options.screenshots) {
+          const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
+          const imageBlock = await ImageBlock.create(marketplacePerspective, {
+            src: fileData as any,
+            altText: 'Screenshot',
+            version: 1,
+          });
+          await template.addScreenshots(imageBlock);
+        }
+
+        toastService.success(`Template "${options.name}" published to marketplace`);
+      }
+      return true;
+    } catch (error) {
+      console.error('TemplateStore: publishToMarketplace error', error);
+      toastService.error('Failed to publish template to marketplace');
+      return false;
+    } finally {
+      setOperationLoading(null);
+    }
   }
 
   /** Check if a template ID belongs to a built-in core template */
@@ -762,19 +1110,21 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   }
 
-  /** Pre-computed list for Settings UI with status flags */
+  /** Pre-computed list for Settings UI with status flags — excludes space templates */
   const templateManagementList = () => {
     const defaultId = defaultTemplateId();
     const installed = installedIds();
-    return allTemplates().map((t) => ({
-      id: t.id || '',
-      name: t.meta?.name || '',
-      icon: t.meta?.icon || '',
-      description: t.meta?.description || '',
-      isCore: isCoreTemplateId(t.id || ''),
-      isInstalled: isCoreTemplateId(t.id || '') || installed.has(t.id || ''),
-      isDefault: (t.id || '') === defaultId,
-    }));
+    return allTemplates()
+      .filter((t) => !t._fromSpace)
+      .map((t) => ({
+        id: t.id || '',
+        name: t.meta?.name || '',
+        icon: t.meta?.icon || '',
+        description: t.meta?.description || '',
+        isCore: isCoreTemplateId(t.id || ''),
+        isInstalled: isCoreTemplateId(t.id || '') || installed.has(t.id || ''),
+        isDefault: (t.id || '') === defaultId,
+      }));
   };
 
   const store: TemplateStore = {
@@ -782,8 +1132,10 @@ export function TemplateStoreProvider(props: ParentProps) {
     personalTemplates,
     spaceTemplates,
     coreTemplates: coreTemplatesAccessor,
+    myTemplates,
     allTemplates,
     templateManagementList,
+    switcherGroups,
     currentTemplate,
     loading,
     defaultTemplateId,
@@ -797,10 +1149,16 @@ export function TemplateStoreProvider(props: ParentProps) {
     deleteTemplate,
     installTemplate,
     uninstallTemplate,
+    installFromMarketplace,
+    deleteMarketplaceTemplate,
+    installToSpace,
+    refreshSpaceTemplates,
     toggleInstalled,
     setDefaultTemplate,
     saveTemplate,
     saveTemplateAs,
+    publishToSpace,
+    publishToMarketplace,
     persistCurrentTemplate,
     preloadSpaceTemplates,
     loadSpaceTemplates,

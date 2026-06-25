@@ -6,7 +6,7 @@ import type { SchemaNode } from '@we/schema-shared';
  * Persistent app chrome sidebar that wraps around the active template.
  * Provides: template/theme switching, current space info, installed apps, logout.
  *
- * Rendered by launcherUIRegistry alongside the boot screen and active template.
+ * Rendered by shellRegistry alongside the boot screen and active template.
  * Only visible when the user is logged in (boot state === 'ready').
  */
 export const sidebar: SchemaNode = {
@@ -18,6 +18,7 @@ export const sidebar: SchemaNode = {
       props: {
         // defaultExpanded: true,
         // expandOnHover: false,
+        // expandedWidth: '800px',
         bg: 'neutral-50',
         side: 'left',
         position: 'fixed',
@@ -25,55 +26,7 @@ export const sidebar: SchemaNode = {
         border: '0',
         itemPadding: '12px',
         centerItems: true,
-        // expandedWidth: '800px',
         items: [
-          // // Current space / perspective
-          // {
-          //   type: 'item',
-          //   id: 'current-space',
-          //   // Show house-line icon only when on home (no space, no perspective)
-          //   icon: {
-          //     $if: {
-          //       condition: { $store: 'spaceStore.space' },
-          //       then: null,
-          //       else: {
-          //         $if: {
-          //           condition: { $store: 'adamStore.currentPerspective' },
-          //           then: 'map-pin-area',
-          //           else: 'house-line',
-          //         },
-          //       },
-          //     },
-          //   },
-          //   // Show avatar (with image or initials) when a space/perspective is active
-          //   avatar: {
-          //     $if: {
-          //       condition: { $store: 'spaceStore.space' },
-          //       then: { src: { $store: 'spaceStore.space.avatar' }, name: { $store: 'spaceStore.space.name' } },
-          //       else: {
-          //         $if: {
-          //           condition: { $store: 'adamStore.currentPerspective' },
-          //           then: { src: '', name: { $store: 'adamStore.currentPerspective.name' } },
-          //           else: null,
-          //         },
-          //       },
-          //     },
-          //   },
-          //   label: {
-          //     $if: {
-          //       condition: { $store: 'spaceStore.space' },
-          //       then: { $store: 'spaceStore.space.name' },
-          //       else: {
-          //         $if: {
-          //           condition: { $store: 'adamStore.currentPerspective' },
-          //           then: { $store: 'adamStore.currentPerspective.name' },
-          //           else: 'No space or perspective',
-          //         },
-          //       },
-          //     },
-          //   },
-          // },
-
           // // Current route
           // {
           //   type: 'item',
@@ -106,13 +59,16 @@ export const sidebar: SchemaNode = {
             ],
           },
 
-          // AI Chat
+          // Marketplace
           {
-            id: 'ai-chat',
-            icon: 'robot',
-            label: 'AI Chat',
-            active: { $store: 'aiStore.isOpen' },
-            onClick: { $action: 'aiStore.toggle' },
+            id: 'marketplace',
+            icon: 'storefront',
+            label: 'Marketplace',
+            active: { $eq: [{ $store: 'templateStore.activeShellView' }, 'marketplace'] },
+            onClick: [
+              { $action: 'appStore.deactivateApp' },
+              { $action: 'templateStore.openShellView', args: ['marketplace'] },
+            ],
           },
 
           // Spaces
@@ -136,63 +92,36 @@ export const sidebar: SchemaNode = {
             },
           },
 
-          // Templates
-          {
-            type: 'group',
-            id: 'templates',
-            label: 'Templates',
-            items: {
-              $map: {
-                items: { $store: 'templateStore.personalTemplates' },
-                select: {
-                  id: '$item.id',
-                  icon: '$item.meta.icon',
-                  label: '$item.meta.name',
-                  active: {
-                    $eq: [
-                      '$item.id',
-                      {
-                        $if: {
-                          condition: { $store: 'appStore.activeAppId' },
-                          then: null,
-                          else: {
-                            $if: {
-                              condition: { $store: 'templateStore.activeShellView' },
-                              then: null,
-                              else: { $store: 'templateStore.currentTemplate.id' },
-                            },
-                          },
-                        },
-                      },
-                    ],
-                  },
-                  onClick: [
-                    { $action: 'appStore.deactivateApp' },
-                    { $action: 'templateStore.closeShellView' },
-                    { $action: 'templateStore.switchTemplate', args: ['$item.id'] },
-                  ],
-                },
-              },
-            },
-          },
-
-          // Apps
+          // Apps — WE is the first entry (sentinel from appStore.appsWithWe), followed by external apps
           {
             type: 'group',
             id: 'apps',
             label: 'Apps',
             items: {
               $map: {
-                items: { $store: 'appStore.apps' },
+                items: { $store: 'appStore.appsWithWe' },
                 select: {
                   id: '$item.id',
+                  icon: '$item.icon',
                   avatar: { src: '$item.image', name: '$item.name' },
                   label: '$item.name',
-                  active: { $eq: ['$item.id', { $store: 'appStore.activeAppId' }] },
-                  onClick: [
-                    { $action: 'templateStore.closeShellView' },
-                    { $action: 'appStore.activateApp', args: ['$item.id'] },
-                  ],
+                  active: {
+                    $if: {
+                      condition: { $eq: ['$item.id', 'we'] },
+                      then: { $not: { $store: 'appStore.activeAppId' } },
+                      else: { $eq: ['$item.id', { $store: 'appStore.activeAppId' }] },
+                    },
+                  },
+                  onClick: {
+                    $if: {
+                      condition: { $eq: ['$item.id', 'we'] },
+                      then: [{ $action: 'appStore.deactivateApp' }, { $action: 'templateStore.closeShellView' }],
+                      else: [
+                        { $action: 'templateStore.closeShellView' },
+                        { $action: 'appStore.activateApp', args: ['$item.id'] },
+                      ],
+                    },
+                  },
                 },
               },
             },

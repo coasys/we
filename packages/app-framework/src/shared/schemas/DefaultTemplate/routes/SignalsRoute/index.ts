@@ -1,7 +1,7 @@
 import type { RouteSchema } from '@we/schema-shared';
 
-import { createSignalTypeModal } from './CreateSignalTypeModal';
-import { signalTypeCard } from './SignalTypeCard';
+import { createSignalTypeModal } from './CreateSignalTypeModal.ts';
+import { signalTypeCard } from './SignalTypeCard.ts';
 
 export const signalsRoute: RouteSchema = {
   path: '/signals',

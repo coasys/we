@@ -21,9 +21,10 @@ export interface LocationData {
 export interface SpaceSyncOptions {
   /**
    * Location data to use instead of reading from space.location.
-   * Required when syncing a freshly-created Space whose relations aren't hydrated yet.
+   * Pass null to explicitly remove the location from the target perspective.
+   * Pass undefined (or omit) to fall back to reading from space.location.
    */
-  locationData?: LocationData;
+  locationData?: LocationData | null;
   /**
    * Raw FileData for avatar/coverImage.
    * Use when syncing after an image update so the target gets the same FileData
@@ -51,9 +52,11 @@ export async function syncSpaceToParent(
   const all = await Space.findAll(targetP, { include: { location: true } });
   const existing = all.find((s) => s.uuid === space.uuid);
 
-  // Prefer the explicitly supplied location; fall back to hydrated relation
+  // locationData !== undefined means caller is explicitly setting/removing location.
+  // null = remove; LocationData = set. Undefined = fall back to space.location (for callers
+  // that don't touch location at all, e.g. image-only updates).
   const loc =
-    options?.locationData?.latitude != null && options?.locationData?.longitude != null
+    options?.locationData !== undefined
       ? options.locationData
       : space.location?.latitude != null && space.location?.longitude != null
         ? space.location
@@ -88,30 +91,30 @@ export async function syncSpaceToParent(
     });
   }
 
-  // Mirror location block into targetP.
-  // Register LocationBlock on the target first — idempotent and fast if already installed.
+  // Mirror location into targetP, scoped to this space's location relation.
   if (loc) {
     await LocationBlock.register(targetP);
-    if (existing?.location) {
-      // Update existing location in place
-      existing.location.latitude = loc.latitude;
-      existing.location.longitude = loc.longitude;
-      if (loc.name !== undefined) existing.location.name = loc.name;
-      if (loc.city !== undefined) existing.location.city = loc.city;
-      if (loc.country !== undefined) existing.location.country = loc.country;
-      if (loc.countryCode !== undefined) existing.location.countryCode = loc.countryCode;
-      await existing.location.save();
-    } else {
-      const newLoc = await LocationBlock.create(targetP, {
-        latitude: loc.latitude,
-        longitude: loc.longitude,
-        ...(loc.name && { name: loc.name }),
-        ...(loc.city && { city: loc.city }),
-        ...(loc.country && { country: loc.country }),
-        ...(loc.countryCode && { countryCode: loc.countryCode }),
-      });
-      await target.setLocation(newLoc);
-    }
+    // Always delete + recreate so setLocation updates the Space's we://location triple.
+    // Scoped to this space's location via parent query to avoid touching other spaces' blocks.
+    const [existingLocInTarget] = await LocationBlock.findAll(targetP, {
+      parent: { id: target.id, predicate: 'we://location' },
+    });
+    if (existingLocInTarget) await existingLocInTarget.delete();
+    const newLoc = await LocationBlock.create(targetP, {
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      ...(loc.name && { name: loc.name }),
+      ...(loc.city && { city: loc.city }),
+      ...(loc.country && { country: loc.country }),
+      ...(loc.countryCode && { countryCode: loc.countryCode }),
+    });
+    await target.setLocation(newLoc);
+  } else if (options?.locationData === null && existing) {
+    // Explicit removal — delete the location block from the target perspective
+    const [locToRemove] = await LocationBlock.findAll(targetP, {
+      parent: { id: existing.id, predicate: 'we://location' },
+    });
+    if (locToRemove) await locToRemove.delete();
   }
 }
 

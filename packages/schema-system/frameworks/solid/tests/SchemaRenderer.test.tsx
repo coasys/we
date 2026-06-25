@@ -172,6 +172,55 @@ describe('SchemaRenderer', () => {
   });
 
   // --- Event handlers (functions pass through) ---
+  // --- $localState with dynamic initial (expression token) ---
+  it('seeds $localState signal from $store expression when initial is a token', () => {
+    const InputComp = (props: any) => <input data-testid="input" value={props.value} />;
+    const registry: ComponentRegistry = { InputComp };
+    const stores = { spaceStore: { currentSpace: { name: 'My Space' } } };
+    const node: SchemaNode = {
+      type: 'div',
+      $localState: {
+        editName: { type: 'string', initial: { $store: 'spaceStore.currentSpace.name' } as any },
+      },
+      children: [
+        {
+          type: 'InputComp',
+          props: { value: { $local: 'editName' } },
+        },
+      ],
+    };
+    const { container } = renderSchema(node, { registry, stores });
+    const input = container.querySelector('[data-testid="input"]') as HTMLInputElement;
+    expect(input.value).toBe('My Space');
+  });
+
+  it('resets $localState signal when the $store expression source changes reactively', async () => {
+    const { createSignal } = await import('solid-js');
+    const InputComp = (props: any) => <input data-testid="input" value={props.value} />;
+    const registry: ComponentRegistry = { InputComp };
+    const [spaceName, setSpaceName] = createSignal('Space A');
+    const stores = {
+      spaceStore: {
+        get currentSpace() {
+          return { name: spaceName() };
+        },
+      },
+    };
+    const node: SchemaNode = {
+      type: 'div',
+      $localState: {
+        editName: { type: 'string', initial: { $store: 'spaceStore.currentSpace.name' } as any },
+      },
+      children: [{ type: 'InputComp', props: { value: { $local: 'editName' } } }],
+    };
+    const { container } = renderSchema(node, { registry, stores });
+    const input = () => container.querySelector('[data-testid="input"]') as HTMLInputElement;
+    expect(input().value).toBe('Space A');
+    setSpaceName('Space B');
+    await Promise.resolve(); // flush effects
+    expect(input().value).toBe('Space B');
+  });
+
   it('passes event handler functions through', () => {
     const clickSpy = vi.fn();
     const TestComp = (props: any) => <button onClick={props.onClick}>click</button>;

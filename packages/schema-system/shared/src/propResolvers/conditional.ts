@@ -7,6 +7,28 @@ function isReactiveAccessor(value: unknown): value is () => unknown {
   return typeof value === 'function' && REACTIVE_ACCESSOR in value;
 }
 
+/**
+ * If a branch value is an array of actions, wrap it into a single callable function that
+ * resolves and dispatches each item in sequence when invoked. This keeps the memo return
+ * type as "function | value" rather than "array", avoiding issues with reactive systems
+ * that may not handle array memo results well (e.g. SolidJS createMemo outside a root).
+ */
+function wrapArrayBranch(
+  branch: unknown,
+  stores: Props,
+  context: Props,
+  memo: Memo,
+  resolvePropFn: typeof resolveProp,
+): unknown {
+  if (!Array.isArray(branch)) return branch;
+  return (...callArgs: unknown[]) => {
+    for (const item of branch) {
+      const fn = resolvePropFn(item, stores, context, memo);
+      if (typeof fn === 'function') (fn as (...a: unknown[]) => unknown)(...callArgs);
+    }
+  };
+}
+
 // Resolves $if props: { $if: { condition, then, else } }
 export function resolveIfProp(
   value: unknown,
@@ -16,6 +38,11 @@ export function resolveIfProp(
   resolvePropFn: typeof resolveProp,
 ): unknown {
   const { condition, then: thenValue, else: elseValue } = (value as { $if: IfProp }).$if;
+
+  // Pre-wrap array branches into a single dispatch function so the memo always returns
+  // a function (or primitive/undefined), never a raw array.
+  const thenBranch = wrapArrayBranch(thenValue, stores, context, memo, resolvePropFn);
+  const elseBranch = wrapArrayBranch(elseValue, stores, context, memo, resolvePropFn);
 
   // Check if condition contains $arg tokens - if so, we need to return a function
   // that evaluates the condition on each call with access to callback arguments
@@ -55,10 +82,10 @@ export function resolveIfProp(
       const conditionResult = resolvePropFn(resolvedCondition, stores, context, memo);
       const conditionMet = isReactiveAccessor(conditionResult) ? conditionResult() : conditionResult;
 
-      // Resolve the appropriate branch
-      const branchResult = resolvePropFn(conditionMet ? thenValue : elseValue, stores, context, memo);
+      // Resolve the appropriate branch (already array-wrapped if needed)
+      const branchResult = resolvePropFn(conditionMet ? thenBranch : elseBranch, stores, context, memo);
 
-      // If branch result is a function (e.g., an action), call it with the arguments
+      // If branch result is a function (e.g., an action or wrapped array), call it with the arguments
       if (typeof branchResult === 'function') {
         return branchResult(...callArgs);
       }
@@ -73,7 +100,7 @@ export function resolveIfProp(
       const conditionResult = resolvePropFn(condition, stores, context, memo);
       // Unwrap reactive accessor if condition resolved to one (e.g. signal from $store)
       const conditionMet = isReactiveAccessor(conditionResult) ? conditionResult() : conditionResult;
-      const branchResult = resolvePropFn(conditionMet ? thenValue : elseValue, stores, context, memo);
+      const branchResult = resolvePropFn(conditionMet ? thenBranch : elseBranch, stores, context, memo);
       // Only unwrap reactive accessors — plain handler functions (from $action, $touch, etc.)
       // must pass through as values so they aren't eagerly invoked
       return isReactiveAccessor(branchResult) ? branchResult() : branchResult;

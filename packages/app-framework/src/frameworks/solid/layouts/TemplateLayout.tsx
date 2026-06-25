@@ -14,7 +14,13 @@
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
-import { landingPageTemplate, profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
+import {
+  landingPageTemplate,
+  marketplaceTemplate,
+  profileTemplate,
+  schemaTestsTemplate,
+  settingsTemplate,
+} from '@shared/schemas';
 import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutations.actions';
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { deepClone } from '@shared/utils';
@@ -30,6 +36,8 @@ import type { ParentProps } from 'solid-js';
 import { createEffect, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
+import { EditorOverlay } from '../components/template-editor/EditorOverlay';
+import { panelResizing, TOTAL_RAIL_WIDTH } from '../components/template-editor/RightPanelContainer';
 import { buildRoutes } from '../utils/buildRoutes';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
@@ -47,6 +55,7 @@ type ShellViewEntry = {
 
 const shellViews: Record<string, ShellViewEntry> = {
   'landing-page': { schema: landingPageTemplate },
+  marketplace: { schema: marketplaceTemplate },
   profile: { schema: profileTemplate },
   settings: { schema: settingsTemplate },
   'schema-tests': {
@@ -100,9 +109,18 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
   createEffect(() => stores.routeStore.setNavigateFunction(() => navigate));
   createEffect(() => stores.routeStore.setCurrentPath(location.pathname));
 
-  const aiRightMargin = () => (stores.aiStore.isOpen() ? '400px' : '0');
-  const contentWidth = () =>
-    stores.aiStore.isOpen() ? `calc(100% - ${SHELL_SIDEBAR_WIDTH} - 400px)` : `calc(100% - ${SHELL_SIDEBAR_WIDTH})`;
+  // Exit template editing when a shell view (settings, profile, marketplace) opens.
+  createEffect(() => {
+    if (stores.templateStore.activeShellView()) stores.aiStore.exitTemplateEditing();
+  });
+
+  const rightOffset = () => {
+    if (!stores.aiStore.isEditingTemplate()) return '0px';
+    let offset = TOTAL_RAIL_WIDTH;
+    if (stores.aiStore.isOpen()) offset += stores.aiStore.aiPanelWidth();
+    if (stores.aiStore.codePanelOpen()) offset += stores.aiStore.codePanelWidth();
+    return `${offset}px`;
+  };
 
   return (
     <>
@@ -111,10 +129,9 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
         position="fixed"
         top="0"
         left={`var(--we-sidebar-width, ${SHELL_SIDEBAR_WIDTH})`}
-        right={aiRightMargin()}
-        width={contentWidth()}
+        right={rightOffset()}
         height="100vh"
-        transition="right 300ms ease, width 300ms ease"
+        transition={panelResizing() ? 'none' : 'right 300ms ease'}
       >
         {/* Main template content */}
         <Column
@@ -139,6 +156,9 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
             />
           </Show>
         </Column>
+
+        {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11) */}
+        <EditorOverlay />
 
         {/* Shell overlay rendered above the template */}
         <Show when={stores.templateStore.activeShellView()} keyed>

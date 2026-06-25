@@ -34,6 +34,7 @@ Do NOT invent IDs for new nodes — the system assigns them automatically.
   { "targetId": "n1", "insert": { "children": { "node": { ... }, "after": "n5" } } }   — after sibling n5
   { "targetId": "n1", "insert": { "children": { "node": { ... }, "before": "n5" } } }  — before sibling n5
   Use "routes" instead of "children" to insert a route.
+  IMPORTANT: "after" and "before" are siblings of "node" in the insert object — do NOT put them inside the node body itself.
 
 **Remove** a child or route (targetId = PARENT, value = child to remove):
   { "targetId": "n1", "remove": { "children": "n7" } }     — from n1's children, remove n7

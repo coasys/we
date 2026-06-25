@@ -24,15 +24,19 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { fontSize: '200' },
   sm: { fontSize: '300' },
   md: { fontSize: '400' },
   lg: { fontSize: '500' },
+  xl: { fontSize: '500' },
 };
 
 const INPUT_HEIGHT: Record<ComponentSize, string> = {
+  xs: '24px',
   sm: '32px',
   md: '40px',
   lg: '48px',
+  xl: '56px',
 };
 
 const styles = css`

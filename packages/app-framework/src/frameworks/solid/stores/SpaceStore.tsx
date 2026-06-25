@@ -20,12 +20,13 @@ import {
 
 import { useRouteStore } from './RouteStore';
 import { useTemplateStore } from './TemplateStore';
+import { useThemeStore } from './ThemeStore';
 
 export interface SpaceMetaUpdate {
   name?: string;
   description?: string;
   discovery?: 'listed' | 'hidden';
-  location?: LocationData;
+  location?: LocationData | null;
 }
 
 export interface SpaceStore {
@@ -33,6 +34,7 @@ export interface SpaceStore {
   memberDids: Accessor<string[]>;
   members: Accessor<AgentProfileSummary[]>;
   spaceDefaultTemplateId: Accessor<string>;
+  spaceDefaultThemeId: Accessor<string>;
   currentSpace: Accessor<Space | null>;
 
   // Actions
@@ -42,6 +44,7 @@ export interface SpaceStore {
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
   updateSpaceMeta: (updates: SpaceMetaUpdate) => Promise<void>;
   setSpaceDefaultTemplate: (templateId: string) => Promise<void>;
+  setSpaceDefaultTheme: (themeId: string) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
@@ -62,6 +65,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
   const routeStore = useRouteStore();
   const templateStore = useTemplateStore();
+  const themeStore = useThemeStore();
 
   async function test() {
     const p = adamStore.currentPerspective();
@@ -119,7 +123,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // If no perspective found, route change alone will show the join gate
 
     const segs = routeStore.segments();
-    const currentView = view ?? (segs[0] === 'space' && segs[2] ? segs[2] : 'cards');
+    const currentView = view ?? (segs[0] === 'space' && segs[2] ? segs[2] : 'about');
     const targetPath = '/space/' + spaceId + '/' + currentView;
     templateStore.closeShellView();
     routeStore.navigate(targetPath);
@@ -174,17 +178,23 @@ export function SpaceStoreProvider(props: ParentProps) {
     await spaceModel.save();
 
     if (updates.location !== undefined) {
-      const loc = updates.location;
-      await LocationBlock.register(currentPerspective);
-      if (spaceModel.location) {
-        spaceModel.location.latitude = loc.latitude;
-        spaceModel.location.longitude = loc.longitude;
-        if (loc.name !== undefined) spaceModel.location.name = loc.name;
-        if (loc.city !== undefined) spaceModel.location.city = loc.city;
-        if (loc.country !== undefined) spaceModel.location.country = loc.country;
-        if (loc.countryCode !== undefined) spaceModel.location.countryCode = loc.countryCode;
-        await spaceModel.location.save();
+      if (updates.location === null) {
+        const [existingLoc] = await LocationBlock.findAll(currentPerspective);
+        if (existingLoc) {
+          try {
+            await existingLoc.delete();
+          } catch (err) {
+            console.error('[SpaceStore] location delete failed:', err);
+          }
+        }
       } else {
+        const loc = updates.location;
+        // Always delete + recreate so setLocation updates the Space's we://location triple,
+        // which triggers the reactive currentSpace subscription to re-query with fresh data.
+        // LocationBlock.update only changes nested triples and doesn't trigger the Space query.
+        const [existingLoc] = await LocationBlock.findAll(currentPerspective);
+        if (existingLoc) await existingLoc.delete();
+        await LocationBlock.register(currentPerspective);
         const newLoc = await LocationBlock.create(currentPerspective, {
           latitude: loc.latitude,
           longitude: loc.longitude,
@@ -202,7 +212,10 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     const effectiveDiscovery = updates.discovery ?? previousDiscovery;
     if (effectiveDiscovery === 'listed') {
-      await syncSpaceToParent(spaceModel, globalP).catch((err) =>
+      // Pass locationData explicitly when location changed — the included spaceModel.location
+      // snapshot is stale after our delete+recreate. null signals explicit removal to syncSpaceToParent.
+      const syncOpts = updates.location !== undefined ? { locationData: updates.location } : {};
+      await syncSpaceToParent(spaceModel, globalP, syncOpts).catch((err) =>
         console.error('SpaceStore: sync meta to global failed', err),
       );
     } else if (previousDiscovery === 'listed') {
@@ -265,9 +278,23 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const [memberDids, setMemberDids] = createSignal<string[]>([]);
   const [spaceDefaultTemplateId, setSpaceDefaultTemplateId] = createSignal<string>('');
+  const [spaceDefaultThemeId, setSpaceDefaultThemeId] = createSignal<string>('');
 
-  // Derive from currentSpace; setSpaceDefaultTemplateId remains writable for optimistic updates
+  // Derive from currentSpace; signals remain writable for optimistic updates
   createEffect(() => setSpaceDefaultTemplateId(currentSpace()?.defaultTemplateId ?? ''));
+  createEffect(() => setSpaceDefaultThemeId(currentSpace()?.defaultThemeId ?? ''));
+
+  // Apply the space's default theme when entering a space, restore personal theme when leaving
+  createEffect(() => {
+    const themeId = spaceDefaultThemeId();
+    if (themeId) {
+      themeStore.replaceTheme(themeId);
+    } else if (currentSpace() !== null) {
+      // Space loaded but has no default theme — nothing to override
+    } else {
+      themeStore.restorePersonalTheme();
+    }
+  });
 
   async function setSpaceDefaultTemplate(templateId: string): Promise<void> {
     setSpaceDefaultTemplateId(templateId);
@@ -279,6 +306,15 @@ export function SpaceStoreProvider(props: ParentProps) {
     adamStore.updateSpaceInCache(p.uuid, { defaultTemplateId: templateId } as never);
     const [space] = await Space.findAll(p, { where: { uuid: p.uuid } });
     if (space) await Space.update(p, space.id, { defaultTemplateId: templateId });
+  }
+
+  async function setSpaceDefaultTheme(themeId: string): Promise<void> {
+    setSpaceDefaultThemeId(themeId);
+    const p = adamStore.currentPerspective();
+    if (!p) return;
+    adamStore.updateSpaceInCache(p.uuid, { defaultThemeId: themeId } as never);
+    const [space] = await Space.findAll(p, { where: { uuid: p.uuid } });
+    if (space) await Space.update(p, space.id, { defaultThemeId: themeId });
   }
 
   // Load neighbourhood members whenever the current perspective changes
@@ -361,6 +397,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     memberDids,
     members,
     spaceDefaultTemplateId,
+    spaceDefaultThemeId,
     currentSpace,
 
     // Actions
@@ -370,6 +407,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceImage,
     updateSpaceMeta,
     setSpaceDefaultTemplate,
+    setSpaceDefaultTheme,
     createSignalType,
     upsertSignal,
     navigateToSpace,

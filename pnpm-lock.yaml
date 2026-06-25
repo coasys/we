@@ -357,6 +357,9 @@ importers:
       '@we/design-types':
         specifier: workspace:*
         version: link:../design-system/types
+      '@we/design-utils':
+        specifier: workspace:*
+        version: link:../design-system/utils
       '@we/models':
         specifier: workspace:*
         version: link:../models

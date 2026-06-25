@@ -136,95 +136,97 @@ export const spaceHeader: SchemaNode = {
         },
       ],
     },
+  ],
+};
 
-    // Sticky navigation
+// Sticky navigation — exported separately so it can be placed as a sibling of
+// both the header content and the $routes outlet, giving it a containing block
+// that spans the full page height (required for position:sticky to work correctly).
+export const spaceNavBar: SchemaNode = {
+  type: 'Row',
+  props: {
+    bg: 'neutral-100',
+    ax: 'center',
+    position: 'sticky',
+    zIndex: 'sticky',
+    top: '0',
+    left: '0',
+    borderBottom: '1px solid neutral-200',
+  },
+  children: [
+    // Mini-profile (fades in once the header has scrolled out of view)
     {
-      type: 'Row',
+      type: '$animate',
       props: {
-        bg: 'neutral-100',
-        ax: 'center',
-        position: 'sticky',
-        zIndex: 'sticky',
-        top: '0',
-        left: '0',
-        borderBottom: '1px solid neutral-200',
+        scrollPast: 'space-header-sentinel',
+        enterTransition: { type: 'fade', duration: 250 },
+        exitTransition: { type: 'fade', duration: 200 },
       },
       children: [
-        // Mini-profile (fades in once the header has scrolled out of view)
         {
-          type: '$animate',
-          props: {
-            scrollPast: 'space-header-sentinel',
-            enterTransition: { type: 'fade', duration: 250 },
-            exitTransition: { type: 'fade', duration: 200 },
-          },
+          type: 'Row',
+          props: { position: 'absolute', left: '16px', top: '0', bottom: '0', ay: 'center', gap: '400' },
           children: [
             {
-              type: 'Row',
-              props: { position: 'absolute', left: '16px', top: '0', bottom: '0', ay: 'center', gap: '400' },
-              children: [
-                {
-                  type: 'we-avatar',
-                  props: {
-                    image: { $store: 'spaceStore.currentSpace.avatar' },
-                    initials: { $store: 'spaceStore.currentSpace.name' },
-                    size: 'lg',
-                  },
-                },
-                {
-                  type: 'we-text',
-                  props: { fontWeight: '600' },
-                  children: [{ $store: 'spaceStore.currentSpace.name' }],
-                },
-              ],
+              type: 'we-avatar',
+              props: {
+                image: { $store: 'spaceStore.currentSpace.avatar' },
+                initials: { $store: 'spaceStore.currentSpace.name' },
+                size: 'lg',
+              },
+            },
+            {
+              type: 'we-text',
+              props: { fontWeight: '600' },
+              children: [{ $store: 'spaceStore.currentSpace.name' }],
             },
           ],
         },
+      ],
+    },
+    {
+      type: 'Column',
+      props: { width: '100%', maxWidth: '1200px' },
+      children: [
         {
-          type: 'Column',
-          props: { width: '100%', maxWidth: '1200px' },
+          type: 'Row',
+          props: { ay: 'center', ax: 'between', p: '400' },
           children: [
+            // Navigation
             {
               type: 'Row',
-              props: { ay: 'center', ax: 'between', p: '400' },
+              props: { gap: '200' },
               children: [
-                // Navigation
                 {
-                  type: 'Row',
-                  props: { gap: '200' },
+                  type: '$each',
+                  props: {
+                    items: [
+                      { label: 'About', icon: 'book-open', segment: 'about', path: './about' },
+                      { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
+                      // { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
+                      { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
+                      { label: 'Settings', icon: 'gear', segment: 'settings', path: './settings' },
+                      // { label: 'Signals', icon: 'heart', segment: 'signals', path: './signals' },
+                      // { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },
+                    ],
+                    as: 'view',
+                  },
                   children: [
                     {
-                      type: '$each',
+                      type: 'we-button',
                       props: {
-                        items: [
-                          { label: 'About', icon: 'book-open', segment: 'about', path: './about' },
-                          { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
-                          // { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
-                          { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
-                          { label: 'Settings', icon: 'gear', segment: 'settings', path: './settings' },
-                          // { label: 'Signals', icon: 'heart', segment: 'signals', path: './signals' },
-                          // { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },
-                        ],
-                        as: 'view',
+                        variant: {
+                          $if: {
+                            condition: { $eq: [{ $store: 'routeStore.segments.2' }, '$view.segment'] },
+                            then: 'primary',
+                            else: 'ghost',
+                          },
+                        },
+                        onClick: { $action: 'routeStore.navigate', args: ['$view.path'] },
                       },
                       children: [
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: {
-                              $if: {
-                                condition: { $eq: [{ $store: 'routeStore.segments.2' }, '$view.segment'] },
-                                then: 'primary',
-                                else: 'ghost',
-                              },
-                            },
-                            onClick: { $action: 'routeStore.navigate', args: ['$view.path'] },
-                          },
-                          children: [
-                            { type: 'we-icon', props: { name: '$view.icon' } },
-                            { type: 'we-text', props: { fontSize: '500' }, children: ['$view.label'] },
-                          ],
-                        },
+                        { type: 'we-icon', props: { name: '$view.icon' } },
+                        { type: 'we-text', props: { fontSize: '500' }, children: ['$view.label'] },
                       ],
                     },
                   ],

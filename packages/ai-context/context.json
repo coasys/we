@@ -3663,12 +3663,12 @@
         },
         {
           "name": "ax",
-          "type": "\"center\" | \"start\" | \"end\" | \"stretch\" | \"between\" | \"around\" | \"even\"",
+          "type": "\"center\" | \"start\" | \"end\" | \"between\" | \"around\" | \"even\" | \"stretch\"",
           "optional": true
         },
         {
           "name": "ay",
-          "type": "\"center\" | \"start\" | \"end\" | \"stretch\" | \"between\" | \"around\" | \"even\"",
+          "type": "\"center\" | \"start\" | \"end\" | \"between\" | \"around\" | \"even\" | \"stretch\"",
           "optional": true
         },
         {
@@ -4105,12 +4105,12 @@
         },
         {
           "name": "ax",
-          "type": "\"center\" | \"start\" | \"end\" | \"stretch\" | \"between\" | \"around\" | \"even\"",
+          "type": "\"center\" | \"start\" | \"end\" | \"between\" | \"around\" | \"even\" | \"stretch\"",
           "optional": true
         },
         {
           "name": "ay",
-          "type": "\"center\" | \"start\" | \"end\" | \"stretch\" | \"between\" | \"around\" | \"even\"",
+          "type": "\"center\" | \"start\" | \"end\" | \"between\" | \"around\" | \"even\" | \"stretch\"",
           "optional": true
         },
         {
@@ -4347,6 +4347,427 @@
       "source": "components"
     },
     {
+      "name": "GroupedSelect",
+      "props": [
+        {
+          "name": "options",
+          "type": "GroupedSelectOption[]",
+          "optional": false
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "placeholder",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "searchable",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "onChange",
+          "type": "(((value: string) => void) & import(\"/home/james/Desktop/Coding/we/node_modules/.pnpm/solid-js@1.9.13/node_modules/solid-js/types/index\").JSX.ChangeEventHandlerUnion<HTMLDivElement, Event>)",
+          "optional": true
+        },
+        {
+          "name": "styles",
+          "type": "JSX.CSSProperties",
+          "optional": true
+        },
+        {
+          "name": "bg",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "color",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "opacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "border",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderColor",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "borderTop",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderRight",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderBottom",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderLeft",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderWidth",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "shadow",
+          "type": "ShadowValue",
+          "optional": true
+        },
+        {
+          "name": "ring",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "transform",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "transition",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "textAlign",
+          "type": "TextAlign",
+          "optional": true
+        },
+        {
+          "name": "fontFamily",
+          "type": "FontFamilyValue",
+          "optional": true
+        },
+        {
+          "name": "fontWeight",
+          "type": "FontWeight",
+          "optional": true
+        },
+        {
+          "name": "fontSize",
+          "type": "FontSizeValue",
+          "optional": true
+        },
+        {
+          "name": "lineHeight",
+          "type": "LineHeightValue",
+          "optional": true
+        },
+        {
+          "name": "letterSpacing",
+          "type": "LetterSpacingValue",
+          "optional": true
+        },
+        {
+          "name": "textDecoration",
+          "type": "TextDecoration",
+          "optional": true
+        },
+        {
+          "name": "textTransform",
+          "type": "TextTransform",
+          "optional": true
+        },
+        {
+          "name": "cursor",
+          "type": "Cursor",
+          "optional": true
+        },
+        {
+          "name": "pointerEvents",
+          "type": "PointerEvents",
+          "optional": true
+        },
+        {
+          "name": "visibility",
+          "type": "Visibility",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "minWidth",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "minHeight",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "maxWidth",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "maxHeight",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "display",
+          "type": "Display",
+          "optional": true
+        },
+        {
+          "name": "ax",
+          "type": "\"center\" | \"start\" | \"end\" | \"between\" | \"around\" | \"even\" | \"stretch\"",
+          "optional": true
+        },
+        {
+          "name": "ay",
+          "type": "\"center\" | \"start\" | \"end\" | \"between\" | \"around\" | \"even\" | \"stretch\"",
+          "optional": true
+        },
+        {
+          "name": "wrap",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "gap",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "flex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "alignSelf",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "overflow",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowX",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowY",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "scrollbarWidth",
+          "type": "ScrollbarWidth",
+          "optional": true
+        },
+        {
+          "name": "scrollbarGutter",
+          "type": "ScrollbarGutter",
+          "optional": true
+        },
+        {
+          "name": "zIndex",
+          "type": "ZIndexValue",
+          "optional": true
+        },
+        {
+          "name": "position",
+          "type": "Position",
+          "optional": true
+        },
+        {
+          "name": "top",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "right",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bottom",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "left",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "m",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "ml",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mr",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mt",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mb",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mx",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "my",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "p",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pl",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pr",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pt",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pb",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "px",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "py",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "r",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rt",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rb",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rl",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rr",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rtl",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rtr",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rbr",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rbl",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "hoverProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        },
+        {
+          "name": "activeProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        },
+        {
+          "name": "focusProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        },
+        {
+          "name": "disabledProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        },
+        {
+          "name": "reverse",
+          "type": "boolean",
+          "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
       "name": "IconLabelButton",
       "props": [
         {
@@ -4424,6 +4845,27 @@
           "name": "onReady",
           "type": "((ref: ImageCropRef) => void)",
           "optional": true
+        }
+      ],
+      "source": "components"
+    },
+    {
+      "name": "ImageLightbox",
+      "props": [
+        {
+          "name": "srcs",
+          "type": "string[]",
+          "optional": false
+        },
+        {
+          "name": "initialIndex",
+          "type": "number",
+          "optional": false
+        },
+        {
+          "name": "onClose",
+          "type": "() => void",
+          "optional": false
         }
       ],
       "source": "components"
@@ -4906,6 +5348,396 @@
       "name": "SearchInput",
       "props": [
         {
+          "name": "styles",
+          "type": "JSX.CSSProperties",
+          "optional": true
+        },
+        {
+          "name": "bg",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "color",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "opacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "border",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderColor",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "borderTop",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderRight",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderBottom",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderLeft",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "borderWidth",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "shadow",
+          "type": "ShadowValue",
+          "optional": true
+        },
+        {
+          "name": "ring",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "transform",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "transition",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "textAlign",
+          "type": "TextAlign",
+          "optional": true
+        },
+        {
+          "name": "fontFamily",
+          "type": "FontFamilyValue",
+          "optional": true
+        },
+        {
+          "name": "fontWeight",
+          "type": "FontWeight",
+          "optional": true
+        },
+        {
+          "name": "fontSize",
+          "type": "FontSizeValue",
+          "optional": true
+        },
+        {
+          "name": "lineHeight",
+          "type": "LineHeightValue",
+          "optional": true
+        },
+        {
+          "name": "letterSpacing",
+          "type": "LetterSpacingValue",
+          "optional": true
+        },
+        {
+          "name": "textDecoration",
+          "type": "TextDecoration",
+          "optional": true
+        },
+        {
+          "name": "textTransform",
+          "type": "TextTransform",
+          "optional": true
+        },
+        {
+          "name": "cursor",
+          "type": "Cursor",
+          "optional": true
+        },
+        {
+          "name": "pointerEvents",
+          "type": "PointerEvents",
+          "optional": true
+        },
+        {
+          "name": "visibility",
+          "type": "Visibility",
+          "optional": true
+        },
+        {
+          "name": "width",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "height",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "minWidth",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "minHeight",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "maxWidth",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "maxHeight",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "display",
+          "type": "Display",
+          "optional": true
+        },
+        {
+          "name": "ax",
+          "type": "\"center\" | \"start\" | \"end\" | \"between\" | \"around\" | \"even\" | \"stretch\"",
+          "optional": true
+        },
+        {
+          "name": "ay",
+          "type": "\"center\" | \"start\" | \"end\" | \"between\" | \"around\" | \"even\" | \"stretch\"",
+          "optional": true
+        },
+        {
+          "name": "wrap",
+          "type": "boolean",
+          "optional": true
+        },
+        {
+          "name": "gap",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "flex",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "alignSelf",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "overflow",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowX",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "overflowY",
+          "type": "Overflow",
+          "optional": true
+        },
+        {
+          "name": "scrollbarWidth",
+          "type": "ScrollbarWidth",
+          "optional": true
+        },
+        {
+          "name": "scrollbarGutter",
+          "type": "ScrollbarGutter",
+          "optional": true
+        },
+        {
+          "name": "zIndex",
+          "type": "ZIndexValue",
+          "optional": true
+        },
+        {
+          "name": "position",
+          "type": "Position",
+          "optional": true
+        },
+        {
+          "name": "top",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "right",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bottom",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "left",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "m",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "ml",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mr",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mt",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mb",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "mx",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "my",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "p",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pl",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pr",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pt",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "pb",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "px",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "py",
+          "type": "SpaceValue",
+          "optional": true
+        },
+        {
+          "name": "r",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rt",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rb",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rl",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rr",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rtl",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rtr",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rbr",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "rbl",
+          "type": "RadiusValue",
+          "optional": true
+        },
+        {
+          "name": "hoverProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        },
+        {
+          "name": "activeProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        },
+        {
+          "name": "focusProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        },
+        {
+          "name": "disabledProps",
+          "type": "Partial<DesignSystemProps>",
+          "optional": true
+        },
+        {
+          "name": "reverse",
+          "type": "boolean",
+          "optional": true
+        },
+        {
           "name": "placeholder",
           "type": "string",
           "optional": true
@@ -4923,16 +5755,6 @@
         {
           "name": "debounce",
           "type": "number",
-          "optional": true
-        },
-        {
-          "name": "class",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "styles",
-          "type": "Record<string, string | number>",
           "optional": true
         }
       ],
@@ -5121,223 +5943,6 @@
       "source": "widgets"
     },
     {
-      "name": "ChatPanel",
-      "description": "Sliding chat panel for conversational AI interactions.\nRenders a list of messages with a text input, anchored to a screen edge.\nSupports streaming indicator, auto-scroll, and header/close controls.\nIncludes template context header with fork/fresh actions and name+icon picker.",
-      "props": [
-        {
-          "name": "open",
-          "type": "boolean",
-          "optional": false
-        },
-        {
-          "name": "side",
-          "type": "\"left\" | \"right\"",
-          "optional": true
-        },
-        {
-          "name": "width",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "position",
-          "type": "\"fixed\" | \"absolute\"",
-          "optional": true
-        },
-        {
-          "name": "zIndex",
-          "type": "number",
-          "optional": true
-        },
-        {
-          "name": "messages",
-          "type": "ChatMessage[]",
-          "optional": false
-        },
-        {
-          "name": "loading",
-          "type": "boolean",
-          "optional": true
-        },
-        {
-          "name": "streamingContent",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "placeholder",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "onSend",
-          "type": "(message: string) => void",
-          "optional": false
-        },
-        {
-          "name": "disabled",
-          "type": "boolean",
-          "optional": true
-        },
-        {
-          "name": "title",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "onClose",
-          "type": "(() => void)",
-          "optional": true
-        },
-        {
-          "name": "apiKeyConfigured",
-          "type": "boolean",
-          "optional": true
-        },
-        {
-          "name": "onSetApiKey",
-          "type": "((key: string) => void)",
-          "optional": true
-        },
-        {
-          "name": "templateName",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "templateIcon",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "isReadOnly",
-          "type": "boolean",
-          "optional": true
-        },
-        {
-          "name": "hasPendingChanges",
-          "type": "boolean",
-          "optional": true
-        },
-        {
-          "name": "onFork",
-          "type": "(() => void)",
-          "optional": true
-        },
-        {
-          "name": "onStartFresh",
-          "type": "(() => void)",
-          "optional": true
-        },
-        {
-          "name": "pickerOpen",
-          "type": "boolean",
-          "optional": true
-        },
-        {
-          "name": "pickerAction",
-          "type": "\"fork\" | \"fresh\"",
-          "optional": true
-        },
-        {
-          "name": "pickerDefaultName",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "pickerDefaultIcon",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "pickerShowDestination",
-          "type": "boolean",
-          "optional": true
-        },
-        {
-          "name": "onPickerConfirm",
-          "type": "((name: string, icon: string, destination: \"personal\" | \"space\") => void)",
-          "optional": true
-        },
-        {
-          "name": "onPickerCancel",
-          "type": "(() => void)",
-          "optional": true
-        },
-        {
-          "name": "mode",
-          "type": "\"chat\" | \"code\"",
-          "optional": true
-        },
-        {
-          "name": "schemaJson",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "onModeChange",
-          "type": "((mode: \"chat\" | \"code\") => void)",
-          "optional": true
-        },
-        {
-          "name": "onSchemaEdit",
-          "type": "((json: string) => void)",
-          "optional": true
-        },
-        {
-          "name": "canUndo",
-          "type": "boolean",
-          "optional": true
-        },
-        {
-          "name": "canRedo",
-          "type": "boolean",
-          "optional": true
-        },
-        {
-          "name": "onUndo",
-          "type": "(() => void)",
-          "optional": true
-        },
-        {
-          "name": "onRedo",
-          "type": "(() => void)",
-          "optional": true
-        },
-        {
-          "name": "sessions",
-          "type": "SessionInfo[]",
-          "optional": true
-        },
-        {
-          "name": "activeSessionId",
-          "type": "string | null",
-          "optional": true
-        },
-        {
-          "name": "onNewChat",
-          "type": "(() => void)",
-          "optional": true
-        },
-        {
-          "name": "onSwitchSession",
-          "type": "((sessionId: string) => void)",
-          "optional": true
-        },
-        {
-          "name": "onDeleteSession",
-          "type": "((sessionId: string) => void)",
-          "optional": true
-        },
-        {
-          "name": "operationLoading",
-          "type": "string | null",
-          "optional": true
-        }
-      ],
-      "source": "widgets"
-    },
-    {
       "name": "CollapsibleSidebar",
       "props": [
         {
@@ -5367,7 +5972,7 @@
         },
         {
           "name": "position",
-          "type": "\"fixed\" | \"absolute\" | \"static\"",
+          "type": "\"static\" | \"absolute\" | \"fixed\"",
           "optional": true
         },
         {
@@ -6341,6 +6946,12 @@
           "type": "string",
           "predicate": "we://default_template_id",
           "required": false
+        },
+        {
+          "name": "defaultThemeId",
+          "type": "string",
+          "predicate": "we://default_theme_id",
+          "required": false
         }
       ],
       "relations": [
@@ -6461,6 +7072,12 @@
           "required": false
         },
         {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        },
+        {
           "name": "origin",
           "type": "string",
           "predicate": "we://origin",
@@ -6485,9 +7102,22 @@
           "predicate": "we://template_schema",
           "required": false,
           "default": "null"
+        },
+        {
+          "name": "themeId",
+          "type": "string",
+          "predicate": "we://theme_id",
+          "required": false
         }
       ],
-      "relations": []
+      "relations": [
+        {
+          "name": "screenshots",
+          "kind": "HasMany",
+          "predicate": "we://screenshot",
+          "target": "ImageBlock"
+        }
+      ]
     },
     {
       "name": "TextBlock",
@@ -6608,7 +7238,14 @@
           "default": "null"
         }
       ],
-      "relations": []
+      "relations": [
+        {
+          "name": "screenshots",
+          "kind": "HasMany",
+          "predicate": "we://screenshot",
+          "target": "ImageBlock"
+        }
+      ]
     },
     {
       "name": "VideoBlock",
@@ -7040,6 +7677,10 @@
           "type": "array",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
+        "myTemplates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
         "allTemplates": {
           "type": "array",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
@@ -7061,6 +7702,10 @@
         "templateManagementList": {
           "type": "array",
           "properties": ["id", "name", "icon", "description", "isCore", "isInstalled", "isDefault"]
+        },
+        "switcherGroups": {
+          "type": "array",
+          "properties": ["label", "items"]
         }
       },
       "actions": [
@@ -7085,6 +7730,13 @@
         "members": {
           "type": "array",
           "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        },
+        "spaceDefaultTemplateId": {
+          "type": "string"
+        },
+        "currentSpace": {
+          "type": "object",
+          "properties": ["uuid", "name", "description", "avatar", "defaultTemplateId"]
         },
         "signalTypes": {
           "type": "array",
@@ -7165,6 +7817,9 @@
         "pickerDefaultIcon": {
           "type": "string"
         },
+        "pickerShowDestination": {
+          "type": "boolean"
+        },
         "sessions": {
           "type": "array"
         },
@@ -7213,11 +7868,16 @@
           "type": "array",
           "properties": ["id", "name", "image"]
         },
+        "appsWithWe": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "image"]
+        },
         "activeAppId": {
           "type": "string"
         }
       },
       "actions": ["activateApp", "deactivateApp"]
     }
-  ]
+  ],
+  "shellComponents": ["AiChatPanel", "BenchmarkTimer", "RightPanelContainer", "TemplateToolbar", "WeCube"]
 }

@@ -11,10 +11,10 @@ import {
   insertChild,
   mergeNode,
   removeChild,
+  stripNodeIds,
   validateSemantic,
   validateStructure,
 } from '@we/schema-shared';
-import type { ChatMessage } from '@we/widgets/solid';
 import {
   Accessor,
   createContext,
@@ -28,8 +28,13 @@ import {
 
 import type { ModelManifestEntry } from './AdamStore';
 
-// Re-export for convenience
-export type { ChatMessage } from '@we/widgets/solid';
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  createdAt?: string;
+  status?: 'sending' | 'streaming' | 'sent' | 'error';
+}
 
 // Base validation context built once from the static generated context data.
 // External perspective models are merged in reactively inside AiStoreProvider.
@@ -63,10 +68,10 @@ export interface AiStore {
   switchSession: (sessionId: string) => void;
   deleteSession: (sessionId: string) => Promise<void>;
 
-  // --- Panel mode (chat / code) ---
-  panelMode: Accessor<'chat' | 'code'>;
+  // --- Content mode (preview / visual) ---
+  contentMode: Accessor<'preview' | 'visual'>;
+  setContentMode: (mode: 'preview' | 'visual') => void;
   schemaJson: Accessor<string>;
-  setPanelMode: (mode: 'chat' | 'code') => void;
   onSchemaEdit: (json: string) => void;
 
   // --- Undo / Redo ---
@@ -78,13 +83,45 @@ export interface AiStore {
   // --- Template actions ---
   startFork: () => void;
   startFresh: () => void;
-  confirmPicker: (name: string, icon: string, destination: 'personal' | 'space') => void;
+  confirmPicker: (name: string, icon: string, destination: 'personal' | 'space') => Promise<void>;
   cancelPicker: () => void;
 
-  // --- Panel control ---
+  // --- Template editing mode ---
+  isEditingTemplate: Accessor<boolean>;
+  editAction: Accessor<'edit' | 'fork' | 'fresh' | null>;
+  enterTemplateEditing: (action?: 'edit' | 'fork' | 'fresh') => void;
+  exitTemplateEditing: () => void;
+
+  // --- Panel control (AI chat) ---
   toggle: () => void;
   open: () => void;
   close: () => void;
+
+  // --- Code panel ---
+  codePanelOpen: Accessor<boolean>;
+  toggleCodePanel: () => void;
+  openCodePanel: () => void;
+  closeCodePanel: () => void;
+
+  // --- Theme panel ---
+  themePanelOpen: Accessor<boolean>;
+  toggleThemePanel: () => void;
+  openThemePanel: () => void;
+  closeThemePanel: () => void;
+
+  // --- Theme editing mode (independent of template editing) ---
+  isEditingTheme: Accessor<boolean>;
+  enterThemeEditing: () => void;
+  exitThemeEditing: () => void;
+  toggleThemeEditing: () => void;
+
+  // --- Panel widths (persisted) ---
+  aiPanelWidth: Accessor<number>;
+  codePanelWidth: Accessor<number>;
+  themePanelWidth: Accessor<number>;
+  setAiPanelWidth: (w: number) => void;
+  setCodePanelWidth: (w: number) => void;
+  setThemePanelWidth: (w: number) => void;
 
   // --- Chat actions ---
   sendMessage: (text: string) => Promise<void>;
@@ -268,9 +305,10 @@ export function AiStoreProvider(props: ParentProps) {
   // Track the AD4M ChatSession model instance for the active session
   let activeSessionModel: ChatSessionModel | null = null;
 
-  // --- Panel mode (chat / code) ---
-  const [panelMode, setPanelMode] = createSignal<'chat' | 'code'>('chat');
-  const schemaJson = () => JSON.stringify(templateStore.currentTemplate, null, 2);
+  // --- Content mode (preview / visual / code) ---
+  const [contentMode, setContentMode] = createSignal<'preview' | 'visual'>('preview');
+  const schemaJson = () =>
+    JSON.stringify(stripNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode), null, 2);
 
   // --- Template context (computed) ---
   const templateName = () => templateStore.currentTemplate.meta?.name || templateStore.currentTemplate.id || 'Template';
@@ -520,6 +558,50 @@ export function AiStoreProvider(props: ParentProps) {
   }
 
   // ----------------------------------------------------------------
+  // Template editing mode
+  // ----------------------------------------------------------------
+  const [isEditingTemplate, setIsEditingTemplate] = createSignal(false);
+  const [editAction, setEditAction] = createSignal<'edit' | 'fork' | 'fresh' | null>(null);
+
+  function enterTemplateEditing(action: 'edit' | 'fork' | 'fresh' = 'edit') {
+    setEditAction(action);
+    setIsEditingTemplate(true);
+    setIsOpen(true);
+  }
+
+  function exitTemplateEditing() {
+    setIsEditingTemplate(false);
+    setEditAction(null);
+    setIsOpen(false);
+    setCodePanelOpen(false);
+    setContentMode('preview');
+    // Theme editing is independent — not closed here
+  }
+
+  // ----------------------------------------------------------------
+  // Theme editing mode (independent of template editing)
+  // ----------------------------------------------------------------
+  const [isEditingTheme, setIsEditingTheme] = createSignal(false);
+
+  function enterThemeEditing() {
+    setIsEditingTheme(true);
+    setThemePanelOpen(true);
+  }
+
+  function exitThemeEditing() {
+    setIsEditingTheme(false);
+    setThemePanelOpen(false);
+  }
+
+  function toggleThemeEditing() {
+    if (isEditingTheme()) {
+      exitThemeEditing();
+    } else {
+      enterThemeEditing();
+    }
+  }
+
+  // ----------------------------------------------------------------
   // Panel control
   // ----------------------------------------------------------------
   function toggle() {
@@ -530,6 +612,60 @@ export function AiStoreProvider(props: ParentProps) {
   }
   function close() {
     setIsOpen(false);
+  }
+
+  // Code panel
+  const [codePanelOpen, setCodePanelOpen] = createSignal(false);
+  function toggleCodePanel() {
+    setCodePanelOpen((v) => !v);
+  }
+  function openCodePanel() {
+    setCodePanelOpen(true);
+  }
+  function closeCodePanel() {
+    setCodePanelOpen(false);
+  }
+
+  // Theme panel
+  const [themePanelOpen, setThemePanelOpen] = createSignal(false);
+  function toggleThemePanel() {
+    setThemePanelOpen((v) => !v);
+  }
+  function openThemePanel() {
+    setThemePanelOpen(true);
+  }
+  function closeThemePanel() {
+    setThemePanelOpen(false);
+  }
+
+  // Panel widths — signal updates immediately; localStorage write is debounced to avoid
+  // blocking the main thread on every mousemove pixel during drag-to-resize.
+  const [aiPanelWidth, setAiPanelWidthSignal] = createSignal(
+    parseInt(localStorage.getItem('we-ai-panel-width') ?? '400', 10),
+  );
+  const [codePanelWidth, setCodePanelWidthSignal] = createSignal(
+    parseInt(localStorage.getItem('we-code-panel-width') ?? '480', 10),
+  );
+  const [themePanelWidth, setThemePanelWidthSignal] = createSignal(
+    parseInt(localStorage.getItem('we-theme-panel-width') ?? '320', 10),
+  );
+  let aiWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
+  let codeWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
+  let themeWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
+  function setAiPanelWidth(w: number) {
+    setAiPanelWidthSignal(w);
+    clearTimeout(aiWidthPersistTimer);
+    aiWidthPersistTimer = setTimeout(() => localStorage.setItem('we-ai-panel-width', String(w)), 500);
+  }
+  function setCodePanelWidth(w: number) {
+    setCodePanelWidthSignal(w);
+    clearTimeout(codeWidthPersistTimer);
+    codeWidthPersistTimer = setTimeout(() => localStorage.setItem('we-code-panel-width', String(w)), 500);
+  }
+  function setThemePanelWidth(w: number) {
+    setThemePanelWidthSignal(w);
+    clearTimeout(themeWidthPersistTimer);
+    themeWidthPersistTimer = setTimeout(() => localStorage.setItem('we-theme-panel-width', String(w)), 500);
   }
 
   // ----------------------------------------------------------------
@@ -607,6 +743,9 @@ export function AiStoreProvider(props: ParentProps) {
       const suffix = hadPending ? ' Pending changes have been applied.' : '';
       setMessages((prev) => [...prev, createMessage('assistant', `Forked as "${name}".${suffix}`)]);
     }
+
+    // Enter template editing on the newly created template
+    enterTemplateEditing(action as 'fork' | 'fresh');
   }
 
   function cancelPicker() {
@@ -960,7 +1099,14 @@ export function AiStoreProvider(props: ParentProps) {
                   : insertSpec.before
                     ? { before: insertSpec.before }
                     : undefined;
-                const err = insertChild(accumulatedSchema, patch.targetId, arrayKey, insertSpec.node, position);
+                // Strip positioning keys that the AI sometimes misplaces inside the node body.
+                // These are patch directives, not valid SchemaNode fields — leaving them on the
+                // node causes zSchemaNode.strict() to reject the schema with "Unrecognized key".
+                const cleanNode = { ...(insertSpec.node as Record<string, unknown>) };
+                delete cleanNode.after;
+                delete cleanNode.before;
+                const nodeToInsert = cleanNode as SchemaNode;
+                const err = insertChild(accumulatedSchema, patch.targetId, arrayKey, nodeToInsert, position);
                 if (err) {
                   patchError = err.error;
                   break;
@@ -1082,14 +1228,17 @@ export function AiStoreProvider(props: ParentProps) {
           } else if (isReadOnly()) {
             console.log('[AiStore] Semantic validation passed — buffering (read-only template)');
             pushSnapshot();
-            setPendingTemplate(mergedTemplate);
+            setPendingTemplate(stripNodeIds(mergedTemplate) as TemplateSchema);
             for (const tr of toolResults) {
               tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
             }
           } else {
             console.log('[AiStore] Semantic validation passed — applying to store');
             pushSnapshot();
-            templateStore.updateTemplate(mergedTemplate);
+            templateStore.updateTemplate({
+              ...stripNodeIds(mergedTemplate),
+              id: templateStore.currentTemplate.id,
+            } as TemplateSchema);
             await templateStore.persistCurrentTemplate();
             setPendingTemplate(null);
             for (const tr of toolResults) {
@@ -1195,7 +1344,10 @@ export function AiStoreProvider(props: ParentProps) {
     try {
       const parsed = JSON.parse(json);
       pushSnapshot();
-      templateStore.updateTemplate(parsed as TemplateSchema);
+      // stripNodeIds deletes the root node's id, but at the TemplateSchema level that
+      // id is the template identifier, not an internal node id — restore it.
+      const schema = { ...stripNodeIds(parsed as SchemaNode), id: templateStore.currentTemplate.id } as TemplateSchema;
+      templateStore.updateTemplate(schema);
       templateStore.persistCurrentTemplate();
       setMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
     } catch {
@@ -1231,6 +1383,9 @@ export function AiStoreProvider(props: ParentProps) {
     const templateId = templateStore.currentTemplate.id;
     if (templateId && adamStore.rootPerspective()) {
       loadSessionsForTemplate(templateId);
+      setContentMode('preview');
+      setIsEditingTemplate(false);
+      setEditAction(null);
     }
   });
 
@@ -1287,10 +1442,10 @@ export function AiStoreProvider(props: ParentProps) {
     switchSession,
     deleteSession,
 
-    // Panel mode (chat / code)
-    panelMode,
+    // Content mode (preview / visual / code)
+    contentMode,
+    setContentMode,
     schemaJson,
-    setPanelMode,
     onSchemaEdit,
 
     // Undo / Redo
@@ -1305,10 +1460,42 @@ export function AiStoreProvider(props: ParentProps) {
     confirmPicker,
     cancelPicker,
 
-    // Panel control
+    // Template editing
+    isEditingTemplate,
+    editAction,
+    enterTemplateEditing,
+    exitTemplateEditing,
+
+    // Theme editing
+    isEditingTheme,
+    enterThemeEditing,
+    exitThemeEditing,
+    toggleThemeEditing,
+
+    // Panel control (AI chat)
     toggle,
     open,
     close,
+
+    // Code panel
+    codePanelOpen,
+    toggleCodePanel,
+    openCodePanel,
+    closeCodePanel,
+
+    // Theme panel
+    themePanelOpen,
+    toggleThemePanel,
+    openThemePanel,
+    closeThemePanel,
+
+    // Panel widths
+    aiPanelWidth,
+    codePanelWidth,
+    themePanelWidth,
+    setAiPanelWidth,
+    setCodePanelWidth,
+    setThemePanelWidth,
 
     // Chat actions
     sendMessage,

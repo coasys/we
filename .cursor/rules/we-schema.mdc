@@ -186,9 +186,12 @@ For external-app perspectives, always add perspective: "spaceStore.perspective".
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
+Supported types: "string", "boolean", "number", "function", "object".
 Read:  { "$local": "name" } — returns the signal value (reactive).
+       { "$local": "name.nested.path" } — dot-notation reads into object-typed fields (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
-       { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean).
+       { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
+       { "$setLocal": "name", "merge": { "field": "$event.detail" } } — shallow-merges fields into an object-typed signal. Values are resolved as event paths (e.g. "$event.detail") or passed as literals. Use for partial updates to object state.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
 Call function: { "$callLocal": "fieldName" } — event handler that calls the function stored in a function-typed local field.
   Used when a child component needs to trigger a callback passed in via $localState.
@@ -196,6 +199,17 @@ Call function: { "$callLocal": "fieldName" } — event handler that calls the fu
   Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
 $local values can be used in $action args: { "$action": "store.method", "args": [{ "$local": "name" }] }
+
+Object-typed local state (consolidating related scalar fields):
+When several related fields share a common condition on their initial values (e.g. all null/empty when a store value is absent), prefer a single "object" field seeded from the store, then read sub-fields with dot-notation and write with merge.
+Example — location object (replaces 5 separate scalar fields with $if guards):
+  "$localState": { "location": { "type": "object", "initial": { "$store": "spaceStore.currentSpace.location" } } }
+  Read:  { "$local": "location.latitude" }, { "$local": "location.city" }
+  Write (picker confirm): { "$setLocal": "location", "from": "$event.detail" }
+  Write (partial edit):   { "$setLocal": "location", "merge": { "city": "$event.detail" } }
+  Write (clear):          { "$setLocal": "location", "value": null }
+  Condition (has location): { "$local": "location" }
+Use "object" whenever you would otherwise write 3+ related scalar fields each needing $if on their initial value.
 
 Hoisted query state ($queries):
 Declare on any node to run reactive subscriptions at the node root and expose results in $local.
@@ -580,15 +594,19 @@ when `relative` is enabled.
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
   Props: class?: string, styles?: Record<string, string | number>, placement?: Placement, triggerLabel?: string, triggerIcon?: string, items: SolidDropdownMenuEntry[]
 - EditableImage
-  Props: src?: string, alt?: string, fit?: "fill" | "none" | "cover" | "contain" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), class?: string, aspect?: number, maxSize?: number, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, direction?: FlexDirection, ax?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", ay?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>
+  Props: src?: string, alt?: string, fit?: "fill" | "none" | "cover" | "contain" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), class?: string, aspect?: number, maxSize?: number, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, direction?: FlexDirection, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>
 - FlipCard
   Props: front?: JSX.Element, back?: JSX.Element, width?: string, height?: string, flipOnHover?: boolean, flipDuration?: string, wobbleOnHover?: boolean, wobbleDegree?: number, class?: string, styles?: Record<string, string | number>
 - Grid
-  Props: bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", ay?: "center" | "start" | "end" | "stretch" | "between" | "around" | "even", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, styles?: JSX.CSSProperties, columns?: number, minChildWidth?: string
+  Props: bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, styles?: JSX.CSSProperties, columns?: number, minChildWidth?: string
+- GroupedSelect
+  Props: options: GroupedSelectOption[], value?: string, placeholder?: string, searchable?: boolean, onChange?: (((value: string) => void) & import("/home/james/Desktop/Coding/we/node_modules/.pnpm/solid-js@1.9.13/node_modules/solid-js/types/index").JSX.ChangeEventHandlerUnion<HTMLDivElement, Event>), styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean
 - IconLabelButton
   Props: icon: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
 - ImageCrop
   Props: src: string, fileName?: string, aspect?: number, maxSize?: number, outputType?: string, quality?: number, onReady?: ((ref: ImageCropRef) => void)
+- ImageLightbox
+  Props: srcs: string[], initialIndex: number, onClose: () => void
 - List
   Props: children?: JSX.Element, renderItem?: ((item: ListItem, index: number) => JSX.Element), items?: ListItem[], ordered?: boolean, gap?: string, styles?: Record<string, string | number>
 - PostCard
@@ -598,7 +616,7 @@ when `relative` is enabled.
 - Row
   Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexMainAxis, ay?: FlexCrossAxis
 - SearchInput
-  Props: placeholder?: string, value?: string, onSearch?: ((value: string) => void), debounce?: number, class?: string, styles?: Record<string, string | number>
+  Props: styles?: JSX.CSSProperties, bg?: ColorValue, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, placeholder?: string, value?: string, onSearch?: ((value: string) => void), debounce?: number
 - SignalControl
   Props: signalType: SignalTypeData, signals?: SignalData[], myDid?: string, onSignal?: ((value: number) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
 - Stepper
@@ -616,13 +634,8 @@ Layers are injected via factory functions (planet surface + background).
 Requires a layer factory registry mapping string names to factory functions.
 Not schema-renderable — used directly in application code.
   Props: ionAccessToken?: string, planetLayers?: LayerConfig<unknown>[], backgroundLayers?: LayerConfig<unknown>[], layerFactoryRegistry: Record<string, LayerFactory<any>>
-- ChatPanel — Sliding chat panel for conversational AI interactions.
-Renders a list of messages with a text input, anchored to a screen edge.
-Supports streaming indicator, auto-scroll, and header/close controls.
-Includes template context header with fork/fresh actions and name+icon picker.
-  Props: open: boolean, side?: "left" | "right", width?: string, position?: "fixed" | "absolute", zIndex?: number, messages: ChatMessage[], loading?: boolean, streamingContent?: string, placeholder?: string, onSend: (message: string) => void, disabled?: boolean, title?: string, onClose?: (() => void), apiKeyConfigured?: boolean, onSetApiKey?: ((key: string) => void), templateName?: string, templateIcon?: string, isReadOnly?: boolean, hasPendingChanges?: boolean, onFork?: (() => void), onStartFresh?: (() => void), pickerOpen?: boolean, pickerAction?: "fork" | "fresh", pickerDefaultName?: string, pickerDefaultIcon?: string, pickerShowDestination?: boolean, onPickerConfirm?: ((name: string, icon: string, destination: "personal" | "space") => void), onPickerCancel?: (() => void), mode?: "chat" | "code", schemaJson?: string, onModeChange?: ((mode: "chat" | "code") => void), onSchemaEdit?: ((json: string) => void), canUndo?: boolean, canRedo?: boolean, onUndo?: (() => void), onRedo?: (() => void), sessions?: SessionInfo[], activeSessionId?: string | null, onNewChat?: (() => void), onSwitchSession?: ((sessionId: string) => void), onDeleteSession?: ((sessionId: string) => void), operationLoading?: string | null
 - CollapsibleSidebar
-  Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "fixed" | "absolute" | "static", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
+  Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "static" | "absolute" | "fixed", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
 - GraphWidget — 2D force-directed graph visualization using D3-force layout and Canvas rendering.
 Displays typed nodes (user, space, post) and edges (follows, member-of, etc.)
 with configurable styling, layout forces, and interaction handlers.
@@ -970,6 +983,7 @@ Space extends WeNode:
   - avatar: string [we://image]
   - coverImage: string [we://thumbnail]
   - defaultTemplateId: string [we://default_template_id]
+  - defaultThemeId: string [we://default_theme_id]
   Relations:
   - location: HasOne [we://location]
 
@@ -997,10 +1011,14 @@ TaskBlock extends WeNode:
 Template extends WeNode:
   Fields:
   - name: string [we://name]
+  - description: string [we://description]
   - origin: string [we://origin]
   - version: number = 1 [we://version]
   - slug: string [we://slug]
   - schema: string = null [we://template_schema]
+  - themeId: string [we://theme_id]
+  Relations:
+  - screenshots: HasMany → ImageBlock [we://screenshot]
 
 TextBlock extends WeNode:
   Fields:
@@ -1024,6 +1042,8 @@ Theme extends WeNode:
   - version: number = 1 [we://version]
   - css: string = null [we://stylesheet]
   - overrides: string = null [we://token_overrides]
+  Relations:
+  - screenshots: HasMany → ImageBlock [we://screenshot]
 
 VideoBlock extends WeNode:
   Fields:
@@ -1094,15 +1114,17 @@ ThemeStore:
 
 TemplateStore:
 - State:
-  - personalTemplates: array of TemplateSchema objects — user's installed custom templates (excludes core and space templates)
+  - personalTemplates: array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)
   - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space perspective
   - coreTemplates: array of TemplateSchema objects — built-in system templates (always available)
+  - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes core and space templates)
   - allTemplates: array of TemplateSchema objects — union of core + personal + space templates
   - shellTemplates: array of TemplateSchema objects (static system pages: profile, settings, tests)
   - currentTemplate: TemplateSchema (the active template)
   - operationLoading: unknown
   - activeShellView: string | null (id of the currently open shell overlay: 'profile' | 'settings' | 'schema-tests' | 'landing-page' | null)
   - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isCore, isInstalled, isDefault)
+  - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Core". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.
 - Actions:
   - updateTemplate(newTemplate: TemplateSchema): updates the current template
   - switchTemplate(newTemplateId: string): switches to another template
@@ -1118,6 +1140,8 @@ SpaceStore:
 - State:
   - memberDids: string[] — DIDs of all members in the current space (includes own DID)
   - members: AgentProfileSummary[] — cached profiles for all memberDids
+  - spaceDefaultTemplateId: string — the current space's default template ID (empty string when no space is active)
+  - currentSpace: Space | null — the current space model (uuid, name, description, avatar, defaultTemplateId)
   - signalTypes: array of SignalType objects (community-created reaction/vote types)
   - signalTypesBySlug: Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID
 - Actions:
@@ -1146,6 +1170,7 @@ AiStore:
   - pickerAction: unknown
   - pickerDefaultName: unknown
   - pickerDefaultIcon: unknown
+  - pickerShowDestination: unknown
   - sessions: unknown
   - activeSessionId: unknown
   - panelMode: unknown
@@ -1174,6 +1199,7 @@ AiStore:
 AppStore:
 - State:
   - apps: RegisteredApp[] — list of registered external apps (id, name, image)
+  - appsWithWe: unknown
   - activeAppId: string | null — id of the currently active app, or null if none
 - Actions:
   - activateApp(id: string): activates an app and switches to its view
@@ -1771,6 +1797,20 @@ that work directly with AD4M model classes. They do NOT apply to JSON template s
 
 ---
 
+### Running Schema Validation (no build needed)
+
+During codebase work, use the `pnpm validate` script in `schema-system/shared` — it runs
+the validator directly from TypeScript source via `tsx`, so no build step is required:
+
+```sh
+pnpm --filter @we/schema-shared validate
+```
+
+This validates all `.schema.ts` files under `packages/app-framework/src/shared/schemas/`.
+For per-file validation or other options, see the **Schema Validation** section above.
+
+---
+
 ### Schema System — Before Suggesting New Operators
 
 Before proposing a new schema operator, read `packages/schema-system/OPERATORS.md` —
@@ -1798,6 +1838,21 @@ when `$in` already exists. Example:
 // ✅ Use $in instead
 { $in: [val, arr] }
 ```
+
+**Common mistake:** wrapping `$count` in `$gt [..., 0]` when used as a `$if` condition.
+`$if` conditions use standard JavaScript truthiness — `0` is falsy, any positive number is truthy.
+The `$gt` layer is redundant nesting that produces no change in behaviour.
+
+```ts
+// ❌ Unnecessary — $gt adds nothing here
+{ "condition": { "$gt": [{ "$count": { "items": { "$local": "items" } } }, 0] } }
+
+// ✅ $count alone is truthy/falsy in a condition
+{ "condition": { "$count": { "items": { "$local": "items" } } } }
+```
+
+Note: `$gt` is still needed when you want an explicit boolean value outside a condition context
+(e.g. as a prop that expects `boolean`, not just any truthy value).
 
 ---
 

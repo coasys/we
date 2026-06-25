@@ -14,6 +14,7 @@ export {
 } from '../../components/media/AudioVisualiser/AudioVisualiser.solid';
 export { EditableImage, type EditableImageProps } from '../../components/media/EditableImage/EditableImage.solid';
 export { ImageCrop, type ImageCropProps, type ImageCropRef } from '../../components/media/ImageCrop/ImageCrop.solid';
+export { ImageLightbox, type ImageLightboxProps } from '../../components/media/ImageLightbox/ImageLightbox.solid';
 
 // Cards
 export { FlipCard, type FlipCardProps } from '../../components/cards/FlipCard/FlipCard.solid';
@@ -21,6 +22,11 @@ export { PostCard, type PostCardProps } from '../../components/cards/PostCard/Po
 
 // Inputs
 export { SearchInput, type SearchInputProps } from '../../components/inputs/SearchInput/SearchInput.solid';
+export {
+  GroupedSelect,
+  type GroupedSelectOption,
+  type GroupedSelectProps,
+} from '../../components/inputs/GroupedSelect/GroupedSelect.solid';
 
 // Buttons
 export { CircleButton, type CircleButtonProps } from '../../components/buttons/CircleButton/CircleButton.solid';

@@ -291,8 +291,25 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const metaEntries: Record<string, LocalFieldMeta> = {};
     const scopeFields: string[] = [];
 
+    // Evaluate an `initial` value: if it's an expression token (object with $-prefixed keys),
+    // resolve it once against the current stores + parent context. Otherwise use it as a literal.
+    // Called both at mount and inside reset() so that reset re-reads the current store value.
+    const resolveInitial = (raw: unknown): unknown => {
+      if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+        if (Object.keys(raw).some((k) => k.startsWith('$'))) {
+          const resolved = resolveProp(raw, stores as Record<string, unknown>, context);
+          if (typeof resolved === 'function' && REACTIVE_ACCESSOR in (resolved as object)) {
+            return (resolved as () => unknown)();
+          }
+          return resolved;
+        }
+      }
+      return raw;
+    };
+
     for (const [name, field] of Object.entries(node.$localState as Record<string, LocalStateField>)) {
-      const [get, set] = createSignal<unknown>(field.initial);
+      const rawInitial = field.initial;
+      const [get, set] = createSignal<unknown>(resolveInitial(rawInitial));
       accessors[name] = get;
       // Function-type fields: Solid treats setter(fn) as a functional update (calls fn(prev)).
       // Wrap the setter so that storing a function value works correctly.
@@ -314,18 +331,37 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         });
       });
 
-      const initial = field.initial;
       metaEntries[name] = {
-        initial,
+        initial: resolveInitial(rawInitial),
         rules,
         touched,
         setTouched,
         errors,
         reset: () => {
-          set(initial as never);
+          set(resolveInitial(rawInitial) as never);
           setTouched(false);
         },
       };
+
+      // For dynamic initial expressions, keep the signal in sync whenever the
+      // underlying store value changes (e.g. switching spaces resets the field
+      // to the new space's values rather than keeping the old space's values).
+      if (
+        rawInitial !== null &&
+        typeof rawInitial === 'object' &&
+        !Array.isArray(rawInitial) &&
+        Object.keys(rawInitial as object).some((k) => k.startsWith('$'))
+      ) {
+        const reactiveVal = resolveProp(rawInitial, stores as Record<string, unknown>, context, createMemo);
+        createEffect(() => {
+          const next =
+            typeof reactiveVal === 'function' && REACTIVE_ACCESSOR in (reactiveVal as object)
+              ? (reactiveVal as () => unknown)()
+              : reactiveVal;
+          set(next as never);
+          setTouched(false);
+        });
+      }
     }
 
     effectiveContext = {
