@@ -64,8 +64,6 @@ export function ThemePanel() {
 
   const [cssEditing, setCssEditing] = createSignal(false);
   const [cssValue, setCssValue] = createSignal('');
-  const [savingAs, setSavingAs] = createSignal(false);
-  const [savingAsName, setSavingAsName] = createSignal('');
 
   function startCssEdit() {
     setCssValue(editing()?.css ?? '');
@@ -75,10 +73,15 @@ export function ThemePanel() {
   function commitCssEdit() {
     themeStore.updateEditingCss(cssValue());
     setCssEditing(false);
+    saveTheme();
   }
 
   function cancelCssEdit() {
     setCssEditing(false);
+  }
+
+  function saveTheme() {
+    themeStore.saveEditingTheme();
   }
 
   function setOverride<K extends keyof ThemeOverrides>(key: K, value: ThemeOverrides[K] | undefined) {
@@ -112,6 +115,7 @@ export function ThemePanel() {
           max={359}
           step={1}
           on:input={(e: CustomEvent) => setOverride(key, Number(e.detail))}
+          on:change={() => saveTheme()}
         />
         <we-text
           style={{
@@ -151,6 +155,7 @@ export function ThemePanel() {
           max={max}
           step={1}
           on:input={(e: CustomEvent) => setOverride(key, `${e.detail}%`)}
+          on:change={() => saveTheme()}
         />
         <we-text
           style={{
@@ -214,7 +219,10 @@ export function ThemePanel() {
                 <we-icon-picker
                   value={editing()!.icon}
                   size="sm"
-                  on:change={(e: CustomEvent) => themeStore.updateEditingMeta({ icon: e.detail })}
+                  on:change={(e: CustomEvent) => {
+                    themeStore.updateEditingMeta({ icon: e.detail });
+                    saveTheme();
+                  }}
                 />
                 <we-input
                   value={editing()!.name}
@@ -222,6 +230,7 @@ export function ThemePanel() {
                   size="sm"
                   style={{ flex: '1' }}
                   on:input={(e: CustomEvent) => themeStore.updateEditingMeta({ name: e.detail })}
+                  on:blur={() => saveTheme()}
                 />
               </Row>
             </Column>
@@ -233,9 +242,11 @@ export function ThemePanel() {
                 value={overrides().themeName ?? ''}
                 options={BASE_THEME_OPTIONS}
                 size="sm"
-                on:change={(e: CustomEvent) =>
-                  e.detail ? setOverride('themeName', e.detail) : setOverride('themeName', undefined)
-                }
+                on:change={(e: CustomEvent) => {
+                  if (e.detail) setOverride('themeName', e.detail);
+                  else setOverride('themeName', undefined);
+                  saveTheme();
+                }}
               />
             </Column>
 
@@ -249,6 +260,7 @@ export function ThemePanel() {
                   onClick={() => {
                     setOverride('multiplier', 1);
                     setOverride('subtractor', '0%');
+                    saveTheme();
                   }}
                 >
                   <we-icon name="sun" />
@@ -260,6 +272,7 @@ export function ThemePanel() {
                   onClick={() => {
                     setOverride('multiplier', -1);
                     setOverride('subtractor', '108%');
+                    saveTheme();
                   }}
                 >
                   <we-icon name="moon" />
@@ -298,7 +311,10 @@ export function ThemePanel() {
                 value={overrides().fontFamily ?? 'base'}
                 options={FONT_OPTIONS}
                 size="sm"
-                on:change={(e: CustomEvent) => setOverride('fontFamily', e.detail)}
+                on:change={(e: CustomEvent) => {
+                  setOverride('fontFamily', e.detail);
+                  saveTheme();
+                }}
               />
             </Column>
 
@@ -361,79 +377,6 @@ export function ThemePanel() {
             </Column>
           </Column>
         </we-scroll-area>
-
-        {/* Footer actions */}
-        <Column
-          borderTop={`1px solid ${tokenVar('color', 'ui-200')}`}
-          p="300"
-          gap="200"
-          styles={{ 'flex-shrink': '0' }}
-        >
-          <Show
-            when={savingAs()}
-            fallback={
-              <Row gap="200">
-                <Show when={editing()?.origin !== 'built-in'}>
-                  <we-button
-                    style={{ flex: '1' }}
-                    variant="secondary"
-                    size="sm"
-                    disabled={!editing()?.isDirty}
-                    onClick={() => themeStore.saveEditingTheme()}
-                  >
-                    Save
-                  </we-button>
-                </Show>
-                <we-button
-                  style={{ flex: '1' }}
-                  variant={editing()?.origin === 'built-in' ? 'primary' : 'ghost'}
-                  size="sm"
-                  onClick={() => {
-                    setSavingAsName(editing()!.name + (editing()?.origin === 'built-in' ? ' (custom)' : ' copy'));
-                    setSavingAs(true);
-                  }}
-                >
-                  {editing()?.origin === 'built-in' ? 'Save as new' : 'Save copy'}
-                </we-button>
-                <we-button variant="ghost" size="sm" square onClick={() => themeStore.cancelEditing()}>
-                  <we-icon name="x" />
-                </we-button>
-              </Row>
-            }
-          >
-            <Column gap="200">
-              <we-input
-                value={savingAsName()}
-                placeholder="New theme name"
-                size="sm"
-                autofocus
-                on:input={(e: CustomEvent) => setSavingAsName(e.detail)}
-                on:keydown={(e: CustomEvent) => {
-                  if (e.detail.key === 'Enter' && savingAsName().trim()) {
-                    themeStore.saveEditingThemeAs(savingAsName().trim(), editing()!.icon);
-                    setSavingAs(false);
-                  }
-                  if (e.detail.key === 'Escape') setSavingAs(false);
-                }}
-              />
-              <Row gap="200">
-                <we-button variant="ghost" size="sm" onClick={() => setSavingAs(false)}>
-                  Cancel
-                </we-button>
-                <we-button
-                  size="sm"
-                  disabled={!savingAsName().trim()}
-                  onClick={() => {
-                    themeStore.saveEditingThemeAs(savingAsName().trim(), editing()!.icon);
-                    setSavingAs(false);
-                  }}
-                >
-                  Save
-                </we-button>
-              </Row>
-            </Column>
-          </Show>
-        </Column>
       </Show>
     </Column>
   );
