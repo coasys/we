@@ -14,6 +14,8 @@ export interface TemplateCardData {
   author?: string;
   createdAt?: string;
   screenshots?: string[]; // resolved data URIs (from ImageBlock.src via fileToDataUri)
+  /** Icon name to show in the card header. Defaults to "layout". Themes pass their own icon. */
+  icon?: string;
 }
 
 interface Props {
@@ -25,6 +27,10 @@ interface Props {
   onInstall?: () => void;
   /** Label for the install button. Defaults to "Install". */
   installLabel?: string;
+  /** Override the default deleteMarketplaceTemplate action. */
+  onDelete?: () => void;
+  /** Override the internal install-loading check. Pass a reactive boolean for schema contexts. */
+  isLoading?: boolean;
 }
 
 export function TemplateCard(props: Props) {
@@ -55,6 +61,7 @@ export function TemplateCard(props: Props) {
   const hasUpdate = createMemo(() => isInstalled() && installedVersion() < (props.template.version ?? 1));
 
   const installLoading = createMemo(() => {
+    if (props.isLoading !== undefined) return props.isLoading;
     const id = props.template.id;
     return !!id && templateStore.operationLoading() === `marketplace-install:${id}`;
   });
@@ -82,7 +89,7 @@ export function TemplateCard(props: Props) {
     return (
       <Row ay="center" ax="between" p="400" r="300" border="1px solid neutral-200" bg="neutral-50" gap="300">
         <Row ay="center" gap="400" flex="1" minWidth="0">
-          <we-icon name="layout" color="primary-500" />
+          <we-icon name={props.template.icon ?? 'layout'} color="primary-500" />
           <Column gap="100" flex="1" minWidth="0">
             <Row gap="300" ay="center">
               <we-text fontWeight="600" truncate>
@@ -144,7 +151,7 @@ export function TemplateCard(props: Props) {
       {/* Header */}
       <Row ay="center" ax="between">
         <Row gap="300" ay="center" flex="1" minWidth="0">
-          <we-icon name="layout" size="md" color="primary-500" />
+          <we-icon name={props.template.icon ?? 'layout'} size="md" color="primary-500" />
           <we-text fontWeight="600" truncate>
             {props.template.name}
           </we-text>
@@ -153,7 +160,9 @@ export function TemplateCard(props: Props) {
           <we-button
             variant="ghost"
             size="sm"
-            onClick={() => templateStore.deleteMarketplaceTemplate(props.template.id!)}
+            onClick={() =>
+              props.onDelete ? props.onDelete!() : templateStore.deleteMarketplaceTemplate(props.template.id!)
+            }
           >
             <we-icon name="trash" />
           </we-button>

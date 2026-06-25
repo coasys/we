@@ -27,6 +27,7 @@ export type ThemeData = {
   name: string;
   icon: string;
   origin: 'built-in' | 'custom' | 'marketplace';
+  version: number;
   overrides: string | null;
   css: string | null;
 };
@@ -48,6 +49,7 @@ export interface ThemeStore {
   editingTheme: Accessor<EditingTheme | null>;
   canUndo: Accessor<boolean>;
   canRedo: Accessor<boolean>;
+  operationLoading: Accessor<string | null>;
 
   // Actions
   setCurrentTheme: (themeId: string) => void;
@@ -64,12 +66,18 @@ export interface ThemeStore {
   cancelEditing: () => void;
   undo: () => Promise<void>;
   redo: () => Promise<void>;
-  createAndStartEditing: (name: string, icon: string, sourceId?: string, destination?: 'personal' | 'space') => Promise<boolean>;
+  createAndStartEditing: (
+    name: string,
+    icon: string,
+    sourceId?: string,
+    destination?: 'personal' | 'space',
+  ) => Promise<boolean>;
   saveEditingTheme: () => Promise<ThemeData | null>;
   saveEditingThemeAs: (name: string, icon: string) => Promise<ThemeData | null>;
   deleteTheme: (themeId: string) => Promise<void>;
   installFromMarketplace: (marketplaceThemeId: string) => Promise<void>;
   uninstallTheme: (themeId: string) => Promise<void>;
+  deleteMarketplaceTheme: (themeId: string) => Promise<void>;
   publishToMarketplace: (options: { name: string; description: string; screenshots: File[] }) => Promise<boolean>;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   loadInstalledThemes: () => Promise<void>;
@@ -79,7 +87,7 @@ const ThemeContext = createContext<ThemeStore>();
 
 function registryToThemeData(key: string): ThemeData {
   const t = themeRegistry[key as ThemeKey] ?? { name: key, icon: 'palette' };
-  return { id: key, name: t.name, icon: t.icon, origin: 'built-in', overrides: null, css: null };
+  return { id: key, name: t.name, icon: t.icon, origin: 'built-in', version: 1, overrides: null, css: null };
 }
 
 function encodeToFileData(content: string, name: string, mimeType: string) {
@@ -94,6 +102,7 @@ function modelToThemeData(model: Theme): ThemeData {
     name: model.name || 'Untitled Theme',
     icon: model.icon || 'palette',
     origin: (model.origin as ThemeData['origin']) || 'custom',
+    version: model.version ?? 1,
     overrides: decodeFileAsString(model.overrides) || null,
     css: decodeFileAsString(model.css) || null,
   };
@@ -205,6 +214,8 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
 
   // ── Undo / redo ──
+  const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
+
   const [undoStack, setUndoStack] = createSignal<EditingTheme[]>([]);
   const [redoStack, setRedoStack] = createSignal<EditingTheme[]>([]);
   let pendingSnapshot: EditingTheme | null = null;
@@ -518,9 +529,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         overrides: source?.overrides
           ? (encodeToFileData(source.overrides, 'overrides.json', 'application/json') as any)
           : null,
-        css: source?.css
-          ? (encodeToFileData(source.css, 'theme.css', 'text/css') as any)
-          : null,
+        css: source?.css ? (encodeToFileData(source.css, 'theme.css', 'text/css') as any) : null,
       });
       themeModelMap.set(model.id, model);
       const data: ThemeData = {
@@ -528,6 +537,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         name,
         icon,
         origin: 'custom',
+        version: 1,
         overrides: source?.overrides ?? null,
         css: source?.css ?? null,
       };
@@ -574,9 +584,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         existing.overrides = editing.overrides
           ? (encodeToFileData(editing.overrides, 'overrides.json', 'application/json') as any)
           : null;
-        existing.css = editing.css
-          ? (encodeToFileData(editing.css, 'theme.css', 'text/css') as any)
-          : null;
+        existing.css = editing.css ? (encodeToFileData(editing.css, 'theme.css', 'text/css') as any) : null;
         await existing.save();
         // Use the current signal state (not the captured `editing`) to avoid overwriting
         // changes made while this async save was in flight.
@@ -586,6 +594,7 @@ export function ThemeStoreProvider(props: ParentProps) {
           name: current?.name ?? editing.name,
           icon: current?.icon ?? editing.icon,
           origin: existing.origin as ThemeData['origin'],
+          version: existing.version ?? 1,
           overrides: current?.overrides ?? editing.overrides,
           css: current?.css ?? editing.css,
         };
@@ -618,9 +627,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         overrides: editing.overrides
           ? (encodeToFileData(editing.overrides, 'overrides.json', 'application/json') as any)
           : null,
-        css: editing.css
-          ? (encodeToFileData(editing.css, 'theme.css', 'text/css') as any)
-          : null,
+        css: editing.css ? (encodeToFileData(editing.css, 'theme.css', 'text/css') as any) : null,
       });
       themeModelMap.set(model.id, model);
       const data: ThemeData = {
@@ -628,6 +635,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         name,
         icon,
         origin: 'custom',
+        version: 1,
         overrides: editing.overrides,
         css: editing.css,
       };
@@ -663,6 +671,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     const rootPerspective = adamStore.rootPerspective();
     if (!marketplacePerspective || !rootPerspective) return;
 
+    setOperationLoading(`marketplace-install:${marketplaceThemeId}`);
     try {
       const source = await Theme.findOne(marketplacePerspective, { where: { id: marketplaceThemeId } });
       if (!source) {
@@ -684,9 +693,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         overrides: source.overrides
           ? (encodeToFileData(source.overrides, 'overrides.json', 'application/json') as any)
           : null,
-        css: source.css
-          ? (encodeToFileData(source.css, 'theme.css', 'text/css') as any)
-          : null,
+        css: source.css ? (encodeToFileData(source.css, 'theme.css', 'text/css') as any) : null,
       });
       themeModelMap.set(model.id, model);
       setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
@@ -698,6 +705,30 @@ export function ThemeStoreProvider(props: ParentProps) {
     } catch (e) {
       console.error('ThemeStore: installFromMarketplace error', e);
       toastService.error('Failed to install theme');
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
+  async function deleteMarketplaceTheme(themeId: string): Promise<void> {
+    const marketplacePerspective = adamStore.marketplacePerspective();
+    if (!marketplacePerspective) {
+      toastService.error('Marketplace not connected');
+      return;
+    }
+    setOperationLoading(`marketplace-delete:${themeId}`);
+    try {
+      const theme = await Theme.findOne(marketplacePerspective, { where: { id: themeId } });
+      if (!theme) {
+        toastService.error('Theme not found');
+        return;
+      }
+      await theme.delete();
+    } catch (error) {
+      console.error('ThemeStore: deleteMarketplaceTheme error', error);
+      toastService.error('Failed to delete theme');
+    } finally {
+      setOperationLoading(null);
     }
   }
 
@@ -745,9 +776,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         existing.overrides = base.overrides
           ? (encodeToFileData(base.overrides, 'overrides.json', 'application/json') as any)
           : null;
-        existing.css = base.css
-          ? (encodeToFileData(base.css, 'theme.css', 'text/css') as any)
-          : null;
+        existing.css = base.css ? (encodeToFileData(base.css, 'theme.css', 'text/css') as any) : null;
         await existing.save();
 
         await existing.setScreenshots([]);
@@ -770,9 +799,7 @@ export function ThemeStoreProvider(props: ParentProps) {
           overrides: base.overrides
             ? (encodeToFileData(base.overrides, 'overrides.json', 'application/json') as any)
             : null,
-          css: base.css
-            ? (encodeToFileData(base.css, 'theme.css', 'text/css') as any)
-            : null,
+          css: base.css ? (encodeToFileData(base.css, 'theme.css', 'text/css') as any) : null,
         });
         for (const file of options.screenshots) {
           const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
@@ -844,6 +871,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     editingTheme,
     canUndo,
     canRedo,
+    operationLoading,
     setCurrentTheme,
     setDefaultTheme,
     toggleThemeInstalled,
@@ -862,6 +890,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     deleteTheme,
     installFromMarketplace,
     uninstallTheme,
+    deleteMarketplaceTheme,
     publishToMarketplace,
     publishToSpace,
     loadInstalledThemes,

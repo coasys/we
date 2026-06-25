@@ -1127,15 +1127,15 @@ TemplateStore:
 - State:
   - personalTemplates: array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)
   - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space perspective
-  - coreTemplates: array of TemplateSchema objects — built-in system templates (always available)
-  - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes core and space templates)
-  - allTemplates: array of TemplateSchema objects — union of core + personal + space templates
+  - builtInTemplates: array of TemplateSchema objects — built-in system templates (always available)
+  - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)
+  - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
   - shellTemplates: array of TemplateSchema objects (static system pages: profile, settings, tests)
   - currentTemplate: TemplateSchema (the active template)
   - operationLoading: unknown
   - activeShellView: string | null (id of the currently open shell overlay: 'profile' | 'settings' | 'schema-tests' | 'landing-page' | null)
-  - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isCore, isInstalled, isDefault)
-  - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Core". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.
+  - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)
+  - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.
 - Actions:
   - updateTemplate(newTemplate: TemplateSchema): updates the current template
   - switchTemplate(newTemplateId: string): switches to another template

@@ -73,7 +73,14 @@ export const storeEntries: StoreEntry[] = [
         properties: ['id', 'name', 'icon', 'isBuiltIn', 'isInstalled', 'isDefault'],
       },
     },
-    actions: ['setCurrentTheme', 'setDefaultTheme', 'toggleThemeInstalled', 'installFromMarketplace', 'uninstallTheme', 'deleteTheme'],
+    actions: [
+      'setCurrentTheme',
+      'setDefaultTheme',
+      'toggleThemeInstalled',
+      'installFromMarketplace',
+      'uninstallTheme',
+      'deleteTheme',
+    ],
   },
   {
     name: 'templateStore',
@@ -265,8 +272,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         builtInThemes: 'array of ThemeData objects — built-in registry themes (origin: "built-in", always available)',
         installedThemes:
           'array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")',
-        spaceThemes:
-          'array of ThemeData objects — themes stored in the current space perspective (origin: "custom")',
+        spaceThemes: 'array of ThemeData objects — themes stored in the current space perspective (origin: "custom")',
         allThemes:
           'array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)',
         currentThemeId: 'string — id of the currently active theme',

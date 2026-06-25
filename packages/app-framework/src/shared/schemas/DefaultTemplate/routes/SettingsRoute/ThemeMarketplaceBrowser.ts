@@ -44,47 +44,25 @@ export const themeMarketplaceBrowser: SchemaNode = {
               },
               children: [
                 {
-                  type: 'Row',
-                  props: { ay: 'center', ax: 'between', p: '300', r: '300', bg: 'neutral-50' },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { ay: 'center', gap: '300' },
-                      children: [
-                        { type: 'we-icon', props: { name: '$marketplaceTheme.icon' } },
-                        { type: 'we-text', props: { fontWeight: '600' }, children: ['$marketplaceTheme.name'] },
-                      ],
-                    },
-                    {
-                      type: '$if',
-                      props: {
-                        condition: {
-                          $count: {
-                            items: {
-                              $filter: {
-                                items: { $store: 'themeStore.installedThemes' },
-                                where: { name: '$marketplaceTheme.name' },
-                              },
-                            },
-                          },
-                        },
-                        then: {
-                          type: 'we-badge',
-                          props: { variant: 'success', size: 'sm' },
-                          children: ['Installed'],
-                        },
-                        else: {
-                          type: 'we-button',
-                          props: {
-                            variant: 'secondary',
-                            size: 'sm',
-                            onClick: { $action: 'themeStore.installFromMarketplace', args: ['$marketplaceTheme.id'] },
-                          },
-                          children: ['Install'],
-                        },
+                  type: 'TemplateCard',
+                  props: {
+                    template: '$marketplaceTheme',
+                    mode: 'compact',
+                    installed: {
+                      $find: {
+                        items: { $store: 'themeStore.installedThemes' },
+                        where: { name: '$marketplaceTheme.name' },
+                        select: 'version',
                       },
                     },
-                  ],
+                    onInstall: { $action: 'themeStore.installFromMarketplace', args: ['$marketplaceTheme.id'] },
+                    isLoading: {
+                      $eq: [
+                        { $store: 'themeStore.operationLoading' },
+                        { $concat: ['marketplace-install:', '$marketplaceTheme.id'] },
+                      ],
+                    },
+                  },
                 },
               ],
             },
