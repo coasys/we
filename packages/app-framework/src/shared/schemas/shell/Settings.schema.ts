@@ -122,15 +122,15 @@ export const settingsTemplate: TemplateSchema = {
                           ],
                         },
 
-                        // Core badge
+                        // Built-in badge
                         {
                           type: '$if',
                           props: {
-                            condition: '$template.isCore',
+                            condition: '$template.isBuiltIn',
                             then: {
                               type: 'we-tag',
                               props: { variant: 'neutral' },
-                              children: ['Core'],
+                              children: ['Built-in'],
                             },
                           },
                         },
@@ -139,7 +139,7 @@ export const settingsTemplate: TemplateSchema = {
                         {
                           type: '$if',
                           props: {
-                            condition: { $not: '$template.isCore' },
+                            condition: { $not: '$template.isBuiltIn' },
                             then: {
                               type: 'Row',
                               props: { gap: '200', ay: 'center' },
@@ -200,7 +200,7 @@ export const settingsTemplate: TemplateSchema = {
                         {
                           type: '$if',
                           props: {
-                            condition: { $not: '$template.isCore' },
+                            condition: { $not: '$template.isBuiltIn' },
                             then: {
                               type: 'we-button',
                               props: {

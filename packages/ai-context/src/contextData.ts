@@ -2531,7 +2531,7 @@ export const contextData: ContextData = {
       state: {
         personalTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         spaceTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
-        coreTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+        builtInTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         myTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         allTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
@@ -2540,7 +2540,7 @@ export const contextData: ContextData = {
         activeShellView: { type: 'string' },
         templateManagementList: {
           type: 'array',
-          properties: ['id', 'name', 'icon', 'description', 'isCore', 'isInstalled', 'isDefault'],
+          properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault'],
         },
         switcherGroups: { type: 'array', properties: ['label', 'items'] },
       },

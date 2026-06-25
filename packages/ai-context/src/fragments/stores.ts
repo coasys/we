@@ -80,7 +80,7 @@ export const storeEntries: StoreEntry[] = [
     state: {
       personalTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       spaceTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
-      coreTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+      builtInTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       myTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       allTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
@@ -89,7 +89,7 @@ export const storeEntries: StoreEntry[] = [
       activeShellView: { type: 'string' },
       templateManagementList: {
         type: 'array',
-        properties: ['id', 'name', 'icon', 'description', 'isCore', 'isInstalled', 'isDefault'],
+        properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault'],
       },
       switcherGroups: { type: 'array', properties: ['label', 'items'] },
     },
@@ -292,18 +292,18 @@ function generateStoresText(entries: StoreEntry[]): string {
         personalTemplates:
           "array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)",
         spaceTemplates: 'array of TemplateSchema objects — templates loaded from the current space perspective',
-        coreTemplates: 'array of TemplateSchema objects — built-in system templates (always available)',
+        builtInTemplates: 'array of TemplateSchema objects — built-in system templates (always available)',
         myTemplates:
-          "array of TemplateSchema objects — user's installed custom templates only (excludes core and space templates)",
-        allTemplates: 'array of TemplateSchema objects — union of core + personal + space templates',
+          "array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)",
+        allTemplates: 'array of TemplateSchema objects — union of built-in + personal + space templates',
         shellTemplates: 'array of TemplateSchema objects (static system pages: profile, settings, tests)',
         currentTemplate: 'TemplateSchema (the active template)',
         activeShellView:
           "string | null (id of the currently open shell overlay: 'profile' | 'settings' | 'schema-tests' | 'landing-page' | null)",
         templateManagementList:
-          'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isCore, isInstalled, isDefault)',
+          'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)',
         switcherGroups:
-          'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Core". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.',
+          'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.',
       },
       actions: {
         updateTemplate: '(newTemplate: TemplateSchema): updates the current template',

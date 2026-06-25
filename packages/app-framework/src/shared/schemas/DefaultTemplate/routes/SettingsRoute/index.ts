@@ -534,7 +534,7 @@ export const settingsRoute: RouteSchema = {
                 },
                 {
                   type: '$each',
-                  props: { items: { $store: 'templateStore.coreTemplates' }, as: 'template' },
+                  props: { items: { $store: 'templateStore.builtInTemplates' }, as: 'template' },
                   children: [templateRow],
                 },
               ],

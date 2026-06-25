@@ -22,7 +22,7 @@ export type TemplateManagementItem = {
   name: string;
   icon: string;
   description: string;
-  isCore: boolean;
+  isBuiltIn: boolean;
   isInstalled: boolean;
   isDefault: boolean;
 };
@@ -34,7 +34,7 @@ export interface TemplateStore {
   // State
   personalTemplates: Accessor<TemplateSchema[]>;
   spaceTemplates: Accessor<TemplateSchema[]>;
-  coreTemplates: Accessor<TemplateSchema[]>;
+  builtInTemplates: Accessor<TemplateSchema[]>;
   myTemplates: Accessor<TemplateSchema[]>;
   allTemplates: Accessor<TemplateSchema[]>;
   templateManagementList: Accessor<TemplateManagementItem[]>;
@@ -79,7 +79,7 @@ export interface TemplateStore {
   operationLoading: Accessor<string | null>;
 
   // Queries
-  isCoreTemplate: (templateId: string) => boolean;
+  isBuiltInTemplate: (templateId: string) => boolean;
   isInstalled: (templateId: string) => boolean;
   getTemplateModel: (templateId: string) => Template | undefined;
 }
@@ -106,8 +106,8 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
   const spaceTemplateCache = new Map<string, SpaceTemplateCacheEntry>();
 
-  // Core templates from registry (always available)
-  const coreTemplates: TemplateSchema[] = Object.entries(templateRegistry).map(([id, template]) => ({
+  // Built-in templates from registry (always available)
+  const builtInTemplates: TemplateSchema[] = Object.entries(templateRegistry).map(([id, template]) => ({
     ...deepClone(template),
     id,
   }));
@@ -121,16 +121,16 @@ export function TemplateStoreProvider(props: ParentProps) {
   ];
 
   const initialTemplate = deepClone(
-    coreTemplates.find((t) => t.id === 'launcher') || coreTemplates[0] || emptyTemplate,
+    builtInTemplates.find((t) => t.id === 'launcher') || builtInTemplates[0] || emptyTemplate,
   );
 
   console.log(
-    'TemplateStore: Initializing with core templates:',
-    coreTemplates.map((t) => t.id),
+    'TemplateStore: Initializing with built-in templates:',
+    builtInTemplates.map((t) => t.id),
   );
 
   // State
-  const [allTemplates, setAllTemplates] = createSignal<TemplateSchema[]>([...coreTemplates]);
+  const [allTemplates, setAllTemplates] = createSignal<TemplateSchema[]>([...builtInTemplates]);
   const [installedIds, setInstalledIds] = createSignal<Set<string>>(new Set());
   const [spaceTemplateIdSet, setSpaceTemplateIdSet] = createSignal<Set<string>>(new Set());
   const [loading, setLoading] = createSignal(true);
@@ -143,18 +143,18 @@ export function TemplateStoreProvider(props: ParentProps) {
     const installed = installedIds();
     const spaceIds = spaceTemplateIdSet();
     return allTemplates().filter(
-      (t) => !spaceIds.has(t.id || '') && (isCoreTemplateId(t.id || '') || installed.has(t.id || '')),
+      (t) => !spaceIds.has(t.id || '') && (isBuiltInTemplateId(t.id || '') || installed.has(t.id || '')),
     );
   };
 
   const spaceTemplates = () => allTemplates().filter((t) => t._fromSpace);
 
-  const coreTemplatesAccessor = () => allTemplates().filter((t) => isCoreTemplateId(t.id || ''));
+  const builtInTemplatesAccessor = () => allTemplates().filter((t) => isBuiltInTemplateId(t.id || ''));
 
   // User-installed templates that are neither built-in core nor from the current space
   const myTemplates = () => {
     const installed = installedIds();
-    return allTemplates().filter((t) => !isCoreTemplateId(t.id || '') && !t._fromSpace && installed.has(t.id || ''));
+    return allTemplates().filter((t) => !isBuiltInTemplateId(t.id || '') && !t._fromSpace && installed.has(t.id || ''));
   };
 
   const toSwitcherItems = (templates: TemplateSchema[], prefix = ''): TemplateSwitcherItem[] =>
@@ -164,7 +164,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   const switcherGroups = (): TemplateSwitcherGroup[] => [
     { label: 'Space templates', items: toSwitcherItems(spaceTemplates(), SPACE_PREFIX) },
     { label: 'My templates', items: toSwitcherItems(myTemplates()) },
-    { label: 'Built-in', items: toSwitcherItems(coreTemplatesAccessor()) },
+    { label: 'Built-in', items: toSwitcherItems(builtInTemplatesAccessor()) },
   ];
 
   const defaultTemplateId = () => adamStore.agentSettings()?.defaultTemplateId || 'default';
@@ -197,7 +197,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
       // If a saved template shares an ID with a core template, use the saved version
       const savedIds = new Set(savedTemplates.map((t) => t.id));
-      const filteredCore = coreTemplates.filter((t) => !savedIds.has(t.id));
+      const filteredCore = builtInTemplates.filter((t) => !savedIds.has(t.id));
       setAllTemplates([...filteredCore, ...savedTemplates]);
 
       // Build installed ID set from AgentSettings HasMany relation
@@ -1080,14 +1080,12 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   }
 
-  /** Check if a template ID belongs to a built-in core template */
-  function isCoreTemplateId(templateId: string): boolean {
-    return coreTemplates.some((t) => t.id === templateId);
+  function isBuiltInTemplateId(templateId: string): boolean {
+    return builtInTemplates.some((t) => t.id === templateId);
   }
 
-  /** Check if a template is a built-in core template (not user-saved/customized) */
-  function isCoreTemplate(templateId: string): boolean {
-    return isCoreTemplateId(templateId) && !savedTemplateMap.has(templateId);
+  function isBuiltInTemplate(templateId: string): boolean {
+    return isBuiltInTemplateId(templateId) && !savedTemplateMap.has(templateId);
   }
 
   /** Check if a custom template is installed (visible in sidebar) */
@@ -1102,7 +1100,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Toggle a custom template's installed state */
   async function toggleInstalled(templateId: string): Promise<void> {
-    if (isCoreTemplateId(templateId)) return;
+    if (isBuiltInTemplateId(templateId)) return;
     if (isInstalled(templateId)) {
       await uninstallTemplate(templateId);
     } else {
@@ -1121,8 +1119,8 @@ export function TemplateStoreProvider(props: ParentProps) {
         name: t.meta?.name || '',
         icon: t.meta?.icon || '',
         description: t.meta?.description || '',
-        isCore: isCoreTemplateId(t.id || ''),
-        isInstalled: isCoreTemplateId(t.id || '') || installed.has(t.id || ''),
+        isBuiltIn: isBuiltInTemplateId(t.id || ''),
+        isInstalled: isBuiltInTemplateId(t.id || '') || installed.has(t.id || ''),
         isDefault: (t.id || '') === defaultId,
       }));
   };
@@ -1131,7 +1129,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     // State
     personalTemplates,
     spaceTemplates,
-    coreTemplates: coreTemplatesAccessor,
+    builtInTemplates: builtInTemplatesAccessor,
     myTemplates,
     allTemplates,
     templateManagementList,
@@ -1171,7 +1169,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     operationLoading,
 
     // Queries
-    isCoreTemplate,
+    isBuiltInTemplate,
     isInstalled,
     getTemplateModel,
   };

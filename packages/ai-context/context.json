@@ -7709,7 +7709,7 @@
           "type": "array",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
-        "coreTemplates": {
+        "builtInTemplates": {
           "type": "array",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
         },
@@ -7737,7 +7737,7 @@
         },
         "templateManagementList": {
           "type": "array",
-          "properties": ["id", "name", "icon", "description", "isCore", "isInstalled", "isDefault"]
+          "properties": ["id", "name", "icon", "description", "isBuiltIn", "isInstalled", "isDefault"]
         },
         "switcherGroups": {
           "type": "array",
