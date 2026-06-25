@@ -37,7 +37,7 @@ import { createEffect, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 import { EditorOverlay } from '../components/template-editor/EditorOverlay';
-import { panelResizing, TOTAL_RAIL_WIDTH } from '../components/template-editor/RightPanelContainer';
+import { panelResizing, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from '../components/template-editor/RightPanelContainer';
 import { buildRoutes } from '../utils/buildRoutes';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
@@ -115,11 +115,14 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
   });
 
   const rightOffset = () => {
-    if (!stores.aiStore.isEditingTemplate()) return '0px';
-    let offset = TOTAL_RAIL_WIDTH;
-    if (stores.aiStore.isOpen()) offset += stores.aiStore.aiPanelWidth();
-    if (stores.aiStore.codePanelOpen()) offset += stores.aiStore.codePanelWidth();
-    return `${offset}px`;
+    let offset = 0;
+    if (stores.aiStore.isEditingTheme()) offset += THEME_RAIL_WIDTH;
+    if (stores.aiStore.isEditingTemplate()) {
+      offset += TEMPLATE_RAILS_WIDTH;
+      if (stores.aiStore.isOpen()) offset += stores.aiStore.aiPanelWidth();
+      if (stores.aiStore.codePanelOpen()) offset += stores.aiStore.codePanelWidth();
+    }
+    return offset ? `${offset}px` : '0px';
   };
 
   return (
