@@ -217,7 +217,12 @@ export function TemplateToolbar() {
     setThemePickerSaving(true);
     try {
       const sourceId = themePickerAction() === 'fork' ? themeStore.currentThemeId() : undefined;
-      const ok = await themeStore.createAndStartEditing(name, themePickerIcon() || 'paint-bucket', sourceId, themePickerDestination());
+      const ok = await themeStore.createAndStartEditing(
+        name,
+        themePickerIcon() || 'paint-bucket',
+        sourceId,
+        themePickerDestination(),
+      );
       if (ok) {
         setThemePickerOpen(false);
         aiStore.enterThemeEditing();
@@ -281,7 +286,7 @@ export function TemplateToolbar() {
         </Show>
 
         {/* ── Theme chip ── */}
-        <Column>
+        <Column position="relative">
           <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
             {/* Theme selector */}
             <we-button variant={themeOpen() ? 'secondary' : 'ghost'} onClick={toggleThemePicker} p="200">
@@ -401,7 +406,7 @@ export function TemplateToolbar() {
               r="400"
               shadow="md"
               overflow="hidden"
-              minWidth="200px"
+              minWidth="280px"
             >
               <Column py="200">
                 <Show when={themeStore.currentTheme().origin !== 'built-in'}>
@@ -418,8 +423,13 @@ export function TemplateToolbar() {
                       closeAllDropdowns();
                     }}
                   >
-                    <we-icon name="pencil-simple" color="neutral-600" />
-                    <we-text color="neutral-800">Edit</we-text>
+                    <we-icon name="pencil-simple" color="neutral-600" size="sm" />
+                    <Column>
+                      <we-text color="neutral-800">Edit</we-text>
+                      <we-text fontSize="300" color="neutral-500">
+                        Modify this theme
+                      </we-text>
+                    </Column>
                   </Row>
                 </Show>
                 <Row
@@ -439,8 +449,13 @@ export function TemplateToolbar() {
                     setThemePickerOpen(true);
                   }}
                 >
-                  <we-icon name="git-fork" color="neutral-600" />
-                  <we-text color="neutral-800">Fork</we-text>
+                  <we-icon name="git-fork" color="neutral-600" size="sm" />
+                  <Column>
+                    <we-text color="neutral-800">Fork</we-text>
+                    <we-text fontSize="300" color="neutral-500">
+                      Start a new theme based on this one
+                    </we-text>
+                  </Column>
                 </Row>
                 <Row
                   ay="center"
@@ -458,8 +473,13 @@ export function TemplateToolbar() {
                     setThemePickerOpen(true);
                   }}
                 >
-                  <we-icon name="plus" color="neutral-600" />
-                  <we-text color="neutral-800">New</we-text>
+                  <we-icon name="plus" color="neutral-600" size="sm" />
+                  <Column>
+                    <we-text color="neutral-800">New</we-text>
+                    <we-text fontSize="300" color="neutral-500">
+                      Create a new theme from scratch
+                    </we-text>
+                  </Column>
                 </Row>
               </Column>
             </Column>
@@ -534,7 +554,12 @@ export function TemplateToolbar() {
               </Column>
 
               <Row ax="end" gap="200">
-                <we-button size="sm" variant="ghost" onClick={() => setThemePickerOpen(false)} disabled={themePickerSaving()}>
+                <we-button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setThemePickerOpen(false)}
+                  disabled={themePickerSaving()}
+                >
                   Cancel
                 </we-button>
                 <we-button
@@ -588,7 +613,7 @@ export function TemplateToolbar() {
         </Column>
 
         {/* ── Template chip ── */}
-        <Column>
+        <Column position="relative">
           <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
             {/* Template selector */}
             <we-tooltip title="Select a template" placement="bottom">
@@ -717,7 +742,7 @@ export function TemplateToolbar() {
               r="400"
               shadow="md"
               overflow="hidden"
-              minWidth="220px"
+              minWidth="280px"
             >
               <Column py="200">
                 <Show when={canEdit()}>
@@ -733,8 +758,13 @@ export function TemplateToolbar() {
                       closeAllDropdowns();
                     }}
                   >
-                    <we-icon name="pencil-simple" color="neutral-600" />
-                    <we-text color="neutral-800">Edit</we-text>
+                    <we-icon name="pencil-simple" color="neutral-600" size="sm" />
+                    <Column>
+                      <we-text color="neutral-800">Edit</we-text>
+                      <we-text fontSize="300" color="neutral-500">
+                        Modify this template
+                      </we-text>
+                    </Column>
                   </Row>
                 </Show>
                 <Row
@@ -749,8 +779,13 @@ export function TemplateToolbar() {
                     aiStore.startFork();
                   }}
                 >
-                  <we-icon name="git-fork" color="neutral-600" />
-                  <we-text color="neutral-800">Fork</we-text>
+                  <we-icon name="git-fork" color="neutral-600" size="sm" />
+                  <Column>
+                    <we-text color="neutral-800">Fork</we-text>
+                    <we-text fontSize="300" color="neutral-500">
+                      Start a new template based on this one
+                    </we-text>
+                  </Column>
                 </Row>
                 <Row
                   ay="center"
@@ -764,8 +799,13 @@ export function TemplateToolbar() {
                     aiStore.startFresh();
                   }}
                 >
-                  <we-icon name="file-plus" color="neutral-600" />
-                  <we-text color="neutral-800">New</we-text>
+                  <we-icon name="file-plus" color="neutral-600" size="sm" />
+                  <Column>
+                    <we-text color="neutral-800">New</we-text>
+                    <we-text fontSize="300" color="neutral-500">
+                      Create a new template from scratch
+                    </we-text>
+                  </Column>
                 </Row>
               </Column>
             </Column>
