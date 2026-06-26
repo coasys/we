@@ -16,7 +16,7 @@ export const aboutRoute: RouteSchema = {
           children: [
             {
               type: 'we-text',
-              props: { variant: 'heading-md', color: 'primary-700' },
+              props: { variant: 'heading-md' },
               children: ['About this space'],
             },
 
@@ -25,7 +25,7 @@ export const aboutRoute: RouteSchema = {
               type: 'Column',
               props: { gap: '100' },
               children: [
-                { type: 'we-text', children: ['Name'] },
+                { type: 'we-text', props: { color: 'neutral-700' }, children: ['Name'] },
                 {
                   type: 'we-text',
                   props: { variant: 'heading-md' },
@@ -39,7 +39,7 @@ export const aboutRoute: RouteSchema = {
               type: 'Column',
               props: { gap: '100' },
               children: [
-                { type: 'we-text', children: ['Description'] },
+                { type: 'we-text', props: { color: 'neutral-700' }, children: ['Description'] },
                 {
                   type: '$if',
                   props: {
@@ -60,7 +60,7 @@ export const aboutRoute: RouteSchema = {
               type: 'Row',
               props: { ay: 'center', gap: '400', py: '100' },
               children: [
-                { type: 'we-icon', props: { name: 'lock-simple' } },
+                { type: 'we-icon', props: { name: 'lock-simple', color: 'primary-600' } },
                 {
                   type: 'Column',
                   props: { gap: '100' },
@@ -71,7 +71,7 @@ export const aboutRoute: RouteSchema = {
                       children: [
                         {
                           type: 'we-text',
-                          props: { fontWeight: 'bold' },
+                          props: { fontWeight: 'bold', color: 'neutral-700' },
                           children: ['Access:'],
                         },
                         {
@@ -112,7 +112,7 @@ export const aboutRoute: RouteSchema = {
               type: 'Row',
               props: { ay: 'center', gap: '400', py: '100' },
               children: [
-                { type: 'we-icon', props: { name: 'globe' } },
+                { type: 'we-icon', props: { name: 'globe', color: 'primary-600' } },
                 {
                   type: 'Column',
                   props: { gap: '100' },
@@ -123,7 +123,7 @@ export const aboutRoute: RouteSchema = {
                       children: [
                         {
                           type: 'we-text',
-                          props: { fontWeight: 'bold' },
+                          props: { fontWeight: 'bold', color: 'neutral-700' },
                           children: ['Discovery:'],
                         },
                         {
@@ -168,7 +168,7 @@ export const aboutRoute: RouteSchema = {
                   type: 'Row',
                   props: { ay: 'center', gap: '400', py: '100' },
                   children: [
-                    { type: 'we-icon', props: { name: 'map-pin' } },
+                    { type: 'we-icon', props: { name: 'map-pin', color: 'primary-600' } },
                     {
                       type: 'Column',
                       props: { gap: '100' },
@@ -179,7 +179,7 @@ export const aboutRoute: RouteSchema = {
                           children: [
                             {
                               type: 'we-text',
-                              props: { fontWeight: 'bold' },
+                              props: { fontWeight: 'bold', color: 'neutral-700' },
                               children: ['Location:'],
                             },
                             {
@@ -209,7 +209,7 @@ export const aboutRoute: RouteSchema = {
               type: 'Row',
               props: { ay: 'center', gap: '400', py: '100' },
               children: [
-                { type: 'we-icon', props: { name: 'clock' } },
+                { type: 'we-icon', props: { name: 'clock', color: 'primary-600' } },
                 {
                   type: 'Column',
                   props: { gap: '100' },
@@ -220,7 +220,7 @@ export const aboutRoute: RouteSchema = {
                       children: [
                         {
                           type: 'we-text',
-                          props: { fontWeight: 'bold' },
+                          props: { fontWeight: 'bold', color: 'neutral-700' },
                           children: ['Created:'],
                         },
                         {
