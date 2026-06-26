@@ -1,6 +1,7 @@
 import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import type { ThemeOverrides } from '@we/schema-shared';
+import type { JSX } from 'solid-js';
 import { createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
 import { useAiStore } from '../../stores/AiStore';
@@ -8,11 +9,7 @@ import { useThemeStore } from '../../stores/ThemeStore';
 
 const SAVE_DEBOUNCE_MS = 600;
 
-const FONT_OPTIONS = [
-  { value: 'base', label: 'System default' },
-  { value: "'Mozilla Text', serif", label: 'Mozilla Text' },
-  { value: "'Boldonse', serif", label: 'Boldonse' },
-];
+// ─── Option lists ────────────────────────────────────────────────────────────
 
 const BASE_THEME_OPTIONS = [
   { value: '', label: 'None' },
@@ -22,6 +19,68 @@ const BASE_THEME_OPTIONS = [
   { value: 'retro', label: 'Retro' },
   { value: 'cyberpunk', label: 'Cyberpunk' },
 ];
+
+const FONT_OPTIONS = [
+  { value: 'base', label: 'System default' },
+  { value: "'Mozilla Text', serif", label: 'Mozilla Text' },
+  { value: "'Boldonse', serif", label: 'Boldonse' },
+];
+
+const LETTER_SPACING_OPTIONS = [
+  { value: '', label: 'Normal' },
+  { value: '-0.02em', label: 'Tight' },
+  { value: '0.04em', label: 'Airy' },
+  { value: '0.08em', label: 'Wide' },
+];
+
+const RADIUS_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: '0', label: 'None' },
+  { value: 'var(--we-radius-100)', label: 'XS' },
+  { value: 'var(--we-radius-200)', label: 'SM' },
+  { value: 'var(--we-radius-300)', label: 'MD' },
+  { value: 'var(--we-radius-400)', label: 'LG' },
+  { value: 'var(--we-radius-600)', label: 'XL' },
+  { value: 'var(--we-radius-pill)', label: 'Pill' },
+];
+
+const SPACING_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: 'var(--we-space-100)', label: 'XS' },
+  { value: 'var(--we-space-200)', label: 'SM' },
+  { value: 'var(--we-space-300)', label: 'MD' },
+  { value: 'var(--we-space-400)', label: 'LG' },
+  { value: 'var(--we-space-600)', label: 'XL' },
+  { value: 'var(--we-space-900)', label: 'XXL' },
+];
+
+// ─── Presets ──────────────────────────────────────────────────────────────────
+
+const SHAPE_PRESETS = {
+  sharp: { controlRadius: '0', surfaceRadius: 'var(--we-radius-200)', inputRadius: '0' },
+  default: { controlRadius: undefined, surfaceRadius: undefined, inputRadius: undefined },
+  rounded: {
+    controlRadius: 'var(--we-radius-600)',
+    surfaceRadius: 'var(--we-radius-700)',
+    inputRadius: 'var(--we-radius-400)',
+  },
+  pill: {
+    controlRadius: 'var(--we-radius-pill)',
+    surfaceRadius: 'var(--we-radius-800)',
+    inputRadius: 'var(--we-radius-pill)',
+  },
+} as const;
+
+const SPACING_PRESETS = {
+  compact: { controlSpacing: 'var(--we-space-200)', surfaceSpacing: 'var(--we-space-400)' },
+  comfortable: { controlSpacing: undefined, surfaceSpacing: undefined },
+  spacious: { controlSpacing: 'var(--we-space-600)', surfaceSpacing: 'var(--we-space-900)' },
+} as const;
+
+type ShapePreset = keyof typeof SHAPE_PRESETS;
+type SpacingPreset = keyof typeof SPACING_PRESETS;
+
+// ─── Shared atoms ─────────────────────────────────────────────────────────────
 
 function HueSwatch(props: { hue: number }) {
   return (
@@ -53,6 +112,25 @@ function SectionLabel(props: { children: string }) {
     </we-text>
   );
 }
+
+function CollapsibleSection(props: { title: string; defaultOpen?: boolean; children: JSX.Element }) {
+  const [open, setOpen] = createSignal(props.defaultOpen ?? false);
+  return (
+    <Column borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="0">
+      <Row ay="center" ax="between" py="300" onClick={() => setOpen(!open())} style={{ cursor: 'pointer' }}>
+        <SectionLabel>{props.title}</SectionLabel>
+        <we-icon name={open() ? 'caret-up' : 'caret-down'} size="sm" color="neutral-400" />
+      </Row>
+      <Show when={open()}>
+        <Column gap="300" pb="400">
+          {props.children}
+        </Column>
+      </Show>
+    </Column>
+  );
+}
+
+// ─── ThemePanel ───────────────────────────────────────────────────────────────
 
 export function ThemePanel() {
   const aiStore = useAiStore();
@@ -86,21 +164,6 @@ export function ThemePanel() {
     }
   });
 
-  function startCssEdit() {
-    setCssValue(editing()?.css ?? '');
-    setCssEditing(true);
-  }
-
-  function commitCssEdit() {
-    themeStore.updateEditingCss(cssValue());
-    setCssEditing(false);
-    saveThemeNow();
-  }
-
-  function cancelCssEdit() {
-    setCssEditing(false);
-  }
-
   function setOverride<K extends keyof ThemeOverrides>(key: K, value: ThemeOverrides[K] | undefined) {
     if (value === undefined) {
       const next = { ...overrides() };
@@ -110,6 +173,18 @@ export function ThemePanel() {
       themeStore.updateEditingOverrides({ [key]: value } as Partial<ThemeOverrides>);
     }
   }
+
+  function setOverrides(partial: Partial<ThemeOverrides>) {
+    const next = { ...overrides() };
+    for (const [k, v] of Object.entries(partial) as [keyof ThemeOverrides, unknown][]) {
+      if (v === undefined) delete next[k];
+      else (next as Record<string, unknown>)[k] = v;
+    }
+    themeStore.updateEditingOverrides(next);
+    saveTheme();
+  }
+
+  // ── Slider helpers ──────────────────────────────────────────────────────────
 
   function hueSlider(label: string, key: keyof ThemeOverrides, defaultVal = 0) {
     const val = () => (overrides()[key] as number | undefined) ?? defaultVal;
@@ -188,6 +263,152 @@ export function ThemePanel() {
     );
   }
 
+  function opacitySlider(label: string, key: keyof ThemeOverrides, defaultVal: number) {
+    const val = () => (overrides()[key] as number | undefined) ?? defaultVal;
+    return (
+      <Row ay="center" gap="300">
+        <we-text
+          style={{
+            'min-width': '120px',
+            'font-size': tokenVar('font-size', '300'),
+            color: tokenVar('color', 'neutral-600'),
+          }}
+        >
+          {label}
+        </we-text>
+        <we-slider
+          style={{ flex: '1' }}
+          value={val()}
+          min={0.3}
+          max={1}
+          step={0.05}
+          on:input={(e: CustomEvent) =>
+            setOverride(key, Number(Number(e.detail).toFixed(2)) as ThemeOverrides[typeof key])
+          }
+          on:change={() => saveTheme()}
+        />
+        <we-text
+          style={{
+            'min-width': '36px',
+            'font-size': tokenVar('font-size', '200'),
+            color: tokenVar('color', 'neutral-500'),
+            'text-align': 'right',
+          }}
+        >
+          {Math.round(val() * 100)}%
+        </we-text>
+      </Row>
+    );
+  }
+
+  // ── Select control ──────────────────────────────────────────────────────────
+
+  function selectControl(
+    label: string,
+    key: keyof ThemeOverrides,
+    options: { value: string; label: string }[],
+    labelWidth = '100px',
+  ) {
+    const current = () => (overrides()[key] as string | undefined) ?? '';
+    return (
+      <Row ay="center" gap="300">
+        <we-text
+          style={{
+            'min-width': labelWidth,
+            'font-size': tokenVar('font-size', '300'),
+            color: tokenVar('color', 'neutral-600'),
+          }}
+        >
+          {label}
+        </we-text>
+        <we-select
+          style={{ flex: '1' }}
+          value={current()}
+          options={options}
+          size="sm"
+          on:change={(e: CustomEvent) => {
+            setOverride(key, (e.detail as string) || undefined);
+            saveTheme();
+          }}
+        />
+      </Row>
+    );
+  }
+
+  // ── Preset button row ───────────────────────────────────────────────────────
+
+  function presetRow<T extends string>(
+    labels: Record<T, string>,
+    isActive: (p: T) => boolean,
+    onSelect: (p: T) => void,
+  ) {
+    return (
+      <Row gap="100">
+        {(Object.keys(labels) as T[]).map((p) => (
+          <we-button
+            size="sm"
+            variant={isActive(p) ? 'secondary' : 'ghost'}
+            onClick={() => onSelect(p)}
+            style={{ flex: '1' }}
+          >
+            {labels[p]}
+          </we-button>
+        ))}
+      </Row>
+    );
+  }
+
+  // ── Shape preset helpers ────────────────────────────────────────────────────
+
+  function activeShapePreset(): ShapePreset | 'custom' {
+    const o = overrides();
+    for (const [name, vals] of Object.entries(SHAPE_PRESETS) as [ShapePreset, (typeof SHAPE_PRESETS)[ShapePreset]][]) {
+      if (
+        (o.controlRadius ?? undefined) === vals.controlRadius &&
+        (o.surfaceRadius ?? undefined) === vals.surfaceRadius &&
+        (o.inputRadius ?? undefined) === vals.inputRadius
+      ) {
+        return name;
+      }
+    }
+    return 'custom';
+  }
+
+  function activeSpacingPreset(): SpacingPreset | 'custom' {
+    const o = overrides();
+    for (const [name, vals] of Object.entries(SPACING_PRESETS) as [
+      SpacingPreset,
+      (typeof SPACING_PRESETS)[SpacingPreset],
+    ][]) {
+      if (
+        (o.controlSpacing ?? undefined) === vals.controlSpacing &&
+        (o.surfaceSpacing ?? undefined) === vals.surfaceSpacing
+      ) {
+        return name;
+      }
+    }
+    return 'custom';
+  }
+
+  // ── CSS edit helpers ────────────────────────────────────────────────────────
+
+  function startCssEdit() {
+    setCssValue(editing()?.css ?? '');
+    setCssEditing(true);
+  }
+
+  function commitCssEdit() {
+    themeStore.updateEditingCss(cssValue());
+    setCssEditing(false);
+    saveThemeNow();
+  }
+
+  function cancelCssEdit() {
+    setCssEditing(false);
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+
   return (
     <Column height="100%" width="100%" bg="neutral-25" overflow="hidden">
       {/* Header */}
@@ -228,9 +449,9 @@ export function ThemePanel() {
         }
       >
         <we-scroll-area style={{ flex: '1' }}>
-          <Column gap="500" p="400">
-            {/* Name + icon */}
-            <Column gap="200">
+          <Column gap="0" p="400">
+            {/* ── Name + icon ── */}
+            <Column gap="200" borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="400" mb="0">
               <SectionLabel>Theme name</SectionLabel>
               <Row gap="200" ay="center">
                 <we-icon-picker
@@ -252,9 +473,8 @@ export function ThemePanel() {
               </Row>
             </Column>
 
-            {/* Base theme */}
-            <Column gap="200">
-              <SectionLabel>Base preset</SectionLabel>
+            {/* ── Base preset ── */}
+            <CollapsibleSection title="Base preset" defaultOpen={true}>
               <we-select
                 value={overrides().themeName ?? ''}
                 options={BASE_THEME_OPTIONS}
@@ -265,19 +485,13 @@ export function ThemePanel() {
                   saveTheme();
                 }}
               />
-            </Column>
-
-            {/* Light / dark */}
-            <Column gap="200">
-              <SectionLabel>Mode</SectionLabel>
               <Row gap="200">
                 <we-button
                   size="sm"
                   variant={(overrides().multiplier ?? 1) === 1 ? 'secondary' : 'ghost'}
+                  style={{ flex: '1' }}
                   onClick={() => {
-                    setOverride('multiplier', 1);
-                    setOverride('subtractor', '0%');
-                    saveTheme();
+                    setOverrides({ multiplier: 1, subtractor: '0%' });
                   }}
                 >
                   <we-icon name="sun" />
@@ -286,59 +500,139 @@ export function ThemePanel() {
                 <we-button
                   size="sm"
                   variant={(overrides().multiplier ?? 1) === -1 ? 'secondary' : 'ghost'}
+                  style={{ flex: '1' }}
                   onClick={() => {
-                    setOverride('multiplier', -1);
-                    setOverride('subtractor', '108%');
-                    saveTheme();
+                    setOverrides({ multiplier: -1, subtractor: '108%' });
                   }}
                 >
                   <we-icon name="moon" />
                   Dark
                 </we-button>
               </Row>
-            </Column>
+            </CollapsibleSection>
 
-            {/* Hues */}
-            <Column gap="300">
-              <SectionLabel>Color hues</SectionLabel>
-              {hueSlider('Primary', 'primaryHue', 220)}
-              {hueSlider('Success', 'successHue', 142)}
-              {hueSlider('Warning', 'warningHue', 38)}
-              {hueSlider('Danger', 'dangerHue', 4)}
-              {hueSlider('Neutral', 'neutralHue', 220)}
-            </Column>
+            {/* ── Color ── */}
+            <CollapsibleSection title="Color" defaultOpen={true}>
+              <Column gap="200">
+                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                  Hues
+                </we-text>
+                {hueSlider('Primary', 'primaryHue', 220)}
+                {hueSlider('Success', 'successHue', 142)}
+                {hueSlider('Warning', 'warningHue', 38)}
+                {hueSlider('Danger', 'dangerHue', 4)}
+                {hueSlider('Neutral', 'neutralHue', 220)}
+              </Column>
+              <Column gap="200">
+                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                  Saturation
+                </we-text>
+                {percentSlider('Colors', 'saturation', 0, 100, 50)}
+                {percentSlider('Neutrals', 'neutralSaturation', 0, 100, 20)}
+              </Column>
+              <Column gap="200">
+                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                  Lightness
+                </we-text>
+                {percentSlider('Subtractor', 'subtractor', 0, 200, 0)}
+              </Column>
+            </CollapsibleSection>
 
-            {/* Saturation */}
-            <Column gap="300">
-              <SectionLabel>Saturation</SectionLabel>
-              {percentSlider('Colors', 'saturation', 0, 100, 50)}
-              {percentSlider('Neutrals', 'neutralSaturation', 0, 100, 20)}
-            </Column>
+            {/* ── Shape ── */}
+            <CollapsibleSection title="Shape">
+              <Column gap="200">
+                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                  Preset
+                </we-text>
+                {presetRow(
+                  { sharp: 'Sharp', default: 'Default', rounded: 'Rounded', pill: 'Pill' } as Record<
+                    ShapePreset,
+                    string
+                  >,
+                  (p) => activeShapePreset() === p,
+                  (p) => setOverrides(SHAPE_PRESETS[p]),
+                )}
+              </Column>
+              <Column gap="200">
+                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                  Overrides
+                </we-text>
+                {selectControl('Controls', 'controlRadius', RADIUS_OPTIONS, '80px')}
+                {selectControl('Surfaces', 'surfaceRadius', RADIUS_OPTIONS, '80px')}
+                {selectControl('Inputs', 'inputRadius', RADIUS_OPTIONS, '80px')}
+              </Column>
+            </CollapsibleSection>
 
-            {/* Lightness */}
-            <Column gap="300">
-              <SectionLabel>Lightness baseline</SectionLabel>
-              {percentSlider('Subtractor', 'subtractor', 0, 200, 0)}
-            </Column>
+            {/* ── Typography ── */}
+            <CollapsibleSection title="Typography">
+              {selectControl('Font family', 'fontFamily', FONT_OPTIONS, '100px')}
+              {selectControl('Letter spacing', 'letterSpacing', LETTER_SPACING_OPTIONS, '100px')}
+            </CollapsibleSection>
 
-            {/* Font family */}
-            <Column gap="200">
-              <SectionLabel>Font family</SectionLabel>
-              <we-select
-                value={overrides().fontFamily ?? 'base'}
-                options={FONT_OPTIONS}
-                size="sm"
-                on:change={(e: CustomEvent) => {
-                  setOverride('fontFamily', e.detail);
-                  saveTheme();
-                }}
-              />
-            </Column>
+            {/* ── Spacing & Density ── */}
+            <CollapsibleSection title="Spacing & Density">
+              <Column gap="200">
+                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                  Preset
+                </we-text>
+                {presetRow(
+                  { compact: 'Compact', comfortable: 'Comfortable', spacious: 'Spacious' } as Record<
+                    SpacingPreset,
+                    string
+                  >,
+                  (p) => activeSpacingPreset() === p,
+                  (p) => setOverrides(SPACING_PRESETS[p]),
+                )}
+              </Column>
+              <Column gap="200">
+                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                  Overrides
+                </we-text>
+                {selectControl('Controls', 'controlSpacing', SPACING_OPTIONS, '80px')}
+                {selectControl('Surfaces', 'surfaceSpacing', SPACING_OPTIONS, '80px')}
+              </Column>
+            </CollapsibleSection>
 
-            {/* Raw CSS */}
-            <Column gap="200">
-              <Row ax="between" ay="center">
-                <SectionLabel>Custom CSS</SectionLabel>
+            {/* ── Effects & Motion ── */}
+            <CollapsibleSection title="Effects & Motion">
+              <Column gap="200">
+                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                  Shadow intensity
+                </we-text>
+                {presetRow(
+                  { flat: 'Flat', subtle: 'Subtle', elevated: 'Elevated', dramatic: 'Dramatic' } as Record<
+                    NonNullable<ThemeOverrides['shadowIntensity']>,
+                    string
+                  >,
+                  (p) => overrides().shadowIntensity === p,
+                  (p) => {
+                    setOverride('shadowIntensity', p);
+                    saveTheme();
+                  },
+                )}
+              </Column>
+              {opacitySlider('Surface opacity', 'surfaceOpacity', 1)}
+              <Column gap="200">
+                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                  Animation speed
+                </we-text>
+                {presetRow(
+                  { none: 'None', fast: 'Fast', normal: 'Normal', slow: 'Slow' } as Record<
+                    NonNullable<ThemeOverrides['animationSpeed']>,
+                    string
+                  >,
+                  (p) => (overrides().animationSpeed ?? 'normal') === p,
+                  (p) => {
+                    setOverride('animationSpeed', p === 'normal' ? undefined : p);
+                    saveTheme();
+                  },
+                )}
+              </Column>
+            </CollapsibleSection>
+
+            {/* ── Custom CSS ── */}
+            <CollapsibleSection title="Custom CSS">
+              <Row ax="end">
                 <Show
                   when={cssEditing()}
                   fallback={
@@ -391,7 +685,7 @@ export function ThemePanel() {
                   on:input={(e: CustomEvent) => setCssValue(e.detail)}
                 />
               </Show>
-            </Column>
+            </CollapsibleSection>
           </Column>
         </we-scroll-area>
       </Show>

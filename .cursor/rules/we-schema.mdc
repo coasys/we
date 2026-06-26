@@ -499,7 +499,7 @@ array of IDs.
 - we-tag (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading' | 'heading-lg' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = ''
+  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = ''
 - we-textarea (DesignSystemElement)
   Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute
@@ -661,7 +661,7 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | FontFamilyValue | "base" (or CSS font-family) |
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
-| FontWeightValue | "100", "200", "300", "400", "500", "600", "700", "800", "900" |
+| FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, we-tooltip
@@ -746,17 +746,18 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 |------|------|-------------|
 | textAlign | "left" \| "center" \| "right" \| "justify" | Text alignment |
 | fontFamily | "base" \| {css-font-family} | Font family token |
-| fontWeight | "100"–"900" \| "light" \| "normal" \| "medium" \| "bold" \| "bolder" | Font weight |
+| fontWeight | "regular" \| "medium" \| "semibold" \| "bold" (named tokens) or "100"–"900" (numeric) or "light" \| "normal" \| "bolder" (CSS pass-through) | Font weight |
 | fontSize | "base" \| "100"–"1000" \| {css-length} | Font size token |
 | lineHeight | "none" \| "tight" \| "snug" \| "normal" \| "relaxed" \| "loose" | Line height token |
 | letterSpacing | "tighter" \| "tight" \| "normal" \| "wide" \| "wider" \| "widest" | Letter spacing token |
 | textDecoration | "underline" \| "line-through" \| "overline" \| "none" | Text decoration |
 | textTransform | "uppercase" \| "lowercase" \| "capitalize" \| "none" | Text transform |
 
-**Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, `fontSize: '500'` (16px) and `fontWeight: '500'` (normal) are the inherited defaults — omit them.
+**Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, `fontSize: '300'` (16px) and `fontWeight: '500'` (normal) are the inherited defaults — omit them.
 
-`we-text` variants (set via the `variant` prop) bundle typography presets:
-body (400), label (300 + medium), footnote (200 + neutral-400), subheading (500 + medium), ingress (500 + lineHeight 1.6), heading-sm (600 + bold), heading (800 + bold), heading-lg (1000 + bold).
+`we-text` variants (set via the `variant` prop) bundle typography presets. Always pair with a semantic `tag` prop for correct HTML structure:
+body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1).
+Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add `color="neutral-400"` explicitly.
 
 ### State
 
@@ -808,7 +809,9 @@ font.lineHeight: 'none', 'tight', 'snug', 'normal', 'relaxed', 'loose'
 
 font.size: '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000', 'base'
 
-font.weight: '100', '200', '300', '400', '500', '600', '700', '800', '900'
+font.weight: '100', '200', '300', '400', '500', '600', '700', '800', '900', 'regular', 'medium', 'semibold', 'bold'
+
+layout: 'xs', 'sm', 'md', 'lg'
 
 radius: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', 'pill', 'full'
 

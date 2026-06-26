@@ -32,7 +32,7 @@ export const spaceSidebar: SchemaNode = {
             width: '120px',
             height: '120px',
             r: 'pill',
-            ring: '0 0 0 3px var(--we-color-neutral-500)',
+            ring: '0 0 0 2px var(--we-ring-color)',
             placeholderIcon: 'users-three',
             onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['avatar', '$arg'] },
           },
@@ -46,12 +46,12 @@ export const spaceSidebar: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { fontSize: '600', textAlign: 'center' },
+          props: { textAlign: 'center' },
           children: [{ $store: 'spaceStore.currentSpace.name' }],
         },
         {
           type: 'we-text',
-          props: { fontSize: '400', textAlign: 'center', mb: '400' },
+          props: { variant: 'body', textAlign: 'center', mb: '400' },
           children: [{ $store: 'spaceStore.currentSpace.description' }],
         },
       ],
@@ -88,7 +88,7 @@ export const spaceSidebar: SchemaNode = {
               },
               children: [
                 { type: 'we-icon', props: { name: '$view.icon' } },
-                { type: 'we-text', props: { fontSize: '500' }, children: ['$view.label'] },
+                { type: 'we-text', children: ['$view.label'] },
               ],
             },
           ],

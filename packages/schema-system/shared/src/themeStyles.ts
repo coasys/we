@@ -3,11 +3,15 @@ import { color } from '@we/tokens';
 
 import type { ThemeOverrides } from './types';
 
-/** Parametric keys (excludes themeName which is handled separately). */
-type ParametricKey = Exclude<keyof ThemeOverrides, 'themeName'>;
+/**
+ * Parametric keys that map 1:1 to a CSS custom property.
+ * Keys that need special multi-var handling (shadowIntensity, animationSpeed) are excluded.
+ */
+type ParametricKey = Exclude<keyof ThemeOverrides, 'themeName' | 'shadowIntensity' | 'animationSpeed'>;
 
 /** Map parametric ThemeOverrides keys to their CSS custom property equivalents. */
 const THEME_CSS_MAP: Record<ParametricKey, string> = {
+  // Color
   primaryHue: '--we-color-primary-hue',
   successHue: '--we-color-success-hue',
   warningHue: '--we-color-warning-hue',
@@ -17,7 +21,19 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   neutralSaturation: '--we-color-neutral-saturation',
   multiplier: '--we-color-multiplier',
   subtractor: '--we-color-subtractor',
+  ringColor: '--we-ring-color',
+  // Typography
   fontFamily: '--we-font-family',
+  letterSpacing: '--we-theme-letter-spacing',
+  // Shape
+  controlRadius: '--we-theme-control-radius',
+  surfaceRadius: '--we-theme-surface-radius',
+  inputRadius: '--we-theme-input-radius',
+  // Density
+  controlSpacing: '--we-theme-control-spacing',
+  surfaceSpacing: '--we-theme-surface-spacing',
+  // Effects
+  surfaceOpacity: '--we-theme-surface-opacity',
 };
 
 /** Saturation variable used by each color family. */

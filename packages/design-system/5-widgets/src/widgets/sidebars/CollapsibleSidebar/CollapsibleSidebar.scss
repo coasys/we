@@ -94,6 +94,7 @@
   // Label text (always full size within content container)
   &__item-label {
     white-space: nowrap;
+    font-size: var(--we-font-size-300);
   }
 
   // Badge (positioned at the end of the item)

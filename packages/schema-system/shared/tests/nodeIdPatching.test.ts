@@ -346,7 +346,7 @@ describe('mergeNode', () => {
     const existing: SchemaNode = {
       id: 'n1',
       type: 'Text',
-      props: { variant: 'heading', content: 'Hello' },
+      props: { variant: 'heading-lg', content: 'Hello' },
     };
     const result = mergeNode(existing, {
       type: 'Row',

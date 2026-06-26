@@ -43,11 +43,15 @@ function applyDSBehavior<T extends new (...args: any[]) => LitElement>(Base: T):
 
     updated(changedProperties: Map<PropertyKey, unknown>) {
       super.updated(changedProperties);
-      const props = (this as unknown as { getInstanceProps(): Partial<DesignSystemProps> }).getInstanceProps();
+      const el = this as unknown as {
+        getInstanceProps(): Partial<DesignSystemProps>;
+        getRawProps(): Partial<DesignSystemProps>;
+      };
+      const props = el.getInstanceProps();
       const snapshot = JSON.stringify(props);
       if (snapshot === this._prevDSSnapshot) return;
       this._prevDSSnapshot = snapshot;
-      updateAllCustomVars(this, this._componentName!, props);
+      updateAllCustomVars(this, this._componentName!, props, el.getRawProps());
     }
   } as unknown as T;
 }

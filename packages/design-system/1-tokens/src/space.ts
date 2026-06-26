@@ -15,15 +15,15 @@ export type SpaceValue = SpaceToken | (string & {});
  * The scale follows a consistent progression with appropriate values for various UI contexts.
  */
 export const space = {
-  '0': '0rem', // No spacing
-  '100': '0.25rem', // ~4px - Micro spacing
-  '200': '0.38rem', // ~6px - Tiny spacing
-  '300': '0.5rem', // ~8px - Small spacing
-  '400': '1rem', // ~16px - Default spacing
-  '500': '1.5rem', // ~24px - Medium spacing
-  '600': '2rem', // ~32px - Large spacing
-  '700': '2.38rem', // ~38px - Extra large spacing
-  '800': '2.75rem', // ~44px - Huge spacing
-  '900': '3.25rem', // ~52px - Gigantic spacing
-  '1000': '4rem', // ~64px - Extreme spacing
+  '0': '0rem', // 0px
+  '100': '0.25rem', // 4px — micro
+  '200': '0.5rem', // 8px — tight
+  '300': '0.75rem', // 12px — compact
+  '400': '1rem', // 16px — default
+  '500': '1.5rem', // 24px — medium
+  '600': '2rem', // 32px — large
+  '700': '2.5rem', // 40px — xl
+  '800': '3rem', // 48px — 2xl
+  '900': '4rem', // 64px — 3xl
+  '1000': '6rem', // 96px — 4xl
 } satisfies Record<SpaceToken, string>;

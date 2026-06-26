@@ -84,7 +84,7 @@ describe('mutations.findMutations (combined)', () => {
       type: 'Column',
       id: 'n1',
       children: [
-        { type: 'Text', id: 'n2', props: { variant: 'heading', content: 'Hello' } },
+        { type: 'Text', id: 'n2', props: { variant: 'heading-lg', content: 'Hello' } },
         { type: 'we-button', id: 'n3', props: { text: 'Click' } },
       ],
     };

@@ -15,11 +15,11 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200', gap: '50' },
-  sm: { fontSize: '300', gap: '50' },
-  md: { fontSize: '400', gap: '100' },
-  lg: { fontSize: '500', gap: '200' },
-  xl: { fontSize: '500', gap: '300' },
+  xs: { fontSize: '100', gap: '50' },
+  sm: { fontSize: '200', gap: '50' },
+  md: { fontSize: '300', gap: '100' },
+  lg: { fontSize: '400', gap: '200' },
+  xl: { fontSize: '400', gap: '300' },
 };
 
 const BUTTON_SIZES: Record<ComponentSize, string> = {

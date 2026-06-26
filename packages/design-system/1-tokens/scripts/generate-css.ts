@@ -17,6 +17,7 @@ import type {
 } from '../src/size.js';
 import type { space as spaceTokens } from '../src/space.js';
 import type { zIndex as zIndexTokens } from '../src/z-index.js';
+import type { layout as layoutTokens } from '../src/layout.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,6 +39,7 @@ export async function generateCSS() {
       component,
       effect,
       font,
+      layout,
       shadow,
       size,
       radius,
@@ -54,6 +56,7 @@ export async function generateCSS() {
     generateComponentCSS(component, outputDir);
     generateEffectCSS(effect, outputDir);
     generateFontCSS(font, outputDir);
+    generateLayoutCSS(layout, outputDir);
     generateShadowCSS(shadow, outputDir);
     generateSizeCSS(size, radius, avatarSize, componentHeight, outputDir);
     generateSpaceCSS(space, outputDir);
@@ -98,6 +101,9 @@ function generateBorderCSS(border: typeof borderTokens, outputDir: string) {
   /* Border Colors */
   --we-border-color: var(--we-color-neutral-100);
   --we-border-color-strong: var(--we-color-neutral-200);
+
+  /* Focus ring color — themes override this to match their accent colour */
+  --we-ring-color: var(--we-color-primary-500);
 }`;
 
   fs.writeFileSync(path.join(outputDir, 'border.css'), css);
@@ -254,6 +260,21 @@ ${letterSpacingVars}
   fs.writeFileSync(path.join(outputDir, 'font.css'), css);
 }
 
+function generateLayoutCSS(layout: typeof layoutTokens, outputDir: string) {
+  const layoutVars = Object.entries(layout)
+    .map(([key, value]) => `  --we-layout-${key}: ${value};`)
+    .join('\n');
+
+  const css = `/* LAYOUT TOKENS - Generated from JS tokens */
+
+:root {
+  /* Layout width constraints */
+${layoutVars}
+}`;
+
+  fs.writeFileSync(path.join(outputDir, 'layout.css'), css);
+}
+
 function generateShadowCSS(shadow: typeof shadowTokens, outputDir: string) {
   const shadowVars = Object.entries(shadow)
     .map(([key, value]) => `  --we-shadow-${key}: ${value};`)
@@ -351,6 +372,7 @@ function generateCombinedCSS(outputDir: string) {
 @import './component.css';
 @import './effect.css';
 @import './font.css';
+@import './layout.css';
 @import './shadow.css';
 @import './size.css';
 @import './space.css';

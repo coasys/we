@@ -24,7 +24,14 @@ export const cardsRoute: RouteSchema = {
   children: [
     {
       type: 'Column',
-      props: { gap: '400', px: '600', py: '400', width: '100%', maxWidth: '1200px', minHeight: 'calc(100vh - 72px)' },
+      props: {
+        gap: '400',
+        px: '600',
+        py: '400',
+        width: '100%',
+        maxWidth: 'var(--we-layout-lg)',
+        minHeight: 'calc(100vh - 80px)',
+      },
       children: [
         cardsHeader,
 

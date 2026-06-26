@@ -53,12 +53,12 @@ export const postsList: SchemaNode = {
                           },
                           {
                             type: 'we-text',
-                            props: { fontWeight: '600', color: 'neutral-800' },
+                            props: { fontWeight: 'semibold' },
                             children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
                           },
                           {
                             type: 'we-timestamp',
-                            props: { value: '$post.createdAt', relative: true, color: 'neutral-500' },
+                            props: { value: '$post.createdAt', relative: true },
                           },
                         ],
                       },
@@ -77,6 +77,7 @@ export const postsList: SchemaNode = {
                             props: {
                               variant: 'ghost',
                               size: 'sm',
+                              square: true,
                               onClick: { $setLocal: 'editPostOpen', value: true },
                             },
                             children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
@@ -99,6 +100,7 @@ export const postsList: SchemaNode = {
                             props: {
                               variant: 'ghost',
                               size: 'sm',
+                              square: true,
                               onClick: { $setLocal: 'confirmDeleteOpen', value: true },
                             },
                             children: [{ type: 'we-icon', props: { name: 'trash' } }],
@@ -111,10 +113,9 @@ export const postsList: SchemaNode = {
                                 type: 'we-modal',
                                 props: { close: { $setLocal: 'confirmDeleteOpen', value: false } },
                                 children: [
-                                  { type: 'we-text', props: { fontWeight: '600' }, children: ['Delete post?'] },
+                                  { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Delete post?'] },
                                   {
                                     type: 'we-text',
-                                    props: { color: 'neutral-600' },
                                     children: [
                                       'This will permanently delete the post and everything inside it. This cannot be undone.',
                                     ],

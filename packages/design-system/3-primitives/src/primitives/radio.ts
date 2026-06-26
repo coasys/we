@@ -13,16 +13,16 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   gap: '200',
   cursor: 'pointer',
-  fontSize: '400',
+  fontSize: '300',
   color: 'neutral-800',
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200', gap: '100' },
-  sm: { fontSize: '300', gap: '100' },
-  md: { fontSize: '400', gap: '200' },
-  lg: { fontSize: '500', gap: '300' },
-  xl: { fontSize: '500', gap: '400' },
+  xs: { fontSize: '100', gap: '100' },
+  sm: { fontSize: '200', gap: '100' },
+  md: { fontSize: '300', gap: '200' },
+  lg: { fontSize: '400', gap: '300' },
+  xl: { fontSize: '400', gap: '400' },
 };
 
 const styles = css`

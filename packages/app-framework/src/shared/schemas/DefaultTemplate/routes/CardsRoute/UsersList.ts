@@ -31,11 +31,11 @@ export const usersList: SchemaNode = gridWrapper([
               },
               {
                 type: 'Column',
-                props: { gap: '50', flex: '1' },
+                props: { gap: '100', flex: '1' },
                 children: [
                   {
                     type: 'we-text',
-                    props: { fontWeight: '600', color: 'neutral-800' },
+                    props: { fontWeight: 'semibold' },
                     children: [{ $concat: ['$user.firstName', ' ', '$user.lastName'] }],
                   },
                   {
@@ -44,7 +44,7 @@ export const usersList: SchemaNode = gridWrapper([
                       condition: '$user.handle',
                       then: {
                         type: 'we-text',
-                        props: { fontSize: '300', color: 'neutral-500' },
+                        props: { variant: 'label' },
                         children: [{ $concat: ['@', '$user.handle'] }],
                       },
                     },
@@ -61,7 +61,7 @@ export const usersList: SchemaNode = gridWrapper([
               condition: '$user.bio',
               then: {
                 type: 'we-text',
-                props: { fontSize: '300', color: 'neutral-600' },
+                props: { variant: 'label' },
                 children: ['$user.bio'],
               },
             },

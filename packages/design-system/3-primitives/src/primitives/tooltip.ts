@@ -31,7 +31,7 @@ const CSS_STYLES = css`
     position: fixed;
     z-index: var(--we-z-tooltip);
     white-space: nowrap;
-    font-size: var(--we-font-size-400, 14px);
+    font-size: var(--we-font-size-200, 14px);
     font-weight: 500;
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
     background: #222;

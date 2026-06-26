@@ -14,15 +14,15 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   gap: '300',
   width: '100%',
   color: 'neutral-800',
-  fontSize: '400',
+  fontSize: '300',
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200' },
-  sm: { fontSize: '300' },
-  md: { fontSize: '400' },
-  lg: { fontSize: '500' },
-  xl: { fontSize: '500' },
+  xs: { fontSize: '100' },
+  sm: { fontSize: '200' },
+  md: { fontSize: '300' },
+  lg: { fontSize: '400' },
+  xl: { fontSize: '400' },
 };
 
 const TRACK_HEIGHT: Record<ComponentSize, string> = {

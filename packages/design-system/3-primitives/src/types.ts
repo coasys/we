@@ -16,9 +16,10 @@ export type ModalSize = ComponentSize | 'fullscreen';
 export type PopoverEvent = 'contextmenu' | 'mouseover' | 'click';
 export type TextVariant =
   | ''
-  | 'heading'
   | 'heading-sm'
+  | 'heading-md'
   | 'heading-lg'
+  | 'heading-xl'
   | 'subheading'
   | 'ingress'
   | 'body'

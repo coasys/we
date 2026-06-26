@@ -36,7 +36,7 @@ export const spacesList: SchemaNode = gridWrapper([
                   },
                   {
                     type: 'we-text',
-                    props: { fontWeight: '600', color: 'neutral-800' },
+                    props: { fontWeight: 'semibold' },
                     children: ['$space.name'],
                   },
                 ],
@@ -68,12 +68,11 @@ export const spacesList: SchemaNode = gridWrapper([
                             children: [
                               {
                                 type: 'we-text',
-                                props: { fontWeight: '600' },
+                                props: { fontWeight: 'semibold' },
                                 children: ['Remove from discovery?'],
                               },
                               {
                                 type: 'we-text',
-                                props: { color: 'neutral-600' },
                                 children: [
                                   'This will remove this space from the global discovery listing. The space and all its content will remain intact.',
                                 ],
@@ -122,7 +121,7 @@ export const spacesList: SchemaNode = gridWrapper([
               condition: '$space.description',
               then: {
                 type: 'we-text',
-                props: { fontSize: '300', color: 'neutral-500' },
+                props: { variant: 'label' },
                 children: ['$space.description'],
               },
             },

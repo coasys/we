@@ -49,14 +49,14 @@ const marketplaceBrowser = {
                 { type: 'we-icon', props: { name: 'storefront', size: 'lg', gradient: 'primary' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '700', fontWeight: 'bold' },
+                  props: { variant: 'heading-md' },
                   children: ['Module Marketplace'],
                 },
               ],
             },
             {
               type: 'we-text',
-              props: { color: 'neutral-500', mb: '500' },
+              props: { mb: '500' },
               children: ['Browse and install community modules for your WE spaces.'],
             },
             tabBar,

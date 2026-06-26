@@ -7,12 +7,12 @@ export const blocksRoute: SchemaNode = {
     { type: 'we-icon', props: { name: 'cube', size: 'xl', color: 'neutral-300' } },
     {
       type: 'we-text',
-      props: { fontSize: '500', color: 'neutral-400', textAlign: 'center' },
+      props: { textAlign: 'center' },
       children: ['Blocks coming soon'],
     },
     {
       type: 'we-text',
-      props: { fontSize: '300', color: 'neutral-400', textAlign: 'center', maxWidth: '360px' },
+      props: { variant: 'label', textAlign: 'center', maxWidth: '360px' },
       children: ['Community block publishing will be available in a future update.'],
     },
   ],
