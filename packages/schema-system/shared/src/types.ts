@@ -54,7 +54,10 @@ export type TransitionConfig = TransitionEffect | TransitionEffect[];
 
 /** Parametric theme overrides — each field maps to a CSS custom property on the design system. */
 export type ThemeOverrides = {
+  // Named preset
   themeName?: string; // Named theme preset (e.g. 'dark', 'cyberpunk', 'retro') — sets data-we-theme attribute
+
+  // Color
   primaryHue?: number; // --we-color-primary-hue
   successHue?: number; // --we-color-success-hue
   warningHue?: number; // --we-color-warning-hue
@@ -64,7 +67,27 @@ export type ThemeOverrides = {
   neutralSaturation?: string; // --we-color-neutral-saturation
   multiplier?: number; // --we-color-multiplier
   subtractor?: string; // --we-color-subtractor  (e.g. "108%")
+  ringColor?: string; // --we-ring-color  (focus ring / accent color)
+
+  // Typography
   fontFamily?: string; // --we-font-family
+  letterSpacing?: string; // --we-theme-letter-spacing  (e.g. "0.05em" for airy headlines)
+
+  // Shape — radius cascade: component r= prop → component theme → group theme → token default
+  controlRadius?: string; // --we-theme-control-radius  (buttons, badges, tags)
+  surfaceRadius?: string; // --we-theme-surface-radius  (modals, drawers, alerts)
+  inputRadius?: string; // --we-theme-input-radius  (inputs, selects, textareas)
+
+  // Density — padding cascade: component p= prop → component theme → group theme → token default
+  controlSpacing?: string; // --we-theme-control-spacing  (button / badge padding)
+  surfaceSpacing?: string; // --we-theme-surface-spacing  (modal / card padding)
+
+  // Effects
+  shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic'; // maps to --we-theme-shadow-preset
+  surfaceOpacity?: number; // --we-theme-surface-opacity  (0–1, for modal/overlay backgrounds)
+
+  // Motion
+  animationSpeed?: 'none' | 'fast' | 'normal' | 'slow'; // maps to --we-theme-animation-speed-preset
 };
 
 export type SchemaNode = {

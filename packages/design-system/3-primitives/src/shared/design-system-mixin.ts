@@ -12,6 +12,7 @@ type MixedClass<T extends Constructor<LitElement>> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Mixin pattern requires any for constructor spread
   new (...args: any[]): InstanceType<T> & {
     getInstanceProps(): Partial<DesignSystemProps>;
+    getRawProps(): Partial<DesignSystemProps>;
   };
   /** The DS layers this component has opted into. */
   readonly __dsLayers: readonly DSLayer[];
@@ -49,6 +50,13 @@ export function DesignSystemMixin<T extends Constructor<LitElement>>(
       const usedProps = filterProps(this as Record<string, unknown>, activeKeys);
       const defaultProps = (this.constructor as typeof DesignSystemMixed).getDefaultProps?.() ?? {};
       return mergeProps(usedProps, defaultProps) as Partial<DesignSystemProps>;
+    }
+
+    // Get only the props explicitly set on this element (no DEFAULT_PROPS fill).
+    // Used by updateAllCustomVars to skip setting instance CSS vars for props that
+    // came from DEFAULT_PROPS, letting the static theme cascade take effect instead.
+    public getRawProps() {
+      return filterProps(this as Record<string, unknown>, activeKeys) as Partial<DesignSystemProps>;
     }
   }
 

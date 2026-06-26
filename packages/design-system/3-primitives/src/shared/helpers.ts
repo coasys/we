@@ -26,6 +26,53 @@ import {
 
 const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
 
+// ────────────────────────────────────────────
+// Component cascade configuration
+// ────────────────────────────────────────────
+
+/**
+ * Per-component cascade config. When set, the static CSS emits a 4-level fallback
+ * chain for radius and padding rather than a bare var():
+ *
+ *   border-radius: var(--we-button-radius,
+ *     var(--we-theme-button-radius,        ← component-specific theme override
+ *       var(--we-theme-control-radius,     ← group theme override
+ *         var(--we-radius-400))));         ← token default
+ *
+ * This lets themes set "all buttons pill" via --we-theme-control-radius without
+ * per-element r= props fighting them.
+ */
+interface ComponentCascade {
+  radiusGroup?: string;    // e.g. '--we-theme-control-radius'
+  radiusDefault?: string;  // e.g. 'var(--we-radius-400)'
+  paddingGroup?: string;   // e.g. '--we-theme-control-spacing'
+  paddingDefault?: string; // e.g. 'var(--we-space-400)'
+}
+
+const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
+  // Controls
+  button:          { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)', paddingGroup: '--we-theme-control-spacing', paddingDefault: 'var(--we-space-400)' },
+  badge:           { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
+  tag:             { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
+  'progress-bar':  { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
+  // Inputs
+  input:           { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  textarea:        { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  select:          { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'number-input':  { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'date-picker':   { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'color-picker':  { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'icon-picker':   { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'file-upload':   { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'form-field':    { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  // Surfaces
+  modal:           { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-600)', paddingGroup: '--we-theme-surface-spacing', paddingDefault: 'var(--we-space-600)' },
+  drawer:          { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-600)', paddingGroup: '--we-theme-surface-spacing', paddingDefault: 'var(--we-space-600)' },
+  alert:           { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-400)' },
+  blockquote:      { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-400)' },
+  code:            { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-300)' },
+};
+
 const DEFAULT_TRANSITION = 'all var(--we-transition-200, 150ms) ease';
 
 // ────────────────────────────────────────────
@@ -78,6 +125,7 @@ function updateCustomVars(
   el: HTMLElement,
   componentName: string,
   props: Partial<DesignSystemProps>,
+  rawExplicitProps?: Partial<DesignSystemProps>,
   state?: ElementState,
 ) {
   const prefix = state ? `--we-${componentName}-${state}-` : `--we-${componentName}-`;
@@ -123,7 +171,10 @@ function updateCustomVars(
   setProperty(el, `${prefix}pointer-events`, props.pointerEvents);
   setProperty(el, `${prefix}visibility`, props.visibility);
   const hasRadius = radiusKeys.some((k) => props[k] !== undefined && props[k] !== null);
-  setProperty(el, `${prefix}radius`, hasRadius ? getRadiusValues(props) : undefined);
+  // Only set the instance radius var when the prop was explicitly passed (not from DEFAULT_PROPS).
+  // If not explicitly set, the static CSS fallback chain handles it via --we-theme-*-radius.
+  const radiusExplicit = !rawExplicitProps || radiusKeys.some((k) => rawExplicitProps[k] !== undefined);
+  setProperty(el, `${prefix}radius`, hasRadius && radiusExplicit ? getRadiusValues(props) : undefined);
 
   // Layout on base
   setProperty(el, `${prefix}display`, props.display);
@@ -141,7 +192,9 @@ function updateCustomVars(
   setProperty(el, `${prefix}wrap`, 'wrap' in props ? (props.wrap ? 'wrap' : 'nowrap') : undefined);
   setProperty(el, `${prefix}gap`, props.gap ? tokenVar('space', props.gap) : undefined);
   const hasPadding = paddingKeys.some((k) => props[k] !== undefined && props[k] !== null);
-  setProperty(el, `${prefix}padding`, hasPadding ? getPaddingValues(props) : undefined);
+  // Same guard as radius — only set the instance padding var when explicitly passed.
+  const paddingExplicit = !rawExplicitProps || paddingKeys.some((k) => rawExplicitProps[k] !== undefined);
+  setProperty(el, `${prefix}padding`, hasPadding && paddingExplicit ? getPaddingValues(props) : undefined);
 
   // Typography
   setProperty(el, `${prefix}text-align`, props.textAlign);
@@ -158,11 +211,17 @@ function updateCustomVars(
   setProperty(el, `${prefix}text-transform`, props.textTransform);
 }
 
-export function updateAllCustomVars(el: HTMLElement, componentName: string, props: Partial<DesignSystemProps>) {
-  updateCustomVars(el, componentName, props);
+export function updateAllCustomVars(
+  el: HTMLElement,
+  componentName: string,
+  props: Partial<DesignSystemProps>,
+  rawExplicitProps?: Partial<DesignSystemProps>,
+) {
+  updateCustomVars(el, componentName, props, rawExplicitProps);
   ELEMENT_STATES.forEach((state) => {
     const stateProps = props[`${state}Props`];
-    if (stateProps && typeof stateProps === 'object') updateCustomVars(el, componentName, stateProps, state);
+    // State props are always treated as explicit — no DEFAULT_PROPS fill state blocks.
+    if (stateProps && typeof stateProps === 'object') updateCustomVars(el, componentName, stateProps, undefined, state);
   });
 }
 
@@ -261,6 +320,19 @@ function joinStateDecls(sp: string, dp: string, specs: PropSpec[]): string {
   return specs.map((s) => stateDecl(sp, dp, s)).join('\n    ');
 }
 
+// Build a PropSpec with an optional cascade fallback chain for a single prop.
+function cascadeSpec(
+  componentName: string,
+  cssProp: string,
+  varSuffix: string,
+  groupVar: string | undefined,
+  tokenDefault: string | undefined,
+): PropSpec {
+  if (!groupVar || !tokenDefault) return [cssProp, varSuffix];
+  const compThemeVar = `--we-theme-${componentName}-${varSuffix}`;
+  return [cssProp, varSuffix, `var(${compThemeVar}, var(${groupVar}, ${tokenDefault}))`];
+}
+
 /**
  * Generate static CSS string for a DS component. Called once per component class.
  * The CSS reads CSS custom properties that are set at runtime by updateAllCustomVars().
@@ -268,6 +340,19 @@ function joinStateDecls(sp: string, dp: string, specs: PropSpec[]): string {
 export function getStaticDSStyles(componentName: string, layers?: readonly DSLayer[]): string {
   const l = new Set<DSLayer>(layers ?? ['layout', 'visual', 'flex', 'typography', 'state']);
   const p = `--we-${componentName}-`;
+  const cascade = COMPONENT_CASCADE[componentName];
+
+  // Build per-component visual and flex specs with cascade fallbacks where applicable.
+  const baseVisual: PropSpec[] = BASE_VISUAL.map((spec) =>
+    spec[1] === 'radius'
+      ? cascadeSpec(componentName, 'border-radius', 'radius', cascade?.radiusGroup, cascade?.radiusDefault)
+      : spec,
+  );
+  const baseFlex: PropSpec[] = BASE_FLEX.map((spec) =>
+    spec[1] === 'padding'
+      ? cascadeSpec(componentName, 'padding', 'padding', cascade?.paddingGroup, cascade?.paddingDefault)
+      : spec,
+  );
 
   const styles: string[] = [];
 
@@ -283,10 +368,10 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
   const baseLines: string[] = ['width: 100%;', 'height: 100%;'];
   if (l.has('visual')) {
     baseLines.push(`transition: var(${p}transition, ${DEFAULT_TRANSITION});`);
-    baseLines.push(joinDecls(p, BASE_VISUAL));
+    baseLines.push(joinDecls(p, baseVisual));
   }
   if (l.has('layout')) baseLines.push(joinDecls(p, BASE_LAYOUT));
-  if (l.has('flex')) baseLines.push(joinDecls(p, BASE_FLEX));
+  if (l.has('flex')) baseLines.push(joinDecls(p, baseFlex));
   if (l.has('typography')) baseLines.push(joinDecls(p, BASE_TYPOGRAPHY));
 
   const hasBase = l.has('visual') || l.has('layout') || l.has('flex') || l.has('typography');
@@ -300,9 +385,9 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
     if (l.has('layout')) hostSpecs.push(...HOST_LAYOUT);
 
     const baseSpecs: PropSpec[] = [];
-    if (l.has('visual')) baseSpecs.push(...BASE_VISUAL);
+    if (l.has('visual')) baseSpecs.push(...baseVisual);
     if (l.has('layout')) baseSpecs.push(...BASE_LAYOUT);
-    if (l.has('flex')) baseSpecs.push(...BASE_FLEX);
+    if (l.has('flex')) baseSpecs.push(...baseFlex);
     if (l.has('typography')) baseSpecs.push(...BASE_TYPOGRAPHY);
 
     for (const state of ELEMENT_STATES) {

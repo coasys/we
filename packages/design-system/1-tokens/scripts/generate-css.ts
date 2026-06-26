@@ -98,6 +98,9 @@ function generateBorderCSS(border: typeof borderTokens, outputDir: string) {
   /* Border Colors */
   --we-border-color: var(--we-color-neutral-100);
   --we-border-color-strong: var(--we-color-neutral-200);
+
+  /* Focus ring color — themes override this to match their accent colour */
+  --we-ring-color: var(--we-color-primary-500);
 }`;
 
   fs.writeFileSync(path.join(outputDir, 'border.css'), css);

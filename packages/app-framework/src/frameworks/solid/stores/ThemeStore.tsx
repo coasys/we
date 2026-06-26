@@ -160,6 +160,7 @@ function clearCustomThemeCSS() {
 }
 
 const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
+  // Color
   primaryHue: '--we-color-primary-hue',
   successHue: '--we-color-success-hue',
   warningHue: '--we-color-warning-hue',
@@ -169,6 +170,19 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
   neutralSaturation: '--we-color-neutral-saturation',
   subtractor: '--we-color-subtractor',
   multiplier: '--we-color-multiplier',
+  ringColor: '--we-ring-color',
+  // Typography
+  fontFamily: '--we-font-family',
+  letterSpacing: '--we-theme-letter-spacing',
+  // Shape
+  controlRadius: '--we-theme-control-radius',
+  surfaceRadius: '--we-theme-surface-radius',
+  inputRadius: '--we-theme-input-radius',
+  // Density
+  controlSpacing: '--we-theme-control-spacing',
+  surfaceSpacing: '--we-theme-surface-spacing',
+  // Effects
+  surfaceOpacity: '--we-theme-surface-opacity',
 };
 
 /**
