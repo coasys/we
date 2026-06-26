@@ -15,7 +15,7 @@ export const signalsRoute: RouteSchema = {
     // Description
     {
       type: 'we-text',
-      props: { variant: 'body', color: 'neutral-600', mb: '400' },
+      props: { variant: 'body', mb: '400' },
       children: ['Create and manage custom signal types to categorize and enrich your signals.'],
     },
 
@@ -23,8 +23,6 @@ export const signalsRoute: RouteSchema = {
       type: 'we-button',
       props: {
         text: 'Add Signal Type',
-        bg: 'primary-500',
-        color: 'neutral-0',
         height: '40px',
         onClick: { $setLocal: 'createOpen', value: true },
       },

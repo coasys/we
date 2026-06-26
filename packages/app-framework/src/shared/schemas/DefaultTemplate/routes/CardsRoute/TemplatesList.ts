@@ -50,7 +50,7 @@ export const templatesList: SchemaNode = {
                               },
                               {
                                 type: 'we-text',
-                                props: { variant: 'label', color: 'neutral-500' },
+                                props: { variant: 'label' },
                                 children: [{ $concat: ['@', '$templateAuthor.handle'] }],
                               },
                             ],

@@ -7,12 +7,12 @@ const emptyState: SchemaNode = {
     { type: 'we-icon', props: { name: 'layout', size: 'xl', color: 'neutral-300' } },
     {
       type: 'we-text',
-      props: { fontSize: '500', color: 'neutral-400', textAlign: 'center' },
+      props: { textAlign: 'center' },
       children: ['No templates available yet'],
     },
     {
       type: 'we-text',
-      props: { fontSize: '300', color: 'neutral-400', textAlign: 'center' },
+      props: { variant: 'label', textAlign: 'center' },
       children: ['Be the first to publish a template to the marketplace.'],
     },
   ],

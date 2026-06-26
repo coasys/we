@@ -62,12 +62,12 @@ export const spaceHeader: SchemaNode = {
                         condition: { $store: 'spaceStore.currentSpace.description' },
                         then: {
                           type: 'we-text',
-                          props: { color: 'neutral-600', truncate: true },
+                          props: { truncate: true },
                           children: [{ $store: 'spaceStore.currentSpace.description' }],
                         },
                         else: {
                           type: 'we-text',
-                          props: { color: 'neutral-500', italic: true },
+                          props: { italic: true },
                           children: ['No description...'],
                         },
                       },
@@ -102,12 +102,11 @@ export const spaceHeader: SchemaNode = {
                               props: {
                                 value: { $count: { items: { $store: 'spaceStore.members' } } },
                                 shorten: true,
-                                color: 'neutral-600',
                               },
                             },
                             {
                               type: 'we-text',
-                              props: { color: 'neutral-500' },
+                              props: {},
                               children: [
                                 {
                                   $plural: {
@@ -226,7 +225,7 @@ export const spaceNavBar: SchemaNode = {
                       },
                       children: [
                         { type: 'we-icon', props: { name: '$view.icon' } },
-                        { type: 'we-text', props: { fontSize: '500' }, children: ['$view.label'] },
+                        { type: 'we-text', children: ['$view.label'] },
                       ],
                     },
                   ],

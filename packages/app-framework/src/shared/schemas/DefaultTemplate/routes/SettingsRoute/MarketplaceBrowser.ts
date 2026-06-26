@@ -76,7 +76,7 @@ export const marketplaceBrowser: SchemaNode = {
             { type: 'we-icon', props: { name: 'layout', size: 'xl', color: 'neutral-300' } },
             {
               type: 'we-text',
-              props: { color: 'neutral-400', textAlign: 'center' },
+              props: { textAlign: 'center' },
               children: ['No templates available in the marketplace yet.'],
             },
           ],

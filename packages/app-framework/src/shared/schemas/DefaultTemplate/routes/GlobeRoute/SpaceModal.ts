@@ -54,7 +54,7 @@ export const spaceModal = {
                       type: 'we-image',
                       props: { src: '$space.avatar', width: '60px', height: '60px', fit: 'cover', r: 'full' },
                     },
-                    else: { type: 'we-icon', props: { name: 'globe', size: 'xl', color: 'neutral-400' } },
+                    else: { type: 'we-icon', props: { name: 'globe', size: 'xl', color: 'neutral-300' } },
                   },
                 },
                 {
@@ -68,7 +68,7 @@ export const spaceModal = {
                         condition: '$space.description',
                         then: {
                           type: 'we-text',
-                          props: { variant: 'body', color: 'neutral-500' },
+                          props: { variant: 'body' },
                           children: ['$space.description'],
                         },
                       },

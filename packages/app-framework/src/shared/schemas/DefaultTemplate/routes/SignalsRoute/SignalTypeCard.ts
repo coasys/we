@@ -17,7 +17,7 @@ export const signalTypeCard: SchemaNode = {
             { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$signalType.name'] },
             {
               type: 'we-text',
-              props: { variant: 'body', color: 'neutral-500' },
+              props: { variant: 'body' },
               children: ['$signalType.description'],
             },
           ],

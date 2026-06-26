@@ -73,7 +73,6 @@ export const spacesList: SchemaNode = gridWrapper([
                               },
                               {
                                 type: 'we-text',
-                                props: { color: 'neutral-600' },
                                 children: [
                                   'This will remove this space from the global discovery listing. The space and all its content will remain intact.',
                                 ],
@@ -122,7 +121,7 @@ export const spacesList: SchemaNode = gridWrapper([
               condition: '$space.description',
               then: {
                 type: 'we-text',
-                props: { variant: 'label', color: 'neutral-500' },
+                props: { variant: 'label' },
                 children: ['$space.description'],
               },
             },

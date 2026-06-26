@@ -58,7 +58,7 @@ export const postsList: SchemaNode = {
                           },
                           {
                             type: 'we-timestamp',
-                            props: { value: '$post.createdAt', relative: true, color: 'neutral-500' },
+                            props: { value: '$post.createdAt', relative: true },
                           },
                         ],
                       },
@@ -114,7 +114,6 @@ export const postsList: SchemaNode = {
                                   { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Delete post?'] },
                                   {
                                     type: 'we-text',
-                                    props: { color: 'neutral-600' },
                                     children: [
                                       'This will permanently delete the post and everything inside it. This cannot be undone.',
                                     ],

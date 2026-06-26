@@ -13,7 +13,7 @@ export const fluxRoute: RouteSchema = {
       type: 'Row',
       props: { ay: 'center', gap: '400', pb: '200' },
       children: [
-        { type: 'we-icon', props: { name: 'chat-circle-dots', size: 'lg', color: 'primary-500' } },
+        { type: 'we-icon', props: { name: 'chat-circle-dots', size: 'lg' } },
         {
           type: 'Column',
           props: { gap: '100' },
@@ -25,7 +25,7 @@ export const fluxRoute: RouteSchema = {
             },
             {
               type: 'we-text',
-              props: { variant: 'label', color: 'neutral-500' },
+              props: { variant: 'label' },
               children: ['Your community at a glance'],
             },
           ],

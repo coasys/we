@@ -75,7 +75,7 @@ export const themeMarketplaceBrowser: SchemaNode = {
             { type: 'we-icon', props: { name: 'paint-bucket', size: 'xl', color: 'neutral-300' } },
             {
               type: 'we-text',
-              props: { color: 'neutral-400', textAlign: 'center' },
+              props: { textAlign: 'center' },
               children: ['No themes available in the marketplace yet.'],
             },
           ],

@@ -166,7 +166,7 @@ export const createSpaceModal = {
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '400', fontWeight: 'medium' },
+              props: { variant: 'body', fontWeight: 'medium' },
               children: [
                 {
                   $if: {
@@ -234,7 +234,7 @@ export const createSpaceModal = {
                     },
                     then: {
                       type: 'we-text',
-                      props: { fontSize: '400', fontWeight: 'medium' },
+                      props: { variant: 'body', fontWeight: 'medium' },
                       children: [
                         {
                           $if: {
@@ -247,7 +247,7 @@ export const createSpaceModal = {
                     },
                     else: {
                       type: 'we-text',
-                      props: { fontSize: '400', fontWeight: 'medium', color: 'neutral-400' },
+                      props: { variant: 'body', fontWeight: 'medium' },
                       children: [
                         {
                           $if: {
@@ -315,7 +315,7 @@ export const createSpaceModal = {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'info', size: 'sm', color: 'neutral-400' } },
+                { type: 'we-icon', props: { name: 'info', size: 'sm' } },
                 {
                   type: 'we-text',
                   props: { variant: 'footnote' },
@@ -345,8 +345,6 @@ export const createSpaceModal = {
           type: 'we-button',
           props: {
             text: 'Create Space',
-            bg: 'primary-500',
-            color: 'neutral-0',
             height: '40px',
             loading: { $local: 'submitting' },
             disabled: { $local: 'submitting' },

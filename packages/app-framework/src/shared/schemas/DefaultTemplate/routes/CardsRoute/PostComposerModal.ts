@@ -64,8 +64,6 @@ export function postComposerModal(opts: PostComposerModalOptions): SchemaNode {
             type: 'we-button',
             props: {
               text: opts.saveLabel,
-              bg: 'primary-500',
-              color: 'neutral-0',
               height: '40px',
               loading: { $local: 'submitting' },
               disabled: { $local: 'submitting' },

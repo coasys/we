@@ -16,7 +16,7 @@ const globalSpaceJoinPrompt: SchemaNode = {
     },
     {
       type: 'we-text',
-      props: { variant: 'body', color: 'neutral-500', textAlign: 'center', maxWidth: '420px' },
+      props: { variant: 'body', textAlign: 'center', maxWidth: '420px' },
       children: [
         "This is the WE network's global discovery space — find communities and people from across the network. Join to explore spaces on the globe and connect with others.",
       ],
@@ -47,7 +47,7 @@ const regularSpaceJoinPrompt: SchemaNode = {
     },
     {
       type: 'we-text',
-      props: { variant: 'body', color: 'neutral-500', textAlign: 'center', maxWidth: '400px' },
+      props: { variant: 'body', textAlign: 'center', maxWidth: '400px' },
       children: ["You haven't joined this space yet. Click below to connect and start collaborating."],
     },
     {
@@ -76,7 +76,7 @@ const notConfiguredPrompt: SchemaNode = {
     },
     {
       type: 'we-text',
-      props: { variant: 'body', color: 'neutral-500', textAlign: 'center', maxWidth: '400px' },
+      props: { variant: 'body', textAlign: 'center', maxWidth: '400px' },
       children: ['No global space URL has been set in we-seed.json. Add a globalSpaceUrl to enable joining.'],
     },
   ],

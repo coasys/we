@@ -44,7 +44,7 @@ export const usersList: SchemaNode = gridWrapper([
                       condition: '$user.handle',
                       then: {
                         type: 'we-text',
-                        props: { variant: 'label', color: 'neutral-500' },
+                        props: { variant: 'label' },
                         children: [{ $concat: ['@', '$user.handle'] }],
                       },
                     },
@@ -61,7 +61,7 @@ export const usersList: SchemaNode = gridWrapper([
               condition: '$user.bio',
               then: {
                 type: 'we-text',
-                props: { variant: 'label', color: 'neutral-600' },
+                props: { variant: 'label' },
                 children: ['$user.bio'],
               },
             },

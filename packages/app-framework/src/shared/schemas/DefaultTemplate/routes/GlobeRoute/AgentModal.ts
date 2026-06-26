@@ -47,7 +47,7 @@ export const agentModal = {
                     },
                     else: {
                       type: 'we-icon',
-                      props: { name: 'user-circle', size: 'xl', color: 'neutral-400' },
+                      props: { name: 'user-circle', size: 'xl', color: 'neutral-300' },
                     },
                   },
                 },
@@ -77,7 +77,7 @@ export const agentModal = {
                 condition: '$agent.bio',
                 then: {
                   type: 'we-text',
-                  props: { variant: 'body', color: 'neutral-600' },
+                  props: { variant: 'body' },
                   children: ['$agent.bio'],
                 },
               },

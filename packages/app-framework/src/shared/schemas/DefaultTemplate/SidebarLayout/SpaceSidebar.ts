@@ -46,7 +46,7 @@ export const spaceSidebar: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { fontSize: '600', textAlign: 'center' },
+          props: { textAlign: 'center' },
           children: [{ $store: 'spaceStore.currentSpace.name' }],
         },
         {
@@ -88,7 +88,7 @@ export const spaceSidebar: SchemaNode = {
               },
               children: [
                 { type: 'we-icon', props: { name: '$view.icon' } },
-                { type: 'we-text', props: { fontSize: '500' }, children: ['$view.label'] },
+                { type: 'we-text', children: ['$view.label'] },
               ],
             },
           ],
