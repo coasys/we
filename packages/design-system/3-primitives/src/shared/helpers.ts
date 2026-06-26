@@ -31,16 +31,19 @@ const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
 // ────────────────────────────────────────────
 
 /**
- * Per-component cascade config. When set, the static CSS emits a 4-level fallback
+ * Per-component cascade config. When set, the static CSS emits a fallback
  * chain for radius and padding rather than a bare var():
  *
- *   border-radius: var(--we-button-radius,
- *     var(--we-theme-button-radius,        ← component-specific theme override
- *       var(--we-theme-control-radius,     ← group theme override
- *         var(--we-radius-400))));         ← token default
+ *   border-radius: var(--we-button-radius,          ← explicit r= prop
+ *     var(--we-theme-button-radius,                 ← component-specific theme override
+ *       var(--we-theme-control-radius,              ← group theme override
+ *         var(--we-button-size-radius,              ← size-aware structural default (CSS host rule)
+ *           var(--we-radius-400)))));               ← absolute token fallback
  *
  * This lets themes set "all buttons pill" via --we-theme-control-radius without
- * per-element r= props fighting them.
+ * per-element r= props fighting them, while still having size-appropriate defaults.
+ * Size-aware defaults (--we-button-size-radius) sit below theme variables so a
+ * theme can still override to sharp/pill with a single variable.
  */
 interface ComponentCascade {
   radiusGroup?: string; // e.g. '--we-theme-control-radius'
@@ -54,7 +57,7 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   // Controls
   button: {
     radiusGroup: '--we-theme-control-radius',
-    radiusDefault: 'var(--we-radius-400)',
+    radiusDefault: 'var(--we-button-size-radius, var(--we-radius-400))',
     paddingGroup: '--we-theme-control-spacing',
     paddingDefault: '0 var(--we-space-400)',
   },
@@ -116,6 +119,13 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     paddingDefault: '0 var(--we-space-300)',
   },
   'form-field': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  // Tabs
+  tab: {
+    radiusGroup: '--we-theme-control-radius',
+    radiusDefault: 'var(--we-radius-400) var(--we-radius-400) 0 0',
+    paddingGroup: '--we-theme-tab-spacing',
+    paddingDefault: 'var(--we-space-200) var(--we-space-300)',
+  },
   // Surfaces
   modal: {
     radiusGroup: '--we-theme-surface-radius',

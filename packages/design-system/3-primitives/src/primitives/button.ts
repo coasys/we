@@ -53,8 +53,8 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { px: '300', fontSize: '100', height: 'var(--we-component-height-xs)' },
-  sm: { px: '300', fontSize: '200', height: 'var(--we-component-height-sm)' },
+  xs: { px: '200', fontSize: '100', height: 'var(--we-component-height-xs)', gap: '100' },
+  sm: { px: '300', fontSize: '200', height: 'var(--we-component-height-sm)', gap: '200' },
   md: { px: '400', fontSize: '300', height: 'var(--we-component-height-md)' },
   lg: { px: '500', fontSize: '500', height: 'var(--we-component-height-lg)' },
   xl: { px: '500', fontSize: '500', height: 'var(--we-component-height-xl)' },
@@ -69,18 +69,23 @@ const CSS_STYLES = css`
   /* Provide icon sizing context for nested we-icon children */
   :host([size='xs']) {
     --we-context-icon-size: var(--we-size-xxs);
+    --we-button-size-radius: var(--we-radius-200);
   }
   :host([size='sm']) {
     --we-context-icon-size: var(--we-size-xs);
+    --we-button-size-radius: var(--we-radius-300);
   }
   :host([size='md']) {
     --we-context-icon-size: var(--we-size-sm);
+    --we-button-size-radius: var(--we-radius-400);
   }
   :host([size='lg']) {
     --we-context-icon-size: var(--we-size-md);
+    --we-button-size-radius: var(--we-radius-400);
   }
   :host([size='xl']) {
     --we-context-icon-size: var(--we-size-lg);
+    --we-button-size-radius: var(--we-radius-400);
   }
 
   [part='base'] {

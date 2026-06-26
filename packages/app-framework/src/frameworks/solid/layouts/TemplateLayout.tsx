@@ -41,7 +41,7 @@ import { panelResizing, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from '../compon
 import { buildRoutes } from '../utils/buildRoutes';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
-export const SHELL_SIDEBAR_WIDTH = '72px';
+export const SHELL_SIDEBAR_WIDTH = '80px';
 
 // Shell view registry — maps activeShellView id → schema + optional extra stores.
 // The stores factory is called with (baseStores, shellRouteStore) at mount time,

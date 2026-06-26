@@ -152,8 +152,8 @@ export const sidebar: SchemaNode = {
         header: {
           type: 'Column',
           props: {
-            width: '72px',
-            height: '72px',
+            width: '80px',
+            height: '80px',
             ax: 'center',
             ay: 'center',
             styles: { cursor: 'pointer' },
