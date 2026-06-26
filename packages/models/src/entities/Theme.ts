@@ -2,6 +2,7 @@ import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
 import { ImageBlock } from '../blocks/ImageBlock';
 import { FILE_STORAGE_LANGUAGE } from '../constants';
+import { decodeFileAsString } from '../utils/fileTransforms';
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'Theme' })
@@ -40,3 +41,31 @@ export class Theme extends WeNode {
 }
 
 export interface Theme extends HasManyMethods<'screenshots'> {}
+
+/**
+ * Decoded, UI-ready projection of Theme.
+ * Co-located here so it stays in sync with the model fields above.
+ *
+ * Differences from the raw AD4M model:
+ * - `css` / `overrides` are decoded strings, not raw file-storage references
+ * - `origin` is a typed union instead of a bare string
+ * - `id` is explicit (comes from WeNode.id / baseExpression)
+ */
+export type ThemeData = Pick<Theme, 'name' | 'icon' | 'version'> & {
+  id: string;
+  origin: 'built-in' | 'shared' | 'custom' | 'marketplace';
+  css: string | null;
+  overrides: string | null;
+};
+
+export function modelToThemeData(model: Theme): ThemeData {
+  return {
+    id: model.id,
+    name: model.name || 'Untitled Theme',
+    icon: model.icon || 'palette',
+    origin: (model.origin as ThemeData['origin']) || 'custom',
+    version: model.version ?? 1,
+    css: decodeFileAsString(model.css) || null,
+    overrides: decodeFileAsString(model.overrides) || null,
+  };
+}

@@ -1,7 +1,8 @@
 import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
 import { toastService } from '@we/components/solid';
-import { compressImageToFileData, decodeFileAsString, ImageBlock, Theme } from '@we/models';
+import { compressImageToFileData, ImageBlock, modelToThemeData, Theme } from '@we/models';
+import type { ThemeData } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
 import { themeToStyle } from '@we/schema-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
@@ -21,16 +22,6 @@ export type ThemeManagementItem = {
   isDefault: boolean;
 };
 
-/** Unified theme representation covering registry presets and custom AD4M-stored themes. */
-export type ThemeData = {
-  id: string;
-  name: string;
-  icon: string;
-  origin: 'built-in' | 'custom' | 'marketplace';
-  version: number;
-  overrides: string | null;
-  css: string | null;
-};
 
 export type EditingTheme = ThemeData & {
   isDirty: boolean;
@@ -96,17 +87,6 @@ function encodeToFileData(content: string, name: string, mimeType: string) {
   return { data_base64: base64, name, file_type: mimeType };
 }
 
-function modelToThemeData(model: Theme): ThemeData {
-  return {
-    id: model.id,
-    name: model.name || 'Untitled Theme',
-    icon: model.icon || 'palette',
-    origin: (model.origin as ThemeData['origin']) || 'custom',
-    version: model.version ?? 1,
-    overrides: decodeFileAsString(model.overrides) || null,
-    css: decodeFileAsString(model.css) || null,
-  };
-}
 
 function getInitialThemeId(): string {
   const saved = typeof window !== 'undefined' ? localStorage.getItem(THEME_KEY) : null;
