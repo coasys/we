@@ -20,6 +20,7 @@ const messageCard: SchemaNode = {
               type: 'we-text',
               props: {
                 variant: 'footnote',
+                color: 'neutral-400',
                 fontWeight: 'semibold',
                 flex: '0 0 auto',
                 maxWidth: '220px',
@@ -166,7 +167,7 @@ export const channelList: SchemaNode = {
                                 condition: '$channel.description',
                                 then: {
                                   type: 'we-text',
-                                  props: { variant: 'footnote' },
+                                  props: { variant: 'footnote', color: 'neutral-400' },
                                   children: ['$channel.description'],
                                 },
                               },

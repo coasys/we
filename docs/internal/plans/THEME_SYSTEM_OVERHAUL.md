@@ -21,18 +21,18 @@ These conventions must be applied consistently across all template work going fo
 
 The variant table below reflects the state **after Phase 1** (heading scale rename + new `heading-md`). Do not use the old names `heading` or `heading-lg` anywhere in new code.
 
-| Variant      | fontSize  | fontWeight | Recommended `tag` | Notes                                             |
-| ------------ | --------- | ---------- | ----------------- | ------------------------------------------------- |
-| _(blank)_    | inherited | inherited  | `span`            | Default prose — omit variant entirely             |
-| `body`       | 400       | —          | `p` or `span`     | Explicit body text                                |
-| `label`      | 300       | medium     | `span`            | UI labels, captions                               |
-| `footnote`   | 200       | —          | `span`            | Muted small text (also sets `color: neutral-400`) |
-| `subheading` | 500       | medium     | `h5` or `p`       | Section titles                                    |
-| `ingress`    | 500       | —          | `p`               | Lead paragraphs (loose line-height)               |
-| `heading-sm` | 600       | bold       | `h4`              | —                                                 |
-| `heading-md` | 700       | bold       | `h3`              | **New in Phase 1**                                |
-| `heading-lg` | 800       | bold       | `h2`              | **Renamed from `heading` in Phase 1**             |
-| `heading-xl` | 1000      | bold       | `h1`              | **Renamed from `heading-lg` in Phase 1**          |
+| Variant      | fontSize  | fontWeight | Recommended `tag` | Notes                                                                             |
+| ------------ | --------- | ---------- | ----------------- | --------------------------------------------------------------------------------- |
+| _(blank)_    | inherited | inherited  | `span`            | Default prose — omit variant entirely                                             |
+| `body`       | 400       | —          | `p` or `span`     | Explicit body text                                                                |
+| `label`      | 300       | medium     | `span`            | UI labels, captions                                                               |
+| `footnote`   | 200       | —          | `span`            | Small text — add `color="neutral-400"` explicitly when muted appearance is needed |
+| `subheading` | 500       | medium     | `h5` or `p`       | Section titles                                                                    |
+| `ingress`    | 500       | —          | `p`               | Lead paragraphs (loose line-height)                                               |
+| `heading-sm` | 600       | bold       | `h4`              | —                                                                                 |
+| `heading-md` | 700       | bold       | `h3`              | **New in Phase 1**                                                                |
+| `heading-lg` | 800       | bold       | `h2`              | **Renamed from `heading` in Phase 1**                                             |
+| `heading-xl` | 1000      | bold       | `h1`              | **Renamed from `heading-lg` in Phase 1**                                          |
 
 **Semantic tag guidance:** `we-text` defaults `tag` to `span`. Always set the appropriate semantic tag alongside the variant for correct HTML structure and accessibility. The table above shows recommended pairings — treat them as defaults, not rules (a page may have multiple `h2` elements under different `heading-lg` variants; only one should be `h1`).
 
@@ -69,14 +69,14 @@ These are _reference constraints for when a color override is genuinely needed_ 
 
 Color and typography are intentionally separate: `variant=` handles size/weight bundles, `color=` is set explicitly only when a specific semantic role requires it. This keeps variants composable (you can apply any color role to any text size).
 
-| Role               | Token                   | When to set explicitly                                                             |
-| ------------------ | ----------------------- | ---------------------------------------------------------------------------------- |
-| Primary text       | _(inherit — don't set)_ | Never — the theme provides this automatically                                      |
-| Secondary text     | `neutral-600`           | Metadata, timestamps, supporting captions                                          |
-| Muted / ghost text | `neutral-400`           | Not needed with `variant="footnote"` (already set); otherwise de-emphasised labels |
-| Disabled           | `neutral-300`           | Inactive states (prefer `disabledProps` on interactive elements)                   |
-| Interactive / link | `primary-600`           | Clickable inline text labels                                                       |
-| Inverted text      | `neutral-0`             | Text on filled/dark surfaces (e.g. inside a filled button or coloured badge)       |
+| Role               | Token                   | When to set explicitly                                                       |
+| ------------------ | ----------------------- | ---------------------------------------------------------------------------- |
+| Primary text       | _(inherit — don't set)_ | Never — the theme provides this automatically                                |
+| Secondary text     | `neutral-600`           | Metadata, timestamps, supporting captions                                    |
+| Muted / ghost text | `neutral-400`           | De-emphasised labels, captions, footnote-sized text                          |
+| Disabled           | `neutral-300`           | Inactive states (prefer `disabledProps` on interactive elements)             |
+| Interactive / link | `primary-600`           | Clickable inline text labels                                                 |
+| Inverted text      | `neutral-0`             | Text on filled/dark surfaces (e.g. inside a filled button or coloured badge) |
 
 **Surface/background conventions:**
 

@@ -179,7 +179,7 @@ export const createSpaceModal = {
             },
             {
               type: 'we-text',
-              props: { variant: 'footnote' },
+              props: { variant: 'footnote', color: 'neutral-400' },
               children: [
                 {
                   $if: {
@@ -262,7 +262,7 @@ export const createSpaceModal = {
                 },
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote' },
+                  props: { variant: 'footnote', color: 'neutral-400' },
                   children: [
                     {
                       $if: {
@@ -318,7 +318,7 @@ export const createSpaceModal = {
                 { type: 'we-icon', props: { name: 'info', size: 'sm' } },
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote' },
+                  props: { variant: 'footnote', color: 'neutral-400' },
                   children: ['Join the WE discovery space to list your space globally.'],
                 },
               ],

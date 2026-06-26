@@ -18,7 +18,7 @@ const VARIANT_DEFAULTS: Record<TextVariant, Partial<DesignSystemProps>> = {
   ingress: { fontSize: '500', lineHeight: '1.6' },
   body: { fontSize: '400' },
   label: { fontSize: '300', fontWeight: 'medium' },
-  footnote: { fontSize: '200', color: 'neutral-400' },
+  footnote: { fontSize: '200' },
 };
 
 const styles = css`

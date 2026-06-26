@@ -62,7 +62,7 @@ export const agentModal = {
                     },
                     {
                       type: 'we-text',
-                      props: { variant: 'footnote' },
+                      props: { variant: 'footnote', color: 'neutral-400' },
                       children: [{ $concat: ['@', '$agent.handle'] }],
                     },
                   ],
