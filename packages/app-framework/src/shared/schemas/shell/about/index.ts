@@ -344,6 +344,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
             props: {
               name: card.icon,
               size: 'lg',
+              color: 'primary-700',
               // gradient: 'primary',
             },
           }, // color: 'neutral-500'
@@ -351,6 +352,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
             type: 'we-text',
             props: {
               variant: 'heading-md',
+              color: 'primary-700',
               // gradient: 'primary',
               textTransform: 'uppercase',
               // letterSpacing: '0.08em',
@@ -557,6 +559,7 @@ export const landingPageTemplate: TemplateSchema = {
                 textAlign: 'center',
                 fontWeight: 'medium',
                 mb: '500',
+                color: 'neutral-800',
                 // italic: true,
                 // fontStyle: 'italic',
               },
@@ -592,6 +595,7 @@ export const landingPageTemplate: TemplateSchema = {
                 fontSize: '18px',
                 textAlign: 'center',
                 maxWidth: '800px',
+                color: 'neutral-700',
                 lineHeight: '1.8',
                 italic: true,
               },
@@ -709,7 +713,7 @@ export const landingPageTemplate: TemplateSchema = {
                 props: {
                   gap: '300',
                   p: '500',
-                  r: '400',
+                  r: '500',
                   bg: 'neutral-100',
                   height: '100%',
                   border: '1px solid var(--we-color-neutral-200)',
@@ -719,7 +723,7 @@ export const landingPageTemplate: TemplateSchema = {
                   {
                     type: 'we-text',
                     props: {
-                      fontSize: '600',
+                      fontSize: '500',
                       fontWeight: 'semibold',
                       textAlign: 'center',
                       color: 'neutral-900',
@@ -729,7 +733,13 @@ export const landingPageTemplate: TemplateSchema = {
                   },
                   {
                     type: 'we-text',
-                    props: { variant: 'body', textAlign: 'center', lineHeight: '1.6' },
+                    props: {
+                      variant: 'body',
+                      fontSize: '200',
+                      color: 'neutral-700',
+                      textAlign: 'center',
+                      lineHeight: '1.6',
+                    },
                     children: [card.front.body],
                   },
                 ],
@@ -742,7 +752,7 @@ export const landingPageTemplate: TemplateSchema = {
                   {
                     type: 'we-text',
                     props: {
-                      fontSize: '600',
+                      fontSize: '500',
                       fontWeight: '600',
                       textAlign: 'center',
                       color: 'neutral-100',
@@ -752,7 +762,7 @@ export const landingPageTemplate: TemplateSchema = {
                   },
                   {
                     type: 'we-text',
-                    props: { fontSize: '400', textAlign: 'center', color: 'neutral-100', lineHeight: '1.6' },
+                    props: { fontSize: '200', textAlign: 'center', color: 'neutral-100', lineHeight: '1.6' },
                     children: [card.back.body],
                   },
                 ],
