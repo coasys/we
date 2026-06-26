@@ -54,7 +54,7 @@ const styles = css`
     color: inherit;
     font: inherit;
     outline: none;
-    padding: 0;
+    padding: var(--we-textarea-padding, var(--we-theme-textarea-padding, var(--we-theme-input-spacing, var(--we-space-200) var(--we-space-300))));
     min-width: 0;
     resize: vertical;
     min-height: 80px;

@@ -47,6 +47,7 @@ interface ComponentCascade {
   radiusDefault?: string; // e.g. 'var(--we-radius-400)'
   paddingGroup?: string; // e.g. '--we-theme-control-spacing'
   paddingDefault?: string; // e.g. 'var(--we-space-400)'
+  nativePadding?: boolean; // if true, padding is omitted from [part='base'] — the component applies it directly on the native element
 }
 
 const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
@@ -55,20 +56,65 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     radiusGroup: '--we-theme-control-radius',
     radiusDefault: 'var(--we-radius-400)',
     paddingGroup: '--we-theme-control-spacing',
-    paddingDefault: 'var(--we-space-400)',
+    paddingDefault: '0 var(--we-space-400)',
   },
-  badge: { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
-  tag: { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
+  badge: {
+    radiusGroup: '--we-theme-control-radius',
+    radiusDefault: 'var(--we-radius-400)',
+    paddingGroup: '--we-theme-control-spacing',
+    paddingDefault: '0 var(--we-space-400)',
+  },
+  tag: {
+    radiusGroup: '--we-theme-control-radius',
+    radiusDefault: 'var(--we-radius-400)',
+    paddingGroup: '--we-theme-control-spacing',
+    paddingDefault: '0 var(--we-space-200)',
+  },
   'progress-bar': { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
   // Inputs
-  input: { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  textarea: { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  select: { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  'number-input': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  'date-picker': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  'color-picker': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  'icon-picker': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  'file-upload': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  input: {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)',
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)',
+  },
+  textarea: { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)', nativePadding: true },
+  select: {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)',
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)',
+  },
+  'number-input': {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)',
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)',
+  },
+  'date-picker': {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)',
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)',
+  },
+  'color-picker': {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)',
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)',
+  },
+  'icon-picker': {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)',
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)',
+  },
+  'file-upload': {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)',
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)',
+  },
   'form-field': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
   // Surfaces
   modal: {
@@ -363,11 +409,11 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
       ? cascadeSpec(componentName, 'border-radius', 'radius', cascade?.radiusGroup, cascade?.radiusDefault)
       : spec,
   );
-  const baseFlex: PropSpec[] = BASE_FLEX.map((spec) =>
-    spec[1] === 'padding'
-      ? cascadeSpec(componentName, 'padding', 'padding', cascade?.paddingGroup, cascade?.paddingDefault)
-      : spec,
-  );
+  const baseFlex: PropSpec[] = BASE_FLEX.flatMap((spec) => {
+    if (spec[1] !== 'padding') return [spec];
+    if (cascade?.nativePadding) return []; // padding goes on the native element, not [part='base']
+    return [cascadeSpec(componentName, 'padding', 'padding', cascade?.paddingGroup, cascade?.paddingDefault)];
+  });
 
   const styles: string[] = [];
 

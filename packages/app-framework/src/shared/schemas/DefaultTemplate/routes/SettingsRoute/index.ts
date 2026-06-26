@@ -165,7 +165,7 @@ export const settingsRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { variant: 'heading-md' },
+                      props: { variant: 'heading-md', color: 'primary-700' },
                       children: ['About this space'],
                     },
                     {

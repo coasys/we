@@ -6,6 +6,52 @@ export const aboutRoute: RouteSchema = {
   props: { width: '100%', ax: 'center', height: 'calc(100vh - 72px)' },
   children: [
     {
+      type: 'Row',
+      props: { width: '100%', gap: '400' },
+      children: [
+        {
+          type: 'we-button',
+          props: { size: 'xs', variant: 'primary' },
+          children: [
+            { type: 'we-icon', props: { name: 'book-open' } },
+            { type: 'we-text', children: ['Button'] },
+          ],
+        },
+        {
+          type: 'we-button',
+          props: { size: 'sm', variant: 'primary' },
+          children: [
+            { type: 'we-icon', props: { name: 'book-open' } },
+            { type: 'we-text', children: ['Button'] },
+          ],
+        },
+        {
+          type: 'we-button',
+          props: { size: 'md', variant: 'primary' },
+          children: [
+            { type: 'we-icon', props: { name: 'book-open' } },
+            { type: 'we-text', children: ['Button'] },
+          ],
+        },
+        {
+          type: 'we-button',
+          props: { size: 'lg', variant: 'primary' },
+          children: [
+            { type: 'we-icon', props: { name: 'book-open' } },
+            { type: 'we-text', children: ['Button'] },
+          ],
+        },
+        {
+          type: 'we-button',
+          props: { size: 'xl', variant: 'primary' },
+          children: [
+            { type: 'we-icon', props: { name: 'book-open' } },
+            { type: 'we-text', children: ['Button'] },
+          ],
+        },
+      ],
+    },
+    {
       type: 'Column',
       props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '500', px: '400', pt: '500' },
       children: [
@@ -16,7 +62,7 @@ export const aboutRoute: RouteSchema = {
           children: [
             {
               type: 'we-text',
-              props: { variant: 'heading-md' },
+              props: { variant: 'heading-md', color: 'primary-700' },
               children: ['About this space'],
             },
 

@@ -77,6 +77,7 @@ export const postsList: SchemaNode = {
                             props: {
                               variant: 'ghost',
                               size: 'sm',
+                              square: true,
                               onClick: { $setLocal: 'editPostOpen', value: true },
                             },
                             children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
@@ -99,6 +100,7 @@ export const postsList: SchemaNode = {
                             props: {
                               variant: 'ghost',
                               size: 'sm',
+                              square: true,
                               onClick: { $setLocal: 'confirmDeleteOpen', value: true },
                             },
                             children: [{ type: 'we-icon', props: { name: 'trash' } }],

@@ -62,8 +62,12 @@ export const bootScreen: SchemaNode = {
                   type: 'Row',
                   props: { gap: '300', ay: 'center' },
                   children: [
-                    { type: 'we-icon', props: { name: 'key', size: '30px' } },
-                    { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Unlock your agent'] },
+                    { type: 'we-icon', props: { name: 'key', color: 'primary-600' } },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'heading-sm', fontWeight: 'regular' },
+                      children: ['Unlock your agent'],
+                    },
                   ],
                 },
                 {

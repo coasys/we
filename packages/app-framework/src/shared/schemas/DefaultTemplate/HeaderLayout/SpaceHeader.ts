@@ -225,7 +225,10 @@ export const spaceNavBar: SchemaNode = {
                       },
                       children: [
                         { type: 'we-icon', props: { name: '$view.icon' } },
-                        { type: 'we-text', children: ['$view.label'] },
+                        {
+                          type: 'we-text',
+                          children: ['$view.label'],
+                        },
                       ],
                     },
                   ],
