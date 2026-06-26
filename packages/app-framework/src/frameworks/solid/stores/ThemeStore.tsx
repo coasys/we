@@ -1,11 +1,11 @@
 import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
 import { toastService } from '@we/components/solid';
-import { compressImageToFileData, ImageBlock, modelToThemeData, Theme } from '@we/models';
 import type { ThemeData } from '@we/models';
+import { compressImageToFileData, ImageBlock, modelToThemeData, Theme } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
 import { themeToStyle } from '@we/schema-shared';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createContext, createEffect, createSignal, ParentProps, untrack, useContext } from 'solid-js';
 
 import { useAdamStore } from './AdamStore';
 
@@ -355,15 +355,16 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
   });
 
-  // Apply persisted theme from AgentSettings when available
+  // Apply the agent's default theme when AgentSettings first loads.
+  // Uses defaultThemeId so boot always starts at the user's chosen default,
+  // not whatever was last active in a previous session.
   createEffect(() => {
     const prefs = adamStore.agentSettings();
-    if (!prefs?.currentThemeId) return;
-    const id = prefs.currentThemeId;
+    if (!prefs?.defaultThemeId) return;
+    const id = prefs.defaultThemeId;
     setCurrentThemeId(id);
-    localStorage.setItem(THEME_KEY, id);
-    // Defer apply until installedThemes are loaded if it's a custom theme
-    const theme = allThemes().find((t) => t.id === id);
+    // Use untrack so spaceThemes reloading between spaces doesn't re-trigger this effect
+    const theme = untrack(() => allThemes().find((t) => t.id === id));
     if (theme) {
       if (theme.origin !== 'built-in') applyThemeToDOM(theme);
       else {
@@ -373,6 +374,14 @@ export function ThemeStoreProvider(props: ParentProps) {
     } else if (isValidThemeKey(id)) {
       document.documentElement.setAttribute('data-we-theme', id);
     }
+  });
+
+  // Keep localStorage in sync with the agent's default theme so the bootscreen
+  // can apply it immediately on next launch without waiting for AD4M to load.
+  createEffect(() => {
+    const prefs = adamStore.agentSettings();
+    if (!prefs?.defaultThemeId) return;
+    localStorage.setItem(THEME_KEY, prefs.defaultThemeId);
   });
 
   // Apply initial theme immediately from localStorage
@@ -413,12 +422,13 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   function setCurrentTheme(themeId: string) {
     setCurrentThemeId(themeId);
-    localStorage.setItem(THEME_KEY, themeId);
-    adamStore.updateAgentSettings({ currentThemeId: themeId });
     applyThemeToDOM(resolveThemeData(themeId));
   }
 
   function setDefaultTheme(themeId: string) {
+    localStorage.setItem(THEME_KEY, themeId);
+    setCurrentThemeId(themeId);
+    applyThemeToDOM(resolveThemeData(themeId));
     adamStore.updateAgentSettings({ defaultThemeId: themeId });
   }
 
@@ -455,7 +465,7 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   function restorePersonalTheme() {
     setPendingSpaceThemeId(null);
-    const id = localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.currentThemeId ?? getInitialThemeId();
+    const id = localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
     setCurrentThemeId(id);
     applyThemeToDOM(resolveThemeData(id));
   }

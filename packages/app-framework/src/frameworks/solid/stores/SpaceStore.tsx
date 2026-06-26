@@ -284,12 +284,14 @@ export function SpaceStoreProvider(props: ParentProps) {
   createEffect(() => setSpaceDefaultTemplateId(currentSpace()?.defaultTemplateId ?? ''));
   createEffect(() => setSpaceDefaultThemeId(currentSpace()?.defaultThemeId ?? ''));
 
-  // Apply the space's default theme when entering a space, restore personal theme when leaving
+  // Apply the space's default theme when entering a space, restore personal theme when leaving.
+  // Only restore when there's genuinely no current perspective — not during the transient null
+  // window while switching between spaces (currentSpace loads async after perspective changes).
   createEffect(() => {
     const themeId = spaceDefaultThemeId();
     if (themeId) {
       themeStore.replaceTheme(themeId);
-    } else {
+    } else if (!adamStore.currentPerspective()) {
       themeStore.restorePersonalTheme();
     }
   });

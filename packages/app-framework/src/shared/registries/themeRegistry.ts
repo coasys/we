@@ -1,8 +1,8 @@
 export type Theme = { name: string; icon: string };
 
 export const themeRegistry = {
-  light: { name: 'Light', icon: 'sun' },
   dark: { name: 'Dark', icon: 'moon' },
+  light: { name: 'Light', icon: 'sun' },
   black: { name: 'Black', icon: 'square' },
   retro: { name: 'Retro', icon: 'floppy-disk' },
   cyberpunk: { name: 'Cyberpunk', icon: 'cpu' },
