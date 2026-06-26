@@ -474,7 +474,7 @@ export function ThemePanel() {
             </Column>
 
             {/* ── Base preset ── */}
-            <CollapsibleSection title="Base preset" defaultOpen={true}>
+            <CollapsibleSection title="Base preset">
               <we-select
                 value={overrides().themeName ?? ''}
                 options={BASE_THEME_OPTIONS}
@@ -512,7 +512,7 @@ export function ThemePanel() {
             </CollapsibleSection>
 
             {/* ── Color ── */}
-            <CollapsibleSection title="Color" defaultOpen={true}>
+            <CollapsibleSection title="Color">
               <Column gap="200">
                 <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
                   Hues
