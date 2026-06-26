@@ -116,7 +116,10 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
 
   const rightOffset = () => {
     let offset = 0;
-    if (stores.aiStore.isEditingTheme()) offset += THEME_RAIL_WIDTH;
+    if (stores.aiStore.isEditingTheme()) {
+      offset += THEME_RAIL_WIDTH;
+      if (stores.aiStore.themePanelOpen()) offset += stores.aiStore.themePanelWidth();
+    }
     if (stores.aiStore.isEditingTemplate()) {
       offset += TEMPLATE_RAILS_WIDTH;
       if (stores.aiStore.isOpen()) offset += stores.aiStore.aiPanelWidth();
