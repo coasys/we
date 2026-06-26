@@ -46,6 +46,9 @@ export const layoutKeys = [
 /** Visual layer: appearance & decoration. Most components. */
 export const visualKeys = [
   'bg',
+  'bgImage',
+  'bgFit',
+  'bgPosition',
   'color',
   'opacity',
   'shadow',

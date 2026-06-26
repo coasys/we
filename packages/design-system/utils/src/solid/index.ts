@@ -35,13 +35,19 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
     ...props.styles, // Allow custom overrides
   };
 
-  // Colors
+  // Colors & backgrounds
   if (props.bg) {
     if (props.bg.startsWith('gradient-')) {
       style['background'] = `var(--we-gradient-${props.bg.slice(9)})`;
     } else {
       style['background-color'] = tokenVar('color', props.bg);
     }
+  }
+  if (props.bgImage) {
+    style['background-image'] = `url(${props.bgImage})`;
+    style['background-size'] = props.bgFit ?? 'cover';
+    style['background-position'] = props.bgPosition ?? 'center';
+    style['background-repeat'] = 'no-repeat';
   }
   if (props.color) style.color = tokenVar('color', props.color);
 

@@ -43,6 +43,9 @@ export type Placement =
 
 export interface DesignSystemProps {
   bg?: ColorValue;
+  bgImage?: string;
+  bgFit?: 'cover' | 'contain';
+  bgPosition?: string;
   color?: ColorValue;
 
   // Visual Effects

@@ -59,6 +59,9 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 | Prop | Type | Description |
 |------|------|-------------|
 | bg | ColorValue | Background color (token) |
+| bgImage | string | Background image URL — sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat |
+| bgFit | "cover" \\| "contain" | Background image sizing (default: "cover") — only meaningful with bgImage |
+| bgPosition | string | Background image position (default: "center", e.g. "top", "50% 20%") — only meaningful with bgImage |
 | color | ColorValue | Text/foreground color (token) |
 | opacity | number | Opacity (0–1) |
 | border | string | Border shorthand (e.g. "1px solid neutral-200" — color tokens are resolved) |
@@ -132,6 +135,6 @@ Variants set size and weight only — color is always inherited or set explicitl
 
 | Prop | Type | Description |
 |------|------|-------------|
-| styles | Record\\<string, string \\| number\\> | Inline CSS overrides (raw values allowed here) |
+| styles | Record\\<string, string \\| number\\> | Inline CSS applied directly to the component's own element (raw CSS values allowed). For Column, Row, Grid — use this when you need CSS the DS props don't cover. **Do not confuse with node-level styles** (see Schema Structure) which applies to a wrapper div, not the component. |
 | onClick | ActionToken | Event handler (see dynamic logic) |
 `;

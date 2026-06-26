@@ -1826,6 +1826,21 @@
       "superclass": "DesignSystemElement",
       "props": [
         {
+          "name": "bgImage",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgFit",
+          "type": "\"cover\" | \"contain\"",
+          "optional": true
+        },
+        {
+          "name": "bgPosition",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "visibility",
           "type": "Visibility",
           "optional": true
@@ -1913,6 +1928,21 @@
       "name": "BlockRenderer",
       "superclass": "DesignSystemElement",
       "props": [
+        {
+          "name": "bgImage",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgFit",
+          "type": "\"cover\" | \"contain\"",
+          "optional": true
+        },
+        {
+          "name": "bgPosition",
+          "type": "string",
+          "optional": true
+        },
         {
           "name": "visibility",
           "type": "Visibility",
@@ -3034,6 +3064,21 @@
           "optional": true
         },
         {
+          "name": "bgImage",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgFit",
+          "type": "\"cover\" | \"contain\"",
+          "optional": true
+        },
+        {
+          "name": "bgPosition",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "color",
           "type": "ColorValue",
           "optional": true
@@ -3468,7 +3513,7 @@
         },
         {
           "name": "fit",
-          "type": "\"fill\" | \"none\" | \"cover\" | \"contain\" | \"scale-down\"",
+          "type": "\"fill\" | \"cover\" | \"contain\" | \"none\" | \"scale-down\"",
           "optional": true
         },
         {
@@ -3499,6 +3544,21 @@
         {
           "name": "bg",
           "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "bgImage",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgFit",
+          "type": "\"cover\" | \"contain\"",
+          "optional": true
+        },
+        {
+          "name": "bgPosition",
+          "type": "string",
           "optional": true
         },
         {
@@ -3949,6 +4009,21 @@
           "optional": true
         },
         {
+          "name": "bgImage",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgFit",
+          "type": "\"cover\" | \"contain\"",
+          "optional": true
+        },
+        {
+          "name": "bgPosition",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "color",
           "type": "ColorValue",
           "optional": true
@@ -4382,6 +4457,21 @@
         {
           "name": "bg",
           "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "bgImage",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgFit",
+          "type": "\"cover\" | \"contain\"",
+          "optional": true
+        },
+        {
+          "name": "bgPosition",
+          "type": "string",
           "optional": true
         },
         {
@@ -4962,6 +5052,21 @@
           "optional": true
         },
         {
+          "name": "bgImage",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgFit",
+          "type": "\"cover\" | \"contain\"",
+          "optional": true
+        },
+        {
+          "name": "bgPosition",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "color",
           "type": "ColorValue",
           "optional": true
@@ -5355,6 +5460,21 @@
         {
           "name": "bg",
           "type": "ColorValue",
+          "optional": true
+        },
+        {
+          "name": "bgImage",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgFit",
+          "type": "\"cover\" | \"contain\"",
+          "optional": true
+        },
+        {
+          "name": "bgPosition",
+          "type": "string",
           "optional": true
         },
         {
