@@ -22,7 +22,6 @@ export type ThemeManagementItem = {
   isDefault: boolean;
 };
 
-
 export type EditingTheme = ThemeData & {
   isDirty: boolean;
 };
@@ -86,7 +85,6 @@ function encodeToFileData(content: string, name: string, mimeType: string) {
   const base64 = btoa(String.fromCharCode(...bytes));
   return { data_base64: base64, name, file_type: mimeType };
 }
-
 
 function getInitialThemeId(): string {
   const saved = typeof window !== 'undefined' ? localStorage.getItem(THEME_KEY) : null;

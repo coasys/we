@@ -57,16 +57,24 @@ const SPACING_OPTIONS = [
 // ─── Presets ──────────────────────────────────────────────────────────────────
 
 const SHAPE_PRESETS = {
-  sharp:   { controlRadius: '0',                     surfaceRadius: 'var(--we-radius-200)', inputRadius: '0' },
-  default: { controlRadius: undefined,               surfaceRadius: undefined,              inputRadius: undefined },
-  rounded: { controlRadius: 'var(--we-radius-600)',  surfaceRadius: 'var(--we-radius-700)', inputRadius: 'var(--we-radius-400)' },
-  pill:    { controlRadius: 'var(--we-radius-pill)', surfaceRadius: 'var(--we-radius-800)', inputRadius: 'var(--we-radius-pill)' },
+  sharp: { controlRadius: '0', surfaceRadius: 'var(--we-radius-200)', inputRadius: '0' },
+  default: { controlRadius: undefined, surfaceRadius: undefined, inputRadius: undefined },
+  rounded: {
+    controlRadius: 'var(--we-radius-600)',
+    surfaceRadius: 'var(--we-radius-700)',
+    inputRadius: 'var(--we-radius-400)',
+  },
+  pill: {
+    controlRadius: 'var(--we-radius-pill)',
+    surfaceRadius: 'var(--we-radius-800)',
+    inputRadius: 'var(--we-radius-pill)',
+  },
 } as const;
 
 const SPACING_PRESETS = {
-  compact:     { controlSpacing: 'var(--we-space-200)', surfaceSpacing: 'var(--we-space-400)' },
-  comfortable: { controlSpacing: undefined,             surfaceSpacing: undefined },
-  spacious:    { controlSpacing: 'var(--we-space-600)', surfaceSpacing: 'var(--we-space-900)' },
+  compact: { controlSpacing: 'var(--we-space-200)', surfaceSpacing: 'var(--we-space-400)' },
+  comfortable: { controlSpacing: undefined, surfaceSpacing: undefined },
+  spacious: { controlSpacing: 'var(--we-space-600)', surfaceSpacing: 'var(--we-space-900)' },
 } as const;
 
 type ShapePreset = keyof typeof SHAPE_PRESETS;
@@ -109,13 +117,7 @@ function CollapsibleSection(props: { title: string; defaultOpen?: boolean; child
   const [open, setOpen] = createSignal(props.defaultOpen ?? false);
   return (
     <Column borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="0">
-      <Row
-        ay="center"
-        ax="between"
-        py="300"
-        onClick={() => setOpen(!open())}
-        style={{ cursor: 'pointer' }}
-      >
+      <Row ay="center" ax="between" py="300" onClick={() => setOpen(!open())} style={{ cursor: 'pointer' }}>
         <SectionLabel>{props.title}</SectionLabel>
         <we-icon name={open() ? 'caret-up' : 'caret-down'} size="sm" color="neutral-400" />
       </Row>
@@ -280,7 +282,9 @@ export function ThemePanel() {
           min={0.3}
           max={1}
           step={0.05}
-          on:input={(e: CustomEvent) => setOverride(key, Number(Number(e.detail).toFixed(2)) as ThemeOverrides[typeof key])}
+          on:input={(e: CustomEvent) =>
+            setOverride(key, Number(Number(e.detail).toFixed(2)) as ThemeOverrides[typeof key])
+          }
           on:change={() => saveTheme()}
         />
         <we-text
@@ -359,9 +363,11 @@ export function ThemePanel() {
   function activeShapePreset(): ShapePreset | 'custom' {
     const o = overrides();
     for (const [name, vals] of Object.entries(SHAPE_PRESETS) as [ShapePreset, (typeof SHAPE_PRESETS)[ShapePreset]][]) {
-      if ((o.controlRadius ?? undefined) === vals.controlRadius &&
-          (o.surfaceRadius ?? undefined) === vals.surfaceRadius &&
-          (o.inputRadius ?? undefined) === vals.inputRadius) {
+      if (
+        (o.controlRadius ?? undefined) === vals.controlRadius &&
+        (o.surfaceRadius ?? undefined) === vals.surfaceRadius &&
+        (o.inputRadius ?? undefined) === vals.inputRadius
+      ) {
         return name;
       }
     }
@@ -370,9 +376,14 @@ export function ThemePanel() {
 
   function activeSpacingPreset(): SpacingPreset | 'custom' {
     const o = overrides();
-    for (const [name, vals] of Object.entries(SPACING_PRESETS) as [SpacingPreset, (typeof SPACING_PRESETS)[SpacingPreset]][]) {
-      if ((o.controlSpacing ?? undefined) === vals.controlSpacing &&
-          (o.surfaceSpacing ?? undefined) === vals.surfaceSpacing) {
+    for (const [name, vals] of Object.entries(SPACING_PRESETS) as [
+      SpacingPreset,
+      (typeof SPACING_PRESETS)[SpacingPreset],
+    ][]) {
+      if (
+        (o.controlSpacing ?? undefined) === vals.controlSpacing &&
+        (o.surfaceSpacing ?? undefined) === vals.surfaceSpacing
+      ) {
         return name;
       }
     }
@@ -534,7 +545,10 @@ export function ThemePanel() {
                   Preset
                 </we-text>
                 {presetRow(
-                  { sharp: 'Sharp', default: 'Default', rounded: 'Rounded', pill: 'Pill' } as Record<ShapePreset, string>,
+                  { sharp: 'Sharp', default: 'Default', rounded: 'Rounded', pill: 'Pill' } as Record<
+                    ShapePreset,
+                    string
+                  >,
                   (p) => activeShapePreset() === p,
                   (p) => setOverrides(SHAPE_PRESETS[p]),
                 )}
@@ -562,7 +576,10 @@ export function ThemePanel() {
                   Preset
                 </we-text>
                 {presetRow(
-                  { compact: 'Compact', comfortable: 'Comfortable', spacious: 'Spacious' } as Record<SpacingPreset, string>,
+                  { compact: 'Compact', comfortable: 'Comfortable', spacious: 'Spacious' } as Record<
+                    SpacingPreset,
+                    string
+                  >,
                   (p) => activeSpacingPreset() === p,
                   (p) => setOverrides(SPACING_PRESETS[p]),
                 )}

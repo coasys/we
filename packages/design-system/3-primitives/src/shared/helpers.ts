@@ -43,34 +43,49 @@ const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
  * per-element r= props fighting them.
  */
 interface ComponentCascade {
-  radiusGroup?: string;    // e.g. '--we-theme-control-radius'
-  radiusDefault?: string;  // e.g. 'var(--we-radius-400)'
-  paddingGroup?: string;   // e.g. '--we-theme-control-spacing'
+  radiusGroup?: string; // e.g. '--we-theme-control-radius'
+  radiusDefault?: string; // e.g. 'var(--we-radius-400)'
+  paddingGroup?: string; // e.g. '--we-theme-control-spacing'
   paddingDefault?: string; // e.g. 'var(--we-space-400)'
 }
 
 const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   // Controls
-  button:          { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)', paddingGroup: '--we-theme-control-spacing', paddingDefault: 'var(--we-space-400)' },
-  badge:           { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
-  tag:             { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
-  'progress-bar':  { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
+  button: {
+    radiusGroup: '--we-theme-control-radius',
+    radiusDefault: 'var(--we-radius-400)',
+    paddingGroup: '--we-theme-control-spacing',
+    paddingDefault: 'var(--we-space-400)',
+  },
+  badge: { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
+  tag: { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
+  'progress-bar': { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
   // Inputs
-  input:           { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  textarea:        { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  select:          { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  'number-input':  { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  'date-picker':   { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  'color-picker':  { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  'icon-picker':   { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  'file-upload':   { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
-  'form-field':    { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  input: { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  textarea: { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  select: { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'number-input': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'date-picker': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'color-picker': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'icon-picker': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'file-upload': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
+  'form-field': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
   // Surfaces
-  modal:           { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-600)', paddingGroup: '--we-theme-surface-spacing', paddingDefault: 'var(--we-space-600)' },
-  drawer:          { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-600)', paddingGroup: '--we-theme-surface-spacing', paddingDefault: 'var(--we-space-600)' },
-  alert:           { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-400)' },
-  blockquote:      { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-400)' },
-  code:            { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-300)' },
+  modal: {
+    radiusGroup: '--we-theme-surface-radius',
+    radiusDefault: 'var(--we-radius-600)',
+    paddingGroup: '--we-theme-surface-spacing',
+    paddingDefault: 'var(--we-space-600)',
+  },
+  drawer: {
+    radiusGroup: '--we-theme-surface-radius',
+    radiusDefault: 'var(--we-radius-600)',
+    paddingGroup: '--we-theme-surface-spacing',
+    paddingDefault: 'var(--we-space-600)',
+  },
+  alert: { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-400)' },
+  blockquote: { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-400)' },
+  code: { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-300)' },
 };
 
 const DEFAULT_TRANSITION = 'all var(--we-transition-200, 150ms) ease';
