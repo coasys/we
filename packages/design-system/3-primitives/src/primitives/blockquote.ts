@@ -11,7 +11,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   px: '400',
   py: '200',
   color: 'neutral-600',
-  fontSize: '400',
+  fontSize: '300',
 };
 
 const styles = css`

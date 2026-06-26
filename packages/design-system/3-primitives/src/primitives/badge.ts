@@ -11,7 +11,7 @@ import type { ComponentSize, ComponentVariant } from '../types';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'neutral-100',
   color: 'neutral-500',
-  fontSize: '400',
+  fontSize: '300',
   fontWeight: '400',
   r: '400',
   px: '400',
@@ -29,11 +29,11 @@ const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200', px: '200', height: 'var(--we-component-height-xs)' },
-  sm: { fontSize: '300', px: '300', height: 'var(--we-component-height-sm)' },
-  md: { fontSize: '400', px: '400', height: 'var(--we-component-height-md)' },
-  lg: { fontSize: '500', px: '500', height: 'var(--we-component-height-lg)' },
-  xl: { fontSize: '500', px: '600', height: 'var(--we-component-height-xl)' },
+  xs: { fontSize: '100', px: '200', height: 'var(--we-component-height-xs)' },
+  sm: { fontSize: '200', px: '300', height: 'var(--we-component-height-sm)' },
+  md: { fontSize: '300', px: '400', height: 'var(--we-component-height-md)' },
+  lg: { fontSize: '400', px: '500', height: 'var(--we-component-height-lg)' },
+  xl: { fontSize: '400', px: '600', height: 'var(--we-component-height-xl)' },
 };
 
 const styles = css`

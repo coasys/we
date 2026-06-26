@@ -9,7 +9,7 @@ import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   fontFamily: 'monospace',
-  fontSize: '300',
+  fontSize: '200',
   r: '300',
 };
 

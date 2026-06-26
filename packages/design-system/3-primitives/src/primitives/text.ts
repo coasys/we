@@ -10,15 +10,15 @@ import type { TextTag, TextVariant } from '../types';
 
 const VARIANT_DEFAULTS: Record<TextVariant, Partial<DesignSystemProps>> = {
   '': {},
-  'heading-sm': { fontSize: '600', fontWeight: 'bold' },
-  'heading-md': { fontSize: '700', fontWeight: 'bold' },
-  'heading-lg': { fontSize: '800', fontWeight: 'bold' },
-  'heading-xl': { fontSize: '1000', fontWeight: 'bold' },
-  subheading: { fontSize: '500', fontWeight: 'medium' },
-  ingress: { fontSize: '500', lineHeight: '1.6' },
-  body: { fontSize: '400' },
-  label: { fontSize: '300', fontWeight: 'medium' },
-  footnote: { fontSize: '200' },
+  'heading-sm': { fontSize: '500', fontWeight: 'bold' },
+  'heading-md': { fontSize: '600', fontWeight: 'bold' },
+  'heading-lg': { fontSize: '700', fontWeight: 'bold' },
+  'heading-xl': { fontSize: '800', fontWeight: 'bold' },
+  subheading: { fontSize: '400', fontWeight: 'medium' },
+  ingress: { fontSize: '400', lineHeight: '1.6' },
+  body: { fontSize: '300' },
+  label: { fontSize: '200', fontWeight: 'medium' },
+  footnote: { fontSize: '100' },
 };
 
 const styles = css`

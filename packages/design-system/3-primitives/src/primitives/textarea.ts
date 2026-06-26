@@ -12,7 +12,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
   px: '300',
   py: '200',
-  fontSize: '400',
+  fontSize: '300',
   bg: 'neutral-50',
   r: '300',
   color: 'neutral-1000',
@@ -22,11 +22,11 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { px: '100', py: '100', fontSize: '200' },
-  sm: { px: '200', py: '100', fontSize: '300' },
-  md: { px: '300', py: '200', fontSize: '400' },
-  lg: { px: '400', py: '300', fontSize: '500' },
-  xl: { px: '500', py: '400', fontSize: '500' },
+  xs: { px: '100', py: '100', fontSize: '100' },
+  sm: { px: '200', py: '100', fontSize: '200' },
+  md: { px: '300', py: '200', fontSize: '300' },
+  lg: { px: '400', py: '300', fontSize: '400' },
+  xl: { px: '500', py: '400', fontSize: '400' },
 };
 
 const styles = css`
@@ -54,7 +54,10 @@ const styles = css`
     color: inherit;
     font: inherit;
     outline: none;
-    padding: var(--we-textarea-padding, var(--we-theme-textarea-padding, var(--we-theme-input-spacing, var(--we-space-200) var(--we-space-300))));
+    padding: var(
+      --we-textarea-padding,
+      var(--we-theme-textarea-padding, var(--we-theme-input-spacing, var(--we-space-200) var(--we-space-300)))
+    );
     min-width: 0;
     resize: vertical;
     min-height: 80px;

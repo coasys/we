@@ -15,7 +15,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   px: '400',
   py: '300',
   r: '400',
-  fontSize: '400',
+  fontSize: '300',
 };
 
 const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {

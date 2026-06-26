@@ -53,11 +53,11 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { px: '300', fontSize: '200', height: 'var(--we-component-height-xs)' },
-  sm: { px: '300', fontSize: '400', height: 'var(--we-component-height-sm)' },
-  md: { px: '400', fontSize: '500', height: 'var(--we-component-height-md)' },
-  lg: { px: '500', fontSize: '600', height: 'var(--we-component-height-lg)' },
-  xl: { px: '500', fontSize: '600', height: 'var(--we-component-height-xl)' },
+  xs: { px: '300', fontSize: '100', height: 'var(--we-component-height-xs)' },
+  sm: { px: '300', fontSize: '200', height: 'var(--we-component-height-sm)' },
+  md: { px: '400', fontSize: '300', height: 'var(--we-component-height-md)' },
+  lg: { px: '500', fontSize: '500', height: 'var(--we-component-height-lg)' },
+  xl: { px: '500', fontSize: '500', height: 'var(--we-component-height-xl)' },
 };
 
 const CSS_STYLES = css`

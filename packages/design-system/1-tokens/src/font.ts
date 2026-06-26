@@ -44,16 +44,16 @@ export const fontFamily = {
  */
 export const fontSize = {
   base: '16px', // Base size reference
-  '100': '0.56rem', // ~9px
-  '200': '0.63rem', // ~10px
-  '300': '0.75rem', // ~12px
-  '400': '0.88rem', // ~14px
-  '500': '1rem', // 16px
-  '600': '1.25rem', // ~20px
-  '700': '1.5rem', // ~24px
-  '800': '2rem', // ~32px
-  '900': '2.63rem', // ~42px
-  '1000': '3.63rem', // ~58px
+  '100': '0.75rem', // 12px — caption / footnote
+  '200': '0.875rem', // 14px — label / secondary
+  '300': '1rem', // 16px — body (browser default)
+  '400': '1.125rem', // 18px — lead / subheading
+  '500': '1.25rem', // 20px — heading-sm
+  '600': '1.5rem', // 24px — heading-md
+  '700': '2rem', // 32px — heading-lg
+  '800': '2.5rem', // 40px — heading-xl
+  '900': '3.5rem', // 56px — display
+  '1000': '4.5rem', // 72px — hero
 } satisfies Record<FontSizeToken, string>;
 
 /**
