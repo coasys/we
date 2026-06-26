@@ -147,7 +147,7 @@ export const settingsRoute: RouteSchema = {
   children: [
     {
       type: 'Column',
-      props: { width: '100%', maxWidth: '1200px', gap: '500', px: '400', py: '500' },
+      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '500', px: '400', py: '500' },
       children: [
         // About this space
         {

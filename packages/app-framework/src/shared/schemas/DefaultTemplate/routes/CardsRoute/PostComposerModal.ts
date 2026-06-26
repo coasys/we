@@ -19,7 +19,7 @@ export function postComposerModal(opts: PostComposerModalOptions): SchemaNode {
     type: 'we-modal',
     props: {
       close: { $setLocal: opts.openLocal, value: false },
-      maxWidth: '900px',
+      maxWidth: 'var(--we-layout-md)',
       width: '100%',
       ax: 'center',
     },

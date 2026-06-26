@@ -16,7 +16,7 @@ const globalSpaceJoinPrompt: SchemaNode = {
     },
     {
       type: 'we-text',
-      props: { variant: 'body', textAlign: 'center', maxWidth: '420px' },
+      props: { variant: 'body', textAlign: 'center', maxWidth: 'var(--we-layout-xs)' },
       children: [
         "This is the WE network's global discovery space — find communities and people from across the network. Join to explore spaces on the globe and connect with others.",
       ],

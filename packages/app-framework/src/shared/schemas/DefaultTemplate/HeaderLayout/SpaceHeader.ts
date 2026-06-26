@@ -10,7 +10,7 @@ export const spaceHeader: SchemaNode = {
       children: [
         {
           type: 'Column',
-          props: { width: '100%', maxWidth: '1200px' },
+          props: { width: '100%', maxWidth: 'var(--we-layout-lg)' },
           children: [
             // Cover image
             {
@@ -185,7 +185,7 @@ export const spaceNavBar: SchemaNode = {
     },
     {
       type: 'Column',
-      props: { width: '100%', maxWidth: '1200px' },
+      props: { width: '100%', maxWidth: 'var(--we-layout-lg)' },
       children: [
         {
           type: 'Row',

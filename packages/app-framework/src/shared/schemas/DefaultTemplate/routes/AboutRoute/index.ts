@@ -7,7 +7,7 @@ export const aboutRoute: RouteSchema = {
   children: [
     {
       type: 'Column',
-      props: { width: '100%', maxWidth: '1200px', gap: '500', px: '400', pt: '500' },
+      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '500', px: '400', pt: '500' },
       children: [
         // ─── Name & Description ───────────────────────────────────────────
         {
