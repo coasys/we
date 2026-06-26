@@ -361,6 +361,10 @@ export function ThemeStoreProvider(props: ParentProps) {
   createEffect(() => {
     const prefs = adamStore.agentSettings();
     if (!prefs?.defaultThemeId) return;
+    // Don't override currentThemeId while the user is actively editing a theme —
+    // agentSettings can update (e.g. when a theme save triggers AD4M subscriptions)
+    // and blindly resetting currentThemeId to defaultThemeId would exit editing mode.
+    if (untrack(() => editingTheme())) return;
     const id = prefs.defaultThemeId;
     setCurrentThemeId(id);
     // Use untrack so spaceThemes reloading between spaces doesn't re-trigger this effect
@@ -450,7 +454,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   function replaceTheme(themeId: string) {
-    const theme = allThemes().find((t) => t.id === themeId);
+    const theme = untrack(() => allThemes().find((t) => t.id === themeId));
     if (theme) {
       // Theme already loaded — apply immediately and clear any pending state.
       setPendingSpaceThemeId(null);

@@ -112,10 +112,16 @@ export function DesignToolbar() {
     if (!was) setThemeShareOpen(true);
   };
 
-  // Exit theme editing when the active theme changes (untrack the guard so entering edit mode doesn't re-trigger this)
+  // Exit theme editing when the active theme changes to a different theme.
+  // Untrack the guard so entering edit mode doesn't re-trigger this.
+  // We do NOT exit when currentThemeId changes to the editing theme's own id,
+  // which happens during saveEditingTheme after the theme is persisted.
   createEffect(() => {
-    themeStore.currentThemeId();
-    if (untrack(() => aiStore.isEditingTheme())) aiStore.exitThemeEditing();
+    const newId = themeStore.currentThemeId();
+    if (untrack(() => aiStore.isEditingTheme())) {
+      const editingId = untrack(() => themeStore.editingTheme()?.id);
+      if (newId !== editingId) aiStore.exitThemeEditing();
+    }
   });
 
   // Seed picker fields when it opens

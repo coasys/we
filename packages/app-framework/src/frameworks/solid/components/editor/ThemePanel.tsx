@@ -117,7 +117,7 @@ function CollapsibleSection(props: { title: string; defaultOpen?: boolean; child
   const [open, setOpen] = createSignal(props.defaultOpen ?? false);
   return (
     <Column borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="0">
-      <Row ay="center" ax="between" py="300" onClick={() => setOpen(!open())} style={{ cursor: 'pointer' }}>
+      <Row ay="center" ax="between" py="300" onClick={() => setOpen(!open())} cursor="pointer">
         <SectionLabel>{props.title}</SectionLabel>
         <we-icon name={open() ? 'caret-up' : 'caret-down'} size="sm" color="neutral-400" />
       </Row>
