@@ -71,6 +71,10 @@ export default class Badge extends DesignSystemElement {
     return DEFAULT_PROPS;
   }
 
+  override getRawProps() {
+    return { ...SIZE_DEFAULTS[this.size], ...super.getRawProps() };
+  }
+
   override getInstanceProps() {
     const ctor = this.constructor as typeof Badge & { __dsLayers: readonly DSLayer[] };
     const activeKeys = getKeysForLayers([...ctor.__dsLayers]);

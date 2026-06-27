@@ -40,6 +40,11 @@ export default class Code extends DesignSystemElement {
     return DEFAULT_PROPS;
   }
 
+  override getRawProps() {
+    const modeDefaults = MODE_DEFAULTS[this.block ? 'block' : 'inline'];
+    return { ...modeDefaults, ...super.getRawProps() };
+  }
+
   override getInstanceProps() {
     const ctor = this.constructor as typeof Code & { __dsLayers: readonly DSLayer[] };
     const activeKeys = getKeysForLayers([...ctor.__dsLayers]);

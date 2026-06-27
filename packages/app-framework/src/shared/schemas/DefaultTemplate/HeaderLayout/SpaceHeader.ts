@@ -53,7 +53,7 @@ export const spaceHeader: SchemaNode = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { variant: 'heading-md' },
+                      props: { variant: 'heading-md', color: 'neutral-1000' },
                       children: [{ $store: 'spaceStore.currentSpace.name' }],
                     },
                     {

@@ -3,7 +3,7 @@ import type { RouteSchema } from '@we/schema-shared';
 export const aboutRoute: RouteSchema = {
   path: '/about',
   type: 'Column',
-  props: { width: '100%', ax: 'center', height: 'calc(100vh - 80px)' },
+  props: { width: '100%', ax: 'center', height: 'calc(100vh - 73px)' },
   children: [
     {
       type: 'Column',
@@ -28,7 +28,7 @@ export const aboutRoute: RouteSchema = {
                 { type: 'we-text', props: { color: 'neutral-700' }, children: ['Name'] },
                 {
                   type: 'we-text',
-                  props: { variant: 'heading-md' },
+                  props: { variant: 'heading-md', color: 'neutral-1000' },
                   children: [{ $store: 'spaceStore.currentSpace.name' }],
                 },
               ],

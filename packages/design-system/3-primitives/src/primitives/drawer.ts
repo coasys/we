@@ -9,6 +9,7 @@ import type { DrawerPosition } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'neutral-0',
+  r: '600',
   p: '600',
   direction: 'column',
   gap: '300',

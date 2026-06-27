@@ -40,16 +40,17 @@ const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
  *         var(--we-button-size-radius,              ← size-aware structural default (CSS host rule)
  *           var(--we-radius-400)))));               ← absolute token fallback
  *
- * This lets themes set "all buttons pill" via --we-theme-control-radius without
- * per-element r= props fighting them, while still having size-appropriate defaults.
- * Size-aware defaults (--we-button-size-radius) sit below theme variables so a
- * theme can still override to sharp/pill with a single variable.
+ * radiusDefault and paddingDefault are optional. When absent, getStaticDSStyles()
+ * auto-derives them from the component's DEFAULT_PROPS (via getPaddingValues /
+ * getRadiusValues). Only set them explicitly when the value cannot be derived —
+ * e.g. button's size-aware radius chain, or wrapper components that have no r/px
+ * in DEFAULT_PROPS but still need a non-zero cascade fallback.
  */
 interface ComponentCascade {
   radiusGroup?: string; // e.g. '--we-theme-control-radius'
-  radiusDefault?: string; // e.g. 'var(--we-radius-400)'
+  radiusDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
   paddingGroup?: string; // e.g. '--we-theme-control-spacing'
-  paddingDefault?: string; // e.g. 'var(--we-space-400)'
+  paddingDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
   nativePadding?: boolean; // if true, padding is omitted from [part='base'] — the component applies it directly on the native element
 }
 
@@ -57,91 +58,61 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   // Controls
   button: {
     radiusGroup: '--we-theme-control-radius',
+    // Explicit: size-aware CSS var chain — not derivable from DEFAULT_PROPS alone.
     radiusDefault: 'var(--we-button-size-radius, var(--we-radius-400))',
     paddingGroup: '--we-theme-control-spacing',
-    paddingDefault: '0 var(--we-space-400)',
   },
-  badge: {
-    radiusGroup: '--we-theme-control-radius',
-    radiusDefault: 'var(--we-radius-400)',
-    paddingGroup: '--we-theme-control-spacing',
-    paddingDefault: '0 var(--we-space-400)',
-  },
-  tag: {
-    radiusGroup: '--we-theme-control-radius',
-    radiusDefault: 'var(--we-radius-400)',
-    paddingGroup: '--we-theme-control-spacing',
-    paddingDefault: '0 var(--we-space-200)',
-  },
-  'progress-bar': { radiusGroup: '--we-theme-control-radius', radiusDefault: 'var(--we-radius-400)' },
+  badge: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-control-spacing' },
+  tag: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-control-spacing' },
+  'menu-item': { paddingGroup: '--we-theme-control-spacing' },
+  'progress-bar': { radiusGroup: '--we-theme-control-radius' },
   // Inputs
-  input: {
-    radiusGroup: '--we-theme-input-radius',
-    radiusDefault: 'var(--we-radius-300)',
-    paddingGroup: '--we-theme-input-spacing',
-    paddingDefault: '0 var(--we-space-300)',
-  },
-  textarea: { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)', nativePadding: true },
+  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-spacing' },
+  textarea: { radiusGroup: '--we-theme-input-radius', nativePadding: true },
   select: {
     radiusGroup: '--we-theme-input-radius',
-    radiusDefault: 'var(--we-radius-300)',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-spacing',
-    paddingDefault: '0 var(--we-space-300)',
+    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
   },
   'number-input': {
     radiusGroup: '--we-theme-input-radius',
-    radiusDefault: 'var(--we-radius-300)',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: intentionally matches input theme, not DEFAULT_PROPS r:'400'
     paddingGroup: '--we-theme-input-spacing',
-    paddingDefault: '0 var(--we-space-300)',
+    paddingDefault: '0 var(--we-space-300)', // Explicit: no px in DEFAULT_PROPS
   },
   'date-picker': {
     radiusGroup: '--we-theme-input-radius',
-    radiusDefault: 'var(--we-radius-300)',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-spacing',
-    paddingDefault: '0 var(--we-space-300)',
+    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
   },
   'color-picker': {
     radiusGroup: '--we-theme-input-radius',
-    radiusDefault: 'var(--we-radius-300)',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-spacing',
-    paddingDefault: '0 var(--we-space-300)',
+    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
   },
   'icon-picker': {
     radiusGroup: '--we-theme-input-radius',
-    radiusDefault: 'var(--we-radius-300)',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-spacing',
-    paddingDefault: '0 var(--we-space-300)',
+    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
   },
-  'file-upload': {
+  'file-upload': { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-surface-spacing' },
+  'form-field': {
     radiusGroup: '--we-theme-input-radius',
-    radiusDefault: 'var(--we-radius-300)',
-    paddingGroup: '--we-theme-input-spacing',
-    paddingDefault: '0 var(--we-space-300)',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
   },
-  'form-field': { radiusGroup: '--we-theme-input-radius', radiusDefault: 'var(--we-radius-300)' },
   // Tabs
-  tab: {
-    radiusGroup: '--we-theme-control-radius',
-    radiusDefault: 'var(--we-radius-400) var(--we-radius-400) 0 0',
-    paddingGroup: '--we-theme-tab-spacing',
-    paddingDefault: 'var(--we-space-200) var(--we-space-300)',
-  },
+  tab: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-tab-spacing' },
   // Surfaces
-  modal: {
-    radiusGroup: '--we-theme-surface-radius',
-    radiusDefault: 'var(--we-radius-600)',
-    paddingGroup: '--we-theme-surface-spacing',
-    paddingDefault: 'var(--we-space-600)',
-  },
-  drawer: {
-    radiusGroup: '--we-theme-surface-radius',
-    radiusDefault: 'var(--we-radius-600)',
-    paddingGroup: '--we-theme-surface-spacing',
-    paddingDefault: 'var(--we-space-600)',
-  },
-  alert: { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-400)' },
-  blockquote: { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-400)' },
-  code: { radiusGroup: '--we-theme-surface-radius', radiusDefault: 'var(--we-radius-300)' },
+  modal: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
+  drawer: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
+  menu: { radiusGroup: '--we-theme-surface-radius', nativePadding: true },
+  alert: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
+  blockquote: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
+  code: { radiusGroup: '--we-theme-surface-radius' },
 };
 
 const DEFAULT_TRANSITION = 'all var(--we-transition-200, 150ms) ease';
@@ -399,7 +370,17 @@ function cascadeSpec(
   groupVar: string | undefined,
   tokenDefault: string | undefined,
 ): PropSpec {
-  if (!groupVar || !tokenDefault) return [cssProp, varSuffix];
+  if (!groupVar || !tokenDefault) {
+    if (process.env.NODE_ENV !== 'production' && groupVar && !tokenDefault) {
+      console.warn(
+        `[DS] ${componentName}: "${varSuffix}" has a cascade group (${groupVar}) but no fallback value. ` +
+          `Add the corresponding prop to ${componentName}'s DEFAULT_PROPS so it can be auto-derived, ` +
+          `or set ${varSuffix}Default explicitly in COMPONENT_CASCADE. ` +
+          `Without a fallback, ${cssProp} will reset to its initial value when no theme variable is set.`,
+      );
+    }
+    return [cssProp, varSuffix];
+  }
   const compThemeVar = `--we-theme-${componentName}-${varSuffix}`;
   return [cssProp, varSuffix, `var(${compThemeVar}, var(${groupVar}, ${tokenDefault}))`];
 }
@@ -407,22 +388,43 @@ function cascadeSpec(
 /**
  * Generate static CSS string for a DS component. Called once per component class.
  * The CSS reads CSS custom properties that are set at runtime by updateAllCustomVars().
+ *
+ * @param defaultProps - The component's DEFAULT_PROPS. Used to auto-derive paddingDefault and
+ * radiusDefault when they are not explicitly set in COMPONENT_CASCADE.
  */
-export function getStaticDSStyles(componentName: string, layers?: readonly DSLayer[]): string {
+export function getStaticDSStyles(
+  componentName: string,
+  layers?: readonly DSLayer[],
+  defaultProps?: Partial<DesignSystemProps>,
+): string {
   const l = new Set<DSLayer>(layers ?? ['layout', 'visual', 'flex', 'typography', 'state']);
   const p = `--we-${componentName}-`;
   const cascade = COMPONENT_CASCADE[componentName];
 
+  // Auto-derive cascade fallback defaults from DEFAULT_PROPS when not explicitly set.
+  // Explicit values in COMPONENT_CASCADE always take precedence.
+  const dp = defaultProps as Record<string, unknown> | undefined;
+  const radiusDefault =
+    cascade?.radiusDefault ??
+    (dp && radiusKeys.some((k) => dp[k] !== undefined)
+      ? getRadiusValues(defaultProps as DesignSystemProps)
+      : undefined);
+  const paddingDefault =
+    cascade?.paddingDefault ??
+    (dp && paddingKeys.some((k) => dp[k] !== undefined)
+      ? getPaddingValues(defaultProps as DesignSystemProps)
+      : undefined);
+
   // Build per-component visual and flex specs with cascade fallbacks where applicable.
   const baseVisual: PropSpec[] = BASE_VISUAL.map((spec) =>
     spec[1] === 'radius'
-      ? cascadeSpec(componentName, 'border-radius', 'radius', cascade?.radiusGroup, cascade?.radiusDefault)
+      ? cascadeSpec(componentName, 'border-radius', 'radius', cascade?.radiusGroup, radiusDefault)
       : spec,
   );
   const baseFlex: PropSpec[] = BASE_FLEX.flatMap((spec) => {
     if (spec[1] !== 'padding') return [spec];
     if (cascade?.nativePadding) return []; // padding goes on the native element, not [part='base']
-    return [cascadeSpec(componentName, 'padding', 'padding', cascade?.paddingGroup, cascade?.paddingDefault)];
+    return [cascadeSpec(componentName, 'padding', 'padding', cascade?.paddingGroup, paddingDefault)];
   });
 
   const styles: string[] = [];

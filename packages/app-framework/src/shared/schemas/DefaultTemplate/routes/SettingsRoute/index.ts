@@ -132,7 +132,7 @@ const saveOnBlur = [
 export const settingsRoute: RouteSchema = {
   path: '/settings',
   type: 'Column',
-  props: { width: '100%', ax: 'center', height: 'calc(100vh - 80px)' },
+  props: { width: '100%', ax: 'center', height: 'calc(100vh - 73px)' },
   $localState: {
     showMarketplace: { type: 'boolean', initial: false },
     showThemeMarketplace: { type: 'boolean', initial: false },

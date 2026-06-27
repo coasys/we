@@ -31,7 +31,7 @@ export function postComposerModal(opts: PostComposerModalOptions): SchemaNode {
       { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
       {
         type: 'Column',
-        props: { width: '100%', bg: 'neutral-25', p: '600', pl: '1000', r: '400', overflow: 'auto' },
+        props: { width: '100%', bg: 'neutral-25', p: '600', pl: '900', r: '400', overflow: 'auto' },
         children: [
           {
             type: 'BlockComposer',

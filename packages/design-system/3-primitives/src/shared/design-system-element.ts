@@ -26,8 +26,10 @@ function applyDSBehavior<T extends new (...args: any[]) => LitElement>(Base: T):
       // Create and cache the static DS stylesheet (once per component class)
       if (!dsStyleSheets.has(ctor)) {
         const sheet = new CSSStyleSheet();
-        const layers = (ctor as unknown as Record<string, unknown>).__dsLayers as readonly DSLayer[] | undefined;
-        sheet.replaceSync(getStaticDSStyles(this._componentName, layers));
+        const ctorMeta = ctor as unknown as Record<string, unknown>;
+        const layers = ctorMeta.__dsLayers as readonly DSLayer[] | undefined;
+        const defaultProps = (ctorMeta.getDefaultProps as (() => Partial<DesignSystemProps>) | undefined)?.();
+        sheet.replaceSync(getStaticDSStyles(this._componentName, layers, defaultProps));
         dsStyleSheets.set(ctor, sheet);
       }
 
