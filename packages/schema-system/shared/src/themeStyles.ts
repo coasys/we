@@ -118,5 +118,16 @@ export function themeToStyle(theme: ThemeOverrides): Record<string, string> {
       'linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 30) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 30) var(--we-color-saturation) var(--we-color-lightness-500)) 100%)';
   }
 
+  // 6. Re-declare semantic tokens that alias --we-color-primary-500.
+  // These are defined at :root as var() references, but an inline style baked by
+  // populateMissingOverrides() or a named theme's CSS rule can pin them to a stale
+  // resolved value. Re-declaring them here as formulas ensures they stay in sync
+  // with any primary colour change on this element.
+  if (affectsPrimaryGradient) {
+    if (theme.ringColor === undefined) style['--we-ring-color'] = 'var(--we-color-primary-500)';
+    style['--we-color-focus'] = 'var(--we-color-primary-500)';
+    style['--we-focus-outline'] = '0 0 0 2px var(--we-color-focus)';
+  }
+
   return style;
 }

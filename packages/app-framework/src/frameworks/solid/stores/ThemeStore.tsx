@@ -146,7 +146,7 @@ function clearCustomThemeCSS() {
 }
 
 const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
-  // Color
+  // Color — only independent inputs, not derived tokens (ringColor derives from primary)
   primaryHue: '--we-color-primary-hue',
   successHue: '--we-color-success-hue',
   warningHue: '--we-color-warning-hue',
@@ -156,7 +156,6 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
   neutralSaturation: '--we-color-neutral-saturation',
   subtractor: '--we-color-subtractor',
   multiplier: '--we-color-multiplier',
-  ringColor: '--we-ring-color',
   // Typography
   fontFamily: '--we-font-family',
   letterSpacing: '--we-theme-letter-spacing',
