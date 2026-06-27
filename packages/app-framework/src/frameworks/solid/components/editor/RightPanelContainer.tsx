@@ -144,7 +144,7 @@ export function RightPanelContainer() {
   // Slide the container off-screen when neither editing mode is active.
   // When either mode is active, translateX(0) keeps it visible.
   const containerTransform = () => {
-    if (aiStore.isEditingTemplate() || aiStore.isEditingTheme()) return 'translateX(0)';
+    if (aiStore.isEditingTemplate() || aiStore.isEditingTheme()) return 'none';
     let w = TOTAL_RAIL_WIDTH;
     if (aiStore.isOpen()) w += aiStore.aiPanelWidth();
     if (aiStore.codePanelOpen()) w += aiStore.codePanelWidth();

@@ -117,11 +117,10 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
   });
 
   // Scoped space theme — applied to the template content area only.
-  // Suppressed during theme editing so the editor's global preview takes effect.
+  // activeTemplateTheme() returns the editing theme (when editing in scoped mode) or the
+  // space theme, and null in global mode (template inherits from documentElement).
   const spaceThemeStyle = createMemo(() => {
-    if (stores.themeStore.editingTheme()) return {};
-    if (stores.themeStore.themeScope() === 'global') return {};
-    const td = stores.themeStore.spaceThemeData();
+    const td = stores.themeStore.activeTemplateTheme();
     if (!td) return {};
     const overrides = td.overrides ? JSON.parse(td.overrides) : {};
     if (isValidThemeKey(td.id) && !overrides.themeName) overrides.themeName = td.id;
@@ -129,9 +128,7 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
   });
 
   const spaceThemeName = createMemo(() => {
-    if (stores.themeStore.editingTheme()) return undefined;
-    if (stores.themeStore.themeScope() === 'global') return undefined;
-    const td = stores.themeStore.spaceThemeData();
+    const td = stores.themeStore.activeTemplateTheme();
     if (!td) return undefined;
     const overrides = td.overrides ? JSON.parse(td.overrides) : {};
     return (overrides.themeName as string | undefined) ?? (isValidThemeKey(td.id) ? td.id : undefined);

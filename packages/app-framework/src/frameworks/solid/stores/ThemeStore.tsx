@@ -51,6 +51,12 @@ export interface ThemeStore {
   toggleThemeScope: () => void;
   /** The active space theme data when in scoped mode (null in global mode or when no space theme is active). */
   spaceThemeData: Accessor<ThemeData | null>;
+  /**
+   * The theme that should be rendered by the scoped template wrapper.
+   * Scoped mode: returns editingTheme() (if editing) or spaceThemeData().
+   * Global mode: returns null (template inherits from documentElement).
+   */
+  activeTemplateTheme: Accessor<ThemeData | null>;
   /** Apply a theme temporarily (space default) without persisting to AgentSettings. */
   replaceTheme: (themeId: string) => void;
   /** Restore the persisted personal theme (called when leaving a space with a default theme). */
@@ -261,7 +267,6 @@ export function ThemeStoreProvider(props: ParentProps) {
     pendingSnapshot = null;
     applyingHistoryOp = true;
     setEditingTheme(snapshot);
-    applyThemeToDOM(snapshot);
     await saveEditingTheme();
     applyingHistoryOp = false;
   }
@@ -276,7 +281,6 @@ export function ThemeStoreProvider(props: ParentProps) {
     pendingSnapshot = null;
     applyingHistoryOp = true;
     setEditingTheme(snapshot);
-    applyThemeToDOM(snapshot);
     await saveEditingTheme();
     applyingHistoryOp = false;
   }
@@ -400,6 +404,19 @@ export function ThemeStoreProvider(props: ParentProps) {
     localStorage.setItem(THEME_KEY, prefs.defaultThemeId);
   });
 
+  // In global scope, keep documentElement in sync with the editing preview.
+  // This replaces per-function applyThemeToDOM calls in updateEditingOverrides/Css/undo/redo.
+  createEffect(() => {
+    const editing = editingTheme();
+    if (!editing || themeScope() === 'scoped') return;
+    applyThemeToDOM(editing);
+  });
+
+  // The theme that the scoped template wrapper should render.
+  // Returns null in global mode (template inherits from documentElement).
+  const activeTemplateTheme: Accessor<ThemeData | null> = () =>
+    themeScope() === 'scoped' ? (editingTheme() ?? spaceThemeData()) : null;
+
   // Apply initial theme immediately from localStorage
   const initialId = getInitialThemeId();
   if (isValidThemeKey(initialId)) {
@@ -451,14 +468,18 @@ export function ThemeStoreProvider(props: ParentProps) {
     const td = spaceThemeData();
     const cur = currentTheme();
     if (next === 'scoped') {
-      // global → scoped: scope active theme to template, restore personal theme on documentElement
+      // global → scoped: personal theme goes on documentElement; the scoped wrapper owns the display.
+      // When editing, the reactive DOM-sync effect switches off (themeScope=scoped) and the
+      // scoped wrapper picks up editingTheme() directly, so editing preview stays visible.
       setSpaceThemeData(td ?? cur);
       const personalId =
         localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
       applyThemeToDOM(resolveThemeData(personalId));
     } else {
-      // scoped → global: move scoped theme to documentElement, clear scoped wrapper
-      applyThemeToDOM(td ?? cur);
+      // scoped → global: clear the scoped wrapper. Non-editing: apply the space theme to
+      // documentElement explicitly. Editing: the reactive DOM-sync effect fires when themeScope
+      // changes to 'global' and applies editingTheme() to documentElement automatically.
+      if (!editingTheme()) applyThemeToDOM(td ?? cur);
       setSpaceThemeData(null);
     }
     setThemeScope(next);
@@ -522,7 +543,19 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (!base) return;
     clearHistory();
     const storedOverrides: ThemeOverrides = base.overrides ? JSON.parse(base.overrides) : {};
-    const initialOverrides = populateMissingOverrides(storedOverrides);
+    let initialOverrides: ThemeOverrides;
+    if (themeScope() === 'scoped') {
+      // documentElement has the personal theme in scoped mode, not the space theme being edited.
+      // Temporarily apply the editing base so populateMissingOverrides reads the right computed values,
+      // then restore the personal theme before the browser gets a chance to paint.
+      applyThemeToDOM(base);
+      initialOverrides = populateMissingOverrides(storedOverrides);
+      const personalId =
+        localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
+      applyThemeToDOM(resolveThemeData(personalId));
+    } else {
+      initialOverrides = populateMissingOverrides(storedOverrides);
+    }
     setEditingTheme({ ...base, overrides: JSON.stringify(initialOverrides), isDirty: false });
     sessionStorage.setItem(EDITING_THEME_KEY, themeId ?? currentThemeId());
   }
@@ -533,9 +566,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       if (!prev) return prev;
       const existing: ThemeOverrides = prev.overrides ? JSON.parse(prev.overrides) : {};
       const merged = { ...existing, ...patch };
-      const next = { ...prev, overrides: JSON.stringify(merged), isDirty: true };
-      applyThemeToDOM(next);
-      return next;
+      return { ...prev, overrides: JSON.stringify(merged), isDirty: true };
     });
   }
 
@@ -543,9 +574,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     captureSnapshot();
     setEditingTheme((prev) => {
       if (!prev) return prev;
-      const next = { ...prev, css, isDirty: true };
-      applyThemeToDOM(next);
-      return next;
+      return { ...prev, css, isDirty: true };
     });
   }
 
@@ -610,7 +639,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     setEditingTheme(null);
     sessionStorage.removeItem(EDITING_THEME_KEY);
     if (themeScope() === 'scoped') {
-      // In scoped mode the editor wrote to documentElement for preview — restore personal theme.
+      // documentElement holds the personal theme in scoped mode; reaffirm it to flush
+      // any stale inline CSS vars from a prior global-mode editing session.
       const personalId =
         localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
       applyThemeToDOM(resolveThemeData(personalId));
@@ -926,6 +956,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     themeScope,
     toggleThemeScope,
     spaceThemeData,
+    activeTemplateTheme,
     themeManagementList,
     editingTheme,
     canUndo,

@@ -1,0 +1,10 @@
+/* Light theme — mirrors the :root defaults so scoped wrapper overrides work correctly.
+   Without these rules, setting data-we-theme="light" on an inner element has no effect:
+   the element inherits the dark multiplier/subtractor from :root and themeToStyle's
+   re-declared formulas compute with the wrong inputs. */
+[data-we-theme='light'] {
+  --we-color-multiplier: 1;
+  --we-color-subtractor: 0%;
+  --we-color-saturation: 60%;
+  --we-color-neutral-saturation: 10%;
+}
