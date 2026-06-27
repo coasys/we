@@ -194,9 +194,13 @@ function populateMissingOverrides(overrides: ThemeOverrides): ThemeOverrides {
   for (const [key, cssVar] of Object.entries(OVERRIDE_CSS_VARS) as [keyof ThemeOverrides, string][]) {
     if (result[key] !== undefined) continue;
     let raw = styles.getPropertyValue(cssVar).trim();
-    // neutral-hue is defined as var(--we-color-primary-hue) in the token CSS —
-    // getComputedStyle returns the var() reference, not the resolved number
-    if (!raw || raw.startsWith('var(')) raw = styles.getPropertyValue('--we-color-primary-hue').trim();
+    // --we-color-neutral-hue is defined as var(--we-color-primary-hue) in the token CSS —
+    // getComputedStyle returns the var() reference, not the resolved number.
+    // Only apply this fallback for neutralHue; other undefined vars (e.g. radius) must not
+    // inherit the primary hue value, which would produce invalid CSS when used as a length.
+    if (key === 'neutralHue' && (!raw || raw.startsWith('var('))) {
+      raw = styles.getPropertyValue('--we-color-primary-hue').trim();
+    }
     if (!raw || raw.startsWith('var(')) continue;
 
     if (key === 'multiplier' || (key as string).endsWith('Hue')) {
