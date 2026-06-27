@@ -709,11 +709,10 @@ export const landingPageTemplate: TemplateSchema = {
             props: { width: '340px', height: '310px', wobbleDegree: 20 },
             slots: {
               front: {
-                type: 'Column',
+                type: 'Card',
                 props: {
                   gap: '300',
                   p: '500',
-                  r: '500',
                   bg: 'neutral-100',
                   height: '100%',
                   border: '1px solid var(--we-color-neutral-200)',
@@ -745,8 +744,8 @@ export const landingPageTemplate: TemplateSchema = {
                 ],
               },
               back: {
-                type: 'Column',
-                props: { gap: '300', p: '500', r: '400', ay: 'center', bg: 'gradient-primary', height: '100%' },
+                type: 'Card',
+                props: { gap: '300', p: '500', ay: 'center', bg: 'gradient-primary', height: '100%' },
                 children: [
                   { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'neutral-100' } },
                   {
@@ -850,8 +849,8 @@ export const landingPageTemplate: TemplateSchema = {
           ],
         },
         {
-          type: 'Column',
-          props: { gap: '500', p: '700', r: '500', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
+          type: 'Card',
+          props: { gap: '500', p: '700', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
           children: [
             {
               type: 'Column',
@@ -882,11 +881,10 @@ export const landingPageTemplate: TemplateSchema = {
           ],
         },
         {
-          type: 'Column',
+          type: 'Card',
           props: {
             gap: '500',
             p: '700',
-            r: '500',
             bg: 'neutral-100',
             border: '1px solid var(--we-color-neutral-200)',
             mb: '180px',
@@ -1264,11 +1262,10 @@ export const landingPageTemplate: TemplateSchema = {
               type: 'Row',
               props: { wrap: true, gap: '400', ax: 'start' },
               children: BLOCK_TYPES.map((block) => ({
-                type: 'Column',
+                type: 'Card',
                 props: {
                   gap: '300',
                   p: '400',
-                  r: '400',
                   bg: 'neutral-100',
                   border: '1px solid var(--we-color-neutral-200)',
                   width: '180px',

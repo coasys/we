@@ -294,7 +294,14 @@ export function DesignToolbar() {
       >
         {/* ── Edit-mode toolbar (template editing only) ── */}
         <Show when={aiStore.isEditingTemplate()}>
-          <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
+          <Row
+            ay="center"
+            gap="100"
+            bg="neutral-50"
+            border="1px solid neutral-200"
+            r="var(--we-theme-control-radius, var(--we-radius-400))"
+            p="200"
+          >
             <we-tooltip title="Preview" placement="bottom">
               <we-button
                 variant={aiStore.contentMode() === 'preview' ? 'secondary' : 'ghost'}
@@ -331,7 +338,14 @@ export function DesignToolbar() {
 
         {/* ── Edit-mode toolbar (theme editing only) ── */}
         <Show when={aiStore.isEditingTheme()}>
-          <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
+          <Row
+            ay="center"
+            gap="100"
+            bg="neutral-50"
+            border="1px solid neutral-200"
+            r="var(--we-theme-control-radius, var(--we-radius-400))"
+            p="200"
+          >
             <we-tooltip title="Undo" placement="bottom">
               <we-button variant="ghost" square disabled={!themeStore.canUndo()} onClick={() => themeStore.undo()}>
                 <we-icon name="arrow-u-up-left" />
@@ -347,7 +361,14 @@ export function DesignToolbar() {
 
         {/* ── Theme chip ── */}
         <Column position="relative">
-          <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
+          <Row
+            ay="center"
+            gap="100"
+            bg="neutral-50"
+            border="1px solid neutral-200"
+            r="var(--we-theme-control-radius, var(--we-radius-400))"
+            p="200"
+          >
             {/* Theme selector */}
             <we-tooltip title="Select a theme" placement="bottom">
               <we-button variant={themeOpen() ? 'secondary' : 'ghost'} onClick={toggleThemePicker} p="200">
@@ -402,7 +423,7 @@ export function DesignToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               minWidth="220px"
             >
@@ -525,7 +546,7 @@ export function DesignToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               overflow="hidden"
               minWidth="330px"
@@ -616,7 +637,7 @@ export function DesignToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               p="400"
               gap="300"
@@ -705,7 +726,7 @@ export function DesignToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               overflow="hidden"
               minWidth="260px"
@@ -800,7 +821,14 @@ export function DesignToolbar() {
 
         {/* ── Template chip ── */}
         <Column position="relative">
-          <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
+          <Row
+            ay="center"
+            gap="100"
+            bg="neutral-50"
+            border="1px solid neutral-200"
+            r="var(--we-theme-control-radius, var(--we-radius-400))"
+            p="200"
+          >
             {/* Template selector */}
             <we-tooltip title="Select a template" placement="bottom">
               <we-button variant="ghost" onClick={toggleSwitcher} p="200">
@@ -853,7 +881,7 @@ export function DesignToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               overflow="hidden"
               minWidth="300px"
@@ -925,7 +953,7 @@ export function DesignToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               overflow="hidden"
               minWidth="330px"
@@ -1006,7 +1034,7 @@ export function DesignToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               overflow="hidden"
               minWidth="260px"
@@ -1124,7 +1152,7 @@ export function DesignToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               p="400"
               gap="300"

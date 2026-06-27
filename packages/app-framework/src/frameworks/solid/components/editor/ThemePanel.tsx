@@ -82,7 +82,7 @@ const SHAPE_PRESETS = {
   },
   pill: {
     controlRadius: 'var(--we-radius-pill)',
-    surfaceRadius: 'var(--we-radius-pill)',
+    surfaceRadius: 'var(--we-radius-600)',
     inputRadius: 'var(--we-radius-pill)',
   },
 } as const;
