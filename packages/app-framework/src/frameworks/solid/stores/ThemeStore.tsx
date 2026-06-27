@@ -64,6 +64,12 @@ export interface ThemeStore {
   /** Clear the scoped space theme without restoring the personal theme (used when entering a space with no default theme). */
   clearSpaceTheme: () => void;
   startEditing: (themeId?: string) => void;
+  /**
+   * Change the base preset while editing. Clears explicit multiplier/subtractor overrides so
+   * the new preset's natural light/dark mode shows through, then repopulates them from the
+   * preset's computed CSS so the Light/Dark buttons reflect reality.
+   */
+  changeBasePreset: (preset: string | undefined) => void;
   updateEditingOverrides: (overrides: Partial<ThemeOverrides>) => void;
   updateEditingCss: (css: string) => void;
   updateEditingMeta: (fields: { name?: string; icon?: string }) => void;
@@ -560,6 +566,26 @@ export function ThemeStoreProvider(props: ParentProps) {
     sessionStorage.setItem(EDITING_THEME_KEY, themeId ?? currentThemeId());
   }
 
+  function changeBasePreset(preset: string | undefined) {
+    const current = editingTheme();
+    if (!current) return;
+    captureSnapshot();
+
+    // Build overrides with the new preset set (or removed) and explicit multiplier/subtractor
+    // cleared so the preset's natural mode shows through.
+    const existing: ThemeOverrides = current.overrides ? JSON.parse(current.overrides) : {};
+    const updated: ThemeOverrides = { ...existing, multiplier: undefined, subtractor: undefined };
+    if (preset) updated.themeName = preset;
+    else delete updated.themeName;
+
+    // Apply to DOM explicitly so getComputedStyle reflects the new preset before we read it.
+    applyThemeToDOM({ ...current, overrides: JSON.stringify(updated) });
+
+    // Repopulate multiplier/subtractor (and any other unset vars) from the new preset's CSS.
+    const repopulated = populateMissingOverrides(updated);
+    setEditingTheme({ ...current, overrides: JSON.stringify(repopulated), isDirty: true });
+  }
+
   function updateEditingOverrides(patch: Partial<ThemeOverrides>) {
     captureSnapshot();
     setEditingTheme((prev) => {
@@ -599,13 +625,25 @@ export function ThemeStoreProvider(props: ParentProps) {
       return false;
     }
     try {
+      // For a fork, derive initial overrides from the source theme.
+      // Built-in themes have no stored overrides, so we synthesise {themeName: sourceId} so
+      // the new custom theme knows which CSS file to load. Then populate slider values from
+      // the source theme's computed CSS (it is already applied to the DOM at this point).
+      let initialOverrides: ThemeOverrides | null = null;
+      if (source) {
+        const base: ThemeOverrides = source.overrides ? JSON.parse(source.overrides) : {};
+        if (source.origin === 'built-in' && sourceId) base.themeName = sourceId;
+        initialOverrides = populateMissingOverrides(base);
+      }
+      const overridesJson = initialOverrides ? JSON.stringify(initialOverrides) : null;
+
       const model = await Theme.create(perspective, {
         name,
         icon,
         origin: 'custom',
         version: 1,
-        overrides: source?.overrides
-          ? (encodeToFileData(source.overrides, 'overrides.json', 'application/json') as any)
+        overrides: overridesJson
+          ? (encodeToFileData(overridesJson, 'overrides.json', 'application/json') as any)
           : null,
         css: source?.css ? (encodeToFileData(source.css, 'theme.css', 'text/css') as any) : null,
       });
@@ -616,7 +654,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         icon,
         origin: 'custom',
         version: 1,
-        overrides: source?.overrides ?? null,
+        overrides: overridesJson,
         css: source?.css ?? null,
       };
       setInstalledThemes((prev) => [...prev, data]);
@@ -969,6 +1007,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     restorePersonalTheme,
     clearSpaceTheme,
     startEditing,
+    changeBasePreset,
     updateEditingOverrides,
     updateEditingCss,
     updateEditingMeta,

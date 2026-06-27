@@ -165,22 +165,15 @@ export function ThemePanel() {
   });
 
   function setOverride<K extends keyof ThemeOverrides>(key: K, value: ThemeOverrides[K] | undefined) {
-    if (value === undefined) {
-      const next = { ...overrides() };
-      delete next[key];
-      themeStore.updateEditingOverrides(next as Partial<ThemeOverrides>);
-    } else {
-      themeStore.updateEditingOverrides({ [key]: value } as Partial<ThemeOverrides>);
-    }
+    // Pass undefined explicitly — updateEditingOverrides spreads it into the existing overrides,
+    // and JSON.stringify strips undefined values, which correctly deletes the key.
+    themeStore.updateEditingOverrides({ [key]: value } as Partial<ThemeOverrides>);
   }
 
   function setOverrides(partial: Partial<ThemeOverrides>) {
-    const next = { ...overrides() };
-    for (const [k, v] of Object.entries(partial) as [keyof ThemeOverrides, unknown][]) {
-      if (v === undefined) delete next[k];
-      else (next as Record<string, unknown>)[k] = v;
-    }
-    themeStore.updateEditingOverrides(next);
+    // Pass the partial directly with undefined values intact. The spread in updateEditingOverrides
+    // will shadow existing keys with undefined, and JSON.stringify will strip them.
+    themeStore.updateEditingOverrides(partial);
     saveTheme();
   }
 
@@ -480,8 +473,7 @@ export function ThemePanel() {
                 options={BASE_THEME_OPTIONS}
                 size="sm"
                 on:change={(e: CustomEvent) => {
-                  if (e.detail) setOverride('themeName', e.detail);
-                  else setOverride('themeName', undefined);
+                  themeStore.changeBasePreset((e.detail as string) || undefined);
                   saveTheme();
                 }}
               />
