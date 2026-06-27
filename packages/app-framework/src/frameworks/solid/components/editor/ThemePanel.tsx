@@ -57,16 +57,16 @@ const SPACING_OPTIONS = [
 // ─── Presets ──────────────────────────────────────────────────────────────────
 
 const SHAPE_PRESETS = {
-  sharp: { controlRadius: '0', surfaceRadius: 'var(--we-radius-200)', inputRadius: '0' },
+  sharp: { controlRadius: '0', surfaceRadius: '0', inputRadius: '0' },
   default: { controlRadius: undefined, surfaceRadius: undefined, inputRadius: undefined },
   rounded: {
     controlRadius: 'var(--we-radius-600)',
-    surfaceRadius: 'var(--we-radius-700)',
-    inputRadius: 'var(--we-radius-400)',
+    surfaceRadius: 'var(--we-radius-600)',
+    inputRadius: 'var(--we-radius-600)',
   },
   pill: {
     controlRadius: 'var(--we-radius-pill)',
-    surfaceRadius: 'var(--we-radius-800)',
+    surfaceRadius: 'var(--we-radius-pill)',
     inputRadius: 'var(--we-radius-pill)',
   },
 } as const;
