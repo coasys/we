@@ -58,7 +58,7 @@ export const postsList: SchemaNode = {
                           },
                           {
                             type: 'we-timestamp',
-                            props: { value: '$post.createdAt', relative: true },
+                            props: { value: '$post.createdAt', relative: true, color: 'neutral-500' },
                           },
                         ],
                       },

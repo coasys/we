@@ -29,11 +29,11 @@ const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '100', px: '200', height: 'var(--we-component-height-xs)' },
-  sm: { fontSize: '200', px: '300', height: 'var(--we-component-height-sm)' },
-  md: { fontSize: '300', px: '400', height: 'var(--we-component-height-md)' },
-  lg: { fontSize: '400', px: '500', height: 'var(--we-component-height-lg)' },
-  xl: { fontSize: '400', px: '600', height: 'var(--we-component-height-xl)' },
+  xs: { px: '200', fontSize: '100', height: 'var(--we-component-height-xs)', gap: '100' },
+  sm: { px: '300', fontSize: '200', height: 'var(--we-component-height-sm)', gap: '200' },
+  md: { px: '400', fontSize: '300', height: 'var(--we-component-height-md)' },
+  lg: { px: '500', fontSize: '500', height: 'var(--we-component-height-lg)' },
+  xl: { px: '500', fontSize: '500', height: 'var(--we-component-height-xl)' },
 };
 
 const styles = css`

@@ -528,7 +528,7 @@ export function DesignToolbar() {
               r="400"
               shadow="md"
               overflow="hidden"
-              minWidth="280px"
+              minWidth="330px"
             >
               <Column py="200">
                 <Show when={themeStore.currentTheme().origin !== 'built-in'}>
@@ -548,7 +548,7 @@ export function DesignToolbar() {
                     <we-icon name="pencil-simple" color="neutral-600" size="sm" />
                     <Column>
                       <we-text color="neutral-800">Edit</we-text>
-                      <we-text fontSize="300" color="neutral-500">
+                      <we-text fontSize="200" color="neutral-500">
                         Modify this theme
                       </we-text>
                     </Column>
@@ -574,7 +574,7 @@ export function DesignToolbar() {
                   <we-icon name="git-fork" color="neutral-600" size="sm" />
                   <Column>
                     <we-text color="neutral-800">Fork</we-text>
-                    <we-text fontSize="300" color="neutral-500">
+                    <we-text fontSize="200" color="neutral-500">
                       Start a new theme based on this one
                     </we-text>
                   </Column>
@@ -598,7 +598,7 @@ export function DesignToolbar() {
                   <we-icon name="plus" color="neutral-600" size="sm" />
                   <Column>
                     <we-text color="neutral-800">New</we-text>
-                    <we-text fontSize="300" color="neutral-500">
+                    <we-text fontSize="200" color="neutral-500">
                       Create a new theme from scratch
                     </we-text>
                   </Column>
@@ -928,7 +928,7 @@ export function DesignToolbar() {
               r="400"
               shadow="md"
               overflow="hidden"
-              minWidth="280px"
+              minWidth="330px"
             >
               <Column py="200">
                 <Show when={canEdit()}>
@@ -947,7 +947,7 @@ export function DesignToolbar() {
                     <we-icon name="pencil-simple" color="neutral-600" size="sm" />
                     <Column>
                       <we-text color="neutral-800">Edit</we-text>
-                      <we-text fontSize="300" color="neutral-500">
+                      <we-text fontSize="200" color="neutral-500">
                         Modify this template
                       </we-text>
                     </Column>
@@ -968,7 +968,7 @@ export function DesignToolbar() {
                   <we-icon name="git-fork" color="neutral-600" size="sm" />
                   <Column>
                     <we-text color="neutral-800">Fork</we-text>
-                    <we-text fontSize="300" color="neutral-500">
+                    <we-text fontSize="200" color="neutral-500">
                       Start a new template based on this one
                     </we-text>
                   </Column>
@@ -988,7 +988,7 @@ export function DesignToolbar() {
                   <we-icon name="file-plus" color="neutral-600" size="sm" />
                   <Column>
                     <we-text color="neutral-800">New</we-text>
-                    <we-text fontSize="300" color="neutral-500">
+                    <we-text fontSize="200" color="neutral-500">
                       Create a new template from scratch
                     </we-text>
                   </Column>

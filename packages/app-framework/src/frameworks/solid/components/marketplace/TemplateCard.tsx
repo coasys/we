@@ -171,14 +171,14 @@ export function TemplateCard(props: Props) {
 
       {/* Description */}
       <Show when={props.template.description}>
-        <we-text fontSize="400" color="neutral-500">
+        <we-text fontSize="300" color="neutral-500">
           {props.template.description}
         </we-text>
       </Show>
 
       {/* Version + slug */}
       <Row gap="200" ay="center">
-        <we-badge variant="neutral" size="xs" fontSize="300">
+        <we-badge variant="neutral" size="xs" px="200">
           v{props.template.version}
         </we-badge>
         <Show when={props.template.slug}>
@@ -216,12 +216,12 @@ export function TemplateCard(props: Props) {
         <Row ay="center" gap="200" flex="1" minWidth="0">
           <Show when={author()}>
             <we-avatar size="xs" image={author()?.avatar} initials={authorName()} />
-            <we-text fontSize="400" color="neutral-600" truncate>
+            <we-text fontSize="300" color="neutral-600" truncate>
               {authorName()}
             </we-text>
           </Show>
           <Show when={props.template.createdAt}>
-            <we-timestamp value={props.template.createdAt} relative color="neutral-400" fontSize="400" />
+            <we-timestamp value={props.template.createdAt} relative color="neutral-400" fontSize="300" />
           </Show>
         </Row>
         <Show when={mode() === 'marketplace'}>
