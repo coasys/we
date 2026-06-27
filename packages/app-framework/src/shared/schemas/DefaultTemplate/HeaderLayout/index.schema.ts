@@ -18,6 +18,7 @@ export const headerLayout: TemplateSchema = {
     icon: 'layout',
   },
   type: 'Column',
+  props: { bg: 'neutral-50' },
   children: [{ type: '$routes' }],
   routes: [
     homeRoute,

@@ -293,6 +293,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       themeStore.replaceTheme(themeId);
     } else if (!adamStore.currentPerspective()) {
       themeStore.restorePersonalTheme();
+    } else {
+      // In a space with no default theme — clear any previously scoped space theme.
+      themeStore.clearSpaceTheme();
     }
   });
 

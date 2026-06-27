@@ -14,6 +14,7 @@
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
+import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import {
   landingPageTemplate,
   marketplaceTemplate,
@@ -31,9 +32,10 @@ import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import type { TemplateSchema } from '@we/schema-shared';
+import { themeToStyle } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
-import { createEffect, For, Show } from 'solid-js';
+import { createEffect, createMemo, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 import { EditorOverlay } from '../components/editor/EditorOverlay';
@@ -114,6 +116,27 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
     if (stores.templateStore.activeShellView()) stores.aiStore.exitTemplateEditing();
   });
 
+  // Scoped space theme — applied to the template content area only.
+  // Suppressed during theme editing so the editor's global preview takes effect.
+  const spaceThemeStyle = createMemo(() => {
+    if (stores.themeStore.editingTheme()) return {};
+    if (stores.themeStore.themeScope() === 'global') return {};
+    const td = stores.themeStore.spaceThemeData();
+    if (!td) return {};
+    const overrides = td.overrides ? JSON.parse(td.overrides) : {};
+    if (isValidThemeKey(td.id) && !overrides.themeName) overrides.themeName = td.id;
+    return themeToStyle(overrides);
+  });
+
+  const spaceThemeName = createMemo(() => {
+    if (stores.themeStore.editingTheme()) return undefined;
+    if (stores.themeStore.themeScope() === 'global') return undefined;
+    const td = stores.themeStore.spaceThemeData();
+    if (!td) return undefined;
+    const overrides = td.overrides ? JSON.parse(td.overrides) : {};
+    return (overrides.themeName as string | undefined) ?? (isValidThemeKey(td.id) ? td.id : undefined);
+  });
+
   const rightOffset = () => {
     let offset = 0;
     if (stores.aiStore.isEditingTheme()) {
@@ -153,14 +176,19 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           overflow="auto"
           scrollbarGutter="stable"
         >
-          <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-            <RenderSchema
-              node={stores.templateStore.currentTemplate}
-              stores={stores}
-              registry={registry}
-              children={props.children}
-            />
-          </Show>
+          {/* Scoped space theme wrapper — display:contents keeps layout unaffected.
+              Raw custom CSS (theme.css) still injects globally; only parametric overrides
+              and named themes are scoped here. */}
+          <div style={{ display: 'contents', ...spaceThemeStyle() }} data-we-theme={spaceThemeName()}>
+            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+              <RenderSchema
+                node={stores.templateStore.currentTemplate}
+                stores={stores}
+                registry={registry}
+                children={props.children}
+              />
+            </Show>
+          </div>
         </Column>
 
         {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11) */}

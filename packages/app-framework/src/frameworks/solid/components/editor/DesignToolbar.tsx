@@ -359,6 +359,16 @@ export function DesignToolbar() {
 
             <we-divider orientation="vertical" color="neutral-200" height="28px" />
 
+            {/* Globe/globe-x — toggles whether the space theme applies globally or only to the template */}
+            <we-tooltip
+              title={themeStore.themeScope() === 'global' ? 'Apply theme to space only' : 'Apply theme globally'}
+              placement="bottom"
+            >
+              <we-button variant="ghost" square onClick={() => themeStore.toggleThemeScope()}>
+                <we-icon name={themeStore.themeScope() === 'global' ? 'globe' : 'globe-x'} />
+              </we-button>
+            </we-tooltip>
+
             {/* Inactive: pencil opens edit dropdown */}
             <Show when={!aiStore.isEditingTheme()}>
               <we-tooltip title="Edit theme" placement="bottom">

@@ -45,10 +45,18 @@ export interface ThemeStore {
   setCurrentTheme: (themeId: string) => void;
   setDefaultTheme: (themeId: string) => void;
   toggleThemeInstalled: (themeId: string) => Promise<void>;
+  /** Controls whether the active space theme applies to the whole app or only to the template content area. */
+  themeScope: Accessor<'global' | 'scoped'>;
+  /** Toggle between global and scoped theme application. */
+  toggleThemeScope: () => void;
+  /** The active space theme data when in scoped mode (null in global mode or when no space theme is active). */
+  spaceThemeData: Accessor<ThemeData | null>;
   /** Apply a theme temporarily (space default) without persisting to AgentSettings. */
   replaceTheme: (themeId: string) => void;
   /** Restore the persisted personal theme (called when leaving a space with a default theme). */
   restorePersonalTheme: () => void;
+  /** Clear the scoped space theme without restoring the personal theme (used when entering a space with no default theme). */
+  clearSpaceTheme: () => void;
   startEditing: (themeId?: string) => void;
   updateEditingOverrides: (overrides: Partial<ThemeOverrides>) => void;
   updateEditingCss: (css: string) => void;
@@ -201,6 +209,10 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [visibleThemeIds, setVisibleThemeIds] = createSignal<Set<string>>(new Set());
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
   const [currentThemeId, setCurrentThemeId] = createSignal<string>(getInitialThemeId());
+  // Whether the active space theme applies globally or only to the template content area.
+  const [themeScope, setThemeScope] = createSignal<'global' | 'scoped'>('global');
+  // Space theme data for the template content area — only populated in scoped mode.
+  const [spaceThemeData, setSpaceThemeData] = createSignal<ThemeData | null>(null);
   // Space theme requested before loadSpaceThemes completes — held here until it can be applied.
   const [pendingSpaceThemeId, setPendingSpaceThemeId] = createSignal<string | null>(null);
   const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
@@ -351,7 +363,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (match) {
       setPendingSpaceThemeId(null);
       setCurrentThemeId(pending);
-      applyThemeToDOM(match);
+      if (themeScope() === 'global') applyThemeToDOM(match);
+      else setSpaceThemeData(match);
     }
   });
 
@@ -426,7 +439,30 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   function setCurrentTheme(themeId: string) {
     setCurrentThemeId(themeId);
-    applyThemeToDOM(resolveThemeData(themeId));
+    const theme = resolveThemeData(themeId);
+    if (themeScope() === 'scoped') {
+      setSpaceThemeData(theme);
+    } else {
+      applyThemeToDOM(theme);
+    }
+  }
+
+  function toggleThemeScope() {
+    const next = themeScope() === 'global' ? 'scoped' : 'global';
+    const td = spaceThemeData();
+    const cur = currentTheme();
+    if (next === 'scoped') {
+      // global → scoped: scope active theme to template, restore personal theme on documentElement
+      setSpaceThemeData(td ?? cur);
+      const personalId =
+        localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
+      applyThemeToDOM(resolveThemeData(personalId));
+    } else {
+      // scoped → global: move scoped theme to documentElement, clear scoped wrapper
+      applyThemeToDOM(td ?? cur);
+      setSpaceThemeData(null);
+    }
+    setThemeScope(next);
   }
 
   function setDefaultTheme(themeId: string) {
@@ -456,12 +492,12 @@ export function ThemeStoreProvider(props: ParentProps) {
   function replaceTheme(themeId: string) {
     const theme = untrack(() => allThemes().find((t) => t.id === themeId));
     if (theme) {
-      // Theme already loaded — apply immediately and clear any pending state.
       setPendingSpaceThemeId(null);
       setCurrentThemeId(themeId);
-      applyThemeToDOM(theme);
+      if (untrack(() => themeScope()) === 'global') applyThemeToDOM(theme);
+      else setSpaceThemeData(theme);
     } else {
-      // spaceThemes not loaded yet — park the ID. The createEffect below will
+      // spaceThemes not loaded yet — park the ID. The createEffect above will
       // apply it (and commit currentThemeId) once the space themes arrive.
       setPendingSpaceThemeId(themeId);
     }
@@ -469,9 +505,17 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   function restorePersonalTheme() {
     setPendingSpaceThemeId(null);
+    setSpaceThemeData(null);
     const id = localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
     setCurrentThemeId(id);
-    applyThemeToDOM(resolveThemeData(id));
+    // In global mode the space theme was on documentElement — restore the personal theme.
+    // In scoped mode documentElement was never changed by the space theme, so no DOM rewrite needed.
+    if (themeScope() === 'global') applyThemeToDOM(resolveThemeData(id));
+  }
+
+  function clearSpaceTheme() {
+    setPendingSpaceThemeId(null);
+    setSpaceThemeData(null);
   }
 
   function startEditing(themeId?: string) {
@@ -566,12 +610,19 @@ export function ThemeStoreProvider(props: ParentProps) {
     clearHistory();
     setEditingTheme(null);
     sessionStorage.removeItem(EDITING_THEME_KEY);
-    // Restore actual current theme
-    const theme = currentTheme();
-    if (theme.origin !== 'built-in') applyThemeToDOM(theme);
-    else {
-      clearCustomThemeCSS();
-      document.documentElement.setAttribute('data-we-theme', isValidThemeKey(theme.id) ? theme.id : 'light');
+    if (themeScope() === 'scoped') {
+      // In scoped mode the editor wrote to documentElement for preview — restore personal theme.
+      const personalId =
+        localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
+      applyThemeToDOM(resolveThemeData(personalId));
+    } else {
+      // In global mode restore the actual current theme to documentElement.
+      const theme = currentTheme();
+      if (theme.origin !== 'built-in') applyThemeToDOM(theme);
+      else {
+        clearCustomThemeCSS();
+        document.documentElement.setAttribute('data-we-theme', isValidThemeKey(theme.id) ? theme.id : 'light');
+      }
     }
   }
 
@@ -873,6 +924,9 @@ export function ThemeStoreProvider(props: ParentProps) {
     currentThemeId,
     currentTheme,
     defaultThemeId,
+    themeScope,
+    toggleThemeScope,
+    spaceThemeData,
     themeManagementList,
     editingTheme,
     canUndo,
@@ -883,6 +937,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     toggleThemeInstalled,
     replaceTheme,
     restorePersonalTheme,
+    clearSpaceTheme,
     startEditing,
     updateEditingOverrides,
     updateEditingCss,
