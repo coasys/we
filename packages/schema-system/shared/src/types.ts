@@ -72,6 +72,8 @@ export type ThemeOverrides = {
   // Typography
   fontFamily?: string; // --we-font-family
   letterSpacing?: string; // --we-theme-letter-spacing  (e.g. "0.05em" for airy headlines)
+  lineHeight?: string; // --we-theme-line-height  (e.g. "1.5" or "relaxed")
+  fontScale?: number; // scales root font-size (1 = 100%, 1.125 = 112.5%) — affects all rem-based tokens
 
   // Shape — radius cascade: component r= prop → component theme → group theme → token default
   controlRadius?: string; // --we-theme-control-radius  (buttons, badges, tags)

@@ -21,17 +21,33 @@ const BASE_THEME_OPTIONS = [
 ];
 
 const FONT_OPTIONS = [
-  { value: 'base', label: 'System default' },
+  { value: 'default', label: 'DM Sans' },
   { value: "'Mozilla Text', serif", label: 'Mozilla Text' },
   { value: "'Boldonse', serif", label: 'Boldonse' },
 ];
 
 const LETTER_SPACING_OPTIONS = [
-  { value: '', label: 'Normal' },
   { value: '-0.02em', label: 'Tight' },
+  { value: 'default', label: 'Default' },
   { value: '0.04em', label: 'Airy' },
   { value: '0.08em', label: 'Wide' },
 ];
+
+const LINE_HEIGHT_OPTIONS = [
+  { value: 'default', label: 'Default' },
+  { value: '1.5', label: 'Comfortable' },
+  { value: '1.625', label: 'Relaxed' },
+  { value: '2', label: 'Loose' },
+];
+
+const FONT_SCALE_PRESETS = {
+  sm: 0.875,
+  default: undefined,
+  lg: 1.125,
+  xl: 1.25,
+} as const;
+
+type FontScalePreset = keyof typeof FONT_SCALE_PRESETS;
 
 const RADIUS_OPTIONS = [
   { value: '', label: 'Default' },
@@ -301,8 +317,16 @@ export function ThemePanel() {
     key: keyof ThemeOverrides,
     options: { value: string; label: string }[],
     labelWidth = '100px',
+    sentinel = '',
   ) {
-    const current = () => (overrides()[key] as string | undefined) ?? '';
+    const current = () => {
+      const v = overrides()[key] as string | undefined;
+      const resolved = v ?? sentinel;
+      // If the stored value isn't one of our known options, treat it as the default.
+      // This handles values auto-populated from base theme CSS (e.g. "'DM Sans', sans-serif").
+      if (sentinel && !options.some((o) => o.value === resolved)) return sentinel;
+      return resolved;
+    };
     return (
       <Row ay="center" gap="300">
         <we-text
@@ -320,7 +344,8 @@ export function ThemePanel() {
           options={options}
           size="sm"
           on:change={(e: CustomEvent) => {
-            setOverride(key, (e.detail as string) || undefined);
+            const val = e.detail as string;
+            setOverride(key, val === sentinel || !val ? undefined : val);
             saveTheme();
           }}
         />
@@ -349,6 +374,16 @@ export function ThemePanel() {
         ))}
       </Row>
     );
+  }
+
+  // ── Font scale preset helper ────────────────────────────────────────────────
+
+  function activeFontScalePreset(): FontScalePreset {
+    const scale = overrides().fontScale ?? undefined;
+    for (const [name, val] of Object.entries(FONT_SCALE_PRESETS) as [FontScalePreset, number | undefined][]) {
+      if (scale === val) return name;
+    }
+    return 'default';
   }
 
   // ── Shape preset helpers ────────────────────────────────────────────────────
@@ -557,8 +592,22 @@ export function ThemePanel() {
 
             {/* ── Typography ── */}
             <CollapsibleSection title="Typography">
-              {selectControl('Font family', 'fontFamily', FONT_OPTIONS, '100px')}
-              {selectControl('Letter spacing', 'letterSpacing', LETTER_SPACING_OPTIONS, '100px')}
+              {selectControl('Font family', 'fontFamily', FONT_OPTIONS, '100px', 'default')}
+              {selectControl('Letter spacing', 'letterSpacing', LETTER_SPACING_OPTIONS, '100px', 'default')}
+              {selectControl('Line height', 'lineHeight', LINE_HEIGHT_OPTIONS, '100px', 'default')}
+              <Column gap="200">
+                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                  Scale
+                </we-text>
+                {presetRow(
+                  { sm: 'Small', default: 'Default', lg: 'Large', xl: 'XL' } as Record<FontScalePreset, string>,
+                  (p) => activeFontScalePreset() === p,
+                  (p) => {
+                    const scale = FONT_SCALE_PRESETS[p];
+                    setOverrides({ fontScale: scale });
+                  },
+                )}
+              </Column>
             </CollapsibleSection>
 
             {/* ── Spacing & Density ── */}

@@ -7,7 +7,7 @@ import type { ThemeOverrides } from './types';
  * Parametric keys that map 1:1 to a CSS custom property.
  * Keys that need special multi-var handling (shadowIntensity, animationSpeed) are excluded.
  */
-type ParametricKey = Exclude<keyof ThemeOverrides, 'themeName' | 'shadowIntensity' | 'animationSpeed'>;
+type ParametricKey = Exclude<keyof ThemeOverrides, 'themeName' | 'shadowIntensity' | 'animationSpeed' | 'fontScale'>;
 
 /** Map parametric ThemeOverrides keys to their CSS custom property equivalents. */
 const THEME_CSS_MAP: Record<ParametricKey, string> = {
@@ -25,6 +25,7 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   // Typography
   fontFamily: '--we-font-family',
   letterSpacing: '--we-theme-letter-spacing',
+  lineHeight: '--we-theme-line-height',
   // Shape
   controlRadius: '--we-theme-control-radius',
   surfaceRadius: '--we-theme-surface-radius',
@@ -127,6 +128,11 @@ export function themeToStyle(theme: ThemeOverrides): Record<string, string> {
     if (theme.ringColor === undefined) style['--we-ring-color'] = 'var(--we-color-primary-500)';
     style['--we-color-focus'] = 'var(--we-color-primary-500)';
     style['--we-focus-outline'] = '0 0 0 2px var(--we-color-focus)';
+  }
+
+  // fontScale: sets font-size on the root element, scaling all rem-based tokens
+  if (theme.fontScale !== undefined) {
+    style['font-size'] = `${theme.fontScale * 16}px`;
   }
 
   return style;

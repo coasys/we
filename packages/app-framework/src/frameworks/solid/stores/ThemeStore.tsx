@@ -114,6 +114,8 @@ function getInitialThemeId(): string {
 
 function applyThemeToDOM(theme: ThemeData) {
   const overrides: ThemeOverrides = theme.overrides ? JSON.parse(theme.overrides) : {};
+  // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
+  if (overrides.fontFamily === 'base') delete (overrides as any).fontFamily;
   const hasOverrides = Object.keys(overrides).length > 0;
 
   // Fast path: pure built-in theme with no overrides or custom CSS
@@ -168,9 +170,10 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
   neutralSaturation: '--we-color-neutral-saturation',
   subtractor: '--we-color-subtractor',
   multiplier: '--we-color-multiplier',
-  // Typography
-  fontFamily: '--we-font-family',
+  // Typography — fontFamily intentionally omitted: the base theme CSS may set it directly,
+  // causing populateMissingOverrides to store a font string the user never explicitly chose.
   letterSpacing: '--we-theme-letter-spacing',
+  lineHeight: '--we-theme-line-height',
   // Shape
   controlRadius: '--we-theme-control-radius',
   surfaceRadius: '--we-theme-surface-radius',
@@ -189,6 +192,8 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
  */
 function populateMissingOverrides(overrides: ThemeOverrides): ThemeOverrides {
   const result = { ...overrides };
+  // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
+  if (result.fontFamily === 'base') delete (result as any).fontFamily;
   const styles = getComputedStyle(document.documentElement);
 
   for (const [key, cssVar] of Object.entries(OVERRIDE_CSS_VARS) as [keyof ThemeOverrides, string][]) {
