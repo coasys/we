@@ -83,11 +83,10 @@ export const channelList: SchemaNode = {
               },
               children: [
                 {
-                  type: 'Column',
+                  type: 'Card',
                   props: {
                     bg: 'neutral-0',
                     border: '1px solid neutral-200',
-                    r: '300',
                     p: '400',
                     gap: '200',
                     mb: '200',
@@ -137,8 +136,8 @@ export const channelList: SchemaNode = {
               },
               children: [
                 {
-                  type: 'Column',
-                  props: { bg: 'neutral-0', border: '1px solid neutral-200', r: '400', overflow: 'hidden', mb: '300' },
+                  type: 'Card',
+                  props: { bg: 'neutral-0', border: '1px solid neutral-200', overflow: 'hidden', mb: '300' },
                   children: [
                     // Channel header
                     {

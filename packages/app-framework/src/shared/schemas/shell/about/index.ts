@@ -314,8 +314,8 @@ function bulletItem(text: string) {
 
 function boxSection(children: any) {
   return {
-    type: 'Column',
-    props: { gap: '400', p: '500', r: '500', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
+    type: 'Card',
+    props: { gap: '400', p: '500', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
     children,
   };
 }
@@ -384,9 +384,9 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
     ],
   };
   return {
-    type: 'Row',
+    type: 'Card',
     props: {
-      r: '600',
+      direction: 'row',
       overflow: 'hidden',
       border: '1px solid var(--we-color-neutral-200)',
       width: '100%',
@@ -398,11 +398,11 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
 
 function roadmapItem(item: { title: string; description: string }, done: boolean) {
   return {
-    type: 'Row',
+    type: 'Card',
     props: {
+      direction: 'row',
       gap: '400',
       ay: 'center',
-      r: '400',
       p: '400',
       bg: 'neutral-75',
       border: '1px solid var(--we-color-neutral-200)', //  done ? '1px solid var(--we-color-neutral-200)' : '2px dashed var(--we-color-neutral-400)',

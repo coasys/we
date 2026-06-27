@@ -22,7 +22,6 @@
   border-radius: 6px;
 } */
 
-
-we-text[variant="heading-md"] {
+we-text[variant='heading-md'] {
   color: var(--we-color-primary-700);
 }

@@ -151,8 +151,8 @@ export const settingsRoute: RouteSchema = {
       children: [
         // About this space
         {
-          type: 'Column',
-          props: { gap: '500', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          type: 'Card',
+          props: { gap: '500', p: '500', bg: 'neutral-100', border: '1px solid neutral-200' },
           children: [
             // Header row — title + saving spinner
             {
@@ -501,8 +501,8 @@ export const settingsRoute: RouteSchema = {
 
         // Default Template
         {
-          type: 'Column',
-          props: { gap: '500', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          type: 'Card',
+          props: { gap: '500', p: '500', bg: 'neutral-100', border: '1px solid neutral-200' },
           children: [
             {
               type: 'Column',
@@ -623,8 +623,8 @@ export const settingsRoute: RouteSchema = {
 
         // Default Theme
         {
-          type: 'Column',
-          props: { gap: '500', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          type: 'Card',
+          props: { gap: '500', p: '500', bg: 'neutral-100', border: '1px solid neutral-200' },
           children: [
             {
               type: 'Column',

@@ -11,8 +11,8 @@ export const aboutRoute: RouteSchema = {
       children: [
         // ─── Name & Description ───────────────────────────────────────────
         {
-          type: 'Column',
-          props: { gap: '500', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          type: 'Card',
+          props: { gap: '500', p: '500', bg: 'neutral-100', border: '1px solid neutral-200' },
           children: [
             {
               type: 'we-text',

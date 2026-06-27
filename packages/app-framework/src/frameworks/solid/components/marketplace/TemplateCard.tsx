@@ -1,5 +1,5 @@
 import type { AgentProfileSummary } from '@shared/agentHelpers';
-import { Column, ImageLightbox, Row } from '@we/components/solid';
+import { Card, Column, ImageLightbox, Row } from '@we/components/solid';
 import { createMemo, createSignal, For, onMount, Show } from 'solid-js';
 
 import { useAdamStore } from '../../stores/AdamStore';
@@ -139,9 +139,8 @@ export function TemplateCard(props: Props) {
 
   // ── Grid card mode (marketplace + preview) ───────────────────────────────
   return (
-    <Column
+    <Card
       bg="neutral-0"
-      r="400"
       border="1px solid neutral-200"
       p="400"
       gap="300"
@@ -248,6 +247,6 @@ export function TemplateCard(props: Props) {
           </Show>
         </Show>
       </Row>
-    </Column>
+    </Card>
   );
 }

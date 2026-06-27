@@ -37,8 +37,8 @@ export const settingsTemplate: TemplateSchema = {
           children: [
             { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Agent'] },
             {
-              type: 'Column',
-              props: { gap: '200', p: '400', r: '300', bg: 'neutral-100' },
+              type: 'Card',
+              props: { gap: '200', p: '400', bg: 'neutral-100' },
               children: [
                 {
                   type: 'Row',
@@ -410,10 +410,9 @@ export const settingsTemplate: TemplateSchema = {
                       props: { items: { $store: 'adamStore.allPerspectives' }, as: 'perspective' },
                       children: [
                         {
-                          type: 'Column',
+                          type: 'Card',
                           props: {
                             p: '400',
-                            r: '400',
                             ax: 'start',
                             bg: 'neutral-50',
                             gap: '300',
@@ -508,10 +507,9 @@ export const settingsTemplate: TemplateSchema = {
                       props: { items: { $store: 'adamStore.sharedSpaces' }, as: 'space' },
                       children: [
                         {
-                          type: 'Column',
+                          type: 'Card',
                           props: {
                             p: '400',
-                            r: '400',
                             bg: 'neutral-50',
                             gap: '200',
                             width: '200px',
@@ -582,10 +580,9 @@ export const settingsTemplate: TemplateSchema = {
                       props: { items: { $store: 'adamStore.personalSpaces' }, as: 'space' },
                       children: [
                         {
-                          type: 'Column',
+                          type: 'Card',
                           props: {
                             p: '400',
-                            r: '400',
                             bg: 'neutral-50',
                             gap: '200',
                             width: '200px',

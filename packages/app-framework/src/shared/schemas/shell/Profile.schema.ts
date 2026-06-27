@@ -136,8 +136,8 @@ export const profileTemplate: TemplateSchema = {
 
         // ── Editable fields ──
         {
-          type: 'Column',
-          props: { gap: '400', p: '400', r: '300', bg: 'neutral-0' },
+          type: 'Card',
+          props: { gap: '400', p: '400', bg: 'neutral-0' },
           children: [
             {
               type: 'Row',

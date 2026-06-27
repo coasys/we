@@ -1,4 +1,5 @@
 // Layout
+export { Card, type CardProps } from '../../components/layout/Card/Card.solid';
 export {
   CollapsedContent,
   type CollapsedContentProps,

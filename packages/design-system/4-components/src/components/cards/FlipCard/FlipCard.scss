@@ -23,6 +23,8 @@
     inset: 0;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
+    border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
+    overflow: hidden;
   }
 
   &__back {

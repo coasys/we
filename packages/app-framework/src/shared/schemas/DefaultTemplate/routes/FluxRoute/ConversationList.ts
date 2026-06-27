@@ -37,11 +37,10 @@ export const conversationList: SchemaNode = {
           },
           children: [
             {
-              type: 'Column',
+              type: 'Card',
               props: {
                 bg: 'neutral-0',
                 border: '1px solid neutral-200',
-                r: '400',
                 p: '400',
                 gap: '200',
                 minWidth: '200px',

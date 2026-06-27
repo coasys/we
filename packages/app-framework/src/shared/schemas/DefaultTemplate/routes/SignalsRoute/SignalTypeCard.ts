@@ -1,8 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 
 export const signalTypeCard: SchemaNode = {
-  type: 'Column',
-  props: { p: '400', r: '400', bg: 'neutral-50', border: '1px solid neutral-100', gap: '300' },
+  type: 'Card',
+  props: { p: '400', bg: 'neutral-50', border: '1px solid neutral-100', gap: '300' },
   children: [
     // Header: icon + name/description + delete
     {
