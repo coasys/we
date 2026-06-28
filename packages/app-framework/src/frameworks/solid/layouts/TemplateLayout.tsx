@@ -39,7 +39,12 @@ import { createEffect, createMemo, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 import { EditorOverlay } from '../components/editor/EditorOverlay';
-import { panelResizing, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from '../components/editor/RightPanelContainer';
+import {
+  panelResizing,
+  RAIL_STRIP_WIDTH,
+  TEMPLATE_RAILS_WIDTH,
+  THEME_RAIL_WIDTH,
+} from '../components/editor/RightPanelContainer';
 import { buildRoutes } from '../utils/buildRoutes';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
@@ -144,6 +149,10 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
       offset += TEMPLATE_RAILS_WIDTH;
       if (stores.aiStore.isOpen()) offset += stores.aiStore.aiPanelWidth();
       if (stores.aiStore.codePanelOpen()) offset += stores.aiStore.codePanelWidth();
+      if (stores.aiStore.contentMode() === 'visual') {
+        offset += RAIL_STRIP_WIDTH;
+        if (stores.aiStore.visualPanelOpen()) offset += stores.aiStore.visualPanelWidth();
+      }
     }
     return offset ? `${offset}px` : '0px';
   };
@@ -159,38 +168,38 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
         height="100vh"
         transition={panelResizing() ? 'none' : 'right 300ms ease'}
       >
-        {/* Main template content */}
-        <Column
-          display="block"
-          position="absolute"
-          top="0"
-          left="0"
-          width="100%"
-          height="100%"
-          zIndex={1}
-          visibility={stores.appStore.activeAppId() ? 'hidden' : 'visible'}
-          pointerEvents={stores.appStore.activeAppId() ? 'none' : 'auto'}
-          overflow="auto"
-          scrollbarGutter="stable"
-        >
-          {/* Scoped space theme wrapper — display:contents keeps layout unaffected.
-              Parametric overrides are applied as inline CSS vars; component-level CSS
-              (theme.css) is injected into we-scoped-theme-css by ThemeStore and
-              self-scopes via [data-we-theme='X'] attribute selectors. */}
-          <div style={{ display: 'contents', ...spaceThemeStyle() }} data-we-theme={spaceThemeName()}>
-            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-              <RenderSchema
-                node={stores.templateStore.currentTemplate}
-                stores={stores}
-                registry={registry}
-                children={props.children}
-              />
-            </Show>
-          </div>
-        </Column>
+          {/* Main template content */}
+          <Column
+            display="block"
+            position="absolute"
+            top="0"
+            left="0"
+            width="100%"
+            height="100%"
+            zIndex={1}
+            visibility={stores.appStore.activeAppId() ? 'hidden' : 'visible'}
+            pointerEvents={stores.appStore.activeAppId() ? 'none' : 'auto'}
+            overflow="auto"
+            scrollbarGutter="stable"
+          >
+            {/* Scoped space theme wrapper — display:contents keeps layout unaffected.
+                Parametric overrides are applied as inline CSS vars; component-level CSS
+                (theme.css) is injected into we-scoped-theme-css by ThemeStore and
+                self-scopes via [data-we-theme='X'] attribute selectors. */}
+            <div style={{ display: 'contents', ...spaceThemeStyle() }} data-we-theme={spaceThemeName()}>
+              <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+                <RenderSchema
+                  node={stores.templateStore.currentTemplate}
+                  stores={stores}
+                  registry={registry}
+                  children={props.children}
+                />
+              </Show>
+            </div>
+          </Column>
 
-        {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11) */}
-        <EditorOverlay />
+          {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11) */}
+          <EditorOverlay />
 
         {/* Shell overlay rendered above the template */}
         <Show when={stores.templateStore.activeShellView()} keyed>

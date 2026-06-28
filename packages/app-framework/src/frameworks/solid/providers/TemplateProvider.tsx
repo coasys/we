@@ -15,8 +15,9 @@ import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
 import { toastService } from '@we/components/solid';
 import type { TemplateSchema } from '@we/schema-shared';
-import { RenderSchema } from '@we/schema-solid';
-import { onMount, Show } from 'solid-js';
+import type { VisualEditorContextValue } from '@we/schema-solid';
+import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
+import { createEffect, createSignal, onMount, Show } from 'solid-js';
 
 import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
 import { buildRoutes } from '../utils/buildRoutes';
@@ -113,8 +114,41 @@ export default function TemplateProvider() {
   // a component type, so we wrap it to pass stores through.
   const Layout = (props: { children?: unknown }) => TemplateLayout({ stores, children: props.children as never });
 
+  // Visual editor context — lives here (above the Router) so context is available to all
+  // route RenderSchema instances, which are called as direct functions inside the Router's
+  // reactive scope rather than as JSX components with their own Solid owner boundary.
+  const [hoveredNodeId, setHoveredNodeId] = createSignal<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = createSignal<string | null>(null);
+  const nodeRegistry = new Map<string, HTMLElement>();
+  const isVisualMode = () => aiStore.contentMode() === 'visual' && aiStore.isEditingTemplate();
+
+  createEffect(() => {
+    if (!isVisualMode()) {
+      setSelectedNodeId(null);
+      setHoveredNodeId(null);
+    }
+  });
+
+  const visualEditorCtx: VisualEditorContextValue = {
+    get enabled() {
+      return isVisualMode();
+    },
+    hoveredId: hoveredNodeId,
+    selectedId: selectedNodeId,
+    onHover: setHoveredNodeId,
+    onSelect: setSelectedNodeId,
+    registerNode: (id, el) => {
+      nodeRegistry.set(id, el);
+      return () => nodeRegistry.delete(id);
+    },
+    getNodeElement: (id) => nodeRegistry.get(id) ?? null,
+  };
+
+  // VisualEditorProvider wraps everything so that:
+  // 1. Route components (called as direct functions in buildRoutes) get context via their reactive owner
+  // 2. Shell chrome components like VisualPropertiesPanel (in templateEditor) get context too
   return (
-    <>
+    <VisualEditorProvider value={visualEditorCtx}>
       {/* Shell chrome — stable, never remounts */}
       <RenderSchema node={shellSchema} stores={stores} registry={registry} />
 
@@ -134,6 +168,6 @@ export default function TemplateProvider() {
           </Router>
         )}
       </Show>
-    </>
+    </VisualEditorProvider>
   );
 }
