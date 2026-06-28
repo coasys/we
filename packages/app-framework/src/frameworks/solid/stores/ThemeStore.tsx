@@ -184,7 +184,9 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
   // Density
   controlPaddingX: '--we-theme-control-padding-x',
   controlGap: '--we-theme-control-gap',
+  controlHeight: '--we-theme-control-height-offset',
   surfaceSpacing: '--we-theme-surface-spacing',
+  surfaceGap: '--we-theme-surface-gap',
   // Effects
   surfaceOpacity: '--we-theme-surface-opacity',
 };
@@ -403,7 +405,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     const id = prefs.defaultThemeId;
     setCurrentThemeId(id);
     // Use untrack so spaceThemes reloading between spaces doesn't re-trigger this effect
-    const theme = untrack(() => allThemes().find((t) => t.id === id)) ?? registryToThemeData(isValidThemeKey(id) ? id : 'light');
+    const theme =
+      untrack(() => allThemes().find((t) => t.id === id)) ?? registryToThemeData(isValidThemeKey(id) ? id : 'light');
     applyThemeToDOM(theme);
   });
 

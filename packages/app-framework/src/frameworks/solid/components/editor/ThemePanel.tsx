@@ -66,8 +66,17 @@ const SPACING_OPTIONS = [
   { value: 'var(--we-space-200)', label: 'SM' },
   { value: 'var(--we-space-300)', label: 'MD' },
   { value: 'var(--we-space-400)', label: 'LG' },
-  { value: 'var(--we-space-600)', label: 'XL' },
-  { value: 'var(--we-space-900)', label: 'XXL' },
+  { value: 'var(--we-space-500)', label: 'XL' },
+  { value: 'var(--we-space-600)', label: 'XXL' },
+  { value: 'var(--we-space-900)', label: 'XXXL' },
+];
+
+const HEIGHT_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: '-4px', label: 'Short' },
+  { value: '4px', label: 'Tall' },
+  { value: '8px', label: 'Taller' },
+  { value: '12px', label: 'Tallest' },
 ];
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
@@ -88,9 +97,27 @@ const SHAPE_PRESETS = {
 } as const;
 
 const SPACING_PRESETS = {
-  compact: { controlSpacing: 'var(--we-space-200)', surfaceSpacing: 'var(--we-space-400)' },
-  comfortable: { controlSpacing: undefined, surfaceSpacing: undefined },
-  spacious: { controlSpacing: 'var(--we-space-600)', surfaceSpacing: 'var(--we-space-900)' },
+  compact: {
+    controlPaddingX: 'var(--we-space-200)',
+    controlGap: 'var(--we-space-100)',
+    controlHeight: '-4px',
+    surfaceSpacing: 'var(--we-space-300)',
+    surfaceGap: 'var(--we-space-200)',
+  },
+  comfortable: {
+    controlPaddingX: undefined,
+    controlGap: undefined,
+    controlHeight: undefined,
+    surfaceSpacing: undefined,
+    surfaceGap: undefined,
+  },
+  spacious: {
+    controlPaddingX: 'var(--we-space-600)',
+    controlGap: 'var(--we-space-400)',
+    controlHeight: '8px',
+    surfaceSpacing: 'var(--we-space-900)',
+    surfaceGap: 'var(--we-space-600)',
+  },
 } as const;
 
 type ShapePreset = keyof typeof SHAPE_PRESETS;
@@ -409,8 +436,11 @@ export function ThemePanel() {
       (typeof SPACING_PRESETS)[SpacingPreset],
     ][]) {
       if (
-        (o.controlSpacing ?? undefined) === vals.controlSpacing &&
-        (o.surfaceSpacing ?? undefined) === vals.surfaceSpacing
+        (o.controlPaddingX ?? undefined) === vals.controlPaddingX &&
+        (o.controlGap ?? undefined) === vals.controlGap &&
+        (o.controlHeight ?? undefined) === vals.controlHeight &&
+        (o.surfaceSpacing ?? undefined) === vals.surfaceSpacing &&
+        (o.surfaceGap ?? undefined) === vals.surfaceGap
       ) {
         return name;
       }
@@ -629,8 +659,11 @@ export function ThemePanel() {
                 <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
                   Overrides
                 </we-text>
-                {selectControl('Controls', 'controlSpacing', SPACING_OPTIONS, '80px')}
-                {selectControl('Surfaces', 'surfaceSpacing', SPACING_OPTIONS, '80px')}
+                {selectControl('Control padding', 'controlPaddingX', SPACING_OPTIONS, '120px')}
+                {selectControl('Control gap', 'controlGap', SPACING_OPTIONS, '120px')}
+                {selectControl('Control height', 'controlHeight', HEIGHT_OPTIONS, '120px')}
+                {selectControl('Surface padding', 'surfaceSpacing', SPACING_OPTIONS, '120px')}
+                {selectControl('Surface gap', 'surfaceGap', SPACING_OPTIONS, '120px')}
               </Column>
             </CollapsibleSection>
 

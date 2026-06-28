@@ -80,9 +80,12 @@ export type ThemeOverrides = {
   surfaceRadius?: string; // --we-theme-surface-radius  (modals, drawers, alerts)
   inputRadius?: string; // --we-theme-input-radius  (inputs, selects, textareas)
 
-  // Density — padding cascade: component p= prop → component theme → group theme → token default
-  controlSpacing?: string; // --we-theme-control-spacing  (button / badge padding)
-  surfaceSpacing?: string; // --we-theme-surface-spacing  (modal / card padding)
+  // Density — padding/gap cascade: component p=/gap= prop → component theme → group theme → size default
+  controlPaddingX?: string; // --we-theme-control-padding-x  (button / badge / tag horizontal padding)
+  controlGap?: string; // --we-theme-control-gap  (button / badge internal icon-text gap)
+  controlHeight?: string; // --we-theme-control-height-offset  (px offset added to all fixed-height controls, e.g. '4px', '-4px')
+  surfaceSpacing?: string; // --we-theme-surface-spacing  (card / modal / drawer padding)
+  surfaceGap?: string; // --we-theme-surface-gap  (card / modal / drawer child gap)
 
   // Effects
   shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic'; // maps to --we-theme-shadow-preset

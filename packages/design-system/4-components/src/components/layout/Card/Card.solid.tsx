@@ -7,6 +7,8 @@ import type { CardProps } from './Card.types';
 
 const DEFAULTS: Partial<CardProps> = {
   r: 'var(--we-theme-surface-radius, var(--we-radius-400))',
+  p: 'var(--we-theme-surface-spacing, var(--we-space-500))',
+  gap: 'var(--we-theme-surface-gap, var(--we-space-400))',
 };
 
 const cardOwnKeys = ['direction'] as const;

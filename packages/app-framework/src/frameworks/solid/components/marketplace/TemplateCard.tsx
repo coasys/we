@@ -115,7 +115,7 @@ export function TemplateCard(props: Props) {
         <Show
           when={isInstalled()}
           fallback={
-            <we-button variant="primary" size="sm" loading={installLoading()} onClick={handleInstall}>
+            <we-button variant="primary" size="sm" square loading={installLoading()} onClick={handleInstall}>
               {props.installLabel ?? 'Install'}
             </we-button>
           }
@@ -142,8 +142,7 @@ export function TemplateCard(props: Props) {
     <Card
       bg="neutral-0"
       border="1px solid neutral-200"
-      p="400"
-      gap="300"
+      // gap="300"
       transition="box-shadow 150ms ease"
       hoverProps={mode() === 'marketplace' ? { border: '1px solid primary-300', shadow: 'sm' } : undefined}
     >
@@ -159,6 +158,7 @@ export function TemplateCard(props: Props) {
           <we-button
             variant="ghost"
             size="sm"
+            square
             onClick={() =>
               props.onDelete ? props.onDelete!() : templateStore.deleteMarketplaceTemplate(props.template.id!)
             }

@@ -31,8 +31,11 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   surfaceRadius: '--we-theme-surface-radius',
   inputRadius: '--we-theme-input-radius',
   // Density
-  controlSpacing: '--we-theme-control-spacing',
+  controlPaddingX: '--we-theme-control-padding-x',
+  controlGap: '--we-theme-control-gap',
+  controlHeight: '--we-theme-control-height-offset',
   surfaceSpacing: '--we-theme-surface-spacing',
+  surfaceGap: '--we-theme-surface-gap',
   // Effects
   surfaceOpacity: '--we-theme-surface-opacity',
 };
