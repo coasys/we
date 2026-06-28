@@ -54,21 +54,21 @@ export const spaceModal = {
                       type: 'we-image',
                       props: { src: '$space.avatar', width: '60px', height: '60px', fit: 'cover', r: 'full' },
                     },
-                    else: { type: 'we-icon', props: { name: 'globe', size: '60px', color: 'neutral-400' } },
+                    else: { type: 'we-icon', props: { name: 'globe', size: 'xl', color: 'neutral-300' } },
                   },
                 },
                 {
                   type: 'Column',
                   props: { gap: '100' },
                   children: [
-                    { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['$space.name'] },
+                    { type: 'we-text', props: { variant: 'heading-md' }, children: ['$space.name'] },
                     {
                       type: '$if',
                       props: {
                         condition: '$space.description',
                         then: {
                           type: 'we-text',
-                          props: { fontSize: '400', color: 'neutral-500' },
+                          props: { variant: 'body' },
                           children: ['$space.description'],
                         },
                       },

@@ -25,8 +25,8 @@ export const settingsTemplate: TemplateSchema = {
           type: 'Row',
           props: { gap: '300', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'gear', size: 'md', color: 'neutral-500' } },
-            { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Settings'] },
+            { type: 'we-icon', props: { name: 'gear', size: 'md' } },
+            { type: 'we-text', props: { variant: 'heading-md' }, children: ['Settings'] },
           ],
         },
 
@@ -35,10 +35,10 @@ export const settingsTemplate: TemplateSchema = {
           type: 'Column',
           props: { gap: '300' },
           children: [
-            { type: 'we-text', props: { fontSize: '600', fontWeight: 'semibold' }, children: ['Agent'] },
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Agent'] },
             {
-              type: 'Column',
-              props: { gap: '200', p: '400', r: '300', bg: 'neutral-100' },
+              type: 'Card',
+              props: { bg: 'neutral-100' },
               children: [
                 {
                   type: 'Row',
@@ -46,12 +46,12 @@ export const settingsTemplate: TemplateSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '400', fontWeight: 'medium', color: 'neutral-500' },
+                      props: { variant: 'body', fontWeight: 'medium' },
                       children: ['DID'],
                     },
                     {
                       type: 'we-text',
-                      props: { fontSize: '400', styles: { 'word-break': 'break-all' } },
+                      props: { variant: 'body', styles: { 'word-break': 'break-all' } },
                       children: [{ $store: 'adamStore.me.did' }],
                     },
                   ],
@@ -66,7 +66,7 @@ export const settingsTemplate: TemplateSchema = {
           type: 'Column',
           props: { gap: '300' },
           children: [
-            { type: 'we-text', props: { fontSize: '600', fontWeight: 'semibold' }, children: ['Templates'] },
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Templates'] },
             {
               type: 'Column',
               props: { gap: '100' },
@@ -96,14 +96,14 @@ export const settingsTemplate: TemplateSchema = {
                           type: 'Row',
                           props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
                           children: [
-                            { type: 'we-icon', props: { name: '$template.icon', size: '20px', color: 'neutral-500' } },
+                            { type: 'we-icon', props: { name: '$template.icon', size: '20px' } },
                             {
                               type: 'Column',
                               props: { gap: '50' },
                               children: [
                                 {
                                   type: 'we-text',
-                                  props: { fontSize: '400', fontWeight: 'medium' },
+                                  props: { variant: 'body', fontWeight: 'medium' },
                                   children: ['$template.name'],
                                 },
                                 {
@@ -112,7 +112,7 @@ export const settingsTemplate: TemplateSchema = {
                                     condition: '$template.description',
                                     then: {
                                       type: 'we-text',
-                                      props: { fontSize: '300', color: 'neutral-400' },
+                                      props: { variant: 'label' },
                                       children: ['$template.description'],
                                     },
                                   },
@@ -122,15 +122,15 @@ export const settingsTemplate: TemplateSchema = {
                           ],
                         },
 
-                        // Core badge
+                        // Built-in badge
                         {
                           type: '$if',
                           props: {
-                            condition: '$template.isCore',
+                            condition: '$template.isBuiltIn',
                             then: {
                               type: 'we-tag',
                               props: { variant: 'neutral' },
-                              children: ['Core'],
+                              children: ['Built-in'],
                             },
                           },
                         },
@@ -139,14 +139,14 @@ export const settingsTemplate: TemplateSchema = {
                         {
                           type: '$if',
                           props: {
-                            condition: { $not: '$template.isCore' },
+                            condition: { $not: '$template.isBuiltIn' },
                             then: {
                               type: 'Row',
                               props: { gap: '200', ay: 'center' },
                               children: [
                                 {
                                   type: 'we-text',
-                                  props: { fontSize: '300', color: 'neutral-400' },
+                                  props: { variant: 'label' },
                                   children: ['Installed'],
                                 },
                                 {
@@ -176,7 +176,7 @@ export const settingsTemplate: TemplateSchema = {
                               children: [
                                 {
                                   type: 'we-text',
-                                  props: { fontSize: '300', color: 'neutral-400' },
+                                  props: { variant: 'label' },
                                   children: ['Default'],
                                 },
                                 {
@@ -200,7 +200,7 @@ export const settingsTemplate: TemplateSchema = {
                         {
                           type: '$if',
                           props: {
-                            condition: { $not: '$template.isCore' },
+                            condition: { $not: '$template.isBuiltIn' },
                             then: {
                               type: 'we-button',
                               props: {
@@ -229,36 +229,148 @@ export const settingsTemplate: TemplateSchema = {
           ],
         },
 
-        // Theme Selection
+        // Theme Management
         {
           type: 'Column',
           props: { gap: '300' },
           children: [
-            { type: 'we-text', props: { fontSize: '600', fontWeight: 'semibold' }, children: ['Theme'] },
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Themes'] },
             {
-              type: 'Row',
-              props: { gap: '200', wrap: true },
+              type: 'Column',
+              props: { gap: '100' },
               children: [
                 {
                   type: '$each',
-                  props: { items: { $store: 'themeStore.allThemes' }, as: 'theme' },
+                  props: { items: { $store: 'themeStore.themeManagementList' }, as: 'theme' },
                   children: [
                     {
-                      type: 'we-button',
+                      type: 'Row',
                       props: {
-                        variant: {
+                        gap: '300',
+                        ay: 'center',
+                        p: '300',
+                        r: '200',
+                        bg: {
                           $if: {
-                            condition: { $eq: ['$theme.id', { $store: 'themeStore.currentThemeId' }] },
-                            then: 'primary',
-                            else: 'secondary',
+                            condition: '$theme.isDefault',
+                            then: 'neutral-100',
+                            else: 'transparent',
                           },
                         },
-                        gap: '200',
-                        onClick: { $action: 'themeStore.setCurrentTheme', args: ['$theme.id'] },
                       },
                       children: [
-                        { type: 'we-icon', props: { name: '$theme.icon', size: '18px' } },
-                        { type: 'we-text', props: { fontSize: '400' }, children: ['$theme.name'] },
+                        // Theme icon + name
+                        {
+                          type: 'Row',
+                          props: { gap: '300', ay: 'center', styles: { flex: '1', 'min-width': '0' } },
+                          children: [
+                            { type: 'we-icon', props: { name: '$theme.icon', size: '20px' } },
+                            {
+                              type: 'we-text',
+                              props: { variant: 'body', fontWeight: 'medium' },
+                              children: ['$theme.name'],
+                            },
+                          ],
+                        },
+
+                        // Built-in badge
+                        {
+                          type: '$if',
+                          props: {
+                            condition: '$theme.isBuiltIn',
+                            then: {
+                              type: 'we-tag',
+                              props: { variant: 'neutral' },
+                              children: ['Built-in'],
+                            },
+                          },
+                        },
+
+                        // Install toggle (custom themes only)
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $not: '$theme.isBuiltIn' },
+                            then: {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { variant: 'label' },
+                                  children: ['Installed'],
+                                },
+                                {
+                                  type: 'we-switch',
+                                  props: {
+                                    checked: '$theme.isInstalled',
+                                    size: 'sm',
+                                    onChange: {
+                                      $action: 'themeStore.toggleThemeInstalled',
+                                      args: ['$theme.id'],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          },
+                        },
+
+                        // Default radio button (only shown if theme is installed)
+                        {
+                          type: '$if',
+                          props: {
+                            condition: '$theme.isInstalled',
+                            then: {
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center' },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { variant: 'label' },
+                                  children: ['Default'],
+                                },
+                                {
+                                  type: 'we-radio',
+                                  props: {
+                                    checked: '$theme.isDefault',
+                                    name: 'default-theme',
+                                    value: '$theme.id',
+                                    onChange: {
+                                      $action: 'themeStore.setDefaultTheme',
+                                      args: ['$theme.id'],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          },
+                        },
+
+                        // Delete button (custom themes only)
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $not: '$theme.isBuiltIn' },
+                            then: {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: {
+                                  $action: 'themeStore.deleteTheme',
+                                  args: ['$theme.id'],
+                                },
+                              },
+                              children: [
+                                {
+                                  type: 'we-icon',
+                                  props: { name: 'trash', size: '16px', color: 'danger-400' },
+                                },
+                              ],
+                            },
+                          },
+                        },
                       ],
                     },
                   ],
@@ -277,10 +389,10 @@ export const settingsTemplate: TemplateSchema = {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'intersect-three', color: 'neutral-500', size: '20px' } },
+                { type: 'we-icon', props: { name: 'intersect-three', size: '20px' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '600', fontWeight: 'semibold' },
+                  props: { fontWeight: 'semibold' },
                   children: ['All Perspectives'],
                 },
               ],
@@ -298,13 +410,10 @@ export const settingsTemplate: TemplateSchema = {
                       props: { items: { $store: 'adamStore.allPerspectives' }, as: 'perspective' },
                       children: [
                         {
-                          type: 'Column',
+                          type: 'Card',
                           props: {
-                            p: '400',
-                            r: '400',
                             ax: 'start',
                             bg: 'neutral-50',
-                            gap: '300',
                             border: '1px solid neutral-200',
                           },
                           children: [
@@ -318,25 +427,24 @@ export const settingsTemplate: TemplateSchema = {
                                     name: {
                                       $if: { condition: '$perspective.sharedUrl', then: 'globe', else: 'folder' },
                                     },
-                                    color: 'neutral-400',
                                     size: '16px',
                                   },
                                 },
                                 {
                                   type: 'we-text',
-                                  props: { fontSize: '400', fontWeight: 'medium' },
+                                  props: { variant: 'body', fontWeight: 'medium' },
                                   children: ['$perspective.name'],
                                 },
                               ],
                             },
                             {
                               type: 'we-text',
-                              props: { fontSize: '400', color: 'neutral-500' },
+                              props: { variant: 'body' },
                               children: [{ $concat: ['UUID: ', '$perspective.uuid'] }],
                             },
                             {
                               type: 'we-text',
-                              props: { fontSize: '400', color: 'neutral-500' },
+                              props: { variant: 'body' },
                               children: [{ $concat: ['URL: ', '$perspective.sharedUrl'] }],
                             },
                             {
@@ -350,7 +458,7 @@ export const settingsTemplate: TemplateSchema = {
                                 { type: 'we-icon', props: { name: 'trash', size: '16px' } },
                                 {
                                   type: 'we-text',
-                                  props: { fontSize: '300' },
+                                  props: { variant: 'label' },
                                   children: ['Delete'],
                                 },
                               ],
@@ -363,7 +471,7 @@ export const settingsTemplate: TemplateSchema = {
                 },
                 else: {
                   type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-400', italic: true },
+                  props: { variant: 'label', italic: true },
                   children: ['No perspectives yet'],
                 },
               },
@@ -380,8 +488,8 @@ export const settingsTemplate: TemplateSchema = {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'globe', color: 'primary-500', size: '20px' } },
-                { type: 'we-text', props: { fontSize: '600', fontWeight: 'semibold' }, children: ['Shared Spaces'] },
+                { type: 'we-icon', props: { name: 'globe', size: '20px' } },
+                { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Shared Spaces'] },
               ],
             },
             {
@@ -397,12 +505,9 @@ export const settingsTemplate: TemplateSchema = {
                       props: { items: { $store: 'adamStore.sharedSpaces' }, as: 'space' },
                       children: [
                         {
-                          type: 'Column',
+                          type: 'Card',
                           props: {
-                            p: '400',
-                            r: '400',
                             bg: 'neutral-50',
-                            gap: '200',
                             width: '200px',
                             cursor: 'pointer',
                             onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.uuid'] },
@@ -412,17 +517,17 @@ export const settingsTemplate: TemplateSchema = {
                               type: 'Row',
                               props: { gap: '200', ay: 'center' },
                               children: [
-                                { type: 'we-icon', props: { name: 'globe', color: 'primary-400', size: '16px' } },
+                                { type: 'we-icon', props: { name: 'globe', size: '16px' } },
                                 {
                                   type: 'we-text',
-                                  props: { fontSize: '400', fontWeight: 'medium' },
+                                  props: { variant: 'body', fontWeight: 'medium' },
                                   children: ['$space.name'],
                                 },
                               ],
                             },
                             {
                               type: 'we-text',
-                              props: { fontSize: '300', color: 'neutral-400' },
+                              props: { variant: 'label' },
                               children: ['$space.description'],
                             },
                           ],
@@ -433,7 +538,7 @@ export const settingsTemplate: TemplateSchema = {
                 },
                 else: {
                   type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-400', italic: true },
+                  props: { variant: 'label', italic: true },
                   children: ['No shared spaces yet'],
                 },
               },
@@ -450,10 +555,10 @@ export const settingsTemplate: TemplateSchema = {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'folder', color: 'primary-500', size: '20px' } },
+                { type: 'we-icon', props: { name: 'folder', size: '20px' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '600', fontWeight: 'semibold' },
+                  props: { variant: 'heading-sm' },
                   children: ['Personal Spaces'],
                 },
               ],
@@ -471,12 +576,9 @@ export const settingsTemplate: TemplateSchema = {
                       props: { items: { $store: 'adamStore.personalSpaces' }, as: 'space' },
                       children: [
                         {
-                          type: 'Column',
+                          type: 'Card',
                           props: {
-                            p: '400',
-                            r: '400',
                             bg: 'neutral-50',
-                            gap: '200',
                             width: '200px',
                             cursor: 'pointer',
                             onClick: {
@@ -489,17 +591,17 @@ export const settingsTemplate: TemplateSchema = {
                               type: 'Row',
                               props: { gap: '200', ay: 'center' },
                               children: [
-                                { type: 'we-icon', props: { name: 'folder', color: 'primary-400', size: '16px' } },
+                                { type: 'we-icon', props: { name: 'folder', size: '16px' } },
                                 {
                                   type: 'we-text',
-                                  props: { fontSize: '400', fontWeight: 'medium' },
+                                  props: { variant: 'body', fontWeight: 'medium' },
                                   children: ['$space.name'],
                                 },
                               ],
                             },
                             {
                               type: 'we-text',
-                              props: { fontSize: '300', color: 'neutral-400' },
+                              props: { variant: 'label' },
                               children: ['$space.description'],
                             },
                           ],
@@ -510,7 +612,7 @@ export const settingsTemplate: TemplateSchema = {
                 },
                 else: {
                   type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-400', italic: true },
+                  props: { variant: 'label', italic: true },
                   children: ['No personal spaces yet'],
                 },
               },

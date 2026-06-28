@@ -9,6 +9,7 @@ import type { DrawerPosition } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'neutral-0',
+  r: '600',
   p: '600',
   direction: 'column',
   gap: '300',
@@ -36,7 +37,7 @@ const styles = css`
   [part='base'] {
     position: absolute;
     overflow-y: auto;
-    box-shadow: var(--we-shadow-lg, 0 10px 40px rgba(0, 0, 0, 0.15));
+    box-shadow: var(--we-theme-shadow, var(--we-shadow-lg, 0 10px 40px rgba(0, 0, 0, 0.15)));
     transition: transform 0.25s ease;
   }
 

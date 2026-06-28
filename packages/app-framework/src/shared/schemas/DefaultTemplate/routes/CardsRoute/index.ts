@@ -7,6 +7,7 @@ import { cardsHeader } from './Header.ts';
 import { postsList } from './PostsList.ts';
 import { spacesList } from './SpacesList.ts';
 import { templatesList } from './TemplatesList.ts';
+import { themesList } from './ThemesList.ts';
 import { usersList } from './UsersList.ts';
 
 export const cardsRoute: RouteSchema = {
@@ -24,7 +25,14 @@ export const cardsRoute: RouteSchema = {
   children: [
     {
       type: 'Column',
-      props: { gap: '400', px: '600', py: '400', width: '100%', maxWidth: '1200px', minHeight: 'calc(100vh - 72px)' },
+      props: {
+        gap: '400',
+        px: '600',
+        py: '400',
+        width: '100%',
+        maxWidth: 'var(--we-layout-lg)',
+        minHeight: 'calc(100vh - 73px)',
+      },
       children: [
         cardsHeader,
 
@@ -35,11 +43,12 @@ export const cardsRoute: RouteSchema = {
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'users'] }, then: usersList } },
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'spaces'] }, then: spacesList } },
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'templates'] }, then: templatesList } },
+        { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'themes'] }, then: themesList } },
         {
           type: '$if',
           props: {
             condition: {
-              $not: { $in: [{ $local: 'contentType' }, ['posts', 'users', 'spaces', 'templates']] },
+              $not: { $in: [{ $local: 'contentType' }, ['posts', 'users', 'spaces', 'templates', 'themes']] },
             },
             then: blocksList,
           },

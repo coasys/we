@@ -3,20 +3,20 @@ import type { RouteSchema } from '@we/schema-shared';
 export const aboutRoute: RouteSchema = {
   path: '/about',
   type: 'Column',
-  props: { width: '100%', ax: 'center', height: 'calc(100vh - 72px)' },
+  props: { width: '100%', ax: 'center', height: 'calc(100vh - 73px)' },
   children: [
     {
       type: 'Column',
-      props: { width: '100%', maxWidth: '1200px', gap: '500', px: '400', pt: '500' },
+      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '500', px: '400', pt: '500' },
       children: [
         // ─── Name & Description ───────────────────────────────────────────
         {
-          type: 'Column',
-          props: { gap: '500', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          type: 'Card',
+          props: { bg: 'neutral-100', border: '1px solid neutral-200' },
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '700', fontWeight: 'bold', color: 'primary-700' },
+              props: { variant: 'heading-md' },
               children: ['About this space'],
             },
 
@@ -25,10 +25,10 @@ export const aboutRoute: RouteSchema = {
               type: 'Column',
               props: { gap: '100' },
               children: [
-                { type: 'we-text', props: { fontSize: '500', color: 'neutral-600' }, children: ['Name'] },
+                { type: 'we-text', props: { color: 'neutral-700' }, children: ['Name'] },
                 {
                   type: 'we-text',
-                  props: { fontSize: '700', fontWeight: 'bold' },
+                  props: { variant: 'heading-md', color: 'neutral-1000' },
                   children: [{ $store: 'spaceStore.currentSpace.name' }],
                 },
               ],
@@ -39,7 +39,7 @@ export const aboutRoute: RouteSchema = {
               type: 'Column',
               props: { gap: '100' },
               children: [
-                { type: 'we-text', props: { fontSize: '500', color: 'neutral-600' }, children: ['Description'] },
+                { type: 'we-text', props: { color: 'neutral-700' }, children: ['Description'] },
                 {
                   type: '$if',
                   props: {
@@ -47,7 +47,7 @@ export const aboutRoute: RouteSchema = {
                     then: { type: 'we-text', children: [{ $store: 'spaceStore.currentSpace.description' }] },
                     else: {
                       type: 'we-text',
-                      props: { color: 'neutral-500', italic: true },
+                      props: { italic: true },
                       children: ['No description...'],
                     },
                   },
@@ -71,7 +71,7 @@ export const aboutRoute: RouteSchema = {
                       children: [
                         {
                           type: 'we-text',
-                          props: { color: 'neutral-700', fontWeight: 'bold' },
+                          props: { fontWeight: 'bold', color: 'neutral-700' },
                           children: ['Access:'],
                         },
                         {
@@ -91,7 +91,7 @@ export const aboutRoute: RouteSchema = {
                     },
                     {
                       type: 'we-text',
-                      props: { color: 'neutral-700', fontSize: '400' },
+                      props: { variant: 'body' },
                       children: [
                         {
                           $if: {
@@ -123,7 +123,7 @@ export const aboutRoute: RouteSchema = {
                       children: [
                         {
                           type: 'we-text',
-                          props: { color: 'neutral-700', fontWeight: 'bold' },
+                          props: { fontWeight: 'bold', color: 'neutral-700' },
                           children: ['Discovery:'],
                         },
                         {
@@ -143,7 +143,7 @@ export const aboutRoute: RouteSchema = {
                     },
                     {
                       type: 'we-text',
-                      props: { color: 'neutral-700', fontSize: '400' },
+                      props: { variant: 'body' },
                       children: [
                         {
                           $if: {
@@ -179,7 +179,7 @@ export const aboutRoute: RouteSchema = {
                           children: [
                             {
                               type: 'we-text',
-                              props: { color: 'neutral-700', fontWeight: 'bold' },
+                              props: { fontWeight: 'bold', color: 'neutral-700' },
                               children: ['Location:'],
                             },
                             {
@@ -220,7 +220,7 @@ export const aboutRoute: RouteSchema = {
                       children: [
                         {
                           type: 'we-text',
-                          props: { color: 'neutral-700', fontWeight: 'bold' },
+                          props: { fontWeight: 'bold', color: 'neutral-700' },
                           children: ['Created:'],
                         },
                         {
@@ -237,7 +237,7 @@ export const aboutRoute: RouteSchema = {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
                       children: [
-                        { type: 'we-text', props: { color: 'neutral-700', fontSize: '400' }, children: ['By'] },
+                        { type: 'we-text', props: { variant: 'body' }, children: ['By'] },
                         {
                           type: '$agent',
                           props: { did: { $store: 'spaceStore.currentSpace.author' }, as: 'agent' },
@@ -252,7 +252,7 @@ export const aboutRoute: RouteSchema = {
                             },
                             {
                               type: 'we-text',
-                              props: { color: 'neutral-700', fontSize: '400', truncate: true, maxWidth: '160px' },
+                              props: { variant: 'body', truncate: true, maxWidth: '160px' },
                               children: [{ $concat: ['$agent.firstName', ' ', '$agent.lastName'] }],
                             },
                           ],

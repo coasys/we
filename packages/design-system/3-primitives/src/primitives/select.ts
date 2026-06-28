@@ -20,19 +20,19 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200' },
-  sm: { fontSize: '300' },
-  md: { fontSize: '400' },
-  lg: { fontSize: '500' },
-  xl: { fontSize: '500' },
+  xs: { fontSize: '100' },
+  sm: { fontSize: '200' },
+  md: { fontSize: '300' },
+  lg: { fontSize: '400' },
+  xl: { fontSize: '400' },
 };
 
 const CONTROL_HEIGHT: Record<ComponentSize, string> = {
-  xs: 'var(--we-component-height-xs)',
-  sm: 'var(--we-component-height-sm)',
-  md: 'var(--we-component-height-md)',
-  lg: 'var(--we-component-height-lg)',
-  xl: 'var(--we-component-height-xl)',
+  xs: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))',
+  sm: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px))',
+  md: 'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px))',
+  lg: 'calc(var(--we-component-height-lg) + var(--we-theme-control-height-offset, 0px))',
+  xl: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))',
 };
 
 const styles = css`
@@ -45,7 +45,7 @@ const styles = css`
     display: flex;
     align-items: center;
     border: 1px solid var(--we-color-neutral-300);
-    border-radius: var(--we-radius-400);
+    border-radius: var(--we-theme-input-radius, var(--we-radius-400));
     background: var(--we-color-neutral-0);
     transition: border-color 0.15s ease;
   }
@@ -102,7 +102,7 @@ const styles = css`
     overflow-y: auto;
     background: var(--we-color-neutral-0);
     border: 1px solid var(--we-color-neutral-200);
-    border-radius: var(--we-radius-400);
+    border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     margin-top: var(--we-space-100);
     padding: var(--we-space-100) 0;

@@ -94,6 +94,7 @@
   // Label text (always full size within content container)
   &__item-label {
     white-space: nowrap;
+    font-size: var(--we-font-size-300);
   }
 
   // Badge (positioned at the end of the item)
@@ -125,43 +126,15 @@
     gap: var(--we-space-200);
   }
 
-  // Group header (clickable for collapsible, static otherwise)
-  &__group-header {
+  // Static group header only (collapsible groups use we-button — styled via DS props)
+  &__group-header--static {
     display: flex;
     align-items: center;
     gap: var(--we-space-200);
     padding: var(--we-space-200) var(--we-space-300);
-    border-radius: 8px;
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    width: 100%;
-    text-align: left;
-    transition: background-color 0.15s ease;
-
-    &:hover:not(:disabled) {
-      // background-color: var(--we-color-neutral-50);
-    }
-
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 0.5;
-    }
-
-    &--static {
-      cursor: default;
-      pointer-events: none;
-
-      &:hover {
-        background-color: transparent;
-      }
-    }
-
-    // Only show label when expanded
-    .we-collapsible-sidebar:not(.we-collapsible-sidebar--expanded) & {
-      opacity: 0;
-      pointer-events: none;
-    }
+    cursor: default;
+    pointer-events: none;
+    white-space: nowrap;
 
     .we-collapsible-sidebar.right & {
       flex-direction: row-reverse;

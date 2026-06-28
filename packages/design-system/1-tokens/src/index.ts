@@ -10,6 +10,7 @@ import { color } from './color.js';
 import { component } from './component.js';
 import { effect } from './effect.js';
 import { font } from './font.js';
+import { layout } from './layout.js';
 import { shadow } from './shadow.js';
 import { avatarSize, componentHeight, radius, size } from './size.js';
 import { space } from './space.js';
@@ -23,6 +24,7 @@ export {
   component,
   effect,
   font,
+  layout,
   shadow,
   size,
   radius,
@@ -63,6 +65,7 @@ export type { ShadowToken, ShadowValue } from './shadow.js';
 export type { SizeToken, SizeValue, RadiusToken, RadiusValue, ComponentSize } from './size.js';
 export type { SpaceToken, SpaceValue } from './space.js';
 export type { ZIndexLayer, ZIndexValue } from './z-index.js';
+export type { LayoutToken } from './layout.js';
 
 /**
  * Complete design token system.
@@ -76,6 +79,7 @@ export const tokens = {
   component,
   effect,
   font,
+  layout,
   shadow,
   size,
   radius,

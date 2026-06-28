@@ -12,12 +12,11 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   cursor: 'pointer',
   bg: 'transparent',
   color: 'neutral-600',
-  px: '500',
+  px: '300',
   py: '200',
   ax: 'start',
   ay: 'center',
   gap: '300',
-  height: 'md',
   hoverProps: {
     bg: 'neutral-50',
     color: 'neutral-700',

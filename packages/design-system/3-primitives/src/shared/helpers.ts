@@ -26,6 +26,127 @@ import {
 
 const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
 
+// ────────────────────────────────────────────
+// Component cascade configuration
+// ────────────────────────────────────────────
+
+/**
+ * Per-component cascade config. When set, the static CSS emits a fallback
+ * chain for radius and padding rather than a bare var():
+ *
+ *   border-radius: var(--we-button-radius,          ← explicit r= prop
+ *     var(--we-theme-button-radius,                 ← component-specific theme override
+ *       var(--we-theme-control-radius,              ← group theme override
+ *         var(--we-button-size-radius,              ← size-aware structural default (CSS host rule)
+ *           var(--we-radius-400)))));               ← absolute token fallback
+ *
+ * radiusDefault and paddingDefault are optional. When absent, getStaticDSStyles()
+ * auto-derives them from the component's DEFAULT_PROPS (via getPaddingValues /
+ * getRadiusValues). Only set them explicitly when the value cannot be derived —
+ * e.g. button's size-aware radius chain, or wrapper components that have no r/px
+ * in DEFAULT_PROPS but still need a non-zero cascade fallback.
+ */
+interface ComponentCascade {
+  radiusGroup?: string; // e.g. '--we-theme-control-radius'
+  radiusDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
+  paddingGroup?: string; // e.g. '--we-theme-control-padding-x'
+  paddingDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
+  nativePadding?: boolean; // if true, padding is omitted from [part='base'] — the component owns it in CSS_STYLES
+  gapGroup?: string; // e.g. '--we-theme-control-gap'
+  gapDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
+}
+
+const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
+  // Controls
+  button: {
+    radiusGroup: '--we-theme-control-radius',
+    // Explicit: size-aware CSS var chain — not derivable from DEFAULT_PROPS alone.
+    radiusDefault: 'var(--we-button-size-radius, var(--we-radius-400))',
+    // Padding is owned by CSS_STYLES (x-only, 0 y) — nativePadding suppresses the generic declaration.
+    nativePadding: true,
+    gapGroup: '--we-theme-control-gap',
+    gapDefault: 'var(--we-button-size-gap, var(--we-space-300))',
+  },
+  badge: {
+    radiusGroup: '--we-theme-control-radius',
+    nativePadding: true,
+    gapGroup: '--we-theme-control-gap',
+    gapDefault: 'var(--we-badge-size-gap, 0)',
+  },
+  tag: { radiusGroup: '--we-theme-control-radius', nativePadding: true },
+  checkbox: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
+  radio: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
+  switch: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
+  slider: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-300)' },
+  'menu-item': {
+    paddingGroup: '--we-theme-control-padding-x',
+    gapGroup: '--we-theme-control-gap',
+    gapDefault: 'var(--we-space-300)',
+  },
+  'progress-bar': { radiusGroup: '--we-theme-control-radius' },
+  // Inputs
+  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-spacing' },
+  textarea: { radiusGroup: '--we-theme-input-radius', nativePadding: true },
+  select: {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
+  },
+  'number-input': {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: intentionally matches input theme, not DEFAULT_PROPS r:'400'
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)', // Explicit: no px in DEFAULT_PROPS
+  },
+  'date-picker': {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
+  },
+  'color-picker': {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
+  },
+  'icon-picker': {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
+    paddingGroup: '--we-theme-input-spacing',
+    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
+  },
+  'file-upload': { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-surface-spacing' },
+  'form-field': {
+    radiusGroup: '--we-theme-input-radius',
+    radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
+    gapGroup: '--we-theme-control-gap',
+    gapDefault: 'var(--we-space-100)',
+  },
+  // Tabs
+  tab: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-tab-spacing' },
+  // Surfaces
+  modal: {
+    radiusGroup: '--we-theme-surface-radius',
+    paddingGroup: '--we-theme-surface-spacing',
+    gapGroup: '--we-theme-surface-gap',
+  },
+  drawer: {
+    radiusGroup: '--we-theme-surface-radius',
+    paddingGroup: '--we-theme-surface-spacing',
+    gapGroup: '--we-theme-surface-gap',
+  },
+  menu: { radiusGroup: '--we-theme-surface-radius', nativePadding: true },
+  alert: {
+    radiusGroup: '--we-theme-surface-radius',
+    paddingGroup: '--we-theme-surface-spacing',
+    gapGroup: '--we-theme-surface-gap',
+  },
+  blockquote: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
+  code: { radiusGroup: '--we-theme-surface-radius' },
+};
+
 const DEFAULT_TRANSITION = 'all var(--we-transition-200, 150ms) ease';
 
 // ────────────────────────────────────────────
@@ -78,6 +199,7 @@ function updateCustomVars(
   el: HTMLElement,
   componentName: string,
   props: Partial<DesignSystemProps>,
+  rawExplicitProps?: Partial<DesignSystemProps>,
   state?: ElementState,
 ) {
   const prefix = state ? `--we-${componentName}-${state}-` : `--we-${componentName}-`;
@@ -123,7 +245,10 @@ function updateCustomVars(
   setProperty(el, `${prefix}pointer-events`, props.pointerEvents);
   setProperty(el, `${prefix}visibility`, props.visibility);
   const hasRadius = radiusKeys.some((k) => props[k] !== undefined && props[k] !== null);
-  setProperty(el, `${prefix}radius`, hasRadius ? getRadiusValues(props) : undefined);
+  // Only set the instance radius var when the prop was explicitly passed (not from DEFAULT_PROPS).
+  // If not explicitly set, the static CSS fallback chain handles it via --we-theme-*-radius.
+  const radiusExplicit = !rawExplicitProps || radiusKeys.some((k) => rawExplicitProps[k] !== undefined);
+  setProperty(el, `${prefix}radius`, hasRadius && radiusExplicit ? getRadiusValues(props) : undefined);
 
   // Layout on base
   setProperty(el, `${prefix}display`, props.display);
@@ -139,9 +264,14 @@ function updateCustomVars(
   setProperty(el, `${prefix}main-axis`, main);
   setProperty(el, `${prefix}cross-axis`, cross);
   setProperty(el, `${prefix}wrap`, 'wrap' in props ? (props.wrap ? 'wrap' : 'nowrap') : undefined);
-  setProperty(el, `${prefix}gap`, props.gap ? tokenVar('space', props.gap) : undefined);
+  // Only set the instance gap var when explicitly passed — not from SIZE_DEFAULTS or DEFAULT_PROPS.
+  // When not explicit, the static CSS fallback chain handles it via --we-theme-control-gap.
+  const gapExplicit = !rawExplicitProps || rawExplicitProps['gap'] !== undefined;
+  setProperty(el, `${prefix}gap`, props.gap && gapExplicit ? tokenVar('space', props.gap) : undefined);
   const hasPadding = paddingKeys.some((k) => props[k] !== undefined && props[k] !== null);
-  setProperty(el, `${prefix}padding`, hasPadding ? getPaddingValues(props) : undefined);
+  // Same guard as radius — only set the instance padding var when explicitly passed.
+  const paddingExplicit = !rawExplicitProps || paddingKeys.some((k) => rawExplicitProps[k] !== undefined);
+  setProperty(el, `${prefix}padding`, hasPadding && paddingExplicit ? getPaddingValues(props) : undefined);
 
   // Typography
   setProperty(el, `${prefix}text-align`, props.textAlign);
@@ -158,11 +288,17 @@ function updateCustomVars(
   setProperty(el, `${prefix}text-transform`, props.textTransform);
 }
 
-export function updateAllCustomVars(el: HTMLElement, componentName: string, props: Partial<DesignSystemProps>) {
-  updateCustomVars(el, componentName, props);
+export function updateAllCustomVars(
+  el: HTMLElement,
+  componentName: string,
+  props: Partial<DesignSystemProps>,
+  rawExplicitProps?: Partial<DesignSystemProps>,
+) {
+  updateCustomVars(el, componentName, props, rawExplicitProps);
   ELEMENT_STATES.forEach((state) => {
     const stateProps = props[`${state}Props`];
-    if (stateProps && typeof stateProps === 'object') updateCustomVars(el, componentName, stateProps, state);
+    // State props are always treated as explicit — no DEFAULT_PROPS fill state blocks.
+    if (stateProps && typeof stateProps === 'object') updateCustomVars(el, componentName, stateProps, undefined, state);
   });
 }
 
@@ -261,13 +397,82 @@ function joinStateDecls(sp: string, dp: string, specs: PropSpec[]): string {
   return specs.map((s) => stateDecl(sp, dp, s)).join('\n    ');
 }
 
+// Build a PropSpec with an optional cascade fallback chain for a single prop.
+function cascadeSpec(
+  componentName: string,
+  cssProp: string,
+  varSuffix: string,
+  groupVar: string | undefined,
+  tokenDefault: string | undefined,
+): PropSpec {
+  if (!groupVar) {
+    // No theme group — emit a direct token fallback so DEFAULT_PROPS values still take
+    // effect even though the runtime no longer sets the custom var for non-explicit props.
+    return tokenDefault ? [cssProp, varSuffix, tokenDefault] : [cssProp, varSuffix];
+  }
+  if (!tokenDefault) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[DS] ${componentName}: "${varSuffix}" has a cascade group (${groupVar}) but no fallback value. ` +
+          `Add the corresponding prop to ${componentName}'s DEFAULT_PROPS so it can be auto-derived, ` +
+          `or set ${varSuffix}Default explicitly in COMPONENT_CASCADE. ` +
+          `Without a fallback, ${cssProp} will reset to its initial value when no theme variable is set.`,
+      );
+    }
+    return [cssProp, varSuffix];
+  }
+  const compThemeVar = `--we-theme-${componentName}-${varSuffix}`;
+  return [cssProp, varSuffix, `var(${compThemeVar}, var(${groupVar}, ${tokenDefault}))`];
+}
+
 /**
  * Generate static CSS string for a DS component. Called once per component class.
  * The CSS reads CSS custom properties that are set at runtime by updateAllCustomVars().
+ *
+ * @param defaultProps - The component's DEFAULT_PROPS. Used to auto-derive paddingDefault and
+ * radiusDefault when they are not explicitly set in COMPONENT_CASCADE.
  */
-export function getStaticDSStyles(componentName: string, layers?: readonly DSLayer[]): string {
+export function getStaticDSStyles(
+  componentName: string,
+  layers?: readonly DSLayer[],
+  defaultProps?: Partial<DesignSystemProps>,
+): string {
   const l = new Set<DSLayer>(layers ?? ['layout', 'visual', 'flex', 'typography', 'state']);
   const p = `--we-${componentName}-`;
+  const cascade = COMPONENT_CASCADE[componentName];
+
+  // Auto-derive cascade fallback defaults from DEFAULT_PROPS when not explicitly set.
+  // Explicit values in COMPONENT_CASCADE always take precedence.
+  const dp = defaultProps as Record<string, unknown> | undefined;
+  const radiusDefault =
+    cascade?.radiusDefault ??
+    (dp && radiusKeys.some((k) => dp[k] !== undefined)
+      ? getRadiusValues(defaultProps as DesignSystemProps)
+      : undefined);
+  const paddingDefault =
+    cascade?.paddingDefault ??
+    (dp && paddingKeys.some((k) => dp[k] !== undefined)
+      ? getPaddingValues(defaultProps as DesignSystemProps)
+      : undefined);
+  const gapDefault =
+    cascade?.gapDefault ?? (dp && dp['gap'] !== undefined ? tokenVar('space', dp['gap'] as string) : undefined);
+
+  // Build per-component visual and flex specs with cascade fallbacks where applicable.
+  const baseVisual: PropSpec[] = BASE_VISUAL.map((spec) =>
+    spec[1] === 'radius'
+      ? cascadeSpec(componentName, 'border-radius', 'radius', cascade?.radiusGroup, radiusDefault)
+      : spec,
+  );
+  const baseFlex: PropSpec[] = BASE_FLEX.flatMap((spec) => {
+    if (spec[1] === 'gap') {
+      return [cascadeSpec(componentName, 'gap', 'gap', cascade?.gapGroup, gapDefault)];
+    }
+    if (spec[1] === 'padding') {
+      if (cascade?.nativePadding) return []; // padding owned by CSS_STYLES, not [part='base']
+      return [cascadeSpec(componentName, 'padding', 'padding', cascade?.paddingGroup, paddingDefault)];
+    }
+    return [spec];
+  });
 
   const styles: string[] = [];
 
@@ -283,10 +488,10 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
   const baseLines: string[] = ['width: 100%;', 'height: 100%;'];
   if (l.has('visual')) {
     baseLines.push(`transition: var(${p}transition, ${DEFAULT_TRANSITION});`);
-    baseLines.push(joinDecls(p, BASE_VISUAL));
+    baseLines.push(joinDecls(p, baseVisual));
   }
   if (l.has('layout')) baseLines.push(joinDecls(p, BASE_LAYOUT));
-  if (l.has('flex')) baseLines.push(joinDecls(p, BASE_FLEX));
+  if (l.has('flex')) baseLines.push(joinDecls(p, baseFlex));
   if (l.has('typography')) baseLines.push(joinDecls(p, BASE_TYPOGRAPHY));
 
   const hasBase = l.has('visual') || l.has('layout') || l.has('flex') || l.has('typography');
@@ -300,9 +505,9 @@ export function getStaticDSStyles(componentName: string, layers?: readonly DSLay
     if (l.has('layout')) hostSpecs.push(...HOST_LAYOUT);
 
     const baseSpecs: PropSpec[] = [];
-    if (l.has('visual')) baseSpecs.push(...BASE_VISUAL);
+    if (l.has('visual')) baseSpecs.push(...baseVisual);
     if (l.has('layout')) baseSpecs.push(...BASE_LAYOUT);
-    if (l.has('flex')) baseSpecs.push(...BASE_FLEX);
+    if (l.has('flex')) baseSpecs.push(...baseFlex);
     if (l.has('typography')) baseSpecs.push(...BASE_TYPOGRAPHY);
 
     for (const state of ELEMENT_STATES) {

@@ -14,16 +14,16 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   r: '400',
   border: '1px solid var(--we-color-neutral-300)',
   bg: 'white',
-  fontSize: '400',
+  fontSize: '300',
   color: 'neutral-800',
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200', height: 'var(--we-component-height-xs)' },
-  sm: { fontSize: '300', height: 'var(--we-component-height-sm)' },
-  md: { fontSize: '400', height: 'var(--we-component-height-md)' },
-  lg: { fontSize: '500', height: 'var(--we-component-height-lg)' },
-  xl: { fontSize: '500', height: 'var(--we-component-height-xl)' },
+  xs: { fontSize: '100', height: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))' },
+  sm: { fontSize: '200', height: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px))' },
+  md: { fontSize: '300', height: 'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px))' },
+  lg: { fontSize: '400', height: 'calc(var(--we-component-height-lg) + var(--we-theme-control-height-offset, 0px))' },
+  xl: { fontSize: '400', height: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))' },
 };
 
 const styles = css`

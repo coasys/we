@@ -128,7 +128,7 @@ export function EditableImage(allProps: EditableImageProps) {
         {/* Hover overlay */}
         <Column class="editable-image__overlay" ax="center" ay="center" p="300" gap="200" position="absolute">
           <we-icon name="pencil" size="24px" color="#fff" />
-          <we-text fontSize="400" fontWeight="semibold" color="#fff">
+          <we-text fontSize="300" color="#fff">
             Edit Image
           </we-text>
         </Column>

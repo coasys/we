@@ -10,6 +10,8 @@ export {
   Template,
   Theme,
 } from './entities';
+export type { ThemeData } from './entities/Theme';
+export { modelToThemeData } from './entities/Theme';
 export type { SignalMode, SignalAggregate, SignalSemantic } from './entities';
 export {
   AudioBlock,

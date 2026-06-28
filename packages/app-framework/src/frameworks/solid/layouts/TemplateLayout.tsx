@@ -14,6 +14,7 @@
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
+import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import {
   landingPageTemplate,
   marketplaceTemplate,
@@ -31,17 +32,18 @@ import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import type { TemplateSchema } from '@we/schema-shared';
+import { themeToStyle } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
-import { createEffect, For, Show } from 'solid-js';
+import { createEffect, createMemo, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
-import { EditorOverlay } from '../components/template-editor/EditorOverlay';
-import { panelResizing, TOTAL_RAIL_WIDTH } from '../components/template-editor/RightPanelContainer';
+import { EditorOverlay } from '../components/editor/EditorOverlay';
+import { panelResizing, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from '../components/editor/RightPanelContainer';
 import { buildRoutes } from '../utils/buildRoutes';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
-export const SHELL_SIDEBAR_WIDTH = '72px';
+export const SHELL_SIDEBAR_WIDTH = '80px';
 
 // Shell view registry — maps activeShellView id → schema + optional extra stores.
 // The stores factory is called with (baseStores, shellRouteStore) at mount time,
@@ -114,12 +116,36 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
     if (stores.templateStore.activeShellView()) stores.aiStore.exitTemplateEditing();
   });
 
+  // Scoped space theme — applied to the template content area only.
+  // activeTemplateTheme() returns the editing theme (when editing in scoped mode) or the
+  // space theme, and null in global mode (template inherits from documentElement).
+  const spaceThemeStyle = createMemo(() => {
+    const td = stores.themeStore.activeTemplateTheme();
+    if (!td) return {};
+    const overrides = td.overrides ? JSON.parse(td.overrides) : {};
+    if (isValidThemeKey(td.id) && !overrides.themeName) overrides.themeName = td.id;
+    return themeToStyle(overrides);
+  });
+
+  const spaceThemeName = createMemo(() => {
+    const td = stores.themeStore.activeTemplateTheme();
+    if (!td) return undefined;
+    const overrides = td.overrides ? JSON.parse(td.overrides) : {};
+    return (overrides.themeName as string | undefined) ?? (isValidThemeKey(td.id) ? td.id : undefined);
+  });
+
   const rightOffset = () => {
-    if (!stores.aiStore.isEditingTemplate()) return '0px';
-    let offset = TOTAL_RAIL_WIDTH;
-    if (stores.aiStore.isOpen()) offset += stores.aiStore.aiPanelWidth();
-    if (stores.aiStore.codePanelOpen()) offset += stores.aiStore.codePanelWidth();
-    return `${offset}px`;
+    let offset = 0;
+    if (stores.aiStore.isEditingTheme()) {
+      offset += THEME_RAIL_WIDTH;
+      if (stores.aiStore.themePanelOpen()) offset += stores.aiStore.themePanelWidth();
+    }
+    if (stores.aiStore.isEditingTemplate()) {
+      offset += TEMPLATE_RAILS_WIDTH;
+      if (stores.aiStore.isOpen()) offset += stores.aiStore.aiPanelWidth();
+      if (stores.aiStore.codePanelOpen()) offset += stores.aiStore.codePanelWidth();
+    }
+    return offset ? `${offset}px` : '0px';
   };
 
   return (
@@ -147,14 +173,20 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           overflow="auto"
           scrollbarGutter="stable"
         >
-          <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-            <RenderSchema
-              node={stores.templateStore.currentTemplate}
-              stores={stores}
-              registry={registry}
-              children={props.children}
-            />
-          </Show>
+          {/* Scoped space theme wrapper — display:contents keeps layout unaffected.
+              Parametric overrides are applied as inline CSS vars; component-level CSS
+              (theme.css) is injected into we-scoped-theme-css by ThemeStore and
+              self-scopes via [data-we-theme='X'] attribute selectors. */}
+          <div style={{ display: 'contents', ...spaceThemeStyle() }} data-we-theme={spaceThemeName()}>
+            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+              <RenderSchema
+                node={stores.templateStore.currentTemplate}
+                stores={stores}
+                registry={registry}
+                children={props.children}
+              />
+            </Show>
+          </div>
         </Column>
 
         {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11) */}

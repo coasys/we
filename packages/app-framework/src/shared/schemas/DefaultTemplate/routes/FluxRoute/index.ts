@@ -13,19 +13,19 @@ export const fluxRoute: RouteSchema = {
       type: 'Row',
       props: { ay: 'center', gap: '400', pb: '200' },
       children: [
-        { type: 'we-icon', props: { name: 'chat-circle-dots', size: 'lg', color: 'primary-500' } },
+        { type: 'we-icon', props: { name: 'chat-circle-dots', size: 'lg' } },
         {
           type: 'Column',
-          props: { gap: '50' },
+          props: { gap: '100' },
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900' },
+              props: { variant: 'heading-md' },
               children: ['Flux'],
             },
             {
               type: 'we-text',
-              props: { fontSize: '300', color: 'neutral-500' },
+              props: { variant: 'label' },
               children: ['Your community at a glance'],
             },
           ],

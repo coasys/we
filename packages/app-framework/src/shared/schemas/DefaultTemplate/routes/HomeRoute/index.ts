@@ -19,12 +19,12 @@ export const homeRoute: RouteSchema = {
       children: [
         {
           type: 'we-text',
-          props: { fontSize: '700', fontWeight: 'bold', textAlign: 'center' },
+          props: { variant: 'heading-md', textAlign: 'center' },
           children: ['Your Spaces'],
         },
         {
           type: 'we-text',
-          props: { fontSize: '400', color: 'neutral-500', textAlign: 'center' },
+          props: { variant: 'body', textAlign: 'center' },
           children: ['Select a space to open it, or create and join new ones.'],
         },
         // Space cards grid
@@ -40,12 +40,9 @@ export const homeRoute: RouteSchema = {
               },
               children: [
                 {
-                  type: 'Column',
+                  type: 'Card',
                   props: {
-                    gap: '200',
                     ax: 'center',
-                    p: '400',
-                    r: '400',
                     bg: 'neutral-0',
                     width: '160px',
                     styles: { cursor: 'pointer' },
@@ -64,7 +61,7 @@ export const homeRoute: RouteSchema = {
                     {
                       type: 'we-text',
                       props: {
-                        fontSize: '400',
+                        variant: 'body',
                         fontWeight: 'medium',
                         textAlign: 'center',
                         styles: {
@@ -88,18 +85,18 @@ export const homeRoute: RouteSchema = {
           props: {
             condition: { $not: { $store: 'adamStore.orderedSidebarItems.length' } },
             then: {
-              type: 'Column',
-              props: { gap: '200', ax: 'center', p: '400', r: '400', bg: 'neutral-0', width: '100%' },
+              type: 'Card',
+              props: { ax: 'center', bg: 'neutral-0', width: '100%' },
               children: [
-                { type: 'we-icon', props: { name: 'plus-circle', size: 'xl', color: 'neutral-400' } },
+                { type: 'we-icon', props: { name: 'plus-circle', size: 'xl', color: 'neutral-300' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '500', fontWeight: 'medium', textAlign: 'center' },
+                  props: { variant: 'subheading', textAlign: 'center' },
                   children: ['No spaces yet'],
                 },
                 {
                   type: 'we-text',
-                  props: { fontSize: '400', color: 'neutral-500', textAlign: 'center' },
+                  props: { variant: 'body', textAlign: 'center' },
                   children: ['Create or join a space to get started.'],
                 },
               ],

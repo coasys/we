@@ -41,13 +41,10 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
       expanded: { type: 'boolean', initial: false },
       modalOpen: { type: 'boolean', initial: false },
     },
-    type: 'Column',
+    type: 'Card',
     props: {
       bg: 'neutral-100',
-      r: '400',
       border: '1px solid neutral-200',
-      p: '400',
-      gap: '300',
       width: '100%',
     },
     children: [

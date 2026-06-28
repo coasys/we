@@ -115,17 +115,16 @@ export const schemaTestsTemplate: TemplateSchema = {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'flask', size: 'xl', color: 'primary-700' } },
+                { type: 'we-icon', props: { name: 'flask', size: 'xl' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '700', fontWeight: '700', color: 'primary-800' },
+                  props: { variant: 'heading-md' },
                   children: ['Schema Tests'],
                 },
               ],
             },
             {
               type: 'we-text',
-              props: { color: 'neutral-600' },
               children: ['Integration test suite for the schema system'],
             },
             { type: 'Row', props: { gap: '300', py: '200', wrap: true }, children: sections.map(sectionButton) },

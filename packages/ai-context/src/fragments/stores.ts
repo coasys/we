@@ -61,17 +61,33 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'themeStore',
     state: {
-      themes: { type: 'array', properties: ['id', 'name', 'icon'] },
-      currentTheme: { type: 'object', properties: ['id', 'name', 'icon'] },
+      builtInThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
+      installedThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
+      spaceThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
+      allThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
+      currentThemeId: { type: 'string' },
+      currentTheme: { type: 'object', properties: ['id', 'name', 'icon', 'origin'] },
+      defaultThemeId: { type: 'string' },
+      themeManagementList: {
+        type: 'array',
+        properties: ['id', 'name', 'icon', 'isBuiltIn', 'isInstalled', 'isDefault'],
+      },
     },
-    actions: ['setThemes', 'setCurrentTheme'],
+    actions: [
+      'setCurrentTheme',
+      'setDefaultTheme',
+      'toggleThemeInstalled',
+      'installFromMarketplace',
+      'uninstallTheme',
+      'deleteTheme',
+    ],
   },
   {
     name: 'templateStore',
     state: {
       personalTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       spaceTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
-      coreTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
+      builtInTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       myTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       allTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
@@ -80,7 +96,7 @@ export const storeEntries: StoreEntry[] = [
       activeShellView: { type: 'string' },
       templateManagementList: {
         type: 'array',
-        properties: ['id', 'name', 'icon', 'description', 'isCore', 'isInstalled', 'isDefault'],
+        properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault'],
       },
       switcherGroups: { type: 'array', properties: ['label', 'items'] },
     },
@@ -253,12 +269,28 @@ function generateStoresText(entries: StoreEntry[]): string {
     },
     themeStore: {
       state: {
-        themes: 'array of ThemeWithId objects',
-        currentTheme: 'ThemeWithId (the active theme)',
+        builtInThemes: 'array of ThemeData objects — built-in registry themes (origin: "built-in", always available)',
+        installedThemes:
+          'array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")',
+        spaceThemes: 'array of ThemeData objects — themes stored in the current space perspective (origin: "custom")',
+        allThemes:
+          'array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)',
+        currentThemeId: 'string — id of the currently active theme',
+        currentTheme: 'ThemeData — the currently active theme object (id, name, icon, origin)',
+        defaultThemeId:
+          "string — id of the user's preferred default theme (used for bootscreen, shell, and future space-override). Persisted to AgentSettings.defaultThemeId",
+        themeManagementList:
+          'ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)',
       },
       actions: {
-        setThemes: '(themes: ThemeWithId[]): sets available themes',
-        setCurrentTheme: '(theme: ThemeWithId): sets the active theme',
+        setCurrentTheme: '(themeId: string): sets and persists the active theme',
+        setDefaultTheme:
+          '(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)',
+        toggleThemeInstalled:
+          '(themeId: string): toggles a custom theme visible/hidden in pickers; does not delete the theme',
+        installFromMarketplace: '(marketplaceThemeId: string): installs a marketplace theme into installedThemes',
+        uninstallTheme: '(themeId: string): removes an installed theme (deletes the model)',
+        deleteTheme: '(themeId: string): permanently deletes a custom theme',
       },
     },
     templateStore: {
@@ -266,18 +298,18 @@ function generateStoresText(entries: StoreEntry[]): string {
         personalTemplates:
           "array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)",
         spaceTemplates: 'array of TemplateSchema objects — templates loaded from the current space perspective',
-        coreTemplates: 'array of TemplateSchema objects — built-in system templates (always available)',
+        builtInTemplates: 'array of TemplateSchema objects — built-in system templates (always available)',
         myTemplates:
-          "array of TemplateSchema objects — user's installed custom templates only (excludes core and space templates)",
-        allTemplates: 'array of TemplateSchema objects — union of core + personal + space templates',
+          "array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)",
+        allTemplates: 'array of TemplateSchema objects — union of built-in + personal + space templates',
         shellTemplates: 'array of TemplateSchema objects (static system pages: profile, settings, tests)',
         currentTemplate: 'TemplateSchema (the active template)',
         activeShellView:
           "string | null (id of the currently open shell overlay: 'profile' | 'settings' | 'schema-tests' | 'landing-page' | null)",
         templateManagementList:
-          'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isCore, isInstalled, isDefault)',
+          'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)',
         switcherGroups:
-          'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Core". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.',
+          'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.',
       },
       actions: {
         updateTemplate: '(newTemplate: TemplateSchema): updates the current template',

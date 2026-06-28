@@ -1,8 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 
 export const signalTypeCard: SchemaNode = {
-  type: 'Column',
-  props: { p: '400', r: '400', bg: 'neutral-50', border: '1px solid neutral-100', gap: '300' },
+  type: 'Card',
+  props: { bg: 'neutral-50', border: '1px solid neutral-100' },
   children: [
     // Header: icon + name/description + delete
     {
@@ -17,7 +17,7 @@ export const signalTypeCard: SchemaNode = {
             { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$signalType.name'] },
             {
               type: 'we-text',
-              props: { fontSize: '400', color: 'neutral-500' },
+              props: { variant: 'body' },
               children: ['$signalType.description'],
             },
           ],

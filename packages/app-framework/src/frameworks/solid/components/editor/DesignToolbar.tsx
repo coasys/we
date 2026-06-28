@@ -1,5 +1,5 @@
 import { Column, Row, SearchInput } from '@we/components/solid';
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 import { useAdamStore } from '../../stores/AdamStore';
@@ -11,7 +11,7 @@ import { PublishThemeModal } from './PublishThemeModal';
 import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
 import { panelResizing, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from './RightPanelContainer';
 
-export function TemplateToolbar() {
+export function DesignToolbar() {
   const templateStore = useTemplateStore();
   const spaceStore = useSpaceStore();
   const aiStore = useAiStore();
@@ -35,12 +35,15 @@ export function TemplateToolbar() {
 
   // ── Theme picker ──
   const [themeOpen, setThemeOpen] = createSignal(false);
+  const [themeSearch, setThemeSearch] = createSignal('');
 
   // ── Theme edit dropdown (pencil menu, inactive state) ──
   const [themeEditOpen, setThemeEditOpen] = createSignal(false);
 
   // ── Theme share dropdown (active editing state) ──
   const [themeShareOpen, setThemeShareOpen] = createSignal(false);
+  const [themeShareView, setThemeShareView] = createSignal<'main' | 'space'>('main');
+  const [themeShareLoading, setThemeShareLoading] = createSignal<string | null>(null);
 
   // ── Theme picker (fork / new) ──
   const [themePickerOpen, setThemePickerOpen] = createSignal(false);
@@ -69,8 +72,10 @@ export function TemplateToolbar() {
     setShareView('main');
     setSpaceSearch('');
     setThemeOpen(false);
+    setThemeSearch('');
     setThemeEditOpen(false);
     setThemeShareOpen(false);
+    setThemeShareView('main');
     setThemePickerOpen(false);
     if (aiStore.pickerOpen()) aiStore.cancelPicker();
   }
@@ -106,6 +111,18 @@ export function TemplateToolbar() {
     closeAllDropdowns();
     if (!was) setThemeShareOpen(true);
   };
+
+  // Exit theme editing when the active theme changes to a different theme.
+  // Untrack the guard so entering edit mode doesn't re-trigger this.
+  // We do NOT exit when currentThemeId changes to the editing theme's own id,
+  // which happens during saveEditingTheme after the theme is persisted.
+  createEffect(() => {
+    const newId = themeStore.currentThemeId();
+    if (untrack(() => aiStore.isEditingTheme())) {
+      const editingId = untrack(() => themeStore.editingTheme()?.id);
+      if (newId !== editingId) aiStore.exitThemeEditing();
+    }
+  });
 
   // Seed picker fields when it opens
   createEffect(() => {
@@ -152,6 +169,23 @@ export function TemplateToolbar() {
     const q = spaceSearch().toLowerCase();
     const items = adamStore.orderedSidebarItems();
     return q ? items.filter((s) => s.name.toLowerCase().includes(q)) : items;
+  });
+
+  const filteredBuiltInThemes = createMemo(() => {
+    const q = themeSearch().toLowerCase();
+    return q ? themeStore.builtInThemes().filter((t) => t.name.toLowerCase().includes(q)) : themeStore.builtInThemes();
+  });
+
+  const filteredInstalledThemes = createMemo(() => {
+    const q = themeSearch().toLowerCase();
+    return q
+      ? themeStore.installedThemes().filter((t) => t.name.toLowerCase().includes(q))
+      : themeStore.installedThemes();
+  });
+
+  const filteredSpaceThemes = createMemo(() => {
+    const q = themeSearch().toLowerCase();
+    return q ? themeStore.spaceThemes().filter((t) => t.name.toLowerCase().includes(q)) : themeStore.spaceThemes();
   });
 
   const canEdit = () => !aiStore.isReadOnly();
@@ -206,6 +240,16 @@ export function TemplateToolbar() {
     }
   }
 
+  async function handleShareThemeToSpace(uuid: string, spaceName: string) {
+    setThemeShareLoading(uuid);
+    try {
+      const success = await themeStore.publishToSpace(uuid, spaceName);
+      if (success) closeAllDropdowns();
+    } finally {
+      setThemeShareLoading(null);
+    }
+  }
+
   function handlePublishTemplateToMarketplace() {
     closeAllDropdowns();
     setPublishModalOpen(true);
@@ -217,7 +261,12 @@ export function TemplateToolbar() {
     setThemePickerSaving(true);
     try {
       const sourceId = themePickerAction() === 'fork' ? themeStore.currentThemeId() : undefined;
-      const ok = await themeStore.createAndStartEditing(name, themePickerIcon() || 'paint-bucket', sourceId, themePickerDestination());
+      const ok = await themeStore.createAndStartEditing(
+        name,
+        themePickerIcon() || 'paint-bucket',
+        sourceId,
+        themePickerDestination(),
+      );
       if (ok) {
         setThemePickerOpen(false);
         aiStore.enterThemeEditing();
@@ -245,7 +294,14 @@ export function TemplateToolbar() {
       >
         {/* ── Edit-mode toolbar (template editing only) ── */}
         <Show when={aiStore.isEditingTemplate()}>
-          <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
+          <Row
+            ay="center"
+            gap="100"
+            bg="neutral-50"
+            border="1px solid neutral-200"
+            r="var(--we-theme-control-radius, var(--we-radius-400))"
+            p="200"
+          >
             <we-tooltip title="Preview" placement="bottom">
               <we-button
                 variant={aiStore.contentMode() === 'preview' ? 'secondary' : 'ghost'}
@@ -280,17 +336,59 @@ export function TemplateToolbar() {
           </Row>
         </Show>
 
+        {/* ── Edit-mode toolbar (theme editing only) ── */}
+        <Show when={aiStore.isEditingTheme()}>
+          <Row
+            ay="center"
+            gap="100"
+            bg="neutral-50"
+            border="1px solid neutral-200"
+            r="var(--we-theme-control-radius, var(--we-radius-400))"
+            p="200"
+          >
+            <we-tooltip title="Undo" placement="bottom">
+              <we-button variant="ghost" square disabled={!themeStore.canUndo()} onClick={() => themeStore.undo()}>
+                <we-icon name="arrow-u-up-left" />
+              </we-button>
+            </we-tooltip>
+            <we-tooltip title="Redo" placement="bottom">
+              <we-button variant="ghost" square disabled={!themeStore.canRedo()} onClick={() => themeStore.redo()}>
+                <we-icon name="arrow-u-up-right" />
+              </we-button>
+            </we-tooltip>
+          </Row>
+        </Show>
+
         {/* ── Theme chip ── */}
-        <Column>
-          <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
+        <Column position="relative">
+          <Row
+            ay="center"
+            gap="100"
+            bg="neutral-50"
+            border="1px solid neutral-200"
+            r="var(--we-theme-control-radius, var(--we-radius-400))"
+            p="200"
+          >
             {/* Theme selector */}
-            <we-button variant={themeOpen() ? 'secondary' : 'ghost'} onClick={toggleThemePicker} p="200">
-              <we-icon name={themeStore.currentTheme().icon || 'paint-bucket'} />
-              <we-text>{themeStore.currentTheme().name}</we-text>
-              <we-icon name={themeOpen() ? 'caret-up' : 'caret-down'} color="neutral-500" />
-            </we-button>
+            <we-tooltip title="Select a theme" placement="bottom">
+              <we-button variant={themeOpen() ? 'secondary' : 'ghost'} onClick={toggleThemePicker} p="200">
+                <we-icon name={themeStore.currentTheme().icon || 'paint-bucket'} />
+                <we-text>{themeStore.currentTheme().name}</we-text>
+                <we-icon name={themeOpen() ? 'caret-up' : 'caret-down'} color="neutral-500" />
+              </we-button>
+            </we-tooltip>
 
             <we-divider orientation="vertical" color="neutral-200" height="28px" />
+
+            {/* Globe/globe-x — toggles whether the space theme applies globally or only to the template */}
+            <we-tooltip
+              title={themeStore.themeScope() === 'global' ? 'Apply theme to space only' : 'Apply theme globally'}
+              placement="bottom"
+            >
+              <we-button variant="ghost" square onClick={() => themeStore.toggleThemeScope()}>
+                <we-icon name={themeStore.themeScope() === 'global' ? 'globe' : 'globe-x'} />
+              </we-button>
+            </we-tooltip>
 
             {/* Inactive: pencil opens edit dropdown */}
             <Show when={!aiStore.isEditingTheme()}>
@@ -325,44 +423,23 @@ export function TemplateToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
-              overflow="hidden"
               minWidth="220px"
             >
-              <we-scroll-area maxHeight="320px">
-                <Column py="200">
+              <SearchInput value={themeSearch()} placeholder="Search themes…" m="200" onSearch={setThemeSearch} />
+              <we-divider />
+              <Column py="200" maxHeight="320px" overflowY="auto">
+                <Show when={filteredSpaceThemes().length > 0}>
                   <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
-                    Built-in
+                    Space themes
                   </we-text>
-                  <For each={themeStore.builtInThemes()}>
-                    {(theme) => (
-                      <Row
-                        ay="center"
-                        gap="200"
-                        px="300"
-                        py="200"
-                        cursor="pointer"
-                        bg={theme.id === themeStore.currentThemeId() ? 'primary-100' : 'neutral-0'}
-                        hoverProps={{ bg: 'neutral-100' }}
-                        onClick={() => {
-                          themeStore.setCurrentTheme(theme.id);
-                          closeAllDropdowns();
-                        }}
-                      >
-                        <we-icon name={theme.icon} size="sm" color="neutral-600" />
-                        <we-text color="neutral-700" flex="1">
-                          {theme.name}
-                        </we-text>
-                      </Row>
-                    )}
-                  </For>
-                  <Show when={themeStore.installedThemes().length > 0}>
-                    <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
-                      My themes
-                    </we-text>
-                    <For each={themeStore.installedThemes()}>
-                      {(theme) => (
+                  <For each={filteredSpaceThemes()}>
+                    {(theme) => {
+                      const isDefault = createMemo(
+                        () => !!spaceStore.spaceDefaultThemeId() && theme.id === spaceStore.spaceDefaultThemeId(),
+                      );
+                      return (
                         <Row
                           ay="center"
                           gap="200"
@@ -380,12 +457,83 @@ export function TemplateToolbar() {
                           <we-text color="neutral-700" flex="1">
                             {theme.name}
                           </we-text>
+                          <Show when={isDefault()}>
+                            <we-icon name="star" weight="fill" color="warning-500" size="sm" />
+                          </Show>
                         </Row>
-                      )}
-                    </For>
-                  </Show>
-                </Column>
-              </we-scroll-area>
+                      );
+                    }}
+                  </For>
+                </Show>
+                <Show when={filteredInstalledThemes().length > 0}>
+                  <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
+                    My themes
+                  </we-text>
+                  <For each={filteredInstalledThemes()}>
+                    {(theme) => {
+                      const isDefault = createMemo(
+                        () => !!spaceStore.spaceDefaultThemeId() && theme.id === spaceStore.spaceDefaultThemeId(),
+                      );
+                      return (
+                        <Row
+                          ay="center"
+                          gap="200"
+                          px="300"
+                          py="200"
+                          cursor="pointer"
+                          bg={theme.id === themeStore.currentThemeId() ? 'primary-100' : 'neutral-0'}
+                          hoverProps={{ bg: 'neutral-100' }}
+                          onClick={() => {
+                            themeStore.setCurrentTheme(theme.id);
+                            closeAllDropdowns();
+                          }}
+                        >
+                          <we-icon name={theme.icon || 'paint-bucket'} size="sm" color="neutral-600" />
+                          <we-text color="neutral-700" flex="1">
+                            {theme.name}
+                          </we-text>
+                          <Show when={isDefault()}>
+                            <we-icon name="star" weight="fill" color="warning-500" size="sm" />
+                          </Show>
+                        </Row>
+                      );
+                    }}
+                  </For>
+                </Show>
+                <we-text variant="footnote" color="neutral-400" px="300" pt="300" pb="100">
+                  Built-in
+                </we-text>
+                <For each={filteredBuiltInThemes()}>
+                  {(theme) => {
+                    const isDefault = createMemo(
+                      () => !!spaceStore.spaceDefaultThemeId() && theme.id === spaceStore.spaceDefaultThemeId(),
+                    );
+                    return (
+                      <Row
+                        ay="center"
+                        gap="200"
+                        px="300"
+                        py="200"
+                        cursor="pointer"
+                        bg={theme.id === themeStore.currentThemeId() ? 'primary-100' : 'neutral-0'}
+                        hoverProps={{ bg: 'neutral-100' }}
+                        onClick={() => {
+                          themeStore.setCurrentTheme(theme.id);
+                          closeAllDropdowns();
+                        }}
+                      >
+                        <we-icon name={theme.icon} size="sm" color="neutral-600" />
+                        <we-text color="neutral-700" flex="1">
+                          {theme.name}
+                        </we-text>
+                        <Show when={isDefault()}>
+                          <we-icon name="star" weight="fill" color="warning-500" size="sm" />
+                        </Show>
+                      </Row>
+                    );
+                  }}
+                </For>
+              </Column>
             </Column>
           </Show>
 
@@ -398,10 +546,10 @@ export function TemplateToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               overflow="hidden"
-              minWidth="200px"
+              minWidth="330px"
             >
               <Column py="200">
                 <Show when={themeStore.currentTheme().origin !== 'built-in'}>
@@ -418,8 +566,13 @@ export function TemplateToolbar() {
                       closeAllDropdowns();
                     }}
                   >
-                    <we-icon name="pencil-simple" color="neutral-600" />
-                    <we-text color="neutral-800">Edit</we-text>
+                    <we-icon name="pencil-simple" color="neutral-600" size="sm" />
+                    <Column>
+                      <we-text color="neutral-800">Edit</we-text>
+                      <we-text fontSize="200" color="neutral-500">
+                        Modify this theme
+                      </we-text>
+                    </Column>
                   </Row>
                 </Show>
                 <Row
@@ -439,8 +592,13 @@ export function TemplateToolbar() {
                     setThemePickerOpen(true);
                   }}
                 >
-                  <we-icon name="git-fork" color="neutral-600" />
-                  <we-text color="neutral-800">Fork</we-text>
+                  <we-icon name="git-fork" color="neutral-600" size="sm" />
+                  <Column>
+                    <we-text color="neutral-800">Fork</we-text>
+                    <we-text fontSize="200" color="neutral-500">
+                      Start a new theme based on this one
+                    </we-text>
+                  </Column>
                 </Row>
                 <Row
                   ay="center"
@@ -458,8 +616,13 @@ export function TemplateToolbar() {
                     setThemePickerOpen(true);
                   }}
                 >
-                  <we-icon name="plus" color="neutral-600" />
-                  <we-text color="neutral-800">New</we-text>
+                  <we-icon name="plus" color="neutral-600" size="sm" />
+                  <Column>
+                    <we-text color="neutral-800">New</we-text>
+                    <we-text fontSize="200" color="neutral-500">
+                      Create a new theme from scratch
+                    </we-text>
+                  </Column>
                 </Row>
               </Column>
             </Column>
@@ -474,7 +637,7 @@ export function TemplateToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               p="400"
               gap="300"
@@ -534,7 +697,12 @@ export function TemplateToolbar() {
               </Column>
 
               <Row ax="end" gap="200">
-                <we-button size="sm" variant="ghost" onClick={() => setThemePickerOpen(false)} disabled={themePickerSaving()}>
+                <we-button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setThemePickerOpen(false)}
+                  disabled={themePickerSaving()}
+                >
                   Cancel
                 </we-button>
                 <we-button
@@ -558,38 +726,109 @@ export function TemplateToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               overflow="hidden"
-              minWidth="200px"
+              minWidth="260px"
             >
-              <Column py="200">
-                <Row
-                  ay="center"
-                  gap="400"
-                  px="300"
-                  py="200"
-                  cursor={adamStore.marketplaceJoined() ? 'pointer' : 'not-allowed'}
-                  opacity={adamStore.marketplaceJoined() ? 1 : 0.4}
-                  hoverProps={adamStore.marketplaceJoined() ? { bg: 'neutral-100' } : undefined}
-                  onClick={adamStore.marketplaceJoined() ? handlePublishThemeToMarketplace : undefined}
-                >
-                  <we-icon name="storefront" color="neutral-600" />
-                  <Column gap="0">
-                    <we-text color="neutral-800">Upload to marketplace</we-text>
-                    <we-text fontSize="300" color="neutral-500">
-                      {adamStore.marketplaceJoined() ? 'Publish for others to install' : 'Marketplace not connected'}
+              <Show when={themeShareView() === 'main'}>
+                <Column py="200">
+                  <Row
+                    ay="center"
+                    gap="400"
+                    px="300"
+                    py="200"
+                    cursor={adamStore.marketplaceJoined() ? 'pointer' : 'not-allowed'}
+                    opacity={adamStore.marketplaceJoined() ? 1 : 0.4}
+                    hoverProps={adamStore.marketplaceJoined() ? { bg: 'neutral-100' } : undefined}
+                    onClick={adamStore.marketplaceJoined() ? handlePublishThemeToMarketplace : undefined}
+                  >
+                    <we-icon name="storefront" color="neutral-600" />
+                    <Column gap="0">
+                      <we-text color="neutral-800">Upload to marketplace</we-text>
+                      <we-text fontSize="300" color="neutral-500">
+                        {adamStore.marketplaceJoined() ? 'Publish for others to install' : 'Marketplace not connected'}
+                      </we-text>
+                    </Column>
+                  </Row>
+                  <Row
+                    ay="center"
+                    gap="400"
+                    px="300"
+                    py="200"
+                    cursor="pointer"
+                    hoverProps={{ bg: 'neutral-100' }}
+                    onClick={() => setThemeShareView('space')}
+                  >
+                    <we-icon name="users" color="neutral-600" />
+                    <Column gap="0" flex="1">
+                      <we-text color="neutral-800">Share to a space</we-text>
+                      <we-text fontSize="300" color="neutral-500">
+                        Copy to a space's themes
+                      </we-text>
+                    </Column>
+                    <we-icon name="caret-right" color="neutral-400" size="sm" />
+                  </Row>
+                </Column>
+              </Show>
+              <Show when={themeShareView() === 'space'}>
+                <Column>
+                  <Row ay="center" gap="200" px="200" pt="200">
+                    <we-button variant="ghost" square size="sm" onClick={() => setThemeShareView('main')}>
+                      <we-icon name="arrow-left" />
+                    </we-button>
+                    <we-text fontWeight="600" color="neutral-800">
+                      Choose a space
                     </we-text>
-                  </Column>
-                </Row>
-              </Column>
+                  </Row>
+                  <SearchInput value={spaceSearch()} placeholder="Search spaces…" m="200" onSearch={setSpaceSearch} />
+                  <we-divider />
+                  <we-scroll-area maxHeight="280px">
+                    <Column py="200">
+                      <For each={filteredSpaces()}>
+                        {(space) => (
+                          <Row
+                            ay="center"
+                            gap="200"
+                            px="300"
+                            py="200"
+                            cursor="pointer"
+                            hoverProps={{ bg: 'neutral-100' }}
+                            onClick={() => handleShareThemeToSpace(space.uuid, space.name)}
+                          >
+                            <we-avatar image={space.avatar} initials={space.name} size="sm" />
+                            <we-text color="neutral-700" flex="1">
+                              {space.name}
+                            </we-text>
+                            <Show when={themeShareLoading() === space.uuid}>
+                              <we-spinner size="sm" />
+                            </Show>
+                          </Row>
+                        )}
+                      </For>
+                      <Show when={filteredSpaces().length === 0}>
+                        <we-text variant="footnote" color="neutral-400" px="300" py="200">
+                          No spaces found
+                        </we-text>
+                      </Show>
+                    </Column>
+                  </we-scroll-area>
+                </Column>
+              </Show>
             </Column>
           </Show>
         </Column>
 
         {/* ── Template chip ── */}
-        <Column>
-          <Row ay="center" gap="100" bg="neutral-50" border="1px solid neutral-200" r="400" p="200">
+        <Column position="relative">
+          <Row
+            ay="center"
+            gap="100"
+            bg="neutral-50"
+            border="1px solid neutral-200"
+            r="var(--we-theme-control-radius, var(--we-radius-400))"
+            p="200"
+          >
             {/* Template selector */}
             <we-tooltip title="Select a template" placement="bottom">
               <we-button variant="ghost" onClick={toggleSwitcher} p="200">
@@ -642,7 +881,7 @@ export function TemplateToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               overflow="hidden"
               minWidth="300px"
@@ -714,10 +953,10 @@ export function TemplateToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               overflow="hidden"
-              minWidth="220px"
+              minWidth="330px"
             >
               <Column py="200">
                 <Show when={canEdit()}>
@@ -733,8 +972,13 @@ export function TemplateToolbar() {
                       closeAllDropdowns();
                     }}
                   >
-                    <we-icon name="pencil-simple" color="neutral-600" />
-                    <we-text color="neutral-800">Edit</we-text>
+                    <we-icon name="pencil-simple" color="neutral-600" size="sm" />
+                    <Column>
+                      <we-text color="neutral-800">Edit</we-text>
+                      <we-text fontSize="200" color="neutral-500">
+                        Modify this template
+                      </we-text>
+                    </Column>
                   </Row>
                 </Show>
                 <Row
@@ -749,8 +993,13 @@ export function TemplateToolbar() {
                     aiStore.startFork();
                   }}
                 >
-                  <we-icon name="git-fork" color="neutral-600" />
-                  <we-text color="neutral-800">Fork</we-text>
+                  <we-icon name="git-fork" color="neutral-600" size="sm" />
+                  <Column>
+                    <we-text color="neutral-800">Fork</we-text>
+                    <we-text fontSize="200" color="neutral-500">
+                      Start a new template based on this one
+                    </we-text>
+                  </Column>
                 </Row>
                 <Row
                   ay="center"
@@ -764,8 +1013,13 @@ export function TemplateToolbar() {
                     aiStore.startFresh();
                   }}
                 >
-                  <we-icon name="file-plus" color="neutral-600" />
-                  <we-text color="neutral-800">New</we-text>
+                  <we-icon name="file-plus" color="neutral-600" size="sm" />
+                  <Column>
+                    <we-text color="neutral-800">New</we-text>
+                    <we-text fontSize="200" color="neutral-500">
+                      Create a new template from scratch
+                    </we-text>
+                  </Column>
                 </Row>
               </Column>
             </Column>
@@ -780,10 +1034,10 @@ export function TemplateToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               overflow="hidden"
-              minWidth="240px"
+              minWidth="260px"
             >
               <Show when={shareView() === 'main'}>
                 <Column py="200">
@@ -898,7 +1152,7 @@ export function TemplateToolbar() {
               mt="100"
               bg="neutral-0"
               border="1px solid neutral-200"
-              r="400"
+              r="var(--we-theme-surface-radius, var(--we-radius-400))"
               shadow="md"
               p="400"
               gap="300"

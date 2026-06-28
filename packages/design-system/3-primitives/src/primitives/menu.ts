@@ -10,14 +10,14 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   direction: 'column',
   bg: 'white',
   r: '400',
+  overflow: 'hidden',
+  border: '1px solid var(--we-border-color)',
 };
 
 const styles = css`
   [part='base'] {
-    padding: var(--we-space-300) 0;
+    padding: var(--we-space-200) 0;
     min-width: 200px;
-    border: 1px solid var(--we-border-color);
-    overflow: hidden;
   }
 `;
 

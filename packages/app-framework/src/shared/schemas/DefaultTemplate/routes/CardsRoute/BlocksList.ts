@@ -31,7 +31,7 @@ const blockHeader = (icon: string, label: SchemaNode | string): SchemaNode[] => 
     type: 'Row',
     props: { ay: 'center', gap: '200' },
     children: [
-      { type: 'we-icon', props: { name: icon, color: 'neutral-500', size: 'sm' } },
+      { type: 'we-icon', props: { name: icon, size: 'sm' } },
       // typeof label === 'string'
       //   ? { type: 'we-text', props: { color: 'neutral-700', truncate: true }, children: [label] }
       //   : label,
@@ -47,7 +47,7 @@ export const blocksList: SchemaNode = {
       'text-blocks',
       'TextBlock',
       blockHeader('file-text', 'Text'),
-      [{ type: 'we-text', props: { color: 'neutral-800' }, children: ['$block.text'] }],
+      [{ type: 'we-text', children: ['$block.text'] }],
       {
         $if: {
           condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },

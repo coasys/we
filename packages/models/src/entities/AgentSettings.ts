@@ -18,6 +18,9 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://current_theme' })
   currentThemeId: string = 'default';
 
+  @Property({ through: 'we://default_theme' })
+  defaultThemeId: string = 'default';
+
   @Property({ through: 'we://claude_api_key' })
   claudeApiKey: string = '';
 

@@ -9,10 +9,10 @@ export const conversationList: SchemaNode = {
       type: 'Row',
       props: { ay: 'center', gap: '200' },
       children: [
-        { type: 'we-icon', props: { name: 'chats-circle', size: 'sm', color: 'neutral-500' } },
+        { type: 'we-icon', props: { name: 'chats-circle', size: 'sm' } },
         {
           type: 'we-text',
-          props: { fontSize: '400', fontWeight: 'semibold', color: 'neutral-700' },
+          props: { variant: 'body', fontWeight: 'semibold' },
           children: ['Recent Conversations'],
         },
       ],
@@ -37,13 +37,10 @@ export const conversationList: SchemaNode = {
           },
           children: [
             {
-              type: 'Column',
+              type: 'Card',
               props: {
                 bg: 'neutral-0',
                 border: '1px solid neutral-200',
-                r: '400',
-                p: '400',
-                gap: '200',
                 minWidth: '200px',
                 maxWidth: '280px',
                 flex: '1',
@@ -54,13 +51,12 @@ export const conversationList: SchemaNode = {
                   type: 'Row',
                   props: { ay: 'center', gap: '200' },
                   children: [
-                    { type: 'we-icon', props: { name: 'chat-dots', size: 'sm', color: 'primary-500' } },
+                    { type: 'we-icon', props: { name: 'chat-dots', size: 'sm' } },
                     {
                       type: 'we-text',
                       props: {
-                        fontSize: '300',
+                        variant: 'label',
                         fontWeight: 'semibold',
-                        color: 'neutral-800',
                         overflow: 'hidden',
                         styles: { 'text-overflow': 'ellipsis', 'white-space': 'nowrap' },
                       },
@@ -76,8 +72,8 @@ export const conversationList: SchemaNode = {
                     then: {
                       type: 'we-text',
                       props: {
-                        fontSize: '200',
-                        color: 'neutral-500',
+                        variant: 'footnote',
+                        color: 'neutral-400',
                         styles: {
                           display: '-webkit-box',
                           '-webkit-line-clamp': '3',

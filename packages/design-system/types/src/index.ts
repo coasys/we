@@ -19,7 +19,7 @@ export type FlexCrossAxis = 'start' | 'center' | 'end' | 'stretch';
 export type Position = 'relative' | 'absolute' | 'fixed' | 'sticky';
 export type Overflow = 'hidden' | 'auto' | 'overlay';
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
-export type FontWeight = FontWeightToken | 'light' | 'normal' | 'medium' | 'bold' | 'bolder';
+export type FontWeight = FontWeightToken | 'light' | 'normal' | 'bolder';
 export type Cursor = 'pointer' | 'default' | 'text' | 'not-allowed';
 export type TextDecoration = 'underline' | 'line-through' | 'overline' | 'none';
 export type TextTransform = 'uppercase' | 'lowercase' | 'capitalize' | 'none';
@@ -43,6 +43,9 @@ export type Placement =
 
 export interface DesignSystemProps {
   bg?: ColorValue;
+  bgImage?: string;
+  bgFit?: 'cover' | 'contain';
+  bgPosition?: string;
   color?: ColorValue;
 
   // Visual Effects

@@ -1,6 +1,7 @@
 import type { RouteSchema, SchemaNode } from '@we/schema-shared';
 
 import { marketplaceBrowser } from './MarketplaceBrowser.ts';
+import { themeMarketplaceBrowser } from './ThemeMarketplaceBrowser.ts';
 
 const templateRow: SchemaNode = {
   type: 'Row',
@@ -23,7 +24,7 @@ const templateRow: SchemaNode = {
       props: { ay: 'center', gap: '300' },
       children: [
         { type: 'we-icon', props: { name: '$template.meta.icon' } },
-        { type: 'we-text', props: { fontWeight: '600' }, children: ['$template.meta.name'] },
+        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$template.meta.name'] },
       ],
     },
     {
@@ -41,6 +42,53 @@ const templateRow: SchemaNode = {
             variant: 'secondary',
             size: 'sm',
             onClick: { $action: 'spaceStore.setSpaceDefaultTemplate', args: ['$template.id'] },
+          },
+          children: ['Set as default'],
+        },
+      },
+    },
+  ],
+};
+
+const themeRow: SchemaNode = {
+  type: 'Row',
+  props: {
+    ay: 'center',
+    ax: 'between',
+    p: '300',
+    r: '300',
+    bg: {
+      $if: {
+        condition: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
+        then: 'neutral-200',
+        else: 'neutral-50',
+      },
+    },
+  },
+  children: [
+    {
+      type: 'Row',
+      props: { ay: 'center', gap: '300' },
+      children: [
+        { type: 'we-icon', props: { name: '$theme.icon' } },
+        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$theme.name'] },
+      ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
+        then: {
+          type: 'we-badge',
+          props: { variant: 'primary', size: 'sm' },
+          children: ['Default'],
+        },
+        else: {
+          type: 'we-button',
+          props: {
+            variant: 'secondary',
+            size: 'sm',
+            onClick: { $action: 'spaceStore.setSpaceDefaultTheme', args: ['$theme.id'] },
           },
           children: ['Set as default'],
         },
@@ -84,9 +132,10 @@ const saveOnBlur = [
 export const settingsRoute: RouteSchema = {
   path: '/settings',
   type: 'Column',
-  props: { width: '100%', ax: 'center', height: 'calc(100vh - 72px)' },
+  props: { width: '100%', ax: 'center', height: 'calc(100vh - 73px)' },
   $localState: {
     showMarketplace: { type: 'boolean', initial: false },
+    showThemeMarketplace: { type: 'boolean', initial: false },
     editName: { type: 'string', initial: { $store: 'spaceStore.currentSpace.name' } },
     editDescription: { type: 'string', initial: { $store: 'spaceStore.currentSpace.description' } },
     saving: { type: 'boolean', initial: false },
@@ -98,12 +147,12 @@ export const settingsRoute: RouteSchema = {
   children: [
     {
       type: 'Column',
-      props: { width: '100%', maxWidth: '1200px', gap: '500', px: '400', pt: '500' },
+      props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '500', px: '400', py: '500' },
       children: [
         // About this space
         {
-          type: 'Column',
-          props: { gap: '500', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          type: 'Card',
+          props: { bg: 'neutral-100', border: '1px solid neutral-200' },
           children: [
             // Header row — title + saving spinner
             {
@@ -116,12 +165,11 @@ export const settingsRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '700', fontWeight: 'bold', color: 'primary-700' },
+                      props: { variant: 'heading-md' },
                       children: ['About this space'],
                     },
                     {
                       type: 'we-text',
-                      props: { color: 'neutral-600' },
                       children: ['Manage how this space appears to others.'],
                     },
                   ],
@@ -141,7 +189,7 @@ export const settingsRoute: RouteSchema = {
               type: 'Column',
               props: { gap: '100' },
               children: [
-                { type: 'we-text', props: { fontSize: '500', color: 'neutral-600' }, children: ['Name'] },
+                { type: 'we-text', props: { color: 'neutral-700' }, children: ['Name'] },
                 {
                   type: 'we-form-field',
                   children: [
@@ -150,13 +198,13 @@ export const settingsRoute: RouteSchema = {
                       props: {
                         value: { $local: 'editName' },
                         disabled: { $local: 'saving' },
+                        fontSize: '500',
+                        fontWeight: 'semibold',
                         onInput: [
                           { $setLocal: 'editName', from: '$event.detail' },
                           { $setLocal: 'isDirty', value: true },
                         ],
                         onBlur: saveOnBlur,
-                        fontSize: '600',
-                        fontWeight: 'bold',
                       },
                     },
                   ],
@@ -169,7 +217,7 @@ export const settingsRoute: RouteSchema = {
               type: 'Column',
               props: { gap: '100' },
               children: [
-                { type: 'we-text', props: { fontSize: '500', color: 'neutral-600' }, children: ['Description'] },
+                { type: 'we-text', props: { color: 'neutral-700' }, children: ['Description'] },
                 {
                   type: 'we-form-field',
                   children: [
@@ -210,7 +258,7 @@ export const settingsRoute: RouteSchema = {
                           children: [
                             {
                               type: 'we-text',
-                              props: { color: 'neutral-700', fontWeight: 'bold' },
+                              props: { fontWeight: 'bold', color: 'neutral-700' },
                               children: ['Discovery:'],
                             },
                             {
@@ -230,7 +278,7 @@ export const settingsRoute: RouteSchema = {
                         },
                         {
                           type: 'we-text',
-                          props: { color: 'neutral-700', fontSize: '400' },
+                          props: { variant: 'body' },
                           children: [
                             {
                               $if: {
@@ -292,7 +340,7 @@ export const settingsRoute: RouteSchema = {
                           children: [
                             {
                               type: 'we-text',
-                              props: { color: 'neutral-700', fontWeight: 'bold' },
+                              props: { fontWeight: 'bold', color: 'neutral-700' },
                               children: ['Location:'],
                             },
                             {
@@ -453,8 +501,8 @@ export const settingsRoute: RouteSchema = {
 
         // Default Template
         {
-          type: 'Column',
-          props: { gap: '500', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          type: 'Card',
+          props: { bg: 'neutral-100', border: '1px solid neutral-200' },
           children: [
             {
               type: 'Column',
@@ -462,12 +510,11 @@ export const settingsRoute: RouteSchema = {
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '700', fontWeight: 'bold', color: 'primary-700' },
+                  props: { variant: 'heading-md' },
                   children: ['Default Template'],
                 },
                 {
                   type: 'we-text',
-                  props: { color: 'neutral-600' },
                   children: ['Choose the template members see when they enter this space.'],
                 },
               ],
@@ -480,12 +527,12 @@ export const settingsRoute: RouteSchema = {
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
-                  children: ['Core Templates'],
+                  props: { variant: 'body', fontWeight: 'semibold', textTransform: 'uppercase' },
+                  children: ['Built-in Templates'],
                 },
                 {
                   type: '$each',
-                  props: { items: { $store: 'templateStore.coreTemplates' }, as: 'template' },
+                  props: { items: { $store: 'templateStore.builtInTemplates' }, as: 'template' },
                   children: [templateRow],
                 },
               ],
@@ -502,7 +549,11 @@ export const settingsRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
+                      props: {
+                        variant: 'body',
+                        fontWeight: 'semibold',
+                        textTransform: 'uppercase',
+                      },
                       children: ['Space Templates'],
                     },
                     {
@@ -526,12 +577,16 @@ export const settingsRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '400', fontWeight: '600', color: 'neutral-500', textTransform: 'uppercase' },
+                      props: {
+                        variant: 'body',
+                        fontWeight: 'semibold',
+                        textTransform: 'uppercase',
+                      },
                       children: ['Browse Marketplace'],
                     },
                     {
                       type: 'we-text',
-                      props: { color: 'neutral-800', fontSize: '400' },
+                      props: { variant: 'body' },
                       children: ['Install templates from the marketplace into this space.'],
                     },
                   ],
@@ -568,8 +623,8 @@ export const settingsRoute: RouteSchema = {
 
         // Default Theme
         {
-          type: 'Column',
-          props: { gap: '400', p: '500', bg: 'neutral-100', r: '400', border: '1px solid neutral-200' },
+          type: 'Card',
+          props: { bg: 'neutral-100', border: '1px solid neutral-200' },
           children: [
             {
               type: 'Column',
@@ -577,67 +632,113 @@ export const settingsRoute: RouteSchema = {
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '700', fontWeight: 'bold', color: 'primary-700' },
+                  props: { variant: 'heading-md' },
                   children: ['Default Theme'],
                 },
                 {
                   type: 'we-text',
-                  props: { color: 'neutral-600' },
                   children: ['Choose the theme members see when they enter this space.'],
                 },
               ],
             },
+
+            // Built-in themes
             {
-              type: '$each',
-              props: { items: { $store: 'themeStore.allThemes' }, as: 'theme' },
+              type: 'Column',
+              props: { gap: '200' },
               children: [
                 {
-                  type: 'Row',
-                  props: {
-                    ay: 'center',
-                    ax: 'between',
-                    p: '300',
-                    r: '300',
-                    bg: {
-                      $if: {
-                        condition: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
-                        then: 'neutral-200',
-                        else: 'neutral-50',
-                      },
-                    },
-                  },
+                  type: 'we-text',
+                  props: { variant: 'body', fontWeight: 'semibold', textTransform: 'uppercase' },
+                  children: ['Built-in Themes'],
+                },
+                {
+                  type: '$each',
+                  props: { items: { $store: 'themeStore.builtInThemes' }, as: 'theme' },
+                  children: [themeRow],
+                },
+              ],
+            },
+
+            // Space themes (only shown when present)
+            {
+              type: '$if',
+              props: {
+                condition: { $count: { items: { $store: 'themeStore.spaceThemes' } } },
+                then: {
+                  type: 'Column',
+                  props: { gap: '200' },
                   children: [
                     {
-                      type: 'Row',
-                      props: { ay: 'center', gap: '300' },
-                      children: [
-                        { type: 'we-icon', props: { name: '$theme.icon' } },
-                        { type: 'we-text', props: { fontWeight: '600' }, children: ['$theme.name'] },
-                      ],
+                      type: 'we-text',
+                      props: {
+                        variant: 'body',
+                        fontWeight: 'semibold',
+                        textTransform: 'uppercase',
+                      },
+                      children: ['Space Themes'],
                     },
+                    {
+                      type: '$each',
+                      props: { items: { $store: 'themeStore.spaceThemes' }, as: 'theme' },
+                      children: [themeRow],
+                    },
+                  ],
+                },
+              },
+            },
+
+            // Browse Marketplace
+            {
+              type: 'Row',
+              props: { ax: 'between', ay: 'center' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: {
+                        variant: 'body',
+                        fontWeight: 'semibold',
+                        textTransform: 'uppercase',
+                      },
+                      children: ['Browse Marketplace'],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'body' },
+                      children: ['Install themes from the marketplace into this space.'],
+                    },
+                  ],
+                },
+                {
+                  type: 'we-button',
+                  props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: 'showThemeMarketplace' } },
+                  children: [
                     {
                       type: '$if',
                       props: {
-                        condition: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
-                        then: {
-                          type: 'we-badge',
-                          props: { variant: 'primary', size: 'sm' },
-                          children: ['Default'],
-                        },
+                        condition: { $local: 'showThemeMarketplace' },
+                        then: { type: 'we-text', children: ['Hide'] },
                         else: {
-                          type: 'we-button',
-                          props: {
-                            variant: 'secondary',
-                            size: 'sm',
-                            onClick: { $action: 'spaceStore.setSpaceDefaultTheme', args: ['$theme.id'] },
-                          },
-                          children: ['Set as default'],
+                          type: 'Row',
+                          props: { gap: '200', ay: 'center' },
+                          children: [
+                            { type: 'we-icon', props: { name: 'magnifying-glass' } },
+                            { type: 'we-text', children: ['Browse'] },
+                          ],
                         },
                       },
                     },
                   ],
                 },
               ],
+            },
+            {
+              type: '$if',
+              props: { condition: { $local: 'showThemeMarketplace' }, then: themeMarketplaceBrowser },
             },
           ],
         },

@@ -14,7 +14,7 @@ export const THEME_RAIL_WIDTH = RAIL_STRIP_WIDTH; // theme strip only
 
 /**
  * True while any panel rail is being dragged to resize. Module-level so
- * TemplateLayout and TemplateToolbar can disable their CSS transitions during
+ * TemplateLayout and DesignToolbar can disable their CSS transitions during
  * drag, keeping the canvas edge in sync with the panel edge.
  */
 export const [panelResizing, setPanelResizing] = createSignal(false);
@@ -144,7 +144,7 @@ export function RightPanelContainer() {
   // Slide the container off-screen when neither editing mode is active.
   // When either mode is active, translateX(0) keeps it visible.
   const containerTransform = () => {
-    if (aiStore.isEditingTemplate() || aiStore.isEditingTheme()) return 'translateX(0)';
+    if (aiStore.isEditingTemplate() || aiStore.isEditingTheme()) return 'none';
     let w = TOTAL_RAIL_WIDTH;
     if (aiStore.isOpen()) w += aiStore.aiPanelWidth();
     if (aiStore.codePanelOpen()) w += aiStore.codePanelWidth();

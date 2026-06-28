@@ -10,7 +10,7 @@ export const spaceHeader: SchemaNode = {
       children: [
         {
           type: 'Column',
-          props: { width: '100%', maxWidth: '1200px' },
+          props: { width: '100%', maxWidth: 'var(--we-layout-lg)' },
           children: [
             // Cover image
             {
@@ -41,7 +41,7 @@ export const spaceHeader: SchemaNode = {
                     width: '120px',
                     height: '120px',
                     r: 'pill',
-                    ring: '0 0 0 3px var(--we-color-neutral-500)',
+                    ring: '0 0 0 2px var(--we-ring-color)',
                     placeholderIcon: 'users-three',
                     onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['avatar', '$arg'] },
                   },
@@ -53,7 +53,7 @@ export const spaceHeader: SchemaNode = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '700', fontWeight: 'bold' },
+                      props: { variant: 'heading-md', color: 'neutral-1000' },
                       children: [{ $store: 'spaceStore.currentSpace.name' }],
                     },
                     {
@@ -62,12 +62,12 @@ export const spaceHeader: SchemaNode = {
                         condition: { $store: 'spaceStore.currentSpace.description' },
                         then: {
                           type: 'we-text',
-                          props: { color: 'neutral-700', truncate: true },
+                          props: { truncate: true },
                           children: [{ $store: 'spaceStore.currentSpace.description' }],
                         },
                         else: {
                           type: 'we-text',
-                          props: { color: 'neutral-500', italic: true },
+                          props: { italic: true },
                           children: ['No description...'],
                         },
                       },
@@ -90,7 +90,7 @@ export const spaceHeader: SchemaNode = {
                             },
                             max: 5,
                             size: 'sm',
-                            ring: '0 0 0 2px var(--we-color-neutral-500)',
+                            ring: '0 0 0 2px var(--we-ring-color)',
                           },
                         },
                         {
@@ -102,12 +102,11 @@ export const spaceHeader: SchemaNode = {
                               props: {
                                 value: { $count: { items: { $store: 'spaceStore.members' } } },
                                 shorten: true,
-                                color: 'neutral-600',
                               },
                             },
                             {
                               type: 'we-text',
-                              props: { color: 'neutral-500' },
+                              props: {},
                               children: [
                                 {
                                   $plural: {
@@ -177,7 +176,7 @@ export const spaceNavBar: SchemaNode = {
             },
             {
               type: 'we-text',
-              props: { fontWeight: '600' },
+              props: { fontWeight: 'semibold' },
               children: [{ $store: 'spaceStore.currentSpace.name' }],
             },
           ],
@@ -186,7 +185,7 @@ export const spaceNavBar: SchemaNode = {
     },
     {
       type: 'Column',
-      props: { width: '100%', maxWidth: '1200px' },
+      props: { width: '100%', maxWidth: 'var(--we-layout-lg)' },
       children: [
         {
           type: 'Row',
@@ -226,7 +225,10 @@ export const spaceNavBar: SchemaNode = {
                       },
                       children: [
                         { type: 'we-icon', props: { name: '$view.icon' } },
-                        { type: 'we-text', props: { fontSize: '500' }, children: ['$view.label'] },
+                        {
+                          type: 'we-text',
+                          children: ['$view.label'],
+                        },
                       ],
                     },
                   ],

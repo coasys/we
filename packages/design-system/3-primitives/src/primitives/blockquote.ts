@@ -8,10 +8,11 @@ import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'block',
+  r: '400',
   px: '400',
   py: '200',
   color: 'neutral-600',
-  fontSize: '400',
+  fontSize: '300',
 };
 
 const styles = css`

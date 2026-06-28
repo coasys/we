@@ -11,10 +11,9 @@ import type { ComponentSize, ComponentVariant } from '../types';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'neutral-100',
   color: 'neutral-500',
-  fontSize: '400',
+  fontSize: '300',
   fontWeight: '400',
   r: '400',
-  px: '400',
   cursor: 'default',
   ax: 'center',
   ay: 'center',
@@ -29,11 +28,11 @@ const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '200', px: '200', height: 'var(--we-component-height-xs)' },
-  sm: { fontSize: '300', px: '300', height: 'var(--we-component-height-sm)' },
-  md: { fontSize: '400', px: '400', height: 'var(--we-component-height-md)' },
-  lg: { fontSize: '500', px: '500', height: 'var(--we-component-height-lg)' },
-  xl: { fontSize: '500', px: '600', height: 'var(--we-component-height-xl)' },
+  xs: { fontSize: '100', height: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))' },
+  sm: { fontSize: '200', height: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px))' },
+  md: { fontSize: '300', height: 'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px))' },
+  lg: { fontSize: '500', height: 'calc(var(--we-component-height-lg) + var(--we-theme-control-height-offset, 0px))' },
+  xl: { fontSize: '500', height: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))' },
 };
 
 const styles = css`
@@ -41,21 +40,40 @@ const styles = css`
     --we-badge-host-display: inline-flex;
   }
 
-  /* Provide icon sizing context for slotted we-icon children */
+  /* Provide icon sizing context and size-specific padding/gap for slotted we-icon children */
   :host([size='xs']) {
     --we-context-icon-size: var(--we-size-xxs);
+    --we-badge-size-padding-x: var(--we-space-200);
+    --we-badge-size-gap: var(--we-space-100);
   }
   :host([size='sm']) {
     --we-context-icon-size: var(--we-size-xs);
+    --we-badge-size-padding-x: var(--we-space-300);
+    --we-badge-size-gap: var(--we-space-200);
   }
   :host([size='md']) {
     --we-context-icon-size: var(--we-size-sm);
+    --we-badge-size-padding-x: var(--we-space-400);
   }
   :host([size='lg']) {
     --we-context-icon-size: var(--we-size-md);
+    --we-badge-size-padding-x: var(--we-space-500);
   }
   :host([size='xl']) {
     --we-context-icon-size: var(--we-size-lg);
+    --we-badge-size-padding-x: var(--we-space-500);
+  }
+
+  [part='base'] {
+    /* Padding cascade: explicit prop (full shorthand) → component theme → group density → size default (x-only) */
+    padding: var(
+      --we-badge-padding,
+      0
+        var(
+          --we-theme-badge-padding-x,
+          var(--we-theme-control-padding-x, var(--we-badge-size-padding-x, var(--we-space-400)))
+        )
+    );
   }
 `;
 

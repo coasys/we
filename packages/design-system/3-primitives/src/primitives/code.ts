@@ -9,7 +9,7 @@ import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   fontFamily: 'monospace',
-  fontSize: '300',
+  fontSize: '200',
   r: '300',
 };
 
@@ -38,6 +38,11 @@ export default class Code extends DesignSystemElement {
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  override getRawProps() {
+    const modeDefaults = MODE_DEFAULTS[this.block ? 'block' : 'inline'];
+    return { ...modeDefaults, ...super.getRawProps() };
   }
 
   override getInstanceProps() {

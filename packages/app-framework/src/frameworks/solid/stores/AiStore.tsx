@@ -1,6 +1,6 @@
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { deepClone } from '@shared/utils';
-import { useAdamStore, useTemplateStore } from '@solid/stores';
+import { useAdamStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import { contextData, schemaContext } from '@we/ai-context';
 import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
@@ -277,6 +277,7 @@ const starterTemplate: SchemaNode = {
 export function AiStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
   const templateStore = useTemplateStore();
+  const themeStore = useThemeStore();
 
   // Reactive validation context — perspective-accurate model allowlist.
   // When a perspective is active its full manifest (WE + external) is used to
@@ -315,7 +316,7 @@ export function AiStoreProvider(props: ParentProps) {
   const templateIcon = () => templateStore.currentTemplate.meta?.icon || 'cube';
   const isReadOnly = () => {
     const id = templateStore.currentTemplate.id;
-    return !!id && templateStore.isCoreTemplate(id);
+    return !!id && templateStore.isBuiltInTemplate(id);
   };
 
   // --- Pending changes (buffered edits for read-only templates) ---
@@ -404,7 +405,7 @@ export function AiStoreProvider(props: ParentProps) {
   /** Load sessions for a given template and activate the most recent one */
   async function loadSessionsForTemplate(templateId: string) {
     // Core (read-only) templates use ephemeral in-memory sessions
-    if (templateStore.isCoreTemplate(templateId)) {
+    if (templateStore.isBuiltInTemplate(templateId)) {
       setSessions([]);
       setActiveSessionId(null);
       activeSessionModel = null;
@@ -457,7 +458,7 @@ export function AiStoreProvider(props: ParentProps) {
   /** Create a new chat session for the current template */
   async function newChat() {
     const templateId = templateStore.currentTemplate.id;
-    if (!templateId || templateStore.isCoreTemplate(templateId)) {
+    if (!templateId || templateStore.isBuiltInTemplate(templateId)) {
       // For core templates, clear in-memory messages (ephemeral sessions)
       setMessages([]);
       setMessages((prev) => [...prev, createMessage('assistant', 'Chat cleared. Start a new conversation!')]);
@@ -567,6 +568,7 @@ export function AiStoreProvider(props: ParentProps) {
     setEditAction(action);
     setIsEditingTemplate(true);
     setIsOpen(true);
+    setThemePanelOpen(false);
   }
 
   function exitTemplateEditing() {
@@ -581,16 +583,20 @@ export function AiStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   // Theme editing mode (independent of template editing)
   // ----------------------------------------------------------------
-  const [isEditingTheme, setIsEditingTheme] = createSignal(false);
+  // Derived from ThemeStore — single source of truth for whether a theme is being edited.
+  const isEditingTheme: Accessor<boolean> = () => !!themeStore.editingTheme();
 
   function enterThemeEditing() {
-    setIsEditingTheme(true);
     setThemePanelOpen(true);
+    setIsOpen(false);
+    setCodePanelOpen(false);
   }
 
   function exitThemeEditing() {
-    setIsEditingTheme(false);
+    // Close panel first so ThemePanel.onCleanup fires and saves any pending debounced changes
+    // before cancelEditing clears editingTheme (which would make saveEditingTheme bail early).
     setThemePanelOpen(false);
+    themeStore.cancelEditing();
   }
 
   function toggleThemeEditing() {
@@ -758,7 +764,7 @@ export function AiStoreProvider(props: ParentProps) {
   async function sendMessage(text: string) {
     // Lazy session creation for custom templates: if no active session, create one
     const templateId = templateStore.currentTemplate.id;
-    if (templateId && !templateStore.isCoreTemplate(templateId) && !activeSessionModel) {
+    if (templateId && !templateStore.isBuiltInTemplate(templateId) && !activeSessionModel) {
       await newChat();
     }
 

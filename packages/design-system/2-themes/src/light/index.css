@@ -1,0 +1,3 @@
+/* Light theme — parametric values (multiplier, subtractor, saturation, neutralSaturation)
+   are now carried in the theme's overrides field and applied as inline styles by ThemeStore.
+   No component-level overrides needed for light. */

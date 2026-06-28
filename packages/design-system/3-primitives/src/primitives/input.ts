@@ -12,7 +12,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
   ay: 'center',
   px: '300',
-  fontSize: '400',
+  fontSize: '300',
   bg: 'neutral-50',
   r: '300',
   color: 'neutral-1000',
@@ -22,11 +22,31 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { px: '100', fontSize: '200', height: 'var(--we-component-height-xs)' },
-  sm: { px: '200', fontSize: '300', height: 'var(--we-component-height-sm)' },
-  md: { px: '300', fontSize: '400', height: 'var(--we-component-height-md)' },
-  lg: { px: '400', fontSize: '500', height: 'var(--we-component-height-lg)' },
-  xl: { px: '500', fontSize: '500', height: 'var(--we-component-height-xl)' },
+  xs: {
+    px: '100',
+    fontSize: '100',
+    height: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))',
+  },
+  sm: {
+    px: '200',
+    fontSize: '200',
+    height: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px))',
+  },
+  md: {
+    px: '300',
+    fontSize: '300',
+    height: 'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px))',
+  },
+  lg: {
+    px: '400',
+    fontSize: '400',
+    height: 'calc(var(--we-component-height-lg) + var(--we-theme-control-height-offset, 0px))',
+  },
+  xl: {
+    px: '500',
+    fontSize: '400',
+    height: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))',
+  },
 };
 
 const styles = css`

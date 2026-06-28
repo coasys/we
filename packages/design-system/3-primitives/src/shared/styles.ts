@@ -4,6 +4,8 @@ export default css`
   :host {
     box-sizing: border-box;
     font-family: var(--we-font-family);
+    letter-spacing: var(--we-theme-letter-spacing, normal);
+    line-height: var(--we-theme-line-height, normal);
   }
 
   :host *,

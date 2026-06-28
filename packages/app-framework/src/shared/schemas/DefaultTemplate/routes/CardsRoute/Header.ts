@@ -5,6 +5,7 @@ const contentTypeOptions = [
   { label: 'Users', value: 'users', icon: 'user' },
   { label: 'Spaces', value: 'spaces', icon: 'users-three' },
   { label: 'Templates', value: 'templates', icon: 'layout' },
+  { label: 'Themes', value: 'themes', icon: 'paint-brush' },
   { label: 'Text', value: 'text-blocks', icon: 'text-aa', group: 'Blocks' },
   { label: 'Images', value: 'image-blocks', icon: 'image', group: 'Blocks' },
   { label: 'Audio', value: 'audio-blocks', icon: 'music-note', group: 'Blocks' },

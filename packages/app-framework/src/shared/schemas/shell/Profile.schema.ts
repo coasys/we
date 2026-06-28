@@ -52,7 +52,7 @@ export const profileTemplate: TemplateSchema = {
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '700', fontWeight: 'bold' },
+                  props: { variant: 'heading-md' },
                   children: [
                     {
                       $concat: [
@@ -71,7 +71,7 @@ export const profileTemplate: TemplateSchema = {
                 condition: { $store: 'adamStore.ownAgent.handle' },
                 then: {
                   type: 'we-text',
-                  props: { fontSize: '400', color: 'neutral-500' },
+                  props: { variant: 'body' },
                   children: [{ $concat: ['@', { $store: 'adamStore.ownAgent.handle' }] }],
                 },
               },
@@ -86,7 +86,7 @@ export const profileTemplate: TemplateSchema = {
             condition: { $store: 'adamStore.ownAgent.bio' },
             then: {
               type: 'we-text',
-              props: { fontSize: '400', lineHeight: '1.5' },
+              props: { variant: 'body', lineHeight: '1.5' },
               children: [{ $store: 'adamStore.ownAgent.bio' }],
             },
           },
@@ -101,10 +101,10 @@ export const profileTemplate: TemplateSchema = {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'map-pin', size: '20px', color: 'neutral-500' } },
+                { type: 'we-icon', props: { name: 'map-pin', size: '20px' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '400', color: 'neutral-500' },
+                  props: { variant: 'body' },
                   children: [
                     {
                       $concat: [
@@ -125,10 +125,10 @@ export const profileTemplate: TemplateSchema = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'key', size: '20px', color: 'neutral-500' } },
+            { type: 'we-icon', props: { name: 'key', size: '20px' } },
             {
               type: 'we-text',
-              props: { fontSize: '400', color: 'neutral-500' },
+              props: { variant: 'body' },
               children: [{ $store: 'adamStore.me.did' }],
             },
           ],
@@ -136,17 +136,16 @@ export const profileTemplate: TemplateSchema = {
 
         // ── Editable fields ──
         {
-          type: 'Column',
-          props: { gap: '400', p: '400', r: '300', bg: 'neutral-0' },
+          type: 'Card',
+          props: { bg: 'neutral-0' },
           children: [
             {
               type: 'Row',
               props: { gap: '300', ay: 'center', mb: '200' },
               children: [
-                { type: 'we-icon', props: { name: 'pencil', color: 'neutral-500' } },
+                { type: 'we-icon', props: { name: 'pencil' } },
                 {
                   type: 'we-text',
-                  props: { color: 'neutral-700' },
                   children: ['Edit Profile'],
                 },
               ],

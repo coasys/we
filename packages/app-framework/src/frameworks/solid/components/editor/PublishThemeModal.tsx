@@ -3,6 +3,7 @@ import { createMemo, createSignal, For, Show } from 'solid-js';
 
 import { useAdamStore } from '../../stores/AdamStore';
 import { useThemeStore } from '../../stores/ThemeStore';
+import { TemplateCard } from '../marketplace/TemplateCard';
 
 const MAX_SCREENSHOTS = 4;
 
@@ -14,15 +15,24 @@ export function PublishThemeModal(props: Props) {
   const adamStore = useAdamStore();
   const themeStore = useThemeStore();
 
-  const base = themeStore.editingTheme() ?? themeStore.currentTheme();
+  const base = () => themeStore.editingTheme() ?? themeStore.currentTheme();
 
-  const [name, setName] = createSignal(base.name ?? '');
+  const [name, setName] = createSignal(base().name ?? '');
   const [description, setDescription] = createSignal('');
   const [screenshots, setScreenshots] = createSignal<File[]>([]);
   const [screenshotPreviews, setScreenshotPreviews] = createSignal<string[]>([]);
   const [publishing, setPublishing] = createSignal(false);
 
   const canPublish = createMemo(() => name().trim().length > 0);
+
+  const previewTheme = createMemo(() => ({
+    name: name() || 'Theme name',
+    description: description(),
+    version: base().version ?? 1,
+    icon: base().icon,
+    author: adamStore.me()?.did,
+    screenshots: screenshotPreviews(),
+  }));
 
   const addScreenshot = (file: File) => {
     if (screenshots().length >= MAX_SCREENSHOTS) return;
@@ -123,14 +133,13 @@ export function PublishThemeModal(props: Props) {
           </Row>
         </Column>
 
-        {/* Author info */}
-        <Row gap="200" ay="center" bg="neutral-50" r="300" p="300">
-          <we-avatar initials={adamStore.me()?.did ?? ''} size="sm" />
-          <Column gap="0">
-            <we-text variant="label">Publishing as</we-text>
-            <we-text variant="footnote">{adamStore.me()?.did}</we-text>
-          </Column>
-        </Row>
+        {/* Card preview */}
+        <Column gap="200">
+          <we-text variant="label" color="neutral-500">
+            Preview
+          </we-text>
+          <TemplateCard template={previewTheme()} mode="preview" />
+        </Column>
       </Column>
 
       <Row ax="end" gap="200" pt="400" mt="100">

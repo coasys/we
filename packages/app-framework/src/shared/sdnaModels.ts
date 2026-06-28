@@ -59,6 +59,7 @@ export async function installRootSdna(p: PerspectiveProxy): Promise<void> {
 export const SPACE_MODELS = [
   Space,
   Template,
+  Theme,
   WeNode,
   AudioBlock,
   CalloutBlock,

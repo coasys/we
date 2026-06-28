@@ -28,7 +28,7 @@ const styles = css`
     border-radius: var(--we-radius-400);
     background: var(--we-color-neutral-0);
     padding: 0 var(--we-space-300);
-    height: var(--we-component-height-md);
+    height: calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px));
     cursor: pointer;
     width: 100%;
     box-sizing: border-box;

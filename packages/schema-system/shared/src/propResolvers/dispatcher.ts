@@ -79,7 +79,8 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$pick', 'object'))
       return resolvePickProp(value['$pick'] as PickProp, stores, context, memo, resolveProp);
     if (hasToken(value, '$if', 'object')) return resolveIfProp(value, stores, context, memo, resolveProp);
-    if (hasToken(value, '$not', 'object')) return resolveNotProp(value, stores, context, memo, resolveProp);
+    if (hasToken(value, '$not', 'object') || hasToken(value, '$not', 'string'))
+      return resolveNotProp(value, stores, context, memo, resolveProp);
     if (hasToken(value, '$eq', 'array')) return resolveEqProp(value, stores, context, memo, resolveProp);
     if (hasToken(value, '$ne', 'array')) return resolveNeProp(value, stores, context, memo, resolveProp);
     if (hasToken(value, '$lt', 'array')) return resolveLtProp(value, stores, context, memo, resolveProp);

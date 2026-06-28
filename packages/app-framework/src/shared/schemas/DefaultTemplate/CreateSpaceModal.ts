@@ -20,7 +20,7 @@ export const createSpaceModal = {
     submitting: { type: 'boolean', initial: false },
   },
   children: [
-    { type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Create a New Space'] },
+    { type: 'we-text', props: { variant: 'heading-md' }, children: ['Create a New Space'] },
 
     // Cover image
     {
@@ -51,7 +51,7 @@ export const createSpaceModal = {
             width: '120px',
             height: '120px',
             r: 'full',
-            ring: '0 0 0 3px var(--we-color-neutral-500)',
+            ring: '0 0 0 2px var(--we-ring-color)',
             placeholderIcon: 'image',
             onImageChange: { $setLocal: 'avatar', from: '$event' },
           },
@@ -166,7 +166,7 @@ export const createSpaceModal = {
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '400', fontWeight: 'medium' },
+              props: { variant: 'body', fontWeight: 'medium' },
               children: [
                 {
                   $if: {
@@ -179,7 +179,7 @@ export const createSpaceModal = {
             },
             {
               type: 'we-text',
-              props: { fontSize: '300', color: 'neutral-400' },
+              props: { variant: 'footnote', color: 'neutral-400' },
               children: [
                 {
                   $if: {
@@ -227,33 +227,42 @@ export const createSpaceModal = {
               props: { gap: '100', flex: '1' },
               children: [
                 {
-                  type: 'we-text',
+                  type: '$if',
                   props: {
-                    fontSize: '400',
-                    fontWeight: 'medium',
-                    color: {
-                      $if: {
-                        condition: {
-                          $and: [{ $eq: [{ $local: 'access' }, 'shared'] }, { $store: 'adamStore.globalPerspective' }],
+                    condition: {
+                      $and: [{ $eq: [{ $local: 'access' }, 'shared'] }, { $store: 'adamStore.globalPerspective' }],
+                    },
+                    then: {
+                      type: 'we-text',
+                      props: { variant: 'body', fontWeight: 'medium' },
+                      children: [
+                        {
+                          $if: {
+                            condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
+                            then: 'Listed in Global Discovery',
+                            else: 'Unlisted',
+                          },
                         },
-                        then: 'neutral-800',
-                        else: 'neutral-400',
-                      },
+                      ],
+                    },
+                    else: {
+                      type: 'we-text',
+                      props: { variant: 'body', fontWeight: 'medium' },
+                      children: [
+                        {
+                          $if: {
+                            condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
+                            then: 'Listed in Global Discovery',
+                            else: 'Unlisted',
+                          },
+                        },
+                      ],
                     },
                   },
-                  children: [
-                    {
-                      $if: {
-                        condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
-                        then: 'Listed in Global Discovery',
-                        else: 'Unlisted',
-                      },
-                    },
-                  ],
                 },
                 {
                   type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-400' },
+                  props: { variant: 'footnote', color: 'neutral-400' },
                   children: [
                     {
                       $if: {
@@ -306,10 +315,10 @@ export const createSpaceModal = {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'info', size: 'sm', color: 'neutral-400' } },
+                { type: 'we-icon', props: { name: 'info', size: 'sm' } },
                 {
                   type: 'we-text',
-                  props: { fontSize: '300', color: 'neutral-400' },
+                  props: { variant: 'footnote', color: 'neutral-400' },
                   children: ['Join the WE discovery space to list your space globally.'],
                 },
               ],
@@ -336,8 +345,6 @@ export const createSpaceModal = {
           type: 'we-button',
           props: {
             text: 'Create Space',
-            bg: 'primary-500',
-            color: 'neutral-0',
             height: '40px',
             loading: { $local: 'submitting' },
             disabled: { $local: 'submitting' },

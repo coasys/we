@@ -243,17 +243,17 @@ function pageHeader(card: (typeof CTA_CARDS)[0]) {
         type: 'Row',
         props: { ay: 'center', gap: '400' },
         children: [
-          { type: 'we-icon', props: { name: card.icon, size: 'lg', color: 'primary-600' } },
+          { type: 'we-icon', props: { name: card.icon, size: 'lg', color: 'primary-700' } },
           {
             type: 'we-text',
-            props: { fontSize: '700', fontWeight: 'bold', color: 'primary-600', textTransform: 'uppercase' },
+            props: { variant: 'heading-md', textTransform: 'uppercase' },
             children: [card.label],
           },
         ],
       },
       {
         type: 'we-text',
-        props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-800' },
+        props: { variant: 'heading-sm' },
         children: [card.title],
       },
       {
@@ -267,7 +267,7 @@ function pageHeader(card: (typeof CTA_CARDS)[0]) {
 function sectionHeader(text: string) {
   return {
     type: 'we-text',
-    props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-800', mt: '500' },
+    props: { variant: 'heading-md', mt: '500' },
     children: [text],
   };
 }
@@ -279,13 +279,13 @@ function subHeader(text: string, icon?: string) {
       props: { gap: '10px', ay: 'center', mb: '-10px' },
       children: [
         { type: 'we-icon', props: { name: icon, size: '36px', gradient: 'primary' } },
-        { type: 'we-text', props: { fontSize: '600', fontWeight: 'bold', color: 'primary-800' }, children: [text] },
+        { type: 'we-text', props: { variant: 'heading-sm', color: 'primary-700' }, children: [text] },
       ],
     };
   }
   return {
     type: 'we-text',
-    props: { fontSize: '600', fontWeight: 'bold', color: 'primary-900', mt: '300', mb: '300' },
+    props: { variant: 'heading-sm', mt: '300', mb: '300' },
     children: [text],
   };
 }
@@ -294,8 +294,6 @@ function bodyText(text: string, italic = false) {
   return {
     type: 'we-text',
     props: {
-      fontSize: '500',
-      color: 'neutral-700',
       lineHeight: '1.7',
       ...(italic ? { italic: true, fontWeight: 'medium' } : {}),
     },
@@ -308,16 +306,16 @@ function bulletItem(text: string) {
     type: 'Row',
     props: { gap: '300', ay: 'start' },
     children: [
-      { type: 'we-text', props: { fontSize: '700', color: 'neutral-500', mt: '-3px' }, children: ['•'] },
-      { type: 'we-text', props: { fontSize: '500', color: 'neutral-700', lineHeight: '1.6' }, children: [text] },
+      { type: 'we-text', props: { variant: 'heading-md', mt: '-3px' }, children: ['•'] },
+      { type: 'we-text', props: { lineHeight: '1.6' }, children: [text] },
     ],
   };
 }
 
 function boxSection(children: any) {
   return {
-    type: 'Column',
-    props: { gap: '400', p: '500', r: '500', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
+    type: 'Card',
+    props: { bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
     children,
   };
 }
@@ -325,17 +323,17 @@ function boxSection(children: any) {
 function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
   const imageCol = {
     type: 'Column',
-    props: { flex: '0 0 45%', overflow: 'hidden' },
+    props: { flex: '1 1 280px', overflow: 'hidden', minHeight: '280px' },
     children: [
       {
         type: 'we-image',
-        props: { src: card.image, alt: card.imageAlt, fit: 'cover', width: '100%', height: '320px' },
+        props: { src: card.image, alt: card.imageAlt, fit: 'cover', width: '100%', height: '100%' },
       },
     ],
   };
   const contentCol = {
     type: 'Column',
-    props: { p: '600', gap: '400', ay: 'center', ax: 'start' },
+    props: { p: '600', gap: '400', ay: 'center', ax: 'start', flex: '1 1 280px' },
     children: [
       {
         type: 'Row',
@@ -346,18 +344,16 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
             props: {
               name: card.icon,
               size: 'lg',
-              color: 'primary-600',
+              color: 'primary-700',
               // gradient: 'primary',
             },
           }, // color: 'neutral-500'
           {
             type: 'we-text',
             props: {
-              fontSize: '700',
-              fontWeight: 'bold',
+              variant: 'heading-md',
+              // color: 'primary-700',
               // gradient: 'primary',
-              // color: 'neutral-500',
-              color: 'primary-600',
               textTransform: 'uppercase',
               // letterSpacing: '0.08em',
             },
@@ -367,12 +363,12 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
       },
       {
         type: 'we-text',
-        props: { fontSize: '600', fontWeight: 'bold', color: 'neutral-700', lineHeight: '1.3' },
+        props: { variant: 'heading-sm', lineHeight: '1.3' },
         children: [card.title],
       },
       {
         type: 'we-text',
-        props: { fontSize: '400', color: 'neutral-700', lineHeight: '1.7' },
+        props: { variant: 'body', lineHeight: '1.7' },
         children: [card.preview],
       },
       {
@@ -388,25 +384,27 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
     ],
   };
   return {
-    type: 'Row',
+    type: 'Card',
     props: {
-      r: '600',
+      direction: 'row',
+      reverse: !imageLeft,
+      wrap: true,
       overflow: 'hidden',
       border: '1px solid var(--we-color-neutral-200)',
       width: '100%',
+      p: '0',
       bg: 'neutral-100',
     },
-    children: imageLeft ? [imageCol, contentCol] : [contentCol, imageCol],
+    children: [imageCol, contentCol],
   };
 }
 
 function roadmapItem(item: { title: string; description: string }, done: boolean) {
   return {
-    type: 'Row',
+    type: 'Card',
     props: {
-      gap: '400',
+      direction: 'row',
       ay: 'center',
-      r: '400',
       p: '400',
       bg: 'neutral-75',
       border: '1px solid var(--we-color-neutral-200)', //  done ? '1px solid var(--we-color-neutral-200)' : '2px dashed var(--we-color-neutral-400)',
@@ -429,16 +427,15 @@ function roadmapItem(item: { title: string; description: string }, done: boolean
           {
             type: 'we-text',
             props: {
-              fontSize: '500',
+              variant: 'subheading',
               fontWeight: 'bold',
-              color: 'neutral-800', // done ? 'neutral-800' : 'neutral-600',
+              color: 'primary-700',
               // lineHeight: '1.5',
             },
             children: [item.title],
           },
           {
             type: 'we-text',
-            props: { fontSize: '500', color: 'neutral-600' },
             children: [item.description],
           },
         ],
@@ -562,10 +559,10 @@ export const landingPageTemplate: TemplateSchema = {
               type: 'we-text',
               props: {
                 fontSize: '28px',
-                color: 'neutral-700',
                 textAlign: 'center',
                 fontWeight: 'medium',
                 mb: '500',
+                color: 'neutral-800',
                 // italic: true,
                 // fontStyle: 'italic',
               },
@@ -599,9 +596,9 @@ export const landingPageTemplate: TemplateSchema = {
               type: 'we-text',
               props: {
                 fontSize: '18px',
-                color: 'neutral-700',
                 textAlign: 'center',
                 maxWidth: '800px',
+                color: 'neutral-700',
                 lineHeight: '1.8',
                 italic: true,
               },
@@ -680,7 +677,7 @@ export const landingPageTemplate: TemplateSchema = {
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-800', textAlign: 'center' },
+              props: { variant: 'heading-md', textAlign: 'center' },
               // children: ['Whats wrong with todays tools and how can we fix them?'],
               // children: ['What makes WE different'],
               children: ['The walls every community keeps hitting.'],
@@ -692,7 +689,7 @@ export const landingPageTemplate: TemplateSchema = {
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '600', color: 'neutral-600', textAlign: 'center' },
+                  props: { textAlign: 'center' },
                   children: ['Tap a card to see the solution'],
                 },
                 {
@@ -715,11 +712,8 @@ export const landingPageTemplate: TemplateSchema = {
             props: { width: '340px', height: '310px', wobbleDegree: 20 },
             slots: {
               front: {
-                type: 'Column',
+                type: 'Card',
                 props: {
-                  gap: '300',
-                  p: '500',
-                  r: '400',
                   bg: 'neutral-100',
                   height: '100%',
                   border: '1px solid var(--we-color-neutral-200)',
@@ -729,7 +723,7 @@ export const landingPageTemplate: TemplateSchema = {
                   {
                     type: 'we-text',
                     props: {
-                      fontSize: '600',
+                      fontSize: '500',
                       fontWeight: 'semibold',
                       textAlign: 'center',
                       color: 'neutral-900',
@@ -739,20 +733,26 @@ export const landingPageTemplate: TemplateSchema = {
                   },
                   {
                     type: 'we-text',
-                    props: { fontSize: '400', textAlign: 'center', color: 'neutral-600', lineHeight: '1.6' },
+                    props: {
+                      variant: 'body',
+                      fontSize: '200',
+                      color: 'neutral-700',
+                      textAlign: 'center',
+                      lineHeight: '1.6',
+                    },
                     children: [card.front.body],
                   },
                 ],
               },
               back: {
-                type: 'Column',
-                props: { gap: '300', p: '500', r: '400', ay: 'center', bg: 'gradient-primary', height: '100%' },
+                type: 'Card',
+                props: { ay: 'center', bg: 'gradient-primary', height: '100%' },
                 children: [
                   { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'neutral-100' } },
                   {
                     type: 'we-text',
                     props: {
-                      fontSize: '600',
+                      fontSize: '500',
                       fontWeight: '600',
                       textAlign: 'center',
                       color: 'neutral-100',
@@ -762,7 +762,7 @@ export const landingPageTemplate: TemplateSchema = {
                   },
                   {
                     type: 'we-text',
-                    props: { fontSize: '400', textAlign: 'center', color: 'neutral-100', lineHeight: '1.6' },
+                    props: { fontSize: '200', textAlign: 'center', color: 'neutral-100', lineHeight: '1.6' },
                     children: [card.back.body],
                   },
                 ],
@@ -782,7 +782,7 @@ export const landingPageTemplate: TemplateSchema = {
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+                  props: { variant: 'heading-md', textAlign: 'center' },
                   children: ['What this means for you.'],
                 },
                 // {
@@ -804,7 +804,7 @@ export const landingPageTemplate: TemplateSchema = {
                 // },
                 {
                   type: 'we-text',
-                  props: { fontSize: '600', color: 'neutral-600', textAlign: 'center' },
+                  props: { textAlign: 'center' },
                   children: ["WE means something different depending on where you're coming from."],
                 },
               ],
@@ -839,92 +839,103 @@ export const landingPageTemplate: TemplateSchema = {
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+              props: { variant: 'heading-md', textAlign: 'center' },
               children: ["What we've built and what's next."],
             },
             {
               type: 'we-text',
-              props: { fontSize: '600', color: 'neutral-600', textAlign: 'center' },
+              props: { textAlign: 'center' },
               children: ["WE is in active development. Here's an honest picture of where we're at."],
             },
           ],
         },
         {
-          type: 'Column',
-          props: { gap: '500', p: '700', r: '500', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
+          type: 'Row',
+          props: { gap: '600', wrap: true, mb: '180px' },
           children: [
             {
-              type: 'Column',
-              props: { gap: '300' },
+              type: 'Card',
+              props: {
+                p: '700',
+                bg: 'neutral-100',
+                border: '1px solid var(--we-color-neutral-200)',
+                flex: '1',
+                minWidth: '380px',
+              },
               children: [
                 {
-                  type: 'Row',
-                  props: { gap: '400', ay: 'center', mb: '400' },
+                  type: 'Column',
+                  props: { gap: '300' },
                   children: [
                     {
-                      type: 'we-icon',
-                      props: {
-                        name: 'city',
-                        size: 'lg',
-                        color: 'primary-600',
-                        // gradient: 'primary',
-                      },
+                      type: 'Row',
+                      props: { gap: '400', ay: 'center', mb: '400' },
+                      children: [
+                        {
+                          type: 'we-icon',
+                          props: {
+                            name: 'city',
+                            size: 'lg',
+                            gradient: 'primary',
+                            // weight: 'bold',
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'heading-md', textTransform: 'uppercase' },
+                          children: ['Already built'],
+                        },
+                      ],
                     },
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '700', fontWeight: 'bold', color: 'primary-600', textTransform: 'uppercase' },
-                      children: ['Already built'],
-                    },
+                    ...BUILT.map((item) => roadmapItem(item, true)),
                   ],
                 },
-                ...BUILT.map((item) => roadmapItem(item, true)),
               ],
             },
-          ],
-        },
-        {
-          type: 'Column',
-          props: {
-            gap: '500',
-            p: '700',
-            r: '500',
-            bg: 'neutral-100',
-            border: '1px solid var(--we-color-neutral-200)',
-            mb: '180px',
-          },
-          children: [
             {
-              type: 'Column',
-              props: { gap: '300' },
+              type: 'Card',
+              props: {
+                p: '700',
+                bg: 'neutral-100',
+                border: '1px solid var(--we-color-neutral-200)',
+                flex: '1',
+                minWidth: '380px',
+              },
               children: [
                 {
-                  type: 'Row',
-                  props: { gap: '400', ay: 'center', mb: '400' },
+                  type: 'Column',
+                  props: { gap: '300' },
                   children: [
                     {
-                      type: 'we-icon',
-                      props: {
-                        name: 'hourglass',
-                        size: 'lg',
-                        color: 'primary-600',
-                        // gradient: 'primary',
-                      },
+                      type: 'Row',
+                      props: { gap: '400', ay: 'center', mb: '400' },
+                      children: [
+                        {
+                          type: 'we-icon',
+                          props: {
+                            name: 'hourglass',
+                            size: 'lg',
+                            gradient: 'primary',
+                            // weight: 'bold',
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'heading-md', textTransform: 'uppercase' },
+                          children: ['On the roadmap'],
+                        },
+                      ],
                     },
-                    {
-                      type: 'we-text',
-                      props: { fontSize: '700', fontWeight: 'bold', color: 'primary-600', textTransform: 'uppercase' },
-                      children: ['On the roadmap'],
-                    },
+                    ...PLANNED.map((item) => roadmapItem(item, false)),
                   ],
                 },
-                ...PLANNED.map((item) => roadmapItem(item, false)),
+                // {
+                //   type: 'we-text',
+                //   props: { fontSize: '500', fontWeight: 'semibold', color: 'neutral-700', fontStyle: 'italic' },
+                //   children: ['The foundation is solid. The ecosystem is just beginning.'],
+                // },
               ],
             },
-            // {
-            //   type: 'we-text',
-            //   props: { fontSize: '500', fontWeight: 'semibold', color: 'neutral-700', fontStyle: 'italic' },
-            //   children: ['The foundation is solid. The ecosystem is just beginning.'],
-            // },
           ],
         },
 
@@ -935,7 +946,7 @@ export const landingPageTemplate: TemplateSchema = {
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '700', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+              props: { variant: 'heading-md', textAlign: 'center' },
               children: ['The full picture.'],
             },
             {
@@ -944,7 +955,7 @@ export const landingPageTemplate: TemplateSchema = {
               children: [
                 {
                   type: 'we-text',
-                  props: { fontSize: '600', color: 'neutral-600', textAlign: 'center' },
+                  props: { textAlign: 'center' },
                   children: ['Dive deeper into what WE makes possible and how it works.'],
                 },
                 // {
@@ -1050,7 +1061,7 @@ export const landingPageTemplate: TemplateSchema = {
             boxSection([
               {
                 type: 'we-text',
-                props: { fontSize: '500', color: 'neutral-700', lineHeight: '1.6', italic: true },
+                props: { lineHeight: '1.6', italic: true },
                 children: [
                   'A local collective starts with a simple discussion and resource-sharing template. As the community grows, members want clearer ways to surface urgent needs and signal collective support. They use WE\'s signalling system to define exactly what those signals mean for their context — not repurposing a generic "like" button but creating something that carries real meaning for their culture.',
                 ],
@@ -1059,7 +1070,7 @@ export const landingPageTemplate: TemplateSchema = {
             boxSection([
               {
                 type: 'we-text',
-                props: { fontSize: '500', color: 'neutral-700', lineHeight: '1.6', italic: true },
+                props: { lineHeight: '1.6', italic: true },
                 children: [
                   'A learning community builds not just a forum but an evolving knowledge environment — structured notes, linked concepts, multiple views over the same shared knowledge base. Newcomers see guided pathways. Experts see denser, more interconnected maps. Both are lenses over the same underlying data.',
                 ],
@@ -1068,7 +1079,7 @@ export const landingPageTemplate: TemplateSchema = {
             boxSection([
               {
                 type: 'we-text',
-                props: { fontSize: '500', color: 'neutral-700', lineHeight: '1.6', italic: true },
+                props: { lineHeight: '1.6', italic: true },
                 children: [
                   'A neighbourhood group brings together discussion, local coordination, resource offers and needs, and a shared calendar — all in one environment, all connected by the same identity and memory.',
                 ],
@@ -1266,17 +1277,16 @@ export const landingPageTemplate: TemplateSchema = {
               type: 'Row',
               props: { wrap: true, gap: '400', ax: 'start' },
               children: BLOCK_TYPES.map((block) => ({
-                type: 'Column',
+                type: 'Card',
                 props: {
-                  gap: '300',
-                  p: '400',
-                  r: '400',
                   bg: 'neutral-100',
                   border: '1px solid var(--we-color-neutral-200)',
                   width: '180px',
                   height: '180px',
                   ay: 'center',
                   ax: 'center',
+                  gap: '200',
+                  p: '300',
                 },
                 children: [
                   {
@@ -1285,12 +1295,12 @@ export const landingPageTemplate: TemplateSchema = {
                   },
                   {
                     type: 'we-text',
-                    props: { fontSize: '500', fontWeight: 'bold', color: 'neutral-800', textAlign: 'center' },
+                    props: { variant: 'subheading', fontWeight: 'bold', textAlign: 'center' },
                     children: [block.name],
                   },
                   {
                     type: 'we-text',
-                    props: { fontSize: '400', color: 'neutral-600', lineHeight: '1.4', textAlign: 'center' },
+                    props: { variant: 'label', lineHeight: '1.4', textAlign: 'center' },
                     children: [block.purpose],
                   },
                 ],

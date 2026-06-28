@@ -1,5 +1,5 @@
 import type { AgentProfileSummary } from '@shared/agentHelpers';
-import { Column, ImageLightbox, Row } from '@we/components/solid';
+import { Card, Column, ImageLightbox, Row } from '@we/components/solid';
 import { createMemo, createSignal, For, onMount, Show } from 'solid-js';
 
 import { useAdamStore } from '../../stores/AdamStore';
@@ -14,6 +14,8 @@ export interface TemplateCardData {
   author?: string;
   createdAt?: string;
   screenshots?: string[]; // resolved data URIs (from ImageBlock.src via fileToDataUri)
+  /** Icon name to show in the card header. Defaults to "layout". Themes pass their own icon. */
+  icon?: string;
 }
 
 interface Props {
@@ -25,6 +27,10 @@ interface Props {
   onInstall?: () => void;
   /** Label for the install button. Defaults to "Install". */
   installLabel?: string;
+  /** Override the default deleteMarketplaceTemplate action. */
+  onDelete?: () => void;
+  /** Override the internal install-loading check. Pass a reactive boolean for schema contexts. */
+  isLoading?: boolean;
 }
 
 export function TemplateCard(props: Props) {
@@ -55,6 +61,7 @@ export function TemplateCard(props: Props) {
   const hasUpdate = createMemo(() => isInstalled() && installedVersion() < (props.template.version ?? 1));
 
   const installLoading = createMemo(() => {
+    if (props.isLoading !== undefined) return props.isLoading;
     const id = props.template.id;
     return !!id && templateStore.operationLoading() === `marketplace-install:${id}`;
   });
@@ -82,7 +89,7 @@ export function TemplateCard(props: Props) {
     return (
       <Row ay="center" ax="between" p="400" r="300" border="1px solid neutral-200" bg="neutral-50" gap="300">
         <Row ay="center" gap="400" flex="1" minWidth="0">
-          <we-icon name="layout" color="primary-500" />
+          <we-icon name={props.template.icon ?? 'layout'} color="primary-500" />
           <Column gap="100" flex="1" minWidth="0">
             <Row gap="300" ay="center">
               <we-text fontWeight="600" truncate>
@@ -132,19 +139,16 @@ export function TemplateCard(props: Props) {
 
   // ── Grid card mode (marketplace + preview) ───────────────────────────────
   return (
-    <Column
+    <Card
       bg="neutral-0"
-      r="400"
       border="1px solid neutral-200"
-      p="400"
-      gap="300"
       transition="box-shadow 150ms ease"
       hoverProps={mode() === 'marketplace' ? { border: '1px solid primary-300', shadow: 'sm' } : undefined}
     >
       {/* Header */}
       <Row ay="center" ax="between">
         <Row gap="300" ay="center" flex="1" minWidth="0">
-          <we-icon name="layout" size="md" color="primary-500" />
+          <we-icon name={props.template.icon ?? 'layout'} size="md" color="primary-500" />
           <we-text fontWeight="600" truncate>
             {props.template.name}
           </we-text>
@@ -153,7 +157,10 @@ export function TemplateCard(props: Props) {
           <we-button
             variant="ghost"
             size="sm"
-            onClick={() => templateStore.deleteMarketplaceTemplate(props.template.id!)}
+            square
+            onClick={() =>
+              props.onDelete ? props.onDelete!() : templateStore.deleteMarketplaceTemplate(props.template.id!)
+            }
           >
             <we-icon name="trash" />
           </we-button>
@@ -162,14 +169,14 @@ export function TemplateCard(props: Props) {
 
       {/* Description */}
       <Show when={props.template.description}>
-        <we-text fontSize="400" color="neutral-500">
+        <we-text fontSize="300" color="neutral-500">
           {props.template.description}
         </we-text>
       </Show>
 
       {/* Version + slug */}
       <Row gap="200" ay="center">
-        <we-badge variant="neutral" size="xs" fontSize="300">
+        <we-badge variant="neutral" size="xs" px="200">
           v{props.template.version}
         </we-badge>
         <Show when={props.template.slug}>
@@ -207,12 +214,12 @@ export function TemplateCard(props: Props) {
         <Row ay="center" gap="200" flex="1" minWidth="0">
           <Show when={author()}>
             <we-avatar size="xs" image={author()?.avatar} initials={authorName()} />
-            <we-text fontSize="400" color="neutral-600" truncate>
+            <we-text fontSize="300" color="neutral-600" truncate>
               {authorName()}
             </we-text>
           </Show>
           <Show when={props.template.createdAt}>
-            <we-timestamp value={props.template.createdAt} relative color="neutral-400" fontSize="400" />
+            <we-timestamp value={props.template.createdAt} relative color="neutral-400" fontSize="300" />
           </Show>
         </Row>
         <Show when={mode() === 'marketplace'}>
@@ -239,6 +246,6 @@ export function TemplateCard(props: Props) {
           </Show>
         </Show>
       </Row>
-    </Column>
+    </Card>
   );
 }

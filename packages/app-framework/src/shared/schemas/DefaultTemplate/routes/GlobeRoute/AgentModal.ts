@@ -47,7 +47,7 @@ export const agentModal = {
                     },
                     else: {
                       type: 'we-icon',
-                      props: { name: 'user-circle', size: '60px', color: 'neutral-400' },
+                      props: { name: 'user-circle', size: 'xl', color: 'neutral-300' },
                     },
                   },
                 },
@@ -57,12 +57,12 @@ export const agentModal = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { fontSize: '600', fontWeight: 'bold' },
+                      props: { variant: 'heading-sm' },
                       children: [{ $concat: ['$agent.firstName', ' ', '$agent.lastName'] }],
                     },
                     {
                       type: 'we-text',
-                      props: { fontSize: '300', color: 'neutral-400' },
+                      props: { variant: 'footnote', color: 'neutral-400' },
                       children: [{ $concat: ['@', '$agent.handle'] }],
                     },
                   ],
@@ -77,7 +77,7 @@ export const agentModal = {
                 condition: '$agent.bio',
                 then: {
                   type: 'we-text',
-                  props: { fontSize: '400', color: 'neutral-600' },
+                  props: { variant: 'body' },
                   children: ['$agent.bio'],
                 },
               },

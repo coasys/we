@@ -13,6 +13,7 @@
   },
   "exports": {
     ".": "./dist/index.css",
+    "./light": "./dist/light/index.css",
     "./dark": "./dist/dark/index.css",
     "./black": "./dist/black/index.css",
     "./retro": "./dist/retro/index.css",

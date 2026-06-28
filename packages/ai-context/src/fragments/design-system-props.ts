@@ -21,7 +21,7 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | FontFamilyValue | "base" (or CSS font-family) |
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
-| FontWeightValue | "100", "200", "300", "400", "500", "600", "700", "800", "900" |
+| FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, we-tooltip
@@ -59,6 +59,9 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 | Prop | Type | Description |
 |------|------|-------------|
 | bg | ColorValue | Background color (token) |
+| bgImage | string | Background image URL — sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat |
+| bgFit | "cover" \\| "contain" | Background image sizing (default: "cover") — only meaningful with bgImage |
+| bgPosition | string | Background image position (default: "center", e.g. "top", "50% 20%") — only meaningful with bgImage |
 | color | ColorValue | Text/foreground color (token) |
 | opacity | number | Opacity (0–1) |
 | border | string | Border shorthand (e.g. "1px solid neutral-200" — color tokens are resolved) |
@@ -106,17 +109,18 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 |------|------|-------------|
 | textAlign | "left" \\| "center" \\| "right" \\| "justify" | Text alignment |
 | fontFamily | "base" \\| {css-font-family} | Font family token |
-| fontWeight | "100"–"900" \\| "light" \\| "normal" \\| "medium" \\| "bold" \\| "bolder" | Font weight |
+| fontWeight | "regular" \\| "medium" \\| "semibold" \\| "bold" (named tokens) or "100"–"900" (numeric) or "light" \\| "normal" \\| "bolder" (CSS pass-through) | Font weight |
 | fontSize | "base" \\| "100"–"1000" \\| {css-length} | Font size token |
 | lineHeight | "none" \\| "tight" \\| "snug" \\| "normal" \\| "relaxed" \\| "loose" | Line height token |
 | letterSpacing | "tighter" \\| "tight" \\| "normal" \\| "wide" \\| "wider" \\| "widest" | Letter spacing token |
 | textDecoration | "underline" \\| "line-through" \\| "overline" \\| "none" | Text decoration |
 | textTransform | "uppercase" \\| "lowercase" \\| "capitalize" \\| "none" | Text transform |
 
-**Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, \`fontSize: '500'\` (16px) and \`fontWeight: '500'\` (normal) are the inherited defaults — omit them.
+**Typography defaults:** fontSize and fontWeight have **no built-in defaults** — omitting them inherits from parent elements (browser default is ~16px / normal weight). Do not set fontSize or fontWeight unless you need a non-default value. For example, \`fontSize: '300'\` (16px) and \`fontWeight: '500'\` (normal) are the inherited defaults — omit them.
 
-\`we-text\` variants (set via the \`variant\` prop) bundle typography presets:
-body (400), label (300 + medium), footnote (200 + neutral-400), subheading (500 + medium), ingress (500 + lineHeight 1.6), heading-sm (600 + bold), heading (800 + bold), heading-lg (1000 + bold).
+\`we-text\` variants (set via the \`variant\` prop) bundle typography presets. Always pair with a semantic \`tag\` prop for correct HTML structure:
+body (300, tag: p/span), label (200 + medium, tag: span), footnote (100, tag: span), subheading (400 + medium, tag: h5/p), ingress (400 + lineHeight 1.6, tag: p), heading-sm (500 + bold, tag: h4), heading-md (600 + bold, tag: h3), heading-lg (700 + bold, tag: h2), heading-xl (800 + bold, tag: h1).
+Variants set size and weight only — color is always inherited or set explicitly. For muted footnote text add \`color="neutral-400"\` explicitly.
 
 ### State
 
@@ -131,6 +135,6 @@ body (400), label (300 + medium), footnote (200 + neutral-400), subheading (500 
 
 | Prop | Type | Description |
 |------|------|-------------|
-| styles | Record\\<string, string \\| number\\> | Inline CSS overrides (raw values allowed here) |
+| styles | Record\\<string, string \\| number\\> | Inline CSS applied directly to the component's own element (raw CSS values allowed). For Column, Row, Grid — use this when you need CSS the DS props don't cover. **Do not confuse with node-level styles** (see Schema Structure) which applies to a wrapper div, not the component. |
 | onClick | ActionToken | Event handler (see dynamic logic) |
 `;

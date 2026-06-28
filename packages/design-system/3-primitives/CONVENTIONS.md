@@ -60,14 +60,14 @@ this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true
 All visual variation should flow through the **JS merge chain**, not CSS attribute selectors.
 
 ```ts
-const DEFAULT_PROPS: Partial<DesignSystemProps> = { bg: '...', px: '...', ... };
+const DEFAULT_PROPS: Partial<DesignSystemProps> = { bg: '...', r: '...', ... };
 
 const VARIANT_DEFAULTS: Record<string, Partial<DesignSystemProps>> = {
   primary: { bg: '...', color: '...' },
 };
 
 const SIZE_DEFAULTS: Record<string, Partial<DesignSystemProps>> = {
-  sm: { px: '...', py: '...', fontSize: '...' },
+  sm: { fontSize: '...', height: '...' },
 };
 ```
 
@@ -79,6 +79,38 @@ explicit user props  >  variant defaults  >  size defaults  >  component default
 
 Using `mergeProps()` from `@we/design-utils`, which handles shorthand precedence (`p` vs `px`/`py`, etc.).
 
+### Density-cascade properties: keep out of SIZE_DEFAULTS
+
+Properties that participate in the theme density cascade (`px`/`gap` for controls) must **not** live in `SIZE_DEFAULTS` or `DEFAULT_PROPS`. If they did, `updateAllCustomVars` would set the concrete instance var (e.g. `--we-button-padding`) unconditionally, short-circuiting the cascade before `--we-theme-control-padding-x` is ever reached.
+
+Instead, those properties live in **CSS host rules** that set the size-specific CSS custom variable:
+
+```css
+:host([size='sm']) {
+  --we-button-size-padding-x: var(--we-space-300);
+}
+:host([size='md']) {
+  --we-button-size-padding-x: var(--we-space-400);
+}
+```
+
+The static DS stylesheet then emits the full fallback chain:
+
+```css
+/* x-only padding cascade */
+padding: var(
+  --we-button-padding,
+  /* explicit prop */
+  var(
+      --we-theme-button-padding-x,
+      /* component theme */
+      var(--we-theme-control-padding-x, /* group density */ var(--we-button-size-padding-x, var(--we-space-400)))
+    )
+); /* size default */
+```
+
+Components that use this pattern set `nativePadding: true` in `COMPONENT_CASCADE` (helpers.ts) to suppress the generic padding declaration, and add their own custom padding rule in `CSS_STYLES`. Gap follows the same pattern via `gapGroup` in `COMPONENT_CASCADE`.
+
 ### When to use CSS instead
 
 Use CSS only for properties **not covered by DesignSystemProps**:
@@ -88,8 +120,9 @@ Use CSS only for properties **not covered by DesignSystemProps**:
 - Animations / transitions
 - Child element styling (`[part='base'] { all: unset }`)
 - Host display override (`--we-{name}-host-display`)
+- **Size-specific CSS custom properties** for density-cascade vars (see above)
 
-**Never** use `:host([variant='...'])` or `:host([size='...'])` CSS selectors for DS-covered properties (bg, color, padding, fontSize, etc.). Those belong in the JS maps.
+**Never** use `:host([variant='...'])` or `:host([size='...'])` CSS selectors to directly set DS-covered properties (bg, color, padding, fontSize, etc.) — those belong in the JS maps. **Exception:** setting CSS custom properties (e.g. `--we-button-size-padding-x`) via host selectors is fine — that feeds the cascade rather than bypassing it.
 
 ## Static `getDefaultProps()`
 
