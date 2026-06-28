@@ -74,7 +74,11 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     gapDefault: 'var(--we-badge-size-gap, 0)',
   },
   tag: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-control-padding-x' },
-  'menu-item': { paddingGroup: '--we-theme-control-padding-x' },
+  checkbox: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
+  radio: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
+  switch: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
+  slider: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-300)' },
+  'menu-item': { paddingGroup: '--we-theme-control-padding-x', gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-300)' },
   'progress-bar': { radiusGroup: '--we-theme-control-radius' },
   // Inputs
   input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-spacing' },
@@ -113,6 +117,8 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   'form-field': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
+    gapGroup: '--we-theme-control-gap',
+    gapDefault: 'var(--we-space-100)',
   },
   // Tabs
   tab: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-tab-spacing' },
@@ -383,8 +389,13 @@ function cascadeSpec(
   groupVar: string | undefined,
   tokenDefault: string | undefined,
 ): PropSpec {
-  if (!groupVar || !tokenDefault) {
-    if (process.env.NODE_ENV !== 'production' && groupVar && !tokenDefault) {
+  if (!groupVar) {
+    // No theme group — emit a direct token fallback so DEFAULT_PROPS values still take
+    // effect even though the runtime no longer sets the custom var for non-explicit props.
+    return tokenDefault ? [cssProp, varSuffix, tokenDefault] : [cssProp, varSuffix];
+  }
+  if (!tokenDefault) {
+    if (process.env.NODE_ENV !== 'production') {
       console.warn(
         `[DS] ${componentName}: "${varSuffix}" has a cascade group (${groupVar}) but no fallback value. ` +
           `Add the corresponding prop to ${componentName}'s DEFAULT_PROPS so it can be auto-derived, ` +
