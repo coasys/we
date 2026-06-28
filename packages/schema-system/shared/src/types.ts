@@ -89,7 +89,8 @@ export type ThemeOverrides = {
 
   // Effects
   shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic'; // maps to --we-theme-shadow-preset
-  surfaceOpacity?: number; // --we-theme-surface-opacity  (0–1, for modal/overlay backgrounds)
+  surfaceOpacity?: number; // --we-theme-surface-opacity  (0–1, background alpha for surfaces)
+  surfaceBlur?: number; // --we-theme-surface-blur  (px, backdrop-filter blur for frosted glass)
 
   // Motion
   animationSpeed?: 'none' | 'fast' | 'normal' | 'slow'; // maps to --we-theme-animation-speed-preset

@@ -299,7 +299,18 @@ export function ThemePanel() {
     );
   }
 
-  function opacitySlider(label: string, key: keyof ThemeOverrides, defaultVal: number) {
+  function numericSlider(
+    label: string,
+    key: keyof ThemeOverrides,
+    defaultVal: number,
+    {
+      min,
+      max,
+      step,
+      format,
+      clearOnZero = false,
+    }: { min: number; max: number; step: number; format: (v: number) => string; clearOnZero?: boolean },
+  ) {
     const val = () => (overrides()[key] as number | undefined) ?? defaultVal;
     return (
       <Row ay="center" gap="300">
@@ -315,12 +326,13 @@ export function ThemePanel() {
         <we-slider
           style={{ flex: '1' }}
           value={val()}
-          min={0.3}
-          max={1}
-          step={0.05}
-          on:input={(e: CustomEvent) =>
-            setOverride(key, Number(Number(e.detail).toFixed(2)) as ThemeOverrides[typeof key])
-          }
+          min={min}
+          max={max}
+          step={step}
+          on:input={(e: CustomEvent) => {
+            const raw = step < 1 ? Number(Number(e.detail).toFixed(2)) : Number(e.detail);
+            setOverride(key, (clearOnZero && raw === 0 ? undefined : raw) as ThemeOverrides[typeof key]);
+          }}
           on:change={() => saveTheme()}
         />
         <we-text
@@ -331,7 +343,7 @@ export function ThemePanel() {
             'text-align': 'right',
           }}
         >
-          {Math.round(val() * 100)}%
+          {format(val())}
         </we-text>
       </Row>
     );
@@ -685,7 +697,19 @@ export function ThemePanel() {
                   },
                 )}
               </Column>
-              {opacitySlider('Surface opacity', 'surfaceOpacity', 1)}
+              {numericSlider('Surface opacity', 'surfaceOpacity', 1, {
+                min: 0,
+                max: 1,
+                step: 0.05,
+                format: (v) => `${Math.round(v * 100)}%`,
+              })}
+              {numericSlider('Surface blur', 'surfaceBlur', 0, {
+                min: 0,
+                max: 24,
+                step: 1,
+                format: (v) => `${v}px`,
+                clearOnZero: true,
+              })}
               <Column gap="200">
                 <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
                   Animation speed

@@ -59,6 +59,28 @@ export abstract class OverlayElement extends DesignSystemElement {
           max-width: var(${p}max-width);
           max-height: var(${p}max-height);
           margin: var(${p}margin);
+          background: color-mix(in srgb, var(${p}bg, transparent) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
+          backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
+        }
+
+        /* Re-apply color-mix + backdrop-filter for state selectors — without this, the DS-generated
+           hover/active/focus rules win due to higher specificity, snapping back to full opacity. */
+        :host([data-we-overlay]) [part="base"]:hover:not(:disabled):not([aria-disabled='true']) {
+          background: color-mix(in srgb, var(${p}hover-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
+          backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
+        }
+        :host([data-we-overlay]) [part="base"]:focus-within:not(:disabled):not([aria-disabled='true']) {
+          background: color-mix(in srgb, var(${p}focus-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
+          backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
+        }
+        :host([data-we-overlay]) [part="base"]:active:not(:disabled):not([aria-disabled='true']) {
+          background: color-mix(in srgb, var(${p}active-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
+          backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
+        }
+        :host([data-we-overlay]) [part="base"]:disabled,
+        :host([data-we-overlay]) [part="base"][aria-disabled='true'] {
+          background: color-mix(in srgb, var(${p}disabled-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
+          backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
         }
       `);
       overlayStyleSheets.set(ctor, sheet);

@@ -7,7 +7,40 @@ import type { ThemeOverrides } from './types';
  * Parametric keys that map 1:1 to a CSS custom property.
  * Keys that need special multi-var handling (shadowIntensity, animationSpeed) are excluded.
  */
-type ParametricKey = Exclude<keyof ThemeOverrides, 'themeName' | 'shadowIntensity' | 'animationSpeed' | 'fontScale'>;
+type ParametricKey = Exclude<keyof ThemeOverrides, 'themeName' | 'shadowIntensity' | 'animationSpeed' | 'surfaceBlur' | 'fontScale'>;
+
+/** Maps shadowIntensity preset to the CSS box-shadow value emitted as --we-theme-shadow. */
+const SHADOW_INTENSITY_VALUES: Record<NonNullable<ThemeOverrides['shadowIntensity']>, string> = {
+  flat: 'none',
+  subtle: 'var(--we-shadow-sm)',
+  elevated: 'var(--we-shadow-md)',
+  dramatic: 'var(--we-shadow-xl)',
+};
+
+/** Maps animationSpeed preset to the --we-transition-N overrides applied globally. */
+const ANIMATION_SPEED_VARS: Record<NonNullable<ThemeOverrides['animationSpeed']>, Record<string, string>> = {
+  none: {
+    '--we-transition-100': '0ms',
+    '--we-transition-200': '0ms',
+    '--we-transition-300': '0ms',
+    '--we-transition-400': '0ms',
+    '--we-transition-500': '0ms',
+  },
+  fast: {
+    '--we-transition-200': '75ms',
+    '--we-transition-300': '125ms',
+    '--we-transition-400': '250ms',
+    '--we-transition-500': '500ms',
+  },
+  normal: {},
+  slow: {
+    '--we-transition-100': '100ms',
+    '--we-transition-200': '300ms',
+    '--we-transition-300': '500ms',
+    '--we-transition-400': '1000ms',
+    '--we-transition-500': '2000ms',
+  },
+};
 
 /** Map parametric ThemeOverrides keys to their CSS custom property equivalents. */
 const THEME_CSS_MAP: Record<ParametricKey, string> = {
@@ -74,6 +107,22 @@ export function themeToStyle(theme: ThemeOverrides): Record<string, string> {
   for (const [key, cssVar] of Object.entries(THEME_CSS_MAP)) {
     const value = theme[key as ParametricKey];
     if (value !== undefined) style[cssVar] = String(value);
+  }
+
+  // shadowIntensity → --we-theme-shadow (used by Card and other surface components)
+  if (theme.shadowIntensity) {
+    style['--we-theme-shadow'] = SHADOW_INTENSITY_VALUES[theme.shadowIntensity];
+  }
+
+  // surfaceBlur → --we-theme-surface-blur (backdrop-filter blur for frosted glass)
+  // Only emitted when > 0 to avoid triggering GPU compositing on the default state.
+  if (theme.surfaceBlur && theme.surfaceBlur > 0) {
+    style['--we-theme-surface-blur'] = `${theme.surfaceBlur}px`;
+  }
+
+  // animationSpeed → override --we-transition-N tokens consumed by all primitives
+  if (theme.animationSpeed) {
+    Object.assign(style, ANIMATION_SPEED_VARS[theme.animationSpeed]);
   }
 
   // 2. Re-declare neutral-hue linkage when primaryHue is explicitly overridden

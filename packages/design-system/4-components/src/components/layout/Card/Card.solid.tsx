@@ -9,6 +9,7 @@ const DEFAULTS: Partial<CardProps> = {
   r: 'var(--we-theme-surface-radius, var(--we-radius-400))',
   p: 'var(--we-theme-surface-spacing, var(--we-space-500))',
   gap: 'var(--we-theme-surface-gap, var(--we-space-400))',
+  shadow: 'var(--we-theme-shadow, none)',
 };
 
 const cardOwnKeys = ['direction'] as const;
@@ -26,7 +27,19 @@ export function Card(allProps: CardProps) {
       cardStyleKeys.filter((k) => k !== 'direction'),
     );
     const props = mergeProps(usedProps, DEFAULTS) as CardProps;
-    return buildLayoutStyles(props, direction());
+    const style = buildLayoutStyles(props, direction());
+    // Apply surface opacity to background only (not element content) when bg is set
+    // and the caller hasn't explicitly set opacity.
+    if ((designSystemProps as CardProps).opacity === undefined) {
+      const bgColor = (style as Record<string, unknown>)['background-color'] as string | undefined;
+      if (bgColor) {
+        (style as Record<string, unknown>)['background-color'] =
+          `color-mix(in srgb, ${bgColor} calc(var(--we-theme-surface-opacity, 1) * 100%), transparent)`;
+        (style as Record<string, unknown>)['backdrop-filter'] =
+          'blur(var(--we-theme-surface-blur, 0px))';
+      }
+    }
+    return style;
   });
 
   const hasStateProps = () =>
