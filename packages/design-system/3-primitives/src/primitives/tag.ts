@@ -13,7 +13,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   gap: '100',
   px: '200',
-  py: '50',
+  py: '100',
   r: 'pill',
   fontSize: '100',
 };
@@ -27,6 +27,15 @@ const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
 };
 
 const styles = css`
+  [part='base'] {
+    /* Padding cascade: explicit prop → component theme → group density (x only, y fixed) → token defaults */
+    padding: var(
+      --we-tag-padding,
+      var(--we-theme-tag-padding-y, var(--we-space-100))
+        var(--we-theme-tag-padding-x, var(--we-theme-control-padding-x, var(--we-space-200)))
+    );
+  }
+
   [part='dismiss'] {
     all: unset;
     display: inline-flex;

@@ -73,12 +73,16 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     gapGroup: '--we-theme-control-gap',
     gapDefault: 'var(--we-badge-size-gap, 0)',
   },
-  tag: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-control-padding-x' },
+  tag: { radiusGroup: '--we-theme-control-radius', nativePadding: true },
   checkbox: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
   radio: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
   switch: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-200)' },
   slider: { gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-300)' },
-  'menu-item': { paddingGroup: '--we-theme-control-padding-x', gapGroup: '--we-theme-control-gap', gapDefault: 'var(--we-space-300)' },
+  'menu-item': {
+    paddingGroup: '--we-theme-control-padding-x',
+    gapGroup: '--we-theme-control-gap',
+    gapDefault: 'var(--we-space-300)',
+  },
   'progress-bar': { radiusGroup: '--we-theme-control-radius' },
   // Inputs
   input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-spacing' },
@@ -123,10 +127,22 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   // Tabs
   tab: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-tab-spacing' },
   // Surfaces
-  modal: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing', gapGroup: '--we-theme-surface-gap' },
-  drawer: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing', gapGroup: '--we-theme-surface-gap' },
+  modal: {
+    radiusGroup: '--we-theme-surface-radius',
+    paddingGroup: '--we-theme-surface-spacing',
+    gapGroup: '--we-theme-surface-gap',
+  },
+  drawer: {
+    radiusGroup: '--we-theme-surface-radius',
+    paddingGroup: '--we-theme-surface-spacing',
+    gapGroup: '--we-theme-surface-gap',
+  },
   menu: { radiusGroup: '--we-theme-surface-radius', nativePadding: true },
-  alert: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing', gapGroup: '--we-theme-surface-gap' },
+  alert: {
+    radiusGroup: '--we-theme-surface-radius',
+    paddingGroup: '--we-theme-surface-spacing',
+    gapGroup: '--we-theme-surface-gap',
+  },
   blockquote: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
   code: { radiusGroup: '--we-theme-surface-radius' },
 };
