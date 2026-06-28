@@ -117,10 +117,10 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   // Tabs
   tab: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-tab-spacing' },
   // Surfaces
-  modal: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
-  drawer: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
+  modal: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing', gapGroup: '--we-theme-surface-gap' },
+  drawer: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing', gapGroup: '--we-theme-surface-gap' },
   menu: { radiusGroup: '--we-theme-surface-radius', nativePadding: true },
-  alert: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
+  alert: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing', gapGroup: '--we-theme-surface-gap' },
   blockquote: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
   code: { radiusGroup: '--we-theme-surface-radius' },
 };
