@@ -527,6 +527,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (theme) {
       setPendingSpaceThemeId(null);
       setCurrentThemeId(themeId);
+      // Don't overwrite the editing preview — the reactive editingTheme effect owns the DOM while editing.
+      if (untrack(() => editingTheme())) return;
       if (untrack(() => themeScope()) === 'global') applyThemeToDOM(theme);
       else setSpaceThemeData(theme);
     } else {
@@ -692,6 +694,20 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   function cancelEditing() {
     clearHistory();
+    const editing = editingTheme();
+
+    // Optimistically flush the editing state into the theme signals before clearing
+    // editingTheme, so currentTheme() immediately returns the correct data even when
+    // the async save (triggered by ThemePanel.onCleanup) is still in-flight.
+    if (editing) {
+      if (spaceThemes().some((t) => t.id === editing.id)) {
+        setSpaceThemes((prev) => prev.map((t) => (t.id === editing.id ? editing : t)));
+        if (themeScope() === 'scoped') setSpaceThemeData(editing);
+      } else if (installedThemes().some((t) => t.id === editing.id)) {
+        setInstalledThemes((prev) => prev.map((t) => (t.id === editing.id ? editing : t)));
+      }
+    }
+
     setEditingTheme(null);
     sessionStorage.removeItem(EDITING_THEME_KEY);
     if (themeScope() === 'scoped') {
@@ -702,6 +718,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       applyThemeToDOM(resolveThemeData(personalId));
     } else {
       // In global mode restore the actual current theme to documentElement.
+      // currentTheme() now resolves correctly thanks to the optimistic update above.
       const theme = currentTheme();
       if (theme.origin !== 'built-in') applyThemeToDOM(theme);
       else {
@@ -740,9 +757,16 @@ export function ThemeStoreProvider(props: ParentProps) {
           overrides: current?.overrides ?? editing.overrides,
           css: current?.css ?? editing.css,
         };
-        setInstalledThemes((prev) => prev.map((t) => (t.id === saved.id ? saved : t)));
+        if (spaceThemes().some((t) => t.id === saved.id)) {
+          setSpaceThemes((prev) => prev.map((t) => (t.id === saved.id ? saved : t)));
+        } else {
+          setInstalledThemes((prev) => prev.map((t) => (t.id === saved.id ? saved : t)));
+        }
         setEditingTheme((prev) => (prev ? { ...prev, isDirty: false } : prev));
-        setCurrentTheme(saved.id);
+        // Don't call setCurrentTheme here — the DOM is driven by the editingTheme reactive
+        // effect while editing, making this call redundant. More importantly, calling it
+        // after the await is unsafe: the user may have switched spaces or exited editing
+        // by the time the save lands, and setCurrentTheme would apply the wrong theme.
         return saved;
       } else {
         return saveEditingThemeAs(editing.name, editing.icon);

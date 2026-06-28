@@ -1,6 +1,6 @@
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { deepClone } from '@shared/utils';
-import { useAdamStore, useTemplateStore } from '@solid/stores';
+import { useAdamStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import { contextData, schemaContext } from '@we/ai-context';
 import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
@@ -277,6 +277,7 @@ const starterTemplate: SchemaNode = {
 export function AiStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();
   const templateStore = useTemplateStore();
+  const themeStore = useThemeStore();
 
   // Reactive validation context — perspective-accurate model allowlist.
   // When a perspective is active its full manifest (WE + external) is used to
@@ -582,18 +583,20 @@ export function AiStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   // Theme editing mode (independent of template editing)
   // ----------------------------------------------------------------
-  const [isEditingTheme, setIsEditingTheme] = createSignal(false);
+  // Derived from ThemeStore — single source of truth for whether a theme is being edited.
+  const isEditingTheme: Accessor<boolean> = () => !!themeStore.editingTheme();
 
   function enterThemeEditing() {
-    setIsEditingTheme(true);
     setThemePanelOpen(true);
     setIsOpen(false);
     setCodePanelOpen(false);
   }
 
   function exitThemeEditing() {
-    setIsEditingTheme(false);
+    // Close panel first so ThemePanel.onCleanup fires and saves any pending debounced changes
+    // before cancelEditing clears editingTheme (which would make saveEditingTheme bail early).
     setThemePanelOpen(false);
+    themeStore.cancelEditing();
   }
 
   function toggleThemeEditing() {
