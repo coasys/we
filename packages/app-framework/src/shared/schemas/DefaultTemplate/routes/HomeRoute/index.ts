@@ -42,9 +42,7 @@ export const homeRoute: RouteSchema = {
                 {
                   type: 'Card',
                   props: {
-                    gap: '200',
                     ax: 'center',
-                    p: '400',
                     bg: 'neutral-0',
                     width: '160px',
                     styles: { cursor: 'pointer' },
@@ -88,7 +86,7 @@ export const homeRoute: RouteSchema = {
             condition: { $not: { $store: 'adamStore.orderedSidebarItems.length' } },
             then: {
               type: 'Card',
-              props: { gap: '200', ax: 'center', p: '400', bg: 'neutral-0', width: '100%' },
+              props: { ax: 'center', bg: 'neutral-0', width: '100%' },
               children: [
                 { type: 'we-icon', props: { name: 'plus-circle', size: 'xl', color: 'neutral-300' } },
                 {

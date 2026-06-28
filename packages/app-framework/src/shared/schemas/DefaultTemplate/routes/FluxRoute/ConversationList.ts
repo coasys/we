@@ -41,8 +41,6 @@ export const conversationList: SchemaNode = {
               props: {
                 bg: 'neutral-0',
                 border: '1px solid neutral-200',
-                p: '400',
-                gap: '200',
                 minWidth: '200px',
                 maxWidth: '280px',
                 flex: '1',

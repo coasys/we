@@ -45,8 +45,6 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
     props: {
       bg: 'neutral-100',
       border: '1px solid neutral-200',
-      p: '400',
-      gap: '300',
       width: '100%',
     },
     children: [

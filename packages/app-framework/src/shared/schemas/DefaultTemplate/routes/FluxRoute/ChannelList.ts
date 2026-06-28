@@ -87,8 +87,6 @@ export const channelList: SchemaNode = {
                   props: {
                     bg: 'neutral-0',
                     border: '1px solid neutral-200',
-                    p: '400',
-                    gap: '200',
                     mb: '200',
                   },
                   children: [

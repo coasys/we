@@ -38,7 +38,7 @@ export const settingsTemplate: TemplateSchema = {
             { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Agent'] },
             {
               type: 'Card',
-              props: { gap: '200', p: '400', bg: 'neutral-100' },
+              props: { bg: 'neutral-100' },
               children: [
                 {
                   type: 'Row',
@@ -412,10 +412,8 @@ export const settingsTemplate: TemplateSchema = {
                         {
                           type: 'Card',
                           props: {
-                            p: '400',
                             ax: 'start',
                             bg: 'neutral-50',
-                            gap: '300',
                             border: '1px solid neutral-200',
                           },
                           children: [
@@ -509,9 +507,7 @@ export const settingsTemplate: TemplateSchema = {
                         {
                           type: 'Card',
                           props: {
-                            p: '400',
                             bg: 'neutral-50',
-                            gap: '200',
                             width: '200px',
                             cursor: 'pointer',
                             onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.uuid'] },
@@ -582,9 +578,7 @@ export const settingsTemplate: TemplateSchema = {
                         {
                           type: 'Card',
                           props: {
-                            p: '400',
                             bg: 'neutral-50',
-                            gap: '200',
                             width: '200px',
                             cursor: 'pointer',
                             onClick: {

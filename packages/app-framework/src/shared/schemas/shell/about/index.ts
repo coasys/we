@@ -243,7 +243,7 @@ function pageHeader(card: (typeof CTA_CARDS)[0]) {
         type: 'Row',
         props: { ay: 'center', gap: '400' },
         children: [
-          { type: 'we-icon', props: { name: card.icon, size: 'lg' } },
+          { type: 'we-icon', props: { name: card.icon, size: 'lg', color: 'primary-700' } },
           {
             type: 'we-text',
             props: { variant: 'heading-md', textTransform: 'uppercase' },
@@ -253,7 +253,7 @@ function pageHeader(card: (typeof CTA_CARDS)[0]) {
       },
       {
         type: 'we-text',
-        props: { variant: 'heading-md' },
+        props: { variant: 'heading-sm' },
         children: [card.title],
       },
       {
@@ -279,7 +279,7 @@ function subHeader(text: string, icon?: string) {
       props: { gap: '10px', ay: 'center', mb: '-10px' },
       children: [
         { type: 'we-icon', props: { name: icon, size: '36px', gradient: 'primary' } },
-        { type: 'we-text', props: { variant: 'heading-sm' }, children: [text] },
+        { type: 'we-text', props: { variant: 'heading-sm', color: 'primary-700' }, children: [text] },
       ],
     };
   }
@@ -315,7 +315,7 @@ function bulletItem(text: string) {
 function boxSection(children: any) {
   return {
     type: 'Card',
-    props: { gap: '400', p: '500', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
+    props: { bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
     children,
   };
 }
@@ -352,7 +352,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
             type: 'we-text',
             props: {
               variant: 'heading-md',
-              color: 'primary-700',
+              // color: 'primary-700',
               // gradient: 'primary',
               textTransform: 'uppercase',
               // letterSpacing: '0.08em',
@@ -390,6 +390,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
       overflow: 'hidden',
       border: '1px solid var(--we-color-neutral-200)',
       width: '100%',
+      p: '0',
       bg: 'neutral-100',
     },
     children: imageLeft ? [imageCol, contentCol] : [contentCol, imageCol],
@@ -401,7 +402,6 @@ function roadmapItem(item: { title: string; description: string }, done: boolean
     type: 'Card',
     props: {
       direction: 'row',
-      gap: '400',
       ay: 'center',
       p: '400',
       bg: 'neutral-75',
@@ -427,6 +427,7 @@ function roadmapItem(item: { title: string; description: string }, done: boolean
             props: {
               variant: 'subheading',
               fontWeight: 'bold',
+              color: 'primary-700',
               // lineHeight: '1.5',
             },
             children: [item.title],
@@ -711,8 +712,6 @@ export const landingPageTemplate: TemplateSchema = {
               front: {
                 type: 'Card',
                 props: {
-                  gap: '300',
-                  p: '500',
                   bg: 'neutral-100',
                   height: '100%',
                   border: '1px solid var(--we-color-neutral-200)',
@@ -745,7 +744,7 @@ export const landingPageTemplate: TemplateSchema = {
               },
               back: {
                 type: 'Card',
-                props: { gap: '300', p: '500', ay: 'center', bg: 'gradient-primary', height: '100%' },
+                props: { ay: 'center', bg: 'gradient-primary', height: '100%' },
                 children: [
                   { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'neutral-100' } },
                   {
@@ -850,7 +849,7 @@ export const landingPageTemplate: TemplateSchema = {
         },
         {
           type: 'Card',
-          props: { gap: '500', p: '700', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
+          props: { p: '700', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
           children: [
             {
               type: 'Column',
@@ -865,7 +864,8 @@ export const landingPageTemplate: TemplateSchema = {
                       props: {
                         name: 'city',
                         size: 'lg',
-                        // gradient: 'primary',
+                        gradient: 'primary',
+                        // weight: 'bold',
                       },
                     },
                     {
@@ -883,7 +883,6 @@ export const landingPageTemplate: TemplateSchema = {
         {
           type: 'Card',
           props: {
-            gap: '500',
             p: '700',
             bg: 'neutral-100',
             border: '1px solid var(--we-color-neutral-200)',
@@ -903,7 +902,8 @@ export const landingPageTemplate: TemplateSchema = {
                       props: {
                         name: 'hourglass',
                         size: 'lg',
-                        // gradient: 'primary',
+                        gradient: 'primary',
+                        // weight: 'bold',
                       },
                     },
                     {
@@ -1264,14 +1264,14 @@ export const landingPageTemplate: TemplateSchema = {
               children: BLOCK_TYPES.map((block) => ({
                 type: 'Card',
                 props: {
-                  gap: '300',
-                  p: '400',
                   bg: 'neutral-100',
                   border: '1px solid var(--we-color-neutral-200)',
                   width: '180px',
                   height: '180px',
                   ay: 'center',
                   ax: 'center',
+                  gap: '200',
+                  p: '300',
                 },
                 children: [
                   {
@@ -1285,7 +1285,7 @@ export const landingPageTemplate: TemplateSchema = {
                   },
                   {
                     type: 'we-text',
-                    props: { variant: 'body', lineHeight: '1.4', textAlign: 'center' },
+                    props: { variant: 'label', lineHeight: '1.4', textAlign: 'center' },
                     children: [block.purpose],
                   },
                 ],

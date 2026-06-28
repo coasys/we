@@ -12,7 +12,7 @@ export const aboutRoute: RouteSchema = {
         // ─── Name & Description ───────────────────────────────────────────
         {
           type: 'Card',
-          props: { gap: '500', p: '500', bg: 'neutral-100', border: '1px solid neutral-200' },
+          props: { bg: 'neutral-100', border: '1px solid neutral-200' },
           children: [
             {
               type: 'we-text',
