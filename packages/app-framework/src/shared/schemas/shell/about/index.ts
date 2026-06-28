@@ -323,17 +323,17 @@ function boxSection(children: any) {
 function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
   const imageCol = {
     type: 'Column',
-    props: { flex: '0 0 45%', overflow: 'hidden' },
+    props: { flex: '1 1 280px', overflow: 'hidden', minHeight: '280px' },
     children: [
       {
         type: 'we-image',
-        props: { src: card.image, alt: card.imageAlt, fit: 'cover', width: '100%', height: '320px' },
+        props: { src: card.image, alt: card.imageAlt, fit: 'cover', width: '100%', height: '100%' },
       },
     ],
   };
   const contentCol = {
     type: 'Column',
-    props: { p: '600', gap: '400', ay: 'center', ax: 'start' },
+    props: { p: '600', gap: '400', ay: 'center', ax: 'start', flex: '1 1 280px' },
     children: [
       {
         type: 'Row',
@@ -387,13 +387,15 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
     type: 'Card',
     props: {
       direction: 'row',
+      reverse: !imageLeft,
+      wrap: true,
       overflow: 'hidden',
       border: '1px solid var(--we-color-neutral-200)',
       width: '100%',
       p: '0',
       bg: 'neutral-100',
     },
-    children: imageLeft ? [imageCol, contentCol] : [contentCol, imageCol],
+    children: [imageCol, contentCol],
   };
 }
 
@@ -848,79 +850,92 @@ export const landingPageTemplate: TemplateSchema = {
           ],
         },
         {
-          type: 'Card',
-          props: { p: '700', bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
+          type: 'Row',
+          props: { gap: '600', wrap: true, mb: '180px' },
           children: [
             {
-              type: 'Column',
-              props: { gap: '300' },
+              type: 'Card',
+              props: {
+                p: '700',
+                bg: 'neutral-100',
+                border: '1px solid var(--we-color-neutral-200)',
+                flex: '1',
+                minWidth: '380px',
+              },
               children: [
                 {
-                  type: 'Row',
-                  props: { gap: '400', ay: 'center', mb: '400' },
+                  type: 'Column',
+                  props: { gap: '300' },
                   children: [
                     {
-                      type: 'we-icon',
-                      props: {
-                        name: 'city',
-                        size: 'lg',
-                        gradient: 'primary',
-                        // weight: 'bold',
-                      },
+                      type: 'Row',
+                      props: { gap: '400', ay: 'center', mb: '400' },
+                      children: [
+                        {
+                          type: 'we-icon',
+                          props: {
+                            name: 'city',
+                            size: 'lg',
+                            gradient: 'primary',
+                            // weight: 'bold',
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'heading-md', textTransform: 'uppercase' },
+                          children: ['Already built'],
+                        },
+                      ],
                     },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'heading-md', textTransform: 'uppercase' },
-                      children: ['Already built'],
-                    },
+                    ...BUILT.map((item) => roadmapItem(item, true)),
                   ],
                 },
-                ...BUILT.map((item) => roadmapItem(item, true)),
               ],
             },
-          ],
-        },
-        {
-          type: 'Card',
-          props: {
-            p: '700',
-            bg: 'neutral-100',
-            border: '1px solid var(--we-color-neutral-200)',
-            mb: '180px',
-          },
-          children: [
             {
-              type: 'Column',
-              props: { gap: '300' },
+              type: 'Card',
+              props: {
+                p: '700',
+                bg: 'neutral-100',
+                border: '1px solid var(--we-color-neutral-200)',
+                flex: '1',
+                minWidth: '380px',
+              },
               children: [
                 {
-                  type: 'Row',
-                  props: { gap: '400', ay: 'center', mb: '400' },
+                  type: 'Column',
+                  props: { gap: '300' },
                   children: [
                     {
-                      type: 'we-icon',
-                      props: {
-                        name: 'hourglass',
-                        size: 'lg',
-                        gradient: 'primary',
-                        // weight: 'bold',
-                      },
+                      type: 'Row',
+                      props: { gap: '400', ay: 'center', mb: '400' },
+                      children: [
+                        {
+                          type: 'we-icon',
+                          props: {
+                            name: 'hourglass',
+                            size: 'lg',
+                            gradient: 'primary',
+                            // weight: 'bold',
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'heading-md', textTransform: 'uppercase' },
+                          children: ['On the roadmap'],
+                        },
+                      ],
                     },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'heading-md', textTransform: 'uppercase' },
-                      children: ['On the roadmap'],
-                    },
+                    ...PLANNED.map((item) => roadmapItem(item, false)),
                   ],
                 },
-                ...PLANNED.map((item) => roadmapItem(item, false)),
+                // {
+                //   type: 'we-text',
+                //   props: { fontSize: '500', fontWeight: 'semibold', color: 'neutral-700', fontStyle: 'italic' },
+                //   children: ['The foundation is solid. The ecosystem is just beginning.'],
+                // },
               ],
             },
-            // {
-            //   type: 'we-text',
-            //   props: { fontSize: '500', fontWeight: 'semibold', color: 'neutral-700', fontStyle: 'italic' },
-            //   children: ['The foundation is solid. The ecosystem is just beginning.'],
-            // },
           ],
         },
 
