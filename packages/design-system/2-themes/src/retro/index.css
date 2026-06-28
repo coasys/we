@@ -1,12 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
 
 [data-we-theme='retro'] {
-  /* Color system — must be complete so the theme is self-contained */
-  --we-color-primary-hue: 230;
-  --we-color-multiplier: 1;
-  --we-color-subtractor: 0%;
-  --we-color-saturation: 60%;
-  --we-color-neutral-saturation: 10%;
   --we-border-radius: 0px;
   --we-border-color: silver;
   --we-font-family: monospace;

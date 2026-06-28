@@ -96,8 +96,16 @@ export interface ThemeStore {
 const ThemeContext = createContext<ThemeStore>();
 
 function registryToThemeData(key: string): ThemeData {
-  const t = themeRegistry[key as ThemeKey] ?? { name: key, icon: 'palette' };
-  return { id: key, name: t.name, icon: t.icon, origin: 'built-in', version: 1, overrides: null, css: null };
+  const t = themeRegistry[key as ThemeKey] ?? { name: key, icon: 'palette', css: null, overrides: null };
+  return {
+    id: key,
+    name: t.name,
+    icon: t.icon,
+    origin: 'built-in',
+    version: 1,
+    overrides: t.overrides ? JSON.stringify(t.overrides) : null,
+    css: t.css,
+  };
 }
 
 function encodeToFileData(content: string, name: string, mimeType: string) {
@@ -112,20 +120,22 @@ function getInitialThemeId(): string {
   return saved ?? fallback;
 }
 
+function injectCssString(id: string, css: string) {
+  let styleEl = document.getElementById(id) as HTMLStyleElement | null;
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = id;
+    document.head.appendChild(styleEl);
+  }
+  styleEl.textContent = css;
+}
+
 function applyThemeToDOM(theme: ThemeData) {
   const overrides: ThemeOverrides = theme.overrides ? JSON.parse(theme.overrides) : {};
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
   if (overrides.fontFamily === 'base') delete (overrides as any).fontFamily;
-  const hasOverrides = Object.keys(overrides).length > 0;
 
-  // Fast path: pure built-in theme with no overrides or custom CSS
-  if (!hasOverrides && !theme.css && isValidThemeKey(theme.id)) {
-    document.documentElement.setAttribute('data-we-theme', theme.id);
-    clearCustomThemeCSS();
-    return;
-  }
-
-  // Set base preset: prefer overrides.themeName, fall back to built-in id, then 'light'
+  // Set data-we-theme attribute so [data-we-theme='X'] CSS selectors match
   const baseName =
     overrides.themeName && isValidThemeKey(overrides.themeName)
       ? overrides.themeName
@@ -137,26 +147,19 @@ function applyThemeToDOM(theme: ThemeData) {
   // Clear previous inline overrides before re-applying so stale vars don't bleed through
   document.documentElement.style.cssText = '';
 
-  // Inject CSS vars derived from overrides
+  // Inject CSS vars derived from overrides as inline styles (highest specificity)
   const styles = themeToStyle(overrides);
   for (const [prop, value] of Object.entries(styles)) {
-    document.documentElement.style.setProperty(prop, value);
+    document.documentElement.style.setProperty(prop, value as string);
   }
 
-  // Inject raw CSS into a dedicated style element
-  let styleEl = document.getElementById('we-custom-theme-css') as HTMLStyleElement | null;
-  if (!styleEl) {
-    styleEl = document.createElement('style');
-    styleEl.id = 'we-custom-theme-css';
-    document.head.appendChild(styleEl);
-  }
-  styleEl.textContent = theme.css ?? '';
+  // Inject the theme's CSS string (component-level rules + any non-parametric vars)
+  injectCssString('we-custom-theme-css', theme.css ?? '');
 }
 
 function clearCustomThemeCSS() {
   document.documentElement.style.cssText = '';
-  const styleEl = document.getElementById('we-custom-theme-css');
-  if (styleEl) styleEl.textContent = '';
+  injectCssString('we-custom-theme-css', '');
 }
 
 const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
@@ -179,7 +182,8 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
   surfaceRadius: '--we-theme-surface-radius',
   inputRadius: '--we-theme-input-radius',
   // Density
-  controlSpacing: '--we-theme-control-spacing',
+  controlPaddingX: '--we-theme-control-padding-x',
+  controlGap: '--we-theme-control-gap',
   surfaceSpacing: '--we-theme-surface-spacing',
   // Effects
   surfaceOpacity: '--we-theme-surface-opacity',
@@ -399,16 +403,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     const id = prefs.defaultThemeId;
     setCurrentThemeId(id);
     // Use untrack so spaceThemes reloading between spaces doesn't re-trigger this effect
-    const theme = untrack(() => allThemes().find((t) => t.id === id));
-    if (theme) {
-      if (theme.origin !== 'built-in') applyThemeToDOM(theme);
-      else {
-        clearCustomThemeCSS();
-        document.documentElement.setAttribute('data-we-theme', id);
-      }
-    } else if (isValidThemeKey(id)) {
-      document.documentElement.setAttribute('data-we-theme', id);
-    }
+    const theme = untrack(() => allThemes().find((t) => t.id === id)) ?? registryToThemeData(isValidThemeKey(id) ? id : 'light');
+    applyThemeToDOM(theme);
   });
 
   // Keep localStorage in sync with the agent's default theme so the bootscreen
@@ -432,11 +428,10 @@ export function ThemeStoreProvider(props: ParentProps) {
   const activeTemplateTheme: Accessor<ThemeData | null> = () =>
     themeScope() === 'scoped' ? (editingTheme() ?? spaceThemeData()) : null;
 
-  // Apply initial theme immediately from localStorage
+  // Apply initial theme immediately from localStorage — inject CSS string synchronously
+  // so the correct theme renders before AD4M loads, without relying on a stylesheet.
   const initialId = getInitialThemeId();
-  if (isValidThemeKey(initialId)) {
-    document.documentElement.setAttribute('data-we-theme', initialId);
-  }
+  applyThemeToDOM(registryToThemeData(isValidThemeKey(initialId) ? initialId : 'light'));
 
   function resolveThemeData(themeId: string): ThemeData {
     return (
@@ -580,19 +575,30 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (!current) return;
     captureSnapshot();
 
-    // Build overrides with the new preset set (or removed) and explicit multiplier/subtractor
-    // cleared so the preset's natural mode shows through.
     const existing: ThemeOverrides = current.overrides ? JSON.parse(current.overrides) : {};
-    const updated: ThemeOverrides = { ...existing, multiplier: undefined, subtractor: undefined };
+
+    // Pull mode-defining vars directly from the registry — they are no longer in the CSS
+    // files so populateMissingOverrides can't read them from computed style.
+    const presetEntry = preset && isValidThemeKey(preset) ? themeRegistry[preset] : null;
+    const presetDefaults: ThemeOverrides = presetEntry?.overrides ?? {};
+
+    const updated: ThemeOverrides = {
+      ...existing,
+      multiplier: presetDefaults.multiplier,
+      subtractor: presetDefaults.subtractor,
+    };
     if (preset) updated.themeName = preset;
     else delete updated.themeName;
 
-    // Apply to DOM explicitly so getComputedStyle reflects the new preset before we read it.
-    applyThemeToDOM({ ...current, overrides: JSON.stringify(updated) });
+    // Replace the CSS string with the new preset's CSS; keep current CSS if clearing the preset.
+    const newCss = presetEntry ? (presetEntry.css ?? '') : (current.css ?? '');
 
-    // Repopulate multiplier/subtractor (and any other unset vars) from the new preset's CSS.
+    // Apply to DOM so getComputedStyle reflects the new preset for remaining vars.
+    applyThemeToDOM({ ...current, css: newCss, overrides: JSON.stringify(updated) });
+
+    // Repopulate any still-missing vars (radius, spacing, etc.) from computed style.
     const repopulated = populateMissingOverrides(updated);
-    setEditingTheme({ ...current, overrides: JSON.stringify(repopulated), isDirty: true });
+    setEditingTheme({ ...current, css: newCss, overrides: JSON.stringify(repopulated), isDirty: true });
   }
 
   function updateEditingOverrides(patch: Partial<ThemeOverrides>) {

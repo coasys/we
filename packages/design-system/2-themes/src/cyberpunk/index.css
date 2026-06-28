@@ -1,8 +1,4 @@
 [data-we-theme='cyberpunk'] {
-  --we-color-multiplier: -1;
-  --we-color-subtractor: 110%;
-  --we-color-saturation: 60%;
-  --we-color-neutral-saturation: 10%;
   --we-font-family: monospace;
   --we-border-radius: 0px;
   --we-border-color: var(--we-color-primary-200);
