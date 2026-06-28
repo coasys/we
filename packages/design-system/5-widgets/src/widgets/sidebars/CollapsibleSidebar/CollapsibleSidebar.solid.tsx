@@ -211,7 +211,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
               class="we-collapsible-sidebar__group-header--static"
               style={{ opacity: isExpanded() ? 1 : 0, transition: `opacity ${transitionDuration()}ms ease-in-out` }}
             >
-              <we-text class="we-collapsible-sidebar__group-label" fontSize="300" fontWeight="600" color="neutral-500">
+              <we-text class="we-collapsible-sidebar__group-label" fontSize="200" fontWeight="600" color="neutral-500">
                 {group.label}
               </we-text>
               <Show when={group.badge}>
@@ -240,7 +240,7 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
               pointerEvents: isExpanded() ? 'auto' : 'none',
             }}
           >
-            <we-text class="we-collapsible-sidebar__group-label" fontSize="300" fontWeight="600" color="neutral-400">
+            <we-text class="we-collapsible-sidebar__group-label" fontSize="200" fontWeight="600" color="neutral-400">
               {group.label}
             </we-text>
             <Show when={group.badge}>
