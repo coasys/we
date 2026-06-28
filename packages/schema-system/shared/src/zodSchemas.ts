@@ -306,6 +306,7 @@ export const zTemplateSchema: z.ZodType<TemplateSchema> = z
     templateVersion: z.number().optional(),
     schemaVersion: z.number().optional(),
     meta: zTemplateMeta,
+    _fromSpace: z.boolean().optional(),
   })
   .strict();
 
