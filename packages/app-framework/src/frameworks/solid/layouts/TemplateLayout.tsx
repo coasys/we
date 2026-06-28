@@ -174,8 +174,9 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           scrollbarGutter="stable"
         >
           {/* Scoped space theme wrapper — display:contents keeps layout unaffected.
-              Raw custom CSS (theme.css) still injects globally; only parametric overrides
-              and named themes are scoped here. */}
+              Parametric overrides are applied as inline CSS vars; component-level CSS
+              (theme.css) is injected into we-scoped-theme-css by ThemeStore and
+              self-scopes via [data-we-theme='X'] attribute selectors. */}
           <div style={{ display: 'contents', ...spaceThemeStyle() }} data-we-theme={spaceThemeName()}>
             <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
               <RenderSchema

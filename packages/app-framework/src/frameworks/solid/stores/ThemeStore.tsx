@@ -431,6 +431,14 @@ export function ThemeStoreProvider(props: ParentProps) {
   const activeTemplateTheme: Accessor<ThemeData | null> = () =>
     themeScope() === 'scoped' ? (editingTheme() ?? spaceThemeData()) : null;
 
+  // In scoped mode, inject the space/editing theme's component-level CSS into a separate
+  // style tag so [data-we-theme='X'] selectors match inside the scoped wrapper div.
+  // The rules self-scope via their attribute selector, so they don't leak into the shell.
+  // Cleared when returning to global mode (we-custom-theme-css handles it there).
+  createEffect(() => {
+    injectCssString('we-scoped-theme-css', activeTemplateTheme()?.css ?? '');
+  });
+
   // Apply initial theme immediately from localStorage — inject CSS string synchronously
   // so the correct theme renders before AD4M loads, without relying on a stylesheet.
   const initialId = getInitialThemeId();
