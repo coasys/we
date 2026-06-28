@@ -5,8 +5,8 @@ import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
 import { compressImageToFileData, decodeFileAsJson, ImageBlock, SpaceTemplatePreference, Template } from '@we/models';
-import type { StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
-import { createStoredTemplate } from '@we/schema-shared';
+import type { SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
+import { createStoredTemplate, ensureNodeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
@@ -405,7 +405,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (bootId && bootId !== 'default' && bootId !== 'landing-page' && bootId !== currentTemplate.id) {
       const persisted = allTemplates().find((t) => t.id === bootId) || shellTemplates.find((t) => t.id === bootId);
       if (persisted) {
-        setCurrentTemplate(reconcile(deepClone(persisted)));
+        const clone = deepClone(persisted) as SchemaNode;
+        ensureNodeIds(clone);
+        setCurrentTemplate(reconcile(clone as TemplateSchema));
         initialRestoreDone = true;
       }
     }
@@ -414,7 +416,9 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   // Actions
   function updateTemplate(newTemplate: TemplateSchema) {
-    const result = updateSchema(currentTemplate, newTemplate, setCurrentTemplate);
+    const clone = deepClone(newTemplate) as SchemaNode;
+    ensureNodeIds(clone);
+    const result = updateSchema(currentTemplate, clone as TemplateSchema, setCurrentTemplate);
     if (!result.applied && result.errors?.length) {
       toastService.error(`Schema validation failed: ${result.errors[0].message}`);
     }
@@ -424,7 +428,9 @@ export function TemplateStoreProvider(props: ParentProps) {
    *  Preferred for AI updates where large structural changes (new routes, etc.) need
    *  reliable reactivity. Caller is responsible for pre-validating the schema. */
   function replaceTemplate(newTemplate: TemplateSchema) {
-    setCurrentTemplate(reconcile(deepClone(newTemplate)));
+    const clone = deepClone(newTemplate) as SchemaNode;
+    ensureNodeIds(clone);
+    setCurrentTemplate(reconcile(clone as TemplateSchema));
   }
 
   // Per-template last-view memory — remembers which view segment (e.g. 'globe', 'chat')
@@ -449,7 +455,9 @@ export function TemplateStoreProvider(props: ParentProps) {
       ? allTemplates().find((t) => t.id === realId && t._fromSpace)
       : allTemplates().find((t) => t.id === realId && !t._fromSpace) || shellTemplates.find((t) => t.id === realId);
     if (newTemplate) {
-      setCurrentTemplate(reconcile(deepClone(newTemplate)));
+      const clone = deepClone(newTemplate) as SchemaNode;
+      ensureNodeIds(clone);
+      setCurrentTemplate(reconcile(clone as TemplateSchema));
       const segs = routeStore.segments();
       const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
       const view = lastViewByTemplate.get(realId) ?? currentView;
@@ -531,7 +539,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     // If we deleted the current template, switch to the default
     if (currentTemplate.id === templateId) {
       const fallback = allTemplates().find((t) => t.id === 'default') || allTemplates()[0] || emptyTemplate;
-      setCurrentTemplate(reconcile(deepClone(fallback)));
+      const clone = deepClone(fallback) as SchemaNode;
+      ensureNodeIds(clone);
+      setCurrentTemplate(reconcile(clone as TemplateSchema));
     }
     setOperationLoading(null);
   }
