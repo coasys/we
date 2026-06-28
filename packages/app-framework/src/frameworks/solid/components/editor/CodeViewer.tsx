@@ -97,13 +97,13 @@ export function CodeViewer(props: CodeViewerProps) {
               margin: tokenVar('space', '300'),
               padding: tokenVar('space', '400'),
               'overflow-y': 'auto',
-              'font-size': tokenVar('font-size', '200'),
+              'font-size': tokenVar('font-size', '100'),
               'line-height': '1.5',
               background: tokenVar('color', 'neutral-50'),
               color: tokenVar('color', 'neutral-800'),
               'white-space': 'pre-wrap',
               'word-break': 'break-all',
-              'font-family': 'monospace',
+              // 'font-family': 'monospace',
             }}
           >
             {props.json}
@@ -119,7 +119,7 @@ export function CodeViewer(props: CodeViewerProps) {
           on:input={(e: CustomEvent) => setEditValue(e.detail)}
           styles={{
             'font-family': 'monospace',
-            'font-size': tokenVar('font-size', '200'),
+            'font-size': tokenVar('font-size', '100'),
             'line-height': '1.5',
             border: 'none',
             padding: tokenVar('space', '400'),

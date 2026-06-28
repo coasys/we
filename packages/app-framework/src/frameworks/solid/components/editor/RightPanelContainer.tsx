@@ -6,6 +6,7 @@ import { useAiStore } from '../../stores/AiStore';
 import { AiChatPanel } from './AiChatPanel';
 import { CodePanel } from './CodePanel';
 import { ThemePanel } from './ThemePanel';
+import { VisualPropertiesPanel } from './VisualPropertiesPanel';
 
 export const RAIL_STRIP_WIDTH = 32; // px per strip
 export const TOTAL_RAIL_WIDTH = RAIL_STRIP_WIDTH * 3; // all three strips (used by TemplateLayout)
@@ -181,6 +182,20 @@ export function RightPanelContainer() {
 
       {/* Code + AI panels — visible when isEditingTemplate */}
       <Show when={aiStore.isEditingTemplate()}>
+        {/* Visual properties panel — only in visual mode */}
+        <Show when={aiStore.contentMode() === 'visual'}>
+          <PanelUnit
+            icon="cursor-click"
+            tooltip="Properties"
+            isOpen={() => aiStore.visualPanelOpen()}
+            panelWidth={() => aiStore.visualPanelWidth()}
+            toggle={() => aiStore.toggleVisualPanel()}
+            setPanelWidth={(w) => aiStore.setVisualPanelWidth(w)}
+          >
+            <VisualPropertiesPanel />
+          </PanelUnit>
+        </Show>
+
         <PanelUnit
           icon="code"
           tooltip="Code editor"

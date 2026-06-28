@@ -109,6 +109,10 @@ export interface AiStore {
   openThemePanel: () => void;
   closeThemePanel: () => void;
 
+  // --- Visual properties panel ---
+  visualPanelOpen: Accessor<boolean>;
+  toggleVisualPanel: () => void;
+
   // --- Theme editing mode (independent of template editing) ---
   isEditingTheme: Accessor<boolean>;
   enterThemeEditing: () => void;
@@ -119,9 +123,11 @@ export interface AiStore {
   aiPanelWidth: Accessor<number>;
   codePanelWidth: Accessor<number>;
   themePanelWidth: Accessor<number>;
+  visualPanelWidth: Accessor<number>;
   setAiPanelWidth: (w: number) => void;
   setCodePanelWidth: (w: number) => void;
   setThemePanelWidth: (w: number) => void;
+  setVisualPanelWidth: (w: number) => void;
 
   // --- Chat actions ---
   sendMessage: (text: string) => Promise<void>;
@@ -644,6 +650,12 @@ export function AiStoreProvider(props: ParentProps) {
     setThemePanelOpen(false);
   }
 
+  // Visual properties panel — open by default when entering visual mode
+  const [visualPanelOpen, setVisualPanelOpen] = createSignal(true);
+  function toggleVisualPanel() {
+    setVisualPanelOpen((v) => !v);
+  }
+
   // Panel widths — signal updates immediately; localStorage write is debounced to avoid
   // blocking the main thread on every mousemove pixel during drag-to-resize.
   const [aiPanelWidth, setAiPanelWidthSignal] = createSignal(
@@ -655,9 +667,13 @@ export function AiStoreProvider(props: ParentProps) {
   const [themePanelWidth, setThemePanelWidthSignal] = createSignal(
     parseInt(localStorage.getItem('we-theme-panel-width') ?? '320', 10),
   );
+  const [visualPanelWidth, setVisualPanelWidthSignal] = createSignal(
+    parseInt(localStorage.getItem('we-visual-panel-width') ?? '280', 10),
+  );
   let aiWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
   let codeWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
   let themeWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
+  let visualWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
   function setAiPanelWidth(w: number) {
     setAiPanelWidthSignal(w);
     clearTimeout(aiWidthPersistTimer);
@@ -672,6 +688,11 @@ export function AiStoreProvider(props: ParentProps) {
     setThemePanelWidthSignal(w);
     clearTimeout(themeWidthPersistTimer);
     themeWidthPersistTimer = setTimeout(() => localStorage.setItem('we-theme-panel-width', String(w)), 500);
+  }
+  function setVisualPanelWidth(w: number) {
+    setVisualPanelWidthSignal(w);
+    clearTimeout(visualWidthPersistTimer);
+    visualWidthPersistTimer = setTimeout(() => localStorage.setItem('we-visual-panel-width', String(w)), 500);
   }
 
   // ----------------------------------------------------------------
@@ -1495,13 +1516,19 @@ export function AiStoreProvider(props: ParentProps) {
     openThemePanel,
     closeThemePanel,
 
+    // Visual properties panel
+    visualPanelOpen,
+    toggleVisualPanel,
+
     // Panel widths
     aiPanelWidth,
     codePanelWidth,
     themePanelWidth,
+    visualPanelWidth,
     setAiPanelWidth,
     setCodePanelWidth,
     setThemePanelWidth,
+    setVisualPanelWidth,
 
     // Chat actions
     sendMessage,

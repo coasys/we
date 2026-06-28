@@ -9,7 +9,7 @@ import { useTemplateStore } from '../../stores/TemplateStore';
 import { useThemeStore } from '../../stores/ThemeStore';
 import { PublishThemeModal } from './PublishThemeModal';
 import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
-import { panelResizing, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from './RightPanelContainer';
+import { panelResizing, RAIL_STRIP_WIDTH, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from './RightPanelContainer';
 
 export function DesignToolbar() {
   const templateStore = useTemplateStore();
@@ -201,6 +201,10 @@ export function DesignToolbar() {
       offset += TEMPLATE_RAILS_WIDTH;
       if (aiStore.codePanelOpen()) offset += aiStore.codePanelWidth();
       if (aiStore.isOpen()) offset += aiStore.aiPanelWidth();
+      if (aiStore.contentMode() === 'visual') {
+        offset += RAIL_STRIP_WIDTH;
+        if (aiStore.visualPanelOpen()) offset += aiStore.visualPanelWidth();
+      }
     }
     return `${offset}px`;
   };
