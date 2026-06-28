@@ -21,6 +21,7 @@ import { Dynamic } from 'solid-js/web';
 import { AnimateRenderer } from './AnimateRenderer';
 import { ConditionalRenderer } from './ConditionalRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
+import { useVisualEditor } from './VisualEditorContext';
 
 const MAX_UNWRAP_DEPTH = 10;
 
@@ -282,6 +283,8 @@ function isStaticValue(value: unknown): boolean {
 
 export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
   if (!node) return null;
+
+  const visualEditor = useVisualEditor();
 
   // Create local state signals when $localState is declared on this node
   let effectiveContext = context;
@@ -840,6 +843,15 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   const themeAttr = createMemo(() => node.theme?.themeName);
   const isWebComponent = node.type?.includes('-') ?? false;
 
+  // Register this wrapper div in the visual editor node registry.
+  // The ref is set synchronously during JSX evaluation, before effects run.
+  let wrapperRef: HTMLDivElement | undefined;
+  createEffect(() => {
+    if (visualEditor.enabled && node.id && wrapperRef) {
+      return visualEditor.registerNode(node.id, wrapperRef);
+    }
+  });
+
   // Render: web components use per-prop property effects, Solid/HTML use reactive spread
   if (isWebComponent) {
     // All props delivered via per-prop effects (DOM property assignment).
@@ -883,7 +895,12 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     );
 
     return (
-      <div style={wrapperStyle()} data-we-theme={themeAttr()}>
+      <div
+        ref={wrapperRef}
+        style={wrapperStyle()}
+        data-we-theme={themeAttr()}
+        data-we-node-id={visualEditor.enabled && node.id ? node.id : undefined}
+      >
         {wcElement}
       </div>
     );
@@ -916,7 +933,12 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   );
 
   return (
-    <div style={wrapperStyle()} data-we-theme={themeAttr()}>
+    <div
+      ref={wrapperRef}
+      style={wrapperStyle()}
+      data-we-theme={themeAttr()}
+      data-we-node-id={visualEditor.enabled && node.id ? node.id : undefined}
+    >
       {solidElement}
     </div>
   );
