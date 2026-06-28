@@ -167,6 +167,9 @@ export function tokenVar(prefix: string, token?: string, fallback = '0') {
   // If no token, return fallback
   if (!token) return fallback;
 
+  // Bare 0 is always a valid unitless CSS value, not a token name
+  if (token === '0') return '0';
+
   // Allow raw CSS values (hex colors, px, rem, %, rgba, etc.)
   if (isRawCSSValue(token)) return token;
 

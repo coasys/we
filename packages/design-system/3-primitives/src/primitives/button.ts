@@ -11,10 +11,8 @@ import type { ButtonVariant, ComponentSize } from '../types';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   cursor: 'pointer',
   r: '400',
-  px: '400',
   ax: 'center',
   ay: 'center',
-  gap: '300',
   disabledProps: { cursor: 'default', opacity: 0.5 },
 };
 
@@ -53,11 +51,11 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { px: '200', fontSize: '100', height: 'var(--we-component-height-xs)', gap: '100' },
-  sm: { px: '300', fontSize: '200', height: 'var(--we-component-height-sm)', gap: '200' },
-  md: { px: '400', fontSize: '300', height: 'var(--we-component-height-md)' },
-  lg: { px: '500', fontSize: '500', height: 'var(--we-component-height-lg)' },
-  xl: { px: '500', fontSize: '500', height: 'var(--we-component-height-xl)' },
+  xs: { fontSize: '100', height: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))' },
+  sm: { fontSize: '200', height: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px))' },
+  md: { fontSize: '300', height: 'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px))' },
+  lg: { fontSize: '500', height: 'calc(var(--we-component-height-lg) + var(--we-theme-control-height-offset, 0px))' },
+  xl: { fontSize: '500', height: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))' },
 };
 
 const CSS_STYLES = css`
@@ -66,26 +64,36 @@ const CSS_STYLES = css`
     white-space: nowrap;
   }
 
-  /* Provide icon sizing context for nested we-icon children */
+  /* Provide icon sizing context and size-specific padding/gap/radius for nested we-icon children */
   :host([size='xs']) {
     --we-context-icon-size: var(--we-size-xxs);
     --we-button-size-radius: var(--we-radius-200);
+    --we-button-size-padding-x: var(--we-space-200);
+    --we-button-size-gap: var(--we-space-100);
   }
   :host([size='sm']) {
     --we-context-icon-size: var(--we-size-xs);
     --we-button-size-radius: var(--we-radius-300);
+    --we-button-size-padding-x: var(--we-space-300);
+    --we-button-size-gap: var(--we-space-200);
   }
   :host([size='md']) {
     --we-context-icon-size: var(--we-size-sm);
     --we-button-size-radius: var(--we-radius-400);
+    --we-button-size-padding-x: var(--we-space-400);
+    --we-button-size-gap: var(--we-space-300);
   }
   :host([size='lg']) {
     --we-context-icon-size: var(--we-size-md);
     --we-button-size-radius: var(--we-radius-400);
+    --we-button-size-padding-x: var(--we-space-500);
+    --we-button-size-gap: var(--we-space-300);
   }
   :host([size='xl']) {
     --we-context-icon-size: var(--we-size-lg);
     --we-button-size-radius: var(--we-radius-400);
+    --we-button-size-padding-x: var(--we-space-500);
+    --we-button-size-gap: var(--we-space-300);
   }
 
   [part='base'] {
@@ -93,6 +101,15 @@ const CSS_STYLES = css`
     box-sizing: border-box;
     position: relative;
     overflow: hidden;
+    /* Padding cascade: explicit prop (full shorthand) → component theme → group density → size default (x-only) */
+    padding: var(
+      --we-button-padding,
+      0
+        var(
+          --we-theme-button-padding-x,
+          var(--we-theme-control-padding-x, var(--we-button-size-padding-x, var(--we-space-400)))
+        )
+    );
   }
 
   [part='base']::before {
@@ -120,6 +137,11 @@ const CSS_STYLES = css`
   ::slotted(we-icon) {
     pointer-events: none;
   }
+
+  /* Square buttons are sized purely by component height — suppress all cascade padding */
+  :host([square]) [part='base'] {
+    padding: 0;
+  }
 `;
 
 @customElement('we-button')
@@ -138,10 +160,6 @@ export default class Button extends DesignSystemElement {
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
-  }
-
-  override getRawProps() {
-    return { ...SIZE_DEFAULTS[this.size], ...super.getRawProps() };
   }
 
   override updated(changedProperties: Map<string, unknown>) {
@@ -166,7 +184,7 @@ export default class Button extends DesignSystemElement {
     ) as Partial<DesignSystemProps>;
 
     if (this.square) {
-      const h = `var(--we-component-height-${this.size})`;
+      const h = `calc(var(--we-component-height-${this.size}) + var(--we-theme-control-height-offset, 0px))`;
       props.width = h;
       props.height = h;
       delete props.px;

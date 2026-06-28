@@ -49,9 +49,11 @@ const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
 interface ComponentCascade {
   radiusGroup?: string; // e.g. '--we-theme-control-radius'
   radiusDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
-  paddingGroup?: string; // e.g. '--we-theme-control-spacing'
+  paddingGroup?: string; // e.g. '--we-theme-control-padding-x'
   paddingDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
-  nativePadding?: boolean; // if true, padding is omitted from [part='base'] — the component applies it directly on the native element
+  nativePadding?: boolean; // if true, padding is omitted from [part='base'] — the component owns it in CSS_STYLES
+  gapGroup?: string; // e.g. '--we-theme-control-gap'
+  gapDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
 }
 
 const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
@@ -60,11 +62,19 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     radiusGroup: '--we-theme-control-radius',
     // Explicit: size-aware CSS var chain — not derivable from DEFAULT_PROPS alone.
     radiusDefault: 'var(--we-button-size-radius, var(--we-radius-400))',
-    paddingGroup: '--we-theme-control-spacing',
+    // Padding is owned by CSS_STYLES (x-only, 0 y) — nativePadding suppresses the generic declaration.
+    nativePadding: true,
+    gapGroup: '--we-theme-control-gap',
+    gapDefault: 'var(--we-button-size-gap, var(--we-space-300))',
   },
-  badge: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-control-spacing' },
-  tag: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-control-spacing' },
-  'menu-item': { paddingGroup: '--we-theme-control-spacing' },
+  badge: {
+    radiusGroup: '--we-theme-control-radius',
+    nativePadding: true,
+    gapGroup: '--we-theme-control-gap',
+    gapDefault: 'var(--we-badge-size-gap, 0)',
+  },
+  tag: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-control-padding-x' },
+  'menu-item': { paddingGroup: '--we-theme-control-padding-x' },
   'progress-bar': { radiusGroup: '--we-theme-control-radius' },
   // Inputs
   input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-spacing' },
@@ -232,7 +242,10 @@ function updateCustomVars(
   setProperty(el, `${prefix}main-axis`, main);
   setProperty(el, `${prefix}cross-axis`, cross);
   setProperty(el, `${prefix}wrap`, 'wrap' in props ? (props.wrap ? 'wrap' : 'nowrap') : undefined);
-  setProperty(el, `${prefix}gap`, props.gap ? tokenVar('space', props.gap) : undefined);
+  // Only set the instance gap var when explicitly passed — not from SIZE_DEFAULTS or DEFAULT_PROPS.
+  // When not explicit, the static CSS fallback chain handles it via --we-theme-control-gap.
+  const gapExplicit = !rawExplicitProps || rawExplicitProps['gap'] !== undefined;
+  setProperty(el, `${prefix}gap`, props.gap && gapExplicit ? tokenVar('space', props.gap) : undefined);
   const hasPadding = paddingKeys.some((k) => props[k] !== undefined && props[k] !== null);
   // Same guard as radius — only set the instance padding var when explicitly passed.
   const paddingExplicit = !rawExplicitProps || paddingKeys.some((k) => rawExplicitProps[k] !== undefined);
@@ -414,6 +427,8 @@ export function getStaticDSStyles(
     (dp && paddingKeys.some((k) => dp[k] !== undefined)
       ? getPaddingValues(defaultProps as DesignSystemProps)
       : undefined);
+  const gapDefault =
+    cascade?.gapDefault ?? (dp && dp['gap'] !== undefined ? tokenVar('space', dp['gap'] as string) : undefined);
 
   // Build per-component visual and flex specs with cascade fallbacks where applicable.
   const baseVisual: PropSpec[] = BASE_VISUAL.map((spec) =>
@@ -422,9 +437,14 @@ export function getStaticDSStyles(
       : spec,
   );
   const baseFlex: PropSpec[] = BASE_FLEX.flatMap((spec) => {
-    if (spec[1] !== 'padding') return [spec];
-    if (cascade?.nativePadding) return []; // padding goes on the native element, not [part='base']
-    return [cascadeSpec(componentName, 'padding', 'padding', cascade?.paddingGroup, paddingDefault)];
+    if (spec[1] === 'gap') {
+      return [cascadeSpec(componentName, 'gap', 'gap', cascade?.gapGroup, gapDefault)];
+    }
+    if (spec[1] === 'padding') {
+      if (cascade?.nativePadding) return []; // padding owned by CSS_STYLES, not [part='base']
+      return [cascadeSpec(componentName, 'padding', 'padding', cascade?.paddingGroup, paddingDefault)];
+    }
+    return [spec];
   });
 
   const styles: string[] = [];

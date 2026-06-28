@@ -19,11 +19,11 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { fontSize: '100', height: 'var(--we-component-height-xs)' },
-  sm: { fontSize: '200', height: 'var(--we-component-height-sm)' },
-  md: { fontSize: '300', height: 'var(--we-component-height-md)' },
-  lg: { fontSize: '400', height: 'var(--we-component-height-lg)' },
-  xl: { fontSize: '400', height: 'var(--we-component-height-xl)' },
+  xs: { fontSize: '100', height: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))' },
+  sm: { fontSize: '200', height: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px))' },
+  md: { fontSize: '300', height: 'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px))' },
+  lg: { fontSize: '400', height: 'calc(var(--we-component-height-lg) + var(--we-theme-control-height-offset, 0px))' },
+  xl: { fontSize: '400', height: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))' },
 };
 
 const styles = css`

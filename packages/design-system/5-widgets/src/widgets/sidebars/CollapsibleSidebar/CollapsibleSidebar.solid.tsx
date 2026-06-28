@@ -1,6 +1,5 @@
 import { parseBorder, tokenVar } from '@we/design-utils';
 import { createContext, createEffect, createMemo, createSignal, Index, type JSX, onCleanup, Show } from 'solid-js';
-import { Dynamic } from 'solid-js/web';
 
 export type * from './CollapsibleSidebar.types';
 import type {
@@ -204,36 +203,59 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
 
     return (
       <div class="we-collapsible-sidebar__group">
-        {/* Group header */}
-        <Dynamic
-          component={group.collapsible !== false ? 'button' : 'div'}
-          class={`we-collapsible-sidebar__group-header${group.collapsible === false ? ' we-collapsible-sidebar__group-header--static' : ''}`}
-          onClick={group.collapsible !== false ? () => toggleGroup(getGroup()) : undefined}
-          disabled={group.collapsible !== false ? group.disabled : undefined}
-          style={{ opacity: isExpanded() ? 1 : 0, transition: `opacity ${transitionDuration()}ms ease-in-out` }}
+        {/* Group header — we-button for collapsible (theme-aware), plain div for static */}
+        <Show
+          when={group.collapsible !== false}
+          fallback={
+            <div
+              class="we-collapsible-sidebar__group-header--static"
+              style={{ opacity: isExpanded() ? 1 : 0, transition: `opacity ${transitionDuration()}ms ease-in-out` }}
+            >
+              <we-text class="we-collapsible-sidebar__group-label" fontSize="300" fontWeight="600" color="neutral-500">
+                {group.label}
+              </we-text>
+              <Show when={group.badge}>
+                <we-badge class="we-collapsible-sidebar__group-badge" size="sm" bg="neutral-200" color="neutral-600">
+                  {group.badge}
+                </we-badge>
+              </Show>
+            </div>
+          }
         >
-          <we-text
-            class="we-collapsible-sidebar__group-label"
-            fontSize="300"
-            fontWeight="600"
-            color={group.collapsible !== false ? 'neutral-400' : 'neutral-500'}
+          <we-button
+            variant="ghost"
+            width="100%"
+            height="auto"
+            py="200"
+            px="300"
+            gap="200"
+            ax="start"
+            ay="center"
+            direction={side() === 'left' ? 'row' : 'row-reverse'}
+            onClick={() => toggleGroup(getGroup())}
+            disabled={group.disabled}
+            style={{
+              opacity: isExpanded() ? 1 : 0,
+              transition: `opacity ${transitionDuration()}ms ease-in-out`,
+              pointerEvents: isExpanded() ? 'auto' : 'none',
+            }}
           >
-            {group.label}
-          </we-text>
-          <Show when={group.badge}>
-            <we-badge class="we-collapsible-sidebar__group-badge" size="sm" bg="neutral-200" color="neutral-600">
-              {group.badge}
-            </we-badge>
-          </Show>
-          <Show when={group.collapsible !== false}>
+            <we-text class="we-collapsible-sidebar__group-label" fontSize="300" fontWeight="600" color="neutral-400">
+              {group.label}
+            </we-text>
+            <Show when={group.badge}>
+              <we-badge class="we-collapsible-sidebar__group-badge" size="sm" bg="neutral-200" color="neutral-600">
+                {group.badge}
+              </we-badge>
+            </Show>
             <we-icon
               class="we-collapsible-sidebar__group-icon"
               name={collapsed() ? 'caret-right' : 'caret-down'}
               size="xs"
               color="neutral-400"
             />
-          </Show>
-        </Dynamic>
+          </we-button>
+        </Show>
 
         {/* Group items */}
         <div

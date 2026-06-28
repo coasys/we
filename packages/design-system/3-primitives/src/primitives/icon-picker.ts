@@ -59,11 +59,11 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const CONTROL_HEIGHT: Record<ComponentSize, string> = {
-  xs: 'var(--we-component-height-xs)',
-  sm: 'var(--we-component-height-sm)',
-  md: 'var(--we-component-height-md)',
-  lg: 'var(--we-component-height-lg)',
-  xl: 'var(--we-component-height-xl)',
+  xs: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))',
+  sm: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px))',
+  md: 'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px))',
+  lg: 'calc(var(--we-component-height-lg) + var(--we-theme-control-height-offset, 0px))',
+  xl: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))',
 };
 
 const styles = css`

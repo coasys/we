@@ -14,7 +14,6 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   fontSize: '300',
   fontWeight: '400',
   r: '400',
-  px: '400',
   cursor: 'default',
   ax: 'center',
   ay: 'center',
@@ -29,11 +28,11 @@ const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
-  xs: { px: '200', fontSize: '100', height: 'var(--we-component-height-xs)', gap: '100' },
-  sm: { px: '300', fontSize: '200', height: 'var(--we-component-height-sm)', gap: '200' },
-  md: { px: '400', fontSize: '300', height: 'var(--we-component-height-md)' },
-  lg: { px: '500', fontSize: '500', height: 'var(--we-component-height-lg)' },
-  xl: { px: '500', fontSize: '500', height: 'var(--we-component-height-xl)' },
+  xs: { fontSize: '100', height: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))' },
+  sm: { fontSize: '200', height: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px))' },
+  md: { fontSize: '300', height: 'calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px))' },
+  lg: { fontSize: '500', height: 'calc(var(--we-component-height-lg) + var(--we-theme-control-height-offset, 0px))' },
+  xl: { fontSize: '500', height: 'calc(var(--we-component-height-xl) + var(--we-theme-control-height-offset, 0px))' },
 };
 
 const styles = css`
@@ -41,21 +40,40 @@ const styles = css`
     --we-badge-host-display: inline-flex;
   }
 
-  /* Provide icon sizing context for slotted we-icon children */
+  /* Provide icon sizing context and size-specific padding/gap for slotted we-icon children */
   :host([size='xs']) {
     --we-context-icon-size: var(--we-size-xxs);
+    --we-badge-size-padding-x: var(--we-space-200);
+    --we-badge-size-gap: var(--we-space-100);
   }
   :host([size='sm']) {
     --we-context-icon-size: var(--we-size-xs);
+    --we-badge-size-padding-x: var(--we-space-300);
+    --we-badge-size-gap: var(--we-space-200);
   }
   :host([size='md']) {
     --we-context-icon-size: var(--we-size-sm);
+    --we-badge-size-padding-x: var(--we-space-400);
   }
   :host([size='lg']) {
     --we-context-icon-size: var(--we-size-md);
+    --we-badge-size-padding-x: var(--we-space-500);
   }
   :host([size='xl']) {
     --we-context-icon-size: var(--we-size-lg);
+    --we-badge-size-padding-x: var(--we-space-500);
+  }
+
+  [part='base'] {
+    /* Padding cascade: explicit prop (full shorthand) → component theme → group density → size default (x-only) */
+    padding: var(
+      --we-badge-padding,
+      0
+        var(
+          --we-theme-badge-padding-x,
+          var(--we-theme-control-padding-x, var(--we-badge-size-padding-x, var(--we-space-400)))
+        )
+    );
   }
 `;
 
@@ -69,10 +87,6 @@ export default class Badge extends DesignSystemElement {
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
-  }
-
-  override getRawProps() {
-    return { ...SIZE_DEFAULTS[this.size], ...super.getRawProps() };
   }
 
   override getInstanceProps() {
