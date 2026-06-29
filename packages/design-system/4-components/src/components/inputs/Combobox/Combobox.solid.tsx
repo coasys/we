@@ -124,6 +124,18 @@ export function Combobox(allProps: ComboboxComponentProps) {
     }
   };
 
+  const sizeToFontSizeToken: Record<string, string> = {
+    xs: '100',
+    sm: '200',
+    md: '300',
+    lg: '400',
+    xl: '500',
+  };
+
+  const dropdownFontSizeStyle = () => ({
+    'font-size': `var(--we-font-size-${sizeToFontSizeToken[props.size ?? 'sm'] ?? '200'})`,
+  });
+
   return (
     <div style={containerStyle()}>
       <we-input
@@ -167,7 +179,7 @@ export function Combobox(allProps: ComboboxComponentProps) {
                     selected={opt.value === (props.value ?? '')}
                     on:select={() => handleSelect(opt.value)}
                   >
-                    <we-text>{opt.label}</we-text>
+                    <span style={dropdownFontSizeStyle()}>{opt.label}</span>
                   </we-menu-item>
                 )}
               </For>
