@@ -364,9 +364,11 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
   });
 
-  // Apply the agent's default theme when AgentSettings first loads.
-  // Uses defaultThemeId so boot always starts at the user's chosen default,
-  // not whatever was last active in a previous session.
+  // Apply the agent's default theme when AgentSettings first loads or when the user
+  // explicitly changes their default theme. Guard against re-firing on unrelated
+  // settings changes (e.g. currentTemplateId updates from template switches), which
+  // would otherwise reset the theme to defaultThemeId mid-session.
+  let lastAppliedDefaultThemeId: string | undefined;
   createEffect(() => {
     const prefs = adamStore.agentSettings();
     if (!prefs?.defaultThemeId) return;
@@ -375,6 +377,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     // and blindly resetting currentThemeId to defaultThemeId would exit editing mode.
     if (untrack(() => editingTheme())) return;
     const id = prefs.defaultThemeId;
+    if (id === lastAppliedDefaultThemeId) return;
+    lastAppliedDefaultThemeId = id;
     setCurrentThemeId(id);
     // Use untrack so spaceThemes reloading between spaces doesn't re-trigger this effect
     const theme =

@@ -3,12 +3,13 @@ import { useAiStore, useTemplateStore } from '@solid/stores';
 import { contextData } from '@we/ai-context';
 import { Column, Combobox, type ComboboxOption, Grid, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
-import { CodeViewer } from './CodeViewer';
 import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { findNodeById, getComponentMeta, mergeNode } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+
+import { CodeViewer } from './CodeViewer';
 
 // -----------------------------------------------------------------------
 // Schema helpers
