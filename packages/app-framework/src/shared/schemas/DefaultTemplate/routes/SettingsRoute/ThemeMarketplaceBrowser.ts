@@ -15,7 +15,7 @@ export const themeMarketplaceBrowser: SchemaNode = {
   },
   children: [
     {
-      type: 'SearchInput',
+      type: 'Search',
       props: {
         placeholder: 'Search themes…',
         value: { $local: 'search' },

@@ -15,7 +15,7 @@ export const marketplaceBrowser: SchemaNode = {
   },
   children: [
     {
-      type: 'SearchInput',
+      type: 'Search',
       props: {
         placeholder: 'Search marketplace…',
         value: { $local: 'search' },

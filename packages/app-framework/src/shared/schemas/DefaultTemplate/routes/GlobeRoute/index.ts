@@ -138,7 +138,7 @@ export const globeRoute: RouteSchema = {
                 },
                 // Search filter
                 {
-                  type: 'SearchInput',
+                  type: 'Search',
                   props: {
                     placeholder: 'Search spaces and people…',
                     onSearch: { $setLocal: 'searchText', from: '$event' },
