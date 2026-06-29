@@ -124,7 +124,7 @@ async function main() {
   // Shell/internal components registered in the runtime componentRegistry but intentionally
   // excluded from AI docs (no public props, not for user schemas). Listed here so the
   // validator doesn't flag them as unknown when they appear in shell schemas.
-  contextData.shellComponents = ['AiChatPanel', 'BenchmarkTimer', 'RightPanelContainer', 'DesignToolbar', 'WeCube'];
+  contextData.shellComponents = ['AiPanel', 'BenchmarkTimer', 'RightPanelContainer', 'DesignToolbar', 'WeCube'];
 
   const context = {
     ...contextData,

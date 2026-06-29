@@ -2859,5 +2859,5 @@ export const contextData: ContextData = {
       actions: ['activateApp', 'deactivateApp'],
     },
   ],
-  shellComponents: ['AiChatPanel', 'BenchmarkTimer', 'RightPanelContainer', 'DesignToolbar', 'WeCube'],
+  shellComponents: ['AiPanel', 'BenchmarkTimer', 'RightPanelContainer', 'DesignToolbar', 'WeCube'],
 };

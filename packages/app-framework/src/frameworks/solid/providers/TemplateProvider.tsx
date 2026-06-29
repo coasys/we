@@ -146,7 +146,7 @@ export default function TemplateProvider() {
 
   // VisualEditorProvider wraps everything so that:
   // 1. Route components (called as direct functions in buildRoutes) get context via their reactive owner
-  // 2. Shell chrome components like VisualPropertiesPanel (in templateEditor) get context too
+  // 2. Shell chrome components like InspectorPanel (in templateEditor) get context too
   return (
     <VisualEditorProvider value={visualEditorCtx}>
       {/* Shell chrome — stable, never remounts */}

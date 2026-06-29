@@ -55,7 +55,7 @@ import { CesiumGlobe, CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSideb
 
 import WeCube from '../components/3d/WeCube';
 import { BenchmarkTimer } from '../components/BenchmarkTimer';
-import { AiChatPanel } from '../components/editor/AiChatPanel';
+import { AiPanel } from '../components/editor/AiPanel';
 import { DesignToolbar } from '../components/editor/DesignToolbar';
 import { RightPanelContainer } from '../components/editor/RightPanelContainer';
 import { TemplateCard } from '../components/marketplace/TemplateCard';
@@ -99,7 +99,7 @@ export const componentRegistry: ComponentRegistry = {
   ToastContainer,
 
   // @we/widgets
-  AiChatPanel,
+  AiPanel,
   RightPanelContainer,
   SpaceSidebarWidget,
   CollapsibleSidebar,

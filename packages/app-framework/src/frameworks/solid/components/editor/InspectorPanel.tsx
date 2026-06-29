@@ -364,10 +364,10 @@ function NodeTree() {
 }
 
 // -----------------------------------------------------------------------
-// VisualPropertiesPanel
+// InspectorPanel
 // -----------------------------------------------------------------------
 
-export function VisualPropertiesPanel() {
+export function InspectorPanel() {
   const templateStore = useTemplateStore();
   const aiStore = useAiStore();
   const visualEditor = useVisualEditor();
@@ -426,6 +426,25 @@ export function VisualPropertiesPanel() {
       fontSize="200"
       color="neutral-800"
     >
+      {/* Header */}
+      <Row
+        ax="between"
+        ay="center"
+        px="400"
+        py="300"
+        borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
+        styles={{ 'flex-shrink': '0' }}
+      >
+        <we-text fontSize="500" fontWeight="600">
+          Visual Inspector
+        </we-text>
+        <we-tooltip title="Close inspector panel">
+          <we-button variant="ghost" size="sm" onClick={() => aiStore.toggleVisualPanel()}>
+            <we-icon name="x" size="sm" />
+          </we-button>
+        </we-tooltip>
+      </Row>
+
       {/* Layer tree */}
       <Column flex="none" height={`${treeHeight()}px`} overflow="hidden">
         <Row

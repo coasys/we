@@ -3,10 +3,10 @@ import { tokenVar } from '@we/design-utils';
 import { createSignal, JSX, Show } from 'solid-js';
 
 import { useAiStore } from '../../stores/AiStore';
-import { AiChatPanel } from './AiChatPanel';
+import { AiPanel } from './AiPanel';
 import { CodePanel } from './CodePanel';
+import { InspectorPanel } from './InspectorPanel';
 import { ThemePanel } from './ThemePanel';
-import { VisualPropertiesPanel } from './VisualPropertiesPanel';
 
 export const RAIL_STRIP_WIDTH = 32; // px per strip
 export const TOTAL_RAIL_WIDTH = RAIL_STRIP_WIDTH * 3; // all three strips (used by TemplateLayout)
@@ -192,7 +192,7 @@ export function RightPanelContainer() {
             toggle={() => aiStore.toggleVisualPanel()}
             setPanelWidth={(w) => aiStore.setVisualPanelWidth(w)}
           >
-            <VisualPropertiesPanel />
+            <InspectorPanel />
           </PanelUnit>
         </Show>
 
@@ -215,7 +215,7 @@ export function RightPanelContainer() {
           toggle={() => aiStore.toggle()}
           setPanelWidth={(w) => aiStore.setAiPanelWidth(w)}
         >
-          <AiChatPanel />
+          <AiPanel />
         </PanelUnit>
       </Show>
     </Row>
