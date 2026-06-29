@@ -116,6 +116,7 @@ function getStandardProps(framework?: Framework): string[] {
       `${indent(4)}ref?: HTMLElement;`,
       `${indent(4)}slot?: string | number;`,
       `${indent(4)}id?: string;`,
+      `${indent(4)}title?: string;`,
       `${indent(4)}class?: string;`,
       `${indent(4)}style?: Record<string, any>;`,
       `${indent(4)}styles?: Record<string, any>;`,

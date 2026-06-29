@@ -1574,6 +1574,7 @@ export const contextData: ContextData = {
         { name: 'disabledProps', type: 'Partial<DesignSystemProps>', optional: true },
         { name: 'reverse', type: 'boolean', optional: true },
         { name: 'styles', type: 'JSX.CSSProperties', optional: true },
+        { name: 'template', type: 'string', optional: true },
         { name: 'columns', type: 'number', optional: true },
         { name: 'minChildWidth', type: 'string', optional: true },
       ],

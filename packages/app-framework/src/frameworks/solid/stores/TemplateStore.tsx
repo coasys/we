@@ -904,7 +904,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     // re-persisting a previously-saved schema (e.g. after undo/redo).
     const envelope = { ...storedTemplate, savedAt: Date.now() };
     const jsonBytes = new TextEncoder().encode(JSON.stringify(envelope));
-    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    let binary = '';
+    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+    const base64 = btoa(binary);
     const schemaBlob = {
       data_base64: base64,
       name: 'template-schema.json',

@@ -1,7 +1,8 @@
 import { deepClone } from '@shared/utils';
 import { useTemplateStore } from '@solid/stores';
 import { contextData } from '@we/ai-context';
-import { Combobox, type ComboboxOption } from '@we/components/solid';
+import { Column, Combobox, type ComboboxOption, Grid, Row } from '@we/components/solid';
+import { tokenVar } from '@we/design-utils';
 import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { findNodeById, getComponentMeta, mergeNode } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
@@ -118,64 +119,46 @@ export function VisualPropertiesPanel() {
 
   function handlePropChange(key: string, value: unknown) {
     const id = visualEditor.selectedId();
-    console.log('[PropChange] key:', key, 'value:', value, 'selectedId:', id);
     if (!id) return;
     try {
       const clone = deepClone(templateStore.currentTemplate) as TemplateSchema;
       const found = findNodeById(clone, id);
-      console.log('[PropChange] found node:', found?.node?.type, found?.node?.props);
       if (!found) return;
       const patch =
         value === '' || value === null || value === false ? { props: { [key]: null } } : { props: { [key]: value } };
       const patched = mergeNode(found.node, patch);
-      console.log('[PropChange] patched props:', patched.props);
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
       templateStore.updateTemplate(updated);
       templateStore.persistCurrentTemplate();
-      console.log('[PropChange] done');
     } catch (e) {
       console.error('[PropChange] error:', e);
     }
   }
 
   return (
-    <div
-      style={{
-        width: '100%',
-        height: '100%',
-        display: 'flex',
-        'flex-direction': 'column',
-        overflow: 'hidden',
-        background: 'var(--we-color-neutral-0, #fff)',
-        'font-family': 'var(--we-font-family-base, system-ui, sans-serif)',
-        'font-size': '12px',
-        color: 'var(--we-color-neutral-800, #1f2937)',
-      }}
+    <Column
+      width="100%"
+      height="100%"
+      overflow="hidden"
+      bg="neutral-0"
+      fontFamily="base"
+      fontSize="200"
+      color="neutral-800"
     >
       <Show
         when={selectedNode()}
         fallback={
-          <div
-            style={{
-              flex: '1',
-              display: 'flex',
-              'flex-direction': 'column',
-              'align-items': 'center',
-              'justify-content': 'center',
-              gap: '8px',
-              color: 'var(--we-color-neutral-400, #9ca3af)',
-              padding: '24px',
-              'text-align': 'center',
-            }}
-          >
+          <Column flex="1" ax="center" ay="center" gap="200" p="600" textAlign="center">
             <we-icon name="cursor-click" size="lg" color="neutral-300" />
-            <span style={{ 'font-size': '13px' }}>Click any element to inspect it</span>
-          </div>
+            <we-text fontSize="300" color="neutral-400">
+              Click any element to inspect it
+            </we-text>
+          </Column>
         }
       >
         {(node) => <NodeProperties node={node()} onPropChange={handlePropChange} />}
       </Show>
-    </div>
+    </Column>
   );
 }
 
@@ -225,36 +208,25 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
   return (
     <>
       {/* Header */}
-      <div
-        style={{
-          padding: '12px 14px 10px',
-          'border-bottom': '1px solid var(--we-color-neutral-100, #e5e7eb)',
-          flex: '0 0 auto',
-        }}
-      >
-        <div
-          style={{
-            'font-weight': '600',
-            'font-size': '13px',
-            color: 'var(--we-color-neutral-900, #111827)',
-            'margin-bottom': '2px',
-          }}
-        >
+      <Column px="400" pt="300" pb="200" gap="100" borderBottom="1px solid neutral-100" flex="none">
+        <we-text fontSize="300" fontWeight="600" color="neutral-900">
           {props.node.type ?? '(no type)'}
-        </div>
+        </we-text>
         <Show when={props.node.id}>
-          <div style={{ color: 'var(--we-color-neutral-400, #9ca3af)', 'font-size': '10px' }}>id: {props.node.id}</div>
+          <we-text fontSize="100" color="neutral-400">
+            id: {props.node.id}
+          </we-text>
         </Show>
-      </div>
+      </Column>
 
       {/* Scrollable content */}
-      <div style={{ flex: '1 1 auto', overflow: 'auto' }}>
+      <we-scroll-area style={{ flex: '1' }}>
         {/* Spacing — always-visible box model for padding + margin */}
         <BoxModel meta={meta()} currentProps={currentProps()} onPropChange={props.onPropChange} />
 
         {/* Used props — always visible */}
         <Show when={usedProps().size > 0}>
-          <div style={{ padding: '4px 0 8px' }}>
+          <Column py="100">
             <SectionLabel>Set props</SectionLabel>
             <For each={[...usedProps().entries()]}>
               {([key, value]) => {
@@ -270,7 +242,7 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
                 );
               }}
             </For>
-          </div>
+          </Column>
         </Show>
 
         {/* Available props grouped by layer — spacing handled by SpacingSection above */}
@@ -302,36 +274,30 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
 
         {/* Unknown component — show any primitive props that are set */}
         <Show when={!meta() && usedProps().size === 0 && complexProps().length === 0}>
-          <div style={{ padding: '16px 14px', color: 'var(--we-color-neutral-400, #9ca3af)', 'font-size': '12px' }}>
+          <we-text py="400" px="14px" color="neutral-400">
             No props
-          </div>
+          </we-text>
         </Show>
 
         {/* Complex / dynamic props — read-only preview */}
         <Show when={complexProps().length > 0}>
-          <div style={{ padding: '4px 0 8px' }}>
+          <Column py="100">
             <SectionLabel>Dynamic props</SectionLabel>
             <For each={complexProps()}>
               {([key, value]) => (
-                <div style={{ padding: '3px 14px 3px' }}>
-                  <div
-                    style={{
-                      'font-size': '11px',
-                      'font-weight': '500',
-                      color: 'var(--we-color-neutral-500, #6b7280)',
-                      'margin-bottom': '2px',
-                    }}
-                  >
+                <Column px="400" py="100" gap="100">
+                  <we-text fontSize="100" fontWeight="500" color="neutral-500">
                     {key}
-                  </div>
-                  <div
+                  </we-text>
+                  <pre
                     style={{
-                      background: 'var(--we-color-neutral-50, #f9fafb)',
-                      'border-radius': '4px',
+                      margin: '0',
+                      background: tokenVar('color', 'neutral-50'),
+                      'border-radius': tokenVar('radius', '200'),
                       padding: '4px 6px',
-                      'font-family': 'monospace',
                       'font-size': '10px',
-                      color: 'var(--we-color-neutral-500, #6b7280)',
+                      'font-family': 'monospace',
+                      color: tokenVar('color', 'neutral-500'),
                       'white-space': 'pre-wrap',
                       'word-break': 'break-all',
                       'max-height': '56px',
@@ -339,13 +305,13 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
                     }}
                   >
                     {JSON.stringify(value, null, 1).slice(0, 180)}
-                  </div>
-                </div>
+                  </pre>
+                </Column>
               )}
             </For>
-          </div>
+          </Column>
         </Show>
-      </div>
+      </we-scroll-area>
     </>
   );
 }
@@ -358,34 +324,17 @@ function CollapsibleSection(props: { label: string; children: JSX.Element }) {
   const [open, setOpen] = createSignal(false);
 
   return (
-    <div style={{ 'border-top': '1px solid var(--we-color-neutral-50, #f9fafb)' }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          display: 'flex',
-          'align-items': 'center',
-          gap: '4px',
-          width: '100%',
-          padding: '5px 14px',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          'text-align': 'left',
-          'font-size': '10px',
-          'font-weight': '600',
-          'text-transform': 'uppercase',
-          'letter-spacing': '0.06em',
-          color: 'var(--we-color-neutral-400, #9ca3af)',
-          'font-family': 'inherit',
-        }}
-      >
-        <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" />
-        {props.label}
-      </button>
+    <Column borderTop="1px solid neutral-50">
+      <Row ay="center" gap="100" px="400" py="100" cursor="pointer" onClick={() => setOpen((v) => !v)}>
+        <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" color="neutral-400" />
+        <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="0.06em" color="neutral-400">
+          {props.label}
+        </we-text>
+      </Row>
       <Show when={open()}>
-        <div style={{ 'padding-bottom': '6px' }}>{props.children}</div>
+        <Column pb="200">{props.children}</Column>
       </Show>
-    </div>
+    </Column>
   );
 }
 
@@ -395,18 +344,17 @@ function CollapsibleSection(props: { label: string; children: JSX.Element }) {
 
 function SectionLabel(props: { children: string }) {
   return (
-    <div
-      style={{
-        padding: '4px 14px 4px',
-        'font-size': '10px',
-        'font-weight': '600',
-        'text-transform': 'uppercase',
-        'letter-spacing': '0.06em',
-        color: 'var(--we-color-neutral-400, #9ca3af)',
-      }}
+    <we-text
+      py="100"
+      px="14px"
+      fontSize="100"
+      fontWeight="600"
+      textTransform="uppercase"
+      letterSpacing="0.06em"
+      color="neutral-400"
     >
       {props.children}
-    </div>
+    </we-text>
   );
 }
 
@@ -519,12 +467,6 @@ function InlineSpaceInput(props: {
 // BoxModel — Chrome DevTools-style nested rectangle spacing diagram
 // -----------------------------------------------------------------------
 
-const BOX_EDGE: JSX.CSSProperties = {
-  display: 'flex',
-  'align-items': 'center',
-  'justify-content': 'center',
-};
-
 const BOX_MARGIN = {
   bg: 'var(--we-color-warning-200)',
   border: 'var(--we-color-warning-400)',
@@ -576,139 +518,121 @@ function BoxModel(props: {
 
   // Inner green padding box containing the element
   const paddingBox = () => (
-    <div
-      style={{
-        display: 'grid',
-        'grid-template-columns': '28px 1fr 28px',
-        'grid-template-rows': '20px 1fr 20px',
-        background: BOX_PADDING.bg,
-        border: `1px solid ${BOX_PADDING.border}`,
-        'border-radius': '3px',
-        'min-height': '72px',
-      }}
+    <Grid
+      template="28px 1fr 28px"
+      styles={{ 'grid-template-rows': '20px 1fr 20px', 'min-height': '72px' }}
+      bg={BOX_PADDING.bg}
+      border={`1px solid ${BOX_PADDING.border}`}
+      r="100"
+      gap="0"
     >
-      <div
-        style={{
-          'font-size': '8px',
-          color: BOX_PADDING.label,
-          padding: '2px 4px',
-          'line-height': '16px',
-          'white-space': 'nowrap',
-        }}
+      <we-text
+        styles={{ padding: '2px 4px', 'line-height': '16px', 'white-space': 'nowrap' }}
+        fontSize="8px"
+        color={BOX_PADDING.label}
       >
         padding
-      </div>
-      <div style={BOX_EDGE}>{hasPadding() && inp('pt', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}</div>
+      </we-text>
+      <Row ax="center" ay="center">
+        {hasPadding() && inp('pt', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}
+      </Row>
       <div />
 
-      <div style={BOX_EDGE}>{hasPadding() && inp('pl', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}</div>
-      <div
-        style={{
-          display: 'flex',
-          'align-items': 'center',
-          'justify-content': 'center',
-          background: BOX_ELEMENT.bg,
-          border: `1px solid ${BOX_ELEMENT.border}`,
-          'border-radius': '2px',
-          margin: '3px',
-          'font-size': '9px',
-          'font-weight': '600',
-          color: BOX_ELEMENT.text,
-          overflow: 'hidden',
-          'white-space': 'nowrap',
-          'text-overflow': 'ellipsis',
-          padding: '0 6px',
-        }}
+      <Row ax="center" ay="center">
+        {hasPadding() && inp('pl', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}
+      </Row>
+      <Row
+        ax="center"
+        ay="center"
+        bg={BOX_ELEMENT.bg}
+        border={`1px solid ${BOX_ELEMENT.border}`}
+        r="50"
+        overflow="hidden"
+        styles={{ margin: '3px', padding: '0 6px' }}
       >
-        {props.meta?.typeName ?? ''}
-      </div>
-      <div style={BOX_EDGE}>{hasPadding() && inp('pr', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}</div>
+        <we-text fontSize="9px" fontWeight="700" color={BOX_ELEMENT.text} truncate>
+          {props.meta?.typeName ?? ''}
+        </we-text>
+      </Row>
+      <Row ax="center" ay="center">
+        {hasPadding() && inp('pr', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}
+      </Row>
 
       <div />
-      <div style={BOX_EDGE}>{hasPadding() && inp('pb', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}</div>
+      <Row ax="center" ay="center">
+        {hasPadding() && inp('pb', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}
+      </Row>
       <div />
-    </div>
+    </Grid>
   );
 
   return (
     <Show when={hasPadding() || hasMargin()}>
-      <div style={{ padding: '8px 14px', 'border-bottom': '1px solid var(--we-color-neutral-100)' }}>
+      <Column px="400" py="200" borderBottom="1px solid neutral-100">
         {/* Shorthand row: quick all-sides setters */}
-        <div style={{ display: 'flex', gap: '10px', 'margin-bottom': '6px', 'align-items': 'center' }}>
+        <Row gap="300" mb="200" ay="center">
           <Show when={hasPadding() && availableKeys().has('p')}>
-            <div style={{ display: 'flex', 'align-items': 'center', gap: '2px' }}>
-              <span
-                style={{
-                  'font-size': '9px',
-                  'font-weight': '700',
-                  color: BOX_PADDING.label,
-                  'letter-spacing': '0.04em',
-                }}
-              >
+            <Row ay="center" gap="100">
+              <we-text fontSize="9px" fontWeight="700" color={BOX_PADDING.label} letterSpacing="0.04em">
                 P
-              </span>
+              </we-text>
               <InlineSpaceInput value={rawVal('p')} placeholder="all" onChange={(v) => props.onPropChange('p', v)} />
-            </div>
+            </Row>
           </Show>
           <Show when={hasMargin() && availableKeys().has('m')}>
-            <div style={{ display: 'flex', 'align-items': 'center', gap: '2px' }}>
-              <span
-                style={{
-                  'font-size': '9px',
-                  'font-weight': '700',
-                  color: BOX_MARGIN.label,
-                  'letter-spacing': '0.04em',
-                }}
-              >
+            <Row ay="center" gap="100">
+              <we-text fontSize="9px" fontWeight="700" color={BOX_MARGIN.label} letterSpacing="0.04em">
                 M
-              </span>
+              </we-text>
               <InlineSpaceInput value={rawVal('m')} placeholder="all" onChange={(v) => props.onPropChange('m', v)} />
-            </div>
+            </Row>
           </Show>
-        </div>
+        </Row>
 
         {/* Nested box diagram: orange margin wraps green padding wraps blue element */}
         <Show when={hasMargin()} fallback={paddingBox()}>
-          <div
-            style={{
-              display: 'grid',
-              'grid-template-columns': '28px 1fr 28px',
-              'grid-template-rows': '20px 1fr 20px',
-              background: BOX_MARGIN.bg,
-              border: `1px solid ${BOX_MARGIN.border}`,
-              'border-radius': '4px',
-            }}
+          <Grid
+            template="28px 1fr 28px"
+            styles={{ 'grid-template-rows': '20px 1fr 20px' }}
+            bg={BOX_MARGIN.bg}
+            border={`1px solid ${BOX_MARGIN.border}`}
+            r="100"
+            gap="0"
           >
-            <div
-              style={{
-                'font-size': '8px',
-                color: BOX_MARGIN.label,
-                padding: '2px 4px',
-                'line-height': '16px',
-                'white-space': 'nowrap',
-              }}
+            <we-text
+              styles={{ padding: '2px 4px', 'line-height': '16px', 'white-space': 'nowrap' }}
+              fontSize="8px"
+              color={BOX_MARGIN.label}
             >
               margin
-            </div>
-            <div style={BOX_EDGE}>{inp('mt', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}</div>
+            </we-text>
+            <Row ax="center" ay="center">
+              {inp('mt', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}
+            </Row>
             <div />
 
-            <div style={BOX_EDGE}>{inp('ml', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}</div>
+            <Row ax="center" ay="center">
+              {inp('ml', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}
+            </Row>
             {paddingBox()}
-            <div style={BOX_EDGE}>{inp('mr', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}</div>
+            <Row ax="center" ay="center">
+              {inp('mr', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}
+            </Row>
 
             <div />
-            <div style={BOX_EDGE}>{inp('mb', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}</div>
+            <Row ax="center" ay="center">
+              {inp('mb', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}
+            </Row>
             <div />
-          </div>
+          </Grid>
         </Show>
-      </div>
+      </Column>
     </Show>
   );
 }
 
 // -----------------------------------------------------------------------
-// PropRow — single editable prop with Combobox or checkbox
+// PropRow — single editable prop with Combobox, number input, or checkbox
 // -----------------------------------------------------------------------
 
 function PropRow(props: {
@@ -718,42 +642,11 @@ function PropRow(props: {
   valueType: 'string' | 'boolean' | 'number';
   onChange: (v: string | boolean | number) => void;
 }) {
-  const numInputStyle = {
-    border: '1px solid var(--we-color-neutral-200)',
-    'border-radius': '4px',
-    padding: '3px 6px',
-    'font-size': '11px',
-    background: 'var(--we-color-neutral-0)',
-    color: 'var(--we-color-neutral-800)',
-    width: '100%',
-    'box-sizing': 'border-box' as const,
-    outline: 'none',
-    'font-family': 'inherit',
-  };
-
   return (
-    <div
-      style={{
-        display: 'grid',
-        'grid-template-columns': '1fr 1.2fr',
-        gap: '6px',
-        'align-items': 'center',
-        padding: '3px 14px',
-      }}
-    >
-      <label
-        style={{
-          'font-size': '11px',
-          'font-weight': '500',
-          color: 'var(--we-color-neutral-600)',
-          overflow: 'hidden',
-          'text-overflow': 'ellipsis',
-          'white-space': 'nowrap',
-        }}
-        title={props.propKey}
-      >
+    <Grid template="1fr 1.2fr" gap="200" ay="center" px="400" py="100">
+      <we-text title={props.propKey} fontSize="200" fontWeight="500" color="neutral-600" truncate>
         {props.propKey}
-      </label>
+      </we-text>
 
       <Show
         when={props.valueType === 'boolean'}
@@ -772,28 +665,24 @@ function PropRow(props: {
               />
             }
           >
-            <input
+            <we-input
               type="number"
               value={String(props.value)}
-              style={numInputStyle}
-              onBlur={(e) => {
-                const v = Number(e.currentTarget.value);
-                if (v !== props.value) props.onChange(v);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
+              size="xs"
+              on:change={(e: CustomEvent<string>) => {
+                const v = Number(e.detail);
+                if (!isNaN(v) && v !== props.value) props.onChange(v);
               }}
             />
           </Show>
         }
       >
-        <input
-          type="checkbox"
+        <we-checkbox
           checked={props.value as boolean}
-          onChange={(e) => props.onChange(e.currentTarget.checked)}
-          style={{ cursor: 'pointer' }}
+          size="xs"
+          on:change={(e: CustomEvent<boolean>) => props.onChange(e.detail)}
         />
       </Show>
-    </div>
+    </Grid>
   );
 }

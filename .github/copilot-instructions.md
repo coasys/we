@@ -602,7 +602,7 @@ when `relative` is enabled.
 - FlipCard
   Props: front?: JSX.Element, back?: JSX.Element, width?: string, height?: string, flipOnHover?: boolean, flipDuration?: string, wobbleOnHover?: boolean, wobbleDegree?: number, class?: string, styles?: Record<string, string | number>
 - Grid
-  Props: bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, styles?: JSX.CSSProperties, columns?: number, minChildWidth?: string
+  Props: bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, styles?: JSX.CSSProperties, template?: string, columns?: number, minChildWidth?: string
 - IconLabelButton
   Props: icon: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
 - ImageCrop
@@ -1732,6 +1732,40 @@ After creating or modifying a `.schema.ts` file, always run validation to catch:
 ---
 
 ## Developer Patterns (codebase work — not for JSON schema authoring)
+
+---
+
+### Using the Design System in TypeScript Components
+
+When writing Solid TSX components (stores, editor panels, settings UI, etc.), always
+reach for design system primitives before writing raw HTML elements with inline styles.
+
+**Layout:** Use `Column`, `Row`, and `Grid` from `@we/components/solid` for all
+flex and grid layouts. DS props (`gap`, `p`, `px`, `bg`, `r`, `border`, etc.)
+cover the vast majority of layout needs without inline styles.
+- `Grid` supports uniform columns (`columns={3}`), responsive auto-fill
+  (`minChildWidth="280px"`), and custom templates (`template="28px 1fr 28px"`).
+- Use the `styles` prop only for CSS that genuinely has no DS equivalent.
+
+**Text:** Use `we-text` with its own props (`fontSize`, `fontWeight`, `color`,
+`truncate`, `variant`, etc.) rather than passing everything through `style={{}}`.
+
+**Interactive controls:** Use `we-button`, `we-input`, `we-checkbox`, `we-select`,
+`we-switch` etc. — they bring theming, focus rings, hover states, and accessibility
+for free. Never roll custom `<button>` or `<input>` elements when a primitive fits.
+
+**Scrollable areas:** Use `we-scroll-area` instead of `overflow: auto` on a div —
+it gives consistently styled scrollbars across themes.
+
+**Dividers:** Use `we-divider` or the `borderBottom`/`borderTop` DS prop on a
+`Column`/`Row` rather than a raw `<hr>` or border on a wrapper div.
+
+**Token values:** Use `tokenVar` from `@we/design-utils` when you need a token value
+inside a `style={{}}` object. Prefer DS props directly where possible.
+
+Raw inline styles and hardcoded CSS variable strings (`var(--we-color-neutral-400)`)
+are a signal that a DS prop or primitive is being missed — check before reaching for
+`style={{}}`.
 
 ---
 
