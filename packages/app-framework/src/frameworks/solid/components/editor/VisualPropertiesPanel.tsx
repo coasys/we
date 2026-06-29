@@ -189,10 +189,11 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
   // Current prop values set on this node
   const currentProps = createMemo(() => props.node.props ?? {});
 
-  // Props that are currently set (used) on the node
+  // Props that are currently set (used) on the node — spacing props excluded (shown in SpacingSection)
   const usedProps = createMemo(() => {
     const used = new Map<string, unknown>();
     for (const [k, v] of Object.entries(currentProps())) {
+      if (ALL_SPACING_KEYS.has(k)) continue;
       const t = typeof v;
       if (t === 'string' || t === 'boolean' || t === 'number') {
         used.set(k, v);
@@ -248,6 +249,9 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
 
       {/* Scrollable content */}
       <div style={{ flex: '1 1 auto', overflow: 'auto' }}>
+        {/* Spacing — always-visible box model for padding + margin */}
+        <SpacingSection meta={meta()} currentProps={currentProps()} onPropChange={props.onPropChange} />
+
         {/* Used props — always visible */}
         <Show when={usedProps().size > 0}>
           <div style={{ padding: '4px 0 8px' }}>
@@ -269,9 +273,9 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
           </div>
         </Show>
 
-        {/* Available props grouped by layer */}
+        {/* Available props grouped by layer — spacing handled by SpacingSection above */}
         <Show when={availableByLayer().size > 0}>
-          <For each={LAYER_ORDER}>
+          <For each={LAYER_ORDER.filter((l) => l !== 'spacing')}>
             {(layer) => {
               const layerProps = () => availableByLayer().get(layer) ?? [];
               const unsetProps = () => layerProps().filter((p) => !usedProps().has(p.name));
@@ -407,62 +411,90 @@ function SectionLabel(props: { children: string }) {
 }
 
 // -----------------------------------------------------------------------
-// BoxCross — 4-directional spacing input (T / L · R / B)
+// BoxCross — compact spacing group: shorthand row + T / (L · R) / B cross
 // -----------------------------------------------------------------------
 
 function BoxCross(props: {
   label: string;
+  /** 'p' or 'm' — null if the component doesn't support this shorthand */
+  shorthandKey: string | null;
   keys: { t: string; r: string; b: string; l: string };
   currentProps: Record<string, unknown>;
   onPropChange: (key: string, value: unknown) => void;
 }) {
-  const val = (key: string): string => {
+  // Raw value stored on the node for a key, or '' if unset
+  const rawVal = (key: string): string => {
     const v = props.currentProps[key];
     return v !== undefined && v !== null ? String(v) : '';
   };
 
+  // Effective placeholder for individual inputs — shows inherited shorthand value
+  const inherited = (): string => {
+    if (!props.shorthandKey) return '—';
+    const v = props.currentProps[props.shorthandKey];
+    return v !== undefined && v !== null ? String(v) : '—';
+  };
+
   const opts = (key: string): ComboboxOption[] => [
-    ...(val(key) ? [{ label: '(unset)', value: '' }] : []),
+    ...(rawVal(key) ? [{ label: '(unset)', value: '' }] : []),
     ...SPACE_OPTIONS,
   ];
 
-  const spaceInput = (key: string) => (
+  const input = (key: string) => (
     <Combobox
       options={opts(key)}
-      value={val(key)}
+      value={rawVal(key)}
       size="xs"
-      placeholder="—"
+      placeholder={inherited()}
       onChange={(v: string) => props.onPropChange(key, v)}
     />
   );
 
   return (
     <div>
-      <div
-        style={{
-          'font-size': '9px',
-          'font-weight': '600',
-          'text-transform': 'uppercase',
-          'letter-spacing': '0.08em',
-          color: 'var(--we-color-neutral-400)',
-          'margin-bottom': '3px',
-        }}
-      >
-        {props.label}
-      </div>
+      {/* Label + all-sides shorthand on the same row */}
       <div
         style={{
           display: 'grid',
-          'grid-template-columns': '1fr 28px 1fr',
-          'grid-template-rows': 'auto auto auto',
+          'grid-template-columns': '1fr 1fr',
+          'align-items': 'center',
+          gap: '4px',
+          'margin-bottom': '4px',
+        }}
+      >
+        <div
+          style={{
+            'font-size': '9px',
+            'font-weight': '600',
+            'text-transform': 'uppercase',
+            'letter-spacing': '0.08em',
+            color: 'var(--we-color-neutral-400)',
+          }}
+        >
+          {props.label}
+        </div>
+        <Show when={props.shorthandKey !== null}>
+          <Combobox
+            options={opts(props.shorthandKey!)}
+            value={rawVal(props.shorthandKey!)}
+            size="xs"
+            placeholder="All"
+            onChange={(v: string) => props.onPropChange(props.shorthandKey!, v)}
+          />
+        </Show>
+      </div>
+
+      {/* Cross: top spans full width, L/indicator/R in middle, bottom spans full width */}
+      <div
+        style={{
+          display: 'grid',
+          'grid-template-columns': 'minmax(0,1fr) 28px minmax(0,1fr)',
           gap: '2px',
         }}
       >
-        <div />
-        {spaceInput(props.keys.t)}
-        <div />
+        <div style={{ 'grid-column': '1 / -1' }}>{input(props.keys.t)}</div>
 
-        {spaceInput(props.keys.l)}
+        {input(props.keys.l)}
         <div
           style={{
             display: 'flex',
@@ -478,11 +510,9 @@ function BoxCross(props: {
         >
           {props.label[0]}
         </div>
-        {spaceInput(props.keys.r)}
+        {input(props.keys.r)}
 
-        <div />
-        {spaceInput(props.keys.b)}
-        <div />
+        <div style={{ 'grid-column': '1 / -1' }}>{input(props.keys.b)}</div>
       </div>
     </div>
   );
@@ -498,8 +528,8 @@ function SpacingSection(props: {
   onPropChange: (key: string, value: unknown) => void;
 }) {
   const availableKeys = () => new Set(props.meta?.props.map((p) => p.name) ?? []);
-  const hasPadding = () => ['pt', 'pr', 'pb', 'pl'].some((k) => availableKeys().has(k));
-  const hasMargin = () => ['mt', 'mr', 'mb', 'ml'].some((k) => availableKeys().has(k));
+  const hasPadding = () => ['p', 'pt', 'pr', 'pb', 'pl'].some((k) => availableKeys().has(k));
+  const hasMargin = () => ['m', 'mt', 'mr', 'mb', 'ml'].some((k) => availableKeys().has(k));
 
   return (
     <Show when={hasPadding() || hasMargin()}>
@@ -515,6 +545,7 @@ function SpacingSection(props: {
         <Show when={hasPadding()}>
           <BoxCross
             label="Padding"
+            shorthandKey={availableKeys().has('p') ? 'p' : null}
             keys={{ t: 'pt', r: 'pr', b: 'pb', l: 'pl' }}
             currentProps={props.currentProps}
             onPropChange={props.onPropChange}
@@ -523,6 +554,7 @@ function SpacingSection(props: {
         <Show when={hasMargin()}>
           <BoxCross
             label="Margin"
+            shorthandKey={availableKeys().has('m') ? 'm' : null}
             keys={{ t: 'mt', r: 'mr', b: 'mb', l: 'ml' }}
             currentProps={props.currentProps}
             onPropChange={props.onPropChange}
