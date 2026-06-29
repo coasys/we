@@ -1,5 +1,5 @@
 import { deepClone } from '@shared/utils';
-import { useTemplateStore } from '@solid/stores';
+import { useAiStore, useTemplateStore } from '@solid/stores';
 import { contextData } from '@we/ai-context';
 import { Column, Combobox, type ComboboxOption, Grid, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
@@ -146,12 +146,233 @@ const COLOR_HUES = ['neutral', 'primary', 'success', 'warning', 'danger'] as con
 const COLOR_SHADES = ['0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'];
 
 // -----------------------------------------------------------------------
+// NodeTree — schema layer tree
+// -----------------------------------------------------------------------
+
+const NODE_TYPE_ICON_MAP: Record<string, string> = {
+  $if: 'question',
+  $each: 'list',
+  $routes: 'arrows-clockwise',
+  $animate: 'lightning',
+  $single: 'magnifying-glass',
+  'we-button': 'cursor-click',
+  'we-image': 'image',
+  'we-input': 'pencil-simple',
+  'we-icon': 'star',
+};
+
+function nodeTypeIcon(type: string | undefined): string {
+  if (!type) return 'squares-four';
+  return NODE_TYPE_ICON_MAP[type] ?? 'squares-four';
+}
+
+/** Collect child SchemaNodes from a node for tree display */
+function treeChildren(node: SchemaNode): Array<{ child: SchemaNode; contextLabel?: string }> {
+  const result: Array<{ child: SchemaNode; contextLabel?: string }> = [];
+
+  if (node.children) {
+    for (const child of node.children) {
+      if (typeof child === 'object' && child !== null && !Array.isArray(child) && 'type' in (child as object)) {
+        result.push({ child: child as SchemaNode });
+      }
+    }
+  }
+
+  if (node.routes) {
+    for (const route of node.routes) {
+      const r = route as SchemaNode & { path?: string };
+      result.push({ child: r, contextLabel: r.path ?? undefined });
+    }
+  }
+
+  if (node.slots) {
+    for (const [slotName, slotNode] of Object.entries(node.slots)) {
+      result.push({ child: slotNode, contextLabel: slotName });
+    }
+  }
+
+  // Props-embedded SchemaNodes — e.g. $if.props.then / $if.props.else
+  if (node.props) {
+    for (const [propName, val] of Object.entries(node.props)) {
+      if (Array.isArray(val)) {
+        for (const item of val) {
+          if (isPropsSchemaNode(item)) result.push({ child: item as SchemaNode, contextLabel: propName });
+        }
+      } else if (isPropsSchemaNode(val)) {
+        result.push({ child: val as SchemaNode, contextLabel: propName });
+      }
+    }
+  }
+
+  return result;
+}
+
+interface TreeNodeProps {
+  node: SchemaNode;
+  depth: number;
+  selectedId: () => string | null;
+  hoveredId: () => string | null;
+  onSelect: (id: string | null) => void;
+  onHover: (id: string | null) => void;
+  collapsed: () => Set<string>;
+  onToggle: (id: string) => void;
+  contextLabel?: string;
+}
+
+function TreeNode(props: TreeNodeProps) {
+  const kids = () => treeChildren(props.node);
+  const hasKids = () => kids().length > 0;
+  const isCollapsed = () => !!props.node.id && props.collapsed().has(props.node.id);
+  const isSelected = () => !!props.node.id && props.selectedId() === props.node.id;
+  const isHovered = () => !!props.node.id && !isSelected() && props.hoveredId() === props.node.id;
+  const isSpecial = () => !!props.node.type?.startsWith('$');
+
+  let rowRef!: HTMLDivElement;
+
+  createEffect(() => {
+    if (isSelected() && rowRef) rowRef.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+
+  return (
+    <>
+      <div
+        ref={rowRef}
+        onClick={() => props.node.id && props.onSelect(props.node.id)}
+        onMouseEnter={() => props.node.id && props.onHover(props.node.id)}
+        onMouseLeave={() => props.onHover(null)}
+        style={{
+          display: 'flex',
+          'align-items': 'center',
+          height: '22px',
+          'padding-left': `${4 + props.depth * 12}px`,
+          'padding-right': '8px',
+          gap: '4px',
+          cursor: 'pointer',
+          'flex-shrink': '0',
+          background: isSelected()
+            ? 'var(--we-color-primary-100)'
+            : isHovered()
+              ? 'var(--we-color-neutral-50)'
+              : 'transparent',
+          'border-left': isSelected() ? '2px solid var(--we-color-primary-500)' : '2px solid transparent',
+          'box-sizing': 'border-box',
+        }}
+      >
+        {/* Expand/collapse toggle */}
+        <div
+          onClick={(e) => {
+            if (hasKids() && props.node.id) {
+              e.stopPropagation();
+              props.onToggle(props.node.id);
+            }
+          }}
+          style={{
+            width: '14px',
+            'flex-shrink': '0',
+            display: 'flex',
+            'align-items': 'center',
+            'justify-content': 'center',
+          }}
+        >
+          <Show when={hasKids()}>
+            <we-icon name={isCollapsed() ? 'caret-right' : 'caret-down'} size="xs" color="neutral-400" />
+          </Show>
+        </div>
+
+        {/* Node type icon */}
+        <we-icon
+          name={nodeTypeIcon(props.node.type)}
+          size="xs"
+          color={isSelected() ? 'primary-600' : isSpecial() ? 'primary-400' : 'neutral-400'}
+        />
+
+        {/* Context label: route path, slot name, or prop name */}
+        <Show when={props.contextLabel}>
+          <we-text
+            styles={{ 'font-size': '10px', 'flex-shrink': '0', 'white-space': 'nowrap', 'line-height': '1' }}
+            color="neutral-400"
+          >
+            {props.contextLabel}:
+          </we-text>
+        </Show>
+
+        {/* Component type name */}
+        <we-text
+          styles={{
+            'font-size': '11px',
+            'white-space': 'nowrap',
+            overflow: 'hidden',
+            'text-overflow': 'ellipsis',
+            flex: '1',
+            'min-width': '0',
+            'line-height': '1',
+          }}
+          color={isSelected() ? 'primary-700' : isSpecial() ? 'primary-500' : 'neutral-700'}
+          fontWeight={isSelected() ? '600' : '400'}
+        >
+          {props.node.type ?? '(root)'}
+        </we-text>
+      </div>
+
+      <Show when={!isCollapsed() && hasKids()}>
+        <For each={kids()}>
+          {({ child, contextLabel }) => (
+            <TreeNode
+              node={child}
+              depth={props.depth + 1}
+              selectedId={props.selectedId}
+              hoveredId={props.hoveredId}
+              onSelect={props.onSelect}
+              onHover={props.onHover}
+              collapsed={props.collapsed}
+              onToggle={props.onToggle}
+              contextLabel={contextLabel}
+            />
+          )}
+        </For>
+      </Show>
+    </>
+  );
+}
+
+function NodeTree() {
+  const templateStore = useTemplateStore();
+  const visualEditor = useVisualEditor();
+  const [collapsed, setCollapsed] = createSignal(new Set<string>());
+
+  const onToggle = (id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  return (
+    <TreeNode
+      node={templateStore.currentTemplate as SchemaNode}
+      depth={0}
+      selectedId={visualEditor.selectedId}
+      hoveredId={visualEditor.hoveredId}
+      onSelect={visualEditor.onSelect}
+      onHover={visualEditor.onHover}
+      collapsed={collapsed}
+      onToggle={onToggle}
+    />
+  );
+}
+
+// -----------------------------------------------------------------------
 // VisualPropertiesPanel
 // -----------------------------------------------------------------------
 
 export function VisualPropertiesPanel() {
   const templateStore = useTemplateStore();
+  const aiStore = useAiStore();
   const visualEditor = useVisualEditor();
+  const [treeHeight, setTreeHeight] = createSignal(200);
+  const [dividerResizing, setDividerResizing] = createSignal(false);
 
   const selectedNode = createMemo<SchemaNode | null>(() => {
     const id = visualEditor.selectedId();
@@ -170,11 +391,29 @@ export function VisualPropertiesPanel() {
         value === '' || value === null || value === false ? { props: { [key]: null } } : { props: { [key]: value } };
       const patched = mergeNode(found.node, patch);
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
+      aiStore.pushSnapshot();
       templateStore.updateTemplate(updated);
       templateStore.persistCurrentTemplate();
     } catch (e) {
       console.error('[PropChange] error:', e);
     }
+  }
+
+  function onDividerMouseDown(e: MouseEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = treeHeight();
+    setDividerResizing(true);
+    const onMove = (mv: MouseEvent) => {
+      setTreeHeight(Math.max(80, Math.min(500, startH + mv.clientY - startY)));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      setDividerResizing(false);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   }
 
   return (
@@ -187,19 +426,53 @@ export function VisualPropertiesPanel() {
       fontSize="200"
       color="neutral-800"
     >
-      <Show
-        when={selectedNode()}
-        fallback={
-          <Column flex="1" ax="center" ay="center" gap="200" p="600" textAlign="center">
-            <we-icon name="cursor-click" size="lg" color="neutral-300" />
-            <we-text fontSize="300" color="neutral-400">
-              Click any element to inspect it
-            </we-text>
-          </Column>
-        }
-      >
-        {(node) => <NodeProperties node={node()} onPropChange={handlePropChange} />}
-      </Show>
+      {/* Layer tree */}
+      <Column flex="none" height={`${treeHeight()}px`} overflow="hidden">
+        <Row
+          px="400"
+          py="100"
+          ay="center"
+          gap="200"
+          flex="none"
+          borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
+        >
+          <we-icon name="list" size="xs" color="neutral-400" />
+          <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="widest" color="neutral-400">
+            Layers
+          </we-text>
+        </Row>
+        <div style={{ flex: '1', 'overflow-y': 'auto', 'overflow-x': 'hidden' }}>
+          <NodeTree />
+        </div>
+      </Column>
+
+      {/* Resize handle */}
+      <div
+        onMouseDown={onDividerMouseDown}
+        style={{
+          height: '4px',
+          cursor: 'row-resize',
+          'flex-shrink': '0',
+          background: dividerResizing() ? 'var(--we-color-primary-300)' : 'var(--we-color-neutral-100)',
+        }}
+      />
+
+      {/* Properties for selected node */}
+      <Column flex="1" overflow="hidden">
+        <Show
+          when={selectedNode()}
+          fallback={
+            <Column flex="1" ax="center" ay="center" gap="200" p="500" textAlign="center">
+              <we-icon name="cursor-click" size="lg" color="neutral-300" />
+              <we-text fontSize="200" color="neutral-400">
+                Click a node to inspect it
+              </we-text>
+            </Column>
+          }
+        >
+          {(node) => <NodeProperties node={node()} onPropChange={handlePropChange} />}
+        </Show>
+      </Column>
     </Column>
   );
 }
