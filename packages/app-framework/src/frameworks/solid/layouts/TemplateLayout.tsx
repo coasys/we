@@ -168,38 +168,38 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
         height="100vh"
         transition={panelResizing() ? 'none' : 'right 300ms ease'}
       >
-          {/* Main template content */}
-          <Column
-            display="block"
-            position="absolute"
-            top="0"
-            left="0"
-            width="100%"
-            height="100%"
-            zIndex={1}
-            visibility={stores.appStore.activeAppId() ? 'hidden' : 'visible'}
-            pointerEvents={stores.appStore.activeAppId() ? 'none' : 'auto'}
-            overflow="auto"
-            scrollbarGutter="stable"
-          >
-            {/* Scoped space theme wrapper — display:contents keeps layout unaffected.
+        {/* Main template content */}
+        <Column
+          display="block"
+          position="absolute"
+          top="0"
+          left="0"
+          width="100%"
+          height="100%"
+          zIndex={1}
+          visibility={stores.appStore.activeAppId() ? 'hidden' : 'visible'}
+          pointerEvents={stores.appStore.activeAppId() ? 'none' : 'auto'}
+          overflow="auto"
+          scrollbarGutter="stable"
+        >
+          {/* Scoped space theme wrapper — display:contents keeps layout unaffected.
                 Parametric overrides are applied as inline CSS vars; component-level CSS
                 (theme.css) is injected into we-scoped-theme-css by ThemeStore and
                 self-scopes via [data-we-theme='X'] attribute selectors. */}
-            <div style={{ display: 'contents', ...spaceThemeStyle() }} data-we-theme={spaceThemeName()}>
-              <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-                <RenderSchema
-                  node={stores.templateStore.currentTemplate}
-                  stores={stores}
-                  registry={registry}
-                  children={props.children}
-                />
-              </Show>
-            </div>
-          </Column>
+          <div style={{ display: 'contents', ...spaceThemeStyle() }} data-we-theme={spaceThemeName()}>
+            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+              <RenderSchema
+                node={stores.templateStore.currentTemplate}
+                stores={stores}
+                registry={registry}
+                children={props.children}
+              />
+            </Show>
+          </div>
+        </Column>
 
-          {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11) */}
-          <EditorOverlay />
+        {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11) */}
+        <EditorOverlay />
 
         {/* Shell overlay rendered above the template */}
         <Show when={stores.templateStore.activeShellView()} keyed>

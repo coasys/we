@@ -1,9 +1,12 @@
-import { useTemplateStore } from '@solid/stores';
 import { deepClone } from '@shared/utils';
-import { findNodeById, mergeNode } from '@we/schema-shared';
-import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { useTemplateStore } from '@solid/stores';
+import { contextData } from '@we/ai-context';
+import { Combobox } from '@we/components/solid';
+import type { PropLayer, PropMeta, SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { findNodeById, getComponentMeta, mergeNode } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
-import { createMemo, For, Show } from 'solid-js';
+import type { JSX } from 'solid-js';
+import { createMemo, createSignal, For, Show } from 'solid-js';
 
 // -----------------------------------------------------------------------
 // Schema helpers
@@ -36,6 +39,21 @@ function replaceNodeInTree(schema: SchemaNode, target: SchemaNode, replacement: 
 }
 
 // -----------------------------------------------------------------------
+// Layer display config
+// -----------------------------------------------------------------------
+
+const LAYER_LABELS: Record<PropLayer, string> = {
+  component: 'Component',
+  layout: 'Layout',
+  visual: 'Visual',
+  flex: 'Flex',
+  typography: 'Typography',
+  state: 'State',
+};
+
+const LAYER_ORDER: PropLayer[] = ['component', 'layout', 'visual', 'flex', 'typography', 'state'];
+
+// -----------------------------------------------------------------------
 // VisualPropertiesPanel
 // -----------------------------------------------------------------------
 
@@ -43,8 +61,6 @@ export function VisualPropertiesPanel() {
   const templateStore = useTemplateStore();
   const visualEditor = useVisualEditor();
 
-  // Read selected node directly from the live store — IDs were assigned into the store
-  // by ensureNodeIds in TemplateLayout on visual mode entry, so store ids match DOM ids.
   const selectedNode = createMemo<SchemaNode | null>(() => {
     const id = visualEditor.selectedId();
     if (!id) return null;
@@ -58,12 +74,14 @@ export function VisualPropertiesPanel() {
       const clone = deepClone(templateStore.currentTemplate) as TemplateSchema;
       const found = findNodeById(clone, id);
       if (!found) return;
-      const patched = mergeNode(found.node, { [key]: value });
+      // Patch into node.props, not the node top-level
+      const patch = value === '' || value === null ? { props: { [key]: null } } : { props: { [key]: value } };
+      const patched = mergeNode(found.node, patch);
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
       templateStore.updateTemplate(updated);
       templateStore.persistCurrentTemplate();
     } catch {
-      // Ignore errors
+      // silently ignore
     }
   }
 
@@ -109,27 +127,50 @@ export function VisualPropertiesPanel() {
 }
 
 // -----------------------------------------------------------------------
-// NodeProperties — shows node type + editable props
+// NodeProperties
 // -----------------------------------------------------------------------
 
 function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, value: unknown) => void }) {
-  const editableProps = createMemo(() =>
-    Object.entries(props.node.props ?? {}).filter(([, v]) => {
-      const t = typeof v;
-      return t === 'string' || t === 'boolean' || t === 'number';
-    }),
-  );
+  const meta = createMemo(() => getComponentMeta(props.node.type ?? '', contextData));
 
+  // Current prop values set on this node
+  const currentProps = createMemo(() => props.node.props ?? {});
+
+  // Props that are currently set (used) on the node
+  const usedProps = createMemo(() => {
+    const used = new Map<string, unknown>();
+    for (const [k, v] of Object.entries(currentProps())) {
+      const t = typeof v;
+      if (t === 'string' || t === 'boolean' || t === 'number') {
+        used.set(k, v);
+      }
+    }
+    return used;
+  });
+
+  // Complex (non-primitive) props — read-only preview
   const complexProps = createMemo(() =>
-    Object.entries(props.node.props ?? {}).filter(([, v]) => {
+    Object.entries(currentProps()).filter(([, v]) => {
       const t = typeof v;
       return t !== 'string' && t !== 'boolean' && t !== 'number';
     }),
   );
 
+  // All available props from meta, grouped by layer
+  const availableByLayer = createMemo(() => {
+    const m = meta();
+    if (!m) return new Map<PropLayer, PropMeta[]>();
+    const groups = new Map<PropLayer, PropMeta[]>();
+    for (const p of m.props) {
+      if (!groups.has(p.layer)) groups.set(p.layer, []);
+      groups.get(p.layer)!.push(p);
+    }
+    return groups;
+  });
+
   return (
     <>
-      {/* Node type header */}
+      {/* Header */}
       <div
         style={{
           padding: '12px 14px 10px',
@@ -148,39 +189,64 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
           {props.node.type ?? '(no type)'}
         </div>
         <Show when={props.node.id}>
-          <div style={{ color: 'var(--we-color-neutral-400, #9ca3af)', 'font-size': '10px' }}>
-            id: {props.node.id}
-          </div>
+          <div style={{ color: 'var(--we-color-neutral-400, #9ca3af)', 'font-size': '10px' }}>id: {props.node.id}</div>
         </Show>
       </div>
 
-      {/* Scrollable props area */}
+      {/* Scrollable content */}
       <div style={{ flex: '1 1 auto', overflow: 'auto' }}>
-        <Show when={editableProps().length === 0 && complexProps().length === 0}>
-          <div
-            style={{
-              padding: '16px 14px',
-              color: 'var(--we-color-neutral-400, #9ca3af)',
-              'font-size': '12px',
-            }}
-          >
-            No props
+        {/* Used props — always visible */}
+        <Show when={usedProps().size > 0}>
+          <div style={{ padding: '4px 0 8px' }}>
+            <SectionLabel>Set props</SectionLabel>
+            <For each={[...usedProps().entries()]}>
+              {([key, value]) => {
+                const propMeta = meta()?.props.find((p) => p.name === key);
+                return (
+                  <PropRow
+                    propKey={key}
+                    value={value as string | boolean | number}
+                    options={propMeta?.options}
+                    valueType={propMeta?.valueType ?? (typeof value as 'string' | 'boolean' | 'number')}
+                    onChange={(v) => props.onPropChange(key, v)}
+                  />
+                );
+              }}
+            </For>
           </div>
         </Show>
 
-        {/* Editable primitive props */}
-        <Show when={editableProps().length > 0}>
-          <div style={{ padding: '4px 0 8px' }}>
-            <SectionLabel>Props</SectionLabel>
-            <For each={editableProps()}>
-              {([key, value]) => (
-                <PropRow
-                  propKey={key}
-                  value={value as string | boolean | number}
-                  onChange={(v) => props.onPropChange(key, v)}
-                />
-              )}
-            </For>
+        {/* Available props grouped by layer */}
+        <Show when={availableByLayer().size > 0}>
+          <For each={LAYER_ORDER}>
+            {(layer) => {
+              const layerProps = () => availableByLayer().get(layer) ?? [];
+              const unsetProps = () => layerProps().filter((p) => !usedProps().has(p.name));
+              return (
+                <Show when={unsetProps().length > 0}>
+                  <CollapsibleSection label={LAYER_LABELS[layer]}>
+                    <For each={unsetProps()}>
+                      {(p) => (
+                        <PropRow
+                          propKey={p.name}
+                          value={''}
+                          options={p.options}
+                          valueType={p.valueType}
+                          onChange={(v) => props.onPropChange(p.name, v)}
+                        />
+                      )}
+                    </For>
+                  </CollapsibleSection>
+                </Show>
+              );
+            }}
+          </For>
+        </Show>
+
+        {/* Unknown component — show any primitive props that are set */}
+        <Show when={!meta() && usedProps().size === 0 && complexProps().length === 0}>
+          <div style={{ padding: '16px 14px', color: 'var(--we-color-neutral-400, #9ca3af)', 'font-size': '12px' }}>
+            No props
           </div>
         </Show>
 
@@ -227,6 +293,49 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
   );
 }
 
+// -----------------------------------------------------------------------
+// CollapsibleSection
+// -----------------------------------------------------------------------
+
+function CollapsibleSection(props: { label: string; children: JSX.Element }) {
+  const [open, setOpen] = createSignal(false);
+
+  return (
+    <div style={{ 'border-top': '1px solid var(--we-color-neutral-50, #f9fafb)' }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: 'flex',
+          'align-items': 'center',
+          gap: '4px',
+          width: '100%',
+          padding: '5px 14px',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          'text-align': 'left',
+          'font-size': '10px',
+          'font-weight': '600',
+          'text-transform': 'uppercase',
+          'letter-spacing': '0.06em',
+          color: 'var(--we-color-neutral-400, #9ca3af)',
+          'font-family': 'inherit',
+        }}
+      >
+        <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" />
+        {props.label}
+      </button>
+      <Show when={open()}>
+        <div style={{ 'padding-bottom': '6px' }}>{props.children}</div>
+      </Show>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------
+// SectionLabel
+// -----------------------------------------------------------------------
+
 function SectionLabel(props: { children: string }) {
   return (
     <div
@@ -245,12 +354,28 @@ function SectionLabel(props: { children: string }) {
 }
 
 // -----------------------------------------------------------------------
-// PropRow — single editable prop
+// PropRow — single editable prop with Combobox or checkbox
 // -----------------------------------------------------------------------
 
-function PropRow(props: { propKey: string; value: string | boolean | number; onChange: (v: string | boolean | number) => void }) {
-  const isBoolean = () => typeof props.value === 'boolean';
-  const isNumber = () => typeof props.value === 'number';
+function PropRow(props: {
+  propKey: string;
+  value: string | boolean | number;
+  options?: string[];
+  valueType: 'string' | 'boolean' | 'number';
+  onChange: (v: string | boolean | number) => void;
+}) {
+  const numInputStyle = {
+    border: '1px solid var(--we-color-neutral-200)',
+    'border-radius': '4px',
+    padding: '3px 6px',
+    'font-size': '11px',
+    background: 'var(--we-color-neutral-0)',
+    color: 'var(--we-color-neutral-800)',
+    width: '100%',
+    'box-sizing': 'border-box' as const,
+    outline: 'none',
+    'font-family': 'inherit',
+  };
 
   return (
     <div
@@ -266,7 +391,7 @@ function PropRow(props: { propKey: string; value: string | boolean | number; onC
         style={{
           'font-size': '11px',
           'font-weight': '500',
-          color: 'var(--we-color-neutral-600, #4b5563)',
+          color: 'var(--we-color-neutral-600)',
           overflow: 'hidden',
           'text-overflow': 'ellipsis',
           'white-space': 'nowrap',
@@ -275,31 +400,34 @@ function PropRow(props: { propKey: string; value: string | boolean | number; onC
       >
         {props.propKey}
       </label>
+
       <Show
-        when={isBoolean()}
+        when={props.valueType === 'boolean'}
         fallback={
-          <input
-            type={isNumber() ? 'number' : 'text'}
-            value={String(props.value)}
-            style={{
-              border: '1px solid var(--we-color-neutral-200, #e5e7eb)',
-              'border-radius': '4px',
-              padding: '3px 6px',
-              'font-size': '11px',
-              background: 'var(--we-color-neutral-0, #fff)',
-              color: 'var(--we-color-neutral-800, #1f2937)',
-              width: '100%',
-              'box-sizing': 'border-box',
-              outline: 'none',
-            }}
-            onBlur={(e) => {
-              const raw = e.currentTarget.value;
-              props.onChange(isNumber() ? Number(raw) : raw);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-            }}
-          />
+          <Show
+            when={props.valueType === 'number'}
+            fallback={
+              <Combobox
+                options={props.options ?? []}
+                value={String(props.value ?? '')}
+                size="xs"
+                onChange={(v: string) => props.onChange(v)}
+              />
+            }
+          >
+            <input
+              type="number"
+              value={String(props.value)}
+              style={numInputStyle}
+              onBlur={(e) => {
+                const v = Number(e.currentTarget.value);
+                if (v !== props.value) props.onChange(v);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+            />
+          </Show>
         }
       >
         <input

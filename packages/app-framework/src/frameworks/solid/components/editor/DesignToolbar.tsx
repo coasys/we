@@ -1,4 +1,4 @@
-import { Column, Row, SearchInput } from '@we/components/solid';
+import { Column, Row, Search } from '@we/components/solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
@@ -431,7 +431,7 @@ export function DesignToolbar() {
               shadow="md"
               minWidth="220px"
             >
-              <SearchInput value={themeSearch()} placeholder="Search themes…" m="200" onSearch={setThemeSearch} />
+              <Search value={themeSearch()} placeholder="Search themes…" m="200" onSearch={setThemeSearch} />
               <we-divider />
               <Column py="200" maxHeight="320px" overflowY="auto">
                 <Show when={filteredSpaceThemes().length > 0}>
@@ -785,7 +785,7 @@ export function DesignToolbar() {
                       Choose a space
                     </we-text>
                   </Row>
-                  <SearchInput value={spaceSearch()} placeholder="Search spaces…" m="200" onSearch={setSpaceSearch} />
+                  <Search value={spaceSearch()} placeholder="Search spaces…" m="200" onSearch={setSpaceSearch} />
                   <we-divider />
                   <we-scroll-area maxHeight="280px">
                     <Column py="200">
@@ -890,7 +890,7 @@ export function DesignToolbar() {
               overflow="hidden"
               minWidth="300px"
             >
-              <SearchInput value={search()} placeholder="Search templates…" m="200" onSearch={setSearch} />
+              <Search value={search()} placeholder="Search templates…" m="200" onSearch={setSearch} />
               <we-divider />
               <we-scroll-area maxHeight="320px">
                 <Column py="200">
@@ -1110,7 +1110,7 @@ export function DesignToolbar() {
                       Choose a space
                     </we-text>
                   </Row>
-                  <SearchInput value={spaceSearch()} placeholder="Search spaces…" m="200" onSearch={setSpaceSearch} />
+                  <Search value={spaceSearch()} placeholder="Search spaces…" m="200" onSearch={setSpaceSearch} />
                   <we-divider />
                   <we-scroll-area maxHeight="280px">
                     <Column py="200">
