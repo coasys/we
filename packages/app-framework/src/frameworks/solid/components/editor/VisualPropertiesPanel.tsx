@@ -12,6 +12,13 @@ import { createMemo, createSignal, For, Show } from 'solid-js';
 // Schema helpers
 // -----------------------------------------------------------------------
 
+function isPropsSchemaNode(val: unknown): val is SchemaNode {
+  if (typeof val !== 'object' || val === null || Array.isArray(val)) return false;
+  const type = (val as Record<string, unknown>).type;
+  if (typeof type !== 'string') return false;
+  return /^[A-Z$]/.test(type) || type.includes('-');
+}
+
 function replaceNodeInTree(schema: SchemaNode, target: SchemaNode, replacement: SchemaNode): SchemaNode {
   if (schema === target) return replacement;
   const clone: SchemaNode = { ...schema };
@@ -34,6 +41,29 @@ function replaceNodeInTree(schema: SchemaNode, target: SchemaNode, replacement: 
       slots[k] = v === target ? replacement : replaceNodeInTree(v, target, replacement);
     }
     clone.slots = slots;
+  }
+  // Also traverse SchemaNodes embedded in props (e.g. $if.props.then / .else)
+  if (schema.props) {
+    const newProps: Record<string, unknown> = {};
+    let changed = false;
+    for (const [k, v] of Object.entries(schema.props)) {
+      if (Array.isArray(v)) {
+        const arr = v.map((item) => {
+          if (!isPropsSchemaNode(item)) return item;
+          const r = item === target ? replacement : replaceNodeInTree(item as SchemaNode, target, replacement);
+          if (r !== item) changed = true;
+          return r;
+        });
+        newProps[k] = arr;
+      } else if (isPropsSchemaNode(v)) {
+        const r = v === target ? replacement : replaceNodeInTree(v as SchemaNode, target, replacement);
+        if (r !== v) changed = true;
+        newProps[k] = r;
+      } else {
+        newProps[k] = v;
+      }
+    }
+    if (changed) clone.props = newProps as SchemaNode['props'];
   }
   return clone;
 }
@@ -69,19 +99,22 @@ export function VisualPropertiesPanel() {
 
   function handlePropChange(key: string, value: unknown) {
     const id = visualEditor.selectedId();
+    console.log('[PropChange] key:', key, 'value:', value, 'selectedId:', id);
     if (!id) return;
     try {
       const clone = deepClone(templateStore.currentTemplate) as TemplateSchema;
       const found = findNodeById(clone, id);
+      console.log('[PropChange] found node:', found?.node?.type, found?.node?.props);
       if (!found) return;
-      // Patch into node.props, not the node top-level
       const patch = value === '' || value === null ? { props: { [key]: null } } : { props: { [key]: value } };
       const patched = mergeNode(found.node, patch);
+      console.log('[PropChange] patched props:', patched.props);
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
       templateStore.updateTemplate(updated);
       templateStore.persistCurrentTemplate();
-    } catch {
-      // silently ignore
+      console.log('[PropChange] done');
+    } catch (e) {
+      console.error('[PropChange] error:', e);
     }
   }
 
