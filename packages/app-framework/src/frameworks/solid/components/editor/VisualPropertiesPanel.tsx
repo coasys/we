@@ -1,7 +1,7 @@
 import { deepClone } from '@shared/utils';
 import { useTemplateStore } from '@solid/stores';
 import { contextData } from '@we/ai-context';
-import { Combobox } from '@we/components/solid';
+import { Combobox, type ComboboxOption } from '@we/components/solid';
 import type { PropLayer, PropMeta, SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { findNodeById, getComponentMeta, mergeNode } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
@@ -106,7 +106,8 @@ export function VisualPropertiesPanel() {
       const found = findNodeById(clone, id);
       console.log('[PropChange] found node:', found?.node?.type, found?.node?.props);
       if (!found) return;
-      const patch = value === '' || value === null ? { props: { [key]: null } } : { props: { [key]: value } };
+      const patch =
+        value === '' || value === null || value === false ? { props: { [key]: null } } : { props: { [key]: value } };
       const patched = mergeNode(found.node, patch);
       console.log('[PropChange] patched props:', patched.props);
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
@@ -441,7 +442,10 @@ function PropRow(props: {
             when={props.valueType === 'number'}
             fallback={
               <Combobox
-                options={props.options ?? []}
+                options={[
+                  ...(props.value !== '' ? [{ label: '(unset)', value: '' } as ComboboxOption] : []),
+                  ...(props.options ?? []).map((o) => ({ label: o, value: o }) as ComboboxOption),
+                ]}
                 value={String(props.value ?? '')}
                 size="xs"
                 onChange={(v: string) => props.onChange(v)}
