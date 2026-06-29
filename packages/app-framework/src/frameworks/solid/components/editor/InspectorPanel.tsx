@@ -3,6 +3,7 @@ import { useAiStore, useTemplateStore } from '@solid/stores';
 import { contextData } from '@we/ai-context';
 import { Column, Combobox, type ComboboxOption, Grid, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
+import { CodeViewer } from './CodeViewer';
 import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { findNodeById, getComponentMeta, mergeNode } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
@@ -613,7 +614,7 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
           </we-text>
         </Show>
 
-        {/* Complex / dynamic props — read-only preview */}
+        {/* Complex / dynamic props */}
         <Show when={complexProps().length > 0}>
           <Column py="100">
             <SectionLabel>Dynamic props</SectionLabel>
@@ -623,23 +624,17 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
                   <we-text fontSize="100" fontWeight="500" color="neutral-500">
                     {key}
                   </we-text>
-                  <pre
-                    style={{
-                      margin: '0',
-                      background: tokenVar('color', 'neutral-50'),
-                      'border-radius': tokenVar('radius', '200'),
-                      padding: '4px 6px',
-                      'font-size': '10px',
-                      'font-family': 'monospace',
-                      color: tokenVar('color', 'neutral-500'),
-                      'white-space': 'pre-wrap',
-                      'word-break': 'break-all',
-                      'max-height': '56px',
-                      overflow: 'hidden',
-                    }}
+                  <Column
+                    border={`1px solid ${tokenVar('color', 'neutral-100')}`}
+                    r="200"
+                    overflow="hidden"
+                    styles={{ 'max-height': '250px' }}
                   >
-                    {JSON.stringify(value, null, 1).slice(0, 180)}
-                  </pre>
+                    <CodeViewer
+                      json={JSON.stringify(value, null, 2)}
+                      onSave={(json) => props.onPropChange(key, JSON.parse(json))}
+                    />
+                  </Column>
                 </Column>
               )}
             </For>
