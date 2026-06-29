@@ -606,6 +606,8 @@ export function AiStoreProvider(props: ParentProps) {
     setEditAction(action);
     setIsEditingTemplate(true);
     setIsOpen(true);
+    setCodePanelOpen(false);
+    setContentModeSignal('preview');
     setThemePanelOpen(false);
   }
 
@@ -628,6 +630,7 @@ export function AiStoreProvider(props: ParentProps) {
     setThemePanelOpen(true);
     setIsOpen(false);
     setCodePanelOpen(false);
+    setContentModeSignal('preview');
   }
 
   function exitThemeEditing() {
@@ -674,6 +677,7 @@ export function AiStoreProvider(props: ParentProps) {
     if (mode === 'visual') {
       setIsOpen(false);
       setCodePanelOpen(false);
+      setThemePanelOpen(false);
     }
     setContentModeSignal(mode);
   }
