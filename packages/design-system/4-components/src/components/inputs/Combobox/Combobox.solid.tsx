@@ -32,7 +32,10 @@ export function Combobox(allProps: ComboboxComponentProps) {
   // Sync display to external value when not actively editing
   createEffect(() => {
     if (!focused()) {
-      if (skipNextSync) { skipNextSync = false; return; }
+      if (skipNextSync) {
+        skipNextSync = false;
+        return;
+      }
       setDisplay(props.value ?? '');
     }
   });
@@ -70,7 +73,10 @@ export function Combobox(allProps: ComboboxComponentProps) {
 
   const handleBlur = () => {
     setTimeout(() => {
-      if (selectionHandled) { selectionHandled = false; return; }
+      if (selectionHandled) {
+        selectionHandled = false;
+        return;
+      }
       const v = display();
       setFocused(false);
       setOpen(false);

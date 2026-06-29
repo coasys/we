@@ -104,6 +104,48 @@ const SPACE_OPTIONS: ComboboxOption[] = [
 ].map((v) => ({ label: v, value: v }));
 
 // -----------------------------------------------------------------------
+// Icon + color prop config
+// -----------------------------------------------------------------------
+
+// Props that render as segmented icon buttons instead of a combobox
+const ICON_PROP_ICONS: Record<string, Record<string, string>> = {
+  direction: {
+    row: 'arrow-right',
+    column: 'arrow-down',
+    'row-reverse': 'arrow-left',
+    'column-reverse': 'arrow-up',
+  },
+  ax: {
+    start: 'align-left',
+    center: 'align-center-horizontal',
+    end: 'align-right',
+    between: 'arrows-out-line-horizontal',
+    stretch: 'arrows-horizontal',
+  },
+  ay: {
+    start: 'align-top',
+    center: 'align-center-vertical',
+    end: 'align-bottom',
+    between: 'arrows-out-line-vertical',
+    stretch: 'arrows-vertical',
+  },
+  textAlign: {
+    left: 'text-align-left',
+    center: 'text-align-center',
+    right: 'text-align-right',
+    justify: 'text-align-justify',
+  },
+};
+
+const ICON_PROP_KEYS = new Set(Object.keys(ICON_PROP_ICONS));
+
+// Props that render as a color swatch picker instead of a combobox
+const COLOR_PROP_KEYS = new Set(['bg', 'color', 'borderColor', 'ring']);
+
+const COLOR_HUES = ['neutral', 'primary', 'success', 'warning', 'danger'] as const;
+const COLOR_SHADES = ['0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'];
+
+// -----------------------------------------------------------------------
 // VisualPropertiesPanel
 // -----------------------------------------------------------------------
 
@@ -381,32 +423,30 @@ function InlineSpaceInput(props: {
     onCleanup(() => document.removeEventListener('mousedown', handler));
   });
 
+  const textColor = () =>
+    props.value
+      ? (props.color ?? 'var(--we-color-neutral-800)')
+      : (props.placeholderColor ?? props.color ?? 'var(--we-color-neutral-400)');
+
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
-      <button
-        onClick={(e) => {
+      <we-button
+        size="xs"
+        variant="ghost"
+        prop:hoverProps={{ bg: 'none' }}
+        prop:activeProps={{ bg: 'none' }}
+        onClick={(e: MouseEvent) => {
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        style={{
-          background: 'none',
-          border: 'none',
-          'border-radius': '3px',
-          cursor: 'pointer',
-          'font-size': '10px',
-          'font-weight': props.value ? '500' : '400',
-          color: props.value
-            ? (props.color ?? 'var(--we-color-neutral-800)')
-            : (props.placeholderColor ?? props.color ?? 'var(--we-color-neutral-400)'),
-          padding: '1px 4px',
-          'min-width': '22px',
-          'text-align': 'center',
-          'font-family': 'inherit',
-          'line-height': '1.4',
-        }}
       >
-        {props.value || props.placeholder}
-      </button>
+        <we-text
+          fontWeight={props.value ? '500' : '400'}
+          styles={{ color: textColor(), 'font-size': '10px', 'min-width': '22px', 'text-align': 'center' }}
+        >
+          {props.value || props.placeholder}
+        </we-text>
+      </we-button>
       <Show when={open()}>
         <div
           style={{
@@ -416,47 +456,199 @@ function InlineSpaceInput(props: {
             left: '50%',
             transform: 'translateX(-50%)',
             'margin-top': '2px',
-            background: 'var(--we-color-neutral-0)',
-            border: '1px solid var(--we-color-neutral-200)',
-            'border-radius': '6px',
-            'box-shadow': '0 4px 12px rgba(0,0,0,0.12)',
-            padding: '3px',
             'min-width': '64px',
-            'max-height': '200px',
-            'overflow-y': 'auto',
           }}
         >
-          <For each={[...(props.value ? ['(unset)'] : []), ...SPACE_OPTIONS.map((o) => o.value)]}>
-            {(opt) => (
-              <button
-                onClick={() => {
-                  props.onChange(opt === '(unset)' ? '' : opt);
-                  setOpen(false);
-                }}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  padding: '3px 8px',
-                  background: opt === props.value ? 'var(--we-color-primary-50)' : 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  'font-size': '11px',
-                  'text-align': 'center',
-                  'border-radius': '4px',
-                  color:
-                    opt === props.value
-                      ? 'var(--we-color-primary-600)'
-                      : opt === '(unset)'
-                        ? 'var(--we-color-neutral-400)'
-                        : 'var(--we-color-neutral-700)',
-                  'font-weight': opt === props.value ? '600' : '400',
-                  'font-family': 'inherit',
-                }}
-              >
-                {opt}
-              </button>
-            )}
-          </For>
+          <we-menu>
+            <div style={{ 'max-height': '200px', 'overflow-y': 'auto', padding: '2px 0' }}>
+              <For each={[...(props.value ? ['(unset)'] : []), ...SPACE_OPTIONS.map((o) => o.value)]}>
+                {(opt) => (
+                  <we-menu-item
+                    selected={opt === props.value}
+                    on:select={() => {
+                      props.onChange(opt === '(unset)' ? '' : opt);
+                      setOpen(false);
+                    }}
+                    fontSize="100"
+                  >
+                    {opt}
+                  </we-menu-item>
+                )}
+              </For>
+            </div>
+          </we-menu>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------
+// IconSegmentedRow — icon button group for enum props like direction/ax/ay
+// -----------------------------------------------------------------------
+
+function IconSegmentedRow(props: { propKey: string; options: string[]; value: string; onChange: (v: string) => void }) {
+  const icons = () => ICON_PROP_ICONS[props.propKey] ?? {};
+  const selected = (opt: string) => opt === props.value;
+
+  return (
+    <Row wrap gap="100">
+      <For each={props.options}>
+        {(opt) => {
+          const icon = icons()[opt];
+          return (
+            <we-button
+              title={opt}
+              size="sm"
+              square
+              variant={selected(opt) ? 'secondary' : 'outline'}
+              onClick={() => props.onChange(selected(opt) ? '' : opt)}
+            >
+              {icon ? <we-icon name={icon} /> : opt.slice(0, 3)}
+            </we-button>
+          );
+        }}
+      </For>
+    </Row>
+  );
+}
+
+// -----------------------------------------------------------------------
+// ColorSwatchPicker — swatch grid for bg/color/borderColor props
+// -----------------------------------------------------------------------
+
+function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = createSignal(false);
+  const [hovered, setHovered] = createSignal<string | null>(null);
+  let ref!: HTMLDivElement;
+
+  createEffect(() => {
+    if (!open()) return;
+    const handler = (e: MouseEvent) => {
+      if (!ref.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    onCleanup(() => document.removeEventListener('mousedown', handler));
+  });
+
+  const swatchBg = (value: string) => (value ? `var(--we-color-${value})` : 'transparent');
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      {/* Trigger */}
+      <we-button variant="outline" size="xs" style={{ width: '100%' }} onClick={() => setOpen((v) => !v)}>
+        <Row ay="center" gap="200" width="100%">
+          <div
+            style={{
+              width: '12px',
+              height: '12px',
+              'flex-shrink': '0',
+              background: swatchBg(props.value),
+              'border-radius': '2px',
+              border: '1px solid rgba(0,0,0,0.15)',
+            }}
+          />
+          <we-text flex="1" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
+            {props.value || '—'}
+          </we-text>
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="neutral-400" />
+        </Row>
+      </we-button>
+
+      {/* Dropdown */}
+      <Show when={open()}>
+        <div
+          style={{
+            position: 'absolute',
+            'z-index': '600',
+            top: '100%',
+            right: '0',
+            'margin-top': '3px',
+            'min-width': '220px',
+          }}
+        >
+          <we-menu>
+            <Column p="300" gap="200">
+              {/* Unset */}
+              <Show when={props.value}>
+                <we-menu-item
+                  on:select={() => {
+                    props.onChange('');
+                    setOpen(false);
+                  }}
+                >
+                  <we-text color="neutral-400">(unset)</we-text>
+                </we-menu-item>
+              </Show>
+
+              {/* White + black */}
+              <Row gap="100">
+                <For each={['white', 'black']}>
+                  {(v) => (
+                    <we-tooltip title={v} placement="top">
+                      <button
+                        onClick={() => {
+                          props.onChange(v);
+                          setOpen(false);
+                        }}
+                        onMouseEnter={() => setHovered(v)}
+                        onMouseLeave={() => setHovered(null)}
+                        style={{
+                          all: 'unset',
+                          width: '20px',
+                          height: '20px',
+                          background: `var(--we-color-${v})`,
+                          'box-shadow': `0 0 0 1px var(--we-color-primary-${hovered() === v ? 600 : 300})`,
+                          'border-radius': '3px',
+                          cursor: 'pointer',
+                          padding: '0',
+                          transition: 'all 0.3s',
+                        }}
+                      />
+                    </we-tooltip>
+                  )}
+                </For>
+              </Row>
+
+              {/* Hue rows */}
+              <Column gap="100">
+                <For each={COLOR_HUES}>
+                  {(hue) => (
+                    <Row gap="100">
+                      <For each={COLOR_SHADES}>
+                        {(shade) => {
+                          const v = `${hue}-${shade}`;
+                          return (
+                            <we-tooltip title={v} placement="top">
+                              <button
+                                onClick={() => {
+                                  props.onChange(v);
+                                  setOpen(false);
+                                }}
+                                onMouseEnter={() => setHovered(v)}
+                                onMouseLeave={() => setHovered(null)}
+                                style={{
+                                  all: 'unset',
+                                  width: '20px',
+                                  height: '20px',
+                                  background: `var(--we-color-${v})`,
+                                  'box-shadow': `0 0 0 1px var(--we-color-primary-${hovered() === v ? 600 : 300})`,
+                                  'border-radius': '3px',
+                                  cursor: 'pointer',
+                                  padding: '0',
+                                  transition: 'all 0.3s',
+                                }}
+                              />
+                            </we-tooltip>
+                          );
+                        }}
+                      </For>
+                    </Row>
+                  )}
+                </For>
+              </Column>
+            </Column>
+          </we-menu>
         </div>
       </Show>
     </div>
@@ -528,7 +720,7 @@ function BoxModel(props: {
     >
       <we-text
         styles={{ padding: '2px 4px', 'line-height': '16px', 'white-space': 'nowrap' }}
-        fontSize="8px"
+        fontSize="10px"
         color={BOX_PADDING.label}
       >
         padding
@@ -550,7 +742,7 @@ function BoxModel(props: {
         overflow="hidden"
         styles={{ margin: '3px', padding: '0 6px' }}
       >
-        <we-text fontSize="9px" fontWeight="700" color={BOX_ELEMENT.text} truncate>
+        <we-text fontSize="10px" fontWeight="700" color={BOX_ELEMENT.text} truncate>
           {props.meta?.typeName ?? ''}
         </we-text>
       </Row>
@@ -569,25 +761,87 @@ function BoxModel(props: {
   return (
     <Show when={hasPadding() || hasMargin()}>
       <Column px="400" py="200" borderBottom="1px solid neutral-100">
-        {/* Shorthand row: quick all-sides setters */}
-        <Row gap="300" mb="200" ay="center">
-          <Show when={hasPadding() && availableKeys().has('p')}>
-            <Row ay="center" gap="100">
-              <we-text fontSize="9px" fontWeight="700" color={BOX_PADDING.label} letterSpacing="0.04em">
-                P
+        {/* Shorthand row: all / x-axis / y-axis setters */}
+        <Column gap="100" mb="200">
+          <Show when={hasMargin()}>
+            <Row ay="center" gap="200">
+              <we-text fontSize="12px" fontWeight="700" color={BOX_MARGIN.border} letterSpacing="0.04em">
+                Margin
               </we-text>
-              <InlineSpaceInput value={rawVal('p')} placeholder="all" onChange={(v) => props.onPropChange('p', v)} />
+              <Show when={availableKeys().has('m')}>
+                <Row ay="center" gap="100">
+                  <we-text fontSize="12px" color={BOX_MARGIN.label}>
+                    all
+                  </we-text>
+                  <InlineSpaceInput value={rawVal('m')} placeholder="—" onChange={(v) => props.onPropChange('m', v)} />
+                </Row>
+              </Show>
+              <Show when={availableKeys().has('mx')}>
+                <Row ay="center" gap="100">
+                  <we-text fontSize="12px" color={BOX_MARGIN.label}>
+                    x
+                  </we-text>
+                  <InlineSpaceInput
+                    value={rawVal('mx')}
+                    placeholder="—"
+                    onChange={(v) => props.onPropChange('mx', v)}
+                  />
+                </Row>
+              </Show>
+              <Show when={availableKeys().has('my')}>
+                <Row ay="center" gap="100">
+                  <we-text fontSize="12px" color={BOX_MARGIN.label}>
+                    y
+                  </we-text>
+                  <InlineSpaceInput
+                    value={rawVal('my')}
+                    placeholder="—"
+                    onChange={(v) => props.onPropChange('my', v)}
+                  />
+                </Row>
+              </Show>
             </Row>
           </Show>
-          <Show when={hasMargin() && availableKeys().has('m')}>
-            <Row ay="center" gap="100">
-              <we-text fontSize="9px" fontWeight="700" color={BOX_MARGIN.label} letterSpacing="0.04em">
-                M
+          <Show when={hasPadding()}>
+            <Row ay="center" gap="200">
+              <we-text fontSize="12px" fontWeight="700" color={BOX_PADDING.border} letterSpacing="0.04em">
+                Padding
               </we-text>
-              <InlineSpaceInput value={rawVal('m')} placeholder="all" onChange={(v) => props.onPropChange('m', v)} />
+              <Show when={availableKeys().has('p')}>
+                <Row ay="center" gap="100">
+                  <we-text fontSize="12px" color={BOX_PADDING.label}>
+                    all
+                  </we-text>
+                  <InlineSpaceInput value={rawVal('p')} placeholder="—" onChange={(v) => props.onPropChange('p', v)} />
+                </Row>
+              </Show>
+              <Show when={availableKeys().has('px')}>
+                <Row ay="center" gap="100">
+                  <we-text fontSize="12px" color={BOX_PADDING.label}>
+                    x
+                  </we-text>
+                  <InlineSpaceInput
+                    value={rawVal('px')}
+                    placeholder="—"
+                    onChange={(v) => props.onPropChange('px', v)}
+                  />
+                </Row>
+              </Show>
+              <Show when={availableKeys().has('py')}>
+                <Row ay="center" gap="100">
+                  <we-text fontSize="12px" color={BOX_PADDING.label}>
+                    y
+                  </we-text>
+                  <InlineSpaceInput
+                    value={rawVal('py')}
+                    placeholder="—"
+                    onChange={(v) => props.onPropChange('py', v)}
+                  />
+                </Row>
+              </Show>
             </Row>
           </Show>
-        </Row>
+        </Column>
 
         {/* Nested box diagram: orange margin wraps green padding wraps blue element */}
         <Show when={hasMargin()} fallback={paddingBox()}>
@@ -601,7 +855,7 @@ function BoxModel(props: {
           >
             <we-text
               styles={{ padding: '2px 4px', 'line-height': '16px', 'white-space': 'nowrap' }}
-              fontSize="8px"
+              fontSize="10px"
               color={BOX_MARGIN.label}
             >
               margin
@@ -642,47 +896,63 @@ function PropRow(props: {
   valueType: 'string' | 'boolean' | 'number';
   onChange: (v: string | boolean | number) => void;
 }) {
-  return (
-    <Grid template="1fr 1.2fr" gap="200" ay="center" px="400" py="100">
-      <we-text title={props.propKey} fontSize="200" fontWeight="500" color="neutral-600" truncate>
-        {props.propKey}
-      </we-text>
+  const strVal = () => String(props.value ?? '');
 
-      <Show
-        when={props.valueType === 'boolean'}
-        fallback={
-          <Show
-            when={props.valueType === 'number'}
-            fallback={
-              <Combobox
-                options={[
-                  ...(props.value !== '' ? [{ label: '(unset)', value: '' } as ComboboxOption] : []),
-                  ...(props.options ?? []).map((o) => ({ label: o, value: o }) as ComboboxOption),
-                ]}
-                value={String(props.value ?? '')}
-                size="xs"
-                onChange={(v: string) => props.onChange(v)}
-              />
-            }
-          >
-            <we-input
-              type="number"
-              value={String(props.value)}
-              size="xs"
-              on:change={(e: CustomEvent<string>) => {
-                const v = Number(e.detail);
-                if (!isNaN(v) && v !== props.value) props.onChange(v);
-              }}
-            />
-          </Show>
-        }
-      >
+  const renderInput = () => {
+    if (props.valueType === 'boolean') {
+      return (
         <we-checkbox
           checked={props.value as boolean}
           size="xs"
           on:change={(e: CustomEvent<boolean>) => props.onChange(e.detail)}
         />
-      </Show>
+      );
+    }
+    if (props.valueType === 'number') {
+      return (
+        <we-input
+          type="number"
+          value={String(props.value)}
+          size="xs"
+          on:change={(e: CustomEvent<string>) => {
+            const v = Number(e.detail);
+            if (!isNaN(v) && v !== props.value) props.onChange(v);
+          }}
+        />
+      );
+    }
+    if (COLOR_PROP_KEYS.has(props.propKey)) {
+      return <ColorSwatchPicker value={strVal()} onChange={(v) => props.onChange(v)} />;
+    }
+    if (ICON_PROP_KEYS.has(props.propKey) && props.options) {
+      return (
+        <IconSegmentedRow
+          propKey={props.propKey}
+          options={props.options}
+          value={strVal()}
+          onChange={(v) => props.onChange(v)}
+        />
+      );
+    }
+    return (
+      <Combobox
+        options={[
+          ...(props.value !== '' ? [{ label: '(unset)', value: '' } as ComboboxOption] : []),
+          ...(props.options ?? []).map((o) => ({ label: o, value: o }) as ComboboxOption),
+        ]}
+        value={strVal()}
+        size="xs"
+        onChange={(v: string) => props.onChange(v)}
+      />
+    );
+  };
+
+  return (
+    <Grid template="1fr 1.2fr" gap="200" ay="center" px="400" py="100">
+      <we-text title={props.propKey} fontSize="200" fontWeight="500" color="neutral-600" truncate>
+        {props.propKey}
+      </we-text>
+      {renderInput()}
     </Grid>
   );
 }
