@@ -1,6 +1,6 @@
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { deepClone } from '@shared/utils';
-import { useAdamStore, useTemplateStore, useThemeStore } from '@solid/stores';
+import { type EditingTheme, useAdamStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import { contextData, schemaContext } from '@we/ai-context';
 import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
@@ -35,6 +35,8 @@ export interface ChatMessage {
   createdAt?: string;
   status?: 'sending' | 'streaming' | 'sent' | 'error';
 }
+
+type HistoryEntry = { type: 'template'; snapshot: TemplateSchema } | { type: 'theme'; snapshot: EditingTheme };
 
 // Base validation context built once from the static generated context data.
 // External perspective models are merged in reactively inside AiStoreProvider.
@@ -79,6 +81,7 @@ export interface AiStore {
   canRedo: Accessor<boolean>;
   undo: () => Promise<void>;
   redo: () => Promise<void>;
+  pushSnapshot: () => void;
 
   // --- Template actions ---
   startFork: () => void;
@@ -329,11 +332,11 @@ export function AiStoreProvider(props: ParentProps) {
   const [pendingTemplate, setPendingTemplate] = createSignal<TemplateSchema | null>(null);
   const hasPendingChanges = () => pendingTemplate() !== null;
 
-  // --- Undo / Redo ---
+  // --- Unified Undo / Redo (covers template and theme edits in chronological order) ---
   const MAX_UNDO = 50;
-  const [undoStack, setUndoStack] = createSignal<TemplateSchema[]>([]);
-  const [redoStack, setRedoStack] = createSignal<TemplateSchema[]>([]);
-  const stackCache = new Map<string, { undo: TemplateSchema[]; redo: TemplateSchema[] }>();
+  const [undoStack, setUndoStack] = createSignal<HistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = createSignal<HistoryEntry[]>([]);
+  const stackCache = new Map<string, { undo: HistoryEntry[]; redo: HistoryEntry[] }>();
   let prevTemplateId: string | undefined;
   const canUndo: Accessor<boolean> = () => undoStack().length > 0;
   const canRedo: Accessor<boolean> = () => redoStack().length > 0;
@@ -343,7 +346,7 @@ export function AiStoreProvider(props: ParentProps) {
       ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
       : deepClone(templateStore.currentTemplate);
     setUndoStack((prev) => {
-      const next = [...prev, current as TemplateSchema];
+      const next = [...prev, { type: 'template' as const, snapshot: current as TemplateSchema }];
       return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
     });
     setRedoStack([]);
@@ -352,50 +355,79 @@ export function AiStoreProvider(props: ParentProps) {
   async function undo() {
     const stack = undoStack();
     if (stack.length === 0) return;
-    const snapshot = stack[stack.length - 1];
+    const entry = stack[stack.length - 1];
     setUndoStack((prev) => prev.slice(0, -1));
-    setRedoStack((prev) => [
-      ...prev,
-      (isReadOnly()
-        ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
-        : deepClone(templateStore.currentTemplate)) as TemplateSchema,
-    ]);
-    if (isReadOnly()) {
-      setPendingTemplate(snapshot);
-    } else {
-      templateStore.updateTemplate(snapshot);
-      try {
-        await templateStore.persistCurrentTemplate();
-      } catch {
-        /* key may already exist */
+
+    if (entry.type === 'template') {
+      const currentSnap = (
+        isReadOnly()
+          ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
+          : deepClone(templateStore.currentTemplate)
+      ) as TemplateSchema;
+      setRedoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
+      if (isReadOnly()) {
+        setPendingTemplate(entry.snapshot);
+      } else {
+        templateStore.updateTemplate(entry.snapshot);
+        try {
+          await templateStore.persistCurrentTemplate();
+        } catch {
+          /* key may already exist */
+        }
       }
+    } else {
+      const current = themeStore.editingTheme();
+      if (current) setRedoStack((prev) => [...prev, { type: 'theme' as const, snapshot: { ...current } }]);
+      await themeStore.applySnapshot(entry.snapshot);
     }
-    setMessages((prev) => [...prev, createMessage('assistant', '↶ Reverted to previous schema state.')]);
   }
 
   async function redo() {
     const stack = redoStack();
     if (stack.length === 0) return;
-    const snapshot = stack[stack.length - 1];
+    const entry = stack[stack.length - 1];
     setRedoStack((prev) => prev.slice(0, -1));
-    setUndoStack((prev) => [
-      ...prev,
-      (isReadOnly()
-        ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
-        : deepClone(templateStore.currentTemplate)) as TemplateSchema,
-    ]);
-    if (isReadOnly()) {
-      setPendingTemplate(snapshot);
-    } else {
-      templateStore.updateTemplate(snapshot);
-      try {
-        await templateStore.persistCurrentTemplate();
-      } catch {
-        /* key may already exist */
+
+    if (entry.type === 'template') {
+      const currentSnap = (
+        isReadOnly()
+          ? (pendingTemplate() ?? deepClone(templateStore.currentTemplate))
+          : deepClone(templateStore.currentTemplate)
+      ) as TemplateSchema;
+      setUndoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
+      if (isReadOnly()) {
+        setPendingTemplate(entry.snapshot);
+      } else {
+        templateStore.updateTemplate(entry.snapshot);
+        try {
+          await templateStore.persistCurrentTemplate();
+        } catch {
+          /* key may already exist */
+        }
       }
+    } else {
+      const current = themeStore.editingTheme();
+      if (current) setUndoStack((prev) => [...prev, { type: 'theme' as const, snapshot: { ...current } }]);
+      await themeStore.applySnapshot(entry.snapshot);
     }
-    setMessages((prev) => [...prev, createMessage('assistant', '↷ Re-applied schema change.')]);
   }
+
+  // Wire theme history into the unified stack. ThemeStore is a parent provider and
+  // cannot call back into AiStore, so we register callbacks here after both stores
+  // and the stack signals are initialised.
+  themeStore.registerHistoryCallbacks({
+    onEntry: (snapshot: EditingTheme) => {
+      setUndoStack((prev) => {
+        const next = [...prev, { type: 'theme' as const, snapshot }];
+        return next.length > MAX_UNDO ? next.slice(-MAX_UNDO) : next;
+      });
+      setRedoStack([]);
+    },
+    onClear: () => {
+      setUndoStack((prev) => prev.filter((e) => e.type !== 'theme'));
+      setRedoStack((prev) => prev.filter((e) => e.type !== 'theme'));
+    },
+  });
 
   // --- Name + Icon picker state ---
   const [pickerOpen, setPickerOpen] = createSignal(false);
@@ -1424,21 +1456,20 @@ export function AiStoreProvider(props: ParentProps) {
     }
   });
 
-  // Save/restore undo/redo stacks per template
+  // Save/restore undo/redo stacks per template.
+  // Only template entries are persisted — theme entries become stale after a switch.
   createEffect(() => {
     const newId = templateStore.currentTemplate.id;
     untrack(() => {
-      // Save outgoing stacks
       if (prevTemplateId) {
-        const undo = undoStack();
-        const redo = redoStack();
+        const undo = undoStack().filter((e) => e.type === 'template');
+        const redo = redoStack().filter((e) => e.type === 'template');
         if (undo.length || redo.length) {
           stackCache.set(prevTemplateId, { undo, redo });
         } else {
           stackCache.delete(prevTemplateId);
         }
       }
-      // Restore incoming stacks
       const cached = newId ? stackCache.get(newId) : undefined;
       setUndoStack(cached?.undo ?? []);
       setRedoStack(cached?.redo ?? []);
@@ -1488,6 +1519,7 @@ export function AiStoreProvider(props: ParentProps) {
     canRedo,
     undo,
     redo,
+    pushSnapshot,
 
     // Template actions
     startFork,

@@ -296,8 +296,8 @@ export function DesignToolbar() {
         ay="start"
         gap="200"
       >
-        {/* ── Edit-mode toolbar (template editing only) ── */}
-        <Show when={aiStore.isEditingTemplate()}>
+        {/* ── Edit-mode toolbar (visible whenever template or theme editing is active) ── */}
+        <Show when={aiStore.isEditingTemplate() || aiStore.isEditingTheme()}>
           <Row
             ay="center"
             gap="100"
@@ -306,26 +306,27 @@ export function DesignToolbar() {
             r="var(--we-theme-control-radius, var(--we-radius-400))"
             p="200"
           >
-            <we-tooltip title="Preview" placement="bottom">
-              <we-button
-                variant={aiStore.contentMode() === 'preview' ? 'secondary' : 'ghost'}
-                square
-                onClick={() => aiStore.setContentMode('preview')}
-              >
-                <we-icon name="eye" />
-              </we-button>
-            </we-tooltip>
-            <we-tooltip title="Visual editor" placement="bottom">
-              <we-button
-                variant={aiStore.contentMode() === 'visual' ? 'secondary' : 'ghost'}
-                square
-                onClick={() => aiStore.setContentMode('visual')}
-              >
-                <we-icon name="pencil-ruler" />
-              </we-button>
-            </we-tooltip>
-
-            <we-divider orientation="vertical" color="neutral-200" height="28px" />
+            <Show when={aiStore.isEditingTemplate()}>
+              <we-tooltip title="Preview" placement="bottom">
+                <we-button
+                  variant={aiStore.contentMode() === 'preview' ? 'secondary' : 'ghost'}
+                  square
+                  onClick={() => aiStore.setContentMode('preview')}
+                >
+                  <we-icon name="eye" />
+                </we-button>
+              </we-tooltip>
+              <we-tooltip title="Visual editor" placement="bottom">
+                <we-button
+                  variant={aiStore.contentMode() === 'visual' ? 'secondary' : 'ghost'}
+                  square
+                  onClick={() => aiStore.setContentMode('visual')}
+                >
+                  <we-icon name="pencil-ruler" />
+                </we-button>
+              </we-tooltip>
+              <we-divider orientation="vertical" color="neutral-200" height="28px" />
+            </Show>
 
             <we-tooltip title="Undo" placement="bottom">
               <we-button variant="ghost" square disabled={!aiStore.canUndo()} onClick={() => aiStore.undo()}>
@@ -334,29 +335,6 @@ export function DesignToolbar() {
             </we-tooltip>
             <we-tooltip title="Redo" placement="bottom">
               <we-button variant="ghost" square disabled={!aiStore.canRedo()} onClick={() => aiStore.redo()}>
-                <we-icon name="arrow-u-up-right" />
-              </we-button>
-            </we-tooltip>
-          </Row>
-        </Show>
-
-        {/* ── Edit-mode toolbar (theme editing only) ── */}
-        <Show when={aiStore.isEditingTheme()}>
-          <Row
-            ay="center"
-            gap="100"
-            bg="neutral-50"
-            border="1px solid neutral-200"
-            r="var(--we-theme-control-radius, var(--we-radius-400))"
-            p="200"
-          >
-            <we-tooltip title="Undo" placement="bottom">
-              <we-button variant="ghost" square disabled={!themeStore.canUndo()} onClick={() => themeStore.undo()}>
-                <we-icon name="arrow-u-up-left" />
-              </we-button>
-            </we-tooltip>
-            <we-tooltip title="Redo" placement="bottom">
-              <we-button variant="ghost" square disabled={!themeStore.canRedo()} onClick={() => themeStore.redo()}>
                 <we-icon name="arrow-u-up-right" />
               </we-button>
             </we-tooltip>

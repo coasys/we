@@ -11,7 +11,6 @@ import { useAdamStore } from './AdamStore';
 
 const THEME_KEY = 'we.theme';
 const EDITING_THEME_KEY = 'we.editing-theme';
-const MAX_UNDO = 50;
 
 export type ThemeManagementItem = {
   id: string;
@@ -37,9 +36,12 @@ export interface ThemeStore {
   defaultThemeId: Accessor<string>;
   themeManagementList: Accessor<ThemeManagementItem[]>;
   editingTheme: Accessor<EditingTheme | null>;
-  canUndo: Accessor<boolean>;
-  canRedo: Accessor<boolean>;
   operationLoading: Accessor<string | null>;
+  registerHistoryCallbacks: (callbacks: {
+    onEntry: (snapshot: EditingTheme) => void;
+    onClear: () => void;
+  }) => void;
+  applySnapshot: (snapshot: EditingTheme) => Promise<void>;
 
   // Actions
   setCurrentTheme: (themeId: string) => void;
@@ -74,8 +76,6 @@ export interface ThemeStore {
   updateEditingCss: (css: string) => void;
   updateEditingMeta: (fields: { name?: string; icon?: string }) => void;
   cancelEditing: () => void;
-  undo: () => Promise<void>;
-  redo: () => Promise<void>;
   createAndStartEditing: (
     name: string,
     icon: string,
@@ -243,16 +243,19 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [pendingSpaceThemeId, setPendingSpaceThemeId] = createSignal<string | null>(null);
   const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
 
-  // ── Undo / redo ──
+  // ── History (delegated to unified AiStore history) ──
   const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
 
-  const [undoStack, setUndoStack] = createSignal<EditingTheme[]>([]);
-  const [redoStack, setRedoStack] = createSignal<EditingTheme[]>([]);
   let pendingSnapshot: EditingTheme | null = null;
   let applyingHistoryOp = false;
+  let historyCallbacks: { onEntry: (snapshot: EditingTheme) => void; onClear: () => void } | null = null;
 
-  const canUndo: Accessor<boolean> = () => undoStack().length > 0;
-  const canRedo: Accessor<boolean> = () => redoStack().length > 0;
+  function registerHistoryCallbacks(callbacks: {
+    onEntry: (snapshot: EditingTheme) => void;
+    onClear: () => void;
+  }) {
+    historyCallbacks = callbacks;
+  }
 
   function captureSnapshot() {
     if (applyingHistoryOp || pendingSnapshot !== null) return;
@@ -265,40 +268,15 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (applyingHistoryOp || !pendingSnapshot) return;
     const s = pendingSnapshot;
     pendingSnapshot = null;
-    setUndoStack((prev) => {
-      const next = [...prev, s];
-      return next.length > MAX_UNDO ? next.slice(-MAX_UNDO) : next;
-    });
-    setRedoStack([]);
+    historyCallbacks?.onEntry(s);
   }
 
   function clearHistory() {
-    setUndoStack([]);
-    setRedoStack([]);
     pendingSnapshot = null;
+    historyCallbacks?.onClear();
   }
 
-  async function undo() {
-    const stack = undoStack();
-    if (!stack.length) return;
-    const snapshot = stack[stack.length - 1];
-    const current = editingTheme();
-    setUndoStack((prev) => prev.slice(0, -1));
-    if (current) setRedoStack((prev) => [...prev, { ...current }]);
-    pendingSnapshot = null;
-    applyingHistoryOp = true;
-    setEditingTheme(snapshot);
-    await saveEditingTheme();
-    applyingHistoryOp = false;
-  }
-
-  async function redo() {
-    const stack = redoStack();
-    if (!stack.length) return;
-    const snapshot = stack[stack.length - 1];
-    const current = editingTheme();
-    setRedoStack((prev) => prev.slice(0, -1));
-    if (current) setUndoStack((prev) => [...prev, { ...current }]);
+  async function applySnapshot(snapshot: EditingTheme): Promise<void> {
     pendingSnapshot = null;
     applyingHistoryOp = true;
     setEditingTheme(snapshot);
@@ -1047,9 +1025,9 @@ export function ThemeStoreProvider(props: ParentProps) {
     activeTemplateTheme,
     themeManagementList,
     editingTheme,
-    canUndo,
-    canRedo,
     operationLoading,
+    registerHistoryCallbacks,
+    applySnapshot,
     setCurrentTheme,
     setDefaultTheme,
     toggleThemeInstalled,
@@ -1062,8 +1040,6 @@ export function ThemeStoreProvider(props: ParentProps) {
     updateEditingCss,
     updateEditingMeta,
     cancelEditing,
-    undo,
-    redo,
     createAndStartEditing,
     saveEditingTheme,
     saveEditingThemeAs,
