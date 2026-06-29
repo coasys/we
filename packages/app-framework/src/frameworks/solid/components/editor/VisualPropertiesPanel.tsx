@@ -6,7 +6,7 @@ import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, TemplateSchema } f
 import { findNodeById, getComponentMeta, mergeNode } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
 import type { JSX } from 'solid-js';
-import { createMemo, createSignal, For, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
 // -----------------------------------------------------------------------
 // Schema helpers
@@ -250,7 +250,7 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
       {/* Scrollable content */}
       <div style={{ flex: '1 1 auto', overflow: 'auto' }}>
         {/* Spacing — always-visible box model for padding + margin */}
-        <SpacingSection meta={meta()} currentProps={currentProps()} onPropChange={props.onPropChange} />
+        <BoxModel meta={meta()} currentProps={currentProps()} onPropChange={props.onPropChange} />
 
         {/* Used props — always visible */}
         <Show when={usedProps().size > 0}>
@@ -411,118 +411,143 @@ function SectionLabel(props: { children: string }) {
 }
 
 // -----------------------------------------------------------------------
-// BoxCross — compact spacing group: shorthand row + T / (L · R) / B cross
+// InlineSpaceInput — minimal click-to-open token picker for the box model
 // -----------------------------------------------------------------------
 
-function BoxCross(props: {
-  label: string;
-  /** 'p' or 'm' — null if the component doesn't support this shorthand */
-  shorthandKey: string | null;
-  keys: { t: string; r: string; b: string; l: string };
-  currentProps: Record<string, unknown>;
-  onPropChange: (key: string, value: unknown) => void;
+function InlineSpaceInput(props: {
+  value: string;
+  placeholder: string;
+  color?: string;
+  placeholderColor?: string;
+  onChange: (v: string) => void;
 }) {
-  // Raw value stored on the node for a key, or '' if unset
-  const rawVal = (key: string): string => {
-    const v = props.currentProps[key];
-    return v !== undefined && v !== null ? String(v) : '';
-  };
+  const [open, setOpen] = createSignal(false);
+  let ref!: HTMLDivElement;
 
-  // Effective placeholder for individual inputs — shows inherited shorthand value
-  const inherited = (): string => {
-    if (!props.shorthandKey) return '—';
-    const v = props.currentProps[props.shorthandKey];
-    return v !== undefined && v !== null ? String(v) : '—';
-  };
-
-  const opts = (key: string): ComboboxOption[] => [
-    ...(rawVal(key) ? [{ label: '(unset)', value: '' }] : []),
-    ...SPACE_OPTIONS,
-  ];
-
-  const input = (key: string) => (
-    <Combobox
-      options={opts(key)}
-      value={rawVal(key)}
-      size="xs"
-      placeholder={inherited()}
-      onChange={(v: string) => props.onPropChange(key, v)}
-    />
-  );
+  createEffect(() => {
+    if (!open()) return;
+    const handler = (e: MouseEvent) => {
+      if (!ref.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    onCleanup(() => document.removeEventListener('mousedown', handler));
+  });
 
   return (
-    <div>
-      {/* Label + all-sides shorthand on the same row */}
-      <div
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
         style={{
-          display: 'grid',
-          'grid-template-columns': '1fr 1fr',
-          'align-items': 'center',
-          gap: '4px',
-          'margin-bottom': '4px',
+          background: 'none',
+          border: 'none',
+          'border-radius': '3px',
+          cursor: 'pointer',
+          'font-size': '10px',
+          'font-weight': props.value ? '500' : '400',
+          color: props.value
+            ? (props.color ?? 'var(--we-color-neutral-800)')
+            : (props.placeholderColor ?? props.color ?? 'var(--we-color-neutral-400)'),
+          padding: '1px 4px',
+          'min-width': '22px',
+          'text-align': 'center',
+          'font-family': 'inherit',
+          'line-height': '1.4',
         }}
       >
+        {props.value || props.placeholder}
+      </button>
+      <Show when={open()}>
         <div
           style={{
-            'font-size': '9px',
-            'font-weight': '600',
-            'text-transform': 'uppercase',
-            'letter-spacing': '0.08em',
-            color: 'var(--we-color-neutral-400)',
-          }}
-        >
-          {props.label}
-        </div>
-        <Show when={props.shorthandKey !== null}>
-          <Combobox
-            options={opts(props.shorthandKey!)}
-            value={rawVal(props.shorthandKey!)}
-            size="xs"
-            placeholder="All"
-            onChange={(v: string) => props.onPropChange(props.shorthandKey!, v)}
-          />
-        </Show>
-      </div>
-
-      {/* Cross: top spans full width, L/indicator/R in middle, bottom spans full width */}
-      <div
-        style={{
-          display: 'grid',
-          'grid-template-columns': 'minmax(0,1fr) 28px minmax(0,1fr)',
-          gap: '2px',
-        }}
-      >
-        <div style={{ 'grid-column': '1 / -1' }}>{input(props.keys.t)}</div>
-
-        {input(props.keys.l)}
-        <div
-          style={{
-            display: 'flex',
-            'align-items': 'center',
-            'justify-content': 'center',
-            background: 'var(--we-color-neutral-100)',
+            position: 'absolute',
+            'z-index': '600',
+            top: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            'margin-top': '2px',
+            background: 'var(--we-color-neutral-0)',
             border: '1px solid var(--we-color-neutral-200)',
-            'border-radius': '2px',
-            'font-size': '8px',
-            'font-weight': '700',
-            color: 'var(--we-color-neutral-400)',
+            'border-radius': '6px',
+            'box-shadow': '0 4px 12px rgba(0,0,0,0.12)',
+            padding: '3px',
+            'min-width': '64px',
+            'max-height': '200px',
+            'overflow-y': 'auto',
           }}
         >
-          {props.label[0]}
+          <For each={[...(props.value ? ['(unset)'] : []), ...SPACE_OPTIONS.map((o) => o.value)]}>
+            {(opt) => (
+              <button
+                onClick={() => {
+                  props.onChange(opt === '(unset)' ? '' : opt);
+                  setOpen(false);
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '3px 8px',
+                  background: opt === props.value ? 'var(--we-color-primary-50)' : 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  'font-size': '11px',
+                  'text-align': 'center',
+                  'border-radius': '4px',
+                  color:
+                    opt === props.value
+                      ? 'var(--we-color-primary-600)'
+                      : opt === '(unset)'
+                        ? 'var(--we-color-neutral-400)'
+                        : 'var(--we-color-neutral-700)',
+                  'font-weight': opt === props.value ? '600' : '400',
+                  'font-family': 'inherit',
+                }}
+              >
+                {opt}
+              </button>
+            )}
+          </For>
         </div>
-        {input(props.keys.r)}
-
-        <div style={{ 'grid-column': '1 / -1' }}>{input(props.keys.b)}</div>
-      </div>
+      </Show>
     </div>
   );
 }
 
 // -----------------------------------------------------------------------
-// SpacingSection — always-visible padding + margin box model
+// BoxModel — Chrome DevTools-style nested rectangle spacing diagram
 // -----------------------------------------------------------------------
 
-function SpacingSection(props: {
+const BOX_EDGE: JSX.CSSProperties = {
+  display: 'flex',
+  'align-items': 'center',
+  'justify-content': 'center',
+};
+
+const BOX_MARGIN = {
+  bg: 'var(--we-color-warning-200)',
+  border: 'var(--we-color-warning-400)',
+  label: 'var(--we-color-warning-800)',
+  value: 'var(--we-color-warning-800)',
+  placeholder: 'var(--we-color-warning-400)',
+};
+
+const BOX_PADDING = {
+  bg: 'var(--we-color-success-200)',
+  border: 'var(--we-color-success-400)',
+  label: 'var(--we-color-success-800)',
+  value: 'var(--we-color-success-800)',
+  placeholder: 'var(--we-color-success-400)',
+};
+
+const BOX_ELEMENT = {
+  bg: 'var(--we-color-primary-200)',
+  border: 'var(--we-color-primary-400)',
+  text: 'var(--we-color-primary-800)',
+};
+
+function BoxModel(props: {
   meta: ComponentMeta | null;
   currentProps: Record<string, unknown>;
   onPropChange: (key: string, value: unknown) => void;
@@ -531,34 +556,151 @@ function SpacingSection(props: {
   const hasPadding = () => ['p', 'pt', 'pr', 'pb', 'pl'].some((k) => availableKeys().has(k));
   const hasMargin = () => ['m', 'mt', 'mr', 'mb', 'ml'].some((k) => availableKeys().has(k));
 
-  return (
-    <Show when={hasPadding() || hasMargin()}>
+  const rawVal = (key: string): string => {
+    const v = props.currentProps[key];
+    return v !== undefined && v !== null ? String(v) : '';
+  };
+
+  const paddingPh = () => rawVal('p') || '—';
+  const marginPh = () => rawVal('m') || '—';
+
+  const inp = (key: string, ph: string, color?: string, placeholderColor?: string) => (
+    <InlineSpaceInput
+      value={rawVal(key)}
+      placeholder={ph}
+      color={color}
+      placeholderColor={placeholderColor}
+      onChange={(v) => props.onPropChange(key, v)}
+    />
+  );
+
+  // Inner green padding box containing the element
+  const paddingBox = () => (
+    <div
+      style={{
+        display: 'grid',
+        'grid-template-columns': '28px 1fr 28px',
+        'grid-template-rows': '20px 1fr 20px',
+        background: BOX_PADDING.bg,
+        border: `1px solid ${BOX_PADDING.border}`,
+        'border-radius': '3px',
+        'min-height': '72px',
+      }}
+    >
       <div
         style={{
-          padding: '8px 14px',
-          'border-bottom': '1px solid var(--we-color-neutral-100)',
-          display: 'flex',
-          'flex-direction': 'column',
-          gap: '10px',
+          'font-size': '8px',
+          color: BOX_PADDING.label,
+          padding: '2px 4px',
+          'line-height': '16px',
+          'white-space': 'nowrap',
         }}
       >
-        <Show when={hasPadding()}>
-          <BoxCross
-            label="Padding"
-            shorthandKey={availableKeys().has('p') ? 'p' : null}
-            keys={{ t: 'pt', r: 'pr', b: 'pb', l: 'pl' }}
-            currentProps={props.currentProps}
-            onPropChange={props.onPropChange}
-          />
-        </Show>
-        <Show when={hasMargin()}>
-          <BoxCross
-            label="Margin"
-            shorthandKey={availableKeys().has('m') ? 'm' : null}
-            keys={{ t: 'mt', r: 'mr', b: 'mb', l: 'ml' }}
-            currentProps={props.currentProps}
-            onPropChange={props.onPropChange}
-          />
+        padding
+      </div>
+      <div style={BOX_EDGE}>{hasPadding() && inp('pt', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}</div>
+      <div />
+
+      <div style={BOX_EDGE}>{hasPadding() && inp('pl', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}</div>
+      <div
+        style={{
+          display: 'flex',
+          'align-items': 'center',
+          'justify-content': 'center',
+          background: BOX_ELEMENT.bg,
+          border: `1px solid ${BOX_ELEMENT.border}`,
+          'border-radius': '2px',
+          margin: '3px',
+          'font-size': '9px',
+          'font-weight': '600',
+          color: BOX_ELEMENT.text,
+          overflow: 'hidden',
+          'white-space': 'nowrap',
+          'text-overflow': 'ellipsis',
+          padding: '0 6px',
+        }}
+      >
+        {props.meta?.typeName ?? ''}
+      </div>
+      <div style={BOX_EDGE}>{hasPadding() && inp('pr', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}</div>
+
+      <div />
+      <div style={BOX_EDGE}>{hasPadding() && inp('pb', paddingPh(), BOX_PADDING.value, BOX_PADDING.placeholder)}</div>
+      <div />
+    </div>
+  );
+
+  return (
+    <Show when={hasPadding() || hasMargin()}>
+      <div style={{ padding: '8px 14px', 'border-bottom': '1px solid var(--we-color-neutral-100)' }}>
+        {/* Shorthand row: quick all-sides setters */}
+        <div style={{ display: 'flex', gap: '10px', 'margin-bottom': '6px', 'align-items': 'center' }}>
+          <Show when={hasPadding() && availableKeys().has('p')}>
+            <div style={{ display: 'flex', 'align-items': 'center', gap: '2px' }}>
+              <span
+                style={{
+                  'font-size': '9px',
+                  'font-weight': '700',
+                  color: BOX_PADDING.label,
+                  'letter-spacing': '0.04em',
+                }}
+              >
+                P
+              </span>
+              <InlineSpaceInput value={rawVal('p')} placeholder="all" onChange={(v) => props.onPropChange('p', v)} />
+            </div>
+          </Show>
+          <Show when={hasMargin() && availableKeys().has('m')}>
+            <div style={{ display: 'flex', 'align-items': 'center', gap: '2px' }}>
+              <span
+                style={{
+                  'font-size': '9px',
+                  'font-weight': '700',
+                  color: BOX_MARGIN.label,
+                  'letter-spacing': '0.04em',
+                }}
+              >
+                M
+              </span>
+              <InlineSpaceInput value={rawVal('m')} placeholder="all" onChange={(v) => props.onPropChange('m', v)} />
+            </div>
+          </Show>
+        </div>
+
+        {/* Nested box diagram: orange margin wraps green padding wraps blue element */}
+        <Show when={hasMargin()} fallback={paddingBox()}>
+          <div
+            style={{
+              display: 'grid',
+              'grid-template-columns': '28px 1fr 28px',
+              'grid-template-rows': '20px 1fr 20px',
+              background: BOX_MARGIN.bg,
+              border: `1px solid ${BOX_MARGIN.border}`,
+              'border-radius': '4px',
+            }}
+          >
+            <div
+              style={{
+                'font-size': '8px',
+                color: BOX_MARGIN.label,
+                padding: '2px 4px',
+                'line-height': '16px',
+                'white-space': 'nowrap',
+              }}
+            >
+              margin
+            </div>
+            <div style={BOX_EDGE}>{inp('mt', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}</div>
+            <div />
+
+            <div style={BOX_EDGE}>{inp('ml', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}</div>
+            {paddingBox()}
+            <div style={BOX_EDGE}>{inp('mr', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}</div>
+
+            <div />
+            <div style={BOX_EDGE}>{inp('mb', marginPh(), BOX_MARGIN.value, BOX_MARGIN.placeholder)}</div>
+            <div />
+          </div>
         </Show>
       </div>
     </Show>
