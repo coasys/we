@@ -313,7 +313,7 @@ export function AiStoreProvider(props: ParentProps) {
   let activeSessionModel: ChatSessionModel | null = null;
 
   // --- Content mode (preview / visual / code) ---
-  const [contentMode, setContentMode] = createSignal<'preview' | 'visual'>('preview');
+  const [contentMode, setContentModeSignal] = createSignal<'preview' | 'visual'>('preview');
   const schemaJson = () =>
     JSON.stringify(stripNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode), null, 2);
 
@@ -582,7 +582,7 @@ export function AiStoreProvider(props: ParentProps) {
     setEditAction(null);
     setIsOpen(false);
     setCodePanelOpen(false);
-    setContentMode('preview');
+    setContentModeSignal('preview');
     // Theme editing is independent — not closed here
   }
 
@@ -636,6 +636,14 @@ export function AiStoreProvider(props: ParentProps) {
   }
   function closeCodePanel() {
     setCodePanelOpen(false);
+  }
+
+  function setContentMode(mode: 'preview' | 'visual') {
+    if (mode === 'visual') {
+      setIsOpen(false);
+      setCodePanelOpen(false);
+    }
+    setContentModeSignal(mode);
   }
 
   // Theme panel
@@ -1410,7 +1418,7 @@ export function AiStoreProvider(props: ParentProps) {
     const templateId = templateStore.currentTemplate.id;
     if (templateId && adamStore.rootPerspective()) {
       loadSessionsForTemplate(templateId);
-      setContentMode('preview');
+      setContentModeSignal('preview');
       setIsEditingTemplate(false);
       setEditAction(null);
     }

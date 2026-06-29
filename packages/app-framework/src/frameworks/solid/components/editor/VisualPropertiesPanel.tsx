@@ -2,7 +2,7 @@ import { deepClone } from '@shared/utils';
 import { useTemplateStore } from '@solid/stores';
 import { contextData } from '@we/ai-context';
 import { Combobox, type ComboboxOption } from '@we/components/solid';
-import type { PropLayer, PropMeta, SchemaNode, TemplateSchema } from '@we/schema-shared';
+import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { findNodeById, getComponentMeta, mergeNode } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
 import type { JSX } from 'solid-js';
@@ -84,6 +84,23 @@ const LAYER_LABELS: Record<PropLayer, string> = {
 };
 
 const LAYER_ORDER: PropLayer[] = ['component', 'size', 'position', 'spacing', 'flex', 'visual', 'typography', 'state'];
+
+// All spacing prop keys — excluded from "Set props" list, shown in SpacingSection instead
+const ALL_SPACING_KEYS = new Set(['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl', 'm', 'mx', 'my', 'mt', 'mr', 'mb', 'ml']);
+
+const SPACE_OPTIONS: ComboboxOption[] = [
+  '0',
+  '100',
+  '200',
+  '300',
+  '400',
+  '500',
+  '600',
+  '700',
+  '800',
+  '900',
+  '1000',
+].map((v) => ({ label: v, value: v }));
 
 // -----------------------------------------------------------------------
 // VisualPropertiesPanel
@@ -386,6 +403,133 @@ function SectionLabel(props: { children: string }) {
     >
       {props.children}
     </div>
+  );
+}
+
+// -----------------------------------------------------------------------
+// BoxCross — 4-directional spacing input (T / L · R / B)
+// -----------------------------------------------------------------------
+
+function BoxCross(props: {
+  label: string;
+  keys: { t: string; r: string; b: string; l: string };
+  currentProps: Record<string, unknown>;
+  onPropChange: (key: string, value: unknown) => void;
+}) {
+  const val = (key: string): string => {
+    const v = props.currentProps[key];
+    return v !== undefined && v !== null ? String(v) : '';
+  };
+
+  const opts = (key: string): ComboboxOption[] => [
+    ...(val(key) ? [{ label: '(unset)', value: '' }] : []),
+    ...SPACE_OPTIONS,
+  ];
+
+  const spaceInput = (key: string) => (
+    <Combobox
+      options={opts(key)}
+      value={val(key)}
+      size="xs"
+      placeholder="—"
+      onChange={(v: string) => props.onPropChange(key, v)}
+    />
+  );
+
+  return (
+    <div>
+      <div
+        style={{
+          'font-size': '9px',
+          'font-weight': '600',
+          'text-transform': 'uppercase',
+          'letter-spacing': '0.08em',
+          color: 'var(--we-color-neutral-400)',
+          'margin-bottom': '3px',
+        }}
+      >
+        {props.label}
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          'grid-template-columns': '1fr 28px 1fr',
+          'grid-template-rows': 'auto auto auto',
+          gap: '2px',
+        }}
+      >
+        <div />
+        {spaceInput(props.keys.t)}
+        <div />
+
+        {spaceInput(props.keys.l)}
+        <div
+          style={{
+            display: 'flex',
+            'align-items': 'center',
+            'justify-content': 'center',
+            background: 'var(--we-color-neutral-100)',
+            border: '1px solid var(--we-color-neutral-200)',
+            'border-radius': '2px',
+            'font-size': '8px',
+            'font-weight': '700',
+            color: 'var(--we-color-neutral-400)',
+          }}
+        >
+          {props.label[0]}
+        </div>
+        {spaceInput(props.keys.r)}
+
+        <div />
+        {spaceInput(props.keys.b)}
+        <div />
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------
+// SpacingSection — always-visible padding + margin box model
+// -----------------------------------------------------------------------
+
+function SpacingSection(props: {
+  meta: ComponentMeta | null;
+  currentProps: Record<string, unknown>;
+  onPropChange: (key: string, value: unknown) => void;
+}) {
+  const availableKeys = () => new Set(props.meta?.props.map((p) => p.name) ?? []);
+  const hasPadding = () => ['pt', 'pr', 'pb', 'pl'].some((k) => availableKeys().has(k));
+  const hasMargin = () => ['mt', 'mr', 'mb', 'ml'].some((k) => availableKeys().has(k));
+
+  return (
+    <Show when={hasPadding() || hasMargin()}>
+      <div
+        style={{
+          padding: '8px 14px',
+          'border-bottom': '1px solid var(--we-color-neutral-100)',
+          display: 'flex',
+          'flex-direction': 'column',
+          gap: '10px',
+        }}
+      >
+        <Show when={hasPadding()}>
+          <BoxCross
+            label="Padding"
+            keys={{ t: 'pt', r: 'pr', b: 'pb', l: 'pl' }}
+            currentProps={props.currentProps}
+            onPropChange={props.onPropChange}
+          />
+        </Show>
+        <Show when={hasMargin()}>
+          <BoxCross
+            label="Margin"
+            keys={{ t: 'mt', r: 'mr', b: 'mb', l: 'ml' }}
+            currentProps={props.currentProps}
+            onPropChange={props.onPropChange}
+          />
+        </Show>
+      </div>
+    </Show>
   );
 }
 
