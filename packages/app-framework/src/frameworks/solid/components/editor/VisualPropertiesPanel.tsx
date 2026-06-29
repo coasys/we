@@ -74,14 +74,16 @@ function replaceNodeInTree(schema: SchemaNode, target: SchemaNode, replacement: 
 
 const LAYER_LABELS: Record<PropLayer, string> = {
   component: 'Component',
-  layout: 'Layout',
-  visual: 'Visual',
+  size: 'Size',
+  position: 'Position',
+  spacing: 'Spacing',
   flex: 'Flex',
+  visual: 'Visual',
   typography: 'Typography',
   state: 'State',
 };
 
-const LAYER_ORDER: PropLayer[] = ['component', 'layout', 'visual', 'flex', 'typography', 'state'];
+const LAYER_ORDER: PropLayer[] = ['component', 'size', 'position', 'spacing', 'flex', 'visual', 'typography', 'state'];
 
 // -----------------------------------------------------------------------
 // VisualPropertiesPanel

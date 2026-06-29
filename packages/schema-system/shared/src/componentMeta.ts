@@ -1,10 +1,10 @@
-import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap } from '@we/design-utils';
+import { BASE_CLASS_LAYERS, getKeysForLayers } from '@we/design-utils';
 
 import type { ContextData, PropEntry } from './contextTypes';
 
 // ── Public types ────────────────────────────────────────────────────────────
 
-export type PropLayer = 'component' | 'layout' | 'visual' | 'flex' | 'typography' | 'state';
+export type PropLayer = 'component' | 'size' | 'position' | 'spacing' | 'flex' | 'visual' | 'typography' | 'state';
 
 export interface PropMeta {
   name: string;
@@ -158,19 +158,34 @@ const TYPE_ALIAS_OPTIONS: Record<string, string[]> = {
   ComponentVariant: ['neutral', 'primary', 'success', 'warning', 'danger'],
 };
 
-// ── DS layer key index ──────────────────────────────────────────────────────
+// ── Editor layer key index ──────────────────────────────────────────────────
+// Maps every DS prop key to its editor layer. Independent of DSLayer (runtime)
+// so we can group props differently in the panel without touching @we/design-utils.
 
-function buildLayerIndex(): Map<string, PropLayer> {
-  const map = new Map<string, PropLayer>();
-  for (const [layer, keys] of Object.entries(layerKeyMap)) {
-    for (const key of keys) {
-      map.set(key, layer as PropLayer);
-    }
-  }
-  return map;
-}
-
-const LAYER_FOR_KEY = buildLayerIndex();
+const EDITOR_LAYER_FOR_KEY: Record<string, PropLayer> = {
+  // Size — dimensions, display, overflow
+  width: 'size', height: 'size', minWidth: 'size', minHeight: 'size', maxWidth: 'size', maxHeight: 'size',
+  display: 'size', flex: 'size', alignSelf: 'size',
+  overflow: 'size', overflowX: 'size', overflowY: 'size', scrollbarWidth: 'size', scrollbarGutter: 'size',
+  // Position — positioning in the page flow
+  position: 'position', top: 'position', right: 'position', bottom: 'position', left: 'position', zIndex: 'position',
+  // Spacing — padding + margin (box model)
+  p: 'spacing', px: 'spacing', py: 'spacing', pt: 'spacing', pr: 'spacing', pb: 'spacing', pl: 'spacing',
+  m: 'spacing', mx: 'spacing', my: 'spacing', mt: 'spacing', mr: 'spacing', mb: 'spacing', ml: 'spacing',
+  // Flex — container arrangement
+  direction: 'flex', ax: 'flex', ay: 'flex', wrap: 'flex', gap: 'flex',
+  // Visual — appearance, decoration, borders, radius
+  bg: 'visual', bgImage: 'visual', bgFit: 'visual', bgPosition: 'visual',
+  color: 'visual', opacity: 'visual', shadow: 'visual', ring: 'visual',
+  cursor: 'visual', pointerEvents: 'visual', visibility: 'visual', transform: 'visual', transition: 'visual',
+  border: 'visual', borderColor: 'visual', borderTop: 'visual', borderRight: 'visual',
+  borderBottom: 'visual', borderLeft: 'visual', borderWidth: 'visual',
+  r: 'visual', rt: 'visual', rb: 'visual', rl: 'visual', rr: 'visual',
+  rtl: 'visual', rtr: 'visual', rbr: 'visual', rbl: 'visual',
+  // Typography
+  textAlign: 'typography', fontFamily: 'typography', fontWeight: 'typography', fontSize: 'typography',
+  lineHeight: 'typography', letterSpacing: 'typography', textDecoration: 'typography', textTransform: 'typography',
+};
 
 // ── Skip filter ─────────────────────────────────────────────────────────────
 
@@ -269,14 +284,14 @@ export function getComponentMeta(typeName: string, contextData: ContextData): Co
     if (isComplexType(prop.type)) continue;
     if (seenNames.has(prop.name)) continue;
 
-    const dsLayer = LAYER_FOR_KEY.get(prop.name);
-    if (dsLayer) {
-      // This prop is a known DS key — use DS layer and options
+    const editorLayer = EDITOR_LAYER_FOR_KEY[prop.name];
+    if (editorLayer) {
+      // This prop is a known DS key — use editor layer and options
       props.push({
         name: prop.name,
         options: DS_PROP_OPTIONS[prop.name],
         valueType: 'string',
-        layer: dsLayer,
+        layer: editorLayer,
         optional: prop.optional,
       });
     } else {
@@ -290,7 +305,7 @@ export function getComponentMeta(typeName: string, contextData: ContextData): Co
   for (const key of dsKeys) {
     if (seenNames.has(key)) continue;
     if (SKIP_PROP_NAMES.has(key)) continue;
-    const layer = LAYER_FOR_KEY.get(key) ?? 'layout';
+    const layer = EDITOR_LAYER_FOR_KEY[key] ?? 'size';
     props.push({
       name: key,
       options: DS_PROP_OPTIONS[key],
