@@ -35,8 +35,7 @@ export function Card(allProps: CardProps) {
       if (bgColor) {
         (style as Record<string, unknown>)['background-color'] =
           `color-mix(in srgb, ${bgColor} calc(var(--we-theme-surface-opacity, 1) * 100%), transparent)`;
-        (style as Record<string, unknown>)['backdrop-filter'] =
-          'blur(var(--we-theme-surface-blur, 0px))';
+        (style as Record<string, unknown>)['backdrop-filter'] = 'blur(var(--we-theme-surface-blur, 0px))';
       }
     }
     return style;

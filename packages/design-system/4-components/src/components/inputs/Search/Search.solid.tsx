@@ -2,18 +2,12 @@ import type { LayoutProps } from '@we/design-utils/solid';
 import { buildLayoutStyles } from '@we/design-utils/solid';
 import { createEffect, createMemo, createSignal, onCleanup, splitProps } from 'solid-js';
 
-import type { SearchInputProps as SearchInputOwnProps } from './SearchInput.types';
+import type { SearchProps as SearchOwnProps } from './Search.types';
 
-// Extends the base props with full Design System support.
-// Container props (sizing, margin, position, flex-item) apply to the wrapper div;
-// all other DS props (bg, color, r, border, typography, state, etc.) are forwarded
-// to the inner we-input as DOM properties so they override its built-in DS defaults.
-export type SearchInputProps = Omit<LayoutProps, 'children'> & Omit<SearchInputOwnProps, 'styles'>;
+export type { SearchProps } from './Search.types';
 
-const ownKeys = ['placeholder', 'value', 'onSearch', 'debounce', 'class'] as const;
-
-// Props that control how the component slots into its parent layout — stay on the wrapper div.
-// Everything else (visual, typography, state, padding, height) is forwarded to we-input.
+// Container props (sizing, margin, position) apply to the wrapper div.
+// Everything else (visual, typography, state) is forwarded to we-input.
 const containerKeys = [
   'display',
   'flex',
@@ -41,7 +35,11 @@ const containerKeys = [
   'scrollbarGutter',
 ] as const;
 
-export function SearchInput(allProps: SearchInputProps) {
+const ownKeys = ['placeholder', 'value', 'onSearch', 'debounce', 'class'] as const;
+
+export type SearchComponentProps = Omit<LayoutProps, 'children'> & Omit<SearchOwnProps, 'styles'>;
+
+export function Search(allProps: SearchComponentProps) {
   const [props, rest] = splitProps(allProps, ownKeys);
   const [containerProps, inputProps] = splitProps(rest, containerKeys);
 
@@ -57,9 +55,6 @@ export function SearchInput(allProps: SearchInputProps) {
     if (debounceId !== undefined) clearTimeout(debounceId);
   });
 
-  // Set visual DS props directly on we-input as DOM properties so they override its defaults.
-  // we-input's DesignSystemMixin registers all DS keys as reactive Lit properties, so property
-  // assignment triggers its updated() cycle and applies the new CSS custom vars.
   createEffect(() => {
     if (!inputRef) return;
     for (const key of Object.keys(inputProps as object)) {

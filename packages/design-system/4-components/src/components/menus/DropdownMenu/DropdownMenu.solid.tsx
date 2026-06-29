@@ -91,7 +91,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     const item = getItem();
     return (
       <we-menu-item
-        onClick={() => handleAction(item)}
+        on:select={() => handleAction(item)}
         variant={item.variant || 'default'}
         opacity={item.disabled ? 0.5 : 1}
         cursor={item.disabled ? 'not-allowed' : 'pointer'}
@@ -110,7 +110,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
 
     return (
       <we-menu-item
-        onClick={() => handleToggle(item)}
+        on:select={() => handleToggle(item)}
         selected={checked()}
         opacity={item.disabled ? 0.5 : 1}
         cursor={item.disabled ? 'not-allowed' : 'pointer'}
@@ -136,7 +136,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         {/* Collapsible header */}
         <Show when={group.collapsible !== false}>
           <we-menu-item
-            onClick={() => !group.disabled && toggleGroup(group.id)}
+            on:select={() => !group.disabled && toggleGroup(group.id)}
             opacity={group.disabled ? 0.5 : 1}
             cursor={group.disabled ? 'not-allowed' : 'pointer'}
             color="neutral-400"
