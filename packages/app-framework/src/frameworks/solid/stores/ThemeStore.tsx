@@ -37,10 +37,7 @@ export interface ThemeStore {
   themeManagementList: Accessor<ThemeManagementItem[]>;
   editingTheme: Accessor<EditingTheme | null>;
   operationLoading: Accessor<string | null>;
-  registerHistoryCallbacks: (callbacks: {
-    onEntry: (snapshot: EditingTheme) => void;
-    onClear: () => void;
-  }) => void;
+  registerHistoryCallbacks: (callbacks: { onEntry: (snapshot: EditingTheme) => void; onClear: () => void }) => void;
   applySnapshot: (snapshot: EditingTheme) => Promise<void>;
 
   // Actions
@@ -250,10 +247,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   let applyingHistoryOp = false;
   let historyCallbacks: { onEntry: (snapshot: EditingTheme) => void; onClear: () => void } | null = null;
 
-  function registerHistoryCallbacks(callbacks: {
-    onEntry: (snapshot: EditingTheme) => void;
-    onClear: () => void;
-  }) {
+  function registerHistoryCallbacks(callbacks: { onEntry: (snapshot: EditingTheme) => void; onClear: () => void }) {
     historyCallbacks = callbacks;
   }
 
