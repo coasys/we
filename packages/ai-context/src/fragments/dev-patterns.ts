@@ -318,4 +318,41 @@ await space.save();
 // ✅ Correct
 const space = await Space.create(perspective, { uuid: crypto.randomUUID(), name: 'My Space' });
 \`\`\`
+
+---
+
+### Solid + Lit Web Component Event Handling
+
+**How the event type generator works** (\`packages/design-system/3-primitives/scripts/generate-framework-declarations.ts\`):
+
+For Solid, two categories of event props are generated per element:
+- **Native DOM events** → camelCase delegated handlers (\`onClick\`, \`onInput\`, \`onChange\`, etc.) via Solid's synthetic delegation system
+- **Custom Lit events** declared in the Custom Elements Manifest → \`'on:eventname'\` direct listeners (e.g. \`'on:select'\`, \`'on:toggle'\`)
+
+The \`on:eventname\` syntax is Solid's escape hatch for adding a direct \`addEventListener\` on the host element, bypassing delegation entirely.
+
+**\`we-menu-item\` — always use \`on:select\`, not \`onClick\`**
+
+\`we-menu-item\` dispatches a \`select\` CustomEvent (composed, bubbles) when clicked — this is its designed public API. The generated Solid type already includes \`'on:select'?: (event: CustomEvent) => void\`.
+
+\`\`\`tsx
+// ✅ Correct — uses designed API, already typed, works through shadow DOM + popover
+<we-menu-item value={opt.value} on:select={() => handleSelect(opt)}>
+  <we-text>{opt.label}</we-text>
+</we-menu-item>
+
+// ❌ Wrong — 'on:click' is not in the generated type (TypeScript error)
+<we-menu-item value={opt.value} on:click={() => handleSelect(opt)}>
+
+// ❌ Unreliable — onClick uses Solid delegation which may not reach elements
+// inside shadow DOM or we-popover's browser top-layer
+<we-menu-item value={opt.value} onClick={() => handleSelect(opt)}>
+\`\`\`
+
+**Why delegation fails inside \`we-popover\`**: Solid's delegated events (\`onClick\`, etc.) are registered at the Solid root element. Events from inside shadow DOM stacks or the browser's Popover API top layer may not reach the delegation root correctly due to shadow boundary retargeting. Always prefer \`on:select\` for \`we-menu-item\` — it adds a direct listener on the host element itself.
+
+**General rule for other web component events**: if you need to listen to a native DOM event (e.g. \`click\`, \`input\`) on a \`we-\` primitive inside a deep shadow DOM context and \`onClick\`/\`onInput\` prove unreliable, use a \`ref\` callback with \`addEventListener\` directly — this never has delegation issues:
+\`\`\`tsx
+<we-some-element ref={(el) => el.addEventListener('click', handler)} />
+\`\`\`
 `;
