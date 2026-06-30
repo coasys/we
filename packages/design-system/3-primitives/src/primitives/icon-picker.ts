@@ -128,6 +128,10 @@ const styles = css`
   /* Popover panel */
   [part='popover'] {
     position: fixed;
+    /* Reset UA [popover] defaults */
+    margin: 0;
+    inset: unset;
+    /* Component styles */
     z-index: var(--we-z-dropdown, 9999);
     min-width: 320px;
     max-width: 380px;
@@ -382,6 +386,16 @@ export default class IconPicker extends DesignSystemElement {
         this._popoverTop = rect.bottom + 4;
         this._popoverLeft = rect.left;
       }
+      // Promote to browser top layer after Lit renders the popover div, so
+      // position:fixed resolves to the viewport instead of an ancestor
+      // backdrop-filter containing block.
+      requestAnimationFrame(() => {
+        const popoverEl = this.renderRoot.querySelector<HTMLElement>('[part="popover"]');
+        if (popoverEl && 'showPopover' in popoverEl) {
+          popoverEl.setAttribute('popover', 'manual');
+          (popoverEl as HTMLElement & { showPopover(): void }).showPopover();
+        }
+      });
     }
   }
 
@@ -424,12 +438,12 @@ export default class IconPicker extends DesignSystemElement {
         ${hasValue
           ? html`
               <span part="preview-icon">
-                <we-icon name=${this.value} size="sm"></we-icon>
+                <we-icon name=${this.value} size="sm" color="black"></we-icon>
               </span>
               ${isPhosphorName(this.value) ? html`<span part="label">${this.value}</span>` : nothing}
             `
           : html`<span part="placeholder">${this.placeholder}</span>`}
-        <span part="caret"><we-icon name="caret-down" size="sm"></we-icon></span>
+        <span part="caret"><we-icon name="caret-down" size="sm" color="black"></we-icon></span>
       </button>
     `;
   }
@@ -461,7 +475,7 @@ export default class IconPicker extends DesignSystemElement {
                     aria-selected=${name === this.value ? 'true' : 'false'}
                     @click=${() => this._select(name)}
                   >
-                    <we-icon name=${name} size="sm"></we-icon>
+                    <we-icon name=${name} size="sm" color="black"></we-icon>
                   </button>
                 `,
               )}
