@@ -7,7 +7,6 @@ import { useAiStore } from '../../stores/AiStore';
 import { useSpaceStore } from '../../stores/SpaceStore';
 import { useTemplateStore } from '../../stores/TemplateStore';
 import { useThemeStore } from '../../stores/ThemeStore';
-import { PublishThemeModal } from './PublishThemeModal';
 import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
 import { panelResizing, RAIL_STRIP_WIDTH, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from './RightPanelContainer';
 
@@ -1243,13 +1242,13 @@ export function DesignToolbar() {
 
       <Show when={publishModalOpen()}>
         <Portal>
-          <PublishToMarketplaceModal onClose={() => setPublishModalOpen(false)} />
+          <PublishToMarketplaceModal type="template" onClose={() => setPublishModalOpen(false)} />
         </Portal>
       </Show>
 
       <Show when={publishThemeModalOpen()}>
         <Portal>
-          <PublishThemeModal onClose={() => setPublishThemeModalOpen(false)} />
+          <PublishToMarketplaceModal type="theme" onClose={() => setPublishThemeModalOpen(false)} />
         </Portal>
       </Show>
     </div>
