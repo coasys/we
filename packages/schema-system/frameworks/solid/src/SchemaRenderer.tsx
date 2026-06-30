@@ -865,16 +865,27 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       });
     }
 
-    // Track dynamically added props for web components
+    // Track dynamically added props for web components, and reset them when removed.
+    // prevDynamicKeys persists across effect runs to detect keys that have been deleted.
+    const prevDynamicKeys = new Set<string>();
     createEffect(() => {
       const currentProps = node.props as Record<string, unknown> | undefined;
-      if (!currentProps || !hostRef) return;
-      for (const key of Object.keys(currentProps)) {
-        if (!(key in propMemos) && !isEventProp(key)) {
-          const resolved = resolveProp(currentProps[key], stores, effectiveContext, createMemo);
-          hostRef[key] = deepUnwrap(resolved);
+      if (!hostRef) return;
+      const currentDynamicKeys = new Set<string>();
+      if (currentProps) {
+        for (const key of Object.keys(currentProps)) {
+          if (!(key in propMemos) && !isEventProp(key)) {
+            const resolved = resolveProp(currentProps[key], stores, effectiveContext, createMemo);
+            hostRef[key] = deepUnwrap(resolved);
+            currentDynamicKeys.add(key);
+          }
         }
       }
+      for (const key of prevDynamicKeys) {
+        if (!currentDynamicKeys.has(key)) hostRef[key] = undefined;
+      }
+      prevDynamicKeys.clear();
+      for (const key of currentDynamicKeys) prevDynamicKeys.add(key);
     });
 
     const eventAttrs = createMemo(() => {
