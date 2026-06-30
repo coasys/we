@@ -502,7 +502,7 @@ export const contextData: ContextData = {
       className: 'Spinner',
       superclass: 'LayoutElement',
       ownProps: [
-        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {})", optional: false, default: "'md'" },
         { name: 'color', type: 'string', optional: false, default: "''" },
       ],
     },

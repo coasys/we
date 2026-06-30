@@ -1313,7 +1313,7 @@
       "ownProps": [
         {
           "name": "size",
-          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
+          "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {})",
           "optional": false,
           "default": "'md'"
         },
@@ -8906,5 +8906,5 @@
       "actions": ["activateApp", "deactivateApp"]
     }
   ],
-  "shellComponents": ["AiChatPanel", "BenchmarkTimer", "RightPanelContainer", "DesignToolbar", "WeCube"]
+  "shellComponents": ["AiPanel", "BenchmarkTimer", "RightPanelContainer", "DesignToolbar", "WeCube"]
 }

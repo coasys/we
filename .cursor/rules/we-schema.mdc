@@ -489,7 +489,7 @@ Fires a `we-reorder` CustomEvent<string[]> on drop with the new ordered
 array of IDs.
   Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = ''
 - we-spinner (LayoutElement)
-  Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', color: string = ''
+  Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
 - we-switch (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
 - we-tab (DesignSystemElement)
