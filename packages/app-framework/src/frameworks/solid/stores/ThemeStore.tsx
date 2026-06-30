@@ -946,7 +946,7 @@ export function ThemeStoreProvider(props: ParentProps) {
 
     const editing = editingTheme();
     const base = editing ?? currentTheme();
-    const themeSlug = options.name.toLowerCase().replace(/\s+/g, '-');
+    const themeSlug = base.slug || options.name.toLowerCase().replace(/\s+/g, '-');
     const themeIcon = options.icon ?? base.icon;
 
     const existing = await Theme.findOne(marketplacePerspective, { where: { slug: themeSlug } });
@@ -958,6 +958,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     try {
       if (existing) {
         existing.name = options.name;
+        existing.description = options.description;
         existing.icon = themeIcon;
         existing.version = (existing.version ?? 1) + 1;
         existing.overrides = base.overrides
@@ -980,6 +981,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       } else {
         const theme = await Theme.create(marketplacePerspective, {
           name: options.name,
+          description: options.description,
           icon: themeIcon,
           slug: themeSlug,
           origin: 'marketplace',
