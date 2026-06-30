@@ -68,9 +68,7 @@ export function PublishThemeModal(props: Props) {
     <we-modal close={props.onClose} width="100%" maxWidth="560px">
       <Column ax="center" gap="200">
         <we-icon name="paint-bucket" size="xl" color="primary-700" />
-        <we-text fontSize="700" fontWeight="bold">
-          Publish theme to marketplace
-        </we-text>
+        <we-text variant="heading-md">Publish theme to marketplace</we-text>
       </Column>
 
       <Column gap="400">

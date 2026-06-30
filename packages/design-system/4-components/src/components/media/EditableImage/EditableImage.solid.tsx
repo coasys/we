@@ -142,9 +142,7 @@ export function EditableImage(allProps: EditableImageProps) {
             fallback={
               /* ── Step 1: Upload ── */
               <>
-                <we-text fontSize="700" fontWeight="semibold">
-                  {props.src ? 'Change Image' : 'Upload Image'}
-                </we-text>
+                <we-text variant="heading-md">{props.src ? 'Change Image' : 'Upload Image'}</we-text>
                 <we-file-upload accept="image/*" on:change={handleFileChange}>
                   <we-icon name="upload-simple" size="32px" />
                   <span>Drop an image here or click to browse</span>
@@ -154,9 +152,7 @@ export function EditableImage(allProps: EditableImageProps) {
           >
             {/* ── Step 2: Crop ── */}
             <Column minWidth={modalMinWidth()} ax="center" gap="500">
-              <we-text fontSize="700" fontWeight="semibold">
-                Crop Image
-              </we-text>
+              <we-text variant="heading-md">Crop Image</we-text>
               <ImageCrop
                 src={rawUrl()!}
                 fileName={pendingFile()?.name}

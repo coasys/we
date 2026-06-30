@@ -78,9 +78,7 @@ export function PublishToMarketplaceModal(props: Props) {
     <we-modal close={props.onClose} width="100%" maxWidth="600px">
       <Column ax="center" gap="200">
         <we-icon name="cloud-arrow-up" size="xl" color="primary-700" />
-        <we-text fontSize="700" fontWeight="bold">
-          Publish to marketplace
-        </we-text>
+        <we-text variant="heading-md">Publish to marketplace</we-text>
       </Column>
 
       <Column gap="400">

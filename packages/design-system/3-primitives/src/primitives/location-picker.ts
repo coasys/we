@@ -54,7 +54,7 @@ const styles = css`
 
   [part='label'] {
     flex: 1;
-    font-size: var(--we-font-size-400);
+    font-size: var(--we-font-size-300);
     color: var(--we-color-neutral-700);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -63,12 +63,17 @@ const styles = css`
 
   [part='placeholder'] {
     flex: 1;
-    font-size: var(--we-font-size-400);
+    font-size: var(--we-font-size-300);
     color: var(--we-color-neutral-400);
   }
 
   [part='popover'] {
     position: fixed;
+    /* Reset UA [popover] defaults */
+    padding: 0;
+    margin: 0;
+    inset: unset;
+    /* Component styles */
     z-index: var(--we-z-dropdown, 9999);
     background: var(--we-color-neutral-0);
     border: 1px solid var(--we-color-neutral-200);
@@ -95,7 +100,7 @@ const styles = css`
   }
 
   [part='coords'] {
-    font-size: var(--we-font-size-300);
+    font-size: var(--we-font-size-200);
     color: var(--we-color-neutral-500);
     font-variant-numeric: tabular-nums;
     flex: 1;
@@ -106,7 +111,7 @@ const styles = css`
     cursor: pointer;
     background: var(--we-color-primary-500);
     color: var(--we-color-neutral-0);
-    font-size: var(--we-font-size-300);
+    font-size: var(--we-font-size-200);
     font-weight: 500;
     padding: var(--we-space-200) var(--we-space-400);
     border-radius: var(--we-radius-400);
@@ -237,6 +242,13 @@ export default class LocationPicker extends DesignSystemElement {
     this._open = true;
     // Small delay so the shadow DOM div is rendered before initMap reads it
     requestAnimationFrame(() => {
+      // Promote the popover div to the browser top layer so position:fixed resolves
+      // to the actual viewport, not an ancestor backdrop-filter containing block.
+      const popoverEl = this.shadowRoot?.querySelector('[part="popover"]') as HTMLElement | null;
+      if (popoverEl && 'showPopover' in popoverEl) {
+        popoverEl.setAttribute('popover', 'manual');
+        (popoverEl as HTMLElement & { showPopover(): void }).showPopover();
+      }
       this._mapDiv = this.shadowRoot?.querySelector('[part="map-container"]') as HTMLElement | null;
       this._initMap().then(() => {
         // Force Leaflet to recalculate container size after layout
