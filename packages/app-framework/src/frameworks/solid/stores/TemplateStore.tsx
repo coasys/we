@@ -619,7 +619,9 @@ export function TemplateStoreProvider(props: ParentProps) {
       const schemaBlob = (() => {
         const storedTemplate = createStoredTemplate(schemaToInstall);
         const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-        const base64 = btoa(String.fromCharCode(...jsonBytes));
+        let binary = '';
+        for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+        const base64 = btoa(binary);
         return { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' };
       })();
 
@@ -701,7 +703,9 @@ export function TemplateStoreProvider(props: ParentProps) {
       const schemaBlob = (() => {
         const storedTemplate = createStoredTemplate(schemaToInstall);
         const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-        const base64 = btoa(String.fromCharCode(...jsonBytes));
+        let binary = '';
+        for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+        const base64 = btoa(binary);
         return { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' };
       })();
 
@@ -746,7 +750,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     // Wrap in StoredTemplate with computed sections
     const storedTemplate = createStoredTemplate(schemaToSave);
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    let binary = '';
+    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+    const base64 = btoa(binary);
     const schemaBlob = {
       data_base64: base64,
       name: 'template-schema.json',
@@ -808,7 +814,9 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     const storedTemplate = createStoredTemplate(schemaToSave);
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    let binary = '';
+    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+    const base64 = btoa(binary);
     const schemaBlob = {
       data_base64: base64,
       name: 'template-schema.json',
@@ -964,7 +972,9 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: templateId });
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    let binary = '';
+    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+    const base64 = btoa(binary);
     const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
 
     try {
@@ -1034,7 +1044,9 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: templateId, author: adamStore.me()?.did });
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    let binary = '';
+    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+    const base64 = btoa(binary);
     const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
 
     try {
