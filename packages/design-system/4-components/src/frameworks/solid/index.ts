@@ -45,6 +45,11 @@ export {
 } from '../../components/menus/DropdownMenu/DropdownMenu.solid';
 
 // Data
+export {
+  CodeEditor,
+  type CodeEditorLanguage,
+  type CodeEditorProps,
+} from '../../components/data/CodeEditor/CodeEditor.solid';
 export { Accordion, type AccordionItem, type AccordionProps } from '../../components/data/Accordion/Accordion.solid';
 export { Calendar, type CalendarEvent, type CalendarProps } from '../../components/data/Calendar/Calendar.solid';
 export { List, type ListItem, type ListProps } from '../../components/data/List/List.solid';

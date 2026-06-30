@@ -1173,6 +1173,18 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
+      name: 'CodeEditor',
+      props: [
+        { name: 'code', type: 'string', optional: false },
+        { name: 'language', type: 'CodeEditorLanguage', optional: true },
+        { name: 'readOnly', type: 'boolean', optional: true },
+        { name: 'onChange', type: '((code: string) => void)', optional: true },
+        { name: 'onSave', type: '((code: string) => void)', optional: true },
+        { name: 'styles', type: 'Record<string, string | number>', optional: true },
+      ],
+      source: 'components',
+    },
+    {
       name: 'CollapsedContent',
       props: [
         { name: 'collapsed', type: 'boolean', optional: false },

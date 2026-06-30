@@ -1,0 +1,12 @@
+.we-code-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+
+  .cm-editor {
+    flex: 1;
+    height: 100%;
+    overflow: hidden;
+  }
+}

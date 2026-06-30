@@ -589,6 +589,8 @@ when `relative` is enabled.
   Props: bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, styles?: JSX.CSSProperties, direction?: "row" | "column"
 - CircleButton
   Props: label: string, icon?: string, image?: string, onClick?: (() => void), class?: string, styles?: Record<string, string | number>
+- CodeEditor
+  Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), styles?: Record<string, string | number>
 - CollapsedContent
   Props: collapsed: boolean, onExpandClick?: (() => void), showToggle?: boolean, icon?: string, maxHeight?: string, fadeColor?: string, children?: JSX.Element, class?: string, styles?: Record<string, string | number>
 - Column
@@ -2113,3 +2115,37 @@ The `on:eventname` syntax is Solid's escape hatch for adding a direct `addEventL
 ```tsx
 <we-some-element ref={(el) => el.addEventListener('click', handler)} />
 ```
+
+---
+
+### Shadow DOM + Slots: Third-party Library Root Detection
+
+Lit primitives (`we-scroll-area`, `we-popover`, etc.) use Shadow DOM with `<slot>`.
+Light-DOM children are slotted through, but their `assignedSlot` property points into
+the Shadow Root. Any library that auto-detects its document root by walking up via
+`assignedSlot` will end up scoped to the **ShadowRoot** rather than the main document.
+
+**Symptoms when a library is incorrectly scoped to a ShadowRoot:**
+- Styles injected by the library don't apply to its own DOM elements (which live in the light DOM)
+- `document.activeElement` checks fail because the library checks `shadowRoot.activeElement` instead
+- Everything works only after another instance of the same library mounts outside the web component
+
+**Known affected library: CodeMirror 6**
+
+CM6's `getRoot()` follows `assignedSlot` into the Shadow Root. Symptoms: editor shows
+only the gutter (unstyled), cursor/focus detection broken. Fix: always pass
+`root: containerRef.ownerDocument` to the `EditorView` constructor. `ownerDocument`
+skips the slot chain and always returns the main `Document`.
+
+```tsx
+// ✅ Always do this when mounting a CodeMirror EditorView inside any we-* component
+view = new EditorView({
+  parent: containerRef,
+  root: containerRef.ownerDocument,
+  ...
+});
+```
+
+**General rule for other libraries**: if a third-party library accepts a `document`,
+`root`, or `container` option and uses it for style injection or focus detection,
+pass `element.ownerDocument` explicitly rather than letting the library auto-detect.

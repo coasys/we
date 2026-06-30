@@ -1,4 +1,4 @@
-import { Column, Row } from '@we/components/solid';
+import { CodeEditor, Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import type { ThemeOverrides } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
@@ -750,39 +750,13 @@ export function ThemePanel() {
                   </Row>
                 </Show>
               </Row>
-              <Show
-                when={cssEditing()}
-                fallback={
-                  <pre
-                    style={{
-                      margin: '0',
-                      padding: tokenVar('space', '300'),
-                      'border-radius': tokenVar('radius', '200'),
-                      background: tokenVar('color', 'neutral-100'),
-                      color: tokenVar('color', 'neutral-700'),
-                      'font-size': tokenVar('font-size', '200'),
-                      'font-family': 'monospace',
-                      'white-space': 'pre-wrap',
-                      'word-break': 'break-all',
-                      'min-height': '60px',
-                      cursor: 'text',
-                    }}
-                    onClick={startCssEdit}
-                  >
-                    {editing()?.css || (
-                      <span style={{ color: tokenVar('color', 'neutral-400') }}>No custom CSS yet — click to add</span>
-                    )}
-                  </pre>
-                }
-              >
-                <we-textarea
-                  value={cssValue()}
-                  rows={10}
-                  resize="vertical"
-                  style={{ 'font-family': 'monospace', 'font-size': tokenVar('font-size', '200') }}
-                  on:input={(e: CustomEvent) => setCssValue(e.detail)}
-                />
-              </Show>
+              <CodeEditor
+                language="css"
+                code={cssEditing() ? cssValue() : (editing()?.css ?? '')}
+                readOnly={!cssEditing()}
+                onChange={setCssValue}
+                styles={{ height: '200px' }}
+              />
             </CollapsibleSection>
           </Column>
         </we-scroll-area>

@@ -389,4 +389,38 @@ The \`on:eventname\` syntax is Solid's escape hatch for adding a direct \`addEve
 \`\`\`tsx
 <we-some-element ref={(el) => el.addEventListener('click', handler)} />
 \`\`\`
+
+---
+
+### Shadow DOM + Slots: Third-party Library Root Detection
+
+Lit primitives (\`we-scroll-area\`, \`we-popover\`, etc.) use Shadow DOM with \`<slot>\`.
+Light-DOM children are slotted through, but their \`assignedSlot\` property points into
+the Shadow Root. Any library that auto-detects its document root by walking up via
+\`assignedSlot\` will end up scoped to the **ShadowRoot** rather than the main document.
+
+**Symptoms when a library is incorrectly scoped to a ShadowRoot:**
+- Styles injected by the library don't apply to its own DOM elements (which live in the light DOM)
+- \`document.activeElement\` checks fail because the library checks \`shadowRoot.activeElement\` instead
+- Everything works only after another instance of the same library mounts outside the web component
+
+**Known affected library: CodeMirror 6**
+
+CM6's \`getRoot()\` follows \`assignedSlot\` into the Shadow Root. Symptoms: editor shows
+only the gutter (unstyled), cursor/focus detection broken. Fix: always pass
+\`root: containerRef.ownerDocument\` to the \`EditorView\` constructor. \`ownerDocument\`
+skips the slot chain and always returns the main \`Document\`.
+
+\`\`\`tsx
+// ✅ Always do this when mounting a CodeMirror EditorView inside any we-* component
+view = new EditorView({
+  parent: containerRef,
+  root: containerRef.ownerDocument,
+  ...
+});
+\`\`\`
+
+**General rule for other libraries**: if a third-party library accepts a \`document\`,
+\`root\`, or \`container\` option and uses it for style injection or focus detection,
+pass \`element.ownerDocument\` explicitly rather than letting the library auto-detect.
 `;
