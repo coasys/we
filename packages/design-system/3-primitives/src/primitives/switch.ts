@@ -83,6 +83,7 @@ const styles = css`
     transition: opacity 0.15s ease;
     cursor: pointer;
     user-select: none;
+    font-size: var(--we-font-size-200);
   }
 
   [part='off-label'] {
