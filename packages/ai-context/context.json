@@ -8062,6 +8062,12 @@
           "required": false
         },
         {
+          "name": "icon",
+          "type": "string",
+          "predicate": "we://icon",
+          "required": false
+        },
+        {
           "name": "origin",
           "type": "string",
           "predicate": "we://origin",
@@ -8189,6 +8195,12 @@
           "required": false
         },
         {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        },
+        {
           "name": "icon",
           "type": "string",
           "predicate": "we://icon",
@@ -8198,6 +8210,12 @@
           "name": "origin",
           "type": "string",
           "predicate": "we://origin",
+          "required": false
+        },
+        {
+          "name": "slug",
+          "type": "string",
+          "predicate": "we://slug",
           "required": false
         },
         {

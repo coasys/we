@@ -1,9 +1,9 @@
 import type { ThemeOverrides } from '@we/schema-shared';
-import lightCss from '@we/themes/light?raw';
-import darkCss from '@we/themes/dark?raw';
 import blackCss from '@we/themes/black?raw';
-import retroCss from '@we/themes/retro?raw';
 import cyberpunkCss from '@we/themes/cyberpunk?raw';
+import darkCss from '@we/themes/dark?raw';
+import lightCss from '@we/themes/light?raw';
+import retroCss from '@we/themes/retro?raw';
 
 export type ThemeRegistryEntry = {
   name: string;

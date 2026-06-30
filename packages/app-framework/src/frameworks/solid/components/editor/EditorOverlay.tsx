@@ -745,11 +745,7 @@ function ResizeHandles(props: ResizeHandlesProps) {
           }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <we-button
-            variant={props.snapEnabled ? 'secondary' : 'ghost'}
-            size="xs"
-            onClick={() => props.onSnapToggle()}
-          >
+          <we-button variant={props.snapEnabled ? 'secondary' : 'ghost'} size="xs" onClick={() => props.onSnapToggle()}>
             <we-icon name={props.snapEnabled ? 'magnet' : 'cursor-click'} />
             <we-text>{props.snapEnabled ? 'Snap' : 'Free'}</we-text>
           </we-button>

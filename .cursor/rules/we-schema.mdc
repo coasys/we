@@ -1023,6 +1023,7 @@ Template extends WeNode:
   Fields:
   - name: string [we://name]
   - description: string [we://description]
+  - icon: string [we://icon]
   - origin: string [we://origin]
   - version: number = 1 [we://version]
   - slug: string [we://slug]
@@ -1048,8 +1049,10 @@ TextBlock extends WeNode:
 Theme extends WeNode:
   Fields:
   - name: string [we://name]
+  - description: string [we://description]
   - icon: string [we://icon]
   - origin: string [we://origin]
+  - slug: string [we://slug]
   - version: number = 1 [we://version]
   - css: string = null [we://stylesheet]
   - overrides: string = null [we://token_overrides]

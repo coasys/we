@@ -2412,6 +2412,7 @@ export const contextData: ContextData = {
       fields: [
         { name: 'name', type: 'string', predicate: 'we://name', required: false },
         { name: 'description', type: 'string', predicate: 'we://description', required: false },
+        { name: 'icon', type: 'string', predicate: 'we://icon', required: false },
         { name: 'origin', type: 'string', predicate: 'we://origin', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false, default: '1' },
         { name: 'slug', type: 'string', predicate: 'we://slug', required: false },
@@ -2445,8 +2446,10 @@ export const contextData: ContextData = {
       extends: 'WeNode',
       fields: [
         { name: 'name', type: 'string', predicate: 'we://name', required: false },
+        { name: 'description', type: 'string', predicate: 'we://description', required: false },
         { name: 'icon', type: 'string', predicate: 'we://icon', required: false },
         { name: 'origin', type: 'string', predicate: 'we://origin', required: false },
+        { name: 'slug', type: 'string', predicate: 'we://slug', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false, default: '1' },
         { name: 'css', type: 'string', predicate: 'we://stylesheet', required: false, default: 'null' },
         { name: 'overrides', type: 'string', predicate: 'we://token_overrides', required: false, default: 'null' },
