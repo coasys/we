@@ -133,6 +133,25 @@ export function DesignToolbar() {
     }
   });
 
+  // Keyboard shortcuts for undo/redo while editing
+  createEffect(() => {
+    if (!aiStore.isEditingTemplate() && !aiStore.isEditingTheme()) return;
+    const handler = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.key !== 'z' && e.key !== 'Z') return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        if (aiStore.canRedo()) aiStore.redo();
+      } else {
+        if (aiStore.canUndo()) aiStore.undo();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    onCleanup(() => document.removeEventListener('keydown', handler));
+  });
+
   // Close all when clicking outside the chip container
   const anyOpen = () =>
     open() ||
