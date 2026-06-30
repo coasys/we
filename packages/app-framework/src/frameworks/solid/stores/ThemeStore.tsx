@@ -85,7 +85,12 @@ export interface ThemeStore {
   installFromMarketplace: (marketplaceThemeId: string) => Promise<void>;
   uninstallTheme: (themeId: string) => Promise<void>;
   deleteMarketplaceTheme: (themeId: string) => Promise<void>;
-  publishToMarketplace: (options: { name: string; description: string; icon?: string; screenshots: File[] }) => Promise<boolean>;
+  publishToMarketplace: (options: {
+    name: string;
+    description: string;
+    icon?: string;
+    screenshots: File[];
+  }) => Promise<boolean>;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   loadInstalledThemes: () => Promise<void>;
 }
@@ -114,8 +119,7 @@ function encodeToFileData(content: string, name: string, mimeType: string) {
 
 function getInitialThemeId(): string {
   const saved = typeof window !== 'undefined' ? localStorage.getItem(THEME_KEY) : null;
-  const fallback = Object.keys(themeRegistry)[0];
-  return saved ?? fallback;
+  return saved ?? 'dark';
 }
 
 function injectCssString(id: string, css: string) {
@@ -842,7 +846,10 @@ export function ThemeStoreProvider(props: ParentProps) {
       // Check if already installed by slug — update in place if so
       let existingModel: Theme | undefined;
       for (const model of themeModelMap.values()) {
-        if (model.slug === sourceSlug) { existingModel = model; break; }
+        if (model.slug === sourceSlug) {
+          existingModel = model;
+          break;
+        }
       }
 
       if (existingModel) {

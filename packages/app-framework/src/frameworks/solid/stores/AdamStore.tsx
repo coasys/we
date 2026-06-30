@@ -727,6 +727,7 @@ export function AdamStoreProvider(props: ParentProps) {
       const settings = await AgentSettings.create(perspective, {
         currentTemplateId: 'default',
         currentThemeId: 'dark',
+        defaultThemeId: 'dark',
       });
 
       setRootPerspective(perspective);
