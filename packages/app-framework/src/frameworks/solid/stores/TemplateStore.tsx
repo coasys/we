@@ -63,6 +63,7 @@ export interface TemplateStore {
   publishToMarketplace: (options: {
     name: string;
     description: string;
+    icon?: string;
     themeId?: string;
     screenshots: File[];
   }) => Promise<boolean>;
@@ -1022,6 +1023,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   async function publishToMarketplace(options: {
     name: string;
     description: string;
+    icon?: string;
     themeId?: string;
     screenshots: File[];
   }): Promise<boolean> {
@@ -1049,11 +1051,14 @@ export function TemplateStoreProvider(props: ParentProps) {
     const base64 = btoa(binary);
     const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
 
+    const templateIcon = options.icon ?? schema.meta?.icon ?? '';
+
     try {
       if (existing) {
         // Update existing marketplace entry in place — bump version, replace schema and screenshots
         existing.name = options.name;
         existing.description = options.description;
+        existing.icon = templateIcon;
         existing.version = (existing.version || 1) + 1;
         existing.schema = schemaBlob as any;
         if (options.themeId !== undefined) existing.themeId = options.themeId;
@@ -1075,6 +1080,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         const template = await Template.create(marketplacePerspective, {
           name: options.name,
           description: options.description,
+          icon: templateIcon,
           origin: 'marketplace',
           slug: templateId,
           version: 1,

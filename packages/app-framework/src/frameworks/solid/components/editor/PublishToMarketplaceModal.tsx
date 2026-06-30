@@ -28,6 +28,9 @@ export function PublishToMarketplaceModal(props: Props) {
   const [description, setDescription] = createSignal(
     isTheme() ? '' : (templateStore.currentTemplate.meta?.description ?? ''),
   );
+  const [icon, setIcon] = createSignal(
+    isTheme() ? (baseTheme().icon ?? 'palette') : (templateStore.currentTemplate.meta?.icon ?? 'layout'),
+  );
   const [themeId, setThemeId] = createSignal('');
   const [screenshots, setScreenshots] = createSignal<File[]>([]);
   const [screenshotPreviews, setScreenshotPreviews] = createSignal<string[]>([]);
@@ -61,7 +64,7 @@ export function PublishToMarketplaceModal(props: Props) {
           name: name() || 'Theme name',
           description: description(),
           version: baseTheme().version ?? 1,
-          icon: baseTheme().icon,
+          icon: icon(),
           author: adamStore.me()?.did,
           screenshots: screenshotPreviews(),
         }
@@ -69,6 +72,7 @@ export function PublishToMarketplaceModal(props: Props) {
           name: name() || 'Template name',
           description: description(),
           version: 1,
+          icon: icon(),
           slug: templateStore.currentTemplate.id,
           author: adamStore.me()?.did,
           screenshots: screenshotPreviews(),
@@ -83,11 +87,13 @@ export function PublishToMarketplaceModal(props: Props) {
         ? await themeStore.publishToMarketplace({
             name: name().trim(),
             description: description().trim(),
+            icon: icon(),
             screenshots: screenshots(),
           })
         : await templateStore.publishToMarketplace({
             name: name().trim(),
             description: description().trim(),
+            icon: icon(),
             themeId: themeId() || undefined,
             screenshots: screenshots(),
           });
@@ -105,15 +111,21 @@ export function PublishToMarketplaceModal(props: Props) {
       </Column>
 
       <Column gap="400">
-        {/* Name */}
-        <Column gap="100">
-          <we-text variant="label">Name</we-text>
-          <we-input
-            value={name()}
-            placeholder={isTheme() ? 'Theme name' : 'Template name'}
-            on:input={(e: CustomEvent) => setName(e.detail)}
-          />
-        </Column>
+        {/* Name + Icon */}
+        <Row gap="300" ay="end">
+          <Column gap="100" flex="1">
+            <we-text variant="label">Name</we-text>
+            <we-input
+              value={name()}
+              placeholder={isTheme() ? 'Theme name' : 'Template name'}
+              on:input={(e: CustomEvent) => setName(e.detail)}
+            />
+          </Column>
+          <Column gap="100">
+            <we-text variant="label">Icon</we-text>
+            <we-icon-picker value={icon()} on:change={(e: CustomEvent) => setIcon(e.detail)} />
+          </Column>
+        </Row>
 
         {/* Description */}
         <Column gap="100">

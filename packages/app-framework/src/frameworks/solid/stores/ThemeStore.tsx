@@ -85,7 +85,7 @@ export interface ThemeStore {
   installFromMarketplace: (marketplaceThemeId: string) => Promise<void>;
   uninstallTheme: (themeId: string) => Promise<void>;
   deleteMarketplaceTheme: (themeId: string) => Promise<void>;
-  publishToMarketplace: (options: { name: string; description: string; screenshots: File[] }) => Promise<boolean>;
+  publishToMarketplace: (options: { name: string; description: string; icon?: string; screenshots: File[] }) => Promise<boolean>;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   loadInstalledThemes: () => Promise<void>;
 }
@@ -96,6 +96,7 @@ function registryToThemeData(key: string): ThemeData {
   const t = themeRegistry[key as ThemeKey] ?? { name: key, icon: 'palette', css: null, overrides: null };
   return {
     id: key,
+    slug: key,
     name: t.name,
     icon: t.icon,
     origin: 'built-in',
@@ -641,9 +642,11 @@ export function ThemeStoreProvider(props: ParentProps) {
       }
       const overridesJson = initialOverrides ? JSON.stringify(initialOverrides) : null;
 
+      const slug = name.toLowerCase().replace(/\s+/g, '-');
       const model = await Theme.create(perspective, {
         name,
         icon,
+        slug,
         origin: 'custom',
         version: 1,
         overrides: overridesJson
@@ -654,6 +657,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       themeModelMap.set(model.id, model);
       const data: ThemeData = {
         id: model.id,
+        slug,
         name,
         icon,
         origin: 'custom',
@@ -734,6 +738,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         const current = editingTheme();
         const saved: ThemeData = {
           id: existing.id,
+          slug: existing.slug || '',
           name: current?.name ?? editing.name,
           icon: current?.icon ?? editing.icon,
           origin: existing.origin as ThemeData['origin'],
@@ -769,9 +774,11 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (!perspective) return null;
 
     try {
+      const slug = name.toLowerCase().replace(/\s+/g, '-');
       const model = await Theme.create(perspective, {
         name,
         icon,
+        slug,
         origin: 'custom',
         version: 1,
         overrides: editing.overrides
@@ -782,6 +789,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       themeModelMap.set(model.id, model);
       const data: ThemeData = {
         id: model.id,
+        slug,
         name,
         icon,
         origin: 'custom',
@@ -829,15 +837,33 @@ export function ThemeStoreProvider(props: ParentProps) {
         return;
       }
 
-      const exists = installedThemes().some((t) => t.name === source.name);
-      if (exists) {
-        toastService.info(`Theme "${source.name}" already installed`);
+      const sourceSlug = source.slug || source.name.toLowerCase().replace(/\s+/g, '-');
+
+      // Check if already installed by slug — update in place if so
+      let existingModel: Theme | undefined;
+      for (const model of themeModelMap.values()) {
+        if (model.slug === sourceSlug) { existingModel = model; break; }
+      }
+
+      if (existingModel) {
+        existingModel.name = source.name;
+        existingModel.icon = source.icon;
+        existingModel.version = source.version;
+        existingModel.overrides = source.overrides
+          ? (encodeToFileData(source.overrides, 'overrides.json', 'application/json') as any)
+          : null;
+        existingModel.css = source.css ? (encodeToFileData(source.css, 'theme.css', 'text/css') as any) : null;
+        await existingModel.save();
+        const updated = modelToThemeData(existingModel);
+        setInstalledThemes((prev) => prev.map((t) => (t.id === existingModel!.id ? updated : t)));
+        toastService.success(`Theme "${source.name}" updated to v${source.version}`);
         return;
       }
 
       const model = await Theme.create(rootPerspective, {
         name: source.name,
         icon: source.icon,
+        slug: sourceSlug,
         origin: 'marketplace',
         version: source.version,
         overrides: source.overrides
@@ -902,6 +928,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   async function publishToMarketplace(options: {
     name: string;
     description: string;
+    icon?: string;
     screenshots: File[];
   }): Promise<boolean> {
     const marketplacePerspective = adamStore.marketplacePerspective();
@@ -912,16 +939,19 @@ export function ThemeStoreProvider(props: ParentProps) {
 
     const editing = editingTheme();
     const base = editing ?? currentTheme();
+    const themeSlug = options.name.toLowerCase().replace(/\s+/g, '-');
+    const themeIcon = options.icon ?? base.icon;
 
-    const existing = await Theme.findOne(marketplacePerspective, { where: { name: options.name } });
+    const existing = await Theme.findOne(marketplacePerspective, { where: { slug: themeSlug } });
     if (existing && existing.author !== adamStore.me()?.did) {
-      toastService.error('A theme with this name already exists in the marketplace by a different author');
+      toastService.error('A theme with this slug already exists in the marketplace by a different author');
       return false;
     }
 
     try {
       if (existing) {
         existing.name = options.name;
+        existing.icon = themeIcon;
         existing.version = (existing.version ?? 1) + 1;
         existing.overrides = base.overrides
           ? (encodeToFileData(base.overrides, 'overrides.json', 'application/json') as any)
@@ -943,7 +973,8 @@ export function ThemeStoreProvider(props: ParentProps) {
       } else {
         const theme = await Theme.create(marketplacePerspective, {
           name: options.name,
-          icon: base.icon,
+          icon: themeIcon,
+          slug: themeSlug,
           origin: 'marketplace',
           version: 1,
           overrides: base.overrides
@@ -983,7 +1014,8 @@ export function ThemeStoreProvider(props: ParentProps) {
       return false;
     }
 
-    const existing = await Theme.findOne(perspective, { where: { name: editing.name } });
+    const spaceSlug = editing.slug || editing.name.toLowerCase().replace(/\s+/g, '-');
+    const existing = await Theme.findOne(perspective, { where: { slug: spaceSlug } });
     if (existing) {
       toastService.error(`Theme "${editing.name}" is already in "${spaceName}"`);
       return false;
@@ -993,6 +1025,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       await Theme.create(perspective, {
         name: editing.name,
         icon: editing.icon,
+        slug: spaceSlug,
         origin: 'shared',
         version: 1,
         overrides: editing.overrides
