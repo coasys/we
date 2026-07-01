@@ -6,15 +6,30 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
+// overflow/scrollbarWidth/minWidth/minHeight go through DEFAULT_PROPS, not raw CSS —
+// DesignSystemElement's generated stylesheet re-declares them on [part='base'] after
+// this component's own styles load, silently reverting any hardcoded value to
+// CSS-initial. See CONVENTIONS.md § "When to use CSS instead".
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'block',
+  overflow: 'auto',
+  scrollbarWidth: 'thin',
+  // Flex items default to min-size:auto (content-based) — without this, the host can
+  // grow past its allotted flex space instead of clamping to it.
+  minWidth: '0',
+  minHeight: '0',
 };
 
 const styles = css`
-  [part='base'] {
+  :host {
+    /* Unlike other layout properties, :host's own overflow is NOT DS-managed (only
+       [part='base']'s is — see CONVENTIONS.md), so it's safe and necessary to set
+       directly here. Without it, oversized [part='base'] content spills out past the
+       host instead of scrolling. */
     overflow: auto;
-    scrollbar-width: var(--we-scroll-area-scrollbar-width, thin);
-    scrollbar-gutter: var(--we-scroll-area-scrollbar-gutter);
+  }
+
+  [part='base'] {
     scrollbar-color: var(--we-color-neutral-300) transparent;
   }
 

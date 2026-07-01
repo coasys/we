@@ -113,13 +113,73 @@ Components that use this pattern set `nativePadding: true` in `COMPONENT_CASCADE
 
 ### When to use CSS instead
 
-Use CSS only for properties **not covered by DesignSystemProps**:
+The rule is about **selector**, not property name. `DesignSystemElement` adopts a
+per-instance generated stylesheet _after_ the component's own `static styles` (see
+`applyDSBehavior` in `design-system-element.ts`), and that generated sheet declares
+**every** `DesignSystemProps` key covered by the component's layers as
+`property: var(--we-{name}-<x>)` — with no fallback in most cases — but only on two
+selectors: `:host` and `[part='base']`. Any equal-or-lower-specificity rule for the
+same property on one of those two selectors, written earlier in the component's own
+`static styles`, is silently overridden back to the CSS-initial value once an instance
+renders (`overflow: auto` → `visible`, `position: relative` → `static`, `min-height: 0`
+→ `auto`, etc.) — regardless of which property it is. This isn't limited to obviously
+"DS-ish" properties like `bg`/`padding`; it includes `position`, `top`/`right`/`bottom`/`left`,
+`z-index`, `flex`, `align-self`, `overflow`/`overflowX`/`overflowY`, `scrollbarWidth`,
+`scrollbarGutter`, and the full visual/flex/typography layers (see `HOST_LAYOUT` /
+`BASE_LAYOUT` / `BASE_VISUAL` / `BASE_FLEX` / `BASE_TYPOGRAPHY` in `helpers.ts` for
+the exact lists).
 
-- Non-DS layout (`position: absolute`, `overflow: hidden`)
+So: **hardcoding a DS-covered property on `:host` or `[part='base']` in a component's
+own CSS does not work** — set it via `DEFAULT_PROPS` instead (see below), which routes
+through `updateAllCustomVars()` and writes an inline custom property on the host,
+outranking any stylesheet. Confirmed broken this way: `we-tooltip`'s
+`:host { position: relative }` (not yet fixed — `tooltip.ts` has no `DEFAULT_PROPS`
+at all, so its host `position: relative` is currently a no-op; harmless today only
+because the tooltip's own positioning uses `position: fixed` promoted to the top
+layer, not because the host's `position: relative` is doing anything).
+`select.ts` independently worked around the same issue for `[part='base']`'s
+`position: relative` by setting it as an inline style directly in `render()`
+(`styleMap({ position: 'relative', ... })`) rather than in `static styles` — that
+works for the same reason `DEFAULT_PROPS` does (inline style beats any stylesheet).
+
+**`:host`'s own `overflow` is the one property that goes the _other_ way — it is
+never DS-covered at all**, even though `overflow` on `[part='base']` is. `HOST_LAYOUT`
+in `helpers.ts` (the list the generated stylesheet declares on `:host`) simply doesn't
+include `overflow` — it's `[part='base']`-only. This is a real trap for any wrapper
+component whose whole job is to clip or scroll its content (`we-scroll-area`, and check
+anything similar): setting `overflow: auto` on `[part='base']` alone is not enough. If
+`[part='base']` ends up taller than the host's own box — which happens easily, e.g. if
+its `height: 100%` doesn't resolve to something smaller than its content — the excess
+just visually spills out past the host, fully visible, with no scrollbar anywhere,
+_because nothing ever told the host itself to clip or scroll it_. `[part='base']`'s
+overflow only matters once `[part='base']` is actually bounded to something smaller
+than its content; don't assume that follows automatically from a definite host height.
+The fix (see `we-scroll-area`'s `scroll-area.ts`) is to set `overflow: auto` directly
+on `:host` in the component's own `static styles` — safe to hardcode, since (unlike
+almost every other layout property) `:host`'s overflow is never touched by the
+generated stylesheet. When building or debugging a scrollable/clippable wrapper,
+verify by giving the host a literal pixel height and confirming content actually clips
+— don't assume a "definite height + `overflow:auto` on an inner div" combination works
+without checking.
+
+The two selectors above are the _only_ ones the generated stylesheet touches. CSS
+targeting any other shadow part (`[part='trigger']`, `[part='arrow']`,
+`[part='backdrop']`, `[part='listbox']`, custom classes, pseudo-elements, etc.) is
+completely unaffected and safe to hardcode freely — this is how most existing
+`position: absolute` usage in this package (tooltip's arrow, modal's backdrop,
+select's listbox) already works correctly.
+
+Safe to hardcode in a component's own `static styles` (not DS-covered, or not on
+`:host`/`[part='base']`):
+
+- Positioning/layout on any part _other than_ `:host` or `[part='base']`
 - Pseudo-elements (`::before`, `::after`)
 - Animations / transitions
-- Child element styling (`[part='base'] { all: unset }`)
-- Host display override (`--we-{name}-host-display`)
+- Structural resets on inner elements (`[part='base'] { all: unset }` — targets
+  properties `all` doesn't include in the generated sheet's explicit list, but verify
+  case-by-case)
+- Host display override (`--we-{name}-host-display`) — a uniquely-named custom
+  property the generated sheet only ever _reads_ via `var()`, never sets itself
 - **Size-specific CSS custom properties** for density-cascade vars (see above)
 
 **Never** use `:host([variant='...'])` or `:host([size='...'])` CSS selectors to directly set DS-covered properties (bg, color, padding, fontSize, etc.) — those belong in the JS maps. **Exception:** setting CSS custom properties (e.g. `--we-button-size-padding-x`) via host selectors is fine — that feeds the cascade rather than bypassing it.

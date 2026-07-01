@@ -583,7 +583,7 @@ export function InspectorPanel() {
       />
 
       {/* Properties for selected node */}
-      <Column flex="1" overflow="hidden">
+      <Column flex="1" overflow="hidden" pb="500">
         <Show
           when={selectedNode()}
           fallback={
