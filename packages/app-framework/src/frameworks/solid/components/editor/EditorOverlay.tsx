@@ -951,7 +951,10 @@ function VisualEditorLayer() {
   function handleGlobalKeyDown(e: KeyboardEvent) {
     if (e.key !== 'Delete' && e.key !== 'Backspace') return;
     if (isResizing() || isDragging()) return;
-    const target = e.target as HTMLElement | null;
+    // Use composedPath()[0], not e.target — form primitives like we-input/we-textarea
+    // render their real <input>/<textarea> inside a Lit shadow root, so a listener on
+    // document sees e.target retargeted to the custom element host, never 'INPUT'/'TEXTAREA'.
+    const target = (e.composedPath()[0] as HTMLElement | undefined) ?? (e.target as HTMLElement | null);
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
     if (!canDeleteSelected()) return;
     e.preventDefault();

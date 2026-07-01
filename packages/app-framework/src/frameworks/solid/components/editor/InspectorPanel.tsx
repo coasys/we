@@ -144,6 +144,35 @@ const ICON_PROP_KEYS = new Set(Object.keys(ICON_PROP_ICONS));
 // Props that render as a color swatch picker instead of a combobox
 const COLOR_PROP_KEYS = new Set(['bg', 'color', 'borderColor', 'ring']);
 
+// Component types where free text in `children` is idiomatic — used to offer an empty
+// "Content" field on childless nodes. Nodes that already have string children get the
+// field regardless of type (see showContent in NodeProperties).
+const TEXT_CONTENT_TYPES = new Set([
+  'we-text',
+  'we-button',
+  'we-badge',
+  'we-tag',
+  'we-link',
+  'we-alert',
+  'span',
+  'p',
+  'div',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'small',
+  'b',
+  'i',
+  'label',
+  'a',
+  'pre',
+  'code',
+  'blockquote',
+]);
+
 const COLOR_HUES = ['neutral', 'primary', 'success', 'warning', 'danger'] as const;
 const COLOR_SHADES = ['0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'];
 
@@ -401,6 +430,24 @@ export function InspectorPanel() {
     }
   }
 
+  function handleContentChange(value: string) {
+    const id = visualEditor.selectedId();
+    if (!id) return;
+    try {
+      const clone = deepClone(templateStore.currentTemplate) as TemplateSchema;
+      const found = findNodeById(clone, id);
+      if (!found) return;
+      const patch = value === '' ? { children: null } : { children: [value] };
+      const patched = mergeNode(found.node, patch);
+      const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
+      aiStore.pushSnapshot();
+      templateStore.updateTemplate(updated);
+      templateStore.persistCurrentTemplate();
+    } catch (e) {
+      console.error('[ContentChange] error:', e);
+    }
+  }
+
   function onDividerMouseDown(e: MouseEvent) {
     e.preventDefault();
     const startY = e.clientY;
@@ -491,7 +538,9 @@ export function InspectorPanel() {
             </Column>
           }
         >
-          {(node) => <NodeProperties node={node()} onPropChange={handlePropChange} />}
+          {(node) => (
+            <NodeProperties node={node()} onPropChange={handlePropChange} onContentChange={handleContentChange} />
+          )}
         </Show>
       </Column>
     </Column>
@@ -502,8 +551,30 @@ export function InspectorPanel() {
 // NodeProperties
 // -----------------------------------------------------------------------
 
-function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, value: unknown) => void }) {
+function NodeProperties(props: {
+  node: SchemaNode;
+  onPropChange: (key: string, value: unknown) => void;
+  onContentChange: (value: string) => void;
+}) {
   const meta = createMemo(() => getComponentMeta(props.node.type ?? '', contextData));
+
+  // Content — editable `children` text. Shown when children is a single string (or
+  // empty) so authors can view/edit the common `children: ["some text"]` shape without
+  // needing the (rarely used) `text` prop.
+  const hasSimpleStringChildren = createMemo(() => {
+    const children = props.node.children;
+    return !children || children.length === 0 || (children.length === 1 && typeof children[0] === 'string');
+  });
+  const showContent = createMemo(() => {
+    if (!hasSimpleStringChildren()) return false;
+    const children = props.node.children;
+    if (children && children.length === 1) return true;
+    return TEXT_CONTENT_TYPES.has(props.node.type ?? '');
+  });
+  const contentValue = createMemo(() => {
+    const children = props.node.children;
+    return children && children.length === 1 && typeof children[0] === 'string' ? children[0] : '';
+  });
 
   // Current prop values set on this node
   const currentProps = createMemo(() => props.node.props ?? {});
@@ -557,6 +628,20 @@ function NodeProperties(props: { node: SchemaNode; onPropChange: (key: string, v
 
       {/* Scrollable content */}
       <we-scroll-area style={{ flex: '1' }}>
+        {/* Content — editable text children, shown for text-bearing nodes */}
+        <Show when={showContent()}>
+          <Column py="200" borderBottom="1px solid neutral-100">
+            <SectionLabel>Content</SectionLabel>
+            <we-textarea
+              mx="300"
+              value={contentValue()}
+              placeholder="Text content"
+              rows={2}
+              on:change={(e: CustomEvent<string>) => props.onContentChange(e.detail)}
+            />
+          </Column>
+        </Show>
+
         {/* Spacing — always-visible box model for padding + margin */}
         <BoxModel meta={meta()} currentProps={currentProps()} onPropChange={props.onPropChange} />
 
