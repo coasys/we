@@ -1,8 +1,9 @@
 import { deepClone } from '@shared/utils';
-import { useAiStore, useTemplateStore } from '@solid/stores';
+import { useAdamStore, useAiStore, useTemplateStore } from '@solid/stores';
 import { contextData } from '@we/ai-context';
 import { Column, Combobox, type ComboboxOption, Grid, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
+import { compressImageToFileData, ImageBlock } from '@we/models';
 import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { findNodeById, getComponentMeta, mergeNode } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
@@ -1327,6 +1328,248 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
 }
 
 // -----------------------------------------------------------------------
+// BgImagePicker — browse space ImageBlocks, upload a new one, or paste a URL
+// -----------------------------------------------------------------------
+
+type BgImageTab = 'browse' | 'upload' | 'url';
+
+const BG_IMAGE_TABS: { key: BgImageTab; label: string }[] = [
+  { key: 'browse', label: 'Browse' },
+  { key: 'upload', label: 'Upload' },
+  { key: 'url', label: 'URL' },
+];
+
+function BgImagePicker(props: { value: string; onChange: (v: string) => void }) {
+  const adamStore = useAdamStore();
+  const [open, setOpen] = createSignal(false);
+  const [tab, setTab] = createSignal<BgImageTab>('browse');
+  const [images, setImages] = createSignal<ImageBlock[]>([]);
+  const [loadingImages, setLoadingImages] = createSignal(false);
+  const [uploading, setUploading] = createSignal(false);
+  const [urlDraft, setUrlDraft] = createSignal('');
+  let ref!: HTMLDivElement;
+
+  createEffect(() => {
+    if (!open()) return;
+    const handler = (e: MouseEvent) => {
+      if (!ref.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    onCleanup(() => document.removeEventListener('mousedown', handler));
+  });
+
+  // Fetch the space's existing ImageBlocks whenever the Browse tab becomes visible.
+  createEffect(() => {
+    if (!open() || tab() !== 'browse') return;
+    const perspective = adamStore.currentPerspective();
+    if (!perspective) return;
+    setLoadingImages(true);
+    ImageBlock.findAll(perspective, { order: { createdAt: 'DESC' }, limit: 60 })
+      .then(setImages)
+      .catch(() => setImages([]))
+      .finally(() => setLoadingImages(false));
+  });
+
+  async function handleUpload(file: File) {
+    const perspective = adamStore.currentPerspective();
+    if (!perspective) return;
+    setUploading(true);
+    try {
+      // Created standalone in the current perspective — no parent CollectionBlock.
+      // Reusable in future Browse pickers, same as post-authored ImageBlocks.
+      const fileData = await compressImageToFileData(file, 'bg-image');
+      const block = await ImageBlock.create(perspective, { src: fileData });
+      props.onChange(block.src);
+      setOpen(false);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleFileInputChange(e: Event) {
+    const file = (e as CustomEvent).detail as File | null;
+    if (file) void handleUpload(file);
+  }
+
+  function handleUrlSubmit() {
+    const url = urlDraft().trim();
+    if (!url) return;
+    props.onChange(url);
+    setUrlDraft('');
+    setOpen(false);
+  }
+
+  const previewStyle = (src: string) => ({
+    'background-image': src ? `url("${src}")` : undefined,
+    'background-size': 'cover',
+    'background-position': 'center',
+    'background-color': 'var(--we-color-neutral-100)',
+  });
+
+  // Data URIs (uploaded/browsed images) can run to hundreds of KB of unbroken base64 —
+  // rendering that raw would blow out the row's layout (no whitespace for the browser to
+  // wrap on, and flex/grid items default to min-width:auto so `truncate` can't clip it).
+  // Show a short human label instead; only real external URLs get shown verbatim.
+  const triggerLabel = () => {
+    const v = props.value;
+    if (!v) return '—';
+    const match = v.match(/^data:([^;]+);/);
+    if (match) return `Uploaded image (${match[1].replace('image/', '')})`;
+    return v;
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      {/* Trigger */}
+      <we-button variant="outline" size="xs" style={{ width: '100%' }} onClick={() => setOpen((v) => !v)}>
+        <Row ay="center" gap="200" width="100%">
+          <div
+            style={{
+              width: '16px',
+              height: '16px',
+              'flex-shrink': '0',
+              'border-radius': '2px',
+              border: '1px solid rgba(0,0,0,0.15)',
+              ...previewStyle(props.value),
+            }}
+          />
+          <we-text flex="1" minWidth="0" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
+            {triggerLabel()}
+          </we-text>
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="neutral-400" />
+        </Row>
+      </we-button>
+
+      {/* Dropdown */}
+      <Show when={open()}>
+        <div
+          style={{
+            position: 'absolute',
+            'z-index': '600',
+            top: '100%',
+            right: '0',
+            'margin-top': '3px',
+            width: '280px',
+          }}
+        >
+          <we-menu>
+            <Column p="300" gap="300">
+              {/* Unset */}
+              <Show when={props.value}>
+                <we-menu-item
+                  on:select={() => {
+                    props.onChange('');
+                    setOpen(false);
+                  }}
+                >
+                  <we-text color="neutral-400">(unset)</we-text>
+                </we-menu-item>
+              </Show>
+
+              {/* Tab switcher */}
+              <Row gap="100">
+                <For each={BG_IMAGE_TABS}>
+                  {(t) => (
+                    <we-button
+                      size="xs"
+                      variant={tab() === t.key ? 'secondary' : 'ghost'}
+                      flex="1"
+                      onClick={() => setTab(t.key)}
+                    >
+                      {t.label}
+                    </we-button>
+                  )}
+                </For>
+              </Row>
+
+              {/* Browse — existing space ImageBlocks as a thumbnail grid */}
+              <Show when={tab() === 'browse'}>
+                <Show
+                  when={!loadingImages()}
+                  fallback={
+                    <Row ax="center" py="400">
+                      <we-spinner size="sm" />
+                    </Row>
+                  }
+                >
+                  <Show
+                    when={images().length > 0}
+                    fallback={
+                      <we-text color="neutral-400" fontSize="200" textAlign="center">
+                        No images in this space yet
+                      </we-text>
+                    }
+                  >
+                    <Grid columns={4} gap="100" styles={{ 'max-height': '200px', 'overflow-y': 'auto' }}>
+                      <For each={images()}>
+                        {(img) => (
+                          <button
+                            title={img.altText || img.src}
+                            onClick={() => {
+                              props.onChange(img.src);
+                              setOpen(false);
+                            }}
+                            style={{
+                              all: 'unset',
+                              width: '100%',
+                              'aspect-ratio': '1 / 1',
+                              cursor: 'pointer',
+                              'border-radius': '4px',
+                              'box-shadow': img.src === props.value ? '0 0 0 2px var(--we-color-primary-600)' : 'none',
+                              ...previewStyle(img.src),
+                            }}
+                          />
+                        )}
+                      </For>
+                    </Grid>
+                  </Show>
+                </Show>
+              </Show>
+
+              {/* Upload — direct file upload, creates a standalone ImageBlock */}
+              <Show when={tab() === 'upload'}>
+                <Show
+                  when={!uploading()}
+                  fallback={
+                    <Row ax="center" py="400">
+                      <we-spinner size="sm" />
+                    </Row>
+                  }
+                >
+                  <we-file-upload accept="image/*" on:change={handleFileInputChange} width="100%">
+                    <we-icon name="image" color="neutral-500" size="lg" />
+                    <we-text color="neutral-500" fontSize="200">
+                      Drop an image or click to browse
+                    </we-text>
+                  </we-file-upload>
+                </Show>
+              </Show>
+
+              {/* URL — manual entry, kept as an escape hatch for external images */}
+              <Show when={tab() === 'url'}>
+                <Row ay="center" gap="200">
+                  <we-input
+                    type="text"
+                    value={urlDraft()}
+                    on:input={(e: CustomEvent<string>) => setUrlDraft(e.detail)}
+                    placeholder="Paste an image URL…"
+                    size="xs"
+                    flex="1"
+                  />
+                  <we-button size="xs" onClick={handleUrlSubmit} disabled={!urlDraft().trim()}>
+                    Add
+                  </we-button>
+                </Row>
+              </Show>
+            </Column>
+          </we-menu>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------
 // BoxModel — Chrome DevTools-style nested rectangle spacing diagram
 // -----------------------------------------------------------------------
 
@@ -1594,6 +1837,9 @@ function PropRow(props: {
     }
     if (props.propKey === 'ring') {
       return <RingPicker value={strVal()} onChange={(v) => props.onChange(v)} />;
+    }
+    if (props.propKey === 'bgImage') {
+      return <BgImagePicker value={strVal()} onChange={(v) => props.onChange(v)} />;
     }
     if (COLOR_PROP_KEYS.has(props.propKey)) {
       return <ColorSwatchPicker value={strVal()} onChange={(v) => props.onChange(v)} />;
