@@ -142,7 +142,43 @@ const ICON_PROP_ICONS: Record<string, Record<string, string>> = {
 const ICON_PROP_KEYS = new Set(Object.keys(ICON_PROP_ICONS));
 
 // Props that render as a color swatch picker instead of a combobox
-const COLOR_PROP_KEYS = new Set(['bg', 'color', 'borderColor', 'ring']);
+const COLOR_PROP_KEYS = new Set(['bg', 'color', 'borderColor']);
+
+// `ring` is a raw box-shadow fragment ("0 0 {blur} {width} {color}" — offset-x/offset-y
+// pinned at 0 so it reads as an outline/glow around the element, not a directional
+// drop shadow), not a bare color token — it gets its own composite picker (RingPicker)
+// instead of ColorSwatchPicker.
+const RING_DEFAULT_WIDTH_PX = 2;
+const RING_DEFAULT_BLUR_PX = 0;
+const RING_DEFAULT_COLOR = 'primary-500';
+// Sentinel color value meaning "follow the active theme's ring color" — writes
+// var(--we-ring-color) directly instead of a hardcoded token, so it stays in sync
+// if the theme's accent color changes later.
+const RING_THEME_ACCENT = 'var(--we-ring-color)';
+
+interface ParsedRing {
+  widthPx: number;
+  blurPx: number;
+  /** A color token like 'success-400', RING_THEME_ACCENT, or an unrecognized raw CSS color. */
+  color: string;
+}
+
+function parseRing(value: string): ParsedRing | null {
+  const m = /^0\s+0\s+(-?[\d.]+)(?:px)?\s+(-?[\d.]+)(?:px)?\s+(.+)$/.exec(value.trim());
+  if (!m) return null;
+  const [, blurRaw, widthRaw, colorRaw] = m;
+  const color = colorRaw.trim();
+  const parsed: ParsedRing = { widthPx: Number(widthRaw), blurPx: Number(blurRaw), color };
+  if (/^var\(--we-ring-color(?:\s*,.*)?\)$/.test(color)) return { ...parsed, color: RING_THEME_ACCENT };
+  const tokenMatch = /^var\(--we-color-([a-z]+-\d+|white|black)\)$/.exec(color);
+  if (tokenMatch) return { ...parsed, color: tokenMatch[1] };
+  return parsed;
+}
+
+function composeRing(widthPx: number, blurPx: number, color: string): string {
+  const colorCss = color === RING_THEME_ACCENT || color.includes('(') ? color : `var(--we-color-${color})`;
+  return `0 0 ${blurPx}px ${widthPx}px ${colorCss}`;
+}
 
 // Component types where free text in `children` is idiomatic — used to offer an empty
 // "Content" field on childless nodes. Nodes that already have string children get the
@@ -411,6 +447,27 @@ export function InspectorPanel() {
     return findNodeById(templateStore.currentTemplate, id)?.node ?? null;
   });
 
+  // Persisting hits AD4M storage (network/IPC), which is far slower than the in-memory
+  // template update. Controls that fire many changes in quick succession (e.g. the ring
+  // picker's number-input steppers) would otherwise persist on every single click, making
+  // clicks feel laggy. Debounce the persist call; templateStore.updateTemplate above still
+  // runs synchronously every time so the canvas updates instantly.
+  let persistTimer: ReturnType<typeof setTimeout> | undefined;
+  function schedulePersist() {
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => {
+      persistTimer = undefined;
+      templateStore.persistCurrentTemplate();
+    }, 400);
+  }
+  onCleanup(() => {
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = undefined;
+      templateStore.persistCurrentTemplate();
+    }
+  });
+
   function handlePropChange(key: string, value: unknown) {
     const id = visualEditor.selectedId();
     if (!id) return;
@@ -424,7 +481,7 @@ export function InspectorPanel() {
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
       aiStore.pushSnapshot();
       templateStore.updateTemplate(updated);
-      templateStore.persistCurrentTemplate();
+      schedulePersist();
     } catch (e) {
       console.error('[PropChange] error:', e);
     }
@@ -442,7 +499,7 @@ export function InspectorPanel() {
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
       aiStore.pushSnapshot();
       templateStore.updateTemplate(updated);
-      templateStore.persistCurrentTemplate();
+      schedulePersist();
     } catch (e) {
       console.error('[ContentChange] error:', e);
     }
@@ -649,15 +706,24 @@ function NodeProperties(props: {
         <Show when={usedProps().size > 0}>
           <Column py="100">
             <SectionLabel>Set props</SectionLabel>
-            <For each={[...usedProps().entries()]}>
-              {([key, value]) => {
-                const propMeta = meta()?.props.find((p) => p.name === key);
+            {/*
+              Iterate stable string keys, not [key, value] tuples — usedProps() rebuilds a
+              new Map (and thus new tuple objects) on every prop edit. <For> keys items by
+              reference, so tuples would remount every PropRow (and its local state, e.g.
+              RingPicker's open dropdown) on each keystroke. Keys are stable strings, so
+              <For> keeps the same instances alive; value/propMeta stay reactive via the
+              getters below.
+            */}
+            <For each={[...usedProps().keys()]}>
+              {(key) => {
+                const value = () => usedProps().get(key) as string | boolean | number;
+                const propMeta = () => meta()?.props.find((p) => p.name === key);
                 return (
                   <PropRow
                     propKey={key}
-                    value={value as string | boolean | number}
-                    options={propMeta?.options}
-                    valueType={propMeta?.valueType ?? (typeof value as 'string' | 'boolean' | 'number')}
+                    value={value()}
+                    options={propMeta()?.options}
+                    valueType={propMeta()?.valueType ?? (typeof value() as 'string' | 'boolean' | 'number')}
                     onChange={(v) => props.onPropChange(key, v)}
                   />
                 );
@@ -1029,6 +1095,238 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
 }
 
 // -----------------------------------------------------------------------
+// RingPicker — composite width + color swatch picker for the `ring` prop
+// -----------------------------------------------------------------------
+
+function RingPicker(props: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = createSignal(false);
+  const [hovered, setHovered] = createSignal<string | null>(null);
+  let ref!: HTMLDivElement;
+
+  createEffect(() => {
+    if (!open()) return;
+    const handler = (e: MouseEvent) => {
+      if (!ref.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    onCleanup(() => document.removeEventListener('mousedown', handler));
+  });
+
+  const parsed = createMemo(() => (props.value ? parseRing(props.value) : null));
+  const widthPx = () => parsed()?.widthPx ?? RING_DEFAULT_WIDTH_PX;
+  const blurPx = () => parsed()?.blurPx ?? RING_DEFAULT_BLUR_PX;
+  const color = () => parsed()?.color ?? '';
+
+  // Each onChange triggers InspectorPanel.handlePropChange, which does two full JSON
+  // deep-clones of the whole template plus a schema diff — all synchronous, so it blocks
+  // the main thread and delays paint. The stepper buttons on we-number-input already show
+  // their own incremented value optimistically and instantly (see number-input.ts's _emit),
+  // so debouncing the outbound onChange call here doesn't lose responsiveness on the visible
+  // counter — it just stops a rapid burst of clicks from each blocking the thread in turn.
+  let widthTimer: ReturnType<typeof setTimeout> | undefined;
+  let blurTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => {
+    if (widthTimer) clearTimeout(widthTimer);
+    if (blurTimer) clearTimeout(blurTimer);
+  });
+
+  const setWidthPx = (w: number) => {
+    if (widthTimer) clearTimeout(widthTimer);
+    widthTimer = setTimeout(() => {
+      widthTimer = undefined;
+      props.onChange(composeRing(w, blurPx(), color() || RING_DEFAULT_COLOR));
+    }, 150);
+  };
+  const setBlurPx = (b: number) => {
+    if (blurTimer) clearTimeout(blurTimer);
+    blurTimer = setTimeout(() => {
+      blurTimer = undefined;
+      props.onChange(composeRing(widthPx(), b, color() || RING_DEFAULT_COLOR));
+    }, 150);
+  };
+  const setColor = (c: string) => props.onChange(composeRing(widthPx(), blurPx(), c));
+
+  // Trigger swatch preview — always a fixed-size reference ring, not the actual configured
+  // width/blur. A large width/blur value would otherwise render a box-shadow that visually
+  // spills out of the trigger button; the numeric width/blur is already shown in the label.
+  const previewShadow = () => (props.value ? composeRing(2, 0, color() || RING_DEFAULT_COLOR) : 'none');
+
+  const swatch = (v: string, size = '20px') => (
+    <we-tooltip title={v} placement="top">
+      <button
+        onClick={() => setColor(v)}
+        onMouseEnter={() => setHovered(v)}
+        onMouseLeave={() => setHovered(null)}
+        style={{
+          all: 'unset',
+          width: size,
+          height: size,
+          'flex-shrink': '0',
+          background: `var(--we-color-${v})`,
+          'box-shadow':
+            color() === v
+              ? `0 0 0 2px var(--we-color-primary-600)`
+              : `0 0 0 1px var(--we-color-primary-${hovered() === v ? 600 : 300})`,
+          'border-radius': '3px',
+          cursor: 'pointer',
+          padding: '0',
+          transition: 'all 0.3s',
+        }}
+      />
+    </we-tooltip>
+  );
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      {/* Trigger */}
+      <we-button variant="outline" size="xs" style={{ width: '100%' }} onClick={() => setOpen((v) => !v)}>
+        <Row ay="center" gap="200" width="100%">
+          <div
+            style={{
+              width: '12px',
+              height: '12px',
+              'flex-shrink': '0',
+              'border-radius': '2px',
+              background: 'var(--we-color-neutral-0)',
+              'box-shadow': previewShadow(),
+            }}
+          />
+          <we-text flex="1" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
+            {props.value
+              ? `${widthPx()}px · ${color() === RING_THEME_ACCENT ? 'theme accent' : color() || 'custom'}`
+              : '—'}
+          </we-text>
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="neutral-400" />
+        </Row>
+      </we-button>
+
+      {/* Dropdown */}
+      <Show when={open()}>
+        <div
+          style={{
+            position: 'absolute',
+            'z-index': '600',
+            top: '100%',
+            right: '0',
+            'margin-top': '3px',
+            'min-width': '220px',
+          }}
+        >
+          <we-menu>
+            <Column p="300" gap="200">
+              {/* Unset */}
+              <Show when={props.value}>
+                <we-menu-item
+                  on:select={() => {
+                    props.onChange('');
+                    setOpen(false);
+                  }}
+                >
+                  <we-text color="neutral-400">(unset)</we-text>
+                </we-menu-item>
+              </Show>
+
+              {/* Width + blur */}
+              <Row gap="200">
+                <Column gap="100" flex="1" ax="start">
+                  <we-text
+                    fontSize="100"
+                    fontWeight="600"
+                    color="neutral-400"
+                    textTransform="uppercase"
+                    letterSpacing="0.06em"
+                  >
+                    Width
+                  </we-text>
+                  <we-number-input
+                    value={widthPx()}
+                    min={0}
+                    max={40}
+                    step={1}
+                    size="xs"
+                    on:change={(e: CustomEvent<number>) => setWidthPx(e.detail)}
+                  />
+                </Column>
+                <Column gap="100" flex="1" ax="start">
+                  <we-text
+                    fontSize="100"
+                    fontWeight="600"
+                    color="neutral-400"
+                    textTransform="uppercase"
+                    letterSpacing="0.06em"
+                  >
+                    Blur
+                  </we-text>
+                  <we-number-input
+                    value={blurPx()}
+                    min={0}
+                    max={40}
+                    step={1}
+                    size="xs"
+                    on:change={(e: CustomEvent<number>) => setBlurPx(e.detail)}
+                  />
+                </Column>
+              </Row>
+
+              {/* Color */}
+              <Column gap="100">
+                <we-text
+                  fontSize="100"
+                  fontWeight="600"
+                  color="neutral-400"
+                  textTransform="uppercase"
+                  letterSpacing="0.06em"
+                >
+                  Color
+                </we-text>
+
+                {/* Theme accent — follows --we-ring-color rather than a fixed token */}
+                <we-tooltip title="Follows the active theme's ring color" placement="top">
+                  <button
+                    onClick={() => setColor(RING_THEME_ACCENT)}
+                    style={{
+                      all: 'unset',
+                      display: 'flex',
+                      'align-items': 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      padding: '4px 6px',
+                      'border-radius': '4px',
+                      background: color() === RING_THEME_ACCENT ? 'var(--we-color-primary-50)' : 'transparent',
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        'flex-shrink': '0',
+                        'border-radius': '3px',
+                        background: 'var(--we-ring-color)',
+                      }}
+                    />
+                    <we-text fontSize="200">Theme accent</we-text>
+                  </button>
+                </we-tooltip>
+
+                {/* White + black */}
+                <Row gap="100">{['white', 'black'].map((v) => swatch(v))}</Row>
+
+                {/* Hue rows */}
+                <Column gap="100">
+                  <For each={COLOR_HUES}>
+                    {(hue) => <Row gap="100">{COLOR_SHADES.map((shade) => swatch(`${hue}-${shade}`))}</Row>}
+                  </For>
+                </Column>
+              </Column>
+            </Column>
+          </we-menu>
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------
 // BoxModel — Chrome DevTools-style nested rectangle spacing diagram
 // -----------------------------------------------------------------------
 
@@ -1293,6 +1591,9 @@ function PropRow(props: {
           }}
         />
       );
+    }
+    if (props.propKey === 'ring') {
+      return <RingPicker value={strVal()} onChange={(v) => props.onChange(v)} />;
     }
     if (COLOR_PROP_KEYS.has(props.propKey)) {
       return <ColorSwatchPicker value={strVal()} onChange={(v) => props.onChange(v)} />;
