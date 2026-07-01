@@ -29,10 +29,18 @@ const CSS_STYLES = css`
   [part='tooltip'] {
     display: none;
     position: fixed;
-    /* Reset UA [popover] styles when promoted to top layer */
+    /* Reset UA [popover] styles when promoted to top layer. width/overflow matter most:
+       the UA default (width: fit-content; overflow: auto) sizes from the element's static
+       position — which is the trigger's own tiny box before floating-ui repositions it via
+       JS. Triggers with little room around them (e.g. the panel rail, flush against the
+       viewport edge) get crushed into that sliver, and since text can't wrap (nowrap), the
+       UA's overflow:auto then draws a scrollbar on the bubble itself. */
     margin: 0;
     inset: unset;
     border: none;
+    width: max-content;
+    height: auto;
+    overflow: visible;
     /* Component styles */
     z-index: var(--we-z-tooltip);
     white-space: nowrap;
