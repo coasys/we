@@ -1,6 +1,6 @@
 import { deepClone } from '@shared/utils';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { findNodeById, mergeNode } from '@we/schema-shared';
+import { findNodeById, insertChild, mergeNode, removeChild } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
@@ -13,8 +13,22 @@ const LOGIC_TYPES = new Set(['$each', '$if', '$animate', '$single', '$routes']);
 // Node types where size is controlled via the `size` prop rather than `width`/`height`
 const SIZE_PROP_TYPES = new Set(['we-icon', 'we-avatar', 'we-spinner']);
 
+// Layout container types that always accept drops, even when empty
+const CONTAINER_TYPES = new Set(['Column', 'Row', 'Grid', 'Card']);
+
+const DND_MOVE_THRESHOLD = 5;
+const DND_HOLD_MS = 200;
+
 function isLogicType(t: string | undefined): boolean {
   return t ? LOGIC_TYPES.has(t) : false;
+}
+
+// A node is a valid drop container if it's a known layout type (even when empty),
+// OR if it already has schema-node children (catches we-button, we-alert, etc.).
+function isContainerNode(node: SchemaNode): boolean {
+  if (node.type && CONTAINER_TYPES.has(node.type)) return true;
+  if (!Array.isArray(node.children)) return false;
+  return node.children.some((c) => typeof c === 'object' && c !== null && 'type' in (c as object));
 }
 
 // -----------------------------------------------------------------------
@@ -174,6 +188,47 @@ function findEachContextFromElement(
   return null;
 }
 
+// Walk schema ancestors from startNodeId to find the nearest node that can be independently dragged.
+// Returns null if no draggable ancestor exists (e.g. $each template children — deliberately blocked).
+function findDragTargetId(schema: SchemaNode, startNodeId: string): string | null {
+  let info = findNodeById(schema, startNodeId);
+  while (info) {
+    // $each template children must not be dragged — their removal would break the loop template.
+    // Also block promotion beyond this boundary (don't drag the $each itself from inside it).
+    if (info.parent?.type === '$each') return null;
+    // This node qualifies as a drag target: lives in a children/routes array inside a non-logic parent.
+    // Logic nodes ($if, $animate, $single, etc.) that meet this criterion are draggable as units.
+    if (info.parent !== null && (info.key === 'children' || info.key === 'routes') && !isLogicType(info.parent.type)) {
+      return info.node.id ?? null;
+    }
+    // Continue climbing — handles $if.props.then/else and other non-children keys
+    if (!info.parent?.id) break;
+    info = findNodeById(schema, info.parent.id);
+  }
+  return null;
+}
+
+// For logic nodes that render no wrapper div, find the nearest rendered DOM element
+// that can stand in as a bounding-rect proxy for insertion-line calculations.
+function findLogicNodeBoundsEl(node: SchemaNode, container: HTMLElement): HTMLElement | null {
+  if (node.type === '$if') {
+    for (const branch of [node.props?.then, node.props?.else] as (SchemaNode | undefined)[]) {
+      if (branch?.id) {
+        const el = container.querySelector(`[data-we-node-id="${branch.id}"]`) as HTMLElement | null;
+        if (el) return (el.firstElementChild as HTMLElement) ?? el;
+      }
+    }
+  }
+  if (node.type === '$each') {
+    const templateChild = (node.children as SchemaNode[] | undefined)?.[0];
+    if (templateChild?.id) {
+      const el = container.querySelector(`[data-we-node-id="${templateChild.id}"]`) as HTMLElement | null;
+      if (el) return (el.firstElementChild as HTMLElement) ?? el;
+    }
+  }
+  return null;
+}
+
 // Collect bounding rects for every DOM element sharing a given data-we-node-id.
 function getAllInstanceRects(nodeId: string): DOMRect[] {
   const rects: DOMRect[] = [];
@@ -226,7 +281,21 @@ function VisualEditorLayer() {
   const [isResizing, setIsResizing] = createSignal(false);
   const [liveTooltip, setLiveTooltip] = createSignal<string | null>(null);
 
-  // Mutable drag state — plain vars, not signals (no re-render during drag)
+  // D&D signals (drive re-renders for visual feedback)
+  const [isDragging, setIsDragging] = createSignal(false);
+  const [dragDropTargetRelRect, setDragDropTargetRelRect] = createSignal<HighlightRect | null>(null);
+  const [dragInsertionLine, setDragInsertionLine] = createSignal<{
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  } | null>(null);
+  // $each ancestor of the current drop target (null when target is not inside a $each)
+  const [, setDndEachScopeId] = createSignal<string | null>(null);
+  // Raw DOMRects for all rendered instances of the $each template child
+  const [dndEachScopeRects, setDndEachScopeRects] = createSignal<DOMRect[]>([]);
+
+  // Mutable resize state — plain vars, not signals (no re-render during drag)
   let dragHandle: HandleId | null = null;
   let dragNodeId: string | null = null;
   let dragEl: HTMLElement | null = null;
@@ -238,6 +307,18 @@ function VisualEditorLayer() {
   let dragSpaceTokens: Array<{ token: string; px: number }> = [];
   let dragSizeTokens: Array<{ token: string; px: number }> = [];
 
+  // Mutable D&D state — plain vars, not signals
+  let dndPendingNodeId: string | null = null;
+  let dndPendingStartX = 0;
+  let dndPendingStartY = 0;
+  let dndHoldTimer: ReturnType<typeof setTimeout> | null = null;
+  let dndNodeId: string | null = null;
+  let dndSourceParentId: string | null = null;
+  let dndSourceArrayKey: 'children' | 'routes' = 'children';
+  let dndDropTargetId: string | null = null;
+  let dndInsertBeforeId: string | null = null;
+  let dndGhostEl: HTMLDivElement | null = null;
+
   const selectedInfo = createMemo(() => {
     const id = visualEditor.selectedId();
     if (!id) return null;
@@ -245,6 +326,12 @@ function VisualEditorLayer() {
   });
 
   const isEachParentSelected = createMemo(() => selectedInfo()?.node.type === '$each');
+
+  const canDeleteSelected = createMemo(() => {
+    const info = selectedInfo();
+    if (!info || !info.parent) return false;
+    return info.key === 'children' || info.key === 'routes';
+  });
 
   const snapAvailable = createMemo(() => {
     const nodeType = selectedInfo()?.node.type;
@@ -323,6 +410,35 @@ function VisualEditorLayer() {
   const eachContainerRelRect = createMemo((): HighlightRect | null => {
     if (!isEachParentSelected()) return null;
     const rects = instanceRects();
+    if (rects.length === 0 || !overlayRef) return null;
+    let top = Infinity,
+      left = Infinity,
+      right = -Infinity,
+      bottom = -Infinity;
+    for (const r of rects) {
+      top = Math.min(top, r.top);
+      left = Math.min(left, r.left);
+      right = Math.max(right, r.right);
+      bottom = Math.max(bottom, r.bottom);
+    }
+    const base = overlayRef.getBoundingClientRect();
+    return {
+      top: `${top - base.top - EACH_CONTAINER_PADDING}px`,
+      left: `${left - base.left - EACH_CONTAINER_PADDING}px`,
+      width: `${right - left + EACH_CONTAINER_PADDING * 2}px`,
+      height: `${bottom - top + EACH_CONTAINER_PADDING * 2}px`,
+    };
+  });
+
+  // D&D: relative rects for the $each scope highlight shown while dragging into a $each template
+  const dndEachScopeInstanceRelRects = createMemo(() =>
+    dndEachScopeRects()
+      .map(toRelative)
+      .filter((r): r is HighlightRect => r !== null),
+  );
+
+  const dndEachScopeContainerRelRect = createMemo((): HighlightRect | null => {
+    const rects = dndEachScopeRects();
     if (rects.length === 0 || !overlayRef) return null;
     let top = Infinity,
       left = Infinity,
@@ -521,6 +637,330 @@ function VisualEditorLayer() {
     document.addEventListener('keydown', handleResizeKeyDown);
   }
 
+  // ---- Drag and drop ----
+
+  function cleanupDrag() {
+    if (dndGhostEl) {
+      document.body.removeChild(dndGhostEl);
+      dndGhostEl = null;
+    }
+    if (dndHoldTimer !== null) {
+      clearTimeout(dndHoldTimer);
+      dndHoldTimer = null;
+    }
+    document.removeEventListener('pointerup', handleDndPointerUp);
+    document.removeEventListener('keydown', handleDndKeyDown);
+    document.body.style.cursor = '';
+    dndPendingNodeId = null;
+    dndNodeId = null;
+    dndSourceParentId = null;
+    dndDropTargetId = null;
+    dndInsertBeforeId = null;
+    setIsDragging(false);
+    setDragDropTargetRelRect(null);
+    setDragInsertionLine(null);
+    setDndEachScopeId(null);
+    setDndEachScopeRects([]);
+  }
+
+  onCleanup(cleanupDrag);
+
+  function startDrag(nodeId: string) {
+    const schema = templateStore.currentTemplate;
+    const found = findNodeById(schema, nodeId);
+    if (!found || !found.parent) {
+      cleanupDrag();
+      return;
+    }
+    if (found.key !== 'children' && found.key !== 'routes') {
+      cleanupDrag();
+      return;
+    }
+    if (isLogicType(found.parent.type)) {
+      cleanupDrag();
+      return;
+    }
+
+    dndNodeId = nodeId;
+    const pid = found.parent.id;
+    dndSourceParentId = pid !== undefined ? pid : '';
+    dndSourceArrayKey = found.key as 'children' | 'routes';
+
+    const el = getNodeBoundsElement(nodeId);
+    const rect = el?.getBoundingClientRect();
+
+    const ghost = document.createElement('div');
+    Object.assign(ghost.style, {
+      position: 'fixed',
+      'pointer-events': 'none',
+      'z-index': '9999',
+      background: 'rgba(59, 130, 246, 0.12)',
+      border: '2px solid #3b82f6',
+      'border-radius': '4px',
+      'box-sizing': 'border-box',
+      display: 'flex',
+      'align-items': 'center',
+      'justify-content': 'center',
+      'font-family': 'system-ui, sans-serif',
+      'font-size': '11px',
+      color: '#3b82f6',
+      'user-select': 'none',
+      width: rect ? `${rect.width}px` : '80px',
+      height: rect ? `${rect.height}px` : '40px',
+      'min-width': '60px',
+      'min-height': '24px',
+      left: `${dndPendingStartX + 12}px`,
+      top: `${dndPendingStartY - 20}px`,
+    });
+    ghost.textContent = found.node.type ?? '';
+    document.body.appendChild(ghost);
+    dndGhostEl = ghost;
+
+    document.body.style.cursor = 'grabbing';
+    setIsDragging(true);
+  }
+
+  function updateDndDropTarget(x: number, y: number) {
+    if (!overlayRef) return;
+    overlayRef.style.pointerEvents = 'none';
+    const under = document.elementFromPoint(x, y);
+    overlayRef.style.pointerEvents = 'auto';
+
+    if (!under) {
+      dndDropTargetId = null;
+      dndInsertBeforeId = null;
+      setDragDropTargetRelRect(null);
+      setDragInsertionLine(null);
+      setDndEachScopeId(null);
+      setDndEachScopeRects([]);
+      return;
+    }
+
+    const schema = templateStore.currentTemplate;
+
+    // Walk up DOM to find the nearest valid container
+    let el: Element | null = under.closest('[data-we-node-id]');
+    let targetId: string | null = null;
+    let targetEl: HTMLElement | null = null;
+    while (el) {
+      const id = el.getAttribute('data-we-node-id');
+      if (id && id !== dndNodeId) {
+        const found = findNodeById(schema, id);
+        if (found && isContainerNode(found.node)) {
+          // Reject if container is a descendant of the dragged node
+          const dragged = findNodeById(schema, dndNodeId!);
+          if (!dragged || !findNodeById(dragged.node, id)) {
+            targetId = id;
+            targetEl = el as HTMLElement;
+            break;
+          }
+        }
+      }
+      el = el.parentElement?.closest('[data-we-node-id]') ?? null;
+    }
+
+    if (!targetId) {
+      dndDropTargetId = null;
+      dndInsertBeforeId = null;
+      setDragDropTargetRelRect(null);
+      setDragInsertionLine(null);
+      setDndEachScopeId(null);
+      setDndEachScopeRects([]);
+      return;
+    }
+
+    dndDropTargetId = targetId;
+    // Use the actual hovered DOM element for accurate bounds — handles $each multi-instances correctly
+    const containerEl = targetEl ? ((targetEl.firstElementChild as HTMLElement) ?? targetEl) : null;
+    if (!containerEl) return;
+
+    setDragDropTargetRelRect(toRelative(containerEl.getBoundingClientRect()));
+
+    // Use findEachContextFromElement (schema-based) to locate the $each ancestor.
+    // A DOM walk won't find it because $each renders no wrapper element with data-we-node-id.
+    const eachCtxForDrop = findEachContextFromElement(targetEl, schema);
+    setDndEachScopeId(eachCtxForDrop?.eachId ?? null);
+    setDndEachScopeRects(eachCtxForDrop ? getAllInstanceRects(eachCtxForDrop.templateChildId) : []);
+
+    const containerNode = findNodeById(schema, targetId)!.node;
+    const isRow = containerNode.type === 'Row' || containerNode.type === 'we-button';
+
+    const childNodes = ((containerNode.children ?? []) as SchemaNode[]).filter(
+      (c): c is SchemaNode => typeof c === 'object' && c !== null && !!c.id && c.id !== dndNodeId,
+    );
+
+    const childRects: Array<{ id: string; rect: DOMRect }> = [];
+    for (const child of childNodes) {
+      if (!child.id) continue;
+      // Query within targetEl so we get the child of the specific $each instance being hovered
+      const childWrapper = targetEl!.querySelector(`[data-we-node-id="${child.id}"]`) as HTMLElement | null;
+      // Logic nodes ($if, $each, etc.) have no wrapper div — fall back to their rendered content's bounds
+      const childBoundsEl = childWrapper
+        ? ((childWrapper.firstElementChild as HTMLElement) ?? childWrapper)
+        : isLogicType(child.type)
+          ? findLogicNodeBoundsEl(child, targetEl!)
+          : null;
+      if (childBoundsEl) childRects.push({ id: child.id, rect: childBoundsEl.getBoundingClientRect() });
+    }
+
+    const base = overlayRef.getBoundingClientRect();
+    const containerRect = containerEl.getBoundingClientRect();
+
+    if (childRects.length === 0) {
+      dndInsertBeforeId = null;
+      setDragInsertionLine({
+        x: containerRect.left - base.left + 4,
+        y: containerRect.top - base.top + containerRect.height / 2 - 1,
+        w: containerRect.width - 8,
+        h: 2,
+      });
+      return;
+    }
+
+    // Find insertion point
+    let insertBeforeId: string | null = null;
+    if (isRow) {
+      for (const { id, rect } of childRects) {
+        if (x < rect.left + rect.width / 2) {
+          insertBeforeId = id;
+          break;
+        }
+      }
+    } else {
+      for (const { id, rect } of childRects) {
+        if (y < rect.top + rect.height / 2) {
+          insertBeforeId = id;
+          break;
+        }
+      }
+    }
+    dndInsertBeforeId = insertBeforeId;
+
+    // Compute line position
+    let lx: number, ly: number, lw: number, lh: number;
+    if (isRow) {
+      lh = containerRect.height;
+      lw = 2;
+      ly = containerRect.top - base.top;
+      if (!insertBeforeId) {
+        lx = childRects[childRects.length - 1].rect.right - base.left;
+      } else {
+        const idx = childRects.findIndex((c) => c.id === insertBeforeId);
+        lx =
+          idx === 0
+            ? childRects[0].rect.left - base.left
+            : (childRects[idx - 1].rect.right + childRects[idx].rect.left) / 2 - base.left;
+      }
+    } else {
+      lw = containerRect.width;
+      lh = 2;
+      lx = containerRect.left - base.left;
+      if (!insertBeforeId) {
+        ly = childRects[childRects.length - 1].rect.bottom - base.top;
+      } else {
+        const idx = childRects.findIndex((c) => c.id === insertBeforeId);
+        ly =
+          idx === 0
+            ? childRects[0].rect.top - base.top
+            : (childRects[idx - 1].rect.bottom + childRects[idx].rect.top) / 2 - base.top;
+      }
+    }
+    setDragInsertionLine({ x: lx, y: ly, w: lw, h: lh });
+  }
+
+  function commitDrop() {
+    if (!dndNodeId || !dndDropTargetId || dndSourceParentId === null) {
+      cleanupDrag();
+      return;
+    }
+
+    try {
+      const clone = deepClone(templateStore.currentTemplate) as TemplateSchema;
+      const found = findNodeById(clone as SchemaNode, dndNodeId);
+      if (!found) {
+        cleanupDrag();
+        return;
+      }
+      const nodeToMove = found.node;
+
+      const removeErr = removeChild(clone as SchemaNode, dndSourceParentId, dndSourceArrayKey, dndNodeId);
+      if (removeErr) {
+        console.error('[DnD]', removeErr.error);
+        cleanupDrag();
+        return;
+      }
+
+      const position = dndInsertBeforeId ? { before: dndInsertBeforeId } : undefined;
+      const insertErr = insertChild(clone as SchemaNode, dndDropTargetId, 'children', nodeToMove, position);
+      if (insertErr) {
+        console.error('[DnD]', insertErr.error);
+        cleanupDrag();
+        return;
+      }
+
+      aiStore.pushSnapshot();
+      templateStore.updateTemplate(clone);
+      templateStore.persistCurrentTemplate();
+    } catch (err) {
+      console.error('[DnD] commit error:', err);
+    }
+
+    cleanupDrag();
+  }
+
+  function handleDndPointerUp() {
+    if (isDragging()) {
+      commitDrop();
+    } else {
+      cleanupDrag();
+    }
+  }
+
+  function handleDndKeyDown(e: KeyboardEvent) {
+    if (e.key === 'Escape') cleanupDrag();
+  }
+
+  // ---- Delete selected node ----
+
+  function deleteSelectedNode() {
+    const nodeId = visualEditor.selectedId();
+    if (!nodeId) return;
+    try {
+      const clone = deepClone(templateStore.currentTemplate) as TemplateSchema;
+      const found = findNodeById(clone as SchemaNode, nodeId);
+      if (!found || !found.parent) return;
+      if (found.key !== 'children' && found.key !== 'routes') return;
+      const arrayKey = found.key as 'children' | 'routes';
+
+      const removeErr = removeChild(clone as SchemaNode, found.parent.id ?? '', arrayKey, nodeId);
+      if (removeErr) {
+        console.error('[Delete]', removeErr.error);
+        return;
+      }
+
+      aiStore.pushSnapshot();
+      templateStore.updateTemplate(clone);
+      templateStore.persistCurrentTemplate();
+      visualEditor.onSelect(null);
+      setEnteredEachParentId(null);
+    } catch (e) {
+      console.error('[Delete] error:', e);
+    }
+  }
+
+  function handleGlobalKeyDown(e: KeyboardEvent) {
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+    if (isResizing() || isDragging()) return;
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+    if (!canDeleteSelected()) return;
+    e.preventDefault();
+    deleteSelectedNode();
+  }
+
+  document.addEventListener('keydown', handleGlobalKeyDown);
+  onCleanup(() => document.removeEventListener('keydown', handleGlobalKeyDown));
+
   // ---- Pointer event handlers for selection/hover ----
 
   let lastHoveredId: string | null = null;
@@ -528,6 +968,32 @@ function VisualEditorLayer() {
   function handlePointerMove(e: PointerEvent) {
     if (isResizing()) return;
     if (!overlayRef) return;
+
+    // D&D active: move ghost + update drop target
+    if (isDragging()) {
+      if (dndGhostEl) {
+        dndGhostEl.style.left = `${e.clientX + 12}px`;
+        dndGhostEl.style.top = `${e.clientY - 20}px`;
+      }
+      updateDndDropTarget(e.clientX, e.clientY);
+      return;
+    }
+
+    // Pending drag: check movement threshold
+    if (dndPendingNodeId !== null) {
+      const dx = e.clientX - dndPendingStartX;
+      const dy = e.clientY - dndPendingStartY;
+      if (dx * dx + dy * dy >= DND_MOVE_THRESHOLD * DND_MOVE_THRESHOLD) {
+        if (dndHoldTimer !== null) {
+          clearTimeout(dndHoldTimer);
+          dndHoldTimer = null;
+        }
+        startDrag(dndPendingNodeId);
+        return;
+      }
+    }
+
+    // Normal hover
     overlayRef.style.pointerEvents = 'none';
     const under = document.elementFromPoint(e.clientX, e.clientY);
     overlayRef.style.pointerEvents = 'auto';
@@ -591,10 +1057,24 @@ function VisualEditorLayer() {
     }
 
     visualEditor.onSelect(clickedNodeId);
+
+    // D&D: find the nearest draggable ancestor (may promote e.g. $if.then content → drag the $if)
+    const dragTargetId = findDragTargetId(templateStore.currentTemplate, clickedNodeId);
+    if (dragTargetId) {
+      dndPendingNodeId = dragTargetId;
+      dndPendingStartX = e.clientX;
+      dndPendingStartY = e.clientY;
+      dndHoldTimer = setTimeout(() => {
+        dndHoldTimer = null;
+        if (dndPendingNodeId) startDrag(dndPendingNodeId);
+      }, DND_HOLD_MS);
+      document.addEventListener('pointerup', handleDndPointerUp);
+      document.addEventListener('keydown', handleDndKeyDown);
+    }
   }
 
   function handlePointerLeave() {
-    if (isResizing()) return;
+    if (isResizing() || isDragging()) return;
     visualEditor.onHover(null);
     setHoverRect(null);
     setHoveredType(undefined);
@@ -606,9 +1086,9 @@ function VisualEditorLayer() {
   const isHoverSameAsSelect = () =>
     visualEditor.hoveredId() !== null && visualEditor.hoveredId() === visualEditor.selectedId();
 
-  // Show resize handles for selected non-logic nodes only
+  // Show resize handles for selected non-logic nodes only, not during drag
   const showResizeHandles = createMemo(
-    () => !!selectRelRect() && !isEachParentSelected() && !isLogicType(selectedInfo()?.node.type),
+    () => !!selectRelRect() && !isEachParentSelected() && !isLogicType(selectedInfo()?.node.type) && !isDragging(),
   );
 
   return (
@@ -652,12 +1132,68 @@ function VisualEditorLayer() {
         <For each={instanceRelRects()}>{(rect) => <NodeHighlight rect={rect} style="visual" selected />}</For>
       </Show>
 
-      {/* Normal single-node selection (no $each context) */}
-      <Show when={selectRelRect() && !isEachParentSelected() && instanceRelRects().length === 0}>
+      {/* Normal single-node selection (no $each context) — hidden during drag */}
+      <Show when={selectRelRect() && !isEachParentSelected() && instanceRelRects().length === 0 && !isDragging()}>
         <NodeHighlight
           rect={selectRelRect()!}
           style={isLogicType(selectedInfo()?.node.type) ? 'logic' : 'visual'}
           selected
+        />
+      </Show>
+
+      {/* D&D: receded placeholder at the dragged node's original position */}
+      <Show when={isDragging() && selectRelRect()}>
+        <div
+          style={{
+            position: 'absolute',
+            top: selectRelRect()!.top,
+            left: selectRelRect()!.left,
+            width: selectRelRect()!.width,
+            height: selectRelRect()!.height,
+            background: 'rgba(59, 130, 246, 0.05)',
+            border: '1px dashed rgba(59, 130, 246, 0.3)',
+            'border-radius': '2px',
+            'pointer-events': 'none',
+            'box-sizing': 'border-box',
+          }}
+        />
+      </Show>
+
+      {/* D&D: $each scope — amber ring around all iterations when dropping into a $each template */}
+      <Show when={isDragging() && dndEachScopeContainerRelRect()}>
+        <NodeHighlight rect={dndEachScopeContainerRelRect()!} style="each-parent" selected />
+      </Show>
+      <Show when={isDragging() && dndEachScopeInstanceRelRects().length > 0}>
+        <For each={dndEachScopeInstanceRelRects()}>
+          {(rect) => <NodeHighlight rect={rect} style="each-instance" selected={false} />}
+        </For>
+      </Show>
+
+      {/* D&D: faint tint + dashed border on the current drop target container */}
+      <Show when={isDragging() && dragDropTargetRelRect()}>
+        <div
+          style={{
+            position: 'absolute',
+            top: dragDropTargetRelRect()!.top,
+            left: dragDropTargetRelRect()!.left,
+            width: dragDropTargetRelRect()!.width,
+            height: dragDropTargetRelRect()!.height,
+            background: 'rgba(59, 130, 246, 0.07)',
+            border: '1px dashed rgba(59, 130, 246, 0.5)',
+            'border-radius': '3px',
+            'pointer-events': 'none',
+            'box-sizing': 'border-box',
+          }}
+        />
+      </Show>
+
+      {/* D&D: insertion line with terminal dots */}
+      <Show when={isDragging() && dragInsertionLine()}>
+        <InsertionLine
+          x={dragInsertionLine()!.x}
+          y={dragInsertionLine()!.y}
+          w={dragInsertionLine()!.w}
+          h={dragInsertionLine()!.h}
         />
       </Show>
 
@@ -671,6 +1207,11 @@ function VisualEditorLayer() {
           onSnapToggle={() => setSnapEnabled((v) => !v)}
           onHandlePointerDown={handleResizePointerDown}
         />
+      </Show>
+
+      {/* Delete button — shown for any deletable selected node, including logic/$each nodes */}
+      <Show when={selectRelRect() && canDeleteSelected() && !isDragging() && !isResizing()}>
+        <DeleteButton rect={selectRelRect()!} onDelete={deleteSelectedNode} />
       </Show>
     </div>
   );
@@ -800,6 +1341,92 @@ function ResizeHandles(props: ResizeHandlesProps) {
           {props.liveTooltip}
         </div>
       </Show>
+    </>
+  );
+}
+
+// -----------------------------------------------------------------------
+// DeleteButton — trash icon pinned to the top-right of the selection rect
+// -----------------------------------------------------------------------
+
+function DeleteButton(props: { rect: HighlightRect; onDelete: () => void }) {
+  const topPx = () => parseFloat(props.rect.top);
+  const leftPx = () => parseFloat(props.rect.left);
+  const widthPx = () => parseFloat(props.rect.width);
+
+  const pillTop = () => `${Math.max(2, topPx() - 28)}px`;
+  const pillLeft = () => `${leftPx() + widthPx()}px`;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: pillTop(),
+        left: pillLeft(),
+        transform: 'translateX(-100%)',
+        'pointer-events': 'auto',
+        'z-index': 1,
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <we-button variant="danger" size="xs" onClick={() => props.onDelete()}>
+        <we-icon name="trash" />
+      </we-button>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------
+// InsertionLine — 2px line with circular terminal dots (Figma-style cursor)
+// -----------------------------------------------------------------------
+
+function InsertionLine(props: { x: number; y: number; w: number; h: number }) {
+  const isHorizontal = () => props.w > props.h;
+  const DOT = 8;
+  const r = DOT / 2;
+
+  const startDotTop = () => (isHorizontal() ? props.y + props.h / 2 - r : props.y - r);
+  const startDotLeft = () => (isHorizontal() ? props.x - r : props.x + props.w / 2 - r);
+  const endDotTop = () => (isHorizontal() ? props.y + props.h / 2 - r : props.y + props.h - r);
+  const endDotLeft = () => (isHorizontal() ? props.x + props.w - r : props.x + props.w / 2 - r);
+
+  return (
+    <>
+      <div
+        style={{
+          position: 'absolute',
+          top: `${props.y}px`,
+          left: `${props.x}px`,
+          width: `${props.w}px`,
+          height: `${props.h}px`,
+          background: '#3b82f6',
+          'pointer-events': 'none',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          top: `${startDotTop()}px`,
+          left: `${startDotLeft()}px`,
+          width: `${DOT}px`,
+          height: `${DOT}px`,
+          background: '#3b82f6',
+          'border-radius': '50%',
+          'pointer-events': 'none',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          top: `${endDotTop()}px`,
+          left: `${endDotLeft()}px`,
+          width: `${DOT}px`,
+          height: `${DOT}px`,
+          background: '#3b82f6',
+          'border-radius': '50%',
+          'pointer-events': 'none',
+        }}
+      />
     </>
   );
 }
