@@ -20,9 +20,19 @@ const KEYFRAMES_CSS = `
 // above the host's own background but below all real in-flow children (CSS painting
 // order: a stacking context with negative z-index sits above the host's own background/
 // border but below non-positioned in-flow descendants) — no wrapper markup needed.
+//
+// isolation: isolate is required, not optional: position:relative alone does NOT
+// establish a new stacking context (only position + an explicit z-index, or
+// isolation, or a few other properties do). Without it, the ::before's z-index: -1
+// isn't scoped to "behind this element's own content" — it escapes to compete in
+// whatever ancestor stacking context actually exists, which can land it behind a large
+// opaque ancestor background several levels up, making it invisible. isolation:isolate
+// creates a local stacking context with no other visual side effects (unlike z-index,
+// which needs a position value; unlike opacity<1, which visually changes rendering).
 const BG_IMAGE_CSS = `
 [data-we-bg-image] {
   position: relative;
+  isolation: isolate;
 }
 [data-we-bg-image]::before {
   content: '';

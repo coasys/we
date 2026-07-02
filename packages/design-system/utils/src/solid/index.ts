@@ -12,9 +12,11 @@ import {
   getPaddingValues,
   getRadiusValues,
   HOST_LAYOUT_SPECS,
+  isBgImageFaded,
   mapFlexAxes,
   parseBorder,
   type PropSpec,
+  resolveBgImageUrl,
   resolveFontFamily,
   resolveFontWeight,
   resolveLineHeight,
@@ -52,16 +54,33 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
       : tokenVar('color', props.bg);
   }
   if (props.bgImage) {
-    // Rendered via the DS interop stylesheet's [data-we-bg-image]::before overlay (see
-    // dsInterop.css) rather than a plain background-image here, so bgImageOpacity can fade
-    // the image independently of the element's own content/opacity — CSS has no way to
-    // scope `opacity` to just one background layer, so the image needs its own paint layer.
-    style['--we-bg-image-composite'] = computeBgImageComposite(props);
-    style['--we-bg-image-fit'] = props.bgFit ?? 'cover';
-    style['--we-bg-image-position'] = props.bgPosition ?? 'center';
-    // The pseudo-element overlay is absolutely positioned against this host — only default
-    // to relative when the caller hasn't already claimed `position` for something else.
-    if (!props.position) style.position = 'relative';
+    if (isBgImageFaded(props)) {
+      // Faded — rendered via the DS interop stylesheet's [data-we-bg-image]::before
+      // overlay (see dsInterop.ts) rather than a plain background-image here, so
+      // bgImageOpacity can fade the image independently of the element's own content/
+      // opacity — CSS has no way to scope `opacity` to just one background layer, so
+      // the image needs its own paint layer. Custom properties are the only way to get
+      // a per-instance dynamic value into a pseudo-element (inline styles can't target
+      // ::before directly). computeBgImageComposite resolves the URL through
+      // resolveBgImageUrl internally, so this is safe for large data URIs too — only
+      // paid for (the extra paint layer + indirection) when fading is actually requested.
+      style['--we-bg-image-composite'] = computeBgImageComposite(props);
+      style['--we-bg-image-fit'] = props.bgFit ?? 'cover';
+      style['--we-bg-image-position'] = props.bgPosition ?? 'center';
+      // The pseudo-element overlay is absolutely positioned against this host — only
+      // default to relative when the caller hasn't already claimed `position`.
+      if (!props.position) style.position = 'relative';
+    } else {
+      // No fading — a plain background-image directly on the host, same as before
+      // bgImageOpacity existed. No custom-property indirection, so no z-index/stacking-
+      // context concerns from the pseudo-element overlay. Still resolved through
+      // resolveBgImageUrl (data URI -> short object URL) — a large base64 payload
+      // bloats every style recompute even as a plain inline style, not just as a var().
+      style['background-image'] = `url("${resolveBgImageUrl(props.bgImage)}")`;
+      style['background-size'] = props.bgFit ?? 'cover';
+      style['background-position'] = props.bgPosition ?? 'center';
+      style['background-repeat'] = 'no-repeat';
+    }
   }
   if (props.color) style.color = tokenVar('color', props.color);
 
@@ -141,17 +160,21 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
 /**
  * Opt-in attribute for the DS interop stylesheet's [data-we-bg-image]::before overlay.
  * Gated on an explicit attribute (rather than a bare pseudo-element on every layout
- * primitive) so elements that never use bgImage don't pay for an extra paint layer.
+ * primitive) so elements that never use bgImage don't pay for an extra paint layer — and
+ * specifically on the faded case, since the unfaded case renders via a plain
+ * background-image on the host (see buildLayoutStyles) and never needs the overlay at all.
  */
-export function getBgImageAttrs(props: Pick<LayoutProps, 'bgImage'>): Record<string, string | undefined> {
-  return { 'data-we-bg-image': props.bgImage ? '' : undefined };
+export function getBgImageAttrs(
+  props: Pick<LayoutProps, 'bgImage' | 'bgImageOpacity'>,
+): Record<string, string | undefined> {
+  return { 'data-we-bg-image': isBgImageFaded(props) ? '' : undefined };
 }
 
 // ────────────────────────────────────────────
 // State props (hover, active, focus) for Solid layout components
 //
 // Rendered via native :hover/:active/:focus-within in the DS interop stylesheet (see
-// dsInterop.css) instead of JS-tracked signals + mouseenter/mouseleave/focus/blur
+// app-framework's dsInterop.ts) instead of JS-tracked signals + mouseenter/mouseleave/blur
 // listeners — the browser handles the state transition for free, and it composes
 // correctly with every DesignSystemProps field (not a hand-picked subset), because it's
 // built from the exact same PropSpec tables Lit's we-* primitives already use for their

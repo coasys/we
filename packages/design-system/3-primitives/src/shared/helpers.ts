@@ -11,6 +11,7 @@ import {
   getPaddingValues,
   getRadiusValues,
   HOST_LAYOUT_SPECS as HOST_LAYOUT,
+  isBgImageFaded,
   joinDeclsCSS as joinDecls,
   joinStateDeclsCSS as joinStateDecls,
   mapFlexAxes,
@@ -18,6 +19,7 @@ import {
   paddingKeys,
   parseBorder,
   radiusKeys,
+  resolveBgImageUrl,
   resolveFontFamily,
   resolveFontWeight,
   resolveLineHeight,
@@ -236,14 +238,28 @@ function updateCustomVars(
   setProperty(el, `${prefix}opacity`, props.opacity?.toString());
   syncBorderVars(el, prefix, props);
 
-  // bg-image — rendered via a ::before overlay (see getStaticDSStyles), not a plain
-  // background-image, so bgImageOpacity can fade the image independently of the
-  // element's own content. Not state-varied (no {state}-bg-image-* writes) — swapping
-  // the image itself on hover/active/focus is out of scope, unlike the rest of this fn.
+  // bg-image — faded images render via a ::before overlay (see getStaticDSStyles),
+  // since bgImageOpacity needs the image on its own paint layer, independent of the
+  // element's own content — CSS can't scope opacity to one background layer. The
+  // unfaded (common) case bypasses that entirely and sets a plain background-image
+  // directly on [part='base'] instead — no pseudo-element, no custom-property
+  // indirection, same as before bgImageOpacity existed. Both paths resolve the URL
+  // through resolveBgImageUrl (data URI -> short-lived object URL): a large base64
+  // payload embedded as a CSS custom property value hits a real, empirically-confirmed
+  // length ceiling in Chromium (silently dropped, no error) — resolveBgImageUrl keeps
+  // the actual CSS value fixed-length regardless of the source image's size.
+  // Not state-varied (no {state}-bg-image-* writes) — swapping the image itself on
+  // hover/active/focus is out of scope, unlike the rest of this fn.
   if (!state) {
-    setProperty(el, `${prefix}bg-image-composite`, computeBgImageComposite(props));
-    setProperty(el, `${prefix}bg-image-fit`, props.bgFit ?? 'cover');
-    setProperty(el, `${prefix}bg-image-position`, props.bgPosition ?? 'center');
+    const isFaded = isBgImageFaded(props);
+    setProperty(el, `${prefix}bg-image-composite`, isFaded ? computeBgImageComposite(props) : undefined);
+    setProperty(
+      el,
+      `${prefix}bg-image`,
+      props.bgImage && !isFaded ? `url("${resolveBgImageUrl(props.bgImage)}")` : undefined,
+    );
+    setProperty(el, `${prefix}bg-image-fit`, props.bgImage ? (props.bgFit ?? 'cover') : undefined);
+    setProperty(el, `${prefix}bg-image-position`, props.bgImage ? (props.bgPosition ?? 'center') : undefined);
   }
 
   setProperty(el, `${prefix}shadow`, props.shadow ? tokenVar('shadow', props.shadow) : undefined);
@@ -432,14 +448,27 @@ export function getStaticDSStyles(
     styles.push(`[part='base'] { ${baseLines.join('\n    ')} }`);
   }
 
-  // ── bg-image overlay ──
-  // Gated on the `bgimage` reflected attribute (Lit's default attribute-name conversion
-  // for `bgImage` — lowercased, no dash) so components that never set bgImage don't pay
-  // for an extra paint layer. Faking per-layer opacity the same way as the Solid side
-  // (see computeBgImageComposite) — CSS has no way to scope `opacity` to one background.
+  // ── bg-image ──
+  // Unfaded case: a plain background-image directly on [part='base'] — safe to declare
+  // unconditionally since it has an explicit `none` fallback (see the "always-emitted
+  // property needs a static fallback" rule this file follows throughout).
+  //
+  // Faded case (bgImageOpacity set): needs its own paint layer, so it renders via a
+  // ::before overlay instead (CSS has no way to scope `opacity` to one background —
+  // see computeBgImageComposite). Gated on the `bgimage` reflected attribute (Lit's
+  // default attribute-name conversion for `bgImage` — lowercased, no dash) so
+  // components that never set bgImage don't pay for an extra paint layer.
+  //
+  // isolation: isolate is required, not optional: position:relative alone does not
+  // establish a new stacking context, so the ::before's z-index:-1 would otherwise
+  // escape to compete in whatever ancestor stacking context actually exists instead of
+  // staying scoped to "behind this element's own content" — isolation:isolate fixes
+  // that with no other visual side effects.
   if (l.has('visual')) {
     styles.push(
-      `:host([bgimage]) [part='base'] { position: relative; }\n` +
+      `[part='base'] { background-image: var(${p}bg-image, none); background-size: var(${p}bg-image-fit, cover); ` +
+        `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; }\n` +
+        `:host([bgimage]) [part='base'] { position: relative; isolation: isolate; }\n` +
         `:host([bgimage]) [part='base']::before { content: ''; position: absolute; inset: 0; z-index: -1; ` +
         `border-radius: inherit; pointer-events: none; ` +
         `background-image: var(${p}bg-image-composite); background-size: var(${p}bg-image-fit, cover); ` +

@@ -1423,16 +1423,19 @@ function BgImagePicker(props: {
     'background-color': 'var(--we-color-neutral-100)',
   });
 
-  // Data URIs (uploaded/browsed images) can run to hundreds of KB of unbroken base64 —
-  // rendering that raw would blow out the row's layout (no whitespace for the browser to
-  // wrap on, and flex/grid items default to min-width:auto so `truncate` can't clip it).
-  // Show a short human label instead; only real external URLs get shown verbatim.
+  // Long unbroken strings (data URIs, or just long URLs) can blow out an ancestor's
+  // layout regardless of truncate/minWidth on this text node — flex AND grid items
+  // both default to min-width:auto (intrinsic content sizing), and this trigger sits
+  // inside PropRow's Grid, so a fix at this element alone doesn't reliably contain it.
+  // Simplest robust fix: never let the label string itself be long, independent of
+  // whatever CSS truncation is (or isn't) correctly threaded through every ancestor.
+  const MAX_TRIGGER_LABEL_LENGTH = 40;
   const triggerLabel = () => {
     const v = props.value;
     if (!v) return '—';
     const match = v.match(/^data:([^;]+);/);
     if (match) return `Uploaded image (${match[1].replace('image/', '')})`;
-    return v;
+    return v.length > MAX_TRIGGER_LABEL_LENGTH ? `${v.slice(0, MAX_TRIGGER_LABEL_LENGTH)}…` : v;
   };
 
   return (
@@ -1949,8 +1952,13 @@ function PropRow(props: {
   };
 
   return (
-    <Grid template="1fr 1.2fr" gap="200" ay="center" px="400" py="100">
-      <we-text title={props.propKey} fontSize="200" fontWeight="500" color="neutral-600" truncate>
+    // minmax(0, ...) — not bare 1fr/1.2fr — is required for the tracks to actually
+    // shrink below their content's intrinsic min-content size. Grid tracks default to
+    // min-width:auto just like flex items; a bare `1fr` still won't yield to a long
+    // unbroken string (a URL, a data URI) in the input column, which pushes the whole
+    // row wider than the panel and shoves the prop-key label out of view.
+    <Grid template="minmax(0, 1fr) minmax(0, 1.2fr)" gap="200" ay="center" px="400" py="100">
+      <we-text title={props.propKey} fontSize="200" fontWeight="500" color="neutral-600" truncate minWidth="0">
         {props.propKey}
       </we-text>
       {renderInput()}
