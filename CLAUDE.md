@@ -1846,12 +1846,24 @@ strings target/release/ad4m-executor | grep "your log string"
 ```
 
 **After modifying `@coasys/ad4m` TypeScript (e.g. `core/src/model/Ad4mModel.ts`):**
-```sh
-cd ad4m/core && pnpm run build        # rebuild the lib/ bundle
-cd ../we && pnpm install && pnpm build  # pick up the new local override
-```
-The WE monorepo uses `"@coasys/ad4m": "file:../ad4m/core"` as a pnpm override, so
-it reads from `ad4m/core/lib/` — the source `.ts` files are never used directly.
+
+The normal pattern is that `we/package.json`'s pnpm `overrides` pins `@coasys/ad4m` to a
+**published npm tag**, not a local `file:` link. Under that normal pattern, a local
+`cd ad4m/core && pnpm run build` does NOT get picked up by WE — runtime/logic changes to
+`@coasys/ad4m` only reach WE once a new tag is published from the ad4m repo and the
+override version in `we/package.json` is bumped, followed by `pnpm install`.
+
+For active local iteration you can temporarily switch the override to
+`"@coasys/ad4m": "file:../ad4m/core"` (then `pnpm install`) so `pnpm run build` in
+`ad4m/core` is picked up directly — just remember to switch it back to the pinned npm tag
+before committing `package.json`.
+
+Type-only changes (e.g. widening a TS type) don't need any of this — WE's schema types
+(`packages/schema-system/shared/src/types.ts`) type dynamic query fields (`where`,
+`order`, `include`) as loose `Record<string, unknown>` shapes, so they pass through
+as plain JSON regardless of which `@coasys/ad4m` build is installed.
+
+Rust changes to the `ad4m-executor` binary are unaffected by any of this — see below.
 
 ---
 
