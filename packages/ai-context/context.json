@@ -6451,6 +6451,16 @@
           "optional": true
         },
         {
+          "name": "label",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "size",
+          "type": "\"xs\" | \"sm\" | \"md\" | \"lg\" | \"xl\"",
+          "optional": true
+        },
+        {
           "name": "onChange",
           "type": "((value: string) => void)",
           "optional": true

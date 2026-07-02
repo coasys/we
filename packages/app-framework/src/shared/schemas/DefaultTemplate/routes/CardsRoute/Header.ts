@@ -55,6 +55,7 @@ export const cardsHeader: SchemaNode = {
         {
           type: 'Select',
           props: {
+            // label: 'Type',
             value: { $local: 'contentType' },
             options: contentTypeOptions,
             placeholder: 'All content',
@@ -79,11 +80,12 @@ export const cardsHeader: SchemaNode = {
             then: {
               type: 'Select',
               props: {
+                label: 'Sort by',
                 value: { $local: 'sortField' },
                 searchable: false,
                 options: [
                   { label: 'Date', value: 'date', icon: 'calendar' },
-                  { label: 'Most Liked', value: 'likes', icon: 'heart' },
+                  { label: 'Likes', value: 'likes', icon: 'heart' },
                 ],
                 onChange: { $setLocal: 'sortField', from: '$event' },
               },
@@ -98,6 +100,7 @@ export const cardsHeader: SchemaNode = {
             then: {
               type: 'Select',
               props: {
+                label: 'Sort by',
                 value: { $local: 'sortField' },
                 searchable: false,
                 options: [
@@ -113,11 +116,12 @@ export const cardsHeader: SchemaNode = {
         {
           type: 'Select',
           props: {
+            label: 'Order',
             value: { $local: 'sortDirection' },
             searchable: false,
             options: [
-              { label: 'Descending', value: 'DESC', icon: 'sort-descending' },
-              { label: 'Ascending', value: 'ASC', icon: 'sort-ascending' },
+              { label: 'Desc', value: 'DESC', icon: 'sort-descending' },
+              { label: 'Asc', value: 'ASC', icon: 'sort-ascending' },
             ],
             onChange: { $setLocal: 'sortDirection', from: '$event' },
           },

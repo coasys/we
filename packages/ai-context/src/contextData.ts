@@ -1882,6 +1882,8 @@ export const contextData: ContextData = {
         { name: 'value', type: 'string', optional: true },
         { name: 'placeholder', type: 'string', optional: true },
         { name: 'searchable', type: 'boolean', optional: true },
+        { name: 'label', type: 'string', optional: true },
+        { name: 'size', type: '"xs" | "sm" | "md" | "lg" | "xl"', optional: true },
         { name: 'onChange', type: '((value: string) => void)', optional: true },
         { name: 'styles', type: 'JSX.CSSProperties', optional: true },
         { name: 'bg', type: 'ColorValue', optional: true },
