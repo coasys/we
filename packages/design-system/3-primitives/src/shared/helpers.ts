@@ -5,6 +5,7 @@ import {
   BASE_LAYOUT_SPECS as BASE_LAYOUT,
   BASE_TYPOGRAPHY_SPECS as BASE_TYPOGRAPHY,
   BASE_VISUAL_SPECS as BASE_VISUAL,
+  computeBgImageComposite,
   declCSS as decl,
   getMarginValues,
   getPaddingValues,
@@ -235,6 +236,16 @@ function updateCustomVars(
   setProperty(el, `${prefix}opacity`, props.opacity?.toString());
   syncBorderVars(el, prefix, props);
 
+  // bg-image — rendered via a ::before overlay (see getStaticDSStyles), not a plain
+  // background-image, so bgImageOpacity can fade the image independently of the
+  // element's own content. Not state-varied (no {state}-bg-image-* writes) — swapping
+  // the image itself on hover/active/focus is out of scope, unlike the rest of this fn.
+  if (!state) {
+    setProperty(el, `${prefix}bg-image-composite`, computeBgImageComposite(props));
+    setProperty(el, `${prefix}bg-image-fit`, props.bgFit ?? 'cover');
+    setProperty(el, `${prefix}bg-image-position`, props.bgPosition ?? 'center');
+  }
+
   setProperty(el, `${prefix}shadow`, props.shadow ? tokenVar('shadow', props.shadow) : undefined);
   setProperty(el, `${prefix}ring`, props.ring ?? undefined);
   // Compose box-shadow from shadow + ring (both are optional, comma-separated when both present)
@@ -419,6 +430,21 @@ export function getStaticDSStyles(
   const hasBase = l.has('visual') || l.has('layout') || l.has('flex') || l.has('typography');
   if (hasBase) {
     styles.push(`[part='base'] { ${baseLines.join('\n    ')} }`);
+  }
+
+  // ── bg-image overlay ──
+  // Gated on the `bgimage` reflected attribute (Lit's default attribute-name conversion
+  // for `bgImage` — lowercased, no dash) so components that never set bgImage don't pay
+  // for an extra paint layer. Faking per-layer opacity the same way as the Solid side
+  // (see computeBgImageComposite) — CSS has no way to scope `opacity` to one background.
+  if (l.has('visual')) {
+    styles.push(
+      `:host([bgimage]) [part='base'] { position: relative; }\n` +
+        `:host([bgimage]) [part='base']::before { content: ''; position: absolute; inset: 0; z-index: -1; ` +
+        `border-radius: inherit; pointer-events: none; ` +
+        `background-image: var(${p}bg-image-composite); background-size: var(${p}bg-image-fit, cover); ` +
+        `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; }`,
+    );
   }
 
   // ── State selectors ──

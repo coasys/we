@@ -160,8 +160,18 @@ export function getBgImageAttrs(props: Pick<LayoutProps, 'bgImage'>): Record<str
 // bg-image composite mechanism, not state-variance.
 // ────────────────────────────────────────────
 
-const INTERACTIVE_SPECS: PropSpec[] = [
-  ...HOST_LAYOUT_SPECS,
+// position/top/right/bottom/left are deliberately excluded: bgImage's overlay depends
+// on `position: relative` being stable on the host, and an unset --we-ds-position would
+// resolve to `static` (position isn't inherited), which could win the cascade over the
+// bg-image rule's own position:relative depending on stylesheet order when both
+// bgImage and hoverProps are set on the same element. Varying position by hover/active/
+// focus state is a rare enough pattern that excluding it is the safer default.
+const POSITIONING_VAR_SUFFIXES = new Set(['position', 'top', 'right', 'bottom', 'left']);
+// Exported so the generated dsInterop stylesheet (app-framework bootstrap) can declare
+// exactly the same properties this module emits vars for — one source of truth for
+// both the JS var-emission and the CSS rule text, so they can never drift apart.
+export const INTERACTIVE_SPECS: PropSpec[] = [
+  ...HOST_LAYOUT_SPECS.filter(([, varSuffix]) => !POSITIONING_VAR_SUFFIXES.has(varSuffix)),
   ...BASE_VISUAL_SPECS,
   ...BASE_LAYOUT_SPECS,
   ...BASE_FLEX_SPECS,
