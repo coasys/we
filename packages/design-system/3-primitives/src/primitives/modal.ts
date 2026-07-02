@@ -94,17 +94,19 @@ export default class Modal extends OverlayElement {
     return html`
       <div part="backdrop" @click=${this.close}></div>
       <div part="base" role="dialog" aria-modal="true">
-        ${!this.hideclosebutton
-          ? html`
-              <div part="close-button-wrapper">
-                <slot name="close-button">
-                  <we-button part="close-button" variant="ghost" size="sm" square @click=${this.close}>
-                    <we-icon name="x"></we-icon>
-                  </we-button>
-                </slot>
-              </div>
-            `
-          : null}
+        ${
+          !this.hideclosebutton
+            ? html`
+                <div part="close-button-wrapper">
+                  <slot name="close-button">
+                    <we-button part="close-button" variant="ghost" size="sm" square @click=${this.close}>
+                      <we-icon name="x"></we-icon>
+                    </we-button>
+                  </slot>
+                </div>
+              `
+            : null
+        }
         <slot></slot>
       </div>
     `;

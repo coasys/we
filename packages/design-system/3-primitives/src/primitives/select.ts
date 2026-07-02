@@ -220,57 +220,63 @@ export default class Select extends DesignSystemElement {
     return html`
       <div part="base" style=${styleMap({ position: 'relative', ...this.styles })}>
         <div part="input-wrapper" style=${styleMap({ height: h })}>
-          ${this.searchable
-            ? html`
-                <input
-                  part="native"
-                  type="text"
-                  .value=${displayVal}
-                  placeholder=${this.placeholder || nothing}
-                  ?disabled=${this.disabled}
-                  role="combobox"
-                  aria-expanded=${this._open ? 'true' : 'false'}
-                  aria-autocomplete="list"
-                  @input=${this._onInput}
-                  @focus=${() => (this._open = true)}
-                />
-              `
-            : html`
-                <button
-                  part="native-button"
-                  ?disabled=${this.disabled}
-                  role="combobox"
-                  aria-expanded=${this._open ? 'true' : 'false'}
-                  @click=${this._toggle}
-                >
-                  ${this._displayValue || this.placeholder || nothing}
-                </button>
-              `}
+          ${
+            this.searchable
+              ? html`
+                  <input
+                    part="native"
+                    type="text"
+                    .value=${displayVal}
+                    placeholder=${this.placeholder || nothing}
+                    ?disabled=${this.disabled}
+                    role="combobox"
+                    aria-expanded=${this._open ? 'true' : 'false'}
+                    aria-autocomplete="list"
+                    @input=${this._onInput}
+                    @focus=${() => (this._open = true)}
+                  />
+                `
+              : html`
+                  <button
+                    part="native-button"
+                    ?disabled=${this.disabled}
+                    role="combobox"
+                    aria-expanded=${this._open ? 'true' : 'false'}
+                    @click=${this._toggle}
+                  >
+                    ${this._displayValue || this.placeholder || nothing}
+                  </button>
+                `
+          }
           <button part="toggle" tabindex="-1" @click=${this._toggle} aria-label="Toggle options">
             <we-icon name=${this._open ? 'caret-up' : 'caret-down'} size="16px"></we-icon>
           </button>
         </div>
-        ${this._open
-          ? html`
-              <div part="listbox" role="listbox">
-                ${filtered.length > 0
-                  ? filtered.map(
-                      (opt) => html`
-                        <div
-                          part="option"
-                          role="option"
-                          aria-selected=${opt.value === this.value ? 'true' : 'false'}
-                          aria-disabled=${opt.disabled ? 'true' : nothing}
-                          @click=${() => this._select(opt)}
-                        >
-                          ${opt.label}
-                        </div>
-                      `,
-                    )
-                  : html`<div part="empty">No results</div>`}
-              </div>
-            `
-          : nothing}
+        ${
+          this._open
+            ? html`
+                <div part="listbox" role="listbox">
+                  ${
+                    filtered.length > 0
+                      ? filtered.map(
+                          (opt) => html`
+                            <div
+                              part="option"
+                              role="option"
+                              aria-selected=${opt.value === this.value ? 'true' : 'false'}
+                              aria-disabled=${opt.disabled ? 'true' : nothing}
+                              @click=${() => this._select(opt)}
+                            >
+                              ${opt.label}
+                            </div>
+                          `,
+                        )
+                      : html`<div part="empty">No results</div>`
+                  }
+                </div>
+              `
+            : nothing
+        }
       </div>
     `;
   }

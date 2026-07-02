@@ -435,14 +435,16 @@ export default class IconPicker extends DesignSystemElement {
         aria-expanded=${this._open}
         ?disabled=${this.disabled}
       >
-        ${hasValue
-          ? html`
-              <span part="preview-icon">
-                <we-icon name=${this.value} size="sm" color="black"></we-icon>
-              </span>
-              ${isPhosphorName(this.value) ? html`<span part="label">${this.value}</span>` : nothing}
-            `
-          : html`<span part="placeholder">${this.placeholder}</span>`}
+        ${
+          hasValue
+            ? html`
+                <span part="preview-icon">
+                  <we-icon name=${this.value} size="sm" color="black"></we-icon>
+                </span>
+                ${isPhosphorName(this.value) ? html`<span part="label">${this.value}</span>` : nothing}
+              `
+            : html`<span part="placeholder">${this.placeholder}</span>`
+        }
         <span part="caret"><we-icon name="caret-down" size="sm" color="black"></we-icon></span>
       </button>
     `;
@@ -462,32 +464,36 @@ export default class IconPicker extends DesignSystemElement {
         .value=${this._search}
         @input=${this._onSearch}
       />
-      ${results.length === 0
-        ? html`<div part="no-results">No icons match "${this._search}"</div>`
-        : html`
-            <div part="icon-grid" role="listbox">
-              ${visible.map(
-                (name) => html`
-                  <button
-                    part="icon-btn"
-                    role="option"
-                    title=${name}
-                    aria-selected=${name === this.value ? 'true' : 'false'}
-                    @click=${() => this._select(name)}
-                  >
-                    <we-icon name=${name} size="sm" color="black"></we-icon>
-                  </button>
-                `,
-              )}
-            </div>
-            ${hasMore
-              ? html`
-                  <button part="load-more" @click=${() => (this._page += 1)}>
-                    Show more (${results.length - visible.length} remaining)
-                  </button>
-                `
-              : nothing}
-          `}
+      ${
+        results.length === 0
+          ? html`<div part="no-results">No icons match "${this._search}"</div>`
+          : html`
+              <div part="icon-grid" role="listbox">
+                ${visible.map(
+                  (name) => html`
+                    <button
+                      part="icon-btn"
+                      role="option"
+                      title=${name}
+                      aria-selected=${name === this.value ? 'true' : 'false'}
+                      @click=${() => this._select(name)}
+                    >
+                      <we-icon name=${name} size="sm" color="black"></we-icon>
+                    </button>
+                  `,
+                )}
+              </div>
+              ${
+                hasMore
+                  ? html`
+                      <button part="load-more" @click=${() => (this._page += 1)}>
+                        Show more (${results.length - visible.length} remaining)
+                      </button>
+                    `
+                  : nothing
+              }
+            `
+      }
     `;
   }
 
@@ -524,37 +530,39 @@ export default class IconPicker extends DesignSystemElement {
   render() {
     return html`
       ${this._renderTrigger()}
-      ${this._open
-        ? html`
-            <div part="popover" role="dialog" style="top:${this._popoverTop}px;left:${this._popoverLeft}px">
-              <div part="tabs" role="tablist">
-                <button
-                  part="tab"
-                  role="tab"
-                  aria-selected=${this._tab === 'icons' ? 'true' : 'false'}
-                  @click=${() => {
-                    this._tab = 'icons';
-                    this._search = '';
-                    this._page = 1;
-                  }}
-                >
-                  Icons
-                </button>
-                <button
-                  part="tab"
-                  role="tab"
-                  aria-selected=${this._tab === 'emoji' ? 'true' : 'false'}
-                  @click=${() => {
-                    this._tab = 'emoji';
-                  }}
-                >
-                  Emoji
-                </button>
+      ${
+        this._open
+          ? html`
+              <div part="popover" role="dialog" style="top:${this._popoverTop}px;left:${this._popoverLeft}px">
+                <div part="tabs" role="tablist">
+                  <button
+                    part="tab"
+                    role="tab"
+                    aria-selected=${this._tab === 'icons' ? 'true' : 'false'}
+                    @click=${() => {
+                      this._tab = 'icons';
+                      this._search = '';
+                      this._page = 1;
+                    }}
+                  >
+                    Icons
+                  </button>
+                  <button
+                    part="tab"
+                    role="tab"
+                    aria-selected=${this._tab === 'emoji' ? 'true' : 'false'}
+                    @click=${() => {
+                      this._tab = 'emoji';
+                    }}
+                  >
+                    Emoji
+                  </button>
+                </div>
+                ${this._tab === 'icons' ? this._renderIconsTab() : this._renderEmojiTab()}
               </div>
-              ${this._tab === 'icons' ? this._renderIconsTab() : this._renderEmojiTab()}
-            </div>
-          `
-        : nothing}
+            `
+          : nothing
+      }
     `;
   }
 }

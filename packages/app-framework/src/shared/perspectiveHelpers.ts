@@ -76,17 +76,15 @@ export async function getModelManifest(perspective: PerspectiveProxy): Promise<M
     targetClass: shape.targetClass ?? '',
     properties: shape.properties
       .filter((p) => p.hasValue === undefined && p.name !== undefined)
-      .map(
-        (p): ModelManifestProperty => ({
-          name: p.name!,
-          predicate: p.path,
-          type: normaliseShaclType(p.datatype, p.nodeKind),
-          isCollection: p.maxCount === undefined || p.maxCount > 1,
-          required: (p.minCount ?? 0) >= 1,
-          writable: p.writable ?? true,
-          ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
-          ...(p.class !== undefined && { relatedModel: shaclClassToLocalName(p.class) }),
-        }),
-      ),
+      .map((p): ModelManifestProperty => ({
+        name: p.name!,
+        predicate: p.path,
+        type: normaliseShaclType(p.datatype, p.nodeKind),
+        isCollection: p.maxCount === undefined || p.maxCount > 1,
+        required: (p.minCount ?? 0) >= 1,
+        writable: p.writable ?? true,
+        ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
+        ...(p.class !== undefined && { relatedModel: shaclClassToLocalName(p.class) }),
+      })),
   }));
 }

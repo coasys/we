@@ -82,11 +82,13 @@ export default class Tag extends DesignSystemElement {
     return html`
       <span part="base" style=${styleMap(this.styles || {})}>
         <slot></slot>
-        ${this.dismissible
-          ? html`<button part="dismiss" aria-label="Dismiss" @click=${this._dismiss}>
-              <we-icon name="x" size="12px"></we-icon>
-            </button>`
-          : nothing}
+        ${
+          this.dismissible
+            ? html`<button part="dismiss" aria-label="Dismiss" @click=${this._dismiss}>
+                <we-icon name="x" size="12px"></we-icon>
+              </button>`
+            : nothing
+        }
       </span>
     `;
   }

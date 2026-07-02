@@ -90,9 +90,13 @@ export default class FormField extends DesignSystemElement {
 
     return html`
       <div part="base" style=${styleMap(inline)}>
-        ${this.label
-          ? html`<label part="label" id="${this._fieldId}-label" ?data-required=${this.required}>${this.label}</label>`
-          : nothing}
+        ${
+          this.label
+            ? html`<label part="label" id="${this._fieldId}-label" ?data-required=${this.required}
+                >${this.label}</label
+              >`
+            : nothing
+        }
         <div
           part="control"
           role="group"
@@ -102,11 +106,13 @@ export default class FormField extends DesignSystemElement {
         >
           <slot></slot>
         </div>
-        ${this.error
-          ? html`<div part="error" id=${errorId!} role="alert">${this.error}</div>`
-          : this.description
-            ? html`<div part="description" id=${descId!}>${this.description}</div>`
-            : nothing}
+        ${
+          this.error
+            ? html`<div part="error" id=${errorId!} role="alert">${this.error}</div>`
+            : this.description
+              ? html`<div part="description" id=${descId!}>${this.description}</div>`
+              : nothing
+        }
       </div>
     `;
   }

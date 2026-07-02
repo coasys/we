@@ -335,9 +335,7 @@ The component registry is a static `Record<string, Component>` — hardcoded imp
 ### Target
 
 ```typescript
-const builtInComponents: Record<string, Component> = {
-  /* core library */
-};
+const builtInComponents: Record<string, Component> = {/* core library */};
 const installedComponents: Record<string, Component> = {};
 
 export function resolveComponent(name: string): Component | undefined {

@@ -264,36 +264,38 @@ export default class DatePicker extends DesignSystemElement {
           <we-icon name="calendar-blank" size="16px"></we-icon>
         </div>
 
-        ${this._open
-          ? html`
-              <div part="calendar">
-                <div part="calendar-header">
-                  <button part="month-nav" @click=${this._prevMonth} aria-label="Previous month">
-                    <we-icon name="caret-left" size="14px"></we-icon>
-                  </button>
-                  <span>${monthLabel}</span>
-                  <button part="month-nav" @click=${this._nextMonth} aria-label="Next month">
-                    <we-icon name="caret-right" size="14px"></we-icon>
-                  </button>
+        ${
+          this._open
+            ? html`
+                <div part="calendar">
+                  <div part="calendar-header">
+                    <button part="month-nav" @click=${this._prevMonth} aria-label="Previous month">
+                      <we-icon name="caret-left" size="14px"></we-icon>
+                    </button>
+                    <span>${monthLabel}</span>
+                    <button part="month-nav" @click=${this._nextMonth} aria-label="Next month">
+                      <we-icon name="caret-right" size="14px"></we-icon>
+                    </button>
+                  </div>
+                  <div part="grid" role="grid">
+                    ${DAYS.map((d) => html`<span part="day-header">${d}</span>`)}
+                    ${this._getDays().map(
+                      (cell) => html`
+                        <button
+                          part="day"
+                          aria-selected=${this._isSelected(cell.year, cell.month, cell.day) ? 'true' : nothing}
+                          ?data-other-month=${cell.otherMonth}
+                          @click=${() => this._selectDate(cell.year, cell.month, cell.day)}
+                        >
+                          ${cell.day}
+                        </button>
+                      `,
+                    )}
+                  </div>
                 </div>
-                <div part="grid" role="grid">
-                  ${DAYS.map((d) => html`<span part="day-header">${d}</span>`)}
-                  ${this._getDays().map(
-                    (cell) => html`
-                      <button
-                        part="day"
-                        aria-selected=${this._isSelected(cell.year, cell.month, cell.day) ? 'true' : nothing}
-                        ?data-other-month=${cell.otherMonth}
-                        @click=${() => this._selectDate(cell.year, cell.month, cell.day)}
-                      >
-                        ${cell.day}
-                      </button>
-                    `,
-                  )}
-                </div>
-              </div>
-            `
-          : nothing}
+              `
+            : nothing
+        }
       </div>
     `;
   }

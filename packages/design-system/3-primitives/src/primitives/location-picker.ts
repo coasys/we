@@ -341,32 +341,38 @@ export default class LocationPicker extends DesignSystemElement {
               />
             </svg>
           </span>
-          ${hasValue
-            ? html`<span part="label">${this._formatCoords(this.latitude!, this.longitude!)}</span>`
-            : html`<span part="placeholder">${this.placeholder}</span>`}
+          ${
+            hasValue
+              ? html`<span part="label">${this._formatCoords(this.latitude!, this.longitude!)}</span>`
+              : html`<span part="placeholder">${this.placeholder}</span>`
+          }
         </button>
 
-        ${this._open
-          ? html`
-              <div part="popover" style=${styleMap(popoverPos)}>
-                <div part="map-container"></div>
-                <div part="footer">
-                  <span part="coords">
-                    ${this._pendingLat != null && this._pendingLng != null
-                      ? this._formatCoords(this._pendingLat, this._pendingLng)
-                      : 'Click map to place pin'}
-                  </span>
-                  <button
-                    part="confirm"
-                    ?disabled=${this._pendingLat == null || this._geocoding}
-                    @click=${this._confirm}
-                  >
-                    ${this._geocoding ? 'Looking up…' : 'Confirm location'}
-                  </button>
+        ${
+          this._open
+            ? html`
+                <div part="popover" style=${styleMap(popoverPos)}>
+                  <div part="map-container"></div>
+                  <div part="footer">
+                    <span part="coords">
+                      ${
+                        this._pendingLat != null && this._pendingLng != null
+                          ? this._formatCoords(this._pendingLat, this._pendingLng)
+                          : 'Click map to place pin'
+                      }
+                    </span>
+                    <button
+                      part="confirm"
+                      ?disabled=${this._pendingLat == null || this._geocoding}
+                      @click=${this._confirm}
+                    >
+                      ${this._geocoding ? 'Looking up…' : 'Confirm location'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            `
-          : null}
+              `
+            : null
+        }
       </div>
     `;
   }

@@ -170,8 +170,7 @@ function createQuerySignal(
   const [items, setItems] = createStore<unknown[]>([]);
   const readItems = () => items;
   const getModelForPerspective = (stores as Record<string, unknown>).$getModelForPerspective as
-    | ((name: string, uuid?: string) => unknown)
-    | undefined;
+    ((name: string, uuid?: string) => unknown) | undefined;
 
   createEffect(() => {
     let p: unknown = null;
@@ -564,8 +563,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       const descriptor = resolveQueryProp(rawItems);
       const getModelFn = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
       const getModelForPerspective = (stores as Record<string, unknown>).$getModelForPerspective as
-        | ((name: string, uuid?: string) => unknown)
-        | undefined;
+        ((name: string, uuid?: string) => unknown) | undefined;
 
       if (!getModelFn) {
         console.warn('Schema $single: $getModel not found in stores. Did you wire the model registry?');
@@ -685,8 +683,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       if (!did) return;
 
       const adamStore = (stores as Record<string, unknown>).adamStore as
-        | { agents: () => Array<Record<string, unknown>>; fetchAgent: (did: string) => Promise<void> }
-        | undefined;
+        { agents: () => Array<Record<string, unknown>>; fetchAgent: (did: string) => Promise<void> } | undefined;
       if (!adamStore) return;
 
       // Track agents() so this effect re-runs when a fetch completes

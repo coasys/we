@@ -169,37 +169,39 @@ export default class ColorPicker extends DesignSystemElement {
           aria-label="Pick color"
         ></button>
 
-        ${this._open
-          ? html`
-              <div part="popover">
-                <div part="palette">
-                  ${this.palette.map(
-                    (color) => html`
-                      <button
-                        part="swatch"
-                        style=${styleMap({ background: color })}
-                        aria-selected=${color === this.value ? 'true' : 'false'}
-                        aria-label=${color}
-                        @click=${() => this._selectColor(color)}
-                      ></button>
-                    `,
-                  )}
+        ${
+          this._open
+            ? html`
+                <div part="popover">
+                  <div part="palette">
+                    ${this.palette.map(
+                      (color) => html`
+                        <button
+                          part="swatch"
+                          style=${styleMap({ background: color })}
+                          aria-selected=${color === this.value ? 'true' : 'false'}
+                          aria-label=${color}
+                          @click=${() => this._selectColor(color)}
+                        ></button>
+                      `,
+                    )}
+                  </div>
+                  <div part="hex-input">
+                    <span>#</span>
+                    <input
+                      type="text"
+                      .value=${this.value.replace('#', '')}
+                      maxlength="6"
+                      @input=${(e: Event) => {
+                        const val = '#' + (e.target as HTMLInputElement).value;
+                        this._onHexInput({ target: { value: val } } as unknown as Event);
+                      }}
+                    />
+                  </div>
                 </div>
-                <div part="hex-input">
-                  <span>#</span>
-                  <input
-                    type="text"
-                    .value=${this.value.replace('#', '')}
-                    maxlength="6"
-                    @input=${(e: Event) => {
-                      const val = '#' + (e.target as HTMLInputElement).value;
-                      this._onHexInput({ target: { value: val } } as unknown as Event);
-                    }}
-                  />
-                </div>
-              </div>
-            `
-          : null}
+              `
+            : null
+        }
       </div>
     `;
   }
