@@ -87,7 +87,7 @@ const styles = css`
 export default class Spinner extends LayoutElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
+  @property({ type: String, reflect: true }) size: ComponentSize | (string & {}) = 'md';
   @property({ type: String, reflect: true }) color = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 

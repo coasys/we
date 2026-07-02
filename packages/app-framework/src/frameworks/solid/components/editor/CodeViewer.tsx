@@ -1,9 +1,10 @@
-import { Column, Row } from '@we/components/solid';
+import { CodeEditor, type CodeEditorLanguage, Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import { createSignal, Show } from 'solid-js';
 
 export interface CodeViewerProps {
   json: string;
+  language?: CodeEditorLanguage;
   onSave?: (json: string) => void;
   readOnly?: boolean;
 }
@@ -32,6 +33,8 @@ export function CodeViewer(props: CodeViewerProps) {
   const [editValue, setEditValue] = createSignal('');
   const [error, setError] = createSignal('');
 
+  const language = () => props.language ?? 'json';
+
   function startEdit() {
     setEditValue(props.json);
     setError('');
@@ -44,20 +47,31 @@ export function CodeViewer(props: CodeViewerProps) {
   }
 
   function saveEdit() {
-    try {
-      JSON.parse(editValue());
-      props.onSave?.(editValue());
-      setEditing(false);
-      setError('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Invalid JSON');
+    const value = editValue();
+    if (language() === 'json') {
+      try {
+        JSON.parse(value);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Invalid JSON');
+        return;
+      }
     }
+    props.onSave?.(value);
+    setEditing(false);
+    setError('');
   }
 
   return (
     <Column flex="1" overflow="hidden">
       {/* Toolbar */}
-      <Row ay="center" gap="200" px="400" py="200" borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}>
+      <Row
+        ay="center"
+        gap="200"
+        px="400"
+        py="200"
+        borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
+        styles={{ 'flex-shrink': '0' }}
+      >
         <Show
           when={editing()}
           fallback={
@@ -87,45 +101,14 @@ export function CodeViewer(props: CodeViewerProps) {
         </we-button>
       </Row>
 
-      {/* Content */}
-      <Show
-        when={editing()}
-        fallback={
-          <pre
-            style={{
-              flex: '1',
-              margin: tokenVar('space', '300'),
-              padding: tokenVar('space', '400'),
-              'overflow-y': 'auto',
-              'font-size': tokenVar('font-size', '200'),
-              'line-height': '1.5',
-              background: tokenVar('color', 'neutral-50'),
-              color: tokenVar('color', 'neutral-800'),
-              'white-space': 'pre-wrap',
-              'word-break': 'break-all',
-              'font-family': 'monospace',
-            }}
-          >
-            {props.json}
-          </pre>
-        }
-      >
-        <we-textarea
-          value={editValue()}
-          resize="none"
-          flex="1"
-          bg="neutral-75"
-          m="300"
-          on:input={(e: CustomEvent) => setEditValue(e.detail)}
-          styles={{
-            'font-family': 'monospace',
-            'font-size': tokenVar('font-size', '200'),
-            'line-height': '1.5',
-            border: 'none',
-            padding: tokenVar('space', '400'),
-          }}
-        />
-      </Show>
+      {/* Editor */}
+      <CodeEditor
+        code={editing() ? editValue() : props.json}
+        language={language()}
+        readOnly={!editing()}
+        onChange={setEditValue}
+        styles={{ flex: '1', 'min-height': '0' }}
+      />
     </Column>
   );
 }

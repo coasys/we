@@ -29,6 +29,19 @@ const CSS_STYLES = css`
   [part='tooltip'] {
     display: none;
     position: fixed;
+    /* Reset UA [popover] styles when promoted to top layer. width/overflow matter most:
+       the UA default (width: fit-content; overflow: auto) sizes from the element's static
+       position — which is the trigger's own tiny box before floating-ui repositions it via
+       JS. Triggers with little room around them (e.g. the panel rail, flush against the
+       viewport edge) get crushed into that sliver, and since text can't wrap (nowrap), the
+       UA's overflow:auto then draws a scrollbar on the bubble itself. */
+    margin: 0;
+    inset: unset;
+    border: none;
+    width: max-content;
+    height: auto;
+    overflow: visible;
+    /* Component styles */
     z-index: var(--we-z-tooltip);
     white-space: nowrap;
     font-size: var(--we-font-size-200, 14px);
@@ -108,6 +121,7 @@ export default class Tooltip extends LayoutElement {
     const floatingPlacement = this.placement.startsWith('auto') ? 'top' : (this.placement as FloatingPlacement);
 
     const { x, y, placement, middlewareData } = await computePosition(this.triggerEl, this.tooltipEl, {
+      strategy: 'fixed',
       placement: floatingPlacement,
       middleware: [offset(10), flip(), shift({ padding: 8 }), arrow({ element: this.arrowEl })],
     });
@@ -133,7 +147,15 @@ export default class Tooltip extends LayoutElement {
   private openTooltip() {
     if (!this.triggerEl || !this.tooltipEl) return;
 
-    // Auto-update position on scroll/resize
+    // Promote to browser top layer so position:fixed resolves to the viewport
+    // instead of an ancestor backdrop-filter containing block.
+    if ('showPopover' in this.tooltipEl) {
+      this.tooltipEl.setAttribute('popover', 'manual');
+      try {
+        (this.tooltipEl as HTMLElement & { showPopover(): void }).showPopover();
+      } catch {}
+    }
+
     this.cleanup = autoUpdate(this.triggerEl, this.tooltipEl, () => this.updatePosition());
   }
 
@@ -141,6 +163,12 @@ export default class Tooltip extends LayoutElement {
     if (this.cleanup) {
       this.cleanup();
       this.cleanup = undefined;
+    }
+    if (this.tooltipEl && 'hidePopover' in this.tooltipEl) {
+      try {
+        (this.tooltipEl as HTMLElement & { hidePopover(): void }).hidePopover();
+      } catch {}
+      this.tooltipEl.removeAttribute('popover');
     }
   }
 

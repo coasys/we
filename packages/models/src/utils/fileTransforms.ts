@@ -3,7 +3,10 @@
 export function decodeFileAsString(data: string | null | undefined): string {
   if (typeof data !== 'string' || !data.startsWith('data:') || !data.includes(';base64,')) return '';
   try {
-    return atob(data.split(';base64,')[1]);
+    const binary = atob(data.split(';base64,')[1]);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder('utf-8').decode(bytes);
   } catch {
     return '';
   }

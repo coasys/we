@@ -61,7 +61,7 @@ export const themesRoute: SchemaNode = {
       props: { gap: '300', ay: 'center', maxWidth: '1200px', width: '100%' },
       children: [
         {
-          type: 'SearchInput',
+          type: 'Search',
           props: {
             bg: 'neutral-0',
             border: '1px solid neutral-300',

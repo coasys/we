@@ -39,7 +39,12 @@ import { createEffect, createMemo, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 import { EditorOverlay } from '../components/editor/EditorOverlay';
-import { panelResizing, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from '../components/editor/RightPanelContainer';
+import {
+  panelResizing,
+  RAIL_STRIP_WIDTH,
+  TEMPLATE_RAILS_WIDTH,
+  THEME_RAIL_WIDTH,
+} from '../components/editor/RightPanelContainer';
 import { buildRoutes } from '../utils/buildRoutes';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
@@ -144,6 +149,10 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
       offset += TEMPLATE_RAILS_WIDTH;
       if (stores.aiStore.isOpen()) offset += stores.aiStore.aiPanelWidth();
       if (stores.aiStore.codePanelOpen()) offset += stores.aiStore.codePanelWidth();
+      if (stores.aiStore.contentMode() === 'visual') {
+        offset += RAIL_STRIP_WIDTH;
+        if (stores.aiStore.visualPanelOpen()) offset += stores.aiStore.visualPanelWidth();
+      }
     }
     return offset ? `${offset}px` : '0px';
   };
@@ -174,9 +183,9 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           scrollbarGutter="stable"
         >
           {/* Scoped space theme wrapper — display:contents keeps layout unaffected.
-              Parametric overrides are applied as inline CSS vars; component-level CSS
-              (theme.css) is injected into we-scoped-theme-css by ThemeStore and
-              self-scopes via [data-we-theme='X'] attribute selectors. */}
+                Parametric overrides are applied as inline CSS vars; component-level CSS
+                (theme.css) is injected into we-scoped-theme-css by ThemeStore and
+                self-scopes via [data-we-theme='X'] attribute selectors. */}
           <div style={{ display: 'contents', ...spaceThemeStyle() }} data-we-theme={spaceThemeName()}>
             <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
               <RenderSchema

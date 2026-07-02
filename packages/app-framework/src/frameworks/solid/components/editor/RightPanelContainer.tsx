@@ -3,8 +3,9 @@ import { tokenVar } from '@we/design-utils';
 import { createSignal, JSX, Show } from 'solid-js';
 
 import { useAiStore } from '../../stores/AiStore';
-import { AiChatPanel } from './AiChatPanel';
+import { AiPanel } from './AiPanel';
 import { CodePanel } from './CodePanel';
+import { InspectorPanel } from './InspectorPanel';
 import { ThemePanel } from './ThemePanel';
 
 export const RAIL_STRIP_WIDTH = 32; // px per strip
@@ -181,6 +182,20 @@ export function RightPanelContainer() {
 
       {/* Code + AI panels — visible when isEditingTemplate */}
       <Show when={aiStore.isEditingTemplate()}>
+        {/* Visual properties panel — only in visual mode */}
+        <Show when={aiStore.contentMode() === 'visual'}>
+          <PanelUnit
+            icon="cursor-click"
+            tooltip="Properties"
+            isOpen={() => aiStore.visualPanelOpen()}
+            panelWidth={() => aiStore.visualPanelWidth()}
+            toggle={() => aiStore.toggleVisualPanel()}
+            setPanelWidth={(w) => aiStore.setVisualPanelWidth(w)}
+          >
+            <InspectorPanel />
+          </PanelUnit>
+        </Show>
+
         <PanelUnit
           icon="code"
           tooltip="Code editor"
@@ -200,7 +215,7 @@ export function RightPanelContainer() {
           toggle={() => aiStore.toggle()}
           setPanelWidth={(w) => aiStore.setAiPanelWidth(w)}
         >
-          <AiChatPanel />
+          <AiPanel />
         </PanelUnit>
       </Show>
     </Row>

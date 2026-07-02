@@ -95,7 +95,8 @@ export default class Checkbox extends DesignSystemElement {
     return mergeProps(usedProps, mergeProps(sizeDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
-  private _toggle() {
+  private _toggle(e?: Event) {
+    e?.preventDefault();
     if (this.disabled) return;
     this.checked = !this.checked;
     this.dispatchEvent(new CustomEvent('change', { detail: this.checked, bubbles: true, composed: true }));

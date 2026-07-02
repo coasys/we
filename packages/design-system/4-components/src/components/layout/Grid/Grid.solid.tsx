@@ -6,7 +6,7 @@ export type * from './Grid.types';
 import type { GridProps } from './Grid.types';
 
 const DEFAULTS: Partial<GridProps> = { display: 'grid', gap: '400' };
-const gridOwnKeys = ['columns', 'minChildWidth'] as const;
+const gridOwnKeys = ['template', 'columns', 'minChildWidth'] as const;
 const gridKeys = [...designSystemKeys.filter((key) => key !== 'direction'), 'reverse', 'children', ...gridOwnKeys];
 const gridStyleKeys = gridKeys.filter((key) => key !== 'children');
 
@@ -14,7 +14,8 @@ export function Grid(allProps: GridProps) {
   const [designSystemProps, rest] = splitProps(allProps, gridKeys as (keyof GridProps)[]);
 
   const baseStyle = createMemo(() => {
-    const { columns, minChildWidth, ...dsProps } = designSystemProps as GridProps & {
+    const { template, columns, minChildWidth, ...dsProps } = designSystemProps as GridProps & {
+      template?: string;
       columns?: number;
       minChildWidth?: string;
     };
@@ -25,9 +26,11 @@ export function Grid(allProps: GridProps) {
     const merged = mergeProps(usedProps, DEFAULTS) as GridProps;
     const style = buildLayoutStyles(merged, 'column');
 
-    const gridTemplate = minChildWidth
-      ? `repeat(auto-fill, minmax(${minChildWidth}, 1fr))`
-      : `repeat(${columns ?? 1}, 1fr)`;
+    const gridTemplate = template
+      ? template
+      : minChildWidth
+        ? `repeat(auto-fill, minmax(${minChildWidth}, 1fr))`
+        : `repeat(${columns ?? 1}, 1fr)`;
 
     return { ...style, 'grid-template-columns': gridTemplate };
   });

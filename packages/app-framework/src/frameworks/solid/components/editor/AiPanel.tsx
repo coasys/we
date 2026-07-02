@@ -5,7 +5,7 @@ import { createEffect, createSignal, For, Show } from 'solid-js';
 import type { ChatMessage } from '../../stores/AiStore';
 import { useAiStore } from '../../stores/AiStore';
 
-export function AiChatPanel() {
+export function AiPanel() {
   const aiStore = useAiStore();
 
   const [inputValue, setInputValue] = createSignal('');

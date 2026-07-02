@@ -11,7 +11,6 @@ import { useAdamStore } from './AdamStore';
 
 const THEME_KEY = 'we.theme';
 const EDITING_THEME_KEY = 'we.editing-theme';
-const MAX_UNDO = 50;
 
 export type ThemeManagementItem = {
   id: string;
@@ -37,9 +36,9 @@ export interface ThemeStore {
   defaultThemeId: Accessor<string>;
   themeManagementList: Accessor<ThemeManagementItem[]>;
   editingTheme: Accessor<EditingTheme | null>;
-  canUndo: Accessor<boolean>;
-  canRedo: Accessor<boolean>;
   operationLoading: Accessor<string | null>;
+  registerHistoryCallbacks: (callbacks: { onEntry: (snapshot: EditingTheme) => void; onClear: () => void }) => void;
+  applySnapshot: (snapshot: EditingTheme) => Promise<void>;
 
   // Actions
   setCurrentTheme: (themeId: string) => void;
@@ -74,8 +73,6 @@ export interface ThemeStore {
   updateEditingCss: (css: string) => void;
   updateEditingMeta: (fields: { name?: string; icon?: string }) => void;
   cancelEditing: () => void;
-  undo: () => Promise<void>;
-  redo: () => Promise<void>;
   createAndStartEditing: (
     name: string,
     icon: string,
@@ -88,7 +85,12 @@ export interface ThemeStore {
   installFromMarketplace: (marketplaceThemeId: string) => Promise<void>;
   uninstallTheme: (themeId: string) => Promise<void>;
   deleteMarketplaceTheme: (themeId: string) => Promise<void>;
-  publishToMarketplace: (options: { name: string; description: string; screenshots: File[] }) => Promise<boolean>;
+  publishToMarketplace: (options: {
+    name: string;
+    description: string;
+    icon?: string;
+    screenshots: File[];
+  }) => Promise<boolean>;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   loadInstalledThemes: () => Promise<void>;
 }
@@ -99,6 +101,7 @@ function registryToThemeData(key: string): ThemeData {
   const t = themeRegistry[key as ThemeKey] ?? { name: key, icon: 'palette', css: null, overrides: null };
   return {
     id: key,
+    slug: key,
     name: t.name,
     icon: t.icon,
     origin: 'built-in',
@@ -116,8 +119,7 @@ function encodeToFileData(content: string, name: string, mimeType: string) {
 
 function getInitialThemeId(): string {
   const saved = typeof window !== 'undefined' ? localStorage.getItem(THEME_KEY) : null;
-  const fallback = Object.keys(themeRegistry)[0];
-  return saved ?? fallback;
+  return saved ?? 'dark';
 }
 
 function injectCssString(id: string, css: string) {
@@ -243,16 +245,16 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [pendingSpaceThemeId, setPendingSpaceThemeId] = createSignal<string | null>(null);
   const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
 
-  // ── Undo / redo ──
+  // ── History (delegated to unified AiStore history) ──
   const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
 
-  const [undoStack, setUndoStack] = createSignal<EditingTheme[]>([]);
-  const [redoStack, setRedoStack] = createSignal<EditingTheme[]>([]);
   let pendingSnapshot: EditingTheme | null = null;
   let applyingHistoryOp = false;
+  let historyCallbacks: { onEntry: (snapshot: EditingTheme) => void; onClear: () => void } | null = null;
 
-  const canUndo: Accessor<boolean> = () => undoStack().length > 0;
-  const canRedo: Accessor<boolean> = () => redoStack().length > 0;
+  function registerHistoryCallbacks(callbacks: { onEntry: (snapshot: EditingTheme) => void; onClear: () => void }) {
+    historyCallbacks = callbacks;
+  }
 
   function captureSnapshot() {
     if (applyingHistoryOp || pendingSnapshot !== null) return;
@@ -265,40 +267,15 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (applyingHistoryOp || !pendingSnapshot) return;
     const s = pendingSnapshot;
     pendingSnapshot = null;
-    setUndoStack((prev) => {
-      const next = [...prev, s];
-      return next.length > MAX_UNDO ? next.slice(-MAX_UNDO) : next;
-    });
-    setRedoStack([]);
+    historyCallbacks?.onEntry(s);
   }
 
   function clearHistory() {
-    setUndoStack([]);
-    setRedoStack([]);
     pendingSnapshot = null;
+    historyCallbacks?.onClear();
   }
 
-  async function undo() {
-    const stack = undoStack();
-    if (!stack.length) return;
-    const snapshot = stack[stack.length - 1];
-    const current = editingTheme();
-    setUndoStack((prev) => prev.slice(0, -1));
-    if (current) setRedoStack((prev) => [...prev, { ...current }]);
-    pendingSnapshot = null;
-    applyingHistoryOp = true;
-    setEditingTheme(snapshot);
-    await saveEditingTheme();
-    applyingHistoryOp = false;
-  }
-
-  async function redo() {
-    const stack = redoStack();
-    if (!stack.length) return;
-    const snapshot = stack[stack.length - 1];
-    const current = editingTheme();
-    setRedoStack((prev) => prev.slice(0, -1));
-    if (current) setUndoStack((prev) => [...prev, { ...current }]);
+  async function applySnapshot(snapshot: EditingTheme): Promise<void> {
     pendingSnapshot = null;
     applyingHistoryOp = true;
     setEditingTheme(snapshot);
@@ -392,9 +369,11 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
   });
 
-  // Apply the agent's default theme when AgentSettings first loads.
-  // Uses defaultThemeId so boot always starts at the user's chosen default,
-  // not whatever was last active in a previous session.
+  // Apply the agent's default theme when AgentSettings first loads or when the user
+  // explicitly changes their default theme. Guard against re-firing on unrelated
+  // settings changes (e.g. currentTemplateId updates from template switches), which
+  // would otherwise reset the theme to defaultThemeId mid-session.
+  let lastAppliedDefaultThemeId: string | undefined;
   createEffect(() => {
     const prefs = adamStore.agentSettings();
     if (!prefs?.defaultThemeId) return;
@@ -403,6 +382,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     // and blindly resetting currentThemeId to defaultThemeId would exit editing mode.
     if (untrack(() => editingTheme())) return;
     const id = prefs.defaultThemeId;
+    if (id === lastAppliedDefaultThemeId) return;
+    lastAppliedDefaultThemeId = id;
     setCurrentThemeId(id);
     // Use untrack so spaceThemes reloading between spaces doesn't re-trigger this effect
     const theme =
@@ -665,9 +646,11 @@ export function ThemeStoreProvider(props: ParentProps) {
       }
       const overridesJson = initialOverrides ? JSON.stringify(initialOverrides) : null;
 
+      const slug = name.toLowerCase().replace(/\s+/g, '-');
       const model = await Theme.create(perspective, {
         name,
         icon,
+        slug,
         origin: 'custom',
         version: 1,
         overrides: overridesJson
@@ -678,6 +661,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       themeModelMap.set(model.id, model);
       const data: ThemeData = {
         id: model.id,
+        slug,
         name,
         icon,
         origin: 'custom',
@@ -758,6 +742,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         const current = editingTheme();
         const saved: ThemeData = {
           id: existing.id,
+          slug: existing.slug || '',
           name: current?.name ?? editing.name,
           icon: current?.icon ?? editing.icon,
           origin: existing.origin as ThemeData['origin'],
@@ -793,9 +778,11 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (!perspective) return null;
 
     try {
+      const slug = name.toLowerCase().replace(/\s+/g, '-');
       const model = await Theme.create(perspective, {
         name,
         icon,
+        slug,
         origin: 'custom',
         version: 1,
         overrides: editing.overrides
@@ -806,6 +793,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       themeModelMap.set(model.id, model);
       const data: ThemeData = {
         id: model.id,
+        slug,
         name,
         icon,
         origin: 'custom',
@@ -853,15 +841,36 @@ export function ThemeStoreProvider(props: ParentProps) {
         return;
       }
 
-      const exists = installedThemes().some((t) => t.name === source.name);
-      if (exists) {
-        toastService.info(`Theme "${source.name}" already installed`);
+      const sourceSlug = source.slug || source.name.toLowerCase().replace(/\s+/g, '-');
+
+      // Check if already installed by slug — update in place if so
+      let existingModel: Theme | undefined;
+      for (const model of themeModelMap.values()) {
+        if (model.slug === sourceSlug) {
+          existingModel = model;
+          break;
+        }
+      }
+
+      if (existingModel) {
+        existingModel.name = source.name;
+        existingModel.icon = source.icon;
+        existingModel.version = source.version;
+        existingModel.overrides = source.overrides
+          ? (encodeToFileData(source.overrides, 'overrides.json', 'application/json') as any)
+          : null;
+        existingModel.css = source.css ? (encodeToFileData(source.css, 'theme.css', 'text/css') as any) : null;
+        await existingModel.save();
+        const updated = modelToThemeData(existingModel);
+        setInstalledThemes((prev) => prev.map((t) => (t.id === existingModel!.id ? updated : t)));
+        toastService.success(`Theme "${source.name}" updated to v${source.version}`);
         return;
       }
 
       const model = await Theme.create(rootPerspective, {
         name: source.name,
         icon: source.icon,
+        slug: sourceSlug,
         origin: 'marketplace',
         version: source.version,
         overrides: source.overrides
@@ -926,6 +935,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   async function publishToMarketplace(options: {
     name: string;
     description: string;
+    icon?: string;
     screenshots: File[];
   }): Promise<boolean> {
     const marketplacePerspective = adamStore.marketplacePerspective();
@@ -936,16 +946,20 @@ export function ThemeStoreProvider(props: ParentProps) {
 
     const editing = editingTheme();
     const base = editing ?? currentTheme();
+    const themeSlug = base.slug || options.name.toLowerCase().replace(/\s+/g, '-');
+    const themeIcon = options.icon ?? base.icon;
 
-    const existing = await Theme.findOne(marketplacePerspective, { where: { name: options.name } });
+    const existing = await Theme.findOne(marketplacePerspective, { where: { slug: themeSlug } });
     if (existing && existing.author !== adamStore.me()?.did) {
-      toastService.error('A theme with this name already exists in the marketplace by a different author');
+      toastService.error('A theme with this slug already exists in the marketplace by a different author');
       return false;
     }
 
     try {
       if (existing) {
         existing.name = options.name;
+        existing.description = options.description;
+        existing.icon = themeIcon;
         existing.version = (existing.version ?? 1) + 1;
         existing.overrides = base.overrides
           ? (encodeToFileData(base.overrides, 'overrides.json', 'application/json') as any)
@@ -967,7 +981,9 @@ export function ThemeStoreProvider(props: ParentProps) {
       } else {
         const theme = await Theme.create(marketplacePerspective, {
           name: options.name,
-          icon: base.icon,
+          description: options.description,
+          icon: themeIcon,
+          slug: themeSlug,
           origin: 'marketplace',
           version: 1,
           overrides: base.overrides
@@ -1007,7 +1023,8 @@ export function ThemeStoreProvider(props: ParentProps) {
       return false;
     }
 
-    const existing = await Theme.findOne(perspective, { where: { name: editing.name } });
+    const spaceSlug = editing.slug || editing.name.toLowerCase().replace(/\s+/g, '-');
+    const existing = await Theme.findOne(perspective, { where: { slug: spaceSlug } });
     if (existing) {
       toastService.error(`Theme "${editing.name}" is already in "${spaceName}"`);
       return false;
@@ -1017,6 +1034,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       await Theme.create(perspective, {
         name: editing.name,
         icon: editing.icon,
+        slug: spaceSlug,
         origin: 'shared',
         version: 1,
         overrides: editing.overrides
@@ -1047,9 +1065,9 @@ export function ThemeStoreProvider(props: ParentProps) {
     activeTemplateTheme,
     themeManagementList,
     editingTheme,
-    canUndo,
-    canRedo,
     operationLoading,
+    registerHistoryCallbacks,
+    applySnapshot,
     setCurrentTheme,
     setDefaultTheme,
     toggleThemeInstalled,
@@ -1062,8 +1080,6 @@ export function ThemeStoreProvider(props: ParentProps) {
     updateEditingCss,
     updateEditingMeta,
     cancelEditing,
-    undo,
-    redo,
     createAndStartEditing,
     saveEditingTheme,
     saveEditingThemeAs,

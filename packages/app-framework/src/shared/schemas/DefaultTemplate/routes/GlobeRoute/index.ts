@@ -14,7 +14,7 @@ export const globeRoute: RouteSchema = {
   path: '/globe',
   keepAlive: true,
   type: 'Column',
-  props: { width: '100%', height: 'calc(100vh - 73px)' },
+  props: { width: '100%', height: 'calc(100vh - 70px)' },
   $localState: {
     // Search filter
     searchText: { type: 'string', initial: '' },
@@ -138,7 +138,7 @@ export const globeRoute: RouteSchema = {
                 },
                 // Search filter
                 {
-                  type: 'SearchInput',
+                  type: 'Search',
                   props: {
                     placeholder: 'Search spaces and people…',
                     onSearch: { $setLocal: 'searchText', from: '$event' },

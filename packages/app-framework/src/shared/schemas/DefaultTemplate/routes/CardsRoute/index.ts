@@ -31,7 +31,7 @@ export const cardsRoute: RouteSchema = {
         py: '400',
         width: '100%',
         maxWidth: 'var(--we-layout-lg)',
-        minHeight: 'calc(100vh - 73px)',
+        minHeight: 'calc(100vh - 70px)',
       },
       children: [
         cardsHeader,

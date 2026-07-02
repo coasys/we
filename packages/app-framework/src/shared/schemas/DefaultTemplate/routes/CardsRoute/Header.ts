@@ -42,7 +42,7 @@ export const cardsHeader: SchemaNode = {
       children: [
         // Search
         {
-          type: 'SearchInput',
+          type: 'Search',
           props: {
             bg: 'neutral-0',
             border: '1px solid neutral-300',
@@ -53,7 +53,7 @@ export const cardsHeader: SchemaNode = {
         },
         // Content type
         {
-          type: 'GroupedSelect',
+          type: 'Select',
           props: {
             value: { $local: 'contentType' },
             options: contentTypeOptions,
@@ -63,7 +63,7 @@ export const cardsHeader: SchemaNode = {
         },
         // Sort order
         {
-          type: 'GroupedSelect',
+          type: 'Select',
           props: {
             value: { $local: 'sortBy' },
             searchable: false,

@@ -9,6 +9,7 @@ import { TemplateCard } from '../marketplace/TemplateCard';
 const MAX_SCREENSHOTS = 4;
 
 interface Props {
+  type: 'template' | 'theme';
   onClose: () => void;
 }
 
@@ -17,11 +18,19 @@ export function PublishToMarketplaceModal(props: Props) {
   const templateStore = useTemplateStore();
   const themeStore = useThemeStore();
 
-  const initialName = templateStore.currentTemplate.meta?.name ?? '';
-  const initialDescription = templateStore.currentTemplate.meta?.description ?? '';
+  const isTheme = () => props.type === 'theme';
 
-  const [name, setName] = createSignal(initialName);
-  const [description, setDescription] = createSignal(initialDescription);
+  const baseTheme = () => themeStore.editingTheme() ?? themeStore.currentTheme();
+
+  const [name, setName] = createSignal(
+    isTheme() ? (baseTheme().name ?? '') : (templateStore.currentTemplate.meta?.name ?? ''),
+  );
+  const [description, setDescription] = createSignal(
+    isTheme() ? '' : (templateStore.currentTemplate.meta?.description ?? ''),
+  );
+  const [icon, setIcon] = createSignal(
+    isTheme() ? (baseTheme().icon ?? 'palette') : (templateStore.currentTemplate.meta?.icon ?? 'layout'),
+  );
   const [themeId, setThemeId] = createSignal('');
   const [screenshots, setScreenshots] = createSignal<File[]>([]);
   const [screenshotPreviews, setScreenshotPreviews] = createSignal<string[]>([]);
@@ -49,25 +58,45 @@ export function PublishToMarketplaceModal(props: Props) {
     });
   };
 
-  const previewTemplate = createMemo(() => ({
-    name: name() || 'Template name',
-    description: description(),
-    version: 1,
-    slug: templateStore.currentTemplate.id,
-    author: adamStore.me()?.did,
-    screenshots: screenshotPreviews(),
-  }));
+  const previewData = createMemo(() =>
+    isTheme()
+      ? {
+          name: name() || 'Theme name',
+          description: description(),
+          version: baseTheme().version ?? 1,
+          icon: icon(),
+          author: adamStore.me()?.did,
+          screenshots: screenshotPreviews(),
+        }
+      : {
+          name: name() || 'Template name',
+          description: description(),
+          version: 1,
+          icon: icon(),
+          slug: templateStore.currentTemplate.id,
+          author: adamStore.me()?.did,
+          screenshots: screenshotPreviews(),
+        },
+  );
 
   async function handlePublish() {
     if (!canPublish()) return;
     setPublishing(true);
     try {
-      const success = await templateStore.publishToMarketplace({
-        name: name().trim(),
-        description: description().trim(),
-        themeId: themeId() || undefined,
-        screenshots: screenshots(),
-      });
+      const success = isTheme()
+        ? await themeStore.publishToMarketplace({
+            name: name().trim(),
+            description: description().trim(),
+            icon: icon(),
+            screenshots: screenshots(),
+          })
+        : await templateStore.publishToMarketplace({
+            name: name().trim(),
+            description: description().trim(),
+            icon: icon(),
+            themeId: themeId() || undefined,
+            screenshots: screenshots(),
+          });
       if (success) props.onClose();
     } finally {
       setPublishing(false);
@@ -77,38 +106,48 @@ export function PublishToMarketplaceModal(props: Props) {
   return (
     <we-modal close={props.onClose} width="100%" maxWidth="600px">
       <Column ax="center" gap="200">
-        <we-icon name="cloud-arrow-up" size="xl" color="primary-700" />
-        <we-text fontSize="700" fontWeight="bold">
-          Publish to marketplace
-        </we-text>
+        <we-icon name={isTheme() ? 'paint-bucket' : 'cloud-arrow-up'} size="xl" color="primary-700" />
+        <we-text variant="heading-md">{isTheme() ? 'Publish theme to marketplace' : 'Publish to marketplace'}</we-text>
       </Column>
 
       <Column gap="400">
-        {/* Name */}
-        <Column gap="100">
-          <we-text variant="label">Name</we-text>
-          <we-input value={name()} placeholder="Template name" on:input={(e: CustomEvent) => setName(e.detail)} />
-        </Column>
+        {/* Name + Icon */}
+        <Row gap="300" ay="end">
+          <Column gap="100" flex="1">
+            <we-text variant="label">Name</we-text>
+            <we-input
+              value={name()}
+              placeholder={isTheme() ? 'Theme name' : 'Template name'}
+              on:input={(e: CustomEvent) => setName(e.detail)}
+            />
+          </Column>
+          <Column gap="100">
+            <we-text variant="label">Icon</we-text>
+            <we-icon-picker value={icon()} on:change={(e: CustomEvent) => setIcon(e.detail)} />
+          </Column>
+        </Row>
 
         {/* Description */}
         <Column gap="100">
           <we-text variant="label">Description</we-text>
           <we-textarea
             value={description()}
-            placeholder="Describe what this template is for…"
+            placeholder={isTheme() ? 'Describe this theme…' : 'Describe what this template is for…'}
             rows={3}
             on:input={(e: CustomEvent) => setDescription(e.detail)}
           />
         </Column>
 
-        {/* Associated theme */}
-        <Column gap="100">
-          <we-text variant="label">Associated theme (optional)</we-text>
-          <we-select value={themeId()} options={themeOptions()} onChange={(e: CustomEvent) => setThemeId(e.detail)} />
-          <we-text variant="footnote" color="neutral-500">
-            Link a theme so users can install it alongside this template.
-          </we-text>
-        </Column>
+        {/* Associated theme (templates only) */}
+        <Show when={!isTheme()}>
+          <Column gap="100">
+            <we-text variant="label">Associated theme (optional)</we-text>
+            <we-select value={themeId()} options={themeOptions()} onChange={(e: CustomEvent) => setThemeId(e.detail)} />
+            <we-text variant="footnote" color="neutral-500">
+              Link a theme so users can install it alongside this template.
+            </we-text>
+          </Column>
+        </Show>
 
         {/* Screenshots */}
         <Column gap="200">
@@ -157,7 +196,7 @@ export function PublishToMarketplaceModal(props: Props) {
           <we-text variant="label" color="neutral-500">
             Preview
           </we-text>
-          <TemplateCard template={previewTemplate()} mode="preview" />
+          <TemplateCard template={previewData()} mode="preview" />
         </Column>
       </Column>
 

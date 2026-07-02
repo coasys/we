@@ -7,7 +7,10 @@ import type { ThemeOverrides } from './types';
  * Parametric keys that map 1:1 to a CSS custom property.
  * Keys that need special multi-var handling (shadowIntensity, animationSpeed) are excluded.
  */
-type ParametricKey = Exclude<keyof ThemeOverrides, 'themeName' | 'shadowIntensity' | 'animationSpeed' | 'surfaceBlur' | 'fontScale'>;
+type ParametricKey = Exclude<
+  keyof ThemeOverrides,
+  'themeName' | 'shadowIntensity' | 'animationSpeed' | 'surfaceBlur' | 'fontScale'
+>;
 
 /** Maps shadowIntensity preset to the CSS box-shadow value emitted as --we-theme-shadow. */
 const SHADOW_INTENSITY_VALUES: Record<NonNullable<ThemeOverrides['shadowIntensity']>, string> = {

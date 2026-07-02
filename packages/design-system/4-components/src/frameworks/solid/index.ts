@@ -22,12 +22,9 @@ export { FlipCard, type FlipCardProps } from '../../components/cards/FlipCard/Fl
 export { PostCard, type PostCardProps } from '../../components/cards/PostCard/PostCard.solid';
 
 // Inputs
-export { SearchInput, type SearchInputProps } from '../../components/inputs/SearchInput/SearchInput.solid';
-export {
-  GroupedSelect,
-  type GroupedSelectOption,
-  type GroupedSelectProps,
-} from '../../components/inputs/GroupedSelect/GroupedSelect.solid';
+export { Search, type SearchProps } from '../../components/inputs/Search/Search.solid';
+export { Select, type SelectOption, type SelectProps } from '../../components/inputs/Select/Select.solid';
+export { Combobox, type ComboboxOption, type ComboboxProps } from '../../components/inputs/Combobox/Combobox.solid';
 
 // Buttons
 export { CircleButton, type CircleButtonProps } from '../../components/buttons/CircleButton/CircleButton.solid';
@@ -48,6 +45,11 @@ export {
 } from '../../components/menus/DropdownMenu/DropdownMenu.solid';
 
 // Data
+export {
+  CodeEditor,
+  type CodeEditorLanguage,
+  type CodeEditorProps,
+} from '../../components/data/CodeEditor/CodeEditor.solid';
 export { Accordion, type AccordionItem, type AccordionProps } from '../../components/data/Accordion/Accordion.solid';
 export { Calendar, type CalendarEvent, type CalendarProps } from '../../components/data/Calendar/Calendar.solid';
 export { List, type ListItem, type ListProps } from '../../components/data/List/List.solid';

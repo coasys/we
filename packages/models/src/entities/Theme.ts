@@ -13,11 +13,17 @@ export class Theme extends WeNode {
   @Property({ through: 'we://name' })
   name: string = '';
 
+  @Property({ through: 'we://description' })
+  description: string = '';
+
   @Property({ through: 'we://icon' })
   icon: string = '';
 
   @Property({ through: 'we://origin' })
   origin: string = ''; // 'built-in' | 'shared' | 'custom'
+
+  @Property({ through: 'we://slug' })
+  slug: string = '';
 
   @Property({ through: 'we://version' })
   version: number = 1;
@@ -53,6 +59,7 @@ export interface Theme extends HasManyMethods<'screenshots'> {}
  */
 export type ThemeData = Pick<Theme, 'name' | 'icon' | 'version'> & {
   id: string;
+  slug: string;
   origin: 'built-in' | 'shared' | 'custom' | 'marketplace';
   css: string | null;
   overrides: string | null;
@@ -61,6 +68,7 @@ export type ThemeData = Pick<Theme, 'name' | 'icon' | 'version'> & {
 export function modelToThemeData(model: Theme): ThemeData {
   return {
     id: model.id,
+    slug: model.slug || '',
     name: model.name || 'Untitled Theme',
     icon: model.icon || 'palette',
     origin: (model.origin as ThemeData['origin']) || 'custom',

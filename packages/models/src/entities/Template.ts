@@ -15,6 +15,9 @@ export class Template extends WeNode {
   @Property({ through: 'we://description' })
   description: string = '';
 
+  @Property({ through: 'we://icon' })
+  icon: string = '';
+
   @Property({ through: 'we://origin' })
   origin: string = ''; // 'built-in' | 'shared' | 'custom' | 'marketplace'
 

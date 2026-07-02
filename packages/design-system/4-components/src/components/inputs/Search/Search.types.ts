@@ -1,4 +1,4 @@
-export interface SearchInputProps {
+export interface SearchProps {
   placeholder?: string;
   value?: string;
   onSearch?: (value: string) => void;

@@ -489,7 +489,7 @@ Fires a `we-reorder` CustomEvent<string[]> on drop with the new ordered
 array of IDs.
   Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = ''
 - we-spinner (LayoutElement)
-  Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', color: string = ''
+  Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
 - we-switch (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
 - we-tab (DesignSystemElement)
@@ -580,7 +580,7 @@ when `relative` is enabled.
 - AudioVisualiser
   Props: src: string | undefined, bars?: number, height?: number, color?: string, activeColor?: string
 - AvatarStack
-  Props: avatars: AvatarInfo[], max?: number, size?: "sm" | "md" | "lg" | "xl" | "xxs" | "xs" | "xxl", overlap?: number, ring?: string, styles?: Record<string, string | number>
+  Props: avatars: AvatarInfo[], max?: number, size?: "xs" | "sm" | "md" | "lg" | "xl" | "xxs" | "xxl", overlap?: number, ring?: string, styles?: Record<string, string | number>
 - Breadcrumbs
   Props: onNavigate?: ((item: BreadcrumbItem, index: number) => void), items?: BreadcrumbItem[], separator?: string, styles?: Record<string, string | number>
 - Calendar
@@ -589,10 +589,14 @@ when `relative` is enabled.
   Props: bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, styles?: JSX.CSSProperties, direction?: "row" | "column"
 - CircleButton
   Props: label: string, icon?: string, image?: string, onClick?: (() => void), class?: string, styles?: Record<string, string | number>
+- CodeEditor
+  Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), styles?: Record<string, string | number>
 - CollapsedContent
   Props: collapsed: boolean, onExpandClick?: (() => void), showToggle?: boolean, icon?: string, maxHeight?: string, fadeColor?: string, children?: JSX.Element, class?: string, styles?: Record<string, string | number>
 - Column
   Props: styles?: JSX.CSSProperties, bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexCrossAxis, ay?: FlexMainAxis
+- Combobox
+  Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void), styles?: JSX.CSSProperties, bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
   Props: class?: string, styles?: Record<string, string | number>, placement?: Placement, triggerLabel?: string, triggerIcon?: string, items: SolidDropdownMenuEntry[]
 - EditableImage
@@ -600,9 +604,7 @@ when `relative` is enabled.
 - FlipCard
   Props: front?: JSX.Element, back?: JSX.Element, width?: string, height?: string, flipOnHover?: boolean, flipDuration?: string, wobbleOnHover?: boolean, wobbleDegree?: number, class?: string, styles?: Record<string, string | number>
 - Grid
-  Props: bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, styles?: JSX.CSSProperties, columns?: number, minChildWidth?: string
-- GroupedSelect
-  Props: options: GroupedSelectOption[], value?: string, placeholder?: string, searchable?: boolean, onChange?: (((value: string) => void) & import("/home/james/Desktop/Coding/we/node_modules/.pnpm/solid-js@1.9.13/node_modules/solid-js/types/index").JSX.ChangeEventHandlerUnion<HTMLDivElement, Event>), styles?: JSX.CSSProperties, bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean
+  Props: bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, styles?: JSX.CSSProperties, template?: string, columns?: number, minChildWidth?: string
 - IconLabelButton
   Props: icon: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
 - ImageCrop
@@ -617,8 +619,10 @@ when `relative` is enabled.
   Props: location: string
 - Row
   Props: styles?: JSX.CSSProperties, bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, ax?: FlexMainAxis, ay?: FlexCrossAxis
-- SearchInput
+- Search
   Props: styles?: JSX.CSSProperties, bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean, placeholder?: string, value?: string, onSearch?: ((value: string) => void), debounce?: number
+- Select
+  Props: options: SelectOption[], value?: string, placeholder?: string, searchable?: boolean, onChange?: ((value: string) => void), styles?: JSX.CSSProperties, bg?: ColorValue, bgImage?: string, bgFit?: "cover" | "contain", bgPosition?: string, color?: ColorValue, opacity?: number, border?: string, borderColor?: ColorValue, borderTop?: string, borderRight?: string, borderBottom?: string, borderLeft?: string, borderWidth?: string, shadow?: ShadowValue, ring?: string, transform?: string, transition?: string, textAlign?: TextAlign, fontFamily?: FontFamilyValue, fontWeight?: FontWeight, fontSize?: FontSizeValue, lineHeight?: LineHeightValue, letterSpacing?: LetterSpacingValue, textDecoration?: TextDecoration, textTransform?: TextTransform, cursor?: Cursor, pointerEvents?: PointerEvents, visibility?: Visibility, width?: string, height?: string, minWidth?: string, minHeight?: string, maxWidth?: string, maxHeight?: string, display?: Display, ax?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", ay?: "center" | "start" | "end" | "between" | "around" | "even" | "stretch", wrap?: boolean, gap?: SpaceValue, flex?: string, alignSelf?: string, overflow?: Overflow, overflowX?: Overflow, overflowY?: Overflow, scrollbarWidth?: ScrollbarWidth, scrollbarGutter?: ScrollbarGutter, zIndex?: ZIndexValue, position?: Position, top?: string, right?: string, bottom?: string, left?: string, m?: SpaceValue, ml?: SpaceValue, mr?: SpaceValue, mt?: SpaceValue, mb?: SpaceValue, mx?: SpaceValue, my?: SpaceValue, p?: SpaceValue, pl?: SpaceValue, pr?: SpaceValue, pt?: SpaceValue, pb?: SpaceValue, px?: SpaceValue, py?: SpaceValue, r?: RadiusValue, rt?: RadiusValue, rb?: RadiusValue, rl?: RadiusValue, rr?: RadiusValue, rtl?: RadiusValue, rtr?: RadiusValue, rbr?: RadiusValue, rbl?: RadiusValue, hoverProps?: Partial<DesignSystemProps>, activeProps?: Partial<DesignSystemProps>, focusProps?: Partial<DesignSystemProps>, disabledProps?: Partial<DesignSystemProps>, reverse?: boolean
 - SignalControl
   Props: signalType: SignalTypeData, signals?: SignalData[], myDid?: string, onSignal?: ((value: number) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
 - Stepper
@@ -1021,6 +1025,7 @@ Template extends WeNode:
   Fields:
   - name: string [we://name]
   - description: string [we://description]
+  - icon: string [we://icon]
   - origin: string [we://origin]
   - version: number = 1 [we://version]
   - slug: string [we://slug]
@@ -1046,8 +1051,10 @@ TextBlock extends WeNode:
 Theme extends WeNode:
   Fields:
   - name: string [we://name]
+  - description: string [we://description]
   - icon: string [we://icon]
   - origin: string [we://origin]
+  - slug: string [we://slug]
   - version: number = 1 [we://version]
   - css: string = null [we://stylesheet]
   - overrides: string = null [we://token_overrides]
@@ -1733,6 +1740,40 @@ After creating or modifying a `.schema.ts` file, always run validation to catch:
 
 ---
 
+### Using the Design System in TypeScript Components
+
+When writing Solid TSX components (stores, editor panels, settings UI, etc.), always
+reach for design system primitives before writing raw HTML elements with inline styles.
+
+**Layout:** Use `Column`, `Row`, and `Grid` from `@we/components/solid` for all
+flex and grid layouts. DS props (`gap`, `p`, `px`, `bg`, `r`, `border`, etc.)
+cover the vast majority of layout needs without inline styles.
+- `Grid` supports uniform columns (`columns={3}`), responsive auto-fill
+  (`minChildWidth="280px"`), and custom templates (`template="28px 1fr 28px"`).
+- Use the `styles` prop only for CSS that genuinely has no DS equivalent.
+
+**Text:** Use `we-text` with its own props (`fontSize`, `fontWeight`, `color`,
+`truncate`, `variant`, etc.) rather than passing everything through `style={{}}`.
+
+**Interactive controls:** Use `we-button`, `we-input`, `we-checkbox`, `we-select`,
+`we-switch` etc. — they bring theming, focus rings, hover states, and accessibility
+for free. Never roll custom `<button>` or `<input>` elements when a primitive fits.
+
+**Scrollable areas:** Use `we-scroll-area` instead of `overflow: auto` on a div —
+it gives consistently styled scrollbars across themes.
+
+**Dividers:** Use `we-divider` or the `borderBottom`/`borderTop` DS prop on a
+`Column`/`Row` rather than a raw `<hr>` or border on a wrapper div.
+
+**Token values:** Use `tokenVar` from `@we/design-utils` when you need a token value
+inside a `style={{}}` object. Prefer DS props directly where possible.
+
+Raw inline styles and hardcoded CSS variable strings (`var(--we-color-neutral-400)`)
+are a signal that a DS prop or primitive is being missed — check before reaching for
+`style={{}}`.
+
+---
+
 ### Auto-generated Files — Never Edit Directly
 
 The following files are fully regenerated by `pnpm --filter @we/ai-context generate-context`.
@@ -2037,3 +2078,74 @@ await space.save();
 // ✅ Correct
 const space = await Space.create(perspective, { uuid: crypto.randomUUID(), name: 'My Space' });
 ```
+
+---
+
+### Solid + Lit Web Component Event Handling
+
+**How the event type generator works** (`packages/design-system/3-primitives/scripts/generate-framework-declarations.ts`):
+
+For Solid, two categories of event props are generated per element:
+- **Native DOM events** → camelCase delegated handlers (`onClick`, `onInput`, `onChange`, etc.) via Solid's synthetic delegation system
+- **Custom Lit events** declared in the Custom Elements Manifest → `'on:eventname'` direct listeners (e.g. `'on:select'`, `'on:toggle'`)
+
+The `on:eventname` syntax is Solid's escape hatch for adding a direct `addEventListener` on the host element, bypassing delegation entirely.
+
+**`we-menu-item` — always use `on:select`, not `onClick`**
+
+`we-menu-item` dispatches a `select` CustomEvent (composed, bubbles) when clicked — this is its designed public API. The generated Solid type already includes `'on:select'?: (event: CustomEvent) => void`.
+
+```tsx
+// ✅ Correct — uses designed API, already typed, works through shadow DOM + popover
+<we-menu-item value={opt.value} on:select={() => handleSelect(opt)}>
+  <we-text>{opt.label}</we-text>
+</we-menu-item>
+
+// ❌ Wrong — 'on:click' is not in the generated type (TypeScript error)
+<we-menu-item value={opt.value} on:click={() => handleSelect(opt)}>
+
+// ❌ Unreliable — onClick uses Solid delegation which may not reach elements
+// inside shadow DOM or we-popover's browser top-layer
+<we-menu-item value={opt.value} onClick={() => handleSelect(opt)}>
+```
+
+**Why delegation fails inside `we-popover`**: Solid's delegated events (`onClick`, etc.) are registered at the Solid root element. Events from inside shadow DOM stacks or the browser's Popover API top layer may not reach the delegation root correctly due to shadow boundary retargeting. Always prefer `on:select` for `we-menu-item` — it adds a direct listener on the host element itself.
+
+**General rule for other web component events**: if you need to listen to a native DOM event (e.g. `click`, `input`) on a `we-` primitive inside a deep shadow DOM context and `onClick`/`onInput` prove unreliable, use a `ref` callback with `addEventListener` directly — this never has delegation issues:
+```tsx
+<we-some-element ref={(el) => el.addEventListener('click', handler)} />
+```
+
+---
+
+### Shadow DOM + Slots: Third-party Library Root Detection
+
+Lit primitives (`we-scroll-area`, `we-popover`, etc.) use Shadow DOM with `<slot>`.
+Light-DOM children are slotted through, but their `assignedSlot` property points into
+the Shadow Root. Any library that auto-detects its document root by walking up via
+`assignedSlot` will end up scoped to the **ShadowRoot** rather than the main document.
+
+**Symptoms when a library is incorrectly scoped to a ShadowRoot:**
+- Styles injected by the library don't apply to its own DOM elements (which live in the light DOM)
+- `document.activeElement` checks fail because the library checks `shadowRoot.activeElement` instead
+- Everything works only after another instance of the same library mounts outside the web component
+
+**Known affected library: CodeMirror 6**
+
+CM6's `getRoot()` follows `assignedSlot` into the Shadow Root. Symptoms: editor shows
+only the gutter (unstyled), cursor/focus detection broken. Fix: always pass
+`root: containerRef.ownerDocument` to the `EditorView` constructor. `ownerDocument`
+skips the slot chain and always returns the main `Document`.
+
+```tsx
+// ✅ Always do this when mounting a CodeMirror EditorView inside any we-* component
+view = new EditorView({
+  parent: containerRef,
+  root: containerRef.ownerDocument,
+  ...
+});
+```
+
+**General rule for other libraries**: if a third-party library accepts a `document`,
+`root`, or `container` option and uses it for style injection or focus detection,
+pass `element.ownerDocument` explicitly rather than letting the library auto-detect.

@@ -91,7 +91,7 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-spacing',
-    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
+    paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'number-input': {
     radiusGroup: '--we-theme-input-radius',
@@ -103,19 +103,17 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-spacing',
-    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
+    paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'color-picker': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
     paddingGroup: '--we-theme-input-spacing',
-    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
+    paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'icon-picker': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
-    paddingGroup: '--we-theme-input-spacing',
-    paddingDefault: '0 var(--we-space-300)', // Explicit: wrapper — no px in DEFAULT_PROPS
   },
   'file-upload': { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-surface-spacing' },
   'form-field': {

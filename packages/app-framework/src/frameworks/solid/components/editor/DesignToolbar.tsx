@@ -1,4 +1,4 @@
-import { Column, Row, SearchInput } from '@we/components/solid';
+import { Column, Row, Search } from '@we/components/solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
@@ -7,9 +7,8 @@ import { useAiStore } from '../../stores/AiStore';
 import { useSpaceStore } from '../../stores/SpaceStore';
 import { useTemplateStore } from '../../stores/TemplateStore';
 import { useThemeStore } from '../../stores/ThemeStore';
-import { PublishThemeModal } from './PublishThemeModal';
 import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
-import { panelResizing, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from './RightPanelContainer';
+import { panelResizing, RAIL_STRIP_WIDTH, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from './RightPanelContainer';
 
 export function DesignToolbar() {
   const templateStore = useTemplateStore();
@@ -133,6 +132,25 @@ export function DesignToolbar() {
     }
   });
 
+  // Keyboard shortcuts for undo/redo while editing
+  createEffect(() => {
+    if (!aiStore.isEditingTemplate() && !aiStore.isEditingTheme()) return;
+    const handler = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.key !== 'z' && e.key !== 'Z') return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        if (aiStore.canRedo()) aiStore.redo();
+      } else {
+        if (aiStore.canUndo()) aiStore.undo();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    onCleanup(() => document.removeEventListener('keydown', handler));
+  });
+
   // Close all when clicking outside the chip container
   const anyOpen = () =>
     open() ||
@@ -201,6 +219,10 @@ export function DesignToolbar() {
       offset += TEMPLATE_RAILS_WIDTH;
       if (aiStore.codePanelOpen()) offset += aiStore.codePanelWidth();
       if (aiStore.isOpen()) offset += aiStore.aiPanelWidth();
+      if (aiStore.contentMode() === 'visual') {
+        offset += RAIL_STRIP_WIDTH;
+        if (aiStore.visualPanelOpen()) offset += aiStore.visualPanelWidth();
+      }
     }
     return `${offset}px`;
   };
@@ -292,7 +314,30 @@ export function DesignToolbar() {
         ay="start"
         gap="200"
       >
-        {/* ── Edit-mode toolbar (template editing only) ── */}
+        {/* ── Undo/redo chip (visible whenever template or theme editing is active) ── */}
+        <Show when={aiStore.isEditingTemplate() || aiStore.isEditingTheme()}>
+          <Row
+            ay="center"
+            gap="100"
+            bg="neutral-50"
+            border="1px solid neutral-200"
+            r="var(--we-theme-control-radius, var(--we-radius-400))"
+            p="200"
+          >
+            <we-tooltip title="Undo" placement="bottom">
+              <we-button variant="ghost" square disabled={!aiStore.canUndo()} onClick={() => aiStore.undo()}>
+                <we-icon name="arrow-u-up-left" />
+              </we-button>
+            </we-tooltip>
+            <we-tooltip title="Redo" placement="bottom">
+              <we-button variant="ghost" square disabled={!aiStore.canRedo()} onClick={() => aiStore.redo()}>
+                <we-icon name="arrow-u-up-right" />
+              </we-button>
+            </we-tooltip>
+          </Row>
+        </Show>
+
+        {/* ── Mode chip (visible when editing a template) ── */}
         <Show when={aiStore.isEditingTemplate()}>
           <Row
             ay="center"
@@ -318,42 +363,6 @@ export function DesignToolbar() {
                 onClick={() => aiStore.setContentMode('visual')}
               >
                 <we-icon name="pencil-ruler" />
-              </we-button>
-            </we-tooltip>
-
-            <we-divider orientation="vertical" color="neutral-200" height="28px" />
-
-            <we-tooltip title="Undo" placement="bottom">
-              <we-button variant="ghost" square disabled={!aiStore.canUndo()} onClick={() => aiStore.undo()}>
-                <we-icon name="arrow-u-up-left" />
-              </we-button>
-            </we-tooltip>
-            <we-tooltip title="Redo" placement="bottom">
-              <we-button variant="ghost" square disabled={!aiStore.canRedo()} onClick={() => aiStore.redo()}>
-                <we-icon name="arrow-u-up-right" />
-              </we-button>
-            </we-tooltip>
-          </Row>
-        </Show>
-
-        {/* ── Edit-mode toolbar (theme editing only) ── */}
-        <Show when={aiStore.isEditingTheme()}>
-          <Row
-            ay="center"
-            gap="100"
-            bg="neutral-50"
-            border="1px solid neutral-200"
-            r="var(--we-theme-control-radius, var(--we-radius-400))"
-            p="200"
-          >
-            <we-tooltip title="Undo" placement="bottom">
-              <we-button variant="ghost" square disabled={!themeStore.canUndo()} onClick={() => themeStore.undo()}>
-                <we-icon name="arrow-u-up-left" />
-              </we-button>
-            </we-tooltip>
-            <we-tooltip title="Redo" placement="bottom">
-              <we-button variant="ghost" square disabled={!themeStore.canRedo()} onClick={() => themeStore.redo()}>
-                <we-icon name="arrow-u-up-right" />
               </we-button>
             </we-tooltip>
           </Row>
@@ -427,7 +436,7 @@ export function DesignToolbar() {
               shadow="md"
               minWidth="220px"
             >
-              <SearchInput value={themeSearch()} placeholder="Search themes…" m="200" onSearch={setThemeSearch} />
+              <Search value={themeSearch()} placeholder="Search themes…" m="200" onSearch={setThemeSearch} />
               <we-divider />
               <Column py="200" maxHeight="320px" overflowY="auto">
                 <Show when={filteredSpaceThemes().length > 0}>
@@ -781,7 +790,7 @@ export function DesignToolbar() {
                       Choose a space
                     </we-text>
                   </Row>
-                  <SearchInput value={spaceSearch()} placeholder="Search spaces…" m="200" onSearch={setSpaceSearch} />
+                  <Search value={spaceSearch()} placeholder="Search spaces…" m="200" onSearch={setSpaceSearch} />
                   <we-divider />
                   <we-scroll-area maxHeight="280px">
                     <Column py="200">
@@ -886,7 +895,7 @@ export function DesignToolbar() {
               overflow="hidden"
               minWidth="300px"
             >
-              <SearchInput value={search()} placeholder="Search templates…" m="200" onSearch={setSearch} />
+              <Search value={search()} placeholder="Search templates…" m="200" onSearch={setSearch} />
               <we-divider />
               <we-scroll-area maxHeight="320px">
                 <Column py="200">
@@ -1106,7 +1115,7 @@ export function DesignToolbar() {
                       Choose a space
                     </we-text>
                   </Row>
-                  <SearchInput value={spaceSearch()} placeholder="Search spaces…" m="200" onSearch={setSpaceSearch} />
+                  <Search value={spaceSearch()} placeholder="Search spaces…" m="200" onSearch={setSpaceSearch} />
                   <we-divider />
                   <we-scroll-area maxHeight="280px">
                     <Column py="200">
@@ -1233,13 +1242,13 @@ export function DesignToolbar() {
 
       <Show when={publishModalOpen()}>
         <Portal>
-          <PublishToMarketplaceModal onClose={() => setPublishModalOpen(false)} />
+          <PublishToMarketplaceModal type="template" onClose={() => setPublishModalOpen(false)} />
         </Portal>
       </Show>
 
       <Show when={publishThemeModalOpen()}>
         <Portal>
-          <PublishThemeModal onClose={() => setPublishThemeModalOpen(false)} />
+          <PublishToMarketplaceModal type="theme" onClose={() => setPublishThemeModalOpen(false)} />
         </Portal>
       </Show>
     </div>

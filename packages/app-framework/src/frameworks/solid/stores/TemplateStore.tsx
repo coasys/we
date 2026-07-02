@@ -5,8 +5,8 @@ import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
 import { compressImageToFileData, decodeFileAsJson, ImageBlock, SpaceTemplatePreference, Template } from '@we/models';
-import type { StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
-import { createStoredTemplate } from '@we/schema-shared';
+import type { SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
+import { createStoredTemplate, ensureNodeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
@@ -63,6 +63,7 @@ export interface TemplateStore {
   publishToMarketplace: (options: {
     name: string;
     description: string;
+    icon?: string;
     themeId?: string;
     screenshots: File[];
   }) => Promise<boolean>;
@@ -405,7 +406,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (bootId && bootId !== 'default' && bootId !== 'landing-page' && bootId !== currentTemplate.id) {
       const persisted = allTemplates().find((t) => t.id === bootId) || shellTemplates.find((t) => t.id === bootId);
       if (persisted) {
-        setCurrentTemplate(reconcile(deepClone(persisted)));
+        const clone = deepClone(persisted) as SchemaNode;
+        ensureNodeIds(clone);
+        setCurrentTemplate(reconcile(clone as TemplateSchema));
         initialRestoreDone = true;
       }
     }
@@ -414,7 +417,9 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   // Actions
   function updateTemplate(newTemplate: TemplateSchema) {
-    const result = updateSchema(currentTemplate, newTemplate, setCurrentTemplate);
+    const clone = deepClone(newTemplate) as SchemaNode;
+    ensureNodeIds(clone);
+    const result = updateSchema(currentTemplate, clone as TemplateSchema, setCurrentTemplate);
     if (!result.applied && result.errors?.length) {
       toastService.error(`Schema validation failed: ${result.errors[0].message}`);
     }
@@ -424,7 +429,9 @@ export function TemplateStoreProvider(props: ParentProps) {
    *  Preferred for AI updates where large structural changes (new routes, etc.) need
    *  reliable reactivity. Caller is responsible for pre-validating the schema. */
   function replaceTemplate(newTemplate: TemplateSchema) {
-    setCurrentTemplate(reconcile(deepClone(newTemplate)));
+    const clone = deepClone(newTemplate) as SchemaNode;
+    ensureNodeIds(clone);
+    setCurrentTemplate(reconcile(clone as TemplateSchema));
   }
 
   // Per-template last-view memory — remembers which view segment (e.g. 'globe', 'chat')
@@ -449,7 +456,9 @@ export function TemplateStoreProvider(props: ParentProps) {
       ? allTemplates().find((t) => t.id === realId && t._fromSpace)
       : allTemplates().find((t) => t.id === realId && !t._fromSpace) || shellTemplates.find((t) => t.id === realId);
     if (newTemplate) {
-      setCurrentTemplate(reconcile(deepClone(newTemplate)));
+      const clone = deepClone(newTemplate) as SchemaNode;
+      ensureNodeIds(clone);
+      setCurrentTemplate(reconcile(clone as TemplateSchema));
       const segs = routeStore.segments();
       const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
       const view = lastViewByTemplate.get(realId) ?? currentView;
@@ -531,7 +540,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     // If we deleted the current template, switch to the default
     if (currentTemplate.id === templateId) {
       const fallback = allTemplates().find((t) => t.id === 'default') || allTemplates()[0] || emptyTemplate;
-      setCurrentTemplate(reconcile(deepClone(fallback)));
+      const clone = deepClone(fallback) as SchemaNode;
+      ensureNodeIds(clone);
+      setCurrentTemplate(reconcile(clone as TemplateSchema));
     }
     setOperationLoading(null);
   }
@@ -609,7 +620,9 @@ export function TemplateStoreProvider(props: ParentProps) {
       const schemaBlob = (() => {
         const storedTemplate = createStoredTemplate(schemaToInstall);
         const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-        const base64 = btoa(String.fromCharCode(...jsonBytes));
+        let binary = '';
+        for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+        const base64 = btoa(binary);
         return { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' };
       })();
 
@@ -691,7 +704,9 @@ export function TemplateStoreProvider(props: ParentProps) {
       const schemaBlob = (() => {
         const storedTemplate = createStoredTemplate(schemaToInstall);
         const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-        const base64 = btoa(String.fromCharCode(...jsonBytes));
+        let binary = '';
+        for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+        const base64 = btoa(binary);
         return { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' };
       })();
 
@@ -736,7 +751,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     // Wrap in StoredTemplate with computed sections
     const storedTemplate = createStoredTemplate(schemaToSave);
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    let binary = '';
+    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+    const base64 = btoa(binary);
     const schemaBlob = {
       data_base64: base64,
       name: 'template-schema.json',
@@ -798,7 +815,9 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     const storedTemplate = createStoredTemplate(schemaToSave);
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    let binary = '';
+    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+    const base64 = btoa(binary);
     const schemaBlob = {
       data_base64: base64,
       name: 'template-schema.json',
@@ -894,7 +913,9 @@ export function TemplateStoreProvider(props: ParentProps) {
     // re-persisting a previously-saved schema (e.g. after undo/redo).
     const envelope = { ...storedTemplate, savedAt: Date.now() };
     const jsonBytes = new TextEncoder().encode(JSON.stringify(envelope));
-    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    let binary = '';
+    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+    const base64 = btoa(binary);
     const schemaBlob = {
       data_base64: base64,
       name: 'template-schema.json',
@@ -952,7 +973,9 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: templateId });
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    let binary = '';
+    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+    const base64 = btoa(binary);
     const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
 
     try {
@@ -1000,6 +1023,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   async function publishToMarketplace(options: {
     name: string;
     description: string;
+    icon?: string;
     themeId?: string;
     screenshots: File[];
   }): Promise<boolean> {
@@ -1022,14 +1046,19 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: templateId, author: adamStore.me()?.did });
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
-    const base64 = btoa(String.fromCharCode(...jsonBytes));
+    let binary = '';
+    for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
+    const base64 = btoa(binary);
     const schemaBlob = { data_base64: base64, name: 'template-schema.json', file_type: 'application/json' } as FileData;
+
+    const templateIcon = options.icon ?? schema.meta?.icon ?? '';
 
     try {
       if (existing) {
         // Update existing marketplace entry in place — bump version, replace schema and screenshots
         existing.name = options.name;
         existing.description = options.description;
+        existing.icon = templateIcon;
         existing.version = (existing.version || 1) + 1;
         existing.schema = schemaBlob as any;
         if (options.themeId !== undefined) existing.themeId = options.themeId;
@@ -1051,6 +1080,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         const template = await Template.create(marketplacePerspective, {
           name: options.name,
           description: options.description,
+          icon: templateIcon,
           origin: 'marketplace',
           slug: templateId,
           version: 1,
