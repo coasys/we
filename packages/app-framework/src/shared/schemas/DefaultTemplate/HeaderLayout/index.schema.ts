@@ -7,7 +7,6 @@ import { globeRoute } from '../routes/GlobeRoute/index.ts';
 import { graphRoute } from '../routes/GraphRoute/index.ts';
 import { homeRoute } from '../routes/HomeRoute/index.ts';
 import { settingsRoute } from '../routes/SettingsRoute/index.ts';
-// import { signalsRoute } from '../routes/SignalsRoute/index.ts';
 import { spaceGate } from '../SpaceGate.ts';
 import { spaceHeader, spaceNavBar } from './SpaceHeader.ts';
 
@@ -54,7 +53,6 @@ export const headerLayout: TemplateSchema = {
         aboutRoute,
         globeRoute,
         cardsRoute,
-        // signalsRoute,
         fluxRoute,
         graphRoute,
         settingsRoute,

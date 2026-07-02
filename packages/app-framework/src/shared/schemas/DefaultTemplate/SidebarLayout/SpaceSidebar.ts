@@ -68,7 +68,6 @@ export const spaceSidebar: SchemaNode = {
               { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
               // { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
               { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
-              { label: 'Signals', icon: 'heart', segment: 'signals', path: './signals' },
               { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },
             ],
             as: 'view',

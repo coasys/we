@@ -205,7 +205,6 @@ export const spaceNavBar: SchemaNode = {
                       // { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
                       { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
                       { label: 'Settings', icon: 'gear', segment: 'settings', path: './settings' },
-                      // { label: 'Signals', icon: 'heart', segment: 'signals', path: './signals' },
                       // { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },
                     ],
                     as: 'view',

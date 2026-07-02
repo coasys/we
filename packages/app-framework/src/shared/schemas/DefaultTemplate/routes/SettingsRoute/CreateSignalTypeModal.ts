@@ -1,6 +1,6 @@
 export const createSignalTypeModal = {
   type: 'we-modal',
-  props: { close: { $setLocal: 'createOpen', value: false }, maxWidth: '500px', width: '100%' },
+  props: { close: { $setLocal: 'createSignalTypeOpen', value: false }, maxWidth: '500px', width: '100%' },
   $localState: {
     name: { type: 'string', initial: '' },
     slug: { type: 'string', initial: '' },
@@ -219,7 +219,7 @@ export const createSignalTypeModal = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'ghost', text: 'Cancel', onClick: { $setLocal: 'createOpen', value: false } },
+          props: { variant: 'ghost', text: 'Cancel', onClick: { $setLocal: 'createSignalTypeOpen', value: false } },
         },
         {
           type: 'we-button',
@@ -245,7 +245,7 @@ export const createSignalTypeModal = {
                 ],
               },
               { $resetLocal: '$scope' },
-              { $setLocal: 'createOpen', value: false },
+              { $setLocal: 'createSignalTypeOpen', value: false },
             ],
           },
         },

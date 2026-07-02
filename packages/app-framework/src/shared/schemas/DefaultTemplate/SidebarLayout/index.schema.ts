@@ -5,7 +5,6 @@ import { fluxRoute } from '../routes/FluxRoute/index.ts';
 import { globeRoute } from '../routes/GlobeRoute/index.ts';
 // import { graphRoute } from '../routes/GraphRoute/index.ts';
 import { homeRoute } from '../routes/HomeRoute/index.ts';
-import { signalsRoute } from '../routes/SignalsRoute/index.ts';
 import { spaceGate } from '../SpaceGate.ts';
 import { spaceSidebar } from './SpaceSidebar.ts';
 
@@ -36,7 +35,7 @@ export const sidebarLayout: TemplateSchema = {
           },
         },
       ],
-      routes: [{ path: '/', redirect: './globe' }, globeRoute, cardsRoute, signalsRoute, fluxRoute],
+      routes: [{ path: '/', redirect: './globe' }, globeRoute, cardsRoute, fluxRoute],
     },
   ],
 };
