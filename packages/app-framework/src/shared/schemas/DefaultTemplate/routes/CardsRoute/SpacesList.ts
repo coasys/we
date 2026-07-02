@@ -13,7 +13,15 @@ export const spacesList: SchemaNode = gridWrapper([
             url: { not: { $store: 'adamStore.currentPerspectiveSharedCid' } },
             name: { contains: { $local: 'searchText' } },
           },
-          order: { createdAt: { $local: 'sortDirection' } },
+          limit: 20,
+          order: {
+            $if: {
+              condition: { $eq: [{ $local: 'sortField' }, 'location'] },
+              then: { 'location.country': { $local: 'sortDirection' } },
+              else: { createdAt: { $local: 'sortDirection' } },
+            },
+          },
+          include: { location: true },
         },
       },
       as: 'space',
@@ -115,6 +123,24 @@ export const spacesList: SchemaNode = gridWrapper([
           },
         ],
         body: [
+          {
+            type: '$if',
+            props: {
+              condition: '$space.location',
+              then: {
+                type: 'Row',
+                props: { gap: '100', ay: 'center' },
+                children: [
+                  { type: 'we-icon', props: { name: 'map-pin', size: 'xs', color: 'neutral-500' } },
+                  {
+                    type: 'we-text',
+                    props: { variant: 'footnote', color: 'neutral-500' },
+                    children: [{ $concat: ['$space.location.city', ', ', '$space.location.country'] }],
+                  },
+                ],
+              },
+            },
+          },
           {
             type: '$if',
             props: {

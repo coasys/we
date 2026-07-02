@@ -58,10 +58,20 @@ export const cardsHeader: SchemaNode = {
             value: { $local: 'contentType' },
             options: contentTypeOptions,
             placeholder: 'All content',
-            onChange: { $setLocal: 'contentType', from: '$event' },
+            // Reset sortField on switch — a field like "likes" or "location" from the
+            // previous content type won't be a valid option for the new one.
+            onChange: [
+              { $setLocal: 'contentType', from: '$event' },
+              { $setLocal: 'sortField', value: 'date' },
+            ],
           },
         },
         // Sort field (posts only — date vs. most liked)
+        // Note: options must be a static array per branch — $if wraps array branch
+        // values into an event-handler dispatcher (its `onClick: [...]` use case),
+        // so a single Select with `options: { $if: {...} }` breaks Select's own
+        // handling of the (now-function, not array) options prop. Two separate
+        // $if-gated Select nodes sidestep that entirely.
         {
           type: '$if',
           props: {
@@ -74,6 +84,25 @@ export const cardsHeader: SchemaNode = {
                 options: [
                   { label: 'Date', value: 'date', icon: 'calendar' },
                   { label: 'Most Liked', value: 'likes', icon: 'heart' },
+                ],
+                onChange: { $setLocal: 'sortField', from: '$event' },
+              },
+            },
+          },
+        },
+        // Sort field (spaces only — date vs. location)
+        {
+          type: '$if',
+          props: {
+            condition: { $eq: [{ $local: 'contentType' }, 'spaces'] },
+            then: {
+              type: 'Select',
+              props: {
+                value: { $local: 'sortField' },
+                searchable: false,
+                options: [
+                  { label: 'Date', value: 'date', icon: 'calendar' },
+                  { label: 'Location', value: 'location', icon: 'map-pin' },
                 ],
                 onChange: { $setLocal: 'sortField', from: '$event' },
               },
