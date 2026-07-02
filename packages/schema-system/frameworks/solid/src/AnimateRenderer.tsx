@@ -1,7 +1,13 @@
 import type { TransitionConfig } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 
-import { buildTransitionCSS, hiddenOpacity, hiddenTransform, pulseAnimationCSS, scrollRootMargin } from './transitionUtils';
+import {
+  buildTransitionCSS,
+  hiddenOpacity,
+  hiddenTransform,
+  pulseAnimationCSS,
+  scrollRootMargin,
+} from './transitionUtils';
 import type { RendererOutput, SchemaNode } from './types';
 
 type AnimateRendererProps = {

@@ -404,7 +404,9 @@ export function joinStateDeclsCSS(statePrefix: string, defaultPrefix: string, sp
  * linear-gradient, faking true per-layer opacity (CSS has no way to scope `opacity` to
  * one background layer). Shared so both the Lit and Solid renderers fade identically.
  */
-export function computeBgImageComposite(props: Pick<DesignSystemProps, 'bgImage' | 'bgImageOpacity' | 'bgImageTint' | 'bg'>): string | undefined {
+export function computeBgImageComposite(
+  props: Pick<DesignSystemProps, 'bgImage' | 'bgImageOpacity' | 'bgImageTint' | 'bg'>,
+): string | undefined {
   if (!props.bgImage) return undefined;
   const url = `url("${props.bgImage}")`;
   if (props.bgImageOpacity === undefined || props.bgImageOpacity >= 1) return url;

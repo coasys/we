@@ -200,8 +200,14 @@ function toInteractiveVars(prefix: string, computed: JSX.CSSProperties): JSX.CSS
 // vary e.g. `bg`. `direction` isn't part of DesignSystemProps at all (it's a fixed
 // per-component parameter, never user-settable via state props), so flex-direction is
 // always stripped; display/wrap are kept only when actually present in the fragment.
-function buildStateFragmentStyles(stateProps: Partial<DesignSystemProps>, direction: 'row' | 'column'): JSX.CSSProperties {
-  const computed = buildLayoutStyles({ ...stateProps, styles: undefined } as LayoutProps, direction) as Record<string, unknown>;
+function buildStateFragmentStyles(
+  stateProps: Partial<DesignSystemProps>,
+  direction: 'row' | 'column',
+): JSX.CSSProperties {
+  const computed = buildLayoutStyles({ ...stateProps, styles: undefined } as LayoutProps, direction) as Record<
+    string,
+    unknown
+  >;
   delete computed['flex-direction'];
   if (!('display' in stateProps)) delete computed['display'];
   if (!('wrap' in stateProps)) delete computed['flex-wrap'];
@@ -238,15 +244,20 @@ export function useStateProps(
     // (which fall back through --we-ds-{state}-x -> --we-ds-x -> a safe CSS default) can
     // apply them without JS re-deriving the merged style on every pointer/focus event.
     const withoutInteractiveProps = { ...base };
-    for (const cssProp of CSS_PROP_TO_VAR_SUFFIX.keys()) delete (withoutInteractiveProps as Record<string, unknown>)[cssProp];
+    for (const cssProp of CSS_PROP_TO_VAR_SUFFIX.keys())
+      delete (withoutInteractiveProps as Record<string, unknown>)[cssProp];
 
     const baseVars = toInteractiveVars('', base);
     // Declaration order below is the precedence order: rules declared later in the
     // stylesheet win for equal-specificity selectors, so :focus-within < :hover < :active
     // here reproduces the same active-over-hover-over-focus precedence the old
     // JS-merge order (focus, then hover, then active) produced.
-    const focusVars = hasFocus() ? toInteractiveVars('focus-', buildStateFragmentStyles(props.focusProps!, direction)) : {};
-    const hoverVars = hasHover() ? toInteractiveVars('hover-', buildStateFragmentStyles(props.hoverProps!, direction)) : {};
+    const focusVars = hasFocus()
+      ? toInteractiveVars('focus-', buildStateFragmentStyles(props.focusProps!, direction))
+      : {};
+    const hoverVars = hasHover()
+      ? toInteractiveVars('hover-', buildStateFragmentStyles(props.hoverProps!, direction))
+      : {};
     const activeVars = hasActive()
       ? toInteractiveVars('active-', buildStateFragmentStyles(props.activeProps!, direction))
       : {};
