@@ -32,7 +32,10 @@ export function Card(allProps: CardProps) {
     // and the caller hasn't explicitly set opacity.
     if ((designSystemProps as CardProps).opacity === undefined) {
       const bgColor = (style as Record<string, unknown>)['background'] as string | undefined;
-      if (bgColor) {
+      // Gradients aren't <color> values — color-mix() only accepts real colors, so
+      // wrapping a gradient reference in it produces an invalid declaration that gets
+      // silently dropped, leaving the card with no background at all. Skip them.
+      if (bgColor && !bgColor.startsWith('var(--we-gradient-')) {
         (style as Record<string, unknown>)['background'] =
           `color-mix(in srgb, ${bgColor} calc(var(--we-theme-surface-opacity, 1) * 100%), transparent)`;
         (style as Record<string, unknown>)['backdrop-filter'] = 'blur(var(--we-theme-surface-blur, 0px))';
