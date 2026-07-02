@@ -3,7 +3,7 @@ import type { RouteSchema } from '@we/schema-shared';
 export const aboutRoute: RouteSchema = {
   path: '/about',
   type: 'Column',
-  props: { width: '100%', ax: 'center', height: 'calc(100vh - 70px)' },
+  props: { width: '100%', ax: 'center' },
   children: [
     {
       type: 'Column',

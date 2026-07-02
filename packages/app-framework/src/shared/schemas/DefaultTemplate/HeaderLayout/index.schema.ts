@@ -33,7 +33,18 @@ export const headerLayout: TemplateSchema = {
           type: '$if',
           props: {
             condition: { $store: 'adamStore.currentPerspective' },
-            then: { type: 'Column', children: [spaceHeader, spaceNavBar, { type: '$routes' }] },
+            then: {
+              type: 'Column',
+              children: [
+                spaceHeader,
+                spaceNavBar,
+                {
+                  type: 'Column',
+                  props: { width: '100%', height: 'calc(100vh - 70px)' },
+                  children: [{ type: '$routes' }],
+                },
+              ],
+            },
             else: spaceGate,
           },
         },
