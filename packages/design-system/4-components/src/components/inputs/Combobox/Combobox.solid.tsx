@@ -14,6 +14,7 @@ function normalizeOptions(opts: string[] | ComboboxOption[]): ComboboxOption[] {
   return opts.map((o) => (typeof o === 'string' ? { label: o, value: o } : o));
 }
 
+/** @superclass DesignSystemElement */
 export function Combobox(allProps: ComboboxComponentProps) {
   const [props, layoutProps] = splitProps(allProps, ownKeys);
 

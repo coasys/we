@@ -47,6 +47,7 @@ const TRIGGER_GAP: Record<NonNullable<OwnProps['size']>, string> = {
 
 export type SelectProps = OwnProps & Omit<LayoutProps, 'children' | 'onChange'>;
 
+/** @superclass DesignSystemElement */
 export function Select(allProps: SelectProps) {
   const [props, layoutProps] = splitProps(allProps, ownKeys);
   let popoverRef: (HTMLElement & Record<string, unknown>) | undefined;

@@ -10,6 +10,7 @@ const gridOwnKeys = ['template', 'columns', 'minChildWidth'] as const;
 const gridKeys = [...designSystemKeys.filter((key) => key !== 'direction'), 'reverse', 'children', ...gridOwnKeys];
 const gridStyleKeys = gridKeys.filter((key) => key !== 'children');
 
+/** @superclass DesignSystemElement */
 export function Grid(allProps: GridProps) {
   const [designSystemProps, rest] = splitProps(allProps, gridKeys as (keyof GridProps)[]);
 

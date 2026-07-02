@@ -39,6 +39,7 @@ const ownKeys = ['placeholder', 'value', 'onSearch', 'debounce', 'class'] as con
 
 export type SearchComponentProps = Omit<LayoutProps, 'children'> & Omit<SearchOwnProps, 'styles'>;
 
+/** @superclass DesignSystemElement */
 export function Search(allProps: SearchComponentProps) {
   const [props, rest] = splitProps(allProps, ownKeys);
   const [containerProps, inputProps] = splitProps(rest, containerKeys);

@@ -9,6 +9,7 @@ const DEFAULTS: Partial<RowProps> = {};
 const rowKeys = [...designSystemKeys.filter((key) => key !== 'direction'), 'reverse', 'children'];
 const rowStyleKeys = rowKeys.filter((key) => key !== 'children');
 
+/** @superclass DesignSystemElement */
 export function Row(allProps: RowProps) {
   const [designSystemProps, rest] = splitProps(allProps, rowKeys as (keyof RowProps)[]);
   const baseStyle = createMemo(() => {
