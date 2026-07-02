@@ -37,8 +37,10 @@ export default function SlashCommandPlugin(): JSX.Element | null {
       const element = editor.getElementByKey(node.getKey());
       if (element) {
         // Update state & display menu
+        // BlockMenu is a top-layer popover now, so its containing block is the
+        // viewport — use viewport-relative coordinates, not document coordinates.
         const rect = element.getBoundingClientRect();
-        setPosition({ top: rect.bottom + window.scrollY + 5, left: rect.left + window.scrollX });
+        setPosition({ top: rect.bottom + 5, left: rect.left });
         setNodeData({ key: node.getKey(), type: findNodeType(node) });
         setShowMenu(true);
         return true;

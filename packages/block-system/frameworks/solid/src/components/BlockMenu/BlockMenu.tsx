@@ -90,6 +90,12 @@ export default function BlockTypeMenu(props: {
   createEffect(() => {
     filterRef?.focus();
 
+    // Promote to the browser's top layer so the menu always renders above
+    // overlays (we-modal/we-drawer) which are top-layer themselves — a
+    // portaled document.body child can't out-rank the top layer via z-index.
+    menuRef?.setAttribute('popover', 'manual');
+    menuRef?.showPopover();
+
     // Set the focus index on the current node type
     const index = allBlocks.findIndex((item) => item.type === nodeType);
     setFocusIndex(index >= 0 ? index : 0);
@@ -99,7 +105,14 @@ export default function BlockTypeMenu(props: {
     }
 
     document.addEventListener('mousedown', handleClickOutside);
-    onCleanup(() => document.removeEventListener('mousedown', handleClickOutside));
+    onCleanup(() => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      try {
+        menuRef?.hidePopover();
+      } catch {
+        // Already hidden or popover API unavailable
+      }
+    });
   });
 
   // Update selection focus when focusIndex changes
@@ -154,7 +167,7 @@ export default function BlockTypeMenu(props: {
             <>
               {index > 0 && <div class="we-block-menu-divider" />}
 
-              <we-text fontSize="300" fontWeight="600" textTransform="uppercase" color="neutral-600" mb="100">
+              <we-text fontSize="100" fontWeight="600" textTransform="uppercase" color="neutral-600" mb="100">
                 {category.title}
               </we-text>
 
@@ -170,9 +183,9 @@ export default function BlockTypeMenu(props: {
                 >
                   <Row ay="center" gap="300">
                     <we-icon name={option.icon} weight="bold" color="neutral-400" size="sm" />
-                    <we-text fontSize="400">{option.label}</we-text>
+                    <we-text fontSize="200">{option.label}</we-text>
                   </Row>
-                  <we-text fontSize="400" color="neutral-500">
+                  <we-text fontSize="200" color="neutral-500">
                     {option.md}
                   </we-text>
                 </button>

@@ -256,8 +256,10 @@ function BlockHandle({ nodeKey, nodeData }: { nodeKey: string; nodeData: NodeDat
   }
 
   function updatePosition() {
+    // The handle is a top-layer popover (see below), so its containing block
+    // is the viewport — use viewport-relative coordinates, not document coordinates.
     const { top, left, height } = block.getBoundingClientRect();
-    const newPosition = { top: top + window.scrollY, left: left + window.scrollX - 40, height };
+    const newPosition = { top, left: left - 40, height };
     setPosition((prev) => {
       if (prev.top !== newPosition.top || prev.left !== newPosition.left || prev.height !== newPosition.height) {
         return newPosition;
@@ -287,6 +289,12 @@ function BlockHandle({ nodeKey, nodeData }: { nodeKey: string; nodeData: NodeDat
   }
 
   createEffect(() => {
+    // Promote to the browser's top layer so the handle always renders above
+    // overlays (we-modal/we-drawer) which are top-layer themselves — a
+    // portaled document.body child can't out-rank the top layer via z-index.
+    handleRef?.setAttribute('popover', 'manual');
+    handleRef?.showPopover();
+
     const resizeObserver = new ResizeObserver(() => updatePosition());
     resizeObserver.observe(block);
 
@@ -317,6 +325,11 @@ function BlockHandle({ nodeKey, nodeData }: { nodeKey: string; nodeData: NodeDat
       resizeObserver.disconnect();
       visibilityObserver.disconnect();
       mutationObserver.disconnect();
+      try {
+        handleRef?.hidePopover();
+      } catch {
+        // Already hidden or popover API unavailable
+      }
     });
   });
 

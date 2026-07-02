@@ -1,6 +1,16 @@
 .we-block-menu {
-  position: absolute;
+  // position: fixed (not absolute) — this element is promoted to the browser's
+  // top layer via popover="manual", so its containing block is always the
+  // viewport. top/left are computed in viewport coordinates by the caller.
+  position: fixed;
   z-index: var(--we-z-popover);
+  margin: 0;
+  // Reset UA [popover] default `color` that would otherwise leak through —
+  // background/border are already set below, but overflow-x needs an explicit
+  // reset since the UA default (`overflow: auto` on both axes) would otherwise
+  // apply on x too (previously it was `visible` before the popover promotion).
+  color: inherit;
+  overflow-x: hidden;
   top: 20px;
   pointer-events: auto;
   display: flex;
@@ -16,7 +26,7 @@
 
   .we-block-menu-filter {
     all: unset;
-    font-size: 13px;
+    font-size: var(--we-font-size-200);
     color: var(--we-color-neutral-900);
 
     &::placeholder {
@@ -25,7 +35,7 @@
   }
 
   .we-block-menu-empty {
-    font-size: 13px;
+    font-size: var(--we-font-size-200);
     color: var(--we-color-neutral-400);
     padding: 8px;
     text-align: center;

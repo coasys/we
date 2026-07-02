@@ -1,6 +1,17 @@
 .we-block-handle {
-  position: absolute;
+  // position: fixed (not absolute) — this element is promoted to the browser's
+  // top layer via popover="manual", so its containing block is always the
+  // viewport. top/left are computed in viewport coordinates by the caller.
+  position: fixed;
   z-index: 10;
+  margin: 0;
+  // Reset UA [popover] defaults (border, background, overflow, color) that
+  // would otherwise leak through — same defaults OverlayElement resets for
+  // we-modal/we-drawer.
+  border: none;
+  background: transparent;
+  overflow: visible;
+  color: inherit;
   opacity: 0;
   pointer-events: none;
   display: flex;
