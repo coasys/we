@@ -23,11 +23,16 @@ export type RouteSchema = SchemaNode & { path: string; redirect?: string; keepAl
  * - 'fade'  — animates opacity only
  * - 'slide' — animates transform only (use alongside 'fade' for a combined slide+fade)
  * - 'scale' — animates transform (scale) only
+ * - 'pulse' — a persistent looping CSS `@keyframes` animation (not a one-shot enter/exit
+ *   transition like the others — fade/slide/scale interpolate between two static states,
+ *   which a CSS `transition` already does natively; a loop needs real keyframes, defined
+ *   in the DS interop stylesheet). Starts once entered, stops on exit. `direction`/
+ *   `distance` don't apply.
  */
 export type TransitionEffect = {
-  type: 'fade' | 'slide' | 'scale';
-  duration?: number; // Milliseconds (default: 300)
-  easing?: string; // CSS easing function (default: 'ease')
+  type: 'fade' | 'slide' | 'scale' | 'pulse';
+  duration?: number; // Milliseconds (default: 300; pulse default: 1200)
+  easing?: string; // CSS easing function (default: 'ease'; pulse default: 'ease-in-out')
   delay?: number; // Milliseconds (default: 0)
   // slide / scale options
   direction?: 'left' | 'right' | 'up' | 'down'; // Slide direction (default: 'up')

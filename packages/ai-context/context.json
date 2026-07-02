@@ -1841,6 +1841,16 @@
           "optional": true
         },
         {
+          "name": "bgImageOpacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "bgImageTint",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
           "name": "visibility",
           "type": "Visibility",
           "optional": true
@@ -1941,6 +1951,16 @@
         {
           "name": "bgPosition",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgImageOpacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "bgImageTint",
+          "type": "ColorValue",
           "optional": true
         },
         {
@@ -2987,6 +3007,16 @@
           "optional": true
         },
         {
+          "name": "bgImageOpacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "bgImageTint",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
           "name": "color",
           "type": "ColorValue",
           "optional": true
@@ -3531,6 +3561,16 @@
           "optional": true
         },
         {
+          "name": "bgImageOpacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "bgImageTint",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
           "name": "color",
           "type": "ColorValue",
           "optional": true
@@ -3964,6 +4004,16 @@
         {
           "name": "bgPosition",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgImageOpacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "bgImageTint",
+          "type": "ColorValue",
           "optional": true
         },
         {
@@ -4450,6 +4500,16 @@
           "optional": true
         },
         {
+          "name": "bgImageOpacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "bgImageTint",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
           "name": "color",
           "type": "ColorValue",
           "optional": true
@@ -4909,6 +4969,16 @@
         {
           "name": "bgPosition",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgImageOpacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "bgImageTint",
+          "type": "ColorValue",
           "optional": true
         },
         {
@@ -5524,6 +5594,16 @@
           "optional": true
         },
         {
+          "name": "bgImageOpacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "bgImageTint",
+          "type": "ColorValue",
+          "optional": true
+        },
+        {
           "name": "color",
           "type": "ColorValue",
           "optional": true
@@ -5932,6 +6012,16 @@
         {
           "name": "bgPosition",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgImageOpacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "bgImageTint",
+          "type": "ColorValue",
           "optional": true
         },
         {
@@ -6388,6 +6478,16 @@
         {
           "name": "bgPosition",
           "type": "string",
+          "optional": true
+        },
+        {
+          "name": "bgImageOpacity",
+          "type": "number",
+          "optional": true
+        },
+        {
+          "name": "bgImageTint",
+          "type": "ColorValue",
           "optional": true
         },
         {

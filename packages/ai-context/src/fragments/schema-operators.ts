@@ -327,13 +327,14 @@ Conditional rendering:
 Renders "then" node if condition is truthy, else renders "else" node.
 Supports enterTransition / exitTransition for CSS animations when the node mounts/unmounts.
 TransitionConfig = TransitionEffect | TransitionEffect[]
-TransitionEffect = { type: 'fade'|'slide'|'scale', duration?: ms, easing?: string, delay?: ms, direction?: 'left'|'right'|'up'|'down', distance?: string }
-fade controls opacity only; slide/scale control transform only. Compose effects with an array.
+TransitionEffect = { type: 'fade'|'slide'|'scale'|'pulse', duration?: ms, easing?: string, delay?: ms, direction?: 'left'|'right'|'up'|'down', distance?: string }
+fade controls opacity only; slide/scale control transform only. pulse is a persistent looping animation (not a one-shot transition) — starts once entered, stops on exit; direction/distance don't apply (default duration 1200ms, easing 'ease-in-out'). Compose fade/slide/scale together in an array; pulse is typically used alone.
 Example: enterTransition: [{ type: 'fade', duration: 300 }, { type: 'slide', direction: 'up', distance: '40px', duration: 400 }]
+Example (pulse): enterTransition: { type: 'pulse', duration: 1500 }
 
 Viewport / mount animation (child always in DOM):
 { "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
-The child is always mounted. Animations are CSS-only (opacity / transform) — use this for scroll-reveal effects.
+The child is always mounted. fade/slide/scale are CSS transitions (opacity/transform); pulse is a real CSS @keyframes loop — use this for scroll-reveal effects.
 Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
 scrollReveal: true fires enterTransition when the element enters the viewport.
 scrollReveal: -100 fires 100px before the element would enter (negative = earlier reveal).

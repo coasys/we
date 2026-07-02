@@ -58,6 +58,20 @@ export function buildTransitionCSS(config: TransitionConfig): string {
 }
 
 /**
+ * CSS `animation` shorthand for a config's 'pulse' effect, or undefined if it has none.
+ * References the `we-pulse` @keyframes rule defined in the DS interop stylesheet
+ * (app-framework's dsInterop.ts) — this only builds the property value, the keyframes
+ * themselves live in that shared, always-loaded stylesheet.
+ */
+export function pulseAnimationCSS(config: TransitionConfig): string | undefined {
+  const effect = toEffects(config).find((e) => e.type === 'pulse');
+  if (!effect) return undefined;
+  const duration = effect.duration ?? 1200;
+  const easing = effect.easing ?? 'ease-in-out';
+  return `we-pulse ${duration}ms ${easing} infinite`;
+}
+
+/**
  * IntersectionObserver rootMargin derived from a scroll offset value.
  * true  → fire at the natural viewport boundary (0px margin)
  * +n    → fire n px before the element reaches the viewport
