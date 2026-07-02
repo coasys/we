@@ -1,5 +1,5 @@
 import { designSystemKeys, filterProps, mergeProps } from '@we/design-utils';
-import { buildLayoutStyles, useStateProps } from '@we/design-utils/solid';
+import { buildLayoutStyles, getBgImageAttrs, useStateProps } from '@we/design-utils/solid';
 import { createMemo, splitProps } from 'solid-js';
 
 export type * from './Grid.types';
@@ -38,10 +38,15 @@ export function Grid(allProps: GridProps) {
   const hasStateProps = () =>
     designSystemProps.hoverProps || designSystemProps.activeProps || designSystemProps.focusProps;
 
-  const { style, handlers } = useStateProps(baseStyle, designSystemProps as GridProps, 'column');
+  const { style, attrs } = useStateProps(baseStyle, designSystemProps as GridProps, 'column');
 
   return (
-    <div style={hasStateProps() ? style() : baseStyle()} {...rest} {...(hasStateProps() ? handlers : {})}>
+    <div
+      style={hasStateProps() ? style() : baseStyle()}
+      {...getBgImageAttrs(designSystemProps)}
+      {...rest}
+      {...(hasStateProps() ? attrs : {})}
+    >
       {designSystemProps.children}
     </div>
   );

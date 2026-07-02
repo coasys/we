@@ -1,5 +1,5 @@
 import { designSystemKeys, filterProps, mergeProps } from '@we/design-utils';
-import { buildLayoutStyles, useStateProps } from '@we/design-utils/solid';
+import { buildLayoutStyles, getBgImageAttrs, useStateProps } from '@we/design-utils/solid';
 import { createMemo, splitProps } from 'solid-js';
 
 export type * from './Row.types';
@@ -20,10 +20,15 @@ export function Row(allProps: RowProps) {
   const hasStateProps = () =>
     designSystemProps.hoverProps || designSystemProps.activeProps || designSystemProps.focusProps;
 
-  const { style, handlers } = useStateProps(baseStyle, designSystemProps as RowProps, 'row');
+  const { style, attrs } = useStateProps(baseStyle, designSystemProps as RowProps, 'row');
 
   return (
-    <div style={hasStateProps() ? style() : baseStyle()} {...rest} {...(hasStateProps() ? handlers : {})}>
+    <div
+      style={hasStateProps() ? style() : baseStyle()}
+      {...getBgImageAttrs(designSystemProps)}
+      {...rest}
+      {...(hasStateProps() ? attrs : {})}
+    >
       {designSystemProps.children}
     </div>
   );

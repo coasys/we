@@ -1,9 +1,17 @@
 import type { DesignSystemProps, ElementState } from '@we/design-types';
-import type { DSLayer } from '@we/design-utils';
+import type { DSLayer, PropSpec } from '@we/design-utils';
 import {
+  BASE_FLEX_SPECS as BASE_FLEX,
+  BASE_LAYOUT_SPECS as BASE_LAYOUT,
+  BASE_TYPOGRAPHY_SPECS as BASE_TYPOGRAPHY,
+  BASE_VISUAL_SPECS as BASE_VISUAL,
+  declCSS as decl,
   getMarginValues,
   getPaddingValues,
   getRadiusValues,
+  HOST_LAYOUT_SPECS as HOST_LAYOUT,
+  joinDeclsCSS as joinDecls,
+  joinStateDeclsCSS as joinStateDecls,
   mapFlexAxes,
   marginKeys,
   paddingKeys,
@@ -12,6 +20,7 @@ import {
   resolveFontFamily,
   resolveFontWeight,
   resolveLineHeight,
+  stateDeclCSS as stateDecl,
   tokenVar,
   zIndexVar,
 } from '@we/design-utils';
@@ -303,97 +312,12 @@ export function updateAllCustomVars(
 // ────────────────────────────────────────────
 // Static CSS generation (once per component class)
 // ────────────────────────────────────────────
-
-// Property spec: [css-property, var-suffix, default?]
-type PropSpec = [string, string] | [string, string, string];
-
-// Host properties (layout layer — outer box positioning)
-const HOST_LAYOUT: PropSpec[] = [
-  ['width', 'width'],
-  ['height', 'height'],
-  ['min-width', 'min-width'],
-  ['min-height', 'min-height'],
-  ['max-width', 'max-width'],
-  ['max-height', 'max-height'],
-  ['position', 'position'],
-  ['top', 'top'],
-  ['right', 'right'],
-  ['bottom', 'bottom'],
-  ['left', 'left'],
-  ['z-index', 'z-index'],
-  ['margin', 'margin'],
-  ['flex', 'flex'],
-  ['align-self', 'align-self'],
-];
-
-// Base properties by layer (inner element appearance/layout)
-const BASE_VISUAL: PropSpec[] = [
-  ['background', 'bg'],
-  ['color', 'color'],
-  ['opacity', 'opacity'],
-  ['border', 'border'],
-  ['border-color', 'border-color'],
-  ['border-top', 'border-top'],
-  ['border-right', 'border-right'],
-  ['border-bottom', 'border-bottom'],
-  ['border-left', 'border-left'],
-  ['border-width', 'border-width'],
-  ['box-shadow', 'box-shadow'],
-  ['transform', 'transform'],
-  ['cursor', 'cursor'],
-  ['pointer-events', 'pointer-events'],
-  ['visibility', 'visibility'],
-  ['border-radius', 'radius'],
-];
-
-const BASE_LAYOUT: PropSpec[] = [
-  ['display', 'display', 'flex'],
-  ['overflow', 'overflow'],
-  ['overflow-x', 'overflow-x'],
-  ['overflow-y', 'overflow-y'],
-  ['scrollbar-width', 'scrollbar-width'],
-  ['scrollbar-gutter', 'scrollbar-gutter'],
-];
-
-const BASE_FLEX: PropSpec[] = [
-  ['flex-direction', 'direction'],
-  ['justify-content', 'main-axis'],
-  ['align-items', 'cross-axis'],
-  ['flex-wrap', 'wrap'],
-  ['gap', 'gap'],
-  ['padding', 'padding'],
-];
-
-const BASE_TYPOGRAPHY: PropSpec[] = [
-  ['text-align', 'text-align'],
-  ['font-family', 'font-family'],
-  ['font-weight', 'font-weight'],
-  ['font-size', 'font-size'],
-  ['font-style', 'font-style'],
-  ['line-height', 'line-height'],
-  ['letter-spacing', 'letter-spacing'],
-  ['text-decoration', 'text-decoration'],
-  ['text-transform', 'text-transform'],
-];
-
-// Generate a CSS declaration from a prop spec
-function decl(prefix: string, [cssProp, varSuffix, fallback]: PropSpec): string {
-  return fallback ? `${cssProp}: var(${prefix}${varSuffix}, ${fallback});` : `${cssProp}: var(${prefix}${varSuffix});`;
-}
-
-// Generate a state CSS declaration (falls back to default prefix)
-function stateDecl(sp: string, dp: string, [cssProp, varSuffix, fallback]: PropSpec): string {
-  const defaultRef = fallback ? `var(${dp}${varSuffix}, ${fallback})` : `var(${dp}${varSuffix})`;
-  return `${cssProp}: var(${sp}${varSuffix}, ${defaultRef});`;
-}
-
-function joinDecls(prefix: string, specs: PropSpec[]): string {
-  return specs.map((s) => decl(prefix, s)).join('\n    ');
-}
-
-function joinStateDecls(sp: string, dp: string, specs: PropSpec[]): string {
-  return specs.map((s) => stateDecl(sp, dp, s)).join('\n    ');
-}
+//
+// PropSpec tables (HOST_LAYOUT, BASE_VISUAL, BASE_LAYOUT, BASE_FLEX, BASE_TYPOGRAPHY) and
+// the decl/stateDecl/joinDecls/joinStateDecls builders live in @we/design-utils — shared
+// with the Solid DS-interop stylesheet so hoverProps/activeProps/focusProps support the
+// same property surface on both component families. See that file for the fallback
+// semantics rationale.
 
 // Build a PropSpec with an optional cascade fallback chain for a single prop.
 function cascadeSpec(
