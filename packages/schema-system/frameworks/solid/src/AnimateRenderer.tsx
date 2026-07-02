@@ -1,7 +1,13 @@
 import type { TransitionConfig } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 
-import { buildTransitionCSS, hiddenOpacity, hiddenTransform, scrollRootMargin } from './transitionUtils';
+import {
+  buildTransitionCSS,
+  hiddenOpacity,
+  hiddenTransform,
+  pulseAnimationCSS,
+  scrollRootMargin,
+} from './transitionUtils';
 import type { RendererOutput, SchemaNode } from './types';
 
 type AnimateRendererProps = {
@@ -51,9 +57,15 @@ export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): Ren
   const [opacity, setOpacity] = createSignal(initOpacity);
   const [transform, setTransform] = createSignal(initTransform);
   const [transitionCSS, setTransitionCSS] = createSignal('');
+  // 'pulse' is a persistent loop, not a one-shot state transition like fade/slide/scale —
+  // it starts once entered and keeps running until exit, rather than settling into a
+  // final state. Starts empty (not pulsing) like opacity/transform start hidden — actual
+  // triggering (whichever scroll mode, or immediate on mount) happens via animateIn below.
+  const [animationCSS, setAnimationCSS] = createSignal('');
 
   const animateIn = (config: TransitionConfig) => {
     setTransitionCSS(buildTransitionCSS(config));
+    setAnimationCSS(pulseAnimationCSS(config) ?? '');
     // Snap to hidden state (in case called after animateOut)
     setOpacity(hiddenOpacity(config));
     setTransform(hiddenTransform(config));
@@ -68,6 +80,7 @@ export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): Ren
 
   const animateOut = (config: TransitionConfig) => {
     setTransitionCSS(buildTransitionCSS(config));
+    setAnimationCSS('');
     const firstEffect = Array.isArray(config) ? config[0] : config;
     setTimeout(() => {
       setOpacity(hiddenOpacity(config));
@@ -142,6 +155,8 @@ export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): Ren
     };
     const t = transform();
     if (t) style.transform = t;
+    const a = animationCSS();
+    if (a) style.animation = a;
     return style;
   });
 

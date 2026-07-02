@@ -86,6 +86,7 @@ const DS_PROP_OPTIONS: Record<string, string[]> = {
   bg: COLOR,
   color: COLOR,
   borderColor: COLOR,
+  bgImageTint: COLOR,
   // shadow
   shadow: SHADOW,
   // typography
@@ -211,6 +212,8 @@ const EDITOR_LAYER_FOR_KEY: Record<string, PropLayer> = {
   bgImage: 'visual',
   bgFit: 'visual',
   bgPosition: 'visual',
+  bgImageOpacity: 'visual',
+  bgImageTint: 'visual',
   color: 'visual',
   opacity: 'visual',
   shadow: 'visual',

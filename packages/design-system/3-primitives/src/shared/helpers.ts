@@ -1,17 +1,29 @@
 import type { DesignSystemProps, ElementState } from '@we/design-types';
-import type { DSLayer } from '@we/design-utils';
+import type { DSLayer, PropSpec } from '@we/design-utils';
 import {
+  BASE_FLEX_SPECS as BASE_FLEX,
+  BASE_LAYOUT_SPECS as BASE_LAYOUT,
+  BASE_TYPOGRAPHY_SPECS as BASE_TYPOGRAPHY,
+  BASE_VISUAL_SPECS as BASE_VISUAL,
+  computeBgImageComposite,
+  declCSS as decl,
   getMarginValues,
   getPaddingValues,
   getRadiusValues,
+  HOST_LAYOUT_SPECS as HOST_LAYOUT,
+  isBgImageFaded,
+  joinDeclsCSS as joinDecls,
+  joinStateDeclsCSS as joinStateDecls,
   mapFlexAxes,
   marginKeys,
   paddingKeys,
   parseBorder,
   radiusKeys,
+  resolveBgImageUrl,
   resolveFontFamily,
   resolveFontWeight,
   resolveLineHeight,
+  stateDeclCSS as stateDecl,
   tokenVar,
   zIndexVar,
 } from '@we/design-utils';
@@ -226,6 +238,30 @@ function updateCustomVars(
   setProperty(el, `${prefix}opacity`, props.opacity?.toString());
   syncBorderVars(el, prefix, props);
 
+  // bg-image — faded images render via a ::before overlay (see getStaticDSStyles),
+  // since bgImageOpacity needs the image on its own paint layer, independent of the
+  // element's own content — CSS can't scope opacity to one background layer. The
+  // unfaded (common) case bypasses that entirely and sets a plain background-image
+  // directly on [part='base'] instead — no pseudo-element, no custom-property
+  // indirection, same as before bgImageOpacity existed. Both paths resolve the URL
+  // through resolveBgImageUrl (data URI -> short-lived object URL): a large base64
+  // payload embedded as a CSS custom property value hits a real, empirically-confirmed
+  // length ceiling in Chromium (silently dropped, no error) — resolveBgImageUrl keeps
+  // the actual CSS value fixed-length regardless of the source image's size.
+  // Not state-varied (no {state}-bg-image-* writes) — swapping the image itself on
+  // hover/active/focus is out of scope, unlike the rest of this fn.
+  if (!state) {
+    const isFaded = isBgImageFaded(props);
+    setProperty(el, `${prefix}bg-image-composite`, isFaded ? computeBgImageComposite(props) : undefined);
+    setProperty(
+      el,
+      `${prefix}bg-image`,
+      props.bgImage && !isFaded ? `url("${resolveBgImageUrl(props.bgImage)}")` : undefined,
+    );
+    setProperty(el, `${prefix}bg-image-fit`, props.bgImage ? (props.bgFit ?? 'cover') : undefined);
+    setProperty(el, `${prefix}bg-image-position`, props.bgImage ? (props.bgPosition ?? 'center') : undefined);
+  }
+
   setProperty(el, `${prefix}shadow`, props.shadow ? tokenVar('shadow', props.shadow) : undefined);
   setProperty(el, `${prefix}ring`, props.ring ?? undefined);
   // Compose box-shadow from shadow + ring (both are optional, comma-separated when both present)
@@ -303,97 +339,12 @@ export function updateAllCustomVars(
 // ────────────────────────────────────────────
 // Static CSS generation (once per component class)
 // ────────────────────────────────────────────
-
-// Property spec: [css-property, var-suffix, default?]
-type PropSpec = [string, string] | [string, string, string];
-
-// Host properties (layout layer — outer box positioning)
-const HOST_LAYOUT: PropSpec[] = [
-  ['width', 'width'],
-  ['height', 'height'],
-  ['min-width', 'min-width'],
-  ['min-height', 'min-height'],
-  ['max-width', 'max-width'],
-  ['max-height', 'max-height'],
-  ['position', 'position'],
-  ['top', 'top'],
-  ['right', 'right'],
-  ['bottom', 'bottom'],
-  ['left', 'left'],
-  ['z-index', 'z-index'],
-  ['margin', 'margin'],
-  ['flex', 'flex'],
-  ['align-self', 'align-self'],
-];
-
-// Base properties by layer (inner element appearance/layout)
-const BASE_VISUAL: PropSpec[] = [
-  ['background', 'bg'],
-  ['color', 'color'],
-  ['opacity', 'opacity'],
-  ['border', 'border'],
-  ['border-color', 'border-color'],
-  ['border-top', 'border-top'],
-  ['border-right', 'border-right'],
-  ['border-bottom', 'border-bottom'],
-  ['border-left', 'border-left'],
-  ['border-width', 'border-width'],
-  ['box-shadow', 'box-shadow'],
-  ['transform', 'transform'],
-  ['cursor', 'cursor'],
-  ['pointer-events', 'pointer-events'],
-  ['visibility', 'visibility'],
-  ['border-radius', 'radius'],
-];
-
-const BASE_LAYOUT: PropSpec[] = [
-  ['display', 'display', 'flex'],
-  ['overflow', 'overflow'],
-  ['overflow-x', 'overflow-x'],
-  ['overflow-y', 'overflow-y'],
-  ['scrollbar-width', 'scrollbar-width'],
-  ['scrollbar-gutter', 'scrollbar-gutter'],
-];
-
-const BASE_FLEX: PropSpec[] = [
-  ['flex-direction', 'direction'],
-  ['justify-content', 'main-axis'],
-  ['align-items', 'cross-axis'],
-  ['flex-wrap', 'wrap'],
-  ['gap', 'gap'],
-  ['padding', 'padding'],
-];
-
-const BASE_TYPOGRAPHY: PropSpec[] = [
-  ['text-align', 'text-align'],
-  ['font-family', 'font-family'],
-  ['font-weight', 'font-weight'],
-  ['font-size', 'font-size'],
-  ['font-style', 'font-style'],
-  ['line-height', 'line-height'],
-  ['letter-spacing', 'letter-spacing'],
-  ['text-decoration', 'text-decoration'],
-  ['text-transform', 'text-transform'],
-];
-
-// Generate a CSS declaration from a prop spec
-function decl(prefix: string, [cssProp, varSuffix, fallback]: PropSpec): string {
-  return fallback ? `${cssProp}: var(${prefix}${varSuffix}, ${fallback});` : `${cssProp}: var(${prefix}${varSuffix});`;
-}
-
-// Generate a state CSS declaration (falls back to default prefix)
-function stateDecl(sp: string, dp: string, [cssProp, varSuffix, fallback]: PropSpec): string {
-  const defaultRef = fallback ? `var(${dp}${varSuffix}, ${fallback})` : `var(${dp}${varSuffix})`;
-  return `${cssProp}: var(${sp}${varSuffix}, ${defaultRef});`;
-}
-
-function joinDecls(prefix: string, specs: PropSpec[]): string {
-  return specs.map((s) => decl(prefix, s)).join('\n    ');
-}
-
-function joinStateDecls(sp: string, dp: string, specs: PropSpec[]): string {
-  return specs.map((s) => stateDecl(sp, dp, s)).join('\n    ');
-}
+//
+// PropSpec tables (HOST_LAYOUT, BASE_VISUAL, BASE_LAYOUT, BASE_FLEX, BASE_TYPOGRAPHY) and
+// the decl/stateDecl/joinDecls/joinStateDecls builders live in @we/design-utils — shared
+// with the Solid DS-interop stylesheet so hoverProps/activeProps/focusProps support the
+// same property surface on both component families. See that file for the fallback
+// semantics rationale.
 
 // Build a PropSpec with an optional cascade fallback chain for a single prop.
 function cascadeSpec(
@@ -495,6 +446,34 @@ export function getStaticDSStyles(
   const hasBase = l.has('visual') || l.has('layout') || l.has('flex') || l.has('typography');
   if (hasBase) {
     styles.push(`[part='base'] { ${baseLines.join('\n    ')} }`);
+  }
+
+  // ── bg-image ──
+  // Unfaded case: a plain background-image directly on [part='base'] — safe to declare
+  // unconditionally since it has an explicit `none` fallback (see the "always-emitted
+  // property needs a static fallback" rule this file follows throughout).
+  //
+  // Faded case (bgImageOpacity set): needs its own paint layer, so it renders via a
+  // ::before overlay instead (CSS has no way to scope `opacity` to one background —
+  // see computeBgImageComposite). Gated on the `bgimage` reflected attribute (Lit's
+  // default attribute-name conversion for `bgImage` — lowercased, no dash) so
+  // components that never set bgImage don't pay for an extra paint layer.
+  //
+  // isolation: isolate is required, not optional: position:relative alone does not
+  // establish a new stacking context, so the ::before's z-index:-1 would otherwise
+  // escape to compete in whatever ancestor stacking context actually exists instead of
+  // staying scoped to "behind this element's own content" — isolation:isolate fixes
+  // that with no other visual side effects.
+  if (l.has('visual')) {
+    styles.push(
+      `[part='base'] { background-image: var(${p}bg-image, none); background-size: var(${p}bg-image-fit, cover); ` +
+        `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; }\n` +
+        `:host([bgimage]) [part='base'] { position: relative; isolation: isolate; }\n` +
+        `:host([bgimage]) [part='base']::before { content: ''; position: absolute; inset: 0; z-index: -1; ` +
+        `border-radius: inherit; pointer-events: none; ` +
+        `background-image: var(${p}bg-image-composite); background-size: var(${p}bg-image-fit, cover); ` +
+        `background-position: var(${p}bg-image-position, center); background-repeat: no-repeat; }`,
+    );
   }
 
   // ── State selectors ──

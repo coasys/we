@@ -920,6 +920,13 @@ function VisualEditorLayer() {
     if (e.key === 'Escape') cleanupDrag();
   }
 
+  // Safety net: right-click can arm/leave drag state stuck behind the native
+  // context menu (its pointerup/keydown never reach us). Reset without
+  // preventDefault so the browser's own context menu is unaffected.
+  function handleContextMenu() {
+    cleanupDrag();
+  }
+
   // ---- Delete selected node ----
 
   function deleteSelectedNode() {
@@ -1023,6 +1030,7 @@ function VisualEditorLayer() {
   }
 
   function handlePointerDown(e: PointerEvent) {
+    if (e.button !== 0) return;
     if (isResizing()) return;
     e.preventDefault();
 
@@ -1110,6 +1118,7 @@ function VisualEditorLayer() {
       onPointerMove={handlePointerMove}
       onPointerDown={handlePointerDown}
       onPointerLeave={handlePointerLeave}
+      onContextMenu={handleContextMenu}
     >
       {/* Hover highlight — skip when same as selected */}
       <Show when={hoverRelRect() && !isHoverSameAsSelect()}>

@@ -46,6 +46,10 @@ export interface DesignSystemProps {
   bgImage?: string;
   bgFit?: 'cover' | 'contain';
   bgPosition?: string;
+  /** 0–1, matches `opacity`'s convention. Fades bgImage only, via a translucent tint overlay — leaves bg/content untouched. */
+  bgImageOpacity?: number;
+  /** Tint color the image fades toward as bgImageOpacity decreases. Defaults to the element's own `bg` if set. */
+  bgImageTint?: ColorValue;
   color?: ColorValue;
 
   // Visual Effects

@@ -62,6 +62,8 @@ we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, 
 | bgImage | string | Background image URL — sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat |
 | bgFit | "cover" \\| "contain" | Background image sizing (default: "cover") — only meaningful with bgImage |
 | bgPosition | string | Background image position (default: "center", e.g. "top", "50% 20%") — only meaningful with bgImage |
+| bgImageOpacity | number | Fades bgImage only (0–1), independent of the element's own content/opacity — only meaningful with bgImage |
+| bgImageTint | ColorValue | Color bgImage fades toward as bgImageOpacity decreases (default: the element's own \`bg\`, or neutral-0) — only meaningful with bgImageOpacity |
 | color | ColorValue | Text/foreground color (token) |
 | opacity | number | Opacity (0–1) |
 | border | string | Border shorthand (e.g. "1px solid neutral-200" — color tokens are resolved) |

@@ -1,13 +1,22 @@
 import type { DesignSystemProps } from '@we/design-types';
 import type { Accessor } from 'solid-js';
-import { createSignal, JSX } from 'solid-js';
+import { JSX } from 'solid-js';
 
 import {
+  BASE_FLEX_SPECS,
+  BASE_LAYOUT_SPECS,
+  BASE_TYPOGRAPHY_SPECS,
+  BASE_VISUAL_SPECS,
+  computeBgImageComposite,
   getMarginValues,
   getPaddingValues,
   getRadiusValues,
+  HOST_LAYOUT_SPECS,
+  isBgImageFaded,
   mapFlexAxes,
   parseBorder,
+  type PropSpec,
+  resolveBgImageUrl,
   resolveFontFamily,
   resolveFontWeight,
   resolveLineHeight,
@@ -37,17 +46,41 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
 
   // Colors & backgrounds
   if (props.bg) {
-    if (props.bg.startsWith('gradient-')) {
-      style['background'] = `var(--we-gradient-${props.bg.slice(9)})`;
-    } else {
-      style['background-color'] = tokenVar('color', props.bg);
-    }
+    // Always the `background` shorthand (not `background-color`) — matches the Lit-side
+    // PropSpec convention (helpers.ts's BASE_VISUAL_SPECS) so the interactive-state var
+    // remap below can read buildLayoutStyles's own output directly, keyed consistently.
+    style['background'] = props.bg.startsWith('gradient-')
+      ? `var(--we-gradient-${props.bg.slice(9)})`
+      : tokenVar('color', props.bg);
   }
   if (props.bgImage) {
-    style['background-image'] = `url(${props.bgImage})`;
-    style['background-size'] = props.bgFit ?? 'cover';
-    style['background-position'] = props.bgPosition ?? 'center';
-    style['background-repeat'] = 'no-repeat';
+    if (isBgImageFaded(props)) {
+      // Faded — rendered via the DS interop stylesheet's [data-we-bg-image]::before
+      // overlay (see dsInterop.ts) rather than a plain background-image here, so
+      // bgImageOpacity can fade the image independently of the element's own content/
+      // opacity — CSS has no way to scope `opacity` to just one background layer, so
+      // the image needs its own paint layer. Custom properties are the only way to get
+      // a per-instance dynamic value into a pseudo-element (inline styles can't target
+      // ::before directly). computeBgImageComposite resolves the URL through
+      // resolveBgImageUrl internally, so this is safe for large data URIs too — only
+      // paid for (the extra paint layer + indirection) when fading is actually requested.
+      style['--we-bg-image-composite'] = computeBgImageComposite(props);
+      style['--we-bg-image-fit'] = props.bgFit ?? 'cover';
+      style['--we-bg-image-position'] = props.bgPosition ?? 'center';
+      // The pseudo-element overlay is absolutely positioned against this host — only
+      // default to relative when the caller hasn't already claimed `position`.
+      if (!props.position) style.position = 'relative';
+    } else {
+      // No fading — a plain background-image directly on the host, same as before
+      // bgImageOpacity existed. No custom-property indirection, so no z-index/stacking-
+      // context concerns from the pseudo-element overlay. Still resolved through
+      // resolveBgImageUrl (data URI -> short object URL) — a large base64 payload
+      // bloats every style recompute even as a plain inline style, not just as a var().
+      style['background-image'] = `url("${resolveBgImageUrl(props.bgImage)}")`;
+      style['background-size'] = props.bgFit ?? 'cover';
+      style['background-position'] = props.bgPosition ?? 'center';
+      style['background-repeat'] = 'no-repeat';
+    }
   }
   if (props.color) style.color = tokenVar('color', props.color);
 
@@ -124,13 +157,89 @@ export function buildLayoutStyles(props: LayoutProps, direction: 'row' | 'column
   return style;
 }
 
+/**
+ * Opt-in attribute for the DS interop stylesheet's [data-we-bg-image]::before overlay.
+ * Gated on an explicit attribute (rather than a bare pseudo-element on every layout
+ * primitive) so elements that never use bgImage don't pay for an extra paint layer — and
+ * specifically on the faded case, since the unfaded case renders via a plain
+ * background-image on the host (see buildLayoutStyles) and never needs the overlay at all.
+ */
+export function getBgImageAttrs(
+  props: Pick<LayoutProps, 'bgImage' | 'bgImageOpacity'>,
+): Record<string, string | undefined> {
+  return { 'data-we-bg-image': isBgImageFaded(props) ? '' : undefined };
+}
+
 // ────────────────────────────────────────────
 // State props (hover, active, focus) for Solid layout components
+//
+// Rendered via native :hover/:active/:focus-within in the DS interop stylesheet (see
+// app-framework's dsInterop.ts) instead of JS-tracked signals + mouseenter/mouseleave/blur
+// listeners — the browser handles the state transition for free, and it composes
+// correctly with every DesignSystemProps field (not a hand-picked subset), because it's
+// built from the exact same PropSpec tables Lit's we-* primitives already use for their
+// own :host(:hover)/[part=base]:hover rules (see @we/design-utils's HOST_LAYOUT_SPECS
+// etc. and helpers.ts). bgImage-related keys are excluded — handled separately by the
+// bg-image composite mechanism, not state-variance.
 // ────────────────────────────────────────────
+
+// position/top/right/bottom/left are deliberately excluded: bgImage's overlay depends
+// on `position: relative` being stable on the host, and an unset --we-ds-position would
+// resolve to `static` (position isn't inherited), which could win the cascade over the
+// bg-image rule's own position:relative depending on stylesheet order when both
+// bgImage and hoverProps are set on the same element. Varying position by hover/active/
+// focus state is a rare enough pattern that excluding it is the safer default.
+const POSITIONING_VAR_SUFFIXES = new Set(['position', 'top', 'right', 'bottom', 'left']);
+// Exported so the generated dsInterop stylesheet (app-framework bootstrap) can declare
+// exactly the same properties this module emits vars for — one source of truth for
+// both the JS var-emission and the CSS rule text, so they can never drift apart.
+export const INTERACTIVE_SPECS: PropSpec[] = [
+  ...HOST_LAYOUT_SPECS.filter(([, varSuffix]) => !POSITIONING_VAR_SUFFIXES.has(varSuffix)),
+  ...BASE_VISUAL_SPECS,
+  ...BASE_LAYOUT_SPECS,
+  ...BASE_FLEX_SPECS,
+  ...BASE_TYPOGRAPHY_SPECS,
+];
+const CSS_PROP_TO_VAR_SUFFIX = new Map(INTERACTIVE_SPECS.map(([cssProp, varSuffix]) => [cssProp, varSuffix]));
+
+// Remaps a computed style object's CSS-property keys to --we-ds-{prefix}{varSuffix}
+// custom properties, using the shared PropSpec tables' cssProp -> varSuffix mapping.
+// Keys outside the interactive-state surface (e.g. --we-bg-image-*) are left alone.
+function toInteractiveVars(prefix: string, computed: JSX.CSSProperties): JSX.CSSProperties {
+  const out: Record<string, string> = {};
+  for (const [cssProp, value] of Object.entries(computed)) {
+    if (value === undefined || value === null || value === '') continue;
+    const varSuffix = CSS_PROP_TO_VAR_SUFFIX.get(cssProp);
+    if (!varSuffix) continue;
+    out[`--we-ds-${prefix}${varSuffix}`] = String(value);
+  }
+  return out;
+}
+
+// buildLayoutStyles always computes display/flex-direction/flex-wrap regardless of
+// which props were actually provided (they're an unconditional structural baseline for
+// a *complete* element style) — for a hover/active/focus *fragment*, that would leak
+// those structural defaults into every state variant even when the caller only meant to
+// vary e.g. `bg`. `direction` isn't part of DesignSystemProps at all (it's a fixed
+// per-component parameter, never user-settable via state props), so flex-direction is
+// always stripped; display/wrap are kept only when actually present in the fragment.
+function buildStateFragmentStyles(
+  stateProps: Partial<DesignSystemProps>,
+  direction: 'row' | 'column',
+): JSX.CSSProperties {
+  const computed = buildLayoutStyles({ ...stateProps, styles: undefined } as LayoutProps, direction) as Record<
+    string,
+    unknown
+  >;
+  delete computed['flex-direction'];
+  if (!('display' in stateProps)) delete computed['display'];
+  if (!('wrap' in stateProps)) delete computed['flex-wrap'];
+  return computed as JSX.CSSProperties;
+}
 
 export interface StatePropsResult {
   style: () => JSX.CSSProperties;
-  handlers: JSX.HTMLAttributes<HTMLDivElement>;
+  attrs: JSX.HTMLAttributes<HTMLDivElement>;
 }
 
 export function useStateProps(
@@ -141,71 +250,43 @@ export function useStateProps(
   const hasHover = () => props.hoverProps && Object.keys(props.hoverProps).length > 0;
   const hasActive = () => props.activeProps && Object.keys(props.activeProps).length > 0;
   const hasFocus = () => props.focusProps && Object.keys(props.focusProps).length > 0;
+  const hasAny = () => hasHover() || hasActive() || hasFocus();
 
-  const [hovered, setHovered] = createSignal(false);
-  const [active, setActive] = createSignal(false);
-  const [focused, setFocused] = createSignal(false);
-
-  const handlers: JSX.HTMLAttributes<HTMLDivElement> = {};
-
-  // Only attach listeners when state props are provided.
-  // We use getters so they react to prop changes.
-  Object.defineProperties(handlers, {
-    onMouseEnter: {
-      get: () => (hasHover() ? () => setHovered(true) : undefined),
-      enumerable: true,
-    },
-    onMouseLeave: {
-      get: () => (hasHover() ? () => setHovered(false) : undefined),
-      enumerable: true,
-    },
-    onMouseDown: {
-      get: () => (hasActive() ? () => setActive(true) : undefined),
-      enumerable: true,
-    },
-    onMouseUp: {
-      get: () => (hasActive() ? () => setActive(false) : undefined),
-      enumerable: true,
-    },
-    onFocus: {
-      get: () => (hasFocus() ? () => setFocused(true) : undefined),
-      enumerable: true,
-    },
-    onBlur: {
-      get: () => (hasFocus() ? () => setFocused(false) : undefined),
-      enumerable: true,
-    },
+  const attrs: JSX.HTMLAttributes<HTMLDivElement> = {};
+  Object.defineProperty(attrs, 'data-we-interactive', {
+    get: () => (hasAny() ? '' : undefined),
+    enumerable: true,
   });
 
   const style = () => {
     const base = baseStyle();
+    if (!hasAny()) return base;
 
-    // Fast path: no state active
-    if (!hovered() && !active() && !focused()) return base;
+    // Move every interactive-surface property from a direct inline declaration to a
+    // --we-ds-* custom property, so the stylesheet's :hover/:active/:focus-within rules
+    // (which fall back through --we-ds-{state}-x -> --we-ds-x -> a safe CSS default) can
+    // apply them without JS re-deriving the merged style on every pointer/focus event.
+    const withoutInteractiveProps = { ...base };
+    for (const cssProp of CSS_PROP_TO_VAR_SUFFIX.keys())
+      delete (withoutInteractiveProps as Record<string, unknown>)[cssProp];
 
-    // Build override styles and merge over base
-    let merged = base;
-    if (focused() && props.focusProps) {
-      merged = {
-        ...merged,
-        ...buildLayoutStyles({ ...props.focusProps, styles: undefined } as LayoutProps, direction),
-      };
-    }
-    if (hovered() && props.hoverProps) {
-      merged = {
-        ...merged,
-        ...buildLayoutStyles({ ...props.hoverProps, styles: undefined } as LayoutProps, direction),
-      };
-    }
-    if (active() && props.activeProps) {
-      merged = {
-        ...merged,
-        ...buildLayoutStyles({ ...props.activeProps, styles: undefined } as LayoutProps, direction),
-      };
-    }
+    const baseVars = toInteractiveVars('', base);
+    // Declaration order below is the precedence order: rules declared later in the
+    // stylesheet win for equal-specificity selectors, so :focus-within < :hover < :active
+    // here reproduces the same active-over-hover-over-focus precedence the old
+    // JS-merge order (focus, then hover, then active) produced.
+    const focusVars = hasFocus()
+      ? toInteractiveVars('focus-', buildStateFragmentStyles(props.focusProps!, direction))
+      : {};
+    const hoverVars = hasHover()
+      ? toInteractiveVars('hover-', buildStateFragmentStyles(props.hoverProps!, direction))
+      : {};
+    const activeVars = hasActive()
+      ? toInteractiveVars('active-', buildStateFragmentStyles(props.activeProps!, direction))
+      : {};
 
-    return merged;
+    return { ...withoutInteractiveProps, ...baseVars, ...focusVars, ...hoverVars, ...activeVars };
   };
 
-  return { style, handlers };
+  return { style, attrs };
 }

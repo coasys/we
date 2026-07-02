@@ -49,6 +49,8 @@ export const visualKeys = [
   'bgImage',
   'bgFit',
   'bgPosition',
+  'bgImageOpacity',
+  'bgImageTint',
   'color',
   'opacity',
   'shadow',
@@ -283,6 +285,187 @@ export function mergeProps(
   }
 
   return merged;
+}
+
+// ────────────────────────────────────────────
+// Shared static-CSS declaration builders — single source of truth for "which DS prop
+// maps to which CSS property", consumed by both the Lit adopted-stylesheet generator
+// (@we/primitives/shared/helpers.ts) and the Solid DS-interop stylesheet
+// (app-framework's dsInterop.ts, generated from these same tables). This is what lets
+// hoverProps/activeProps/focusProps support the exact same property surface on both
+// component families instead of two independently-maintained, silently-diverging lists.
+//
+// A PropSpec's third element (fallback) is only required for properties a caller sets
+// *unconditionally* regardless of props (e.g. Solid's buildLayoutStyles always emits
+// `display`) — for everything else, an absent custom property already degrades
+// correctly on its own: CSS resolves a var() with no matching custom property to
+// `inherit` for inherited properties (color, cursor, font-*, text-*) or `initial` for
+// non-inherited ones (background, opacity, transform, border*, box-shadow, sizing) —
+// which is exactly "this prop was never set", since callers only ever emit a key when
+// the corresponding prop was actually provided.
+// ────────────────────────────────────────────
+
+export type PropSpec = [cssProp: string, varSuffix: string] | [cssProp: string, varSuffix: string, fallback: string];
+
+/** Host/outer-box layout — positioning relative to the parent. */
+export const HOST_LAYOUT_SPECS: PropSpec[] = [
+  ['width', 'width'],
+  ['height', 'height'],
+  ['min-width', 'min-width'],
+  ['min-height', 'min-height'],
+  ['max-width', 'max-width'],
+  ['max-height', 'max-height'],
+  ['position', 'position'],
+  ['top', 'top'],
+  ['right', 'right'],
+  ['bottom', 'bottom'],
+  ['left', 'left'],
+  ['z-index', 'z-index'],
+  ['margin', 'margin'],
+  ['flex', 'flex'],
+  ['align-self', 'align-self'],
+];
+
+/** Visual/appearance — deliberately excludes bgImage/bgFit/bgPosition/bgImageOpacity/
+ * bgImageTint, which are handled by the separate bg-image composite mechanism, not
+ * state-variance (swapping the background image itself on hover is out of scope here). */
+export const BASE_VISUAL_SPECS: PropSpec[] = [
+  ['background', 'bg'],
+  ['color', 'color'],
+  ['opacity', 'opacity'],
+  ['border', 'border'],
+  ['border-color', 'border-color'],
+  ['border-top', 'border-top'],
+  ['border-right', 'border-right'],
+  ['border-bottom', 'border-bottom'],
+  ['border-left', 'border-left'],
+  ['border-width', 'border-width'],
+  ['box-shadow', 'box-shadow'],
+  ['transform', 'transform'],
+  ['cursor', 'cursor'],
+  ['pointer-events', 'pointer-events'],
+  ['visibility', 'visibility'],
+  ['border-radius', 'radius'],
+];
+
+export const BASE_LAYOUT_SPECS: PropSpec[] = [
+  ['display', 'display', 'flex'],
+  ['overflow', 'overflow'],
+  ['overflow-x', 'overflow-x'],
+  ['overflow-y', 'overflow-y'],
+  ['scrollbar-width', 'scrollbar-width'],
+  ['scrollbar-gutter', 'scrollbar-gutter'],
+];
+
+export const BASE_FLEX_SPECS: PropSpec[] = [
+  ['flex-direction', 'direction'],
+  ['justify-content', 'main-axis'],
+  ['align-items', 'cross-axis'],
+  ['flex-wrap', 'wrap'],
+  ['gap', 'gap'],
+  ['padding', 'padding'],
+];
+
+export const BASE_TYPOGRAPHY_SPECS: PropSpec[] = [
+  ['text-align', 'text-align'],
+  ['font-family', 'font-family'],
+  ['font-weight', 'font-weight'],
+  ['font-size', 'font-size'],
+  ['font-style', 'font-style'],
+  ['line-height', 'line-height'],
+  ['letter-spacing', 'letter-spacing'],
+  ['text-decoration', 'text-decoration'],
+  ['text-transform', 'text-transform'],
+];
+
+export function declCSS(prefix: string, [cssProp, varSuffix, fallback]: PropSpec): string {
+  return fallback ? `${cssProp}: var(${prefix}${varSuffix}, ${fallback});` : `${cssProp}: var(${prefix}${varSuffix});`;
+}
+
+export function stateDeclCSS(statePrefix: string, defaultPrefix: string, spec: PropSpec): string {
+  const [cssProp, varSuffix, fallback] = spec;
+  const defaultRef = fallback ? `var(${defaultPrefix}${varSuffix}, ${fallback})` : `var(${defaultPrefix}${varSuffix})`;
+  return `${cssProp}: var(${statePrefix}${varSuffix}, ${defaultRef});`;
+}
+
+export function joinDeclsCSS(prefix: string, specs: PropSpec[]): string {
+  return specs.map((s) => declCSS(prefix, s)).join('\n    ');
+}
+
+export function joinStateDeclsCSS(statePrefix: string, defaultPrefix: string, specs: PropSpec[]): string {
+  return specs.map((s) => stateDeclCSS(statePrefix, defaultPrefix, s)).join('\n    ');
+}
+
+/**
+ * Whether bgImage should render via the ::before overlay + custom-property indirection
+ * (true) or a plain background-image directly on the host (false). Shared by both
+ * renderers' bgImage handling and the Solid getBgImageAttrs gate — single source of
+ * truth so they can't drift apart on what counts as "faded".
+ */
+export function isBgImageFaded(props: Pick<DesignSystemProps, 'bgImage' | 'bgImageOpacity'>): boolean {
+  return !!props.bgImage && props.bgImageOpacity !== undefined && props.bgImageOpacity < 1;
+}
+
+// data: URIs (e.g. an uploaded/browsed ImageBlock) can run to hundreds of KB of base64 —
+// far too large to embed directly in a CSS value. Even as a *plain* background-image this
+// bloats every style recompute; as a CSS custom property specifically, large var() payloads
+// hit a real (empirically confirmed, not spec-documented) length ceiling in Chromium and get
+// silently dropped. Converting to a Blob + short-lived object URL sidesteps both: the CSS
+// value becomes a fixed-length `blob:...` reference regardless of image size. Memoized by
+// source string so the same image reused across elements/re-renders converts once. Object
+// URLs are never revoked — the number of *distinct* images used in a session is small enough
+// that this is a non-issue in practice; revisit with an LRU + revokeObjectURL if that changes.
+const bgImageObjectUrlCache = new Map<string, string>();
+
+function dataUriToBlob(dataUri: string): Blob {
+  const commaIndex = dataUri.indexOf(',');
+  const header = dataUri.slice(0, commaIndex);
+  const base64 = dataUri.slice(commaIndex + 1).replace(/\s+/g, '');
+  const mimeMatch = /^data:([^;]+)/.exec(header);
+  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+/**
+ * Resolves a bgImage value to something safe to embed in CSS. Data URIs get converted to a
+ * short-lived object URL (see cache comment above); anything else (a plain http(s) URL) is
+ * already short and passes through unchanged, aside from defensive whitespace stripping — a
+ * CSS custom property's value is parsed as a CSS token stream even when set via
+ * setProperty(), and an unescaped literal newline inside a quoted string produces a "bad
+ * string" token that invalidates the entire declaration.
+ */
+export function resolveBgImageUrl(raw: string): string {
+  const clean = raw.replace(/\s+/g, '');
+  if (!clean.startsWith('data:')) return clean;
+  const cached = bgImageObjectUrlCache.get(clean);
+  if (cached) return cached;
+  const objectUrl = URL.createObjectURL(dataUriToBlob(clean));
+  bgImageObjectUrlCache.set(clean, objectUrl);
+  return objectUrl;
+}
+
+/**
+ * Computes the composite `background-image` value for the bg-image overlay mechanism
+ * (see dsInterop.ts's [data-we-bg-image]::before / helpers.ts's :host([bgimage])::before).
+ * A single custom property carries either a plain image reference, or — when
+ * bgImageOpacity is set — that same image with a translucent tint layered on top via a
+ * linear-gradient, faking true per-layer opacity (CSS has no way to scope `opacity` to
+ * one background layer). Shared so both the Lit and Solid renderers fade identically.
+ */
+export function computeBgImageComposite(
+  props: Pick<DesignSystemProps, 'bgImage' | 'bgImageOpacity' | 'bgImageTint' | 'bg'>,
+): string | undefined {
+  if (!props.bgImage) return undefined;
+  const url = `url("${resolveBgImageUrl(props.bgImage)}")`;
+  if (props.bgImageOpacity === undefined || props.bgImageOpacity >= 1) return url;
+  const tintSrc = props.bgImageTint ?? props.bg ?? 'neutral-0';
+  const tint = tokenVar('color', tintSrc, tintSrc);
+  const pct = Math.round((1 - props.bgImageOpacity) * 100);
+  const wash = `color-mix(in srgb, ${tint} ${pct}%, transparent)`;
+  return `linear-gradient(${wash}, ${wash}), ${url}`;
 }
 
 // Map flex axes based on direction

@@ -289,6 +289,12 @@ export function SpaceStoreProvider(props: ParentProps) {
   // window while switching between spaces (currentSpace loads async after perspective changes).
   createEffect(() => {
     const themeId = spaceDefaultThemeId();
+    // Explicitly track space identity: navigating to a different space must always
+    // re-apply that space's default theme, even when the new space's default happens
+    // to equal the previous one. Without this, spaceDefaultThemeId wouldn't change
+    // value across the navigation, and Solid would skip re-running this effect —
+    // leaving a theme manually switched to in the old space stuck active.
+    void currentSpace()?.uuid;
     if (themeId) {
       themeStore.replaceTheme(themeId);
     } else if (!adamStore.currentPerspective()) {

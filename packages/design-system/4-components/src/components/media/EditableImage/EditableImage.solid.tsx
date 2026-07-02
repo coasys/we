@@ -1,5 +1,5 @@
 import { designSystemKeys, filterProps, mergeProps } from '@we/design-utils';
-import { buildLayoutStyles, useStateProps } from '@we/design-utils/solid';
+import { buildLayoutStyles, getBgImageAttrs, useStateProps } from '@we/design-utils/solid';
 import { createMemo, createSignal, Show, splitProps } from 'solid-js';
 
 export type * from './EditableImage.types';
@@ -52,7 +52,7 @@ export function EditableImage(allProps: EditableImageProps) {
   });
 
   const hasStateProps = () => dsProps.hoverProps || dsProps.activeProps || dsProps.focusProps;
-  const { style, handlers } = useStateProps(baseStyle, dsProps as EditableImageProps, 'column');
+  const { style, attrs } = useStateProps(baseStyle, dsProps as EditableImageProps, 'column');
 
   function openModal() {
     setStep('upload');
@@ -107,7 +107,8 @@ export function EditableImage(allProps: EditableImageProps) {
         class={`editable-image ${props.class || ''}`}
         style={hasStateProps() ? style() : baseStyle()}
         onClick={openModal}
-        {...(hasStateProps() ? handlers : {})}
+        {...getBgImageAttrs(dsProps)}
+        {...(hasStateProps() ? attrs : {})}
       >
         <Show
           when={props.src}
