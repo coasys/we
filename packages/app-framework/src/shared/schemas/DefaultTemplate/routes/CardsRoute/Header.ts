@@ -61,17 +61,36 @@ export const cardsHeader: SchemaNode = {
             onChange: { $setLocal: 'contentType', from: '$event' },
           },
         },
-        // Sort order
+        // Sort field (posts only — date vs. most liked)
+        {
+          type: '$if',
+          props: {
+            condition: { $eq: [{ $local: 'contentType' }, 'posts'] },
+            then: {
+              type: 'Select',
+              props: {
+                value: { $local: 'sortField' },
+                searchable: false,
+                options: [
+                  { label: 'Date', value: 'date', icon: 'calendar' },
+                  { label: 'Most Liked', value: 'likes', icon: 'heart' },
+                ],
+                onChange: { $setLocal: 'sortField', from: '$event' },
+              },
+            },
+          },
+        },
+        // Sort direction — applies to whichever field is selected above (date or likes)
         {
           type: 'Select',
           props: {
-            value: { $local: 'sortBy' },
+            value: { $local: 'sortDirection' },
             searchable: false,
             options: [
-              { label: 'Newest', value: 'DESC', icon: 'sort-descending' },
-              { label: 'Oldest', value: 'ASC', icon: 'sort-ascending' },
+              { label: 'Descending', value: 'DESC', icon: 'sort-descending' },
+              { label: 'Ascending', value: 'ASC', icon: 'sort-ascending' },
             ],
-            onChange: { $setLocal: 'sortBy', from: '$event' },
+            onChange: { $setLocal: 'sortDirection', from: '$event' },
           },
         },
         // Display mode toggle

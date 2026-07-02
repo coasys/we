@@ -14,7 +14,7 @@ export const templatesList: SchemaNode = {
             $query: {
               model: 'Template',
               where: { name: { contains: { $local: 'searchText' } } },
-              order: { createdAt: { $local: 'sortBy' } },
+              order: { createdAt: { $local: 'sortDirection' } },
             },
           },
           as: 'template',
