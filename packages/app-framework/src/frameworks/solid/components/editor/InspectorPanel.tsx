@@ -92,6 +92,10 @@ const LAYER_ORDER: PropLayer[] = ['component', 'size', 'position', 'spacing', 'f
 // All spacing prop keys — excluded from "Set props" list, shown in SpacingSection instead
 const ALL_SPACING_KEYS = new Set(['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl', 'm', 'mx', 'my', 'mt', 'mr', 'mb', 'ml']);
 
+// bgImageOpacity/bgImageTint are edited inside BgImagePicker's own popover (alongside
+// bgImage), not as independent rows — same reasoning as spacing keys above.
+const BG_IMAGE_SUB_KEYS = new Set(['bgImageOpacity', 'bgImageTint']);
+
 const SPACE_OPTIONS: ComboboxOption[] = [
   '0',
   '100',
@@ -641,7 +645,7 @@ function NodeProperties(props: {
   const usedProps = createMemo(() => {
     const used = new Map<string, unknown>();
     for (const [k, v] of Object.entries(currentProps())) {
-      if (ALL_SPACING_KEYS.has(k)) continue;
+      if (ALL_SPACING_KEYS.has(k) || BG_IMAGE_SUB_KEYS.has(k)) continue;
       const t = typeof v;
       if (t === 'string' || t === 'boolean' || t === 'number') {
         used.set(k, v);
@@ -726,6 +730,8 @@ function NodeProperties(props: {
                     options={propMeta()?.options}
                     valueType={propMeta()?.valueType ?? (typeof value() as 'string' | 'boolean' | 'number')}
                     onChange={(v) => props.onPropChange(key, v)}
+                    currentProps={currentProps()}
+                    onAnyPropChange={props.onPropChange}
                   />
                 );
               }}
@@ -738,7 +744,8 @@ function NodeProperties(props: {
           <For each={LAYER_ORDER.filter((l) => l !== 'spacing')}>
             {(layer) => {
               const layerProps = () => availableByLayer().get(layer) ?? [];
-              const unsetProps = () => layerProps().filter((p) => !usedProps().has(p.name));
+              const unsetProps = () =>
+                layerProps().filter((p) => !usedProps().has(p.name) && !BG_IMAGE_SUB_KEYS.has(p.name));
               return (
                 <Show when={unsetProps().length > 0}>
                   <CollapsibleSection label={LAYER_LABELS[layer]}>
@@ -750,6 +757,8 @@ function NodeProperties(props: {
                           options={p.options}
                           valueType={p.valueType}
                           onChange={(v) => props.onPropChange(p.name, v)}
+                          currentProps={currentProps()}
+                          onAnyPropChange={props.onPropChange}
                         />
                       )}
                     </For>
@@ -1339,7 +1348,15 @@ const BG_IMAGE_TABS: { key: BgImageTab; label: string }[] = [
   { key: 'url', label: 'URL' },
 ];
 
-function BgImagePicker(props: { value: string; onChange: (v: string) => void }) {
+function BgImagePicker(props: {
+  value: string;
+  onChange: (v: string) => void;
+  opacity?: number;
+  tint?: string;
+  bg?: string;
+  onOpacityChange: (v: number | undefined) => void;
+  onTintChange: (v: string) => void;
+}) {
   const adamStore = useAdamStore();
   const [open, setOpen] = createSignal(false);
   const [tab, setTab] = createSignal<BgImageTab>('browse');
@@ -1560,6 +1577,56 @@ function BgImagePicker(props: { value: string; onChange: (v: string) => void }) 
                     Add
                   </we-button>
                 </Row>
+              </Show>
+
+              {/* Opacity/tint — persistent regardless of active tab, since they apply to
+                  whichever image is currently selected, not to the picking process itself. */}
+              <Show when={props.value}>
+                <Column gap="200" borderTop="1px solid neutral-100" pt="300">
+                  <Row ay="center" gap="200">
+                    <we-text
+                      fontSize="100"
+                      fontWeight="600"
+                      color="neutral-400"
+                      textTransform="uppercase"
+                      letterSpacing="0.06em"
+                      flex="1"
+                    >
+                      Opacity
+                    </we-text>
+                    <we-text fontSize="100" color="neutral-400">
+                      {Math.round((props.opacity ?? 1) * 100)}%
+                    </we-text>
+                  </Row>
+                  <we-slider
+                    value={Math.round((props.opacity ?? 1) * 100)}
+                    min={0}
+                    max={100}
+                    step={1}
+                    size="xs"
+                    on:change={(e: CustomEvent<number>) =>
+                      props.onOpacityChange(e.detail >= 100 ? undefined : e.detail / 100)
+                    }
+                  />
+
+                  {/* Tint only matters once the image is actually faded — hidden otherwise
+                      to avoid presenting an irrelevant control at full opacity. */}
+                  <Show when={props.opacity !== undefined && props.opacity < 1}>
+                    <we-text
+                      fontSize="100"
+                      fontWeight="600"
+                      color="neutral-400"
+                      textTransform="uppercase"
+                      letterSpacing="0.06em"
+                    >
+                      Fade to
+                    </we-text>
+                    <ColorSwatchPicker value={props.tint ?? ''} onChange={(v) => props.onTintChange(v)} />
+                    <we-text fontSize="100" color="neutral-400">
+                      {props.tint ? '' : `Defaults to ${props.bg ?? 'neutral-0'} (this element's own bg)`}
+                    </we-text>
+                  </Show>
+                </Column>
               </Show>
             </Column>
           </we-menu>
@@ -1809,6 +1876,10 @@ function PropRow(props: {
   options?: string[];
   valueType: 'string' | 'boolean' | 'number';
   onChange: (v: string | boolean | number) => void;
+  // Only used by the bgImage special case below, to read/write the sibling
+  // bgImageOpacity/bgImageTint props from within the same popover.
+  currentProps?: Record<string, unknown>;
+  onAnyPropChange?: (key: string, value: unknown) => void;
 }) {
   const strVal = () => String(props.value ?? '');
 
@@ -1839,7 +1910,17 @@ function PropRow(props: {
       return <RingPicker value={strVal()} onChange={(v) => props.onChange(v)} />;
     }
     if (props.propKey === 'bgImage') {
-      return <BgImagePicker value={strVal()} onChange={(v) => props.onChange(v)} />;
+      return (
+        <BgImagePicker
+          value={strVal()}
+          onChange={(v) => props.onChange(v)}
+          opacity={props.currentProps?.bgImageOpacity as number | undefined}
+          tint={props.currentProps?.bgImageTint as string | undefined}
+          bg={props.currentProps?.bg as string | undefined}
+          onOpacityChange={(v) => props.onAnyPropChange?.('bgImageOpacity', v)}
+          onTintChange={(v) => props.onAnyPropChange?.('bgImageTint', v)}
+        />
+      );
     }
     if (COLOR_PROP_KEYS.has(props.propKey)) {
       return <ColorSwatchPicker value={strVal()} onChange={(v) => props.onChange(v)} />;
