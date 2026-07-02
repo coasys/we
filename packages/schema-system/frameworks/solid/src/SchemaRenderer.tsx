@@ -130,11 +130,11 @@ function deepResolveTokens(
   const hasTokenKey = Object.keys(obj).some((k) => k.startsWith('$'));
   if (hasTokenKey) {
     const resolved = resolveProp(obj, stores, context);
-    // Unwrap reactive accessors — calling them here registers deps in the enclosing createEffect
-    if (typeof resolved === 'function' && REACTIVE_ACCESSOR in (resolved as object)) {
-      return (resolved as () => unknown)();
-    }
-    return resolved;
+    // Unwrap reactive accessors — calling them here registers deps in the enclosing createEffect.
+    // Must be a deep unwrap: resolvers like $if delegate their branch to the generic dispatcher,
+    // which embeds unwrapped accessor functions at arbitrary nesting depth (e.g. a $local inside
+    // a $if's `then` branch), not just at the top level.
+    return deepUnwrap(resolved);
   }
 
   // Plain object — recurse into values
