@@ -64,6 +64,23 @@ async function resolveExpressionToDataUri(url: string, client: Ad4mClient): Prom
 }
 
 /**
+ * True if a profile summary has no actual profile data — either the fetch
+ * failed/raced, or the agent genuinely hasn't published a profile yet.
+ * Used to decide whether a cached entry is worth retrying.
+ */
+export function isProfileEmpty(summary: AgentProfileSummary): boolean {
+  return (
+    !summary.firstName &&
+    !summary.lastName &&
+    !summary.handle &&
+    !summary.bio &&
+    !summary.avatar &&
+    !summary.coverImage &&
+    !summary.location
+  );
+}
+
+/**
  * Fetch and parse an agent's profile from their public AD4M perspective.
  * Reads WE format (we://profile source) first, falls back to Flux/SIOC format.
  */

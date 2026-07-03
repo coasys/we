@@ -3,6 +3,7 @@ import {
   type AgentProfileSummary,
   FILE_STORAGE_LANGUAGE,
   getProfile,
+  isProfileEmpty,
   type PublishProfileFields,
   publishProfileToPublicPerspective,
 } from '@shared/agentHelpers';
@@ -666,11 +667,14 @@ export function AdamStoreProvider(props: ParentProps) {
 
   /**
    * Fetch an agent's profile from their public perspective and add it to the agents cache.
-   * No-ops if the DID is already cached. Deduplicates concurrent calls for the same DID.
+   * No-ops if the DID is already cached with actual profile data — a blank cached entry
+   * (failed/raced fetch, or no profile published yet) is retried rather than stuck forever.
+   * Deduplicates concurrent calls for the same DID.
    */
   async function fetchAgent(did: string): Promise<void> {
     const cleanedDid = did.replace('did://', '');
-    if (agents().some((a) => a.did === cleanedDid)) return;
+    const cached = agents().find((a) => a.did === cleanedDid);
+    if (cached && !isProfileEmpty(cached)) return;
 
     const existing = inflightFetches.get(cleanedDid);
     if (existing) return existing;
@@ -681,8 +685,11 @@ export function AdamStoreProvider(props: ParentProps) {
     const promise = getProfile(cleanedDid, client)
       .then((summary) => {
         setAgents((prev) => {
-          if (prev.some((a) => a.did === cleanedDid)) return prev;
-          return [...prev, summary];
+          const idx = prev.findIndex((a) => a.did === cleanedDid);
+          if (idx === -1) return [...prev, summary];
+          const next = [...prev];
+          next[idx] = summary;
+          return next;
         });
       })
       .catch((err) => {
