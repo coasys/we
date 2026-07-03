@@ -3,12 +3,28 @@ import type { RouteSchema } from '@we/schema-shared';
 import { createSpaceModal } from '../../CreateSpaceModal.ts';
 import { blocksList } from './BlocksList.ts';
 import { createPostModal } from './CreatePostModal.ts';
+import { fluxChannelsList } from './FluxChannelsList.ts';
+import { fluxConversationsList } from './FluxConversationsList.ts';
+import { fluxConversationSubgroupsList } from './FluxConversationSubgroupsList.ts';
+import { fluxMessagesList } from './FluxMessagesList.ts';
 import { cardsHeader } from './Header.ts';
 import { postsList } from './PostsList.ts';
 import { spacesList } from './SpacesList.ts';
 import { templatesList } from './TemplatesList.ts';
 import { themesList } from './ThemesList.ts';
 import { usersList } from './UsersList.ts';
+
+const NON_BLOCK_CONTENT_TYPES = [
+  'posts',
+  'users',
+  'spaces',
+  'templates',
+  'themes',
+  'flux-channels',
+  'flux-conversations',
+  'flux-conversation-subgroups',
+  'flux-messages',
+];
 
 export const cardsRoute: RouteSchema = {
   path: '/cards',
@@ -47,10 +63,27 @@ export const cardsRoute: RouteSchema = {
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'themes'] }, then: themesList } },
         {
           type: '$if',
+          props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-channels'] }, then: fluxChannelsList },
+        },
+        {
+          type: '$if',
+          props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-conversations'] }, then: fluxConversationsList },
+        },
+        {
+          type: '$if',
           props: {
-            condition: {
-              $not: { $in: [{ $local: 'contentType' }, ['posts', 'users', 'spaces', 'templates', 'themes']] },
-            },
+            condition: { $eq: [{ $local: 'contentType' }, 'flux-conversation-subgroups'] },
+            then: fluxConversationSubgroupsList,
+          },
+        },
+        {
+          type: '$if',
+          props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-messages'] }, then: fluxMessagesList },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $not: { $in: [{ $local: 'contentType' }, NON_BLOCK_CONTENT_TYPES] } },
             then: blocksList,
           },
         },

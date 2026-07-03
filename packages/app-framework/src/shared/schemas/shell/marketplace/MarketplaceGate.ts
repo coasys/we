@@ -22,7 +22,7 @@ const joinPrompt: SchemaNode = {
   type: 'Column',
   props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '400', p: '600' },
   children: [
-    { type: 'we-icon', props: { name: 'storefront', size: 'xl' } },
+    { type: 'we-icon', props: { name: 'storefront', size: 'xl', gradient: 'primary' } },
     {
       type: 'we-text',
       props: { variant: 'heading-md', textAlign: 'center' },

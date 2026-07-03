@@ -12,8 +12,8 @@
     "repoPath": "../ad4m"
   },
 
-  "globalSpaceUrl": "neighbourhood://QmzSYwde1x6si65jooS8JwRMLsZHrUzUnziy9rFsirycJPtWSQC",
-  "marketplaceUrl": "neighbourhood://QmzSYwdgWeQCBEaRumW4oLtWCucQJpUdgbQzzvfXaCXWo1fhfi6",
+  "globalSpaceUrl": "neighbourhood://QmzSYwdoJJKsYF1eraytQ4nTvj8i21KYwgdqPyzMayEjCAR279U",
+  "marketplaceUrl": "neighbourhood://QmzSYwdnGmBxdJrkEPeyDPRNumcRujtnPxGo3qa6Poe9d4xx85f",
 
   "electron": {
     "appDistPath": "dist",
@@ -31,7 +31,7 @@
       "paths": {
         "projectRoot": "../flux/app",
         "dist": "../flux/app/dist",
-        "webUrl": "https://deploy-preview-603--fluxsocial-dev.netlify.app",
+        "webUrl": "https://fluxsocial-dev.netlify.app",
         "devServer": {
           "port": 3030,
           "host": "localhost"
