@@ -34,7 +34,7 @@ export const contextData: ContextData = {
     {
       tagName: 'we-avatar',
       className: 'Avatar',
-      superclass: 'LayoutElement',
+      superclass: 'LayoutVisualElement',
       ownProps: [
         { name: 'image', type: 'string', optional: false, default: "''" },
         { name: 'hash', type: 'string', optional: false, default: "''" },
@@ -48,7 +48,6 @@ export const contextData: ContextData = {
           optional: true,
         },
         { name: 'clickable', type: 'boolean', optional: false, default: 'false' },
-        { name: 'ring', type: 'string | undefined', optional: true },
       ],
     },
     {

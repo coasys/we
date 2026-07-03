@@ -405,8 +405,8 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', dismissible: boolean = false
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false
-- we-avatar (LayoutElement)
-  Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false, ring?: string | undefined
+- we-avatar (LayoutVisualElement)
+  Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
 - we-badge (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
@@ -668,7 +668,7 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
-we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, we-tooltip
+we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 
 ### Layout
 

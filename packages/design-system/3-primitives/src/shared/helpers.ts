@@ -69,6 +69,8 @@ interface ComponentCascade {
 }
 
 const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
+  // Media
+  avatar: { radiusDefault: '50%' },
   // Controls
   button: {
     radiusGroup: '--we-theme-control-radius',

@@ -24,7 +24,7 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
-we-avatar, we-icon, we-iframe, we-image, we-menu-group, we-popover, we-spinner, we-tooltip
+we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 
 ### Layout
 

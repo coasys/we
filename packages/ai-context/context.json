@@ -65,7 +65,7 @@
     {
       "tagName": "we-avatar",
       "className": "Avatar",
-      "superclass": "LayoutElement",
+      "superclass": "LayoutVisualElement",
       "ownProps": [
         {
           "name": "image",
@@ -113,11 +113,6 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
-        },
-        {
-          "name": "ring",
-          "type": "string | undefined",
-          "optional": true
         }
       ]
     },
