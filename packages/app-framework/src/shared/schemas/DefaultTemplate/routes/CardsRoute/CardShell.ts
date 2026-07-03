@@ -81,7 +81,7 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
                 },
               },
             },
-            children: body,
+            children: [{ type: 'Column', props: { gap: '300' }, children: body }],
           },
         },
       },

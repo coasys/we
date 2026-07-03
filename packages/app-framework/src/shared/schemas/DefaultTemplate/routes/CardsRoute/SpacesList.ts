@@ -11,7 +11,10 @@ export const spacesList: SchemaNode = gridWrapper([
           model: 'Space',
           where: {
             url: { not: { $store: 'adamStore.currentPerspectiveSharedCid' } },
-            name: { contains: { $local: 'searchText' } },
+            OR: [
+              { name: { contains: { $local: 'searchText' } } },
+              { description: { contains: { $local: 'searchText' } } },
+            ],
           },
           limit: 20,
           order: {
@@ -30,6 +33,16 @@ export const spacesList: SchemaNode = gridWrapper([
       cardShell({
         header: [
           {
+            type: '$if',
+            props: {
+              condition: '$space.coverImage',
+              then: {
+                type: 'we-image',
+                props: { src: '$space.coverImage', width: '100%', height: '120px', fit: 'cover', r: '400' },
+              },
+            },
+          },
+          {
             type: 'Row',
             props: { ax: 'between', ay: 'center', width: '100%' },
             $localState: { confirmDeleteOpen: { type: 'boolean', initial: false } },
@@ -40,13 +53,9 @@ export const spacesList: SchemaNode = gridWrapper([
                 children: [
                   {
                     type: 'we-avatar',
-                    props: { image: '$space.avatar', initials: '$space.name', size: 'sm' },
+                    props: { image: '$space.avatar', initials: '$space.name', size: 'lg', shadow: 'md' },
                   },
-                  {
-                    type: 'we-text',
-                    props: { fontWeight: 'semibold' },
-                    children: ['$space.name'],
-                  },
+                  { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$space.name'] },
                 ],
               },
               {
@@ -64,7 +73,7 @@ export const spacesList: SchemaNode = gridWrapper([
                           size: 'sm',
                           onClick: { $setLocal: 'confirmDeleteOpen', value: true },
                         },
-                        children: [{ type: 'we-icon', props: { name: 'trash', color: 'danger-400' } }],
+                        children: [{ type: 'we-icon', props: { name: 'trash' } }],
                       },
                       {
                         type: '$if',
@@ -126,31 +135,102 @@ export const spacesList: SchemaNode = gridWrapper([
           {
             type: '$if',
             props: {
-              condition: '$space.location',
-              then: {
-                type: 'Row',
-                props: { gap: '100', ay: 'center' },
-                children: [
-                  { type: 'we-icon', props: { name: 'map-pin', size: 'xs', color: 'neutral-500' } },
-                  {
-                    type: 'we-text',
-                    props: { variant: 'footnote', color: 'neutral-500' },
-                    children: [{ $concat: ['$space.location.city', ', ', '$space.location.country'] }],
-                  },
-                ],
-              },
+              condition: '$space.description',
+              then: { type: 'we-text', props: { color: 'neutral-600' }, children: ['$space.description'] },
             },
           },
           {
-            type: '$if',
-            props: {
-              condition: '$space.description',
-              then: {
-                type: 'we-text',
-                props: { variant: 'label' },
-                children: ['$space.description'],
+            type: 'Row',
+            props: { gap: '500', ay: 'center', wrap: true },
+            children: [
+              {
+                type: 'Row',
+                props: { gap: '100', ay: 'center', flex: 'none' },
+                children: [
+                  { type: 'we-icon', props: { name: 'lock-simple', size: 'sm', color: 'neutral-600' } },
+                  { type: 'we-text', props: { color: 'neutral-600' }, children: ['Access:'] },
+                  {
+                    type: 'we-text',
+                    props: { color: 'neutral-800' },
+                    children: [
+                      { $if: { condition: { $eq: ['$space.access', 'shared'] }, then: 'Shared', else: 'Personal' } },
+                    ],
+                  },
+                ],
               },
-            },
+              {
+                type: 'Row',
+                props: { gap: '100', ay: 'center', flex: 'none' },
+                children: [
+                  { type: 'we-icon', props: { name: 'globe', size: 'sm', color: 'neutral-600' } },
+                  { type: 'we-text', props: { color: 'neutral-600' }, children: ['Discovery:'] },
+                  {
+                    type: 'we-text',
+                    props: { color: 'neutral-800' },
+                    children: [
+                      { $if: { condition: { $eq: ['$space.discovery', 'listed'] }, then: 'Listed', else: 'Hidden' } },
+                    ],
+                  },
+                ],
+              },
+              {
+                type: '$if',
+                props: {
+                  condition: '$space.location',
+                  then: {
+                    type: 'Row',
+                    props: { gap: '100', ay: 'center', flex: 'none' },
+                    children: [
+                      { type: 'we-icon', props: { name: 'map-pin', size: 'sm', color: 'neutral-600' } },
+                      {
+                        type: 'we-text',
+                        props: { color: 'neutral-600' },
+                        children: ['Location:'],
+                      },
+                      {
+                        type: 'we-text',
+                        props: { color: 'neutral-800' },
+                        children: [{ $concat: ['$space.location.city', ', ', '$space.location.country'] }],
+                      },
+                    ],
+                  },
+                },
+              },
+              {
+                type: 'Row',
+                props: { gap: '100', ay: 'center', flex: 'none' },
+                children: [
+                  { type: 'we-icon', props: { name: 'clock', size: 'sm', color: 'neutral-600' } },
+                  { type: 'we-text', props: { color: 'neutral-600' }, children: ['Created:'] },
+                  {
+                    type: 'we-timestamp',
+                    props: { value: '$space.createdAt', relative: true, color: 'neutral-800' },
+                  },
+                  { type: 'we-text', props: { color: 'neutral-600' }, children: ['by'] },
+                  {
+                    type: '$agent',
+                    props: { did: '$space.author', as: 'creator' },
+                    children: [
+                      {
+                        type: 'Row',
+                        props: { gap: '100', ay: 'center' },
+                        children: [
+                          {
+                            type: 'we-avatar',
+                            props: { size: 'xs', image: '$creator.avatar', hash: '$creator.did' },
+                          },
+                          {
+                            type: 'we-text',
+                            props: { color: 'neutral-800' },
+                            children: [{ $concat: ['$creator.firstName', ' ', '$creator.lastName'] }],
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
           },
         ],
       }),
