@@ -44,8 +44,9 @@ export const fluxChannelsList: SchemaNode = {
               order: { timestamp: { $local: 'sortDirection' } },
               limit: 20,
               include: {
-                $messageCount: { from: 'messages', count: true },
-                $conversationCount: { from: 'conversations', count: true },
+                conversations: true,
+                $messageCount: { from: 'messages', count: true, where: { type: 'flux://has_message' } },
+                $conversationCount: { from: 'conversations', count: true, where: { type: 'flux://conversation' } },
               },
             },
           },
@@ -63,7 +64,11 @@ export const fluxChannelsList: SchemaNode = {
                     props: { ay: 'center', gap: '300' },
                     children: [
                       { type: 'we-icon', props: { name: 'hash' } },
-                      { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$channel.name'] },
+                      {
+                        type: 'we-text',
+                        props: { variant: 'heading-sm' },
+                        children: ['$channel.conversations[0].conversationName'],
+                      },
                     ],
                   },
                 ],
