@@ -793,8 +793,9 @@ export function AdamStoreProvider(props: ParentProps) {
     if (!myDid || !client) return;
 
     const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'profile-image' : 'cover-image');
-    // data_base64 from compressImageToFileData is a full data URI (from FileReader.readAsDataURL)
-    const dataUri = fileData.data_base64;
+    // data_base64 from compressImageToFileData is raw base64 (no "data:" prefix) — rebuild the data URI
+    // the same way resolveExpressionToDataUri does when reading it back after a refetch.
+    const dataUri = `data:${fileData.file_type};base64,${fileData.data_base64}`;
     const expressionUrl = await client.expression.create(JSON.stringify(fileData), FILE_STORAGE_LANGUAGE);
 
     setAgents((prev) => {
