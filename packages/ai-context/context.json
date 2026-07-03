@@ -5330,6 +5330,9 @@
         "currentPerspectiveModels": {
           "type": "array"
         },
+        "isWeSpace": {
+          "type": "boolean"
+        },
         "personalSpaces": {
           "type": "array",
           "properties": ["uuid", "name", "description", "url", "visibility"]
@@ -5367,6 +5370,7 @@
         "navigate",
         "addNewSpace",
         "createSpace",
+        "initializeAsWeSpace",
         "switchPerspective",
         "removePerspective",
         "reorderPerspectives",
@@ -5508,6 +5512,10 @@
         "currentSpace": {
           "type": "object",
           "properties": ["uuid", "name", "description", "avatar", "defaultTemplateId"]
+        },
+        "foreignSpacePrefill": {
+          "type": "object",
+          "properties": ["name", "description", "avatar"]
         },
         "signalTypes": {
           "type": "array",

@@ -11,7 +11,14 @@ import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
 import { installRootSdna, installSpaceSdna } from '@shared/sdnaModels';
 import { type LocationData, removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
-import { AgentSettings, compressImageToFileData, type FileData, LocationBlock, Space } from '@we/models';
+import {
+  AgentSettings,
+  compressImageToFileData,
+  dataURIToFileData,
+  type FileData,
+  LocationBlock,
+  Space,
+} from '@we/models';
 
 // Space.avatar/coverImage are typed as string (resolved data URI on read) but accept FileData on write.
 // This input type reflects the actual write-path contract.
@@ -19,7 +26,16 @@ type SpaceInput = Omit<Partial<Space>, 'avatar' | 'coverImage'> & {
   avatar?: FileData | string;
   coverImage?: FileData | string;
 };
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  batch,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  ParentProps,
+  useContext,
+} from 'solid-js';
 
 import weSeedFile from '../../../../../../we-seed.json';
 import type { WeSeedFile } from '../../../types/seed';
@@ -63,6 +79,8 @@ export interface AdamStore {
   currentPerspectiveSharedUrl: Accessor<string | undefined>;
   currentPerspectiveSharedCid: Accessor<string | undefined>;
   currentPerspectiveModels: Accessor<ModelManifestEntry[]>;
+  /** True once the current perspective is confirmed to have WE's `Space` SDNA installed. */
+  isWeSpace: Accessor<boolean>;
   joinedSpaceCids: Accessor<string[]>;
   agents: Accessor<AgentProfileSummary[]>;
 
@@ -79,6 +97,7 @@ export interface AdamStore {
     coverImageFile?: File,
     location?: LocationData | null,
   ) => Promise<void>;
+  initializeAsWeSpace: (name: string, description: string, avatarValue?: File | string | null) => Promise<Space>;
   removePerspective: (uuid: string) => Promise<void>;
   switchPerspective: (uuid: string) => Promise<void>;
   updateAgentSettings: (updates: Partial<AgentSettings>) => Promise<void>;
@@ -126,6 +145,7 @@ export function AdamStoreProvider(props: ParentProps) {
   const [creatingSpace, setCreatingSpace] = createSignal(false);
   const [currentPerspective, setCurrentPerspective] = createSignal<PerspectiveProxy | null>(null);
   const [currentPerspectiveModels, setCurrentPerspectiveModels] = createSignal<ModelManifestEntry[]>([]);
+  const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [agents, setAgents] = createSignal<AgentProfileSummary[]>([]);
 
   // In-flight deduplication for fetchAgent — prevents concurrent fetches for the same DID
@@ -1012,6 +1032,64 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Turns the currently-viewed perspective — which already has some other app's
+   * SDNA installed (e.g. a Flux Community) but not WE's — into a WE space in place.
+   * Unlike createSpace, this never creates a new perspective or publishes a new
+   * neighbourhood: the perspective is already a joined, published neighbourhood
+   * (that's the only way it could be showing in the sidebar), so access is always
+   * 'shared' here, not a real user choice.
+   */
+  async function initializeAsWeSpace(
+    name: string,
+    description: string,
+    avatarValue?: File | string | null,
+  ): Promise<Space> {
+    const perspective = currentPerspective();
+    if (!perspective) throw new Error('AdamStore: initializeAsWeSpace called with no active perspective');
+
+    // Additive/idempotent — does not remove or touch the perspective's existing foreign SDNA.
+    await installSpaceSdna(perspective);
+    // HACK: Model.register resolves before SDNA is actually ready — same pattern used
+    // in switchPerspective/createSpace/joinSpace.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    let avatarData: FileData | undefined;
+    if (avatarValue instanceof File) {
+      avatarData = await compressImageToFileData(avatarValue, 'space-avatar');
+    } else if (typeof avatarValue === 'string' && avatarValue) {
+      // Untouched prefill from the foreign app's own resolved (data-URI) image value —
+      // round-tripped back through FILE_STORAGE_LANGUAGE rather than re-compressed.
+      avatarData = dataURIToFileData(avatarValue, 'space-avatar');
+    }
+
+    const spaceData: SpaceInput = {
+      uuid: perspective.uuid,
+      url: perspective.sharedUrl?.replace('neighbourhood://', ''),
+      name,
+      description,
+      access: 'shared',
+      discovery: 'hidden',
+      defaultTemplateId: 'default',
+      defaultThemeId: 'dark',
+      ...(avatarData && { avatar: avatarData }),
+    };
+
+    const spaceModel = await addSpaceToPerspective(perspective, spaceData);
+
+    if (!mySpaces().some((s) => s.uuid === spaceModel.uuid)) {
+      setMySpaces((prev) => [...prev, spaceModel]);
+    }
+
+    // Re-run switchPerspective on the same uuid rather than hand-duplicating its
+    // classes/registerDynamicModels/manifest refresh: this atomically flips isWeSpace,
+    // refreshes the dynamic model registry, and hands SpaceStore a new PerspectiveProxy
+    // reference so its currentSpace effect re-fires now that a Space instance exists.
+    await switchPerspective(perspective.uuid);
+
+    return spaceModel;
+  }
+
   async function joinSpace(id: string): Promise<void> {
     const client = adamClient();
     if (!client) return;
@@ -1137,7 +1215,14 @@ export function AdamStoreProvider(props: ParentProps) {
       // SDNA is installed — switch immediately so WE templates render.
       // WE model classes are pre-registered at module load; no need to await
       // registerDynamicModels before the UI is usable.
-      setCurrentPerspective(perspective);
+      // isWeSpace is derived from `classes` (already fetched above) rather than the
+      // async currentPerspectiveModels manifest below, which lags behind currentPerspective
+      // and isn't reset on switch — deriving from it would let isWeSpace transiently read
+      // stale/true for a perspective that doesn't actually have WE's Space SDNA.
+      batch(() => {
+        setIsWeSpace('Space' in classes);
+        setCurrentPerspective(perspective);
+      });
 
       // Background: register dynamic (non-WE) model classes and update manifest.
       // Also backfill mySpaces if the Space record wasn't synced from Holochain
@@ -1233,6 +1318,7 @@ export function AdamStoreProvider(props: ParentProps) {
     currentPerspectiveSharedUrl,
     currentPerspectiveSharedCid,
     currentPerspectiveModels,
+    isWeSpace,
     joinedSpaceCids,
     agents,
     ownAgent,
@@ -1242,6 +1328,7 @@ export function AdamStoreProvider(props: ParentProps) {
     fetchAgent,
     logout,
     createSpace,
+    initializeAsWeSpace,
     removePerspective,
     switchPerspective,
     updateAgentSettings,
@@ -1262,7 +1349,10 @@ export function AdamStoreProvider(props: ParentProps) {
         ),
       );
     },
-    clearCurrentPerspective: () => setCurrentPerspective(null),
+    clearCurrentPerspective: () => {
+      setCurrentPerspective(null);
+      setIsWeSpace(false);
+    },
   };
 
   return <AdamContext.Provider value={store}>{props.children}</AdamContext.Provider>;

@@ -16,6 +16,7 @@ export const storeEntries: StoreEntry[] = [
       allPerspectives: { type: 'array', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
       currentPerspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
       currentPerspectiveModels: { type: 'array' },
+      isWeSpace: { type: 'boolean' },
       personalSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
       sharedSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
       bootState: { type: 'string' },
@@ -39,6 +40,7 @@ export const storeEntries: StoreEntry[] = [
       'navigate',
       'addNewSpace',
       'createSpace',
+      'initializeAsWeSpace',
       'switchPerspective',
       'removePerspective',
       'reorderPerspectives',
@@ -122,6 +124,7 @@ export const storeEntries: StoreEntry[] = [
       },
       spaceDefaultTemplateId: { type: 'string' },
       currentSpace: { type: 'object', properties: ['uuid', 'name', 'description', 'avatar', 'defaultTemplateId'] },
+      foreignSpacePrefill: { type: 'object', properties: ['name', 'description', 'avatar'] },
       signalTypes: {
         type: 'array',
         properties: [
@@ -227,6 +230,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         currentPerspective: 'PerspectiveProxy | null (the perspective currently being viewed)',
         currentPerspectiveModels:
           'ModelManifestEntry[] (non-WE SHACL models from the current perspective; injected as externalModels into AI messages)',
+        isWeSpace:
+          "boolean — true once the current perspective is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign perspective, e.g. one synced in from Flux)",
         personalSpaces: 'array of Space objects (local/personal spaces)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces)',
         bootState: 'string',
@@ -245,6 +250,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         addNewSpace: '(space: Space): adds a new space',
         createSpace:
           '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
+        initializeAsWeSpace:
+          '(name: string, description: string, avatarValue?: File | string | null): installs WE\'s Space SDNA into the current, already-joined, foreign-native perspective (e.g. one synced in from Flux) and creates a Space entity in place — access is always \'shared\' since the perspective is already a published neighbourhood',
         switchPerspective:
           '(uuid: string): switches to a perspective by UUID, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels',
         removePerspective: '(uuid: string): removes a perspective by UUID',
@@ -328,6 +335,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         spaceDefaultTemplateId:
           "string — the current space's default template ID (empty string when no space is active)",
         currentSpace: 'Space | null — the current space model (uuid, name, description, avatar, defaultTemplateId)',
+        foreignSpacePrefill:
+          '{ name, description, avatar } | null — detected from a foreign app\'s own model (e.g. Flux\'s Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found',
         signalTypes: 'array of SignalType objects (community-created reaction/vote types)',
         signalTypesBySlug:
           'Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID',

@@ -2018,6 +2018,7 @@ export const contextData: ContextData = {
         allPerspectives: { type: 'array', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
         currentPerspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
         currentPerspectiveModels: { type: 'array' },
+        isWeSpace: { type: 'boolean' },
         personalSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
         sharedSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
         bootState: { type: 'string' },
@@ -2038,6 +2039,7 @@ export const contextData: ContextData = {
         'navigate',
         'addNewSpace',
         'createSpace',
+        'initializeAsWeSpace',
         'switchPerspective',
         'removePerspective',
         'reorderPerspectives',
@@ -2118,6 +2120,7 @@ export const contextData: ContextData = {
         },
         spaceDefaultTemplateId: { type: 'string' },
         currentSpace: { type: 'object', properties: ['uuid', 'name', 'description', 'avatar', 'defaultTemplateId'] },
+        foreignSpacePrefill: { type: 'object', properties: ['name', 'description', 'avatar'] },
         signalTypes: {
           type: 'array',
           properties: [

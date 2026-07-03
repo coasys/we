@@ -1,5 +1,6 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
+import { initializeSpaceGate } from '../InitializeSpaceGate.ts';
 import { cardsRoute } from '../routes/CardsRoute/index.ts';
 import { fluxRoute } from '../routes/FluxRoute/index.ts';
 import { globeRoute } from '../routes/GlobeRoute/index.ts';
@@ -27,9 +28,16 @@ export const sidebarLayout: TemplateSchema = {
           props: {
             condition: { $store: 'adamStore.currentPerspective' },
             then: {
-              type: 'Row',
-              props: { flex: '1', height: '100%' },
-              children: [spaceSidebar, { type: '$routes' }],
+              type: '$if',
+              props: {
+                condition: { $store: 'adamStore.isWeSpace' },
+                then: {
+                  type: 'Row',
+                  props: { flex: '1', height: '100%' },
+                  children: [spaceSidebar, { type: '$routes' }],
+                },
+                else: initializeSpaceGate,
+              },
             },
             else: spaceGate,
           },

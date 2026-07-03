@@ -1,5 +1,5 @@
 import type { AgentProfileSummary } from '@shared/agentHelpers';
-import { registerModel } from '@shared/registries/modelRegistry';
+import { getModelForPerspective, registerModel } from '@shared/registries/modelRegistry';
 import { SPACE_MODELS } from '@shared/sdnaModels';
 import { type LocationData, removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
 import { deriveSlug } from '@shared/utils';
@@ -36,6 +36,10 @@ export interface SpaceStore {
   spaceDefaultTemplateId: Accessor<string>;
   spaceDefaultThemeId: Accessor<string>;
   currentSpace: Accessor<Space | null>;
+  /** Name/description/avatar detected from a foreign app's own model (e.g. Flux's Community),
+   * for prefilling the "Initialize as WE space" gate. Null once the perspective is a WE space,
+   * or if no recognized foreign model is found. */
+  foreignSpacePrefill: Accessor<{ name: string; description: string; avatar: string | null } | null>;
 
   // Actions
   createPost: (json: unknown) => Promise<void>;
@@ -262,7 +266,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   // include: { location: true } so AboutRoute can access location without a separate query.
   createEffect(() => {
     const p = adamStore.currentPerspective();
-    if (!p) {
+    if (!p || !adamStore.isWeSpace()) {
       setCurrentSpace(null);
       return;
     }
@@ -272,7 +276,10 @@ export function SpaceStoreProvider(props: ParentProps) {
       dispose: () => void;
     };
     const handleResult = (results: Space[]) => setCurrentSpace(results[0] ?? null);
-    builder.subscribe(handleResult).then(handleResult);
+    builder
+      .subscribe(handleResult)
+      .then(handleResult)
+      .catch(() => setCurrentSpace(null));
     onCleanup(() => builder.dispose());
   });
 
@@ -393,12 +400,42 @@ export function SpaceStoreProvider(props: ParentProps) {
     })();
   });
 
-  // Detect when entering a WE perspective with a Space model
+  // Prefill data for the "Initialize as WE space" gate — detected from a foreign app's own
+  // model (currently just Flux's Community) when the current perspective isn't a WE space yet.
+  const [foreignSpacePrefill, setForeignSpacePrefill] = createSignal<
+    { name: string; description: string; avatar: string | null } | null
+  >(null);
+
   createEffect(() => {
-    const models = adamStore.currentPerspectiveModels();
-    const isWeSpace = models.some((m) => m.targetClass === 'we://Space');
-    if (isWeSpace) console.log('Entering a WE space');
-    else console.log('Entering a non-WE space');
+    const p = adamStore.currentPerspective();
+    const weSpace = adamStore.isWeSpace();
+    // Force a re-run once registerDynamicModels has populated the per-perspective registry —
+    // that happens in switchPerspective's background IIFE, strictly before currentPerspectiveModels
+    // is set, so tracking it here guarantees a second run right when getModelForPerspective is ready.
+    void adamStore.currentPerspectiveModels();
+
+    if (!p || weSpace) {
+      setForeignSpacePrefill(null);
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const CommunityClass = getModelForPerspective('Community', p.uuid) as any;
+    if (!CommunityClass) {
+      setForeignSpacePrefill(null);
+      return;
+    }
+
+    CommunityClass.findOne(p, {})
+      .then((instance: { name?: string; description?: string; thumbnail?: string } | null) => {
+        if (!instance || untrack(adamStore.currentPerspective)?.uuid !== p.uuid) return;
+        setForeignSpacePrefill({
+          name: instance.name ?? '',
+          description: instance.description ?? '',
+          avatar: instance.thumbnail ?? null,
+        });
+      })
+      .catch(() => setForeignSpacePrefill(null));
   });
 
   const store: SpaceStore = {
@@ -408,6 +445,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceDefaultTemplateId,
     spaceDefaultThemeId,
     currentSpace,
+    foreignSpacePrefill,
 
     // Actions
     createPost,

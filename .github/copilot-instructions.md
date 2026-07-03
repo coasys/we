@@ -1090,6 +1090,7 @@ AdamStore:
   - allPerspectives: array of PerspectiveProxy objects (all AD4M perspectives)
   - currentPerspective: PerspectiveProxy | null (the perspective currently being viewed)
   - currentPerspectiveModels: ModelManifestEntry[] (non-WE SHACL models from the current perspective; injected as externalModels into AI messages)
+  - isWeSpace: boolean — true once the current perspective is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign perspective, e.g. one synced in from Flux)
   - personalSpaces: array of Space objects (local/personal spaces)
   - sharedSpaces: array of Space objects (shared/neighbourhood spaces)
   - bootState: string
@@ -1103,6 +1104,7 @@ AdamStore:
   - navigate(to: string, options?): navigates to a route
   - addNewSpace(space: Space): adds a new space
   - createSpace(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup
+  - initializeAsWeSpace(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native perspective (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the perspective is already a published neighbourhood
   - switchPerspective(uuid: string): switches to a perspective by UUID, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels
   - removePerspective(uuid: string): removes a perspective by UUID
   - reorderPerspectives(newOrder: string[]): reorders the sidebar items by UUID array
@@ -1168,6 +1170,7 @@ SpaceStore:
   - members: AgentProfileSummary[] — cached profiles for all memberDids
   - spaceDefaultTemplateId: string — the current space's default template ID (empty string when no space is active)
   - currentSpace: Space | null — the current space model (uuid, name, description, avatar, defaultTemplateId)
+  - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found
   - signalTypes: array of SignalType objects (community-created reaction/vote types)
   - signalTypesBySlug: Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID
 - Actions:
