@@ -9,6 +9,7 @@ const DEFAULTS: Partial<ColumnProps> = {};
 const columnKeys = [...designSystemKeys.filter((key) => key !== 'direction'), 'reverse', 'children'];
 const columnStyleKeys = columnKeys.filter((key) => key !== 'children');
 
+/** @superclass DesignSystemElement */
 export function Column(allProps: ColumnProps) {
   const [designSystemProps, rest] = splitProps(allProps, columnKeys as (keyof ColumnProps)[]);
   const baseStyle = createMemo(() => {

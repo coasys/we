@@ -205,9 +205,7 @@ const tokens = {
       '500': 'hsl(610, 60%, 50%)', // Base
       '1000': 'hsl(610, 60%, 0%)', // Darkest
     },
-    ui: {
-      /* UI colors with lower saturation */
-    },
+    ui: {/* UI colors with lower saturation */},
     base: { white: '#ffffff', black: '#000000' },
   },
   space: {

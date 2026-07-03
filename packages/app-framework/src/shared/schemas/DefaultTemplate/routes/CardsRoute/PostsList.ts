@@ -18,8 +18,22 @@ export const postsList: SchemaNode = {
             $query: {
               model: 'CollectionBlock',
               where: { type: 'root', textContent: { contains: { $local: 'searchText' } } },
-              order: { createdAt: { $local: 'sortBy' } },
-              include: { signals: true },
+              limit: 20,
+              order: {
+                $if: {
+                  condition: { $eq: [{ $local: 'sortField' }, 'likes'] },
+                  then: { $likeCount: { $local: 'sortDirection' } },
+                  else: { createdAt: { $local: 'sortDirection' } },
+                },
+              },
+              include: {
+                signals: true,
+                $likeCount: {
+                  from: 'signals',
+                  where: { signalTypeId: { $store: 'spaceStore.signalTypesBySlug.like.id' } },
+                  count: true,
+                },
+              },
             },
           },
           as: 'post',
@@ -48,7 +62,7 @@ export const postsList: SchemaNode = {
                             props: {
                               size: 'sm',
                               image: '$author.avatar',
-                              initials: { $concat: ['$author.firstName', ' ', '$author.lastName'] },
+                              hash: '$author.did',
                             },
                           },
                           {

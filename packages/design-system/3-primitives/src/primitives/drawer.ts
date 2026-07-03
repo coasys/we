@@ -84,17 +84,19 @@ export default class Drawer extends OverlayElement {
     return html`
       <div part="backdrop" @click=${this.close}></div>
       <div part="base" role="dialog" aria-modal="true" style=${styleMap({ ...posStyles, ...this.styles })}>
-        ${!this.hideclosebutton
-          ? html`
-              <div part="close-button-wrapper">
-                <slot name="close-button">
-                  <we-button part="close-button" variant="ghost" p="0" @click=${this.close}>
-                    <we-icon name="x" size="sm"></we-icon>
-                  </we-button>
-                </slot>
-              </div>
-            `
-          : nothing}
+        ${
+          !this.hideclosebutton
+            ? html`
+                <div part="close-button-wrapper">
+                  <slot name="close-button">
+                    <we-button part="close-button" variant="ghost" p="0" @click=${this.close}>
+                      <we-icon name="x" size="sm"></we-icon>
+                    </we-button>
+                  </slot>
+                </div>
+              `
+            : nothing
+        }
         <slot></slot>
       </div>
     `;

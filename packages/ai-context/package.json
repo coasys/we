@@ -17,12 +17,13 @@
     }
   },
   "dependencies": {
+    "@we/design-utils": "workspace:*",
     "@we/schema-shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@we/cli": "workspace:*",
-    "prettier": "^3.4.2",
+    "prettier": "3.9.4",
     "ts-morph": "^25.0.1",
     "tsup": "^8.5.1",
     "tsx": "^4.19.3",

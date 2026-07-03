@@ -309,12 +309,16 @@ export function AdamStoreProvider(props: ParentProps) {
       const perspectives = await client.perspective.all();
       setAllPerspectives(perspectives);
       // we-root and we-test are system perspectives that never have Space SDNA installed —
-      // calling Space.findOne on them produces an RPC 500 "No SHACL shape" error and
-      // rejects the entire Promise.all, hiding all real spaces.
+      // calling Space.findOne on them produces an RPC 500 "No SHACL shape" error.
       const SYSTEM_PERSPECTIVES = ['we-root', 'we-test'];
       const candidatePerspectives = perspectives.filter((p) => !SYSTEM_PERSPECTIVES.includes(p.name));
+      // Any other joined perspective without Space SDNA installed (e.g. a Flux
+      // neighbourhood) would throw the same "No SHACL shape" error. Since these run in a
+      // Promise.all, one rejection would otherwise abort the whole batch and hide every
+      // real space's data (including avatars) until each is visited individually. Catch
+      // per-perspective so one bad perspective can't poison the rest.
       const spaces = await Promise.all(
-        candidatePerspectives.map(async (perspective) => await Space.findOne(perspective)),
+        candidatePerspectives.map(async (perspective) => await Space.findOne(perspective).catch(() => null)),
       );
       const filteredSpaces = spaces
         .filter((s): s is Space => !!s)

@@ -155,28 +155,30 @@ export default class FileUpload extends DesignSystemElement {
           <span>Drop files here or click to browse</span>
         </slot>
 
-        ${this._files.length > 0
-          ? html`
-              <div part="file-list" @click=${(e: Event) => e.stopPropagation()}>
-                ${this._files.map(
-                  (file, i) => html`
-                    <div part="file-item">
-                      <we-icon name="file" size="sm"></we-icon>
-                      <span>${file.name}</span>
-                      <we-button
-                        part="remove"
-                        variant="secondary"
-                        aria-label="Remove file"
-                        @click=${() => this._removeFile(i)}
-                      >
-                        <we-icon name="x"></we-icon>
-                      </we-button>
-                    </div>
-                  `,
-                )}
-              </div>
-            `
-          : nothing}
+        ${
+          this._files.length > 0
+            ? html`
+                <div part="file-list" @click=${(e: Event) => e.stopPropagation()}>
+                  ${this._files.map(
+                    (file, i) => html`
+                      <div part="file-item">
+                        <we-icon name="file" size="sm"></we-icon>
+                        <span>${file.name}</span>
+                        <we-button
+                          part="remove"
+                          variant="secondary"
+                          aria-label="Remove file"
+                          @click=${() => this._removeFile(i)}
+                        >
+                          <we-icon name="x"></we-icon>
+                        </we-button>
+                      </div>
+                    `,
+                  )}
+                </div>
+              `
+            : nothing
+        }
       </div>
     `;
   }

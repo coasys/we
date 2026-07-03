@@ -100,7 +100,7 @@
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "eslint-plugin-lit": "^2.1.1",
-    "prettier": "^3.4.2",
+    "prettier": "3.9.4",
     "storybook": "8.4.6",
     "tsup": "^8.5.1",
     "tsx": "^4.19.3"

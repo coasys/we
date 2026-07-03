@@ -14,7 +14,7 @@ export const themesList: SchemaNode = {
             $query: {
               model: 'Theme',
               where: { name: { contains: { $local: 'searchText' } } },
-              order: { createdAt: { $local: 'sortBy' } },
+              order: { createdAt: { $local: 'sortDirection' } },
             },
           },
           as: 'theme',

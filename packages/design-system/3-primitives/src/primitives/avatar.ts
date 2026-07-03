@@ -5,7 +5,7 @@ import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
 
-import { LayoutElement } from '../shared/design-system-element';
+import { LayoutVisualElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import type { SizeValue } from '../types';
 
@@ -19,7 +19,6 @@ const styles = css`
     --we-avatar-width: var(--we-avatar-size);
     --we-avatar-height: var(--we-avatar-size);
     --we-avatar-size: var(--we-avatar-size-md);
-    --we-avatar-box-shadow: none;
     --we-avatar-border: none;
     --we-avatar-color: var(--we-color-black);
     --we-avatar-bg: var(--we-color-neutral-100);
@@ -66,13 +65,7 @@ const styles = css`
     position: relative;
     align-items: center;
     justify-content: center;
-    cursor: inherit;
-    box-shadow: var(--we-avatar-box-shadow);
-    color: var(--we-avatar-color);
-    background: var(--we-avatar-bg);
-    border: var(--we-avatar-border);
     padding: 0;
-    border-radius: 50%;
   }
 
   svg {
@@ -98,7 +91,7 @@ const styles = css`
 `;
 
 @customElement('we-avatar')
-export default class Avatar extends LayoutElement {
+export default class Avatar extends LayoutVisualElement {
   static styles = [sharedStyles, styles];
 
   static getDefaultProps(): Partial<DesignSystemProps> {
@@ -113,7 +106,6 @@ export default class Avatar extends LayoutElement {
   @property({ type: String }) icon = '';
   @property({ type: String, reflect: true }) size?: SizeValue;
   @property({ type: Boolean, reflect: true }) clickable = false;
-  @property({ type: String }) ring?: string;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   updated(props: Map<string, unknown>) {
@@ -122,10 +114,6 @@ export default class Avatar extends LayoutElement {
     // Handle custom size values (e.g., "20px", "2rem")
     if (props.has('size') && this.size && !['xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'].includes(this.size)) {
       this.style.setProperty('--we-avatar-size', this.size);
-    }
-
-    if (props.has('ring')) {
-      this.style.setProperty('--we-avatar-box-shadow', this.ring ?? 'none');
     }
   }
 

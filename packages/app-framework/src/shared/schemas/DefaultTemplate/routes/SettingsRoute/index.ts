@@ -1,6 +1,8 @@
 import type { RouteSchema, SchemaNode } from '@we/schema-shared';
 
+import { createSignalTypeModal } from './CreateSignalTypeModal.ts';
 import { marketplaceBrowser } from './MarketplaceBrowser.ts';
+import { signalTypeCard } from './SignalTypeCard.ts';
 import { themeMarketplaceBrowser } from './ThemeMarketplaceBrowser.ts';
 
 const templateRow: SchemaNode = {
@@ -136,6 +138,7 @@ export const settingsRoute: RouteSchema = {
   $localState: {
     showMarketplace: { type: 'boolean', initial: false },
     showThemeMarketplace: { type: 'boolean', initial: false },
+    createSignalTypeOpen: { type: 'boolean', initial: false },
     editName: { type: 'string', initial: { $store: 'spaceStore.currentSpace.name' } },
     editDescription: { type: 'string', initial: { $store: 'spaceStore.currentSpace.description' } },
     saving: { type: 'boolean', initial: false },
@@ -739,6 +742,56 @@ export const settingsRoute: RouteSchema = {
             {
               type: '$if',
               props: { condition: { $local: 'showThemeMarketplace' }, then: themeMarketplaceBrowser },
+            },
+          ],
+        },
+
+        // Signal Types
+        {
+          type: 'Card',
+          props: { bg: 'neutral-100', border: '1px solid neutral-200' },
+          children: [
+            {
+              type: 'Row',
+              props: { ax: 'between', ay: 'center' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '100' },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { variant: 'heading-md' },
+                      children: ['Signal Types'],
+                    },
+                    {
+                      type: 'we-text',
+                      children: ['Create and manage custom signal types to categorize and enrich your signals.'],
+                    },
+                  ],
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'secondary',
+                    size: 'sm',
+                    onClick: { $setLocal: 'createSignalTypeOpen', value: true },
+                  },
+                  children: [
+                    { type: 'we-icon', props: { name: 'plus' } },
+                    { type: 'we-text', children: ['Add Signal Type'] },
+                  ],
+                },
+              ],
+            },
+            {
+              type: '$each',
+              props: { items: { $query: { model: 'SignalType', subscribe: true } }, as: 'signalType' },
+              children: [signalTypeCard],
+            },
+            {
+              type: '$if',
+              props: { condition: { $local: 'createSignalTypeOpen' }, then: createSignalTypeModal },
             },
           ],
         },

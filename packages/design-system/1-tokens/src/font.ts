@@ -9,19 +9,7 @@ export type FontFamilyValue = FontFamilyToken | (string & {});
 export type FontSizeToken = 'base' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '1000';
 export type FontSizeValue = FontSizeToken | (string & {});
 export type FontWeightToken =
-  | '100'
-  | '200'
-  | '300'
-  | '400'
-  | '500'
-  | '600'
-  | '700'
-  | '800'
-  | '900'
-  | 'regular'
-  | 'medium'
-  | 'semibold'
-  | 'bold';
+  '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | 'regular' | 'medium' | 'semibold' | 'bold';
 export type LineHeightToken = 'none' | 'tight' | 'snug' | 'normal' | 'relaxed' | 'loose';
 export type LineHeightValue = LineHeightToken | (string & {});
 export type LetterSpacingToken = 'tighter' | 'tight' | 'normal' | 'wide' | 'wider' | 'widest';

@@ -22,6 +22,7 @@ const editableImageKeys = [...designSystemKeys, 'children'] as const;
 const editableImageStyleKeys = editableImageKeys.filter((key) => key !== 'children');
 const componentKeys = ['src', 'alt', 'fit', 'placeholderIcon', 'onImageChange', 'class', 'aspect', 'maxSize'] as const;
 
+/** @superclass DesignSystemElement */
 export function EditableImage(allProps: EditableImageProps) {
   const [dsProps, props] = splitProps(
     allProps,

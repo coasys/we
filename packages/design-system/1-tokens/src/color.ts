@@ -15,20 +15,7 @@ export type ComponentVariant = ColorHueToken;
 export type ColorBaseToken = 'white' | 'black';
 export type ColorConfigToken = 'multiplier' | 'subtractor' | 'saturation' | 'neutralSaturation';
 export type ColorLightnessToken =
-  | '0'
-  | '25'
-  | '50'
-  | '75'
-  | '100'
-  | '200'
-  | '300'
-  | '400'
-  | '500'
-  | '600'
-  | '700'
-  | '800'
-  | '900'
-  | '1000';
+  '0' | '25' | '50' | '75' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '1000';
 
 // Unified color token type
 export type ColorToken = ColorBaseToken | `${ColorHueToken}-${ColorLightnessToken}`;

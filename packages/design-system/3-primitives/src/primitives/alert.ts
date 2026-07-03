@@ -93,11 +93,13 @@ export default class Alert extends DesignSystemElement {
       <div part="base" role="alert" style=${styleMap({ border, ...this.styles })}>
         <we-icon name=${icon} size="20px"></we-icon>
         <div part="content"><slot></slot></div>
-        ${this.dismissible
-          ? html`<button part="dismiss" aria-label="Dismiss" @click=${this._dismiss}>
-              <we-icon name="x" size="16px"></we-icon>
-            </button>`
-          : nothing}
+        ${
+          this.dismissible
+            ? html`<button part="dismiss" aria-label="Dismiss" @click=${this._dismiss}>
+                <we-icon name="x" size="16px"></we-icon>
+              </button>`
+            : nothing
+        }
       </div>
     `;
   }

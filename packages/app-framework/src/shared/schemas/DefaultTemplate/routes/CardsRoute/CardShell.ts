@@ -30,7 +30,7 @@ const defaultMaxHeight = {
  * - grid: header + CollapsedContent where expand opens a modal
  *
  * $local reads inside body/modal resolve up the ancestor tree, so route-level
- * $localState (displayMode, sortBy, etc.) remains accessible.
+ * $localState (displayMode, sortDirection, etc.) remains accessible.
  */
 export function cardShell(opts: CardShellOptions): SchemaNode {
   const { header, body, modalContent } = opts;
@@ -81,7 +81,7 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
                 },
               },
             },
-            children: body,
+            children: [{ type: 'Column', props: { gap: '300' }, children: body }],
           },
         },
       },

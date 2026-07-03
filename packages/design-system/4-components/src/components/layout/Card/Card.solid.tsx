@@ -16,14 +16,14 @@ const cardOwnKeys = ['direction'] as const;
 const cardKeys = [...designSystemKeys.filter((key) => key !== 'direction'), 'reverse', 'children', ...cardOwnKeys];
 const cardStyleKeys = cardKeys.filter((key) => key !== 'children');
 
+/** @superclass DesignSystemElement */
 export function Card(allProps: CardProps) {
   const [designSystemProps, rest] = splitProps(allProps, cardKeys as (keyof CardProps)[]);
   const direction = () => (designSystemProps as CardProps).direction ?? 'column';
 
   const baseStyle = createMemo(() => {
-    const { direction: _dir, ...dsProps } = designSystemProps as CardProps & { direction?: string };
     const usedProps = filterProps(
-      dsProps as Record<string, unknown>,
+      designSystemProps as Record<string, unknown>,
       cardStyleKeys.filter((k) => k !== 'direction'),
     );
     const props = mergeProps(usedProps, DEFAULTS) as CardProps;

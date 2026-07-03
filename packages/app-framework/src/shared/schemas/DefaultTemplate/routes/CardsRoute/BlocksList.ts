@@ -16,7 +16,7 @@ const blockSection = (
       {
         type: '$each',
         props: {
-          items: { $query: { model, order: { createdAt: { $local: 'sortBy' } } } },
+          items: { $query: { model, order: { createdAt: { $local: 'sortDirection' } } } },
           as: 'block',
         },
         children: [cardShell({ header, body, maxHeight })],
