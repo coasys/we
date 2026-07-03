@@ -8,11 +8,11 @@ const globalSpaceJoinPrompt: SchemaNode = {
   type: 'Column',
   props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '400', p: '600' },
   children: [
-    { type: 'we-icon', props: { name: 'globe-hemisphere-west', size: 'xl' } },
+    { type: 'we-icon', props: { name: 'globe-hemisphere-west', size: 'xl', gradient: 'primary' } },
     {
       type: 'we-text',
       props: { variant: 'heading-md', textAlign: 'center' },
-      children: ['Join WE Discovery'],
+      children: ['Join the global discovery space'],
     },
     {
       type: 'we-text',
@@ -23,13 +23,20 @@ const globalSpaceJoinPrompt: SchemaNode = {
     },
     {
       type: 'we-button',
+      $localState: { joining: { type: 'boolean', initial: false } },
       props: {
-        text: 'Join WE Discovery',
+        text: 'Join',
         variant: 'primary',
-        onClick: {
-          $action: 'adamStore.joinSpace',
-          args: [{ $store: 'routeStore.segments.1' }],
-        },
+        loading: { $local: 'joining' },
+        disabled: { $local: 'joining' },
+        onClick: [
+          { $setLocal: 'joining', value: true },
+          {
+            $action: 'adamStore.joinSpace',
+            args: [{ $store: 'routeStore.segments.1' }],
+            onFinally: [{ $setLocal: 'joining', value: false }],
+          },
+        ],
       },
     },
   ],
@@ -39,7 +46,7 @@ const regularSpaceJoinPrompt: SchemaNode = {
   type: 'Column',
   props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '400', p: '600' },
   children: [
-    { type: 'we-icon', props: { name: 'lock', size: 'xl' } },
+    { type: 'we-icon', props: { name: 'lock', size: 'xl', gradient: 'primary' } },
     {
       type: 'we-text',
       props: { variant: 'heading-md' },
@@ -52,13 +59,20 @@ const regularSpaceJoinPrompt: SchemaNode = {
     },
     {
       type: 'we-button',
+      $localState: { joining: { type: 'boolean', initial: false } },
       props: {
         text: 'Join Space',
         variant: 'primary',
-        onClick: {
-          $action: 'adamStore.joinSpace',
-          args: [{ $store: 'routeStore.segments.1' }],
-        },
+        loading: { $local: 'joining' },
+        disabled: { $local: 'joining' },
+        onClick: [
+          { $setLocal: 'joining', value: true },
+          {
+            $action: 'adamStore.joinSpace',
+            args: [{ $store: 'routeStore.segments.1' }],
+            onFinally: [{ $setLocal: 'joining', value: false }],
+          },
+        ],
       },
     },
   ],
