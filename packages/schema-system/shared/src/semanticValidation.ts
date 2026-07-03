@@ -147,6 +147,15 @@ function suggest(name: string, knownNames: Iterable<string>): string | undefined
   return best;
 }
 
+// DS layer keys whose runtime type isn't a plain token string (see DesignSystemProps
+// in @we/design-types). Every other layer key is a token/CSS string.
+const DS_PROP_TYPE_OVERRIDES: Record<string, string> = {
+  wrap: 'boolean',
+  opacity: 'number',
+  bgImageOpacity: 'number',
+  zIndex: 'string|number',
+};
+
 function classifyPropType(typeText: string): string {
   if (!typeText || typeText === 'unknown') return 'unknown';
   const t = typeText.replace(/\s*\|\s*undefined/g, '').trim();
@@ -233,8 +242,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
       const dsKeys = getKeysForLayers(layers);
       for (const key of dsKeys) {
         props.add(key);
-        // DS props are all string-typed (token values)
-        propTypes.set(key, 'string');
+        propTypes.set(key, DS_PROP_TYPE_OVERRIDES[key] ?? 'string');
       }
     }
 
@@ -255,6 +263,17 @@ export function buildValidationContext(data: ContextData): ValidationContext {
       const allowed = extractAllowedValues(p.type);
       if (allowed) propAllowed.set(p.name, allowed);
     }
+
+    // Add DS props based on superclass (mirrors the primitives loop above)
+    if (comp.superclass && BASE_CLASS_LAYERS[comp.superclass]) {
+      const layers = BASE_CLASS_LAYERS[comp.superclass];
+      const dsKeys = getKeysForLayers(layers);
+      for (const key of dsKeys) {
+        props.add(key);
+        propTypes.set(key, DS_PROP_TYPE_OVERRIDES[key] ?? 'string');
+      }
+    }
+
     componentProps.set(comp.name, props);
     componentPropTypes.set(comp.name, propTypes);
     if (propAllowed.size > 0) componentPropAllowedValues.set(comp.name, propAllowed);
