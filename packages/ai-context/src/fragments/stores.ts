@@ -50,6 +50,7 @@ export const storeEntries: StoreEntry[] = [
       'updateOwnProfile',
       'updateProfileImage',
       'updateAgentLocation',
+      'cleanupSpaceSdna',
     ],
   },
   {
@@ -265,6 +266,8 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(field: "avatar" | "coverImage", imageFile: File): uploads image to FILE_STORAGE_LANGUAGE and publishes expression URL to public perspective',
         updateAgentLocation:
           '(update: { latitude?, longitude?, city?, country?, countryCode? }): merges location update into cache and publishes to public perspective',
+        cleanupSpaceSdna:
+          '(uuid?: string): one-time remediation for a perspective that accumulated duplicate SDNA installs (e.g. from before joinSpace checked for existing SDNA before installing) — removes the redundant duplicate link copies. Defaults to the current perspective. Returns the number of links removed',
       },
     },
     routeStore: {

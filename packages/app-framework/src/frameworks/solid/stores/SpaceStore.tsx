@@ -1,7 +1,7 @@
 import { parseLit } from '@coasys/ad4m';
 import type { AgentProfileSummary } from '@shared/agentHelpers';
 import { getModelForPerspective, registerModel } from '@shared/registries/modelRegistry';
-import { SPACE_MODELS } from '@shared/sdnaModels';
+import { ensureModelRegistered, SPACE_MODELS } from '@shared/sdnaModels';
 import { type LocationData, removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@shared/syncHelpers';
 import { deriveSlug } from '@shared/utils';
 import { useAdamStore } from '@solid/stores';
@@ -207,7 +207,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         // LocationBlock.update only changes nested triples and doesn't trigger the Space query.
         const [existingLoc] = await LocationBlock.findAll(currentPerspective);
         if (existingLoc) await existingLoc.delete();
-        await LocationBlock.register(currentPerspective);
+        await ensureModelRegistered(currentPerspective, LocationBlock);
         const newLoc = await LocationBlock.create(currentPerspective, {
           latitude: loc.latitude,
           longitude: loc.longitude,

@@ -2049,6 +2049,7 @@ export const contextData: ContextData = {
         'updateOwnProfile',
         'updateProfileImage',
         'updateAgentLocation',
+        'cleanupSpaceSdna',
       ],
     },
     {

@@ -5379,7 +5379,8 @@
         "fetchAgent",
         "updateOwnProfile",
         "updateProfileImage",
-        "updateAgentLocation"
+        "updateAgentLocation",
+        "cleanupSpaceSdna"
       ]
     },
     {

@@ -416,6 +416,9 @@ export const settingsTemplate: TemplateSchema = {
                             bg: 'neutral-50',
                             border: '1px solid neutral-200',
                           },
+                          $localState: {
+                            sdnaCleanupResult: { type: 'number', initial: -1 },
+                          },
                           children: [
                             {
                               type: 'Row',
@@ -448,20 +451,65 @@ export const settingsTemplate: TemplateSchema = {
                               children: [{ $concat: ['URL: ', '$perspective.sharedUrl'] }],
                             },
                             {
-                              type: 'we-button',
-                              props: {
-                                variant: 'danger',
-                                size: 'sm',
-                                onClick: { $action: 'adamStore.removePerspective', args: ['$perspective.uuid'] },
-                              },
+                              type: 'Row',
+                              props: { gap: '200', ay: 'center' },
                               children: [
-                                { type: 'we-icon', props: { name: 'trash', size: '16px' } },
                                 {
-                                  type: 'we-text',
-                                  props: { variant: 'label' },
-                                  children: ['Delete'],
+                                  type: 'we-button',
+                                  props: {
+                                    variant: 'secondary',
+                                    size: 'sm',
+                                    onClick: {
+                                      $action: 'adamStore.cleanupSpaceSdna',
+                                      args: ['$perspective.uuid'],
+                                      onSuccess: [{ $setLocal: 'sdnaCleanupResult', from: '$result' }],
+                                    },
+                                  },
+                                  children: [
+                                    { type: 'we-icon', props: { name: 'broom' } },
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'label' },
+                                      children: ['Clean up duplicate schema'],
+                                    },
+                                  ],
+                                },
+                                {
+                                  type: 'we-button',
+                                  props: {
+                                    variant: 'danger',
+                                    size: 'sm',
+                                    onClick: { $action: 'adamStore.removePerspective', args: ['$perspective.uuid'] },
+                                  },
+                                  children: [
+                                    { type: 'we-icon', props: { name: 'trash', size: '16px' } },
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'label' },
+                                      children: ['Delete'],
+                                    },
+                                  ],
                                 },
                               ],
+                            },
+                            {
+                              type: '$if',
+                              props: {
+                                condition: { $ne: [{ $local: 'sdnaCleanupResult' }, -1] },
+                                then: {
+                                  type: 'we-text',
+                                  props: { variant: 'footnote', color: 'neutral-400' },
+                                  children: [
+                                    {
+                                      $concat: [
+                                        'Removed ',
+                                        { $local: 'sdnaCleanupResult' },
+                                        ' duplicate SDNA link(s)',
+                                      ],
+                                    },
+                                  ],
+                                },
+                              },
                             },
                           ],
                         },

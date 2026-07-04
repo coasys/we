@@ -7,6 +7,7 @@
  */
 
 import { type PerspectiveProxy } from '@coasys/ad4m';
+import { ensureModelRegistered } from '@shared/sdnaModels';
 import { type FileData, LocationBlock, Space } from '@we/models';
 
 export interface LocationData {
@@ -93,7 +94,7 @@ export async function syncSpaceToParent(
 
   // Mirror location into targetP, scoped to this space's location relation.
   if (loc) {
-    await LocationBlock.register(targetP);
+    await ensureModelRegistered(targetP, LocationBlock);
     // Always delete + recreate so setLocation updates the Space's we://location triple.
     // Scoped to this space's location via parent query to avoid touching other spaces' blocks.
     const [existingLocInTarget] = await LocationBlock.findAll(targetP, {

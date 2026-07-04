@@ -10,7 +10,7 @@ import {
 import { getModelClasses, getModelManifest } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
-import { installRootSdna, installSpaceSdna } from '@shared/sdnaModels';
+import { deduplicateSpaceSdna, installRootSdna, installSpaceSdna } from '@shared/sdnaModels';
 import {
   isSpaceSelf,
   type LocationData,
@@ -112,6 +112,11 @@ export interface AdamStore {
   reorderPerspectives: (newOrder: string[]) => Promise<void>;
   joinSpace: (id: string) => Promise<void>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
+  /** One-time remediation for a space that already accumulated duplicate SDNA installs
+   * (from before joinSpace checked for existing SDNA) — removes the redundant duplicate
+   * link copies so schema reads stop scaling with the number of past installers.
+   * Defaults to the currently active perspective. Returns the number of links removed. */
+  cleanupSpaceSdna: (uuid?: string) => Promise<number>;
   updateAgentLocation: (update: {
     latitude?: number;
     longitude?: number;
@@ -1145,7 +1150,10 @@ export function AdamStoreProvider(props: ParentProps) {
       }
 
       // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
-      // immediately. register() is idempotent — safe for non-WE neighbourhoods too.
+      // immediately. installSpaceSdna diffs against the perspective's actual state
+      // before writing (see sdnaModels.ts), so this is safe to call unconditionally
+      // even when the space's creator or an earlier joiner already installed it —
+      // it won't write a duplicate copy.
       await installSpaceSdna(joinedP);
       // Give the SDNA write time to settle before reactive queries fire.
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1183,6 +1191,28 @@ export function AdamStoreProvider(props: ParentProps) {
       console.log('AdamStore: joined space', joinedP.uuid);
     } catch (error) {
       console.error('AdamStore: joinSpace error', error);
+    }
+  }
+
+  async function cleanupSpaceSdna(uuid?: string): Promise<number> {
+    const client = adamClient();
+    if (!client) return 0;
+
+    const targetUuid = uuid ?? currentPerspective()?.uuid;
+    if (!targetUuid) {
+      console.warn('AdamStore: cleanupSpaceSdna called with no uuid and no active perspective');
+      return 0;
+    }
+
+    try {
+      const perspective = await client.perspective.byUUID(targetUuid);
+      if (!perspective) return 0;
+      const removed = await deduplicateSpaceSdna(perspective);
+      console.log(`AdamStore: cleanupSpaceSdna removed ${removed} duplicate SDNA link(s) from`, targetUuid);
+      return removed;
+    } catch (error) {
+      console.error('AdamStore: cleanupSpaceSdna error', error);
+      return 0;
     }
   }
 
@@ -1362,6 +1392,7 @@ export function AdamStoreProvider(props: ParentProps) {
     updateOwnProfile,
     reorderPerspectives,
     joinSpace,
+    cleanupSpaceSdna,
     updateAgentLocation,
     removeSpaceFromGlobal: (spaceUuid) => {
       const globalP = globalPerspective();
