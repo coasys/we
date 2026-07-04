@@ -35,12 +35,19 @@ const joinPrompt: SchemaNode = {
     },
     {
       type: 'we-button',
+      $localState: { joining: { type: 'boolean', initial: false } },
       props: {
         variant: 'primary',
-        onClick: {
-          $action: 'adamStore.joinSpace',
-          args: [{ $store: 'adamStore.marketplaceId' }],
-        },
+        loading: { $local: 'joining' },
+        disabled: { $local: 'joining' },
+        onClick: [
+          { $setLocal: 'joining', value: true },
+          {
+            $action: 'adamStore.joinSpace',
+            args: [{ $store: 'adamStore.marketplaceId' }],
+            onFinally: [{ $setLocal: 'joining', value: false }],
+          },
+        ],
       },
       children: ['Explore Marketplace'],
     },
