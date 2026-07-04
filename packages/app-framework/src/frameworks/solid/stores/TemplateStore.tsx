@@ -65,6 +65,7 @@ export interface TemplateStore {
     description: string;
     icon?: string;
     themeId?: string;
+    slug?: string;
     screenshots: File[];
   }) => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
@@ -1025,6 +1026,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     description: string;
     icon?: string;
     themeId?: string;
+    slug?: string;
     screenshots: File[];
   }): Promise<boolean> {
     const marketplacePerspective = adamStore.marketplacePerspective();
@@ -1034,17 +1036,18 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
 
     const schema = currentTemplate;
-    const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+    const localId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
+    const slug = (options.slug || localId).trim().toLowerCase().replace(/\s+/g, '-');
 
-    const existing = await Template.findOne(marketplacePerspective, { where: { slug: templateId } });
+    const existing = await Template.findOne(marketplacePerspective, { where: { slug } });
     if (existing && existing.author !== adamStore.me()?.did) {
-      toastService.error(`A template with this slug already exists in the marketplace by a different author`);
+      toastService.error(`A template with slug "${slug}" already exists in the marketplace by a different author`);
       return false;
     }
 
     setOperationLoading('publish-marketplace');
 
-    const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: templateId, author: adamStore.me()?.did });
+    const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: localId, author: adamStore.me()?.did });
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
     let binary = '';
     for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
@@ -1082,7 +1085,7 @@ export function TemplateStoreProvider(props: ParentProps) {
           description: options.description,
           icon: templateIcon,
           origin: 'marketplace',
-          slug: templateId,
+          slug,
           version: 1,
           schema: schemaBlob as any,
           ...(options.themeId ? { themeId: options.themeId } : {}),

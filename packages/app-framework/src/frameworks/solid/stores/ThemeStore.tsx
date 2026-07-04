@@ -89,6 +89,7 @@ export interface ThemeStore {
     name: string;
     description: string;
     icon?: string;
+    slug?: string;
     screenshots: File[];
   }) => Promise<boolean>;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
@@ -941,6 +942,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     name: string;
     description: string;
     icon?: string;
+    slug?: string;
     screenshots: File[];
   }): Promise<boolean> {
     const marketplacePerspective = adamStore.marketplacePerspective();
@@ -951,12 +953,15 @@ export function ThemeStoreProvider(props: ParentProps) {
 
     const editing = editingTheme();
     const base = editing ?? currentTheme();
-    const themeSlug = base.slug || options.name.toLowerCase().replace(/\s+/g, '-');
+    const themeSlug = (options.slug || base.slug || options.name.toLowerCase().replace(/\s+/g, '-'))
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '-');
     const themeIcon = options.icon ?? base.icon;
 
     const existing = await Theme.findOne(marketplacePerspective, { where: { slug: themeSlug } });
     if (existing && existing.author !== adamStore.me()?.did) {
-      toastService.error('A theme with this slug already exists in the marketplace by a different author');
+      toastService.error(`A theme with slug "${themeSlug}" already exists in the marketplace by a different author`);
       return false;
     }
 

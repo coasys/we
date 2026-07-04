@@ -8,6 +8,8 @@ import { TemplateCard } from '../marketplace/TemplateCard';
 
 const MAX_SCREENSHOTS = 4;
 
+const slugify = (value: string) => value.trim().toLowerCase().replace(/\s+/g, '-');
+
 interface Props {
   type: 'template' | 'theme';
   onClose: () => void;
@@ -32,6 +34,9 @@ export function PublishToMarketplaceModal(props: Props) {
     isTheme() ? (baseTheme().icon ?? 'palette') : (templateStore.currentTemplate.meta?.icon ?? 'layout'),
   );
   const [themeId, setThemeId] = createSignal('');
+  const [slug, setSlug] = createSignal(
+    slugify(isTheme() ? (baseTheme().slug ?? baseTheme().name ?? '') : (templateStore.currentTemplate.id ?? '')),
+  );
   const [screenshots, setScreenshots] = createSignal<File[]>([]);
   const [screenshotPreviews, setScreenshotPreviews] = createSignal<string[]>([]);
   const [publishing, setPublishing] = createSignal(false);
@@ -41,7 +46,7 @@ export function PublishToMarketplaceModal(props: Props) {
     ...themeStore.allThemes().map((t) => ({ value: t.id, label: t.name })),
   ]);
 
-  const canPublish = createMemo(() => name().trim().length > 0);
+  const canPublish = createMemo(() => name().trim().length > 0 && slug().trim().length > 0);
 
   const addScreenshot = (file: File) => {
     if (screenshots().length >= MAX_SCREENSHOTS) return;
@@ -73,7 +78,7 @@ export function PublishToMarketplaceModal(props: Props) {
           description: description(),
           version: 1,
           icon: icon(),
-          slug: templateStore.currentTemplate.id,
+          slug: slug(),
           author: adamStore.me()?.did,
           screenshots: screenshotPreviews(),
         },
@@ -88,6 +93,7 @@ export function PublishToMarketplaceModal(props: Props) {
             name: name().trim(),
             description: description().trim(),
             icon: icon(),
+            slug: slug().trim(),
             screenshots: screenshots(),
           })
         : await templateStore.publishToMarketplace({
@@ -95,6 +101,7 @@ export function PublishToMarketplaceModal(props: Props) {
             description: description().trim(),
             icon: icon(),
             themeId: themeId() || undefined,
+            slug: slug().trim(),
             screenshots: screenshots(),
           });
       if (success) props.onClose();
@@ -126,6 +133,20 @@ export function PublishToMarketplaceModal(props: Props) {
             <we-icon-picker value={icon()} on:change={(e: CustomEvent) => setIcon(e.detail)} />
           </Column>
         </Row>
+
+        {/* Slug */}
+        <Column gap="100">
+          <we-text variant="label">Slug</we-text>
+          <we-input
+            value={slug()}
+            placeholder={isTheme() ? 'theme-slug' : 'template-slug'}
+            on:input={(e: CustomEvent) => setSlug(slugify(e.detail))}
+          />
+          <we-text variant="footnote" color="neutral-500">
+            Unique identifier for this listing in the marketplace. Change it if you're publishing a variant that
+            shouldn't overwrite an existing one.
+          </we-text>
+        </Column>
 
         {/* Description */}
         <Column gap="100">
