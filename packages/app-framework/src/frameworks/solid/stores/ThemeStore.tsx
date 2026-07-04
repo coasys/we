@@ -2,7 +2,7 @@ import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
 import { toastService } from '@we/components/solid';
 import type { ThemeData } from '@we/models';
-import { compressImageToFileData, ImageBlock, modelToThemeData, Theme } from '@we/models';
+import { compressImageToFileData, decodeFileAsString, ImageBlock, modelToThemeData, Theme } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
 import { themeToStyle } from '@we/schema-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, untrack, useContext } from 'solid-js';
@@ -842,6 +842,11 @@ export function ThemeStoreProvider(props: ParentProps) {
       }
 
       const sourceSlug = source.slug || source.name.toLowerCase().replace(/\s+/g, '-');
+      // source.overrides/source.css are raw file-storage fields (always resolved to
+      // "data:<mime>;base64,..." strings) — decode to plain text before re-encoding,
+      // otherwise the data URI itself gets wrapped as the new file's content.
+      const sourceOverrides = decodeFileAsString(source.overrides) || null;
+      const sourceCss = decodeFileAsString(source.css) || null;
 
       // Check if already installed by slug — update in place if so
       let existingModel: Theme | undefined;
@@ -856,10 +861,10 @@ export function ThemeStoreProvider(props: ParentProps) {
         existingModel.name = source.name;
         existingModel.icon = source.icon;
         existingModel.version = source.version;
-        existingModel.overrides = source.overrides
-          ? (encodeToFileData(source.overrides, 'overrides.json', 'application/json') as any)
+        existingModel.overrides = sourceOverrides
+          ? (encodeToFileData(sourceOverrides, 'overrides.json', 'application/json') as any)
           : null;
-        existingModel.css = source.css ? (encodeToFileData(source.css, 'theme.css', 'text/css') as any) : null;
+        existingModel.css = sourceCss ? (encodeToFileData(sourceCss, 'theme.css', 'text/css') as any) : null;
         await existingModel.save();
         const updated = modelToThemeData(existingModel);
         setInstalledThemes((prev) => prev.map((t) => (t.id === existingModel!.id ? updated : t)));
@@ -873,10 +878,10 @@ export function ThemeStoreProvider(props: ParentProps) {
         slug: sourceSlug,
         origin: 'marketplace',
         version: source.version,
-        overrides: source.overrides
-          ? (encodeToFileData(source.overrides, 'overrides.json', 'application/json') as any)
+        overrides: sourceOverrides
+          ? (encodeToFileData(sourceOverrides, 'overrides.json', 'application/json') as any)
           : null,
-        css: source.css ? (encodeToFileData(source.css, 'theme.css', 'text/css') as any) : null,
+        css: sourceCss ? (encodeToFileData(sourceCss, 'theme.css', 'text/css') as any) : null,
       });
       themeModelMap.set(model.id, model);
       setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
