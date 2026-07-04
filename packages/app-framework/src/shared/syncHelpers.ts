@@ -127,3 +127,29 @@ export async function removeSpaceFromParent(spaceUuid: string, targetP: Perspect
   const existing = all.find((s) => s.uuid === spaceUuid);
   if (existing) await existing.delete();
 }
+
+/**
+ * A `where` clause that finds the `Space` entity representing `p` itself.
+ *
+ * `Space.uuid` is set once by the creator to their own local perspective uuid and
+ * synced verbatim — a joiner's own `p.uuid` never matches it. For shared
+ * perspectives, match on `Space.url` (the neighbourhood CID) instead, which is
+ * identical for every agent regardless of who created the space. This also
+ * disambiguates perspectives that hold more than one `Space` entity (e.g. the
+ * global discovery space, which additionally holds a synced copy of every
+ * "listed" community's own Space record) — only the self record's `url` equals
+ * this perspective's own CID.
+ *
+ * Personal (unshared) perspectives have no CID and only ever contain their own
+ * creator's Space entity, so `uuid` matching is safe there.
+ */
+export function spaceSelfWhere(p: PerspectiveProxy): { url: string } | { uuid: string } {
+  const cid = p.sharedUrl?.replace('neighbourhood://', '');
+  return cid ? { url: cid } : { uuid: p.uuid };
+}
+
+/** Companion predicate for matching an already-fetched Space against a perspective — see spaceSelfWhere. */
+export function isSpaceSelf(space: Pick<Space, 'uuid' | 'url'>, p: PerspectiveProxy): boolean {
+  const cid = p.sharedUrl?.replace('neighbourhood://', '');
+  return cid ? space.url === cid : space.uuid === p.uuid;
+}

@@ -11,7 +11,13 @@ import { getModelClasses, getModelManifest } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
 import { installRootSdna, installSpaceSdna } from '@shared/sdnaModels';
-import { type LocationData, removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
+import {
+  isSpaceSelf,
+  type LocationData,
+  removeSpaceFromParent,
+  spaceSelfWhere,
+  syncSpaceToParent,
+} from '@shared/syncHelpers';
 import {
   AgentSettings,
   compressImageToFileData,
@@ -115,7 +121,7 @@ export interface AdamStore {
   }) => Promise<void>;
   updateOwnProfile: (fields: Pick<AgentProfileSummary, 'firstName' | 'lastName' | 'handle' | 'bio'>) => Promise<void>;
   ownAgent: Accessor<AgentProfileSummary | undefined>;
-  updateSpaceInCache: (perspectiveUuid: string, updates: Partial<Space>) => void;
+  updateSpaceInCache: (perspective: PerspectiveProxy, updates: Partial<Space>) => void;
   clearCurrentPerspective: () => void;
 }
 
@@ -339,7 +345,10 @@ export function AdamStoreProvider(props: ParentProps) {
       // real space's data (including avatars) until each is visited individually. Catch
       // per-perspective so one bad perspective can't poison the rest.
       const spaces = await Promise.all(
-        candidatePerspectives.map(async (perspective) => await Space.findOne(perspective).catch(() => null)),
+        candidatePerspectives.map(
+          async (perspective) =>
+            await Space.findOne(perspective, { where: spaceSelfWhere(perspective) }).catch(() => null),
+        ),
       );
       const filteredSpaces = spaces
         .filter((s): s is Space => !!s)
@@ -1350,10 +1359,10 @@ export function AdamStoreProvider(props: ParentProps) {
       if (!globalP) return Promise.resolve();
       return removeSpaceFromParent(spaceUuid, globalP);
     },
-    updateSpaceInCache: (perspectiveUuid, updates) => {
+    updateSpaceInCache: (perspective, updates) => {
       setMySpaces((prev) =>
         prev.map((s) =>
-          s.uuid === perspectiveUuid ? Object.assign(Object.create(Object.getPrototypeOf(s)), s, updates) : s,
+          isSpaceSelf(s, perspective) ? Object.assign(Object.create(Object.getPrototypeOf(s)), s, updates) : s,
         ),
       );
     },
