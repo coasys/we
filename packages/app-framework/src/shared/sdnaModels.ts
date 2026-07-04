@@ -47,6 +47,11 @@ function getModelClassName(m: typeof Ad4mModel): string {
   return anyClass.className || anyClass.prototype?.className || anyClass.name;
 }
 
+function getModelTargetClass(m: typeof Ad4mModel): string | undefined {
+  const anyClass = m as unknown as { generateSHACL: () => { shape: { targetClass?: string } | null } };
+  return anyClass.generateSHACL().shape?.targetClass;
+}
+
 /**
  * `Ad4mModel.registerAll`'s own dedup guard is a JS-process-local cache, not a check
  * against the perspective's actual state — a fresh `PerspectiveProxy` (new app boot,
@@ -54,10 +59,26 @@ function getModelClassName(m: typeof Ad4mModel): string {
  * copy of every shape's SDNA links, even if they're already there. Diffing against
  * `getAllShacl()` first makes registration genuinely idempotent regardless of how many
  * times, or by how many independent processes/peers, it's called on the same perspective.
+ *
+ * The top-level `shacl://{name}` mapping ad4m-core uses is namespace-blind — it's keyed
+ * on the bare `@Model({ name })` string, not the model's namespaced `targetClass` (e.g.
+ * `we://Template` and `some-other-app://Template` both reduce to `"Template"`). On a
+ * perspective where another app's SDNA coexists with WE's (e.g. a Flux community
+ * initialized as a WE space), a name collision would mean `getAllShacl()` reports that
+ * name as already registered even though the installed shape's `targetClass` belongs to
+ * the other app entirely. Comparing `targetClass`, not just the bare name, means we still
+ * correctly detect "this specific model isn't installed" and re-register it rather than
+ * silently trusting a same-named foreign shape.
  */
 async function ensureModelsRegistered(p: PerspectiveProxy, models: readonly (typeof Ad4mModel)[]): Promise<void> {
-  const existingNames = new Set((await p.getAllShacl()).map((s) => s.name));
-  const missing = models.filter((m) => !existingNames.has(getModelClassName(m)));
+  const existingTargetClassByName = new Map(
+    (await p.getAllShacl()).map((s) => [s.name, s.shape.targetClass] as const),
+  );
+  const missing = models.filter((m) => {
+    const existingTargetClass = existingTargetClassByName.get(getModelClassName(m));
+    if (existingTargetClass === undefined) return true;
+    return existingTargetClass !== getModelTargetClass(m);
+  });
   if (missing.length > 0) {
     await Ad4mModel.registerAll(p, [...missing]);
   }
