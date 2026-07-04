@@ -1162,6 +1162,15 @@ export function AdamStoreProvider(props: ParentProps) {
         setMarketplacePerspective(joinedP);
       }
 
+      // Eagerly add to allPerspectives so derived state (e.g. marketplaceJoined,
+      // joinedSpaceCids) updates immediately — addPerspectiveAddedListener will also
+      // fire for this perspective, but that AD4M event can lag or arrive too late for
+      // gates that key off allPerspectives, unlike currentPerspective which switchPerspective
+      // sets synchronously below.
+      if (!allPerspectives().some((p) => p.uuid === joinedP.uuid)) {
+        setAllPerspectives((prev) => [...prev, joinedP]);
+      }
+
       // Load the Space model and push into mySpaces so the sidebar shows the correct
       // name immediately, without requiring a reboot.
       const cid = neighbourhoodUrl.replace('neighbourhood://', '');
