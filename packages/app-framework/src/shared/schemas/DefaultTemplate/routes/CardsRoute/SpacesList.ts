@@ -232,6 +232,51 @@ export const spacesList: SchemaNode = gridWrapper([
               },
             ],
           },
+
+          // Enter / Join CTA — only shown for spaces with a neighbourhood URL.
+          // Spaces synced to the global perspective before the url fix may have url=null.
+          {
+            type: '$if',
+            props: {
+              condition: '$space.url',
+              then: {
+                type: '$if',
+                props: {
+                  condition: { $in: ['$space.url', { $store: 'adamStore.joinedSpaceCids' }] },
+                  then: {
+                    type: 'we-button',
+                    props: {
+                      alignSelf: 'start',
+                      text: 'Enter Space',
+                      variant: 'primary',
+                      size: 'sm',
+                      onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.url'] },
+                    },
+                  },
+                  else: {
+                    type: 'we-button',
+                    $localState: { joining: { type: 'boolean', initial: false } },
+                    props: {
+                      text: 'Join Space',
+                      variant: 'primary',
+                      size: 'sm',
+                      alignSelf: 'start',
+                      loading: { $local: 'joining' },
+                      onClick: [
+                        { $setLocal: 'joining', value: true },
+                        {
+                          $action: 'adamStore.joinSpace',
+                          args: ['$space.url'],
+                          onSuccess: [{ $action: 'spaceStore.navigateToSpace', args: ['$space.url'] }],
+                          onError: [{ $setLocal: 'joining', value: false }],
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
         ],
       }),
     ],
