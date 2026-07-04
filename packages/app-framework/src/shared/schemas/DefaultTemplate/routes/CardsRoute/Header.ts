@@ -8,6 +8,7 @@ const contentTypeOptions = [
   { label: 'Themes', value: 'themes', icon: 'paint-brush' },
   { label: 'Channels', value: 'flux-channels', icon: 'hash', group: 'Flux' },
   { label: 'Conversations', value: 'flux-conversations', icon: 'chats-circle', group: 'Flux' },
+  { label: 'Conversations (Nested)', value: 'flux-conversations-nested', icon: 'tree-structure', group: 'Flux' },
   { label: 'Conversation Subgroups', value: 'flux-conversation-subgroups', icon: 'chat-dots', group: 'Flux' },
   { label: 'Messages', value: 'flux-messages', icon: 'envelope-simple', group: 'Flux' },
   { label: 'Text', value: 'text-blocks', icon: 'text-aa', group: 'Blocks' },

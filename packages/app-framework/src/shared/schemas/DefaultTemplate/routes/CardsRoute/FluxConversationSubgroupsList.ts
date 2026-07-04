@@ -65,11 +65,53 @@ export const fluxConversationSubgroupsList: SchemaNode = {
               },
               {
                 type: 'Row',
-                props: { gap: '100', ay: 'center', flex: 'none' },
+                props: { gap: '300', ay: 'center' },
                 children: [
-                  { type: 'we-icon', props: { name: 'users', size: 'sm', color: 'neutral-600' } },
-                  { type: 'we-number', props: { value: { $count: { items: '$subgroup.participants' } } } },
-                  { type: 'we-text', props: { color: 'neutral-600' }, children: ['Participants'] },
+                  {
+                    type: 'AvatarStack',
+                    props: {
+                      avatars: {
+                        $map: {
+                          items: '$subgroup.participants',
+                          select: {
+                            image: {
+                              $find: {
+                                items: { $store: 'adamStore.agents' },
+                                where: { did: '$item' },
+                                select: 'avatar',
+                              },
+                            },
+                            hash: '$item',
+                          },
+                        },
+                      },
+                      max: 5,
+                      size: 'sm',
+                      ring: '0 0 0 2px var(--we-ring-color)',
+                    },
+                  },
+                  {
+                    type: 'Row',
+                    props: { gap: '100' },
+                    children: [
+                      {
+                        type: 'we-number',
+                        props: { value: { $count: { items: '$subgroup.participants' } }, shorten: true },
+                      },
+                      {
+                        type: 'we-text',
+                        children: [
+                          {
+                            $plural: {
+                              count: { $count: { items: '$subgroup.participants' } },
+                              one: 'Participant',
+                              other: 'Participants',
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
                 ],
               },
             ],

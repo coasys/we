@@ -84,7 +84,7 @@ export const spaceHeader: SchemaNode = {
                                 items: { $store: 'spaceStore.members' },
                                 select: {
                                   image: '$item.avatar',
-                                  initials: { $concat: ['$item.firstName', ' ', '$item.lastName'] },
+                                  hash: '$item.did',
                                 },
                               },
                             },

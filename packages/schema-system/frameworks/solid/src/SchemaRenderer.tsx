@@ -123,7 +123,15 @@ function deepResolveTokens(
   context: Record<string, unknown>,
 ): unknown {
   if (params === null || params === undefined) return params;
-  if (typeof params !== 'object') return params;
+  if (typeof params !== 'object') {
+    // Bare context-ref strings (e.g. "$item.id") aren't objects, so the $-token branch
+    // below never sees them. resolveProp already knows how to resolve these — delegate
+    // instead of returning the raw, unresolved "$..." string (e.g. into a $query.parent.id).
+    if (typeof params === 'string' && params.startsWith('$') && params.length > 1) {
+      return deepUnwrap(resolveProp(params, stores, context));
+    }
+    return params;
+  }
   if (Array.isArray(params)) return params.map((item) => deepResolveTokens(item, stores, context));
 
   const obj = params as Record<string, unknown>;

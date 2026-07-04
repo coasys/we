@@ -5,6 +5,7 @@ import { blocksList } from './BlocksList.ts';
 import { createPostModal } from './CreatePostModal.ts';
 import { fluxChannelsList } from './FluxChannelsList.ts';
 import { fluxConversationsList } from './FluxConversationsList.ts';
+import { fluxConversationsNestedList } from './FluxConversationsNestedList.ts';
 import { fluxConversationSubgroupsList } from './FluxConversationSubgroupsList.ts';
 import { fluxMessagesList } from './FluxMessagesList.ts';
 import { cardsHeader } from './Header.ts';
@@ -22,6 +23,7 @@ const NON_BLOCK_CONTENT_TYPES = [
   'themes',
   'flux-channels',
   'flux-conversations',
+  'flux-conversations-nested',
   'flux-conversation-subgroups',
   'flux-messages',
 ];
@@ -68,6 +70,13 @@ export const cardsRoute: RouteSchema = {
         {
           type: '$if',
           props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-conversations'] }, then: fluxConversationsList },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $eq: [{ $local: 'contentType' }, 'flux-conversations-nested'] },
+            then: fluxConversationsNestedList,
+          },
         },
         {
           type: '$if',

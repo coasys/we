@@ -1,7 +1,8 @@
+import { parseLit } from '@coasys/ad4m';
 import type { AgentProfileSummary } from '@shared/agentHelpers';
 import { getModelForPerspective, registerModel } from '@shared/registries/modelRegistry';
 import { SPACE_MODELS } from '@shared/sdnaModels';
-import { type LocationData, removeSpaceFromParent, syncSpaceToParent } from '@shared/syncHelpers';
+import { type LocationData, removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@shared/syncHelpers';
 import { deriveSlug } from '@shared/utils';
 import { useAdamStore } from '@solid/stores';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
@@ -29,6 +30,13 @@ export interface SpaceMetaUpdate {
   location?: LocationData | null;
 }
 
+export interface FluxSubgroupMessage {
+  id: string;
+  author: string;
+  timestamp: string;
+  body: string;
+}
+
 export interface SpaceStore {
   // State
   memberDids: Accessor<string[]>;
@@ -52,6 +60,7 @@ export interface SpaceStore {
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
+  getSubgroupMessages: (subgroupId: string) => Promise<FluxSubgroupMessage[]>;
 
   // Testing
   test: () => Promise<void>;
@@ -150,7 +159,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const currentPerspective = adamStore.currentPerspective();
     if (!currentPerspective) return;
     const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'space-image' : 'space-cover');
-    const [spaceModel] = await Space.findAll(currentPerspective, { where: { uuid: currentPerspective.uuid } });
+    const [spaceModel] = await Space.findAll(currentPerspective, { where: spaceSelfWhere(currentPerspective) });
     if (!spaceModel) return;
     await Space.update(currentPerspective, spaceModel.id, { [field]: fileData });
     if (spaceModel.discovery === 'listed') {
@@ -169,7 +178,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!currentPerspective) return;
 
     const [spaceModel] = await Space.findAll(currentPerspective, {
-      where: { uuid: currentPerspective.uuid },
+      where: spaceSelfWhere(currentPerspective),
       include: { location: true },
     });
     if (!spaceModel) return;
@@ -260,6 +269,44 @@ export function SpaceStoreProvider(props: ParentProps) {
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
 
+  // Flux's ConversationSubgroup has no typed HasMany relation to its items — they're
+  // heterogeneous (messages/posts/tasks), linked only via the raw `flux://has_item`
+  // predicate and resolved in Flux's own code through ad-hoc SPARQL (see
+  // ConversationSubgroup.itemsData() in @coasys/flux-api). That means the normal
+  // $query/include/parent path can't reach them, since it only knows about relations
+  // registered in the target model's shape. This mirrors that same SPARQL shape directly
+  // against the perspective, scoped to messages only, without depending on the flux package.
+  async function getSubgroupMessages(subgroupId: string): Promise<FluxSubgroupMessage[]> {
+    const p = adamStore.currentPerspective();
+    if (!p) return [];
+    const sparqlQuery = `
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      SELECT ?id ?author ?timestamp ?body WHERE {
+        <${subgroupId}> <flux://has_item> ?id .
+        ?_reifier rdf:reifies <<( <${subgroupId}> <flux://has_item> ?id )>> .
+        ?_reifier <ad4m://ontology/timestamp> ?timestamp .
+        ?id <flux://entry_type> <flux://has_message> .
+        ?_typeReifier rdf:reifies <<( ?id <flux://entry_type> <flux://has_message> )>> .
+        ?_typeReifier <ad4m://ontology/author> ?author .
+        OPTIONAL { ?id <flux://body> ?body . }
+      }
+      ORDER BY ?timestamp
+    `;
+    type Binding = { id: string; author: string; timestamp: string; body?: string };
+    try {
+      const result = await p.querySparql<Binding[]>(sparqlQuery);
+      return (result || []).map((r) => ({
+        id: r.id,
+        author: r.author,
+        timestamp: r.timestamp,
+        body: parseLit(r.body),
+      }));
+    } catch (err) {
+      console.error('SpaceStore: getSubgroupMessages failed', err);
+      return [];
+    }
+  }
+
   const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
 
   // Subscribe to current space data reactively whenever the perspective changes.
@@ -271,7 +318,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       return;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const builder = (Space as any).query(p, { where: { uuid: p.uuid }, include: { location: true } }) as {
+    const builder = (Space as any).query(p, { where: spaceSelfWhere(p), include: { location: true } }) as {
       subscribe: (cb: (results: Space[]) => void) => Promise<Space[]>;
       dispose: () => void;
     };
@@ -319,8 +366,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     const p = adamStore.currentPerspective();
     if (!p) return;
     // Keep mySpaces cache in sync so template pre-loading uses the fresh defaultTemplateId
-    adamStore.updateSpaceInCache(p.uuid, { defaultTemplateId: templateId } as never);
-    const [space] = await Space.findAll(p, { where: { uuid: p.uuid } });
+    adamStore.updateSpaceInCache(p, { defaultTemplateId: templateId } as never);
+    const [space] = await Space.findAll(p, { where: spaceSelfWhere(p) });
     if (space) await Space.update(p, space.id, { defaultTemplateId: templateId });
   }
 
@@ -328,8 +375,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultThemeId(themeId);
     const p = adamStore.currentPerspective();
     if (!p) return;
-    adamStore.updateSpaceInCache(p.uuid, { defaultThemeId: themeId } as never);
-    const [space] = await Space.findAll(p, { where: { uuid: p.uuid } });
+    adamStore.updateSpaceInCache(p, { defaultThemeId: themeId } as never);
+    const [space] = await Space.findAll(p, { where: spaceSelfWhere(p) });
     if (space) await Space.update(p, space.id, { defaultThemeId: themeId });
   }
 
@@ -458,6 +505,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     createSignalType,
     upsertSignal,
     navigateToSpace,
+    getSubgroupMessages,
 
     test,
   };
