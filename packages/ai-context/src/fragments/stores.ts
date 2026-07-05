@@ -210,6 +210,16 @@ export const storeEntries: StoreEntry[] = [
     },
     actions: ['activateApp', 'deactivateApp'],
   },
+  // Pseudo-store for model.create / model.update / model.delete $action tokens.
+  // Not a real store (no `descriptions` entry below, so it's omitted from the
+  // generated "## Stores" doc section) — it's already documented separately
+  // under "Model mutations via $action" in rules.ts. Wired at runtime in
+  // TemplateProvider.tsx as `modelStore`, not through the store registry.
+  {
+    name: 'model',
+    state: {},
+    actions: ['create', 'update', 'delete'],
+  },
 ];
 
 /** Generate the stores text fragment from structured data */

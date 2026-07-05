@@ -2204,6 +2204,7 @@ export const contextData: ContextData = {
       },
       actions: ['activateApp', 'deactivateApp'],
     },
+    { name: 'model', state: {}, actions: ['create', 'update', 'delete'] },
   ],
   shellComponents: ['AiPanel', 'BenchmarkTimer', 'RightPanelContainer', 'DesignToolbar', 'WeCube'],
 };
