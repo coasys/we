@@ -449,9 +449,11 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   // Prefill data for the "Initialize as WE space" gate — detected from a foreign app's own
   // model (currently just Flux's Community) when the current perspective isn't a WE space yet.
-  const [foreignSpacePrefill, setForeignSpacePrefill] = createSignal<
-    { name: string; description: string; avatar: string | null } | null
-  >(null);
+  const [foreignSpacePrefill, setForeignSpacePrefill] = createSignal<{
+    name: string;
+    description: string;
+    avatar: string | null;
+  } | null>(null);
 
   createEffect(() => {
     const p = adamStore.currentPerspective();

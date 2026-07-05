@@ -252,7 +252,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         createSpace:
           '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
         initializeAsWeSpace:
-          '(name: string, description: string, avatarValue?: File | string | null): installs WE\'s Space SDNA into the current, already-joined, foreign-native perspective (e.g. one synced in from Flux) and creates a Space entity in place — access is always \'shared\' since the perspective is already a published neighbourhood',
+          "(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native perspective (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the perspective is already a published neighbourhood",
         switchPerspective:
           '(uuid: string): switches to a perspective by UUID, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels',
         removePerspective: '(uuid: string): removes a perspective by UUID',
@@ -267,7 +267,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         updateAgentLocation:
           '(update: { latitude?, longitude?, city?, country?, countryCode? }): merges location update into cache and publishes to public perspective',
         cleanupSpaceSdna:
-          '(uuid?: string): one-time remediation for a perspective that accumulated duplicate SDNA installs (e.g. from before joinSpace checked for existing SDNA before installing) — removes the redundant duplicate link copies. Defaults to the current perspective. Returns the number of links removed',
+          '(uuid?: string): one-time remediation for a perspective that accumulated duplicate SDNA installs (e.g. from before joinSpace checked for existing SDNA before installing) — removes the redundant duplicate link copies. Defaults to the current perspective. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up',
       },
     },
     routeStore: {

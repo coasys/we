@@ -417,7 +417,7 @@ export const settingsTemplate: TemplateSchema = {
                             border: '1px solid neutral-200',
                           },
                           $localState: {
-                            sdnaCleanupResult: { type: 'number', initial: -1 },
+                            sdnaCleanupResult: { type: 'string', initial: '' },
                           },
                           children: [
                             {
@@ -495,19 +495,11 @@ export const settingsTemplate: TemplateSchema = {
                             {
                               type: '$if',
                               props: {
-                                condition: { $ne: [{ $local: 'sdnaCleanupResult' }, -1] },
+                                condition: { $local: 'sdnaCleanupResult' },
                                 then: {
                                   type: 'we-text',
                                   props: { variant: 'footnote', color: 'neutral-400' },
-                                  children: [
-                                    {
-                                      $concat: [
-                                        'Removed ',
-                                        { $local: 'sdnaCleanupResult' },
-                                        ' duplicate SDNA link(s)',
-                                      ],
-                                    },
-                                  ],
+                                  children: [{ $local: 'sdnaCleanupResult' }],
                                 },
                               },
                             },

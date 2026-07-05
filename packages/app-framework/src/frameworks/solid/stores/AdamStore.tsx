@@ -115,8 +115,10 @@ export interface AdamStore {
   /** One-time remediation for a space that already accumulated duplicate SDNA installs
    * (from before joinSpace checked for existing SDNA) — removes the redundant duplicate
    * link copies so schema reads stop scaling with the number of past installers.
-   * Defaults to the currently active perspective. Returns the number of links removed. */
-  cleanupSpaceSdna: (uuid?: string) => Promise<number>;
+   * Defaults to the currently active perspective. Returns a display-ready summary string
+   * naming how many links were removed and the DIDs that authored them (annotating your
+   * own DID with "(you)"), or an empty string if nothing needed cleaning up. */
+  cleanupSpaceSdna: (uuid?: string) => Promise<string>;
   updateAgentLocation: (update: {
     latitude?: number;
     longitude?: number;
@@ -1194,25 +1196,29 @@ export function AdamStoreProvider(props: ParentProps) {
     }
   }
 
-  async function cleanupSpaceSdna(uuid?: string): Promise<number> {
+  async function cleanupSpaceSdna(uuid?: string): Promise<string> {
     const client = adamClient();
-    if (!client) return 0;
+    if (!client) return '';
 
     const targetUuid = uuid ?? currentPerspective()?.uuid;
     if (!targetUuid) {
       console.warn('AdamStore: cleanupSpaceSdna called with no uuid and no active perspective');
-      return 0;
+      return '';
     }
 
     try {
       const perspective = await client.perspective.byUUID(targetUuid);
-      if (!perspective) return 0;
-      const removed = await deduplicateSpaceSdna(perspective);
-      console.log(`AdamStore: cleanupSpaceSdna removed ${removed} duplicate SDNA link(s) from`, targetUuid);
-      return removed;
+      if (!perspective) return '';
+      const { removed, authors } = await deduplicateSpaceSdna(perspective);
+      if (removed === 0) return 'No duplicate SDNA links found.';
+      const myDid = me()?.did;
+      const authorList = authors.map((did) => (did === myDid ? `${did} (you)` : did)).join(', ');
+      const summary = `Removed ${removed} duplicate SDNA link(s) created by: ${authorList}`;
+      console.log(`AdamStore: cleanupSpaceSdna on ${targetUuid} —`, summary);
+      return summary;
     } catch (error) {
       console.error('AdamStore: cleanupSpaceSdna error', error);
-      return 0;
+      return '';
     }
   }
 
