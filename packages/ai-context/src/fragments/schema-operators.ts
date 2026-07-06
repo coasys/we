@@ -117,6 +117,30 @@ Filters an array to items where all where conditions match. Mirrors the AD4M mod
 Where values (including those inside operator objects) are resolved through the prop system,
 so $store, $local, and context refs like { "$local": "searchText" } all work.
 
+$query-only logical combinators (OR / AND / NOT) — NOT supported in $filter, only in $query's where:
+  { "OR": [ { "field": "value" }, { "field2": "value2" } ] }   — matches if ANY branch matches
+  { "AND": [ { ... }, { ... } ] }                              — matches if ALL branches match (sibling keys at the
+                                                                  same level are already implicitly ANDed — use AND
+                                                                  to group a set of conditions alongside an OR/NOT)
+  { "NOT": { "field": "value" } }                              — matches if the branch does NOT match
+Branches are full where-clause objects (can contain multiple fields, and can nest OR/AND/NOT inside each other).
+Sibling keys alongside OR/AND/NOT at the same level are implicitly ANDed with it.
+Example — case-insensitive search across two fields:
+{
+  "$query": {
+    "model": "Space",
+    "where": {
+      "OR": [
+        { "name": { "contains": { "$local": "searchText" } } },
+        { "description": { "contains": { "$local": "searchText" } } }
+      ]
+    }
+  }
+}
+Note: using OR/AND/NOT disables the SPARQL-level sort/pagination pushdown (see count-projection and
+relation-property ordering below) — those orderings silently stop working if combined with OR/AND/NOT in the
+same query's where clause, because the fallback sort runs before the projection/relation data is attached.
+
 Examples:
 { "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
 { "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "location": { "exists": true }, "handle": { "contains": { "$local": "searchText" } } } } }
@@ -164,6 +188,45 @@ Nesting can go as deep as needed. Each level adds one batched fetch (not N+1).
 Count projection — add a derived numeric field:
 { "$query": { "model": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
 The $-prefixed key becomes a new field on each result item (e.g. item.$likeCount = 42).
+
+Sorting by a count projection — order can reference a $-prefixed count key directly, sorting by the aggregate:
+{
+  "$query": {
+    "model": "Post",
+    "limit": 20,
+    "order": { "$likeCount": "desc" },
+    "include": { "$likeCount": { "from": "likes", "count": true } }
+  }
+}
+Requirements: only a single order key is supported when it targets a projection (mixing it with a second sort key falls back
+to a plain property sort), and the query must also specify limit or offset — without one the count isn't computed yet at
+sort time and the order silently has no effect. Always pair count-projection ordering with a limit.
+Combine with $if for a user-togglable sort field (e.g. "newest" vs "most liked"):
+{
+  "order": {
+    "$if": {
+      "condition": { "$eq": [{ "$local": "sortField" }, "likes"] },
+      "then": { "$likeCount": { "$local": "sortDirection" } },
+      "else": { "createdAt": { "$local": "sortDirection" } }
+    }
+  }
+}
+
+Sorting by a related model property — order can reference a dotted "relation.property" path for a HasOne/HasMany
+relation declared on the model, sorting by a scalar property on the related instance:
+{
+  "$query": {
+    "model": "Space",
+    "limit": 20,
+    "order": { "location.country": "asc" },
+    "include": { "location": true }
+  }
+}
+Same requirements as count-projection ordering above: only a single order key, and pair with limit/offset — without
+one the relation data isn't attached yet at sort time and the order silently has no effect. include isn't required
+for the sort itself (the relation is resolved from the model's declared shape), but you'll usually want it anyway to
+read the field in the UI (e.g. "$space.location.country").
+Combine with $if the same way as count-projection ordering to let the user toggle between sort fields.
 
 Single-item projection — add a derived field that resolves to one instance or null:
 { "$query": { "model": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": { "$store": "adamStore.me.did" } }, "limit": 1 } } } }
