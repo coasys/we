@@ -100,7 +100,7 @@ function PanelUnit(props: PanelUnitProps) {
   }
 
   return (
-    <Row height="100%" styles={{ 'flex-shrink': '0', 'user-select': 'none' }}>
+    <Row height="100%" styles={{ 'flex-shrink': '0', 'user-select': resizing() ? 'none' : 'auto' }}>
       {/* Rail — always visible in edit mode, handles both click (toggle) and drag (resize) */}
       <we-tooltip title={props.tooltip} placement="left">
         <Column
