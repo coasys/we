@@ -15,7 +15,7 @@ export default defineConfig({
   build: { target: 'esnext' },
   // Never pre-bundle local file: deps — hard links break on rebuild, causing
   // Vite's dep optimizer cache to serve stale content after restart.
-  optimizeDeps: { exclude: ['@coasys/ad4m'] },
+  optimizeDeps: { exclude: ['@coasys/ad4m', '@coasys/ad4m-connect'] },
   resolve: {
     alias: {
       // Resolve @we/app-framework internal aliases

@@ -42,44 +42,62 @@ export const ROOT_MODELS = [
   LocationBlock,
 ] as const;
 
-function getModelClassName(m: typeof Ad4mModel): string {
-  const anyClass = m as unknown as { className?: string; prototype?: { className?: string }; name: string };
-  return anyClass.className || anyClass.prototype?.className || anyClass.name;
-}
-
-function getModelTargetClass(m: typeof Ad4mModel): string | undefined {
+export function getModelTargetClass(m: typeof Ad4mModel): string | undefined {
   const anyClass = m as unknown as { generateSHACL: () => { shape: { targetClass?: string } | null } };
   return anyClass.generateSHACL().shape?.targetClass;
+}
+
+/**
+ * Checks for the exact `targetClass —rdf://type→ ad4m://SubjectClass` link that ad4m-core's
+ * query engine (`load_shape`) requires to run a model query — not `getAllShacl()`'s
+ * `has_shacl`/`shacl_shape_uri` chain, which is a separate set of triples written by the same
+ * `add_sdna` call but not read by `load_shape`. On a freshly-joined, not-yet-fully-synced
+ * neighbourhood those two triple sets can replicate at different times, so `getAllShacl()`
+ * can report a model as absent while `load_shape` (and therefore every model query) already
+ * finds it fine. Checking the marker `load_shape` actually reads closes that gap — and since
+ * it's keyed on the full namespaced `targetClass` rather than the bare `@Model({ name })`
+ * string, it's also immune to cross-app name collisions (e.g. `we://Template` vs. some other
+ * app's own differently-namespaced same-named class). Mirrors Flux's
+ * `packages/api/src/sdnaHelpers.ts`, which hit this same race first.
+ */
+async function hasSubjectClassLink(p: PerspectiveProxy, targetClass: string | undefined): Promise<boolean> {
+  if (!targetClass) return false;
+  const links = await p.get(
+    new LinkQuery({ source: targetClass, predicate: 'rdf://type', target: 'ad4m://SubjectClass' }),
+  );
+  return links.length > 0;
 }
 
 /**
  * `Ad4mModel.registerAll`'s own dedup guard is a JS-process-local cache, not a check
  * against the perspective's actual state — a fresh `PerspectiveProxy` (new app boot,
  * new tab, another peer) starts with that cache empty and will write a full duplicate
- * copy of every shape's SDNA links, even if they're already there. Diffing against
- * `getAllShacl()` first makes registration genuinely idempotent regardless of how many
- * times, or by how many independent processes/peers, it's called on the same perspective.
- *
- * The top-level `shacl://{name}` mapping ad4m-core uses is namespace-blind — it's keyed
- * on the bare `@Model({ name })` string, not the model's namespaced `targetClass` (e.g.
- * `we://Template` and `some-other-app://Template` both reduce to `"Template"`). On a
- * perspective where another app's SDNA coexists with WE's (e.g. a Flux community
- * initialized as a WE space), a name collision would mean `getAllShacl()` reports that
- * name as already registered even though the installed shape's `targetClass` belongs to
- * the other app entirely. Comparing `targetClass`, not just the bare name, means we still
- * correctly detect "this specific model isn't installed" and re-register it rather than
- * silently trusting a same-named foreign shape.
+ * copy of every shape's SDNA links, even if they're already there. Diffing against the
+ * perspective's actual state first (via `hasSubjectClassLink`, not `getAllShacl()` — see
+ * its doc comment) makes registration genuinely idempotent regardless of how many times,
+ * or by how many independent processes/peers, it's called on the same perspective, and
+ * regardless of `getAllShacl()`'s own replication lag on a not-yet-fully-synced perspective.
  */
 async function ensureModelsRegistered(p: PerspectiveProxy, models: readonly (typeof Ad4mModel)[]): Promise<void> {
-  const existingTargetClassByName = new Map((await p.getAllShacl()).map((s) => [s.name, s.shape.targetClass] as const));
-  const missing = models.filter((m) => {
-    const existingTargetClass = existingTargetClassByName.get(getModelClassName(m));
-    if (existingTargetClass === undefined) return true;
-    return existingTargetClass !== getModelTargetClass(m);
-  });
+  const present = await Promise.all(models.map((m) => hasSubjectClassLink(p, getModelTargetClass(m))));
+  const missing = models.filter((_, i) => !present[i]);
   if (missing.length > 0) {
     await Ad4mModel.registerAll(p, [...missing]);
   }
+}
+
+/**
+ * Read-only check for whether a specific model's SDNA is already installed on a
+ * perspective — does not write anything. Use this instead of `getModelClasses(...).length`
+ * to decide whether SDNA install is needed: `getAllShacl()` (which `getModelClasses` is
+ * built on) can lag behind on a freshly-switched-to remote/not-yet-fully-synced perspective
+ * (see `hasSubjectClassLink`'s doc comment), so treating its emptiness as "nothing installed"
+ * can trigger a full, spurious re-registration of every space model — a write-and-validate
+ * cycle per model, far slower than the read it's standing in for, and one that also risks
+ * creating duplicate SDNA links (see `deduplicateSpaceSdna` below).
+ */
+export async function isModelRegistered(p: PerspectiveProxy, model: typeof Ad4mModel): Promise<boolean> {
+  return hasSubjectClassLink(p, getModelTargetClass(model));
 }
 
 /**
@@ -198,31 +216,40 @@ export async function deduplicateSpaceSdna(p: PerspectiveProxy): Promise<{ remov
   });
   record(nameRemoved);
 
-  for (const nameLink of nameLinks) {
-    const decodedName = Literal.fromUrl(nameLink.data.target).get() as string;
-    const shapeName = decodedName.replace('shacl://', '');
-    const nameMappingUrl = Literal.fromUrl(`literal:string:shacl://${shapeName}`).toUrl();
+  // Each shape's triples are independent of every other shape's — dedupe them
+  // concurrently rather than one shape at a time. This walk is structurally identical
+  // to getAllShacl()/getShacl() (one RPC round trip per triple), which over a remote
+  // connection turns a linear-looking loop into the dominant cost of the whole operation;
+  // see the doc comment on hasSubjectClassLink above for the same round-trip-count issue.
+  await Promise.all(
+    nameLinks.map(async (nameLink) => {
+      const decodedName = Literal.fromUrl(nameLink.data.target).get() as string;
+      const shapeName = decodedName.replace('shacl://', '');
+      const nameMappingUrl = Literal.fromUrl(`literal:string:shacl://${shapeName}`).toUrl();
 
-    const { kept: shapeUriLinks, removedAuthors: shapeUriRemoved } = await dedupeLinks(p, {
-      source: nameMappingUrl,
-      predicate: 'ad4m://shacl_shape_uri',
-    });
-    record(shapeUriRemoved);
-    if (shapeUriLinks.length === 0) continue;
-    const shapeUri = shapeUriLinks[0].data.target;
+      const { kept: shapeUriLinks, removedAuthors: shapeUriRemoved } = await dedupeLinks(p, {
+        source: nameMappingUrl,
+        predicate: 'ad4m://shacl_shape_uri',
+      });
+      record(shapeUriRemoved);
+      if (shapeUriLinks.length === 0) return;
+      const shapeUri = shapeUriLinks[0].data.target;
 
-    const { kept: propertyLinks, removedAuthors: propertyRemoved } = await dedupeLinks(p, {
-      source: shapeUri,
-      predicate: 'sh://property',
-    });
-    record(propertyRemoved);
+      const { kept: propertyLinks, removedAuthors: propertyRemoved } = await dedupeLinks(p, {
+        source: shapeUri,
+        predicate: 'sh://property',
+      });
+      record(propertyRemoved);
 
-    const sourceUris = [shapeUri, ...propertyLinks.map((l) => l.data.target)];
-    for (const uri of sourceUris) {
-      const { removedAuthors } = await dedupeLinks(p, { source: uri });
-      record(removedAuthors);
-    }
-  }
+      const sourceUris = [shapeUri, ...propertyLinks.map((l) => l.data.target)];
+      await Promise.all(
+        sourceUris.map(async (uri) => {
+          const { removedAuthors } = await dedupeLinks(p, { source: uri });
+          record(removedAuthors);
+        }),
+      );
+    }),
+  );
 
   return { removed, authors: Array.from(authors) };
 }

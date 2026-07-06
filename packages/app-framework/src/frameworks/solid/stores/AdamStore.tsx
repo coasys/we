@@ -7,10 +7,10 @@ import {
   type PublishProfileFields,
   publishProfileToPublicPerspective,
 } from '@shared/agentHelpers';
-import { getModelClasses, getModelManifest } from '@shared/perspectiveHelpers';
+import { buildModelClasses, buildModelManifest, getForeignShacl } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
-import { deduplicateSpaceSdna, installRootSdna, installSpaceSdna } from '@shared/sdnaModels';
+import { deduplicateSpaceSdna, installRootSdna, installSpaceSdna, isModelRegistered } from '@shared/sdnaModels';
 import {
   isSpaceSelf,
   type LocationData,
@@ -1262,47 +1262,66 @@ export function AdamStoreProvider(props: ParentProps) {
       const perspective = await client.perspective.byUUID(uuid);
       if (!perspective) return;
 
-      // Check whether SDNA is already installed. This is a fast local conductor
-      // lookup for already-joined spaces. If the perspective has no SHACL shapes
-      // yet (first-time join race: addPerspectiveAddedListener fires before
-      // joinSpace reaches installSpaceSdna), block here until SDNA is installed so
-      // schema queries don't immediately throw "No SHACL shape" errors.
-      let classes = await getModelClasses(perspective);
-      if (Object.keys(classes).length === 0) {
-        await installSpaceSdna(perspective);
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        classes = await getModelClasses(perspective);
+      // Check whether SDNA is already installed. Prefer the reliable SubjectClass
+      // marker (isModelRegistered) over getAllShacl() emptiness for the actual
+      // isWeSpace determination — getAllShacl()'s underlying triples can lag behind
+      // on a freshly-switched-to, not-yet-fully-synced perspective (e.g. over a
+      // remote ad4m-connect link) even though the space's SDNA is already installed
+      // and queryable.
+      //
+      // But the *install-triggering* condition below must stay "is ANYTHING at all
+      // installed", not "is WE's Space specifically installed" — a perspective with
+      // its own established foreign SDNA (e.g. a Flux community, with Channel/Message/
+      // Community shapes but no Space shape) must NOT be auto-converted into a WE
+      // space here. That's exactly what the "Initialize as WE space" gate (see
+      // foreignSpacePrefill in SpaceStore) exists to ask the user about explicitly.
+      // Only a perspective with no SDNA of any kind — the genuine first-time join
+      // race (addPerspectiveAddedListener fires before joinSpace reaches
+      // installSpaceSdna) — should hit the install path here.
+      let isWeSpace = await isModelRegistered(perspective, Space);
+      if (!isWeSpace) {
+        const shapeNames = await perspective.getShaclNames();
+        if (shapeNames.length === 0) {
+          await installSpaceSdna(perspective);
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          isWeSpace = await isModelRegistered(perspective, Space);
+        }
       }
 
-      // SDNA is installed — switch immediately so WE templates render.
-      // WE model classes are pre-registered at module load; no need to await
-      // registerDynamicModels before the UI is usable.
-      // isWeSpace is derived from `classes` (already fetched above) rather than the
-      // async currentPerspectiveModels manifest below, which lags behind currentPerspective
-      // and isn't reset on switch — deriving from it would let isWeSpace transiently read
-      // stale/true for a perspective that doesn't actually have WE's Space SDNA.
+      // SDNA is installed — switch immediately so WE templates render. WE model classes
+      // are pre-registered at module load; foreign (non-WE) model resolution isn't needed
+      // for the visible switch at all — it's only consumed below, in the background.
       batch(() => {
-        setIsWeSpace('Space' in classes);
+        setIsWeSpace(isWeSpace);
         setCurrentPerspective(perspective);
       });
 
-      // Background: register dynamic (non-WE) model classes and update manifest.
+      // Background: fetch foreign SHACL shapes once and derive both the dynamic model
+      // classes and the AI-facing manifest from that single result — they're pure,
+      // synchronous transforms of the same data, not separate fetches (see
+      // getForeignShacl's doc comment).
       // Also backfill mySpaces if the Space record wasn't synced from Holochain
       // at join time (joinSpace's Space.findOne may have returned null if the
       // creator's record hadn't propagated yet).
       // Stale guard: if the user navigated away before this resolves, skip updates.
       void (async () => {
+        let foreignShapes: Awaited<ReturnType<typeof getForeignShacl>> = [];
         try {
-          if (currentPerspective()?.uuid === uuid) registerDynamicModels(uuid, classes);
+          foreignShapes = await getForeignShacl(perspective);
+        } catch (err) {
+          console.warn('AdamStore: getForeignShacl failed', err);
+        }
+
+        try {
+          if (currentPerspective()?.uuid === uuid) registerDynamicModels(uuid, buildModelClasses(foreignShapes));
         } catch (err) {
           console.warn('AdamStore: registerDynamicModels failed', err);
         }
 
         try {
-          const manifest = await getModelManifest(perspective);
-          if (currentPerspective()?.uuid === uuid) setCurrentPerspectiveModels(manifest);
+          if (currentPerspective()?.uuid === uuid) setCurrentPerspectiveModels(buildModelManifest(foreignShapes));
         } catch (err) {
-          console.warn('AdamStore: getModelManifest failed', err);
+          console.warn('AdamStore: buildModelManifest failed', err);
           if (currentPerspective()?.uuid === uuid) setCurrentPerspectiveModels([]);
         }
 
