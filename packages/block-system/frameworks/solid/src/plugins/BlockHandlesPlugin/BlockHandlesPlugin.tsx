@@ -388,6 +388,25 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
   const [blockMap, setBlockMap] = createSignal<Map<string, NodeData>>(new Map());
   const [dropSpot, setDropSpot] = createSignal({ visible: false, top: 0, left: -74, width: 0 });
   let debouncedUpdate: number | null = null;
+  let dropIndicatorRef: HTMLDivElement | undefined;
+
+  createEffect(() => {
+    // Same top-layer promotion as BlockHandle (see below): without this, the
+    // indicator's position:fixed resolves against the nearest ancestor
+    // containing block (e.g. a transformed/positioned wrapper) instead of the
+    // viewport, so the computed top/left — which are viewport-relative —
+    // land in the wrong place on screen.
+    dropIndicatorRef?.setAttribute('popover', 'manual');
+    dropIndicatorRef?.showPopover();
+
+    onCleanup(() => {
+      try {
+        dropIndicatorRef?.hidePopover();
+      } catch {
+        // Already hidden or popover API unavailable
+      }
+    });
+  });
 
   createEffect(() => {
     const root = editor.getRootElement();
@@ -722,11 +741,13 @@ export default function BlockHandlesPlugin(): JSX.Element | null {
           <BlockHandle nodeKey={nodeKey} nodeData={data} />
         </Portal>
       ))}
-      <div
-        id="drop-indicator"
-        class={`we-block-handle-drop-spot ${dropSpot().visible ? 'we-block-handle-visible' : ''}`}
-        style={{ top: `${dropSpot().top}px`, left: `${dropSpot().left}px`, width: `${dropSpot().width}px` }}
-      />
+      <Portal>
+        <div
+          ref={dropIndicatorRef}
+          class={`we-block-handle-drop-spot ${dropSpot().visible ? 'we-block-handle-visible' : ''}`}
+          style={{ top: `${dropSpot().top}px`, left: `${dropSpot().left}px`, width: `${dropSpot().width}px` }}
+        />
+      </Portal>
     </>
   );
 }

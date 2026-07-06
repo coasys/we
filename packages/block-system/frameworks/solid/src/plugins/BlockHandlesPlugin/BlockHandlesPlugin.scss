@@ -61,6 +61,11 @@
 }
 
 .we-block-handle-drop-spot {
+  // position: fixed (not absolute) — promoted to the browser's top layer via
+  // popover="manual" (see BlockHandlesPlugin.tsx), so its containing block is
+  // always the viewport, matching the viewport-relative top/left computed by
+  // the caller. Without this it can end up confined to an ancestor's
+  // containing block (e.g. a transformed/positioned wrapper) instead.
   position: fixed;
   height: 4px;
   background-color: var(--we-color-primary-400);
@@ -71,6 +76,13 @@
   // transition: opacity var(--we-transition-300);
   will-change: opacity;
   // z-index: var(--we-z-dropdown);
+  margin: 0;
+  // Reset UA [popover] defaults (border, background, overflow, color) that
+  // would otherwise leak through — same defaults OverlayElement resets for
+  // we-modal/we-drawer.
+  border: none;
+  overflow: visible;
+  color: inherit;
 
   &.we-block-handle-visible {
     opacity: 1;
