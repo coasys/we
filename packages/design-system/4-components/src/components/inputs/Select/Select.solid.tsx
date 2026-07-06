@@ -107,7 +107,7 @@ export function Select(allProps: SelectProps) {
               bg="neutral-100"
               border="1px solid var(--we-color-neutral-300)"
               borderRight="none"
-              rl="400"
+              rl="var(--we-theme-control-radius, var(--we-radius-400))"
               px={TRIGGER_PADDING_X[size()]}
               styles={{ display: 'flex', 'align-items': 'center', 'white-space': 'nowrap' }}
             >
@@ -121,6 +121,15 @@ export function Select(allProps: SelectProps) {
             px={TRIGGER_PADDING_X[size()]}
             gap={TRIGGER_GAP[size()]}
             rl={props.label ? '0' : undefined}
+            // Explicit rl forces the DS runtime to compute all 4 corners as one instance
+            // override — the other corners would otherwise silently drop to a hardcoded 0
+            // instead of the theme cascade. Re-declare rr with button's own default chain
+            // so the right corners stay theme-responsive.
+            rr={
+              props.label
+                ? 'var(--we-theme-button-radius, var(--we-theme-control-radius, var(--we-button-size-radius, var(--we-radius-400))))'
+                : undefined
+            }
             borderLeft={props.label ? 'none' : undefined}
           >
             <Show when={selectedOption()?.icon}>
