@@ -19,6 +19,7 @@ import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { createEffect, createSignal, onMount, Show } from 'solid-js';
 
+import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
 import { buildRoutes } from '../utils/buildRoutes';
 
@@ -168,6 +169,11 @@ export default function TemplateProvider() {
           </Router>
         )}
       </Show>
+
+      {/* Persistent app iframes (e.g. Flux) — stable, never remounts. Rendered after the
+           keyed Router (both are DOM order stacking, so this preserves the original
+           on-top-of-template paint order) so switching templates doesn't reload embedded apps. */}
+      <PersistentAppFrames stores={stores} />
     </VisualEditorProvider>
   );
 }

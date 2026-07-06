@@ -9,7 +9,12 @@
  * - Render the content viewport (offset from shell sidebar, AI panel)
  * - Render the active template (visibility-hidden when an app is active)
  * - Render the shell overlay (profile, settings, etc.) above the template
- * - Render persistent app iframes (CSS-toggled, always mounted)
+ *
+ * Persistent app iframes (e.g. Flux) are NOT rendered here — this component is
+ * remounted whenever the active template changes (see the keyed <Show> around
+ * <Router> in TemplateProvider), which would tear down and reload any embedded
+ * app mid-use. They're rendered by PersistentAppFrames instead, mounted once
+ * alongside the shell chrome in TemplateProvider, outside the keyed Router.
  *
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
@@ -35,7 +40,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 import { themeToStyle } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
-import { createEffect, createMemo, For, Show } from 'solid-js';
+import { createEffect, createMemo, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 import { EditorOverlay } from '../components/editor/EditorOverlay';
@@ -49,6 +54,28 @@ import { buildRoutes } from '../utils/buildRoutes';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
 export const SHELL_SIDEBAR_WIDTH = '80px';
+
+// Right-edge offset of the content viewport — shrinks it to make room for the
+// theme/template editor rails and panels. Shared with PersistentAppFrames so the
+// persistent app iframes (rendered outside the template Router) line up with the
+// same viewport the template content occupies.
+export function computeRightOffset(stores: Stores): string {
+  let offset = 0;
+  if (stores.aiStore.isEditingTheme()) {
+    offset += THEME_RAIL_WIDTH;
+    if (stores.aiStore.themePanelOpen()) offset += stores.aiStore.themePanelWidth();
+  }
+  if (stores.aiStore.isEditingTemplate()) {
+    offset += TEMPLATE_RAILS_WIDTH;
+    if (stores.aiStore.isOpen()) offset += stores.aiStore.aiPanelWidth();
+    if (stores.aiStore.codePanelOpen()) offset += stores.aiStore.codePanelWidth();
+    if (stores.aiStore.contentMode() === 'visual') {
+      offset += RAIL_STRIP_WIDTH;
+      if (stores.aiStore.visualPanelOpen()) offset += stores.aiStore.visualPanelWidth();
+    }
+  }
+  return offset ? `${offset}px` : '0px';
+}
 
 // Shell view registry — maps activeShellView id → schema + optional extra stores.
 // The stores factory is called with (baseStores, shellRouteStore) at mount time,
@@ -139,23 +166,7 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
     return (overrides.themeName as string | undefined) ?? (isValidThemeKey(td.id) ? td.id : undefined);
   });
 
-  const rightOffset = () => {
-    let offset = 0;
-    if (stores.aiStore.isEditingTheme()) {
-      offset += THEME_RAIL_WIDTH;
-      if (stores.aiStore.themePanelOpen()) offset += stores.aiStore.themePanelWidth();
-    }
-    if (stores.aiStore.isEditingTemplate()) {
-      offset += TEMPLATE_RAILS_WIDTH;
-      if (stores.aiStore.isOpen()) offset += stores.aiStore.aiPanelWidth();
-      if (stores.aiStore.codePanelOpen()) offset += stores.aiStore.codePanelWidth();
-      if (stores.aiStore.contentMode() === 'visual') {
-        offset += RAIL_STRIP_WIDTH;
-        if (stores.aiStore.visualPanelOpen()) offset += stores.aiStore.visualPanelWidth();
-      }
-    }
-    return offset ? `${offset}px` : '0px';
-  };
+  const rightOffset = () => computeRightOffset(stores);
 
   return (
     <>
@@ -224,27 +235,6 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
             );
           }}
         </Show>
-
-        {/* Persistent app iframes — always mounted, opacity-toggled.
-             opacity:0/1 creates an explicit GPU compositing layer (unlike visibility:hidden
-             which does not). will-change:opacity pre-allocates that layer so the browser
-             never needs to rasterize on show — it's a pure compositor operation. */}
-        <For each={stores.appStore.apps()}>
-          {(app) => (
-            <Column
-              position="absolute"
-              top="0"
-              left="0"
-              opacity={stores.appStore.activeAppId() === app.id ? 1 : 0}
-              pointerEvents={stores.appStore.activeAppId() === app.id ? 'auto' : 'none'}
-              styles={{ 'will-change': 'opacity' }}
-              width="100%"
-              height="100%"
-            >
-              <we-iframe src={app.url} title={app.name} allow={app.allow} width="100%" height="100%" display="block" />
-            </Column>
-          )}
-        </For>
       </Column>
     </>
   );
