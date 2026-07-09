@@ -12,8 +12,8 @@
     "repoPath": "../ad4m"
   },
 
-  "globalSpaceUrl": "neighbourhood://QmzSYwdi7P6Z6sPm4bqwS8qiQJvDNFhArkdmymJJm5uXyBxzBqk",
-  "marketplaceUrl": "neighbourhood://QmzSYwdgxm8UNHrGZmY6HicKkftVxYkn19eu1p2nhuRLQPpTsme",
+  "globalSpaceUrl": "neighbourhood://QmzSYwdYKytiaSGonCfdkZDkF8pJd1bcx8SD6YKU2DZxXFyDau1",
+  "marketplaceUrl": "neighbourhood://QmzSYwdcHSJ7Kf38UnhTC6KdpgVAX6MVo96WXmqHHg2FZyYvKTd",
 
   "electron": {
     "appDistPath": "dist",
