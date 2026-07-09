@@ -24,6 +24,7 @@ export function PersistentAppFrames(props: { stores: Stores }) {
 
   return (
     <Column
+      display={stores.appStore.activeAppId() ? 'block' : 'none'}
       position="fixed"
       top="0"
       left={`var(--we-sidebar-width, ${SHELL_SIDEBAR_WIDTH})`}
