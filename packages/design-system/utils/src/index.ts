@@ -480,3 +480,222 @@ export function mapFlexAxes(props: DesignSystemProps, direction: FlexDirection) 
     cross: flexCrossAxisMap[crossKey as keyof typeof flexCrossAxisMap],
   };
 }
+
+// ────────────────────────────────────────────
+// Layout style builder (framework-neutral)
+//
+// Pure DS-props → CSS style object. Emits CSS-canonical *kebab-case* property keys — the
+// neutral form consumed directly by Solid's `style` prop, the DOM setProperty/CSSOM, and
+// Lit. A framework whose style prop expects camelCase (e.g. React) normalizes keys in its
+// own adapter, not here. Lives in the neutral core (not a framework entry) so every
+// framework binding computes identical styles from one source; each binding is only a thin
+// reactive wrapper that re-types the return as its own CSS type.
+// ────────────────────────────────────────────
+
+/** Framework-neutral CSS style object: CSS-canonical kebab-case keys → value. */
+export type CSSStyleObject = Record<string, string | number | undefined>;
+
+/** Props accepted by buildLayoutStyles — DS props plus a `reverse` flag and a `styles` escape hatch. */
+export type LayoutStyleProps = DesignSystemProps & {
+  reverse?: boolean;
+  styles?: CSSStyleObject;
+};
+
+export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'column'): CSSStyleObject {
+  // Base flex container styles
+  const style: CSSStyleObject = {
+    display: props.display || 'flex',
+    'flex-direction': props.reverse ? `${direction}-reverse` : direction,
+    'flex-wrap': props.wrap ? 'wrap' : 'nowrap',
+    ...props.styles, // Allow custom overrides
+  };
+
+  // Colors & backgrounds
+  if (props.bg) {
+    // Always the `background` shorthand (not `background-color`) — matches the Lit-side
+    // PropSpec convention (helpers.ts's BASE_VISUAL_SPECS) so the interactive-state var
+    // remap below can read buildLayoutStyles's own output directly, keyed consistently.
+    style['background'] = props.bg.startsWith('gradient-')
+      ? `var(--we-gradient-${props.bg.slice(9)})`
+      : tokenVar('color', props.bg);
+  }
+  if (props.bgImage) {
+    if (isBgImageFaded(props)) {
+      // Faded — rendered via the DS interop stylesheet's [data-we-bg-image]::before
+      // overlay (see dsInterop.ts) rather than a plain background-image here, so
+      // bgImageOpacity can fade the image independently of the element's own content/
+      // opacity — CSS has no way to scope `opacity` to just one background layer, so
+      // the image needs its own paint layer. Custom properties are the only way to get
+      // a per-instance dynamic value into a pseudo-element (inline styles can't target
+      // ::before directly). computeBgImageComposite resolves the URL through
+      // resolveBgImageUrl internally, so this is safe for large data URIs too — only
+      // paid for (the extra paint layer + indirection) when fading is actually requested.
+      style['--we-bg-image-composite'] = computeBgImageComposite(props);
+      style['--we-bg-image-fit'] = props.bgFit ?? 'cover';
+      style['--we-bg-image-position'] = props.bgPosition ?? 'center';
+      // The pseudo-element overlay is absolutely positioned against this host — only
+      // default to relative when the caller hasn't already claimed `position`.
+      if (!props.position) style.position = 'relative';
+    } else {
+      // No fading — a plain background-image directly on the host, same as before
+      // bgImageOpacity existed. No custom-property indirection, so no z-index/stacking-
+      // context concerns from the pseudo-element overlay. Still resolved through
+      // resolveBgImageUrl (data URI -> short object URL) — a large base64 payload
+      // bloats every style recompute even as a plain inline style, not just as a var().
+      style['background-image'] = `url("${resolveBgImageUrl(props.bgImage)}")`;
+      style['background-size'] = props.bgFit ?? 'cover';
+      style['background-position'] = props.bgPosition ?? 'center';
+      style['background-repeat'] = 'no-repeat';
+    }
+  }
+  if (props.color) style.color = tokenVar('color', props.color);
+
+  // Visual Effects
+  if (props.opacity !== undefined) style.opacity = props.opacity;
+  if (props.border) style.border = parseBorder(props.border);
+  if (props.borderColor) style['border-color'] = tokenVar('color', props.borderColor);
+  if (props.borderTop) style['border-top'] = parseBorder(props.borderTop);
+  if (props.borderRight) style['border-right'] = parseBorder(props.borderRight);
+  if (props.borderBottom) style['border-bottom'] = parseBorder(props.borderBottom);
+  if (props.borderLeft) style['border-left'] = parseBorder(props.borderLeft);
+  if (props.borderWidth) style['border-width'] = props.borderWidth;
+  if (props.shadow || props.ring) {
+    const parts = [props.ring, props.shadow].filter(Boolean).join(', ');
+    style['box-shadow'] = parts;
+  }
+  if (props.transform) style.transform = props.transform;
+  if (props.transition) style.transition = props.transition;
+
+  // Typography
+  if (props.textAlign) style['text-align'] = props.textAlign;
+  if (props.fontFamily) style['font-family'] = resolveFontFamily(props.fontFamily);
+  if (props.fontWeight) style['font-weight'] = resolveFontWeight(props.fontWeight);
+  if (props.fontSize) style['font-size'] = tokenVar('font', props.fontSize);
+  if (props.lineHeight) style['line-height'] = resolveLineHeight(props.lineHeight);
+  if (props.letterSpacing) style['letter-spacing'] = props.letterSpacing;
+  if (props.textDecoration) style['text-decoration'] = props.textDecoration;
+  if (props.textTransform) style['text-transform'] = props.textTransform;
+
+  // Interaction
+  if (props.cursor) style.cursor = props.cursor;
+  if (props.pointerEvents) style['pointer-events'] = props.pointerEvents;
+  if (props.visibility) style.visibility = props.visibility;
+
+  // Flex item
+  if (props.flex) style.flex = props.flex;
+  if (props.alignSelf) style['align-self'] = props.alignSelf;
+
+  // Layout
+  if (props.width) style.width = props.width;
+  if (props.height) style.height = props.height;
+  if (props.minWidth) style['min-width'] = props.minWidth;
+  if (props.minHeight) style['min-height'] = props.minHeight;
+  if (props.maxWidth) style['max-width'] = props.maxWidth;
+  if (props.maxHeight) style['max-height'] = props.maxHeight;
+  const { main, cross } = mapFlexAxes(props, props.reverse ? `${direction}-reverse` : direction);
+  if (main !== undefined) style['justify-content'] = main;
+  if (cross !== undefined) style['align-items'] = cross;
+  if (props.gap) style.gap = tokenVar('space', props.gap);
+  if (props.overflow) style.overflow = props.overflow;
+  if (props.overflowX) style['overflow-x'] = props.overflowX;
+  if (props.overflowY) style['overflow-y'] = props.overflowY;
+  if (props.scrollbarWidth) style['scrollbar-width'] = props.scrollbarWidth;
+  if (props.scrollbarGutter) style['scrollbar-gutter'] = props.scrollbarGutter;
+  if (props.zIndex !== undefined) style['z-index'] = zIndexVar(props.zIndex);
+  if (props.position) style.position = props.position;
+  if (props.top) style.top = props.top;
+  if (props.right) style.right = props.right;
+  if (props.bottom) style.bottom = props.bottom;
+  if (props.left) style.left = props.left;
+
+  // Margin
+  const margin = getMarginValues(props);
+  if (margin !== '0 0 0 0') style.margin = margin;
+
+  // Padding
+  const padding = getPaddingValues(props);
+  if (padding !== '0 0 0 0') style.padding = padding;
+
+  // Radius
+  const radius = getRadiusValues(props);
+  if (radius !== '0 0 0 0') style['border-radius'] = radius;
+
+  return style;
+}
+
+/**
+ * Opt-in attribute for the DS interop stylesheet's [data-we-bg-image]::before overlay.
+ * Gated on an explicit attribute (rather than a bare pseudo-element on every layout
+ * primitive) so elements that never use bgImage don't pay for an extra paint layer — and
+ * specifically on the faded case, since the unfaded case renders via a plain
+ * background-image on the host (see buildLayoutStyles) and never needs the overlay at all.
+ */
+export function getBgImageAttrs(
+  props: Pick<LayoutStyleProps, 'bgImage' | 'bgImageOpacity'>,
+): Record<string, string | undefined> {
+  return { 'data-we-bg-image': isBgImageFaded(props) ? '' : undefined };
+}
+
+// ────────────────────────────────────────────
+// Interactive-state (hover/active/focus) style machinery
+//
+// Rendered via native :hover/:active/:focus-within in the DS interop stylesheet (see
+// app-framework's dsInterop.ts) instead of JS-tracked signals + mouseenter/mouseleave/blur
+// listeners — the browser handles the state transition for free, and it composes correctly
+// with every DesignSystemProps field (not a hand-picked subset), because it's built from the
+// exact same PropSpec tables Lit's we-* primitives already use for their own
+// :host(:hover)/[part=base]:hover rules. bgImage-related keys are excluded — handled
+// separately by the bg-image composite mechanism, not state-variance.
+// ────────────────────────────────────────────
+
+// position/top/right/bottom/left are deliberately excluded: bgImage's overlay depends
+// on `position: relative` being stable on the host, and an unset --we-ds-position would
+// resolve to `static` (position isn't inherited), which could win the cascade over the
+// bg-image rule's own position:relative depending on stylesheet order when both
+// bgImage and hoverProps are set on the same element. Varying position by hover/active/
+// focus state is a rare enough pattern that excluding it is the safer default.
+const POSITIONING_VAR_SUFFIXES = new Set(['position', 'top', 'right', 'bottom', 'left']);
+
+// Exported so the generated dsInterop stylesheet (app-framework bootstrap) can declare
+// exactly the same properties this module emits vars for — one source of truth for
+// both the JS var-emission and the CSS rule text, so they can never drift apart.
+export const INTERACTIVE_SPECS: PropSpec[] = [
+  ...HOST_LAYOUT_SPECS.filter(([, varSuffix]) => !POSITIONING_VAR_SUFFIXES.has(varSuffix)),
+  ...BASE_VISUAL_SPECS,
+  ...BASE_LAYOUT_SPECS,
+  ...BASE_FLEX_SPECS,
+  ...BASE_TYPOGRAPHY_SPECS,
+];
+export const CSS_PROP_TO_VAR_SUFFIX = new Map(INTERACTIVE_SPECS.map(([cssProp, varSuffix]) => [cssProp, varSuffix]));
+
+// Remaps a computed style object's CSS-property keys to --we-ds-{prefix}{varSuffix}
+// custom properties, using the shared PropSpec tables' cssProp -> varSuffix mapping.
+// Keys outside the interactive-state surface (e.g. --we-bg-image-*) are left alone.
+export function toInteractiveVars(prefix: string, computed: CSSStyleObject): CSSStyleObject {
+  const out: Record<string, string> = {};
+  for (const [cssProp, value] of Object.entries(computed)) {
+    if (value === undefined || value === null || value === '') continue;
+    const varSuffix = CSS_PROP_TO_VAR_SUFFIX.get(cssProp);
+    if (!varSuffix) continue;
+    out[`--we-ds-${prefix}${varSuffix}`] = String(value);
+  }
+  return out;
+}
+
+// buildLayoutStyles always computes display/flex-direction/flex-wrap regardless of
+// which props were actually provided (they're an unconditional structural baseline for
+// a *complete* element style) — for a hover/active/focus *fragment*, that would leak
+// those structural defaults into every state variant even when the caller only meant to
+// vary e.g. `bg`. `direction` isn't part of DesignSystemProps at all (it's a fixed
+// per-component parameter, never user-settable via state props), so flex-direction is
+// always stripped; display/wrap are kept only when actually present in the fragment.
+export function buildStateFragmentStyles(
+  stateProps: Partial<DesignSystemProps>,
+  direction: 'row' | 'column',
+): CSSStyleObject {
+  const computed = buildLayoutStyles({ ...stateProps, styles: undefined } as LayoutStyleProps, direction);
+  delete computed['flex-direction'];
+  if (!('display' in stateProps)) delete computed['display'];
+  if (!('wrap' in stateProps)) delete computed['flex-wrap'];
+  return computed;
+}
