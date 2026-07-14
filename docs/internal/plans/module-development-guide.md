@@ -1,5 +1,14 @@
 # Module Development Guide
 
+> **⚠️ NOT YET IMPLEMENTED — aspirational design, not a usable guide.**
+>
+> This describes a module system (`defineModule`, a module registry, a publishing flow) that does
+> **not exist in the codebase** — grepping for `defineModule` / `moduleRegistry` / `ModuleRegistry`
+> returns nothing. It was previously indexed under "Guides" as though it were usable.
+>
+> Kept as a design reference for the module marketplace work (see
+> [module-marketplace.md](./module-marketplace.md)). **Do not follow it as instructions.**
+
 This guide explains how to build modules for WE - composable packages that provide governance, economics, social features, and other coordination primitives.
 
 ## What is a Module?

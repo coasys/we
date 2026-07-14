@@ -2,11 +2,13 @@
 
 WE is a decentralized application framework and design system built on AD4M. It provides everything needed to build dynamic, schema-driven web applications with multiple launcher implementations (web, Electron, Tauri) and a comprehensive component library.
 
+**New here? Read [Why WE Exists](./VISION.md)** — the vision, the problem, and what WE is for.
+
 ## Quick Start
 
 ```bash
 # Setup workspace (validates seed, builds packages, generates configs)
-pnpm setup
+pnpm setup-workspace
 
 # Start development
 pnpm dev:web       # Web development server
@@ -62,7 +64,7 @@ pnpm dev:tauri     # Tauri app
 
 ```bash
 # Validate seed configuration
-pnpm validate
+pnpm validate:seed
 
 # Build all packages
 pnpm build

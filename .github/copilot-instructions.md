@@ -16,15 +16,22 @@ This reference serves two modes:
 
 ### What WE is
 
-WE is a **composable module ecosystem for building decentralized applications** — the UI
-layer of a three-part stack: **WE** (design system + module marketplace) on **AD4M** (data,
-meaning, agent coordination) on **Holochain** (trust/validation/sync). Contributors build
-*modules* (tokens → elements → components → widgets → pages → templates, plus blocks, themes,
-and feature modules), not monolithic apps. A deployment is described by a **seed file**
-(`we-seed.json`): which modules to include, how to arrange/theme them, and platform settings.
-UIs are **JSON schemas** rendered live against a component registry — no bespoke UI code for
-standard patterns. (Flux is the reference application built on WE.) See VISION.md for the full
-rationale.
+WE is **social infrastructure that lets communities own their data and shape their own tools** —
+the interface layer of a three-part stack: **WE** (design system + schema-driven UI + module
+marketplace) on **AD4M** (data, meaning, agent coordination) on **Holochain** (trust/sync).
+
+The core move: **the app is not the unit.** An experience is not compiled code — it's a
+**template**: a JSON schema rendered live against a component registry. Because a template is
+data rather than code, it is inspectable, forkable, safe to share from untrusted sources, and
+editable by AI in place. Data lives separately, in AD4M perspectives the user owns, so changing
+the interface never costs you your history.
+
+Contributions form a ladder: most are **templates and themes** (authored in-browser, often
+AI-assisted, no code). **Modules** (tokens → elements → components → widgets → pages, plus
+blocks and feature modules) are the developer layer beneath — lower volume, but they raise the
+ceiling on what every template above can express. A deployment is described by a **seed file**
+(`we-seed.json`): which modules to include, how to arrange/theme them, platform settings.
+(Flux is the reference application built on WE.) See VISION.md for the full rationale.
 
 ### Runtime: built on AD4M
 
@@ -123,7 +130,7 @@ Apps (`apps/we-web`, `apps/we-electron`, `apps/we-tauri`) are thin hosts over `@
 - Data models (Space, blocks) → `packages/models/src/` (see packages/models/CONVENTIONS.md).
 
 For deeper detail (data sync/persistence, block & editor internals, the local dev/test loop),
-see docs/ARCHITECTURE.md.
+see docs/architecture/codebase-map.md.
 
 ---
 

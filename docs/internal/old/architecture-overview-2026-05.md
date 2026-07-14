@@ -1,5 +1,19 @@
 # WE Architecture: Block-Native Experiences on AD4M
 
+> **⚠️ SUPERSEDED — historical design document (May 2026). Do not treat as current.**
+>
+> This was an early design doc for the block-native experience model. It has since drifted from the
+> implementation in specific, checkable ways:
+>
+> - documents a `we://contains` predicate — the code uses `we://children` / `we://signal`
+> - lists block types that don't exist (`TableBlock`, `ChecklistBlock`, `MapBlock`, `PollBlock`)
+> - uses schema operators that don't exist (`$expr`, `$forEach`)
+> - describes an unbuilt `defineAppStore()` API and package dependency-resolution flow
+>
+> It is kept for the design rationale it contains (semantic roles, DAG containment,
+> shared-truth-vs-subjective-links). **For the current architecture, see
+> [docs/architecture/codebase-map.md](../../architecture/codebase-map.md).**
+
 ## Vision
 
 WE is a **runtime for decentralized experiences** — one installed app that dynamically loads, renders, and composes app-like experiences built on AD4M. Rather than every project shipping its own Electron/Tauri binary, builders publish experiences that any WE user can open, remix, and integrate into their personal workspace.

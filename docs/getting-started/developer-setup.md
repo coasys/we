@@ -74,7 +74,7 @@ nano we-seed.json  # Or use your favorite editor
 
 ```bash
 # From the we/ directory
-pnpm setup
+pnpm setup-workspace
 ```
 
 This single command:
@@ -112,8 +112,8 @@ pnpm build:all
 
 | Command               | Description                                                |
 | --------------------- | ---------------------------------------------------------- |
-| `pnpm setup`          | Complete workspace setup (run after clone or seed changes) |
-| `pnpm validate`       | Validate seed file configuration                           |
+| `pnpm setup-workspace`          | Complete workspace setup (run after clone or seed changes) |
+| `pnpm validate:seed`       | Validate seed file configuration                           |
 | `pnpm dev`            | Start web dev (same as `dev:web`)                          |
 | `pnpm dev:web`        | Start web development server                               |
 | `pnpm dev:electron`   | Start Electron in dev mode                                 |
@@ -204,14 +204,14 @@ cd apps/we-tauri
 node scripts/generate-seed-config.cjs
 ```
 
-Or just run `pnpm setup` from the root.
+Or just run `pnpm setup-workspace` from the root.
 
 ### Validation Errors
 
 Check your paths:
 
 ```bash
-pnpm validate
+pnpm validate:seed
 ```
 
 This will show exactly what's missing or incorrect.
@@ -255,7 +255,7 @@ we/
    cd ../../we
    pnpm install
    nano we-seed.json  # Configure paths
-   pnpm setup
+   pnpm setup-workspace
    ```
 
 2. **Daily Development**:
@@ -269,20 +269,20 @@ we/
 
    ```bash
    pnpm install  # Update dependencies
-   pnpm setup    # Regenerate configs
+   pnpm setup-workspace    # Regenerate configs
    ```
 
 4. **After Changing Seed File**:
    ```bash
-   pnpm setup    # Regenerate all configs
+   pnpm setup-workspace    # Regenerate all configs
    ```
 
 ## Tips
 
 - **Web development** doesn't require AD4M or Flux to be built
 - **Electron and Tauri** need both AD4M executor and app dist folders
-- Run `pnpm validate` to check if everything is configured correctly
-- Run `pnpm setup` after any seed file changes
+- Run `pnpm validate:seed` to check if everything is configured correctly
+- Run `pnpm setup-workspace` after any seed file changes
 - All paths in seed file are relative to the `we/` directory
 
 ## Advanced Configuration
