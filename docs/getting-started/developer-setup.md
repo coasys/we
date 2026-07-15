@@ -110,19 +110,19 @@ pnpm build:all
 
 ### Root Commands (run from `we/` directory)
 
-| Command               | Description                                                |
-| --------------------- | ---------------------------------------------------------- |
-| `pnpm setup-workspace`          | Complete workspace setup (run after clone or seed changes) |
-| `pnpm validate:seed`       | Validate seed file configuration                           |
-| `pnpm dev`            | Start web dev (same as `dev:web`)                          |
-| `pnpm dev:web`        | Start web development server                               |
-| `pnpm dev:electron`   | Start Electron in dev mode                                 |
-| `pnpm dev:tauri`      | Start Tauri in dev mode                                    |
-| `pnpm build`          | Build all packages                                         |
-| `pnpm build:web`      | Build web distribution                                     |
-| `pnpm build:electron` | Build Electron AppImage                                    |
-| `pnpm build:tauri`    | Build Tauri AppImage                                       |
-| `pnpm build:all`      | Build all distributions                                    |
+| Command                | Description                                                |
+| ---------------------- | ---------------------------------------------------------- |
+| `pnpm setup-workspace` | Complete workspace setup (run after clone or seed changes) |
+| `pnpm validate:seed`   | Validate seed file configuration                           |
+| `pnpm dev`             | Start web dev (same as `dev:web`)                          |
+| `pnpm dev:web`         | Start web development server                               |
+| `pnpm dev:electron`    | Start Electron in dev mode                                 |
+| `pnpm dev:tauri`       | Start Tauri in dev mode                                    |
+| `pnpm build`           | Build all packages                                         |
+| `pnpm build:web`       | Build web distribution                                     |
+| `pnpm build:electron`  | Build Electron AppImage                                    |
+| `pnpm build:tauri`     | Build Tauri AppImage                                       |
+| `pnpm build:all`       | Build all distributions                                    |
 
 ### Per-App Commands
 

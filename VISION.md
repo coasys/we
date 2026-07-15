@@ -52,16 +52,16 @@ All six trace back to one decision nobody remembers making — that software shi
 
 The app is simultaneously the unit of **ownership**, of **capability**, of **control**, of **data**, of **distribution**, and of **opacity**. That's why the walls travel together:
 
-| Because the app is the unit… | You hit… |
-|---|---|
-| someone owns the land you're standing on | renting your own community |
-| every new need means another app | sprawl, lost context, exhausted members |
-| it's compiled code owned by a vendor | you can't reshape it — your culture bends to fit it |
-| it carries its own private data model | to connect, someone has to conform |
-| shipping an idea means shipping an app | builders compete instead of compound |
-| it's an opaque binary | AI can only advise from outside |
+| Because the app is the unit…             | You hit…                                            |
+| ---------------------------------------- | --------------------------------------------------- |
+| someone owns the land you're standing on | renting your own community                          |
+| every new need means another app         | sprawl, lost context, exhausted members             |
+| it's compiled code owned by a vendor     | you can't reshape it — your culture bends to fit it |
+| it carries its own private data model    | to connect, someone has to conform                  |
+| shipping an idea means shipping an app   | builders compete instead of compound                |
+| it's an opaque binary                    | AI can only advise from outside                     |
 
-This is *why* the software can't live and adapt the way the community does: a community is a process, and an app is an artifact.
+This is _why_ the software can't live and adapt the way the community does: a community is a process, and an app is an artifact.
 
 You can't fix these one at a time. A theme picker doesn't give you your culture back. Another integration doesn't cure sprawl. A plugin API doesn't stop you renting.
 
@@ -85,7 +85,7 @@ This is what [AD4M](https://ad4m.dev) provides: an agent-centric layer where dat
 
 AD4M already makes sovereign, peer-to-peer applications possible. If the data problem is solved, why not just build lots of separate apps on top of it?
 
-Because every old problem returns at the *experience* layer. Separate apps mean fragmented interfaces, duplicated effort, weak composability, and no continuity — a new workspace, a new context, a new silo for every tool your community adopts. You'd have won data sovereignty and lost everything else.
+Because every old problem returns at the _experience_ layer. Separate apps mean fragmented interfaces, duplicated effort, weak composability, and no continuity — a new workspace, a new context, a new silo for every tool your community adopts. You'd have won data sovereignty and lost everything else.
 
 Sovereign data is the floor, not the building. What communities need on top of it is a **shared environment** where experiences interoperate, compose, and evolve together. That's the other two promises.
 
@@ -97,11 +97,11 @@ If data sovereignty is the floor, this is the point. **Owning your data doesn't 
 
 ### Experiences are structure, not sealed code
 
-In WE, every experience is a **template** — a high-level JSON schema that defines the interface without binding it to any front-end framework. The JSON describes the *interface*, not the runtime. That single property is what makes everything else possible:
+In WE, every experience is a **template** — a high-level JSON schema that defines the interface without binding it to any front-end framework. The JSON describes the _interface_, not the runtime. That single property is what makes everything else possible:
 
 - **Inspectable and forkable.** Anyone can read a template, adapt it, and share it back.
 - **Safe from untrusted sources.** It's pure JSON — there is no code to execute. You can read it before you run it.
-- **Freedom within a contract.** The schema defines exactly which data, actions, and queries a component can reach. Real creative freedom, bounded by a clear contract — which is what makes a marketplace of *user-made* interfaces viable at all.
+- **Freedom within a contract.** The schema defines exactly which data, actions, and queries a component can reach. Real creative freedom, bounded by a clear contract — which is what makes a marketplace of _user-made_ interfaces viable at all.
 - **Live.** Changes appear in real time. No recompile, no redeploy, no app-store review.
 - **Never trapped.** There's a ladder out of every constraint: schema props → a CSS escape hatch → drop in a custom module.
 
@@ -121,7 +121,7 @@ This works retroactively, too: an application that already exists on AD4M — Fl
 
 ### AI that works inside your environment
 
-Because experiences are structured schemas rather than opaque code, AI can read them, reason about them, and generate them. Describe what your community needs and AI can build and preview it *in place* — working inside the environment, not beside it. A full context library gives agents the whole vocabulary; a validation system tells them when they get it wrong.
+Because experiences are structured schemas rather than opaque code, AI can read them, reason about them, and generate them. Describe what your community needs and AI can build and preview it _in place_ — working inside the environment, not beside it. A full context library gives agents the whole vocabulary; a validation system tells them when they get it wrong.
 
 This is the difference between AI that advises and AI that can actually act.
 
@@ -149,7 +149,7 @@ Pair that with economic signals and contribution incentives, and the ecosystem g
 
 Real interface flexibility has never been offered by platforms, and it isn't an oversight. **Interface control is where the business model lives.** Handing it to users is the one thing an attention-monetising platform structurally cannot do.
 
-But the pattern is proven everywhere it *has* been allowed:
+But the pattern is proven everywhere it _has_ been allowed:
 
 - **Gaming** → mods
 - **Audio software** → plugins
@@ -163,16 +163,16 @@ Every time, the same recipe: open conventions, a compatible marketplace, and sud
 
 WE is **not** a framework where developers build modules and everyone else consumes them. It's a ladder — and the widest rungs need no code at all.
 
-| Who | Contributes | Volume | Leverage |
-|---|---|---|---|
-| **Users & communities** | Their own space's layout; templates and themes made in-browser, often AI-assisted | Highest | Local |
-| **Designers** | Themes, token sets, visual identities | High | Aesthetic |
-| **Template authors** | Full application shells composed from existing modules — no code required | Medium | Structural |
-| **Developers** | Elements, components, widgets, blocks, feature modules | Lowest | **Raises the ceiling for everyone above** |
+| Who                     | Contributes                                                                       | Volume  | Leverage                                  |
+| ----------------------- | --------------------------------------------------------------------------------- | ------- | ----------------------------------------- |
+| **Users & communities** | Their own space's layout; templates and themes made in-browser, often AI-assisted | Highest | Local                                     |
+| **Designers**           | Themes, token sets, visual identities                                             | High    | Aesthetic                                 |
+| **Template authors**    | Full application shells composed from existing modules — no code required         | Medium  | Structural                                |
+| **Developers**          | Elements, components, widgets, blocks, feature modules                            | Lowest  | **Raises the ceiling for everyone above** |
 
 Most of what flows through the ecosystem will be **templates and themes**, made by people who never open a code editor — exactly as WordPress's ecosystem is dominated by themes rather than plugins.
 
-That doesn't make the developer layer less important; it makes it *load-bearing*. Modules define the vocabulary, and the vocabulary sets the ceiling on what everyone above can express.
+That doesn't make the developer layer less important; it makes it _load-bearing_. Modules define the vocabulary, and the vocabulary sets the ceiling on what everyone above can express.
 
 **The flywheel:** developers expand the vocabulary → communities compose it into templates and themes → those get shared and forked → more people build what they need without waiting for a developer → richer demand pulls new modules into existence.
 
