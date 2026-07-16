@@ -13,6 +13,7 @@
   "dependencies": {
     "@we/components": "workspace:*",
     "@we/primitives": "workspace:*",
+    "@we/schema-shared": "workspace:*",
     "@we/schema-solid": "workspace:*",
     "@we/tokens": "workspace:*",
     "solid-js": "^1.9.5"

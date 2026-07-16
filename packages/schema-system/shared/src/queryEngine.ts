@@ -63,7 +63,12 @@ function compareOp(actual: unknown, op: Op, value: Scalar | Scalar[], caseSensit
 
 // ─── relations ──────────────────────────────────────────────────────────────────
 
-function relatedRows(row: Row, entity: string, relName: string, data: InMemoryDataset): { rows: Row[]; rel: InMemoryRelation } | undefined {
+function relatedRows(
+  row: Row,
+  entity: string,
+  relName: string,
+  data: InMemoryDataset,
+): { rows: Row[]; rel: InMemoryRelation } | undefined {
   const rel = data.relations?.[entity]?.[relName];
   if (!rel) return undefined;
   const targetRows = data.tables[rel.target] ?? [];
@@ -128,7 +133,9 @@ function applySort(rows: Row[], sort: SortKey[], entity: string, data: InMemoryD
 function computeAggregate(row: Row, entity: string, agg: Aggregation, data: InMemoryDataset): number {
   const resolved = relatedRows(row, entity, agg.over, data);
   if (!resolved) return 0;
-  const set = agg.filter ? resolved.rows.filter((r) => matchesFilter(r, agg.filter!, resolved.rel.target, data)) : resolved.rows;
+  const set = agg.filter
+    ? resolved.rows.filter((r) => matchesFilter(r, agg.filter!, resolved.rel.target, data))
+    : resolved.rows;
   if (agg.fn === 'count') return set.length;
   const values = set.map((r) => Number(r[agg.field!])).filter((n) => !Number.isNaN(n));
   if (values.length === 0) return 0;
