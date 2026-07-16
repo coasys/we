@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- result rows are Record<string, unknown>; tests cast to read hydrated relations */
 import { describe, expect, it } from 'vitest';
 
 import { executeQueryIR, type InMemoryDataset } from './queryEngine';
@@ -37,7 +38,12 @@ describe('executeQueryIR', () => {
     const q: QueryIR = {
       irVersion: 1,
       entity: 'Post',
-      filter: { or: [{ field: 'title', op: 'contains', value: 'graph' }, { field: 'content', op: 'contains', value: 'graph' }] },
+      filter: {
+        or: [
+          { field: 'title', op: 'contains', value: 'graph' },
+          { field: 'content', op: 'contains', value: 'graph' },
+        ],
+      },
     };
     expect(ids(executeQueryIR(q, data))).toEqual(['p1', 'p2']); // p3 excluded
   });
@@ -46,7 +52,9 @@ describe('executeQueryIR', () => {
     const q: QueryIR = {
       irVersion: 1,
       entity: 'Post',
-      aggregate: [{ as: 'likeCount', over: 'signals', fn: 'count', filter: { field: 'signalTypeId', op: 'eq', value: 'like' } }],
+      aggregate: [
+        { as: 'likeCount', over: 'signals', fn: 'count', filter: { field: 'signalTypeId', op: 'eq', value: 'like' } },
+      ],
       sort: [{ by: 'likeCount', dir: 'desc' }],
     };
     const rows = executeQueryIR(q, data);
@@ -60,7 +68,13 @@ describe('executeQueryIR', () => {
       entity: 'Post',
       filter: { field: 'id', op: 'eq', value: 'p2' },
       aggregate: [
-        { as: 'likeSum', over: 'signals', fn: 'sum', field: 'value', filter: { field: 'signalTypeId', op: 'eq', value: 'like' } },
+        {
+          as: 'likeSum',
+          over: 'signals',
+          fn: 'sum',
+          field: 'value',
+          filter: { field: 'signalTypeId', op: 'eq', value: 'like' },
+        },
         { as: 'topValue', over: 'signals', fn: 'max', field: 'value' },
       ],
     };
@@ -70,7 +84,12 @@ describe('executeQueryIR', () => {
   });
 
   it('hydrates a to-one relation (author) and a to-many (signals)', () => {
-    const q: QueryIR = { irVersion: 1, entity: 'Post', filter: { field: 'id', op: 'eq', value: 'p1' }, include: { author: true, signals: true } };
+    const q: QueryIR = {
+      irVersion: 1,
+      entity: 'Post',
+      filter: { field: 'id', op: 'eq', value: 'p1' },
+      include: { author: true, signals: true },
+    };
     const [row] = executeQueryIR(q, data) as any[];
     expect(row.author.name).toBe('Ada');
     expect(ids(row.signals)).toEqual(['s1', 's2']);
@@ -94,7 +113,12 @@ describe('executeQueryIR', () => {
   });
 
   it('paginates with offset + limit', () => {
-    const q: QueryIR = { irVersion: 1, entity: 'Post', sort: [{ by: 'createdAt', dir: 'desc' }], page: { limit: 1, offset: 1 } };
+    const q: QueryIR = {
+      irVersion: 1,
+      entity: 'Post',
+      sort: [{ by: 'createdAt', dir: 'desc' }],
+      page: { limit: 1, offset: 1 },
+    };
     expect(ids(executeQueryIR(q, data))).toEqual(['p2']); // desc: p1,p2,p3 → offset 1, limit 1 → p2
   });
 

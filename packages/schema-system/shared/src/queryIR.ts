@@ -12,18 +12,7 @@ import { z } from 'zod';
 // ─── Filter ────────────────────────────────────────────────────────────────────
 
 export type Op =
-  | 'eq'
-  | 'ne'
-  | 'lt'
-  | 'lte'
-  | 'gt'
-  | 'gte'
-  | 'in'
-  | 'nin'
-  | 'contains'
-  | 'startsWith'
-  | 'endsWith'
-  | 'exists';
+  'eq' | 'ne' | 'lt' | 'lte' | 'gt' | 'gte' | 'in' | 'nin' | 'contains' | 'startsWith' | 'endsWith' | 'exists';
 
 export type Scalar = string | number | boolean | null;
 
@@ -158,9 +147,7 @@ export interface IRError {
 }
 
 /** Structural validation of a query IR (shape only; entity/field resolution is a separate pass). */
-export function validateQueryIR(
-  input: unknown,
-): { valid: true; query: QueryIR } | { valid: false; errors: IRError[] } {
+export function validateQueryIR(input: unknown): { valid: true; query: QueryIR } | { valid: false; errors: IRError[] } {
   const parsed = queryIRSchema.safeParse(input);
   if (parsed.success) return { valid: true, query: parsed.data };
   return {

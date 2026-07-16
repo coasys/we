@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { validateQueryIR, type QueryIR } from './queryIR';
+import { type QueryIR, validateQueryIR } from './queryIR';
 
 // The worked example from the IR spec: a post feed — text filter (title OR content), most-liked
 // first, live, with the author hydrated and a per-row like count.
@@ -64,7 +64,9 @@ describe('QueryIR', () => {
     const q: QueryIR = {
       irVersion: 1,
       entity: 'Channel',
-      filter: { and: [{ or: [{ field: 'a', op: 'eq', value: 1 }] }, { not: { field: 'b', op: 'exists', value: true } }] },
+      filter: {
+        and: [{ or: [{ field: 'a', op: 'eq', value: 1 }] }, { not: { field: 'b', op: 'exists', value: true } }],
+      },
       include: { conversations: { include: { messages: { page: { limit: 20 } } } } },
     };
     expect(validateQueryIR(q).valid).toBe(true);

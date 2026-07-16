@@ -39,11 +39,19 @@ function sortTargetResolves(
   return !!target && (last === 'id' || last in target.properties);
 }
 
-function validateFilter(filter: Filter, entityName: string, manifest: ModelManifest, path: string, errors: IRError[]): void {
+function validateFilter(
+  filter: Filter,
+  entityName: string,
+  manifest: ModelManifest,
+  path: string,
+  errors: IRError[],
+): void {
   const entity = manifest.entities[entityName];
   if (!entity) return;
-  if ('and' in filter) return filter.and.forEach((f, i) => validateFilter(f, entityName, manifest, `${path}.and.${i}`, errors));
-  if ('or' in filter) return filter.or.forEach((f, i) => validateFilter(f, entityName, manifest, `${path}.or.${i}`, errors));
+  if ('and' in filter)
+    return filter.and.forEach((f, i) => validateFilter(f, entityName, manifest, `${path}.and.${i}`, errors));
+  if ('or' in filter)
+    return filter.or.forEach((f, i) => validateFilter(f, entityName, manifest, `${path}.or.${i}`, errors));
   if ('not' in filter) return validateFilter(filter.not, entityName, manifest, `${path}.not`, errors);
   if ('rel' in filter) {
     const rel = entity.relations[filter.rel];
@@ -78,7 +86,13 @@ function validateSort(
   });
 }
 
-function validateSelect(select: string[], entityName: string, manifest: ModelManifest, path: string, errors: IRError[]): void {
+function validateSelect(
+  select: string[],
+  entityName: string,
+  manifest: ModelManifest,
+  path: string,
+  errors: IRError[],
+): void {
   const entity = manifest.entities[entityName];
   if (!entity) return;
   select.forEach((name, i) => {
@@ -88,7 +102,13 @@ function validateSelect(select: string[], entityName: string, manifest: ModelMan
   });
 }
 
-function validateInclude(include: IncludeMap, entityName: string, manifest: ModelManifest, path: string, errors: IRError[]): void {
+function validateInclude(
+  include: IncludeMap,
+  entityName: string,
+  manifest: ModelManifest,
+  path: string,
+  errors: IRError[],
+): void {
   const entity = manifest.entities[entityName];
   if (!entity) return;
   for (const [relName, spec] of Object.entries(include)) {
@@ -107,7 +127,14 @@ function validateInclude(include: IncludeMap, entityName: string, manifest: Mode
   }
 }
 
-function validateAggregate(agg: Aggregation, entityName: string, entity: EntitySchema, manifest: ModelManifest, path: string, errors: IRError[]): void {
+function validateAggregate(
+  agg: Aggregation,
+  entityName: string,
+  entity: EntitySchema,
+  manifest: ModelManifest,
+  path: string,
+  errors: IRError[],
+): void {
   // Alias must not shadow a real property (so `sort.by`/result reads are unambiguous).
   if (agg.as in entity.properties) {
     errors.push({ path: `${path}.as`, message: `aggregate alias "${agg.as}" shadows a property of "${entityName}"` });
@@ -140,7 +167,9 @@ export function validateQueryAgainstManifest(
   const errors: IRError[] = [];
   const aggregateAliases = new Set((query.aggregate ?? []).map((a) => a.as));
 
-  (query.aggregate ?? []).forEach((agg, i) => validateAggregate(agg, query.entity, root, manifest, `aggregate.${i}`, errors));
+  (query.aggregate ?? []).forEach((agg, i) =>
+    validateAggregate(agg, query.entity, root, manifest, `aggregate.${i}`, errors),
+  );
   if (query.filter) validateFilter(query.filter, query.entity, manifest, 'filter', errors);
   if (query.sort) validateSort(query.sort, query.entity, manifest, aggregateAliases, 'sort', errors);
   if (query.select) validateSelect(query.select, query.entity, manifest, 'select', errors);

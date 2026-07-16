@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getProperty, getRelation, validateManifest, type ModelManifest } from './manifest';
+import { getProperty, getRelation, type ModelManifest, validateManifest } from './manifest';
 
 // A hand-authored manifest for a domain that is NOT WE's (a library) — proving the format is
 // backend- and domain-neutral, i.e. it serves third parties describing their own entities.

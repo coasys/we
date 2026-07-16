@@ -30,9 +30,19 @@ const manifest: ModelManifest = {
 const feed: QueryIR = {
   irVersion: 1,
   entity: 'Post',
-  filter: { or: [{ field: 'title', op: 'contains', value: 'x' }, { field: 'content', op: 'contains', value: 'x' }] },
-  aggregate: [{ as: 'likeCount', over: 'signals', fn: 'count', filter: { field: 'signalTypeId', op: 'eq', value: 'like' } }],
-  sort: [{ by: 'likeCount', dir: 'desc' }, { by: 'author.name', dir: 'asc' }],
+  filter: {
+    or: [
+      { field: 'title', op: 'contains', value: 'x' },
+      { field: 'content', op: 'contains', value: 'x' },
+    ],
+  },
+  aggregate: [
+    { as: 'likeCount', over: 'signals', fn: 'count', filter: { field: 'signalTypeId', op: 'eq', value: 'like' } },
+  ],
+  sort: [
+    { by: 'likeCount', dir: 'desc' },
+    { by: 'author.name', dir: 'asc' },
+  ],
   include: {
     author: true,
     signals: { filter: { field: 'signalTypeId', op: 'eq', value: 'like' }, first: true },
@@ -65,7 +75,11 @@ describe('validateQueryAgainstManifest', () => {
   });
 
   it('validates include specs against the TARGET entity (catches a bad nested filter)', () => {
-    const r = ok({ irVersion: 1, entity: 'Post', include: { author: { filter: { field: 'nope', op: 'eq', value: 1 } } } });
+    const r = ok({
+      irVersion: 1,
+      entity: 'Post',
+      include: { author: { filter: { field: 'nope', op: 'eq', value: 1 } } },
+    });
     expect(r.valid).toBe(false);
     if (!r.valid) expect(r.errors[0].message).toContain('"nope" is not a property of "Agent"');
   });
@@ -77,7 +91,9 @@ describe('validateQueryAgainstManifest', () => {
   });
 
   it('rejects sum/min/max/avg without a field, and a field not on the related entity', () => {
-    expect(ok({ irVersion: 1, entity: 'Post', aggregate: [{ as: 'x', over: 'signals', fn: 'sum' }] }).valid).toBe(false);
+    expect(ok({ irVersion: 1, entity: 'Post', aggregate: [{ as: 'x', over: 'signals', fn: 'sum' }] }).valid).toBe(
+      false,
+    );
     const r = ok({ irVersion: 1, entity: 'Post', aggregate: [{ as: 'x', over: 'signals', fn: 'sum', field: 'nope' }] });
     expect(r.valid).toBe(false);
     if (!r.valid) expect(r.errors[0].message).toContain('"nope" is not a property of "Signal"');
