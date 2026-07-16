@@ -1,12 +1,10 @@
 /**
- * Translate the current AD4M-flavored `$query` into the neutral `QueryIR`. This is the back-compat
- * shim for the wiring step: existing templates keep their `$query` syntax, and this maps it to the
- * IR under the hood.
+ * Translate the current AD4M-flavored `$query` into the neutral `QueryIR`. A back-compat translator:
+ * existing templates keep their `$query` syntax and this maps it to the IR under the hood.
  *
- * It returns the IR *and* an `unsupported` list — legacy shapes that don't map losslessly and need a
- * design decision before the live switch is flipped. Building this before wiring is deliberate: it
- * surfaces the hard cases (`parent`, single/filtered `$`-projections) as data rather than as runtime
- * surprises.
+ * It returns the IR *and* an `unsupported` list — legacy shapes that don't map losslessly and would
+ * need a design decision to support: `parent` (relational drill-down) and single/filtered
+ * `$`-projections. Surfacing them as data, rather than mis-translating silently, is deliberate.
  *
  * Reference for the legacy grammar: the `$query` docs in `CLAUDE.md`.
  */
@@ -27,7 +25,7 @@ export interface LegacyQuery {
 
 export interface LegacyTranslation {
   ir: QueryIR;
-  /** Legacy features that don't map losslessly — resolve these before wiring the live path. */
+  /** Legacy features that don't map losslessly and would need a design decision to support. */
   unsupported: string[];
 }
 
@@ -43,7 +41,9 @@ function fieldCondition(field: string, cond: unknown): Filter {
       return Array.isArray(v) ? { field, op: 'nin', value: v as Scalar[] } : { field, op: 'ne', value: v as Scalar };
     }
   }
-  return Array.isArray(cond) ? { field, op: 'in', value: cond as Scalar[] } : { field, op: 'eq', value: cond as Scalar };
+  return Array.isArray(cond)
+    ? { field, op: 'in', value: cond as Scalar[] }
+    : { field, op: 'eq', value: cond as Scalar };
 }
 
 function translateWhere(where: Record<string, unknown>): Filter | undefined {
@@ -83,7 +83,8 @@ function translateIncludeSpec(spec: Record<string, unknown>, path: string, unsup
   if (spec.include) {
     const nested = translateInclude(spec.include as Record<string, unknown>, `${path}.include`, unsupported);
     if (Object.keys(nested.map).length) out.include = nested.map;
-    if (nested.aggregates.length) unsupported.push(`${path}.include: nested count-projection (IncludeSpec has no aggregate)`);
+    if (nested.aggregates.length)
+      unsupported.push(`${path}.include: nested count-projection (IncludeSpec has no aggregate)`);
   }
   return out;
 }

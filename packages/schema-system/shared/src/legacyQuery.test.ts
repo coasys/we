@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { translateLegacyQuery, type LegacyQuery } from './legacyQuery';
+import { type LegacyQuery, translateLegacyQuery } from './legacyQuery';
 import { validateQueryIR } from './queryIR';
 
 describe('translateLegacyQuery', () => {
@@ -59,12 +59,16 @@ describe('translateLegacyQuery', () => {
   });
 
   it('records subscribe:false as one-shot, and drops perspective', () => {
-    const { ir } = translateLegacyQuery({ model: 'Post', subscribe: false, perspective: 'adamStore.currentPerspective' });
+    const { ir } = translateLegacyQuery({
+      model: 'Post',
+      subscribe: false,
+      perspective: 'adamStore.currentPerspective',
+    });
     expect(ir.live).toBe(false);
     expect('perspective' in ir).toBe(false);
   });
 
-  it('surfaces the shapes that need a design decision before wiring (parent, single-projection)', () => {
+  it('surfaces the shapes that do not map losslessly (parent, single-projection)', () => {
     const { unsupported } = translateLegacyQuery({
       model: 'Conversation',
       parent: { id: 'ch1', relation: 'conversations' },
