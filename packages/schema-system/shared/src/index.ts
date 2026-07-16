@@ -112,6 +112,8 @@ export { queryIRSchema, filterSchema, validateQueryIR } from './queryIR';
 export { validateQueryAgainstManifest } from './queryValidation';
 export { planQuery } from './queryCapabilities';
 export type { AdapterCapabilities, AggregateFn, Disposition, CapabilityGap, QueryPlan } from './queryCapabilities';
+export { translateLegacyQuery } from './legacyQuery';
+export type { LegacyQuery, LegacyTranslation } from './legacyQuery';
 export type {
   QueryIR,
   Filter,
