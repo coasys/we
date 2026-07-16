@@ -190,7 +190,7 @@ function createQuerySignal(
     } else {
       // Prefer the injected, backend-neutral $currentDataset(); fall back to the legacy
       // AD4M-specific adamStore.currentPerspective for back-compat.
-      // PLAN: drop the adamStore fallback once TemplateProvider injects $currentDataset.
+      // TODO: drop the adamStore fallback once TemplateProvider injects $currentDataset.
       const currentDataset =
         ((stores as Record<string, unknown>).$currentDataset as (() => unknown) | undefined) ??
         (((stores as Record<string, unknown>).adamStore as Record<string, unknown> | undefined)?.currentPerspective as
@@ -206,7 +206,7 @@ function createQuerySignal(
     // registry. Read `uuid` first (the AD4M PerspectiveProxy exposes it, and also an unrelated
     // `id` = subscription id that must NOT win), falling back to the backend-neutral `id` that a
     // clean DatasetHandle provides.
-    // PLAN: collapse uuid??id to a single `id` once the AD4M adapter wraps perspectives in DatasetHandles.
+    // TODO: collapse uuid??id to a single `id` once the AD4M adapter wraps perspectives in DatasetHandles.
     const datasetId = ((p as Record<string, unknown>).uuid ?? (p as Record<string, unknown>).id) as string | undefined;
     const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.model, datasetId) : undefined;
     let ModelClass: Record<string, (...args: unknown[]) => unknown>;

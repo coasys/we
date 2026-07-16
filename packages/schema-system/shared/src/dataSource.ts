@@ -1,17 +1,14 @@
 /**
- * The data seam — WE's renderer ↔ backend contract, made explicit (Phase 1, "name the seam").
+ * The data seam — WE's renderer ↔ backend contract, made explicit.
  *
  * The renderer never imports AD4M. It reaches the data layer entirely through the small set of
  * functions the host injects into the `stores` bag, and through the duck-typed model handles those
  * return. Historically that contract lived only as `as`-casts inside `SchemaRenderer`; these types
  * declare it so a non-AD4M host (in-memory, NextGraph, GraphQL, …) knows exactly what to implement.
  *
- * This is deliberately the *current* contract (an AD4M-flavored query option pass-through), not the
- * future `QueryIR`. The IR (see the query-IR spec) replaces `QueryOptions` later; the shape of the
- * seam — dataset handle + model handle with `query`/`findAll` — stays.
- *
- * PLAN: replace `QueryOptions` (AD4M-flavored pass-through) with the specified `QueryIR`.
- * PLAN: this docblock references the migration plan — reword to plan-agnostic "why" before merge to dev.
+ * `QueryOptions` is deliberately the *current* contract — an AD4M-flavored query-option pass-through,
+ * forwarded verbatim. It is expected to be superseded by a specified, backend-neutral query IR; the
+ * shape of the seam — dataset handle + model handle with `query`/`findAll` — stays either way.
  */
 
 /**
@@ -78,7 +75,7 @@ export interface DataSource {
 
 /**
  * The exact keys the renderer reads off the injected `stores` bag — the empirical data contract as
- * surfaced by the Phase-0 slice. A host provides these (plus any `$store` namespaces its templates
+ * surfaced by the in-memory reference host. A host provides these (plus any `$store` namespaces its templates
  * reference). All optional so a presentation-only (L0) host can omit the data ones entirely.
  */
 export interface RendererDataBindings {

@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Phase 0 (portable-UI slice) — proves the schema renderer renders a real, non-trivial template
+ * Proves the schema renderer renders a real, non-trivial template
  * (a feed: $each over a live $query, with a `where` filter, `order`, and an `include` relation)
  * against an arbitrary in-memory backend, with **zero AD4M**.
  *
  * If this passes, WE's UI half is genuinely backend-portable — the whole thesis of the port. The
  * list of everything the renderer read off the injected `stores` bag (see below) is the empirical
- * input to Phase 1's `DataSource` interface.
+ * input to the `DataSource` interface.
  */
 import { render } from '@solidjs/testing-library';
 import type { SchemaNode } from '@we/schema-shared';
