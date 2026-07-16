@@ -1,5 +1,5 @@
 /**
- * Phase 0/4 browser harness — proves WE's renderer + design system paint over a non-AD4M backend,
+ * Browser harness — proves WE's renderer + design system paint over a non-AD4M backend,
  * and is the seed of the L0/L1 "hello world" starter. This is, in miniature, what a `mountWe(...)`
  * integration does: pick a dataSource (in-memory), a registry (design system), and a template.
  */

@@ -1,8 +1,8 @@
 # Portable UI slice — WE over a non-AD4M backend
 
 The browser proof that WE's **renderer + design system paint over an arbitrary backend** with zero
-AD4M. Phase 0's browser step and the seed of the Phase 4 "L0/L1 starter". In miniature, this is what
-a `mountWe(...)` integration does: pick a **dataSource** (here in-memory), a **registry** (the design
+AD4M — and the seed of an "adopt in an afternoon" starter. In miniature, this is what a
+`mountWe(...)` integration does: pick a **dataSource** (here in-memory), a **registry** (the design
 system), and a **template**.
 
 ## Run
@@ -40,5 +40,5 @@ A styled "Community Feed" (real `Card`/`Column`/`Row` + `we-text`/`we-avatar`):
 | `src/feedTemplate.ts` | a real WE template: `$each` over `$query` with filter/order/include |
 | `src/main.tsx` | mounts `RenderSchema({ node, stores, registry })` + the reactivity demo button |
 
-> Duplicated `inMemoryBackend.ts` (twin of the headless test's copy) will consolidate into a shared
-> `@we/backend-inmemory` package in Phase 4.
+> Duplicated `inMemoryBackend.ts` (twin of the headless test's copy) is a candidate to consolidate
+> into a shared `@we/backend-inmemory` package.

@@ -10,7 +10,7 @@ export default defineConfig({
   // + single runtime, so scheduled reactivity (the $query effect) works. This is exactly what an
   // external consumer does; the pre-built dist is a fallback for non-Solid toolchains and remains
   // suspect for reactivity.
-  // PLAN: root-cause + fix why the esbuild-plugin-solid dist breaks scheduled effects downstream.
+  // TODO: root-cause + fix why the esbuild-plugin-solid dist breaks scheduled effects downstream.
   server: {
     port: 3200,
     fs: { allow: ['../../../..'] },

@@ -1,5 +1,5 @@
 /**
- * Phase 0 (portable-UI slice) — an in-memory, **AD4M-free** backend for the schema renderer.
+ * An in-memory, **AD4M-free** backend for the schema renderer — the portability proof.
  *
  * This is the proof that WE's renderer runs against an arbitrary data source: it implements the
  * contract the `SchemaRenderer` expects — `$getModel(name)` → a class with
@@ -8,7 +8,7 @@
  * `@coasys/ad4m`, no `adamStore`, no perspective: this file's package can't even import AD4M (deps
  * are only `@we/design-types` + `@we/schema-shared`).
  *
- * Phase 1 note: the renderer now reads the injected `$currentDataset()` (falling back to the legacy
+ * The renderer reads the injected `$currentDataset()` (falling back to the legacy
  * `adamStore.currentPerspective` only for the not-yet-migrated AD4M app). This backend uses the
  * clean seam directly.
  */
@@ -132,7 +132,7 @@ export function createInMemoryBackend(config: BackendConfig) {
   }
 
   const stores = {
-    // The clean, backend-neutral seam (Phase 1): the host injects the current dataset handle.
+    // The clean, backend-neutral seam: the host injects the current dataset handle.
     // No `adamStore`, no AD4M concept — just an opaque `{ uuid }` the renderer reads.
     $currentDataset: () => ({ id: config.uuid }),
     $getModel: (name: string) => getModel(name),

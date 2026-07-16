@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Phase 0/4 browser harness — WE's renderer + design system over a non-AD4M in-memory backend.",
+  "description": "Browser harness — WE's renderer + design system over a non-AD4M in-memory backend.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

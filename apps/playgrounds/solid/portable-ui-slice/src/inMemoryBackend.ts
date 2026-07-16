@@ -4,7 +4,7 @@
  * `{ id }` handle, `$getModel(name)` → a class with `query(dataset, opts)` / `findAll(...)`, over a
  * tiny query engine on plain JS arrays. No `@coasys/ad4m` anywhere in this app's dependency graph.
  *
- * PLAN: duplicated from the test copy — consolidate both into a shared `@we/backend-inmemory` package.
+ * TODO: duplicated from the test copy — consolidate both into a shared `@we/backend-inmemory` package.
  */
 
 export type Row = { id: string | number } & Record<string, unknown>;
