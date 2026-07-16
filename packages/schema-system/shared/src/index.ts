@@ -114,3 +114,16 @@ export type {
   Cardinality,
   ManifestError,
 } from './manifest';
+export { queryIRSchema, filterSchema, validateQueryIR } from './queryIR';
+export type {
+  QueryIR,
+  Filter,
+  Op,
+  Scalar,
+  SortKey,
+  Page,
+  IncludeSpec,
+  IncludeMap,
+  Aggregation,
+  IRError,
+} from './queryIR';
