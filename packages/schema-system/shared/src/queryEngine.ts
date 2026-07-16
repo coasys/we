@@ -201,5 +201,22 @@ export function executeQueryIR(query: QueryIR, data: InMemoryDataset): Row[] {
 
   if (query.include) rows = rows.map((r) => hydrate(r, entity, query.include!, data));
 
+  // Scalar projection: keep only `id`, the selected props, and derived fields (aggregate aliases +
+  // included relations, which `select` never strips). Cursor paging (`page.after`) is intentionally
+  // not handled here — a stable cursor is adapter-specific and can't be minted in JS.
+  if (query.select) {
+    const keep = new Set<string>([
+      'id',
+      ...query.select,
+      ...(query.aggregate ?? []).map((a) => a.as),
+      ...Object.keys(query.include ?? {}),
+    ]);
+    rows = rows.map((r) => {
+      const out = {} as Row;
+      for (const k of Object.keys(r)) if (keep.has(k)) out[k] = r[k];
+      return out;
+    });
+  }
+
   return rows;
 }

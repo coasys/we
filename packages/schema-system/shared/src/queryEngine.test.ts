@@ -142,4 +142,20 @@ describe('executeQueryIR', () => {
     };
     expect(ids(executeQueryIR(q, data))).toEqual(['p2']); // only p2 has a star
   });
+
+  it('select projects scalar props (keeping id + aggregates + includes)', () => {
+    const q: QueryIR = {
+      irVersion: 1,
+      entity: 'Post',
+      filter: { field: 'id', op: 'eq', value: 'p1' },
+      select: ['title'],
+      aggregate: [{ as: 'likeCount', over: 'signals', fn: 'count' }],
+      include: { author: true },
+    };
+    const [row] = executeQueryIR(q, data) as any[];
+    expect(Object.keys(row).sort()).toEqual(['author', 'id', 'likeCount', 'title']); // content/authorId/createdAt dropped
+    expect(row.title).toBe('Graph theory');
+    expect(row.author.name).toBe('Ada');
+    expect(row.likeCount).toBe(2);
+  });
 });
