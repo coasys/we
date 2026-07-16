@@ -115,6 +115,7 @@ export type {
   ManifestError,
 } from './manifest';
 export { queryIRSchema, filterSchema, validateQueryIR } from './queryIR';
+export { validateQueryAgainstManifest } from './queryValidation';
 export type {
   QueryIR,
   Filter,
