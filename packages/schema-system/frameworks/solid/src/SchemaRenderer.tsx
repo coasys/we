@@ -188,18 +188,27 @@ function createQuerySignal(
       for (const part of parts) target = (target as Record<string, unknown>)?.[part];
       p = typeof target === 'function' ? (target as () => unknown)() : target;
     } else {
-      const currentPerspective = ((stores as Record<string, unknown>).adamStore as Record<string, unknown> | undefined)
-        ?.currentPerspective;
-      p = typeof currentPerspective === 'function' ? (currentPerspective as () => unknown)() : null;
+      // Prefer the injected, backend-neutral $currentDataset(); fall back to the legacy
+      // AD4M-specific adamStore.currentPerspective for back-compat.
+      // PLAN: drop the adamStore fallback once TemplateProvider injects $currentDataset.
+      const currentDataset =
+        ((stores as Record<string, unknown>).$currentDataset as (() => unknown) | undefined) ??
+        (((stores as Record<string, unknown>).adamStore as Record<string, unknown> | undefined)?.currentPerspective as
+          (() => unknown) | undefined);
+      p = typeof currentDataset === 'function' ? currentDataset() : null;
     }
     if (!p) {
       setItems(reconcile([]));
       return;
     }
 
-    // UUID-aware model lookup: prefer perspective-specific dynamic model, fall back to global registry
-    const perspectiveUuid = (p as Record<string, unknown>).uuid as string | undefined;
-    const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.model, perspectiveUuid) : undefined;
+    // Dataset-scoped model lookup: prefer a dataset-specific dynamic model, fall back to the global
+    // registry. Read `uuid` first (the AD4M PerspectiveProxy exposes it, and also an unrelated
+    // `id` = subscription id that must NOT win), falling back to the backend-neutral `id` that a
+    // clean DatasetHandle provides.
+    // PLAN: collapse uuid??id to a single `id` once the AD4M adapter wraps perspectives in DatasetHandles.
+    const datasetId = ((p as Record<string, unknown>).uuid ?? (p as Record<string, unknown>).id) as string | undefined;
+    const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.model, datasetId) : undefined;
     let ModelClass: Record<string, (...args: unknown[]) => unknown>;
     try {
       ModelClass = (dynamicCls ?? getModel(descriptor.model)) as Record<string, (...args: unknown[]) => unknown>;

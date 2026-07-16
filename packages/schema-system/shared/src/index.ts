@@ -89,3 +89,12 @@ export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from '.
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export { getComponentMeta } from './componentMeta';
 export type { ComponentMeta, PropMeta, PropLayer } from './componentMeta';
+export type {
+  DatasetHandle,
+  QueryOptions,
+  QuerySubscription,
+  ModelClass,
+  MutationApi,
+  DataSource,
+  RendererDataBindings,
+} from './dataSource';

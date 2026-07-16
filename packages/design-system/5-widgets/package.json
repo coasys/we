@@ -32,7 +32,6 @@
     "d3-force": "^3.0.0"
   },
   "peerDependencies": {
-    "@coasys/ad4m": "0.11.0",
     "@we/components": "^0.1.0",
     "@we/primitives": "^1.0.0",
     "solid-js": "^1.9.5"
