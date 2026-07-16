@@ -98,13 +98,7 @@ export type {
   DataSource,
   RendererDataBindings,
 } from './dataSource';
-export {
-  modelManifestSchema,
-  validateManifest,
-  getEntity,
-  getProperty,
-  getRelation,
-} from './manifest';
+export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
 export type {
   ModelManifest,
   EntitySchema,
@@ -116,6 +110,8 @@ export type {
 } from './manifest';
 export { queryIRSchema, filterSchema, validateQueryIR } from './queryIR';
 export { validateQueryAgainstManifest } from './queryValidation';
+export { planQuery } from './queryCapabilities';
+export type { AdapterCapabilities, AggregateFn, Disposition, CapabilityGap, QueryPlan } from './queryCapabilities';
 export type {
   QueryIR,
   Filter,
