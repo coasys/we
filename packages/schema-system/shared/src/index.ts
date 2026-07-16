@@ -98,3 +98,19 @@ export type {
   DataSource,
   RendererDataBindings,
 } from './dataSource';
+export {
+  modelManifestSchema,
+  validateManifest,
+  getEntity,
+  getProperty,
+  getRelation,
+} from './manifest';
+export type {
+  ModelManifest,
+  EntitySchema,
+  PropertySchema,
+  RelationSchema,
+  ScalarType,
+  Cardinality,
+  ManifestError,
+} from './manifest';
