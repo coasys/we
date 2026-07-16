@@ -1,0 +1,121 @@
+import { describe, expect, it } from 'vitest';
+
+import { executeQueryIR, type InMemoryDataset } from './queryEngine';
+import type { QueryIR } from './queryIR';
+
+const data: InMemoryDataset = {
+  tables: {
+    Agent: [
+      { id: 'a1', name: 'Ada' },
+      { id: 'a2', name: 'Bo' },
+    ],
+    Post: [
+      { id: 'p1', title: 'Graph theory', content: 'nodes and edges', authorId: 'a1', createdAt: 3 },
+      { id: 'p2', title: 'Cooking', content: 'about graphs too', authorId: 'a2', createdAt: 2 },
+      { id: 'p3', title: 'Weather', content: 'sunny', authorId: 'a1', createdAt: 1 },
+    ],
+    Signal: [
+      { id: 's1', postId: 'p1', signalTypeId: 'like', value: 5 },
+      { id: 's2', postId: 'p1', signalTypeId: 'like', value: 3 },
+      { id: 's3', postId: 'p2', signalTypeId: 'like', value: 1 },
+      { id: 's4', postId: 'p2', signalTypeId: 'star', value: 9 },
+    ],
+  },
+  relations: {
+    Post: {
+      author: { target: 'Agent', cardinality: 'one', foreignKey: 'authorId' },
+      signals: { target: 'Signal', cardinality: 'many', foreignKey: 'postId' },
+    },
+    Agent: { posts: { target: 'Post', cardinality: 'many', foreignKey: 'authorId' } },
+  },
+};
+
+const ids = (rows: { id: unknown }[]) => rows.map((r) => r.id);
+
+describe('executeQueryIR', () => {
+  it('filters a boolean tree (title OR content contains "graph")', () => {
+    const q: QueryIR = {
+      irVersion: 1,
+      entity: 'Post',
+      filter: { or: [{ field: 'title', op: 'contains', value: 'graph' }, { field: 'content', op: 'contains', value: 'graph' }] },
+    };
+    expect(ids(executeQueryIR(q, data))).toEqual(['p1', 'p2']); // p3 excluded
+  });
+
+  it('computes a count aggregate and sorts by it (most-liked first)', () => {
+    const q: QueryIR = {
+      irVersion: 1,
+      entity: 'Post',
+      aggregate: [{ as: 'likeCount', over: 'signals', fn: 'count', filter: { field: 'signalTypeId', op: 'eq', value: 'like' } }],
+      sort: [{ by: 'likeCount', dir: 'desc' }],
+    };
+    const rows = executeQueryIR(q, data);
+    expect(ids(rows)).toEqual(['p1', 'p2', 'p3']); // p1=2 likes, p2=1, p3=0
+    expect(rows.map((r) => r.likeCount)).toEqual([2, 1, 0]);
+  });
+
+  it('computes sum/max aggregates over a filtered related set', () => {
+    const q: QueryIR = {
+      irVersion: 1,
+      entity: 'Post',
+      filter: { field: 'id', op: 'eq', value: 'p2' },
+      aggregate: [
+        { as: 'likeSum', over: 'signals', fn: 'sum', field: 'value', filter: { field: 'signalTypeId', op: 'eq', value: 'like' } },
+        { as: 'topValue', over: 'signals', fn: 'max', field: 'value' },
+      ],
+    };
+    const [row] = executeQueryIR(q, data);
+    expect(row.likeSum).toBe(1); // only s3 (like) = 1
+    expect(row.topValue).toBe(9); // s4 star = 9
+  });
+
+  it('hydrates a to-one relation (author) and a to-many (signals)', () => {
+    const q: QueryIR = { irVersion: 1, entity: 'Post', filter: { field: 'id', op: 'eq', value: 'p1' }, include: { author: true, signals: true } };
+    const [row] = executeQueryIR(q, data) as any[];
+    expect(row.author.name).toBe('Ada');
+    expect(ids(row.signals)).toEqual(['s1', 's2']);
+  });
+
+  it('include with filter + first unwraps a to-many to a single object|null', () => {
+    const q: QueryIR = {
+      irVersion: 1,
+      entity: 'Post',
+      filter: { field: 'id', op: 'eq', value: 'p2' },
+      include: { signals: { filter: { field: 'signalTypeId', op: 'eq', value: 'star' }, first: true } },
+    };
+    const [row] = executeQueryIR(q, data) as any[];
+    expect(row.signals.id).toBe('s4'); // unwrapped single object
+  });
+
+  it('sorts by a to-one relation path (author.name)', () => {
+    const q: QueryIR = { irVersion: 1, entity: 'Post', sort: [{ by: 'author.name', dir: 'asc' }] };
+    // Ada (a1) posts p1,p3 before Bo (a2) post p2; within Ada, stable order p1,p3
+    expect(ids(executeQueryIR(q, data))).toEqual(['p1', 'p3', 'p2']);
+  });
+
+  it('paginates with offset + limit', () => {
+    const q: QueryIR = { irVersion: 1, entity: 'Post', sort: [{ by: 'createdAt', dir: 'desc' }], page: { limit: 1, offset: 1 } };
+    expect(ids(executeQueryIR(q, data))).toEqual(['p2']); // desc: p1,p2,p3 → offset 1, limit 1 → p2
+  });
+
+  it('nested include (Agent → posts → signals)', () => {
+    const q: QueryIR = {
+      irVersion: 1,
+      entity: 'Agent',
+      filter: { field: 'id', op: 'eq', value: 'a1' },
+      include: { posts: { include: { signals: true } } },
+    };
+    const [agent] = executeQueryIR(q, data) as any[];
+    expect(ids(agent.posts)).toEqual(['p1', 'p3']);
+    expect(ids(agent.posts[0].signals)).toEqual(['s1', 's2']);
+  });
+
+  it('relation filter: posts that have >=1 "star" signal', () => {
+    const q: QueryIR = {
+      irVersion: 1,
+      entity: 'Post',
+      filter: { rel: 'signals', op: 'some', where: { field: 'signalTypeId', op: 'eq', value: 'star' } },
+    };
+    expect(ids(executeQueryIR(q, data))).toEqual(['p2']); // only p2 has a star
+  });
+});

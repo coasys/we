@@ -114,6 +114,8 @@ export { planQuery } from './queryCapabilities';
 export type { AdapterCapabilities, AggregateFn, Disposition, CapabilityGap, QueryPlan } from './queryCapabilities';
 export { translateLegacyQuery } from './legacyQuery';
 export type { LegacyQuery, LegacyTranslation } from './legacyQuery';
+export { executeQueryIR } from './queryEngine';
+export type { Row, InMemoryDataset, InMemoryRelation } from './queryEngine';
 export type {
   QueryIR,
   Filter,
