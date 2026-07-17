@@ -1,0 +1,113 @@
+import { describe, expect, it } from 'vitest';
+
+import type { ModelManifest } from './manifest';
+import type { QueryIR } from './queryIR';
+import { validateQueryAgainstManifest } from './queryValidation';
+
+// A small WE-ish manifest to validate queries against.
+const manifest: ModelManifest = {
+  version: '1',
+  entities: {
+    Post: {
+      properties: { title: { type: 'string' }, content: { type: 'string' }, createdAt: { type: 'datetime' } },
+      relations: {
+        author: { target: 'Agent', cardinality: 'one', reverseOf: 'posts' },
+        signals: { target: 'Signal', cardinality: 'many' },
+      },
+    },
+    Agent: {
+      properties: { name: { type: 'string' } },
+      relations: { posts: { target: 'Post', cardinality: 'many', reverseOf: 'author' } },
+    },
+    Signal: {
+      properties: { signalTypeId: { type: 'string' }, author: { type: 'string' }, value: { type: 'number' } },
+      relations: {},
+    },
+  },
+};
+
+// The worked-example feed, this time validated against the manifest above.
+const feed: QueryIR = {
+  irVersion: 1,
+  entity: 'Post',
+  filter: {
+    or: [
+      { field: 'title', op: 'contains', value: 'x' },
+      { field: 'content', op: 'contains', value: 'x' },
+    ],
+  },
+  aggregate: [
+    { as: 'likeCount', over: 'signals', fn: 'count', filter: { field: 'signalTypeId', op: 'eq', value: 'like' } },
+  ],
+  sort: [
+    { by: 'likeCount', dir: 'desc' },
+    { by: 'author.name', dir: 'asc' },
+  ],
+  include: {
+    author: true,
+    signals: { filter: { field: 'signalTypeId', op: 'eq', value: 'like' }, first: true },
+  },
+};
+
+const ok = (q: QueryIR) => validateQueryAgainstManifest(q, manifest);
+
+describe('validateQueryAgainstManifest', () => {
+  it('accepts the worked-example feed (aggregate, sort-by-aggregate + relation path, nested include)', () => {
+    expect(ok(feed).valid).toBe(true);
+  });
+
+  it('rejects an unknown entity', () => {
+    const r = ok({ irVersion: 1, entity: 'Ghost' });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.errors[0].message).toContain('unknown entity "Ghost"');
+  });
+
+  it('rejects a filter on a non-existent property', () => {
+    const r = ok({ irVersion: 1, entity: 'Post', filter: { field: 'titel', op: 'eq', value: 'x' } });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.errors[0].message).toContain('"titel" is not a property of "Post"');
+  });
+
+  it('rejects an include of something that is not a relation', () => {
+    const r = ok({ irVersion: 1, entity: 'Post', include: { title: true } });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.errors[0].message).toContain('"title" is not a relation on "Post"');
+  });
+
+  it('validates include specs against the TARGET entity (catches a bad nested filter)', () => {
+    const r = ok({
+      irVersion: 1,
+      entity: 'Post',
+      include: { author: { filter: { field: 'nope', op: 'eq', value: 1 } } },
+    });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.errors[0].message).toContain('"nope" is not a property of "Agent"');
+  });
+
+  it('rejects an aggregate over a non-relation', () => {
+    const r = ok({ irVersion: 1, entity: 'Post', aggregate: [{ as: 'x', over: 'title', fn: 'count' }] });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.errors[0].message).toContain('"title" is not a relation on "Post"');
+  });
+
+  it('rejects sum/min/max/avg without a field, and a field not on the related entity', () => {
+    expect(ok({ irVersion: 1, entity: 'Post', aggregate: [{ as: 'x', over: 'signals', fn: 'sum' }] }).valid).toBe(
+      false,
+    );
+    const r = ok({ irVersion: 1, entity: 'Post', aggregate: [{ as: 'x', over: 'signals', fn: 'sum', field: 'nope' }] });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.errors[0].message).toContain('"nope" is not a property of "Signal"');
+  });
+
+  it('rejects an aggregate alias that shadows a real property', () => {
+    const r = ok({ irVersion: 1, entity: 'Post', aggregate: [{ as: 'title', over: 'signals', fn: 'count' }] });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.errors[0].message).toContain('shadows a property of "Post"');
+  });
+
+  it('rejects a sort key that resolves to nothing, and a sort path through a to-many relation', () => {
+    expect(ok({ irVersion: 1, entity: 'Post', sort: [{ by: 'nope', dir: 'asc' }] }).valid).toBe(false);
+    // signals is to-many → can't sort by signals.value
+    expect(ok({ irVersion: 1, entity: 'Post', sort: [{ by: 'signals.value', dir: 'asc' }] }).valid).toBe(false);
+  });
+});

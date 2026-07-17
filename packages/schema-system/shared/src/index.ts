@@ -98,13 +98,7 @@ export type {
   DataSource,
   RendererDataBindings,
 } from './dataSource';
-export {
-  modelManifestSchema,
-  validateManifest,
-  getEntity,
-  getProperty,
-  getRelation,
-} from './manifest';
+export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
 export type {
   ModelManifest,
   EntitySchema,
@@ -114,3 +108,23 @@ export type {
   Cardinality,
   ManifestError,
 } from './manifest';
+export { queryIRSchema, filterSchema, validateQueryIR } from './queryIR';
+export { validateQueryAgainstManifest } from './queryValidation';
+export { planQuery } from './queryCapabilities';
+export type { AdapterCapabilities, AggregateFn, Disposition, CapabilityGap, QueryPlan } from './queryCapabilities';
+export { translateLegacyQuery } from './legacyQuery';
+export type { LegacyQuery, LegacyTranslation } from './legacyQuery';
+export { executeQueryIR } from './queryEngine';
+export type { Row, InMemoryDataset, InMemoryRelation } from './queryEngine';
+export type {
+  QueryIR,
+  Filter,
+  Op,
+  Scalar,
+  SortKey,
+  Page,
+  IncludeSpec,
+  IncludeMap,
+  Aggregation,
+  IRError,
+} from './queryIR';
