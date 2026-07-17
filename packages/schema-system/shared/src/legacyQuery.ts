@@ -2,9 +2,10 @@
  * Translate the current AD4M-flavored `$query` into the neutral `QueryIR`. A back-compat translator:
  * existing templates keep their `$query` syntax and this maps it to the IR under the hood.
  *
- * It returns the IR *and* an `unsupported` list — legacy shapes that don't map losslessly and would
- * need a design decision to support: `parent` (relational drill-down) and single/filtered
- * `$`-projections. Surfacing them as data, rather than mis-translating silently, is deliberate.
+ * It returns the IR *and* an `unsupported` list. Most legacy shapes map losslessly — including
+ * `parent` (→ the `scope` drill-down) and single/filtered `$`-projections (→ an aliased `include`
+ * with `over`). `unsupported` now holds only genuinely degenerate shapes (a nested count-projection,
+ * `offset` without `limit`); surfacing them as data rather than mis-translating silently is deliberate.
  *
  * Reference for the legacy grammar: the `$query` docs in `CLAUDE.md`.
  */
@@ -108,9 +109,15 @@ function translateInclude(
           ...(spec.where ? { filter: translateWhere(spec.where as Record<string, unknown>) } : {}),
         });
       } else {
-        // single/filtered projection ($myLike): attaches a related instance under a custom key —
-        // needs include-aliasing, which the IR doesn't have yet.
-        unsupported.push(`${path}.${key}: single/filtered projection (needs include-aliasing in the IR)`);
+        // single/filtered projection ($myLike) → an aliased include over the `from` relation. The
+        // `$`-key is kept as the alias so `$item.$myLike` reads are unchanged; `limit: 1` → `first`.
+        const aliasSpec: IncludeSpec = { over: spec.from as string };
+        if (spec.where) aliasSpec.filter = translateWhere(spec.where as Record<string, unknown>);
+        if (spec.order) aliasSpec.sort = translateOrder(spec.order as Record<string, 'asc' | 'desc'>);
+        if (spec.select) aliasSpec.select = spec.select as string[];
+        if (spec.limit === 1) aliasSpec.first = true;
+        else if (spec.limit != null) aliasSpec.page = { limit: spec.limit as number };
+        map[key] = aliasSpec;
       }
       continue;
     }
@@ -146,7 +153,9 @@ export function translateLegacyQuery(query: LegacyQuery): LegacyTranslation {
   }
   // subscribe defaults true → live default; only record the explicit one-shot case.
   if (query.subscribe === false) ir.live = false;
-  if (query.parent) unsupported.push('parent (relational drill-down — needs reverse-relation mapping)');
+  // `parent` → the neutral `scope` drill-down. Legacy carries no anchor *type* (AD4M resolves it by
+  // id at runtime), so `anchor` is left unset — validation of `via` is skipped, execution resolves it.
+  if (query.parent) ir.scope = { via: query.parent.relation, anchorId: query.parent.id as string | number };
   // `perspective` is intentionally dropped — the dataset handle is injected, not part of the IR.
 
   return { ir, unsupported };

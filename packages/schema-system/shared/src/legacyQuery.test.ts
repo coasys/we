@@ -68,13 +68,30 @@ describe('translateLegacyQuery', () => {
     expect('perspective' in ir).toBe(false);
   });
 
-  it('surfaces the shapes that do not map losslessly (parent, single-projection)', () => {
-    const { unsupported } = translateLegacyQuery({
+  it('maps parent → scope drill-down and a single/filtered projection → an aliased include (no gaps)', () => {
+    const { ir, unsupported } = translateLegacyQuery({
       model: 'Conversation',
       parent: { id: 'ch1', relation: 'conversations' },
       include: { $myLike: { from: 'signals', where: { author: 'did:me' }, limit: 1 } },
     });
-    expect(unsupported).toContainEqual(expect.stringContaining('parent'));
-    expect(unsupported).toContainEqual(expect.stringContaining('single/filtered projection'));
+    expect(unsupported).toEqual([]);
+    // parent → scope (anchor type unknown from legacy, so left unset)
+    expect(ir.scope).toEqual({ via: 'conversations', anchorId: 'ch1' });
+    // $myLike → aliased include over `signals`, limit:1 → first, `$` kept so `$item.$myLike` still reads
+    expect(ir.include).toEqual({
+      $myLike: { over: 'signals', filter: { field: 'author', op: 'eq', value: 'did:me' }, first: true },
+    });
+  });
+
+  it('maps a multi-instance projection (limit > 1) to an aliased include with a page, not first', () => {
+    const { ir, unsupported } = translateLegacyQuery({
+      model: 'Post',
+      include: { $recentLikes: { from: 'signals', order: { createdAt: 'desc' }, limit: 5 } },
+    });
+    expect(unsupported).toEqual([]);
+    expect(ir.include).toEqual({
+      $recentLikes: { over: 'signals', sort: [{ by: 'createdAt', dir: 'desc' }], page: { limit: 5 } },
+    });
+    expect(ir.include!.$recentLikes).not.toHaveProperty('first');
   });
 });

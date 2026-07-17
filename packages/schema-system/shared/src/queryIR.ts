@@ -36,6 +36,13 @@ export interface SortKey {
 export type Page = { limit: number; offset?: number } | { limit: number; after?: string };
 
 export interface IncludeSpec {
+  /**
+   * Source relation, when the map key is an *alias* rather than a relation name — the instance-
+   * returning sibling of an `Aggregation` (both "project over" a relation). Absent = the key itself
+   * IS the relation name (plain hydration). Lets the same relation appear under several aliases
+   * (e.g. `$myLike` filtered to the current agent, alongside a `$likeCount` aggregate over `signals`).
+   */
+  over?: string;
   filter?: Filter;
   sort?: SortKey[];
   page?: Page;
@@ -45,6 +52,21 @@ export interface IncludeSpec {
   first?: boolean;
 }
 export type IncludeMap = Record<string, IncludeSpec | true>;
+
+/**
+ * Drill-down: restrict the result set to entities reached from a fixed anchor instance by traversing
+ * one of the anchor's relations — the neutral form of a master-detail "children of X" query. Kept
+ * grammar-neutral about hierarchy (the relation name carries that where it's real); implicitly ANDed
+ * with `filter`.
+ */
+export interface Scope {
+  /** Relation on the anchor entity whose targets are this query's `entity` (inbound traversal). */
+  via: string;
+  /** The anchor instance's id. */
+  anchorId: string | number;
+  /** Optional anchor entity type — when present, enables manifest validation of `via`. */
+  anchor?: string;
+}
 
 export interface Aggregation {
   /** Alias — becomes a field on each result row and is referenceable in `sort.by`. */
@@ -72,6 +94,8 @@ export interface QueryIR {
   select?: string[];
   include?: IncludeMap;
   aggregate?: Aggregation[];
+  /** Drill-down from a fixed anchor instance (master-detail); ANDed with `filter`. */
+  scope?: Scope;
   /** Subscription vs one-shot. */
   live?: boolean;
 }
@@ -109,6 +133,7 @@ const pageSchema = z.union([
 
 const includeSpecSchema: z.ZodType<IncludeSpec> = z.lazy(() =>
   z.object({
+    over: z.string().optional(),
     filter: filterSchema.optional(),
     sort: z.array(sortKeySchema).optional(),
     page: pageSchema.optional(),
@@ -129,6 +154,12 @@ const aggregationSchema = z.object({
   filter: filterSchema.optional(),
 });
 
+const scopeSchema = z.object({
+  via: z.string(),
+  anchorId: z.union([z.string(), z.number()]),
+  anchor: z.string().optional(),
+});
+
 export const queryIRSchema: z.ZodType<QueryIR> = z.object({
   irVersion: z.literal(1),
   entity: z.string(),
@@ -138,6 +169,7 @@ export const queryIRSchema: z.ZodType<QueryIR> = z.object({
   select: z.array(z.string()).optional(),
   include: includeMapSchema.optional(),
   aggregate: z.array(aggregationSchema).optional(),
+  scope: scopeSchema.optional(),
   live: z.boolean().optional(),
 });
 

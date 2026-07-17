@@ -126,5 +126,6 @@ export type {
   IncludeSpec,
   IncludeMap,
   Aggregation,
+  Scope,
   IRError,
 } from './queryIR';

@@ -8,7 +8,7 @@
  * against it. Structural IR validity (shape/operators) is `validateQueryIR` — run that first.
  */
 import type { EntitySchema, ModelManifest } from './manifest';
-import type { Aggregation, Filter, IncludeMap, IRError, QueryIR, SortKey } from './queryIR';
+import type { Aggregation, Filter, IncludeMap, IRError, QueryIR, Scope, SortKey } from './queryIR';
 
 function propExists(entity: EntitySchema, name: string): boolean {
   return name === 'id' || name in entity.properties;
@@ -111,19 +111,58 @@ function validateInclude(
 ): void {
   const entity = manifest.entities[entityName];
   if (!entity) return;
-  for (const [relName, spec] of Object.entries(include)) {
+  for (const [key, spec] of Object.entries(include)) {
+    // Aliased include (`over` present) → the key is an alias; otherwise the key IS the relation name.
+    const aliased = spec !== true && spec.over !== undefined;
+    const relName = aliased ? spec.over! : key;
     const rel = entity.relations[relName];
     if (!rel) {
-      errors.push({ path: `${path}.${relName}`, message: `"${relName}" is not a relation on "${entityName}"` });
+      errors.push({
+        path: `${path}.${key}`,
+        message: aliased
+          ? `"${relName}" (aliased as "${key}") is not a relation on "${entityName}"`
+          : `"${key}" is not a relation on "${entityName}"`,
+      });
       continue;
+    }
+    // An alias must not shadow a real property, so result reads stay unambiguous — mirrors aggregates.
+    if (aliased && key in entity.properties) {
+      errors.push({ path: `${path}.${key}`, message: `include alias "${key}" shadows a property of "${entityName}"` });
     }
     if (spec === true) continue;
     const target = rel.target;
-    const sub = `${path}.${relName}`;
+    const sub = `${path}.${key}`;
     if (spec.filter) validateFilter(spec.filter, target, manifest, `${sub}.filter`, errors);
     if (spec.sort) validateSort(spec.sort, target, manifest, new Set(), `${sub}.sort`, errors);
     if (spec.select) validateSelect(spec.select, target, manifest, `${sub}.select`, errors);
     if (spec.include) validateInclude(spec.include, target, manifest, `${sub}.include`, errors);
+  }
+}
+
+/** Validate a drill-down scope. `via` is only checkable when the anchor entity type is known. */
+function validateScope(
+  scope: Scope,
+  entityName: string,
+  manifest: ModelManifest,
+  path: string,
+  errors: IRError[],
+): void {
+  if (!scope.anchor) return;
+  const anchor = manifest.entities[scope.anchor];
+  if (!anchor) {
+    errors.push({ path: `${path}.anchor`, message: `unknown anchor entity "${scope.anchor}"` });
+    return;
+  }
+  const rel = anchor.relations[scope.via];
+  if (!rel) {
+    errors.push({ path: `${path}.via`, message: `"${scope.via}" is not a relation on "${scope.anchor}"` });
+    return;
+  }
+  if (rel.target !== entityName) {
+    errors.push({
+      path: `${path}.via`,
+      message: `relation "${scope.via}" on "${scope.anchor}" targets "${rel.target}", not "${entityName}"`,
+    });
   }
 }
 
@@ -174,6 +213,7 @@ export function validateQueryAgainstManifest(
   if (query.sort) validateSort(query.sort, query.entity, manifest, aggregateAliases, 'sort', errors);
   if (query.select) validateSelect(query.select, query.entity, manifest, 'select', errors);
   if (query.include) validateInclude(query.include, query.entity, manifest, 'include', errors);
+  if (query.scope) validateScope(query.scope, query.entity, manifest, 'scope', errors);
 
   return errors.length ? { valid: false, errors } : { valid: true };
 }

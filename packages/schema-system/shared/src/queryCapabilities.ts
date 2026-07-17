@@ -193,6 +193,11 @@ export function planQuery(query: QueryIR, cap: AdapterCapabilities): QueryPlan {
   });
   if (query.sort) analyzeSort(query.sort, aggregateAliases, cap, 'sort', gaps);
   if (query.page) analyzePage(query.page, cap, 'page', gaps);
+  if (query.scope && !cap.relationFilters) {
+    // Drill-down is a relation-scoped restriction; a backend without native relation filters can
+    // still do it compute-up (fetch the entity, filter by the anchor's foreign key).
+    gaps.push({ feature: 'scope', path: 'scope', disposition: 'compute-up', note: 'drill-down not native' });
+  }
   if (query.live) analyzeLive(cap, gaps);
 
   return { runnable: !gaps.some((g) => g.disposition === 'unsupported'), gaps };

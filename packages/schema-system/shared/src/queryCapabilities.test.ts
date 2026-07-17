@@ -89,4 +89,13 @@ describe('planQuery', () => {
     expect(planQuery({ irVersion: 1, entity: 'Post', page: { limit: 10, offset: 20 } }, minimal).gaps).toEqual([]);
     expect(planQuery({ irVersion: 1, entity: 'Post', page: { limit: 10 } }, minimal).gaps).toEqual([]);
   });
+
+  it('scope (drill-down) is native with relation filters, compute-up without them', () => {
+    const q: QueryIR = { irVersion: 1, entity: 'Conversation', scope: { via: 'conversations', anchorId: 'ch1' } };
+    expect(planQuery(q, full).gaps.some((g) => g.feature === 'scope')).toBe(false);
+    const noRelFilters: AdapterCapabilities = { ...full, relationFilters: false };
+    const plan = planQuery(q, noRelFilters);
+    expect(plan.runnable).toBe(true); // compute-up, not a hard fail
+    expect(plan.gaps).toContainEqual(expect.objectContaining({ feature: 'scope', disposition: 'compute-up' }));
+  });
 });

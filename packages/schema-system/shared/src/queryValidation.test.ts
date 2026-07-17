@@ -110,4 +110,55 @@ describe('validateQueryAgainstManifest', () => {
     // signals is to-many → can't sort by signals.value
     expect(ok({ irVersion: 1, entity: 'Post', sort: [{ by: 'signals.value', dir: 'asc' }] }).valid).toBe(false);
   });
+
+  it('accepts a drill-down scope whose anchor relation targets the entity', () => {
+    // Agent.posts → Post, so scoping Posts to an Agent is valid.
+    expect(ok({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1', anchor: 'Agent' } }).valid).toBe(
+      true,
+    );
+  });
+
+  it('skips scope validation when the anchor type is absent (the legacy-shim case)', () => {
+    expect(ok({ irVersion: 1, entity: 'Post', scope: { via: 'whatever', anchorId: 'a1' } }).valid).toBe(true);
+  });
+
+  it('rejects a scope via a non-relation, or one whose target is not the queried entity', () => {
+    const r1 = ok({ irVersion: 1, entity: 'Post', scope: { via: 'nope', anchorId: 'a1', anchor: 'Agent' } });
+    expect(r1.valid).toBe(false);
+    if (!r1.valid) expect(r1.errors[0].message).toContain('"nope" is not a relation on "Agent"');
+    // Post.signals → Signal, so scoping *Posts* via Post.signals (target Signal, not Post) is wrong.
+    const r2 = ok({ irVersion: 1, entity: 'Post', scope: { via: 'signals', anchorId: 'x', anchor: 'Post' } });
+    expect(r2.valid).toBe(false);
+    if (!r2.valid) expect(r2.errors[0].message).toContain('targets "Signal", not "Post"');
+  });
+
+  it('rejects a scope with an unknown anchor entity', () => {
+    const r = ok({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1', anchor: 'Ghost' } });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.errors[0].message).toContain('unknown anchor entity "Ghost"');
+  });
+
+  it('accepts an aliased include (`over`) and validates its filter against the relation target', () => {
+    expect(
+      ok({
+        irVersion: 1,
+        entity: 'Post',
+        include: {
+          $myLike: { over: 'signals', filter: { field: 'signalTypeId', op: 'eq', value: 'like' }, first: true },
+        },
+      }).valid,
+    ).toBe(true);
+  });
+
+  it('rejects an aliased include whose `over` is not a relation', () => {
+    const r = ok({ irVersion: 1, entity: 'Post', include: { $x: { over: 'title' } } });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.errors[0].message).toContain('"title" (aliased as "$x") is not a relation on "Post"');
+  });
+
+  it('rejects an aliased include whose alias shadows a real property', () => {
+    const r = ok({ irVersion: 1, entity: 'Post', include: { title: { over: 'signals' } } });
+    expect(r.valid).toBe(false);
+    if (!r.valid) expect(r.errors[0].message).toContain('include alias "title" shadows a property of "Post"');
+  });
 });
