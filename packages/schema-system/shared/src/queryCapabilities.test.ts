@@ -8,6 +8,7 @@ const full: AdapterCapabilities = {
   operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'startsWith', 'endsWith', 'exists'],
   booleanCombinators: true,
   relationFilters: true,
+  scope: true,
   include: { supported: true },
   aggregate: ['count', 'sum', 'min', 'max', 'avg'],
   sort: { multiKey: true, byRelationPath: true, byAggregate: true },
@@ -20,6 +21,7 @@ const minimal: AdapterCapabilities = {
   operators: ['eq'],
   booleanCombinators: false,
   relationFilters: false,
+  scope: false,
   include: { supported: false },
   aggregate: [],
   sort: { multiKey: false, byRelationPath: false, byAggregate: false },
@@ -90,11 +92,11 @@ describe('planQuery', () => {
     expect(planQuery({ irVersion: 1, entity: 'Post', page: { limit: 10 } }, minimal).gaps).toEqual([]);
   });
 
-  it('scope (drill-down) is native with relation filters, compute-up without them', () => {
+  it('scope (drill-down) is native when the adapter declares it, compute-up otherwise', () => {
     const q: QueryIR = { irVersion: 1, entity: 'Conversation', scope: { via: 'conversations', anchorId: 'ch1' } };
-    expect(planQuery(q, full).gaps.some((g) => g.feature === 'scope')).toBe(false);
-    const noRelFilters: AdapterCapabilities = { ...full, relationFilters: false };
-    const plan = planQuery(q, noRelFilters);
+    expect(planQuery(q, full).gaps.some((g) => g.feature === 'scope')).toBe(false); // full.scope = true
+    const noScope: AdapterCapabilities = { ...full, scope: false };
+    const plan = planQuery(q, noScope);
     expect(plan.runnable).toBe(true); // compute-up, not a hard fail
     expect(plan.gaps).toContainEqual(expect.objectContaining({ feature: 'scope', disposition: 'compute-up' }));
   });

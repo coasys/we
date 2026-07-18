@@ -112,7 +112,7 @@ export { queryIRSchema, filterSchema, validateQueryIR } from './queryIR';
 export { validateQueryAgainstManifest } from './queryValidation';
 export { planQuery } from './queryCapabilities';
 export type { AdapterCapabilities, AggregateFn, Disposition, CapabilityGap, QueryPlan } from './queryCapabilities';
-export { translateLegacyQuery } from './legacyQuery';
+export { translateLegacyQuery, irToLegacyQuery } from './legacyQuery';
 export type { LegacyQuery, LegacyTranslation } from './legacyQuery';
 export { executeQueryIR } from './queryEngine';
 export type { Row, InMemoryDataset, InMemoryRelation } from './queryEngine';

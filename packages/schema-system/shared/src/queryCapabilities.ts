@@ -17,6 +17,8 @@ export interface AdapterCapabilities {
   booleanCombinators: boolean;
   /** `{ rel, some/none/exists }` relation-scoped filters. */
   relationFilters: boolean;
+  /** Native drill-down from an anchor instance (the IR's `scope`; e.g. AD4M's `parent`). */
+  scope: boolean;
   include: { supported: boolean; maxDepth?: number };
   /** Aggregate functions supported natively. */
   aggregate: AggregateFn[];
@@ -193,9 +195,9 @@ export function planQuery(query: QueryIR, cap: AdapterCapabilities): QueryPlan {
   });
   if (query.sort) analyzeSort(query.sort, aggregateAliases, cap, 'sort', gaps);
   if (query.page) analyzePage(query.page, cap, 'page', gaps);
-  if (query.scope && !cap.relationFilters) {
-    // Drill-down is a relation-scoped restriction; a backend without native relation filters can
-    // still do it compute-up (fetch the entity, filter by the anchor's foreign key).
+  if (query.scope && !cap.scope) {
+    // A backend without native drill-down can still do it compute-up: fetch the entity and filter by
+    // the anchor's foreign key.
     gaps.push({ feature: 'scope', path: 'scope', disposition: 'compute-up', note: 'drill-down not native' });
   }
   if (query.live) analyzeLive(cap, gaps);
