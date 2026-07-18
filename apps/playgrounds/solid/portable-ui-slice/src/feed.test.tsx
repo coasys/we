@@ -7,6 +7,7 @@
  * symptom. With dedupe (see vitest.config.ts / vite.config.ts) reactivity works and this passes.
  */
 import { render } from '@solidjs/testing-library';
+import { createSignal } from 'solid-js';
 import { describe, expect, it } from 'vitest';
 
 import { feedTemplate } from './feedTemplate';
@@ -80,6 +81,26 @@ describe('portable-ui harness — real design-system components over a non-AD4M 
     expect(text).toContain('Graph theory');
     expect(text).toContain('Cooking');
     expect(text).not.toContain('Weather');
+  });
+
+  it('re-routes live when $useQueryIR flips (reactive accessor, no remount)', async () => {
+    // $useQueryIR as a reactive accessor — flipping it must re-run the query effect (route through the
+    // IR) without a remount, exactly like the live toggle on the Queries test page.
+    const backend = seed();
+    const [useIR, setUseIR] = createSignal(false);
+    const stores = { ...backend.stores, $useQueryIR: useIR };
+    const { container } = render(() => <RenderSchema node={feedTemplate} stores={stores} registry={registry} />);
+    await tick();
+    // flag off → legacy path → correct
+    expect(container.textContent).toContain('Graph theory');
+    expect(container.textContent).not.toContain('Weather');
+
+    // flip on → query effect re-runs, routes through the IR → still correct, no reload
+    setUseIR(true);
+    await tick();
+    expect(container.textContent).toContain('Graph theory');
+    expect(container.textContent).toContain('Cooking');
+    expect(container.textContent).not.toContain('Weather');
   });
 });
 

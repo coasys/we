@@ -259,10 +259,12 @@ function createQuerySignal(
       ...resolvedParams,
       ...(resolvedInclude !== undefined && { include: resolvedInclude }),
     };
-    // Route through the QueryIR when enabled via `seed.features.useQueryIR` (injected as `$useQueryIR`).
-    if ((stores as Record<string, unknown>).$useQueryIR === true) {
-      queryOptions = routeQueryThroughIR(descriptor.model, queryOptions);
-    }
+    // Route through the QueryIR when enabled. `$useQueryIR` is a reactive accessor (default from
+    // `seed.features.useQueryIR`, live-toggled on the Queries test page); reading it *here*, inside the
+    // effect, makes the query re-run when it flips — so toggling re-routes without a reload.
+    const irFlag = (stores as Record<string, unknown>).$useQueryIR;
+    const useQueryIR = typeof irFlag === 'function' ? (irFlag as () => unknown)() === true : irFlag === true;
+    if (useQueryIR) queryOptions = routeQueryThroughIR(descriptor.model, queryOptions);
 
     // AD4M model instances expose `id` as a prototype getter, not an own enumerable
     // property, so Solid's reconcile({ key: 'id' }) cannot find it for keyed diffing.

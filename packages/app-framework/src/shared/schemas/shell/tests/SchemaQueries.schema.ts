@@ -48,6 +48,37 @@ function labeledRow(label: string, query: SchemaProp): SchemaNode {
 // Sections
 // ---------------------------------------------------------------------------
 
+// Live toggle — flips the QueryIR routing at runtime (no reload); watch sections re-route.
+const irToggle: SchemaNode = {
+  type: 'Row',
+  props: { gap: '300', ay: 'center', wrap: true, bg: 'neutral-0', border: '1px solid neutral-200', r: '400', p: '300' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        variant: { $if: { condition: { $store: 'queryIR.enabled' }, then: 'primary', else: 'secondary' } },
+        onClick: { $action: 'queryIR.toggle' },
+      },
+      children: [
+        {
+          type: 'we-icon',
+          props: {
+            name: { $if: { condition: { $store: 'queryIR.enabled' }, then: 'toggle-right', else: 'toggle-left' } },
+          },
+        },
+        {
+          $if: { condition: { $store: 'queryIR.enabled' }, then: 'QueryIR routing: ON', else: 'QueryIR routing: OFF' },
+        },
+      ],
+    },
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'neutral-500' },
+      children: ['Flip live — every section re-routes without a reload. Watch for anything that changes.'],
+    },
+  ],
+};
+
 const seedControls: SchemaNode = {
   type: 'Row',
   props: { gap: '300', ay: 'center', wrap: true },
@@ -206,7 +237,7 @@ export const schemaQueriesTemplate: TemplateSchema = {
     name: 'Queries',
     description: 'Exercises every $query shape through the QueryIR routing (seed.features.useQueryIR)',
     icon: 'magnifying-glass',
-    stores: { testStore: {} },
+    stores: { testStore: {}, queryIR: {} },
   },
   type: 'Column',
   props: { width: '100%', bg: 'neutral-50', gap: '400', p: '400' },
@@ -218,6 +249,7 @@ export const schemaQueriesTemplate: TemplateSchema = {
         'Toggle seed.features.useQueryIR and reload — every section should render identically, and only the Flux drill-down should log a [query-ir] fallback.',
       ],
     },
+    irToggle,
     seedControls,
     filterSection,
     sortSection,

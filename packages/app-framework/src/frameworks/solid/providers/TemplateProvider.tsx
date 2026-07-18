@@ -68,6 +68,12 @@ export default function TemplateProvider() {
     },
   };
 
+  // Live toggle for the QueryIR routing: default from the seed, flippable at runtime (no reload) on
+  // the Queries test page. The renderer reads `$useQueryIR` reactively, so flipping re-routes queries.
+  const [queryIREnabled, setQueryIREnabled] = createSignal(
+    (weSeedFile as unknown as WeSeedFile).features?.useQueryIR === true,
+  );
+
   const stores: Stores = {
     adamStore,
     aiStore,
@@ -81,7 +87,12 @@ export default function TemplateProvider() {
     $getModel: getModel,
     $getModelForPerspective: getModelForPerspective,
     $onError: (msg: string) => toastService.error(msg),
-    $useQueryIR: (weSeedFile as unknown as WeSeedFile).features?.useQueryIR === true,
+    $useQueryIR: queryIREnabled,
+    queryIR: {
+      enabled: queryIREnabled,
+      toggle: () => setQueryIREnabled((v) => !v),
+      set: (v: boolean) => setQueryIREnabled(v),
+    },
   };
 
   // Resolves a dot-path string like 'adamStore.rootPerspective' against the stores object.
