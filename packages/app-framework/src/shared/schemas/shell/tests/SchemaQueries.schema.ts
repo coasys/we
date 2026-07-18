@@ -56,18 +56,24 @@ const irToggle: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        variant: { $if: { condition: { $store: 'queryIR.enabled' }, then: 'primary', else: 'secondary' } },
-        onClick: { $action: 'queryIR.toggle' },
+        variant: { $if: { condition: { $store: 'testStore.queryIRenabled' }, then: 'primary', else: 'secondary' } },
+        onClick: { $action: 'testStore.toggleQueryIR' },
       },
       children: [
         {
           type: 'we-icon',
           props: {
-            name: { $if: { condition: { $store: 'queryIR.enabled' }, then: 'toggle-right', else: 'toggle-left' } },
+            name: {
+              $if: { condition: { $store: 'testStore.queryIRenabled' }, then: 'toggle-right', else: 'toggle-left' },
+            },
           },
         },
         {
-          $if: { condition: { $store: 'queryIR.enabled' }, then: 'QueryIR routing: ON', else: 'QueryIR routing: OFF' },
+          $if: {
+            condition: { $store: 'testStore.queryIRenabled' },
+            then: 'QueryIR routing: ON',
+            else: 'QueryIR routing: OFF',
+          },
         },
       ],
     },
@@ -104,12 +110,20 @@ const filterSection = section(
     props: { gap: '300' },
     children: [
       labeledRow("status = 'active'", {
-        $query: { model: 'TestItem', where: { status: 'active' }, order: { name: 'asc' } },
+        $query: {
+          model: 'TestItem',
+          perspective: 'testStore.perspective',
+          where: { status: 'active' },
+          order: { name: 'asc' },
+        },
       }),
-      labeledRow("name contains 'et'", { $query: { model: 'TestItem', where: { name: { contains: 'et' } } } }),
+      labeledRow("name contains 'et'", {
+        $query: { model: 'TestItem', perspective: 'testStore.perspective', where: { name: { contains: 'et' } } },
+      }),
       labeledRow("draft OR name~'lph'", {
         $query: {
           model: 'TestItem',
+          perspective: 'testStore.perspective',
           where: { OR: [{ status: 'draft' }, { name: { contains: 'lph' } }] },
           order: { name: 'asc' },
         },
@@ -125,8 +139,12 @@ const sortSection = section(
     type: 'Column',
     props: { gap: '300' },
     children: [
-      labeledRow('order name asc', { $query: { model: 'TestItem', order: { name: 'asc' } } }),
-      labeledRow('order name desc', { $query: { model: 'TestItem', order: { name: 'desc' } } }),
+      labeledRow('order name asc', {
+        $query: { model: 'TestItem', perspective: 'testStore.perspective', order: { name: 'asc' } },
+      }),
+      labeledRow('order name desc', {
+        $query: { model: 'TestItem', perspective: 'testStore.perspective', order: { name: 'desc' } },
+      }),
     ],
   },
 );
@@ -138,8 +156,18 @@ const pageSection = section(
     type: 'Column',
     props: { gap: '300' },
     children: [
-      labeledRow('limit 2', { $query: { model: 'TestItem', order: { name: 'asc' }, limit: 2 } }),
-      labeledRow('limit 2, offset 1', { $query: { model: 'TestItem', order: { name: 'asc' }, limit: 2, offset: 1 } }),
+      labeledRow('limit 2', {
+        $query: { model: 'TestItem', perspective: 'testStore.perspective', order: { name: 'asc' }, limit: 2 },
+      }),
+      labeledRow('limit 2, offset 1', {
+        $query: {
+          model: 'TestItem',
+          perspective: 'testStore.perspective',
+          order: { name: 'asc' },
+          limit: 2,
+          offset: 1,
+        },
+      }),
     ],
   },
 );
@@ -154,6 +182,7 @@ const projectionSection = section(
       items: {
         $query: {
           model: 'TestItem',
+          perspective: 'testStore.perspective',
           order: { name: 'asc' },
           include: {
             children: true,
@@ -206,7 +235,9 @@ const liveSection = section(
         props: { variant: 'secondary', onClick: { $action: 'testStore.createTestItem' } },
         children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add item'],
       },
-      labeledRow('all, name asc', { $query: { model: 'TestItem', order: { name: 'asc' } } }),
+      labeledRow('all, name asc', {
+        $query: { model: 'TestItem', perspective: 'testStore.perspective', order: { name: 'asc' } },
+      }),
     ],
   },
 );
@@ -237,7 +268,7 @@ export const schemaQueriesTemplate: TemplateSchema = {
     name: 'Queries',
     description: 'Exercises every $query shape through the QueryIR routing (seed.features.useQueryIR)',
     icon: 'magnifying-glass',
-    stores: { testStore: {}, queryIR: {} },
+    stores: { testStore: {} },
   },
   type: 'Column',
   props: { width: '100%', bg: 'neutral-50', gap: '400', p: '400' },

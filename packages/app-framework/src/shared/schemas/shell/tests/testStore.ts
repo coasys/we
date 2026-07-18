@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { PerspectiveProxy } from '@coasys/ad4m';
 import { Ad4mModel, HasMany, Model, Property } from '@coasys/ad4m';
+import { queryIRFlag } from '@shared/queryIRFlag';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { type Accessor, createEffect, createSignal } from 'solid-js';
 
@@ -286,6 +287,8 @@ export function createTestStore(testPerspective: Accessor<PerspectiveProxy | nul
     deleteTestItem,
     seedQueryData,
     queryOwner,
+    queryIRenabled: queryIRFlag.enabled,
+    toggleQueryIR: queryIRFlag.toggle,
 
     // Benchmark
     benchLastRender,

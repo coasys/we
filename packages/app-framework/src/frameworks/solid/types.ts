@@ -34,8 +34,6 @@ export type Stores = {
   $getModelForPerspective?: (name: string, perspectiveUuid?: string) => ModelClass | undefined;
   $onError?: (message: string) => void;
   /** Route template queries through the neutral QueryIR — reactive accessor; default from
-   *  `seed.features.useQueryIR`, live-toggled via `queryIR`. (A plain boolean is also accepted.) */
+   *  `seed.features.useQueryIR` (see `queryIRFlag`). A plain boolean is also accepted. */
   $useQueryIR?: boolean | (() => boolean);
-  /** Live toggle for the QueryIR routing (driven from the Queries test page). */
-  queryIR?: { enabled: () => boolean; toggle: () => void; set: (v: boolean) => void };
 } & Record<string, unknown>;

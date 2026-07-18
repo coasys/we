@@ -1,4 +1,5 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
+import { queryIRFlag } from '@shared/queryIRFlag';
 import { getModel, getModelForPerspective } from '@shared/registries/modelRegistry';
 import { shellRegistry } from '@shared/registries/shellRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
@@ -19,8 +20,6 @@ import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { createEffect, createSignal, onMount, Show } from 'solid-js';
 
-import weSeedFile from '../../../../../../we-seed.json';
-import type { WeSeedFile } from '../../../types/seed';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
 import { buildRoutes } from '../utils/buildRoutes';
@@ -68,12 +67,6 @@ export default function TemplateProvider() {
     },
   };
 
-  // Live toggle for the QueryIR routing: default from the seed, flippable at runtime (no reload) on
-  // the Queries test page. The renderer reads `$useQueryIR` reactively, so flipping re-routes queries.
-  const [queryIREnabled, setQueryIREnabled] = createSignal(
-    (weSeedFile as unknown as WeSeedFile).features?.useQueryIR === true,
-  );
-
   const stores: Stores = {
     adamStore,
     aiStore,
@@ -87,12 +80,7 @@ export default function TemplateProvider() {
     $getModel: getModel,
     $getModelForPerspective: getModelForPerspective,
     $onError: (msg: string) => toastService.error(msg),
-    $useQueryIR: queryIREnabled,
-    queryIR: {
-      enabled: queryIREnabled,
-      toggle: () => setQueryIREnabled((v) => !v),
-      set: (v: boolean) => setQueryIREnabled(v),
-    },
+    $useQueryIR: queryIRFlag.enabled, // reactive; default from the seed, live-toggled via testStore
   };
 
   // Resolves a dot-path string like 'adamStore.rootPerspective' against the stores object.
