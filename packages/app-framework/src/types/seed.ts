@@ -24,6 +24,17 @@ export interface WeSeedFile {
     license?: string;
   };
 
+  /** Experimental feature flags (dev/rollout toggles read by the running app). */
+  features?: {
+    /**
+     * Route each template query through the neutral QueryIR (translateLegacyQuery → irToLegacyQuery)
+     * before it reaches the backend. Off by default; falls back to the legacy path for anything the
+     * IR can't yet express, so it's always safe. In dev the seed is a watched static import, so
+     * flipping this + reloading takes effect (a production build bakes the seed → needs a rebuild).
+     */
+    useQueryIR?: boolean;
+  };
+
   /** Host app customization (WE shell) — optional white-labeling */
   host?: {
     /** Theme overrides for the host */

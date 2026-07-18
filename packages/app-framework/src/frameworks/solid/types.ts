@@ -33,4 +33,6 @@ export type Stores = {
   $getModel?: (name: string) => ModelClass;
   $getModelForPerspective?: (name: string, perspectiveUuid?: string) => ModelClass | undefined;
   $onError?: (message: string) => void;
+  /** Route template queries through the neutral QueryIR (from `seed.features.useQueryIR`). */
+  $useQueryIR?: boolean;
 } & Record<string, unknown>;

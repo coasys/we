@@ -259,11 +259,10 @@ function createQuerySignal(
       ...resolvedParams,
       ...(resolvedInclude !== undefined && { include: resolvedInclude }),
     };
-    // Route through the QueryIR when enabled (stores flag or `localStorage['we:query-ir']==='1'`).
-    const useQueryIR =
-      (stores as Record<string, unknown>).$useQueryIR === true ||
-      (typeof localStorage !== 'undefined' && localStorage.getItem('we:query-ir') === '1');
-    if (useQueryIR) queryOptions = routeQueryThroughIR(descriptor.model, queryOptions);
+    // Route through the QueryIR when enabled via `seed.features.useQueryIR` (injected as `$useQueryIR`).
+    if ((stores as Record<string, unknown>).$useQueryIR === true) {
+      queryOptions = routeQueryThroughIR(descriptor.model, queryOptions);
+    }
 
     // AD4M model instances expose `id` as a prototype getter, not an own enumerable
     // property, so Solid's reconcile({ key: 'id' }) cannot find it for keyed diffing.

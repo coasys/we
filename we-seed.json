@@ -6,6 +6,10 @@
     "author": "James Weir"
   },
 
+  "features": {
+    "useQueryIR": false
+  },
+
   "ad4m": {
     "dataPath": "~/.we-native-app",
     "executorPath": "../ad4m/target/release/ad4m-executor",
