@@ -1,4 +1,5 @@
 import type {
+  LegacyQuery,
   LocalFieldMeta,
   LocalStateField,
   MapProp,
@@ -8,10 +9,12 @@ import type {
 } from '@we/schema-shared';
 import {
   hasToken,
+  irToLegacyQuery,
   REACTIVE_ACCESSOR,
   resolveProp,
   resolveQueryProp,
   themeToStyle,
+  translateLegacyQuery,
   validateField,
 } from '@we/schema-shared';
 import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show } from 'solid-js';
@@ -169,6 +172,28 @@ function composeHandlers(handlers: unknown[]): (...args: unknown[]) => void {
  * Create a reactive signal that subscribes to a $query and updates with results.
  * Must be called within a Solid reactive owner (component or createRoot).
  */
+/**
+ * Optional dogfood: send the (already token-resolved) legacy query through the neutral `QueryIR` and
+ * back before it reaches the backend, so the live app actually exercises the IR round-trip. Falls back
+ * to the original options for anything the IR can't yet express (a `parent` drill-down → `unsupported`)
+ * or on any error, so it is always safe. Gated by `$useQueryIR`; off by default.
+ */
+function routeQueryThroughIR(model: string, options: Record<string, unknown>): Record<string, unknown> {
+  try {
+    const { ir, unsupported } = translateLegacyQuery({ model, ...options } as LegacyQuery);
+    if (unsupported.length > 0) {
+      console.debug('[query-ir] fallback (unsupported):', model, unsupported);
+      return options;
+    }
+    const rebuilt = { ...(irToLegacyQuery(ir) as Record<string, unknown>) };
+    delete rebuilt.model; // model is passed separately to the backend; options carry only the query
+    return rebuilt;
+  } catch (err) {
+    console.debug('[query-ir] fallback (error):', model, err);
+    return options;
+  }
+}
+
 function createQuerySignal(
   descriptor: QueryDescriptor,
   stores: unknown,
@@ -230,10 +255,15 @@ function createQuerySignal(
             boolean | Record<string, unknown>
           >)
         : undefined;
-    const queryOptions = {
+    let queryOptions: Record<string, unknown> = {
       ...resolvedParams,
       ...(resolvedInclude !== undefined && { include: resolvedInclude }),
     };
+    // Route through the QueryIR when enabled (stores flag or `localStorage['we:query-ir']==='1'`).
+    const useQueryIR =
+      (stores as Record<string, unknown>).$useQueryIR === true ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('we:query-ir') === '1');
+    if (useQueryIR) queryOptions = routeQueryThroughIR(descriptor.model, queryOptions);
 
     // AD4M model instances expose `id` as a prototype getter, not an own enumerable
     // property, so Solid's reconcile({ key: 'id' }) cannot find it for keyed diffing.

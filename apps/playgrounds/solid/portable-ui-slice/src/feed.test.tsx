@@ -67,6 +67,20 @@ describe('portable-ui harness — real design-system components over a non-AD4M 
 
     expect(container.textContent).toContain('Graph databases');
   });
+
+  it('renders identically with the QueryIR routing enabled ($useQueryIR)', async () => {
+    // Flag on → createQuerySignal round-trips each query through translateLegacyQuery → irToLegacyQuery
+    // before hitting the backend. The feed must render exactly the same (proves the live IR path).
+    const backend = seed();
+    const stores = { ...backend.stores, $useQueryIR: true };
+    const { container } = render(() => <RenderSchema node={feedTemplate} stores={stores} registry={registry} />);
+    await tick();
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('Graph theory');
+    expect(text).toContain('Cooking');
+    expect(text).not.toContain('Weather');
+  });
 });
 
 // Local wrapper so the test mirrors main.tsx's mount exactly.
