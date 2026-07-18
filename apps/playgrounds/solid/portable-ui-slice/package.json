@@ -1,9 +1,9 @@
 {
-  "name": "@we/playground-portable-slice",
   "private": true,
+  "name": "@we/playground-portable-slice",
   "version": "0.0.0",
-  "type": "module",
   "description": "Browser harness — WE's renderer + design system over a non-AD4M in-memory backend.",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
