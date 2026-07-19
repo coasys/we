@@ -182,30 +182,30 @@ function composeHandlers(handlers: unknown[]): (...args: unknown[]) => void {
  * default.
  */
 function routeQueryThroughIR(
-  model: string,
+  entity: string,
   options: Record<string, unknown>,
   adapter: QueryAdapter,
 ): Record<string, unknown> {
   try {
-    const { ir, unsupported } = compileQuery({ model, ...options } as FlatQuery);
+    const { ir, unsupported } = compileQuery({ entity, ...options } as FlatQuery);
     if (unsupported.length > 0) {
-      console.debug('[query-ir] fallback (IR cannot express):', model, unsupported);
+      console.debug('[query-ir] fallback (IR cannot express):', entity, unsupported);
       return options;
     }
     const plan = adapter.plan(ir);
     if (plan.gaps.length > 0) {
-      // The adapter can't push these down natively. Increment 2 finishes them via compute-up
+      // The adapter can't push these down natively. A later increment finishes them via compute-up
       // (executeQueryIR over the native-fetched rows); for now, fall back to the direct backend path.
       console.debug(
         '[query-ir] fallback (adapter compute-up gaps):',
-        model,
+        entity,
         plan.gaps.map((g) => g.feature),
       );
       return options;
     }
     return adapter.lower(ir) as Record<string, unknown>;
   } catch (err) {
-    console.debug('[query-ir] fallback (error):', model, err);
+    console.debug('[query-ir] fallback (error):', entity, err);
     return options;
   }
 }

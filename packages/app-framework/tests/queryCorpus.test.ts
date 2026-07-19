@@ -7,11 +7,11 @@
  * becomes its resolved branch). Each is annotated with the source schema file it was lifted from.
  *
  * `SUPPORTED` must translate with an empty `unsupported` list AND round-trip losslessly
- * (`flat → IR → flat → IR` re-derives the identical IR). `FLAGGED` must be surfaced in
- * `unsupported` — today only the `parent` drill-down, which needs migrating to `scope: { anchor, via }`
- * (see the gap-handling note in the portability docs).
+ * (`flat → IR → flat → IR` re-derives the identical IR). The one drill-down shape uses the neutral
+ * `scope` — not a round-trip case (`irToFlatQuery` defers it to the adapter), so it's covered by the
+ * `scope`→predicate resolution tests in `ad4mAdapter.test.ts`.
  */
-import { irToFlatQuery, type FlatQuery, compileQuery } from '@we/schema-shared';
+import { compileQuery, type FlatQuery, irToFlatQuery } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 // Fully-neutral-expressible real query shapes (token values concretised).
@@ -19,7 +19,7 @@ const SUPPORTED: { name: string; query: FlatQuery }[] = [
   {
     name: 'SpacesList — sibling scalar + OR search, relation-path sort, hydrate relation',
     query: {
-      model: 'Space',
+      entity: 'Space',
       where: { url: { not: 'cid://self' }, OR: [{ name: { contains: 'x' } }, { description: { contains: 'x' } }] },
       limit: 20,
       order: { 'location.country': 'asc' }, // resolved $if branch
@@ -28,12 +28,12 @@ const SUPPORTED: { name: string; query: FlatQuery }[] = [
   },
   {
     name: 'SpacesList — other sort branch (own scalar)',
-    query: { model: 'Space', where: { OR: [{ name: { contains: 'x' } }] }, limit: 20, order: { createdAt: 'desc' } },
+    query: { entity: 'Space', where: { OR: [{ name: { contains: 'x' } }] }, limit: 20, order: { createdAt: 'desc' } },
   },
   {
     name: 'PostsList — count projection + aggregate-alias sort + plain include',
     query: {
-      model: 'CollectionBlock',
+      entity: 'CollectionBlock',
       where: { type: 'root', textContent: { contains: 'x' } },
       limit: 20,
       order: { $likeCount: 'desc' }, // resolved $if branch — sort by the count projection
@@ -43,12 +43,11 @@ const SUPPORTED: { name: string; query: FlatQuery }[] = [
       },
     },
   },
-  { name: 'PostsList — hoisted $queries (bare model + subscribe)', query: { model: 'SignalType', subscribe: true } },
+  { name: 'PostsList — hoisted $queries (bare model + subscribe)', query: { entity: 'SignalType', subscribe: true } },
   {
     name: 'FluxChannelsList — OR search, timestamp sort, plain include + two count projections',
     query: {
-      model: 'Channel',
-      perspective: 'adamStore.currentPerspective',
+      entity: 'Channel',
       where: { OR: [{ name: { contains: 'x' } }, { description: { contains: 'x' } }] },
       order: { timestamp: 'desc' },
       limit: 20,
@@ -62,8 +61,7 @@ const SUPPORTED: { name: string; query: FlatQuery }[] = [
   {
     name: 'FluxConversationsNestedList — OR search, sort, single count projection',
     query: {
-      model: 'Conversation',
-      perspective: 'adamStore.currentPerspective',
+      entity: 'Conversation',
       where: { OR: [{ conversationName: { contains: 'x' } }, { summary: { contains: 'x' } }] },
       order: { timestamp: 'desc' },
       limit: 20,
@@ -75,24 +73,10 @@ const SUPPORTED: { name: string; query: FlatQuery }[] = [
   {
     name: 'ConversationList — simple model + order + limit',
     query: {
-      model: 'Conversation',
-      perspective: 'adamStore.currentPerspective',
+      entity: 'Conversation',
       order: { timestamp: 'desc' },
       limit: 10,
     },
-  },
-];
-
-// Shapes that legitimately can't become a neutral IR yet — surfaced, not silently mis-translated.
-const FLAGGED: { name: string; query: FlatQuery; expect: RegExp }[] = [
-  {
-    name: 'FluxConversationsNestedList — parent drill-down (raw-predicate escape hatch)',
-    query: {
-      model: 'ConversationSubgroup',
-      perspective: 'adamStore.currentPerspective',
-      parent: { id: 'c1', predicate: 'ad4m://has_child' },
-    },
-    expect: /parent \(drill-down\)/,
   },
 ];
 
@@ -104,13 +88,6 @@ describe('real template $query corpus', () => {
       // flat → IR → flat → IR re-derives the identical IR (the losslessness guarantee)
       const ir2 = compileQuery(irToFlatQuery(ir)).ir;
       expect(ir2).toEqual(ir);
-    });
-  }
-
-  for (const { name, query, expect: pattern } of FLAGGED) {
-    it(`flags (not yet neutrally expressible): ${name}`, () => {
-      const { unsupported } = compileQuery(query);
-      expect(unsupported.some((u) => pattern.test(u))).toBe(true);
     });
   }
 });

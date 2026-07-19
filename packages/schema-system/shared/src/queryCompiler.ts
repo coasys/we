@@ -15,22 +15,17 @@
  *
  * Reference for the flat `$query` grammar: the `$query` docs in `CLAUDE.md`.
  */
-import type { Aggregation, Filter, IncludeMap, IncludeSpec, Op, QueryIR, Scalar, SortKey } from './queryIR';
+import type { Aggregation, Filter, IncludeMap, IncludeSpec, Op, QueryIR, Scalar, Scope, SortKey } from './queryIR';
 
 export interface FlatQuery {
-  model: string;
+  entity: string;
   where?: Record<string, unknown>;
   order?: Record<string, 'asc' | 'desc'>;
   limit?: number;
   offset?: number;
   include?: Record<string, unknown>;
-  /**
-   * Drill-down. `{ id, relation }` is the documented form; `{ id, predicate }` is the AD4M-physical
-   * escape hatch some templates use because the relation form never resolved end-to-end. Neither
-   * carries the anchor *type* a neutral `scope` needs, so the translator flags both.
-   */
-  parent?: { id: unknown; relation: string } | { id: unknown; predicate: string };
-  perspective?: string;
+  /** Neutral drill-down; passed straight to the IR, resolved to a backend handle by the adapter. */
+  scope?: Scope;
   subscribe?: boolean;
   [k: string]: unknown;
 }
@@ -145,7 +140,7 @@ function translateInclude(
 
 export function compileQuery(query: FlatQuery): CompileResult {
   const unsupported: string[] = [];
-  const ir: QueryIR = { irVersion: 1, entity: query.model };
+  const ir: QueryIR = { irVersion: 1, entity: query.entity };
 
   if (query.where) {
     const filter = translateWhere(query.where);
@@ -162,16 +157,11 @@ export function compileQuery(query: FlatQuery): CompileResult {
     if (Object.keys(map).length) ir.include = map;
     if (aggregates.length) ir.aggregate = aggregates;
   }
+  // `scope` (neutral drill-down) passes straight through; the adapter resolves `via` to a backend
+  // handle (AD4M: the relation's predicate).
+  if (query.scope) ir.scope = query.scope;
   // subscribe defaults true → live default; only record the explicit one-shot case.
   if (query.subscribe === false) ir.live = false;
-  // `parent` → a neutral `scope` drill-down needs the anchor's *type* to resolve the relation to a
-  // backend handle (e.g. an AD4M predicate). Neither flat form carries it — `{ id, relation }` has
-  // only the relation name, `{ id, predicate }` is an AD4M-physical escape hatch — so flag rather than
-  // mis-translate. Migrating a drill-down to `scope: { anchor, via }` clears this.
-  if (query.parent) {
-    unsupported.push('parent (drill-down): a neutral scope needs the anchor type — migrate to scope: { anchor, via }');
-  }
-  // `perspective` is intentionally dropped — the dataset handle is injected, not part of the IR.
 
   return { ir, unsupported };
 }
@@ -256,7 +246,7 @@ function flatIncludeFromMap(include: IncludeMap): Record<string, unknown> {
 
 /** Lower a `QueryIR` to the flat `$query` dialect a `ModelClass` ORM consumes. */
 export function irToFlatQuery(ir: QueryIR): FlatQuery {
-  const flat: FlatQuery = { model: ir.entity };
+  const flat: FlatQuery = { entity: ir.entity };
   if (ir.filter) flat.where = whereFromFilter(ir.filter);
   if (ir.sort) flat.order = orderFromSort(ir.sort);
   if (ir.page && 'limit' in ir.page) {

@@ -71,8 +71,8 @@ const inMemoryQueryAdapter: QueryAdapter = {
   capabilities: inMemoryCapabilities,
   plan: (ir: QueryIR) => planQuery(ir, inMemoryCapabilities),
   lower: (ir: QueryIR) => {
-    const { model: _model, ...opts } = irToFlatQuery(ir);
-    void _model;
+    const { entity: _entity, ...opts } = irToFlatQuery(ir);
+    void _entity;
     return opts;
   },
 };
@@ -83,8 +83,8 @@ export function createInMemoryBackend(config: BackendConfig) {
   // Shares config.tables by reference, so mutate() updates flow straight into the engine.
   const dataset: InMemoryDataset = { tables: config.tables, relations: toEngineRelations(config.relations) };
 
-  function run(model: string, opts: QueryOpts): Row[] {
-    const { ir } = compileQuery({ model, ...opts });
+  function run(entity: string, opts: QueryOpts): Row[] {
+    const { ir } = compileQuery({ entity, ...opts });
     return executeQueryIR(ir, dataset) as Row[];
   }
 

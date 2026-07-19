@@ -31,8 +31,11 @@ import type {
   QueryIR,
   QueryOptions,
   QueryPlan,
+  Scope,
 } from '@we/schema-shared';
 import { irToFlatQuery, planQuery } from '@we/schema-shared';
+
+import type { ModelManifestEntry } from './AdamStore';
 
 export const ad4mCapabilities: AdapterCapabilities = {
   operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'exists'],
@@ -60,44 +63,73 @@ function sortNeedsLimit(by: string, aggregateAliases: Set<string>): boolean {
 }
 
 /**
- * The AD4M {@link QueryAdapter}. `lower` is the neutral `irToFlatQuery`; `plan` is `planQuery` over
- * `ad4mCapabilities` plus AD4M's two conditional degradations, which no capability boolean captures:
- * OR/AND/NOT in `where` disables the SPARQL sort/pagination pushdown, and a projection/relation-path
- * sort silently no-ops without a `limit`. Flagging them `compute-up` is what lets the wiring finish
- * such queries in JS instead of returning a wrongly-ordered page.
+ * Resolve a neutral drill-down to AD4M's `parent` handle (the Tier-2 "adapter-rewrite"): find the
+ * anchor entity's `via` relation in the perspective's model manifest and read its RDF `predicate`,
+ * then hand AD4M the `{ id, predicate }` form directly — which sidesteps AD4M's own relation-name
+ * resolver (`resolveParentPredicate`, broken for synced dynamic models). The predicate is available on
+ * every relation (WE + synced) via `ModelManifestProperty.predicate`.
  */
-export const ad4mQueryAdapter: QueryAdapter = {
-  capabilities: ad4mCapabilities,
+function resolveScopeToParent(models: ModelManifestEntry[], scope: Scope): { id: unknown; predicate: string } {
+  const entry = scope.anchor ? models.find((m) => m.name === scope.anchor) : undefined;
+  const prop = entry?.properties.find((p) => p.name === scope.via);
+  if (!prop?.predicate) {
+    throw new Error(
+      `ad4mQueryAdapter: cannot resolve scope { anchor: "${scope.anchor}", via: "${scope.via}" } — ` +
+        `no such relation in the current perspective's model manifest`,
+    );
+  }
+  return { id: scope.anchorId, predicate: prop.predicate };
+}
 
-  plan(ir: QueryIR): QueryPlan {
-    const base = planQuery(ir, ad4mCapabilities);
-    const gaps: CapabilityGap[] = [...base.gaps];
-    if (ir.sort?.length) {
-      if (hasBooleanCombinator(ir.filter)) {
-        gaps.push({
-          feature: 'sort:under-boolean',
-          path: 'sort',
-          disposition: 'compute-up',
-          note: 'AD4M disables sort/pagination pushdown when where uses OR/AND/NOT',
-        });
-      }
-      const aggregateAliases = new Set((ir.aggregate ?? []).map((a) => a.as));
-      if (!ir.page && ir.sort.some((k) => sortNeedsLimit(k.by, aggregateAliases))) {
-        gaps.push({
-          feature: 'sort:needs-limit',
-          path: 'sort',
-          disposition: 'compute-up',
-          note: 'projection/relation-path sort needs a limit to push down',
-        });
-      }
-    }
-    return { runnable: base.runnable && !gaps.some((g) => g.disposition === 'unsupported'), gaps };
-  },
+/**
+ * Build the AD4M {@link QueryAdapter}. A factory (not a singleton) because `lower` needs the current
+ * perspective's model manifest to resolve a `scope` drill-down — so `getModels` returns the SHACL model
+ * entries (including synced ones, e.g. Flux's) at call time.
+ *
+ * `plan` is `planQuery` over `ad4mCapabilities` plus AD4M's two conditional degradations, which no
+ * capability boolean captures: OR/AND/NOT in `where` disables the SPARQL sort/pagination pushdown, and a
+ * projection/relation-path sort silently no-ops without a `limit`. `lower` is the neutral `irToFlatQuery`,
+ * plus resolving `scope` → `parent` here (AD4M-specific; `irToFlatQuery` throws on `scope` by design).
+ */
+export function createAd4mQueryAdapter(getModels: () => ModelManifestEntry[]): QueryAdapter {
+  return {
+    capabilities: ad4mCapabilities,
 
-  lower(ir: QueryIR): QueryOptions {
-    // `model` is selected via getModel(entity) separately; the options carry only the query.
-    const { model: _model, ...opts } = irToFlatQuery(ir);
-    void _model;
-    return opts as QueryOptions;
-  },
-};
+    plan(ir: QueryIR): QueryPlan {
+      const base = planQuery(ir, ad4mCapabilities);
+      const gaps: CapabilityGap[] = [...base.gaps];
+      if (ir.sort?.length) {
+        if (hasBooleanCombinator(ir.filter)) {
+          gaps.push({
+            feature: 'sort:under-boolean',
+            path: 'sort',
+            disposition: 'compute-up',
+            note: 'AD4M disables sort/pagination pushdown when where uses OR/AND/NOT',
+          });
+        }
+        const aggregateAliases = new Set((ir.aggregate ?? []).map((a) => a.as));
+        if (!ir.page && ir.sort.some((k) => sortNeedsLimit(k.by, aggregateAliases))) {
+          gaps.push({
+            feature: 'sort:needs-limit',
+            path: 'sort',
+            disposition: 'compute-up',
+            note: 'projection/relation-path sort needs a limit to push down',
+          });
+        }
+      }
+      return { runnable: base.runnable && !gaps.some((g) => g.disposition === 'unsupported'), gaps };
+    },
+
+    lower(ir: QueryIR): QueryOptions {
+      // `scope` is AD4M-resolved here (irToFlatQuery throws on it); everything else lowers neutrally.
+      // `entity` is selected via getModel(entity) separately, so the options carry only the query.
+      const { scope, ...rest } = ir;
+      const { entity: _entity, ...opts } = irToFlatQuery(rest);
+      void _entity;
+      if (scope) {
+        (opts as Record<string, unknown>).parent = resolveScopeToParent(getModels(), scope);
+      }
+      return opts as QueryOptions;
+    },
+  };
+}

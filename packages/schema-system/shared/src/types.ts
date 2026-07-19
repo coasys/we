@@ -167,7 +167,11 @@ export type QueryToken = {
     limit?: number;
     offset?: number;
     include?: Record<string, unknown>;
-    parent?: Record<string, unknown>;
+    /**
+     * Neutral drill-down: fetch this entity's instances anchored to `anchorId` via the anchor entity's
+     * `via` relation. The adapter resolves `via` to a backend handle (AD4M: → the relation's predicate).
+     */
+    scope?: { via: string; anchorId: string | number | Record<string, unknown>; anchor?: string };
     subscribe?: boolean;
     /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */
     dataset?: string;

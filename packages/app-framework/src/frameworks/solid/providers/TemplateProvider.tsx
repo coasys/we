@@ -1,5 +1,5 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
-import { ad4mQueryAdapter } from '@shared/ad4mAdapter';
+import { createAd4mQueryAdapter } from '@shared/ad4mAdapter';
 import { queryIRFlag } from '@shared/queryIRFlag';
 import { getModel, getModelForPerspective } from '@shared/registries/modelRegistry';
 import { shellRegistry } from '@shared/registries/shellRegistry';
@@ -88,8 +88,9 @@ export default function TemplateProvider() {
     $me: adamStore.me,
     $currentDataset: adamStore.currentPerspective,
     // The AD4M query adapter — the renderer routes each QueryIR through it (plan + lower). Keeps all
-    // AD4M-specific query lowering + capability quirks here, out of the agnostic renderer.
-    $queryAdapter: ad4mQueryAdapter,
+    // AD4M-specific query lowering + capability quirks here, out of the agnostic renderer. Given the
+    // perspective's model manifest so it can resolve a `scope` drill-down to AD4M's `parent` predicate.
+    $queryAdapter: createAd4mQueryAdapter(() => adamStore.currentPerspectiveModels()),
   };
 
   // Resolves a dot-path string like 'adamStore.rootPerspective' against the stores object.
