@@ -11,7 +11,7 @@
  * `unsupported` — today only the `parent` drill-down, which needs migrating to `scope: { anchor, via }`
  * (see the gap-handling note in the portability docs).
  */
-import { irToAd4mQuery, type FlatQuery, compileQuery } from '@we/schema-shared';
+import { irToFlatQuery, type FlatQuery, compileQuery } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 // Fully-neutral-expressible real query shapes (token values concretised).
@@ -102,7 +102,7 @@ describe('real template $query corpus', () => {
       const { ir, unsupported } = compileQuery(query);
       expect(unsupported).toEqual([]);
       // flat → IR → flat → IR re-derives the identical IR (the losslessness guarantee)
-      const ir2 = compileQuery(irToAd4mQuery(ir)).ir;
+      const ir2 = compileQuery(irToFlatQuery(ir)).ir;
       expect(ir2).toEqual(ir);
     });
   }

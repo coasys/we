@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { irToAd4mQuery, type FlatQuery, compileQuery } from './queryCompiler';
+import { irToFlatQuery, type FlatQuery, compileQuery } from './queryCompiler';
 import { validateQueryIR } from './queryIR';
 
 describe('compileQuery', () => {
@@ -104,9 +104,9 @@ describe('compileQuery', () => {
   });
 });
 
-describe('irToAd4mQuery', () => {
+describe('irToFlatQuery', () => {
   it('maps aggregate → count projection and alias → single projection', () => {
-    const legacy = irToAd4mQuery({
+    const legacy = irToFlatQuery({
       irVersion: 1,
       entity: 'Post',
       aggregate: [
@@ -127,17 +127,17 @@ describe('irToAd4mQuery', () => {
 
   it('throws on shapes needing adapter resolution or that AD4M cannot express (scope, op, rel-filter, non-count agg)', () => {
     // scope needs binding resolution — the adapter's job, not this translator
-    expect(() => irToAd4mQuery({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1' } })).toThrow(
+    expect(() => irToFlatQuery({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1' } })).toThrow(
       /scope \(drill-down\)/,
     );
     expect(() =>
-      irToAd4mQuery({ irVersion: 1, entity: 'Post', filter: { field: 'likes', op: 'gt', value: 5 } }),
+      irToFlatQuery({ irVersion: 1, entity: 'Post', filter: { field: 'likes', op: 'gt', value: 5 } }),
     ).toThrow(/operator "gt"/);
-    expect(() => irToAd4mQuery({ irVersion: 1, entity: 'Post', filter: { rel: 'signals', op: 'some' } })).toThrow(
+    expect(() => irToFlatQuery({ irVersion: 1, entity: 'Post', filter: { rel: 'signals', op: 'some' } })).toThrow(
       /relation filters/,
     );
     expect(() =>
-      irToAd4mQuery({
+      irToFlatQuery({
         irVersion: 1,
         entity: 'Post',
         aggregate: [{ as: 's', over: 'signals', fn: 'sum', field: 'value' }],
@@ -170,7 +170,7 @@ describe('irToAd4mQuery', () => {
   it('round-trips legacy → IR → legacy → IR without drift for every representative shape', () => {
     for (const legacy of samples) {
       const ir1 = compileQuery(legacy).ir;
-      const ir2 = compileQuery(irToAd4mQuery(ir1)).ir;
+      const ir2 = compileQuery(irToFlatQuery(ir1)).ir;
       expect(ir2).toEqual(ir1);
     }
   });

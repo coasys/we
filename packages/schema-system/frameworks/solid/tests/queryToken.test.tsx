@@ -60,7 +60,7 @@ describe('$query token', () => {
     const builder = createMockBuilder();
     const MockModel = { query: vi.fn(() => builder), findAll: vi.fn() };
     const stores = {
-      adamStore: { currentPerspective: () => ({ uuid: 'test-perspective' }) },
+      $currentDataset: () => ({ uuid: 'test-perspective' }),
       $getModel: () => MockModel,
     };
 
@@ -86,7 +86,7 @@ describe('$query token', () => {
     const builder = createMockBuilder();
     const MockModel = { query: vi.fn(() => builder), findAll: vi.fn() };
     const stores = {
-      adamStore: { currentPerspective: () => ({ uuid: 'test-perspective' }) },
+      $currentDataset: () => ({ uuid: 'test-perspective' }),
       $getModel: () => MockModel,
     };
 
@@ -116,7 +116,7 @@ describe('$query token', () => {
     const builder = createMockBuilder();
     const MockModel = { query: vi.fn(() => builder), findAll: vi.fn() };
     const stores = {
-      adamStore: { currentPerspective: () => ({ uuid: 'test-perspective' }) },
+      $currentDataset: () => ({ uuid: 'test-perspective' }),
       $getModel: () => MockModel,
     };
 
@@ -150,7 +150,7 @@ describe('$query token', () => {
 
     const [perspective, setPerspective] = createSignal<unknown>({ uuid: 'perspective-1' });
     const stores = {
-      adamStore: { currentPerspective: perspective },
+      $currentDataset: perspective,
       $getModel: () => MockModel,
     };
 
@@ -182,7 +182,7 @@ describe('$query token', () => {
   it('returns empty array when perspective is null', async () => {
     const MockModel = { query: vi.fn(), findAll: vi.fn() };
     const stores = {
-      adamStore: { currentPerspective: () => null },
+      $currentDataset: () => null,
       $getModel: () => MockModel,
     };
 
@@ -209,7 +209,7 @@ describe('$query token', () => {
       findAll: vi.fn(() => Promise.resolve([{ id: 1 }])),
     };
     const stores = {
-      adamStore: { currentPerspective: () => ({ uuid: 'p1' }) },
+      $currentDataset: () => ({ uuid: 'p1' }),
       $getModel: () => MockModel,
     };
 
@@ -240,7 +240,7 @@ describe('$query token', () => {
       }),
     };
     const stores = {
-      adamStore: { currentPerspective: () => ({ uuid: 'p1' }) },
+      $currentDataset: () => ({ uuid: 'p1' }),
       $getModel: () => MockModel,
     };
 
@@ -274,7 +274,7 @@ describe('$query token', () => {
     };
     const [perspective, setPerspective] = createSignal<{ uuid: string } | null>({ uuid: 'p1' });
     const stores = {
-      adamStore: { currentPerspective: perspective },
+      $currentDataset: perspective,
       $getModel: () => MockModel,
     };
 
@@ -304,7 +304,7 @@ describe('$query token', () => {
       findAll: vi.fn(() => Promise.reject(new DOMException('Aborted', 'AbortError'))),
     };
     const stores = {
-      adamStore: { currentPerspective: () => ({ uuid: 'p1' }) },
+      $currentDataset: () => ({ uuid: 'p1' }),
       $getModel: () => MockModel,
     };
 
@@ -326,7 +326,7 @@ describe('$query token', () => {
     const builder = createMockBuilder();
     const MockModel = { query: vi.fn(() => builder), findAll: vi.fn() };
     const stores = {
-      adamStore: { currentPerspective: () => ({ uuid: 'p1' }) },
+      $currentDataset: () => ({ uuid: 'p1' }),
       $getModel: () => MockModel,
     };
 
@@ -359,7 +359,7 @@ describe('$query token', () => {
   it('warns and returns empty array when $getModel is missing', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const stores = {
-      adamStore: { currentPerspective: () => ({ uuid: 'p1' }) },
+      $currentDataset: () => ({ uuid: 'p1' }),
       // Note: no $getModel
     };
 
