@@ -106,7 +106,7 @@ Boolean logic:
 
 Array operators:
 { "$filter": { "items": <array>, "where": { "field": "value", ... } } }
-Filters an array to items where all where conditions match. Mirrors the AD4M model $query where operator set:
+Filters an array to items where all where conditions match. Mirrors the $query where operator set:
 
   { "field": "value" }                                   — strict equality
   { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
@@ -128,7 +128,7 @@ Sibling keys alongside OR/AND/NOT at the same level are implicitly ANDed with it
 Example — case-insensitive search across two fields:
 {
   "$query": {
-    "model": "Space",
+    "entity": "Space",
     "where": {
       "OR": [
         { "name": { "contains": { "$local": "searchText" } } },
@@ -161,38 +161,41 @@ Compose with we-number for a full "N Members" display:
   we-number (value: { "$count": ... }, shorten: true) + we-text (children: [{ "$plural": { "count": { "$count": ... }, "one": "Member", "other": "Members" } }])
 
 Query (data retrieval):
-{ "$query": { "model": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
-Queries the local perspective for model instances. Always returns an array.
-Options: model (required), where, order, limit, offset, include, parent, perspective, subscribe.
+{ "$query": { "entity": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
+Queries the current dataset for entity instances. Always returns an array.
+Options: entity (required), where, order, limit, offset, include, parent, dataset, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
-By default $query targets the current perspective (adamStore.currentPerspective). Use perspective to query a different perspective —
-required when reading models from an external app (e.g. Flux) that is open as a WE space:
-{ "$query": { "model": "Channel", "perspective": "adamStore.currentPerspective" } }
-adamStore.currentPerspective resolves to the AD4M Perspective instance of the currently active perspective.
+By default $query targets the current dataset ($currentDataset). Use dataset to query a different dataset —
+required when reading entities from an external app (e.g. Flux) that is open as a WE space:
+{ "$query": { "entity": "Channel", "dataset": "$currentDataset" } }
+
+Backend-neutral identity & dataset refs — prefer these over adamStore.* store paths inside $query and conditions:
+- $currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
+- $me — the current agent's identity object. Use $me.did for their DID (ownership checks, author filters, e.g. { "$eq": ["$post.author", "$me.did"] }); $me.handle / $me.avatar for profile fields once loaded.
 
 Eager-loading relations with include (most common relational pattern):
 include hydrates related model instances in the same query — no extra fetches needed.
 Relation names come from the HasMany relations listed for each model in externalModels.
 
 Simple include — hydrate all related instances:
-{ "$query": { "model": "Channel", "include": { "conversations": true } } }
+{ "$query": { "entity": "Channel", "include": { "conversations": true } } }
 Each item in the result will have a conversations array of hydrated Conversation objects.
 
 Sub-query include — filter, sort, or limit the related records:
-{ "$query": { "model": "Channel", "include": { "conversations": { "order": { "createdAt": "desc" }, "limit": 10 } } } }
+{ "$query": { "entity": "Channel", "include": { "conversations": { "order": { "createdAt": "desc" }, "limit": 10 } } } }
 
 Nested include — hydrate relations of relations:
-{ "$query": { "model": "Channel", "include": { "conversations": { "include": { "messages": true } } } } }
+{ "$query": { "entity": "Channel", "include": { "conversations": { "include": { "messages": true } } } } }
 Nesting can go as deep as needed. Each level adds one batched fetch (not N+1).
 
 Count projection — add a derived numeric field:
-{ "$query": { "model": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
+{ "$query": { "entity": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
 The $-prefixed key becomes a new field on each result item (e.g. item.$likeCount = 42).
 
 Sorting by a count projection — order can reference a $-prefixed count key directly, sorting by the aggregate:
 {
   "$query": {
-    "model": "Post",
+    "entity": "Post",
     "limit": 20,
     "order": { "$likeCount": "desc" },
     "include": { "$likeCount": { "from": "likes", "count": true } }
@@ -216,7 +219,7 @@ Sorting by a related model property — order can reference a dotted "relation.p
 relation declared on the model, sorting by a scalar property on the related instance:
 {
   "$query": {
-    "model": "Space",
+    "entity": "Space",
     "limit": 20,
     "order": { "location.country": "asc" },
     "include": { "location": true }
@@ -229,7 +232,7 @@ read the field in the UI (e.g. "$space.location.country").
 Combine with $if the same way as count-projection ordering to let the user toggle between sort fields.
 
 Single-item projection — add a derived field that resolves to one instance or null:
-{ "$query": { "model": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": { "$store": "adamStore.me.did" } }, "limit": 1 } } } }
+{ "$query": { "entity": "Post", "include": { "$myLike": { "from": "likes", "where": { "author": "$me.did" }, "limit": 1 } } } }
 With limit: 1 the field unwraps to T | null instead of an array.
 
 include only works with typed relations — ones where the target model class is known.
@@ -238,11 +241,11 @@ relations marked "→ ModelName" are typed (safe for include); relations marked 
 are untyped and will crash at runtime if used with include — use parent instead.
 
 Relational queries — fetch children by parent id (drill-down navigation):
-{ "$query": { "model": "Conversation", "parent": { "id": "$channel.id", "relation": "conversations" } } }
+{ "$query": { "entity": "Conversation", "parent": { "id": "$channel.id", "relation": "conversations" } } }
 The parent.id is the id of the parent record (typically from a $each context variable or a route segment).
 The parent.relation name matches the HasMany relation listed for that model in externalModels.
 Use this pattern when navigating to a detail route and loading only that record's children.
-For external-app perspectives, always add perspective: "spaceStore.perspective".
+For external-app datasets, always add dataset: "$currentDataset".
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
@@ -274,16 +277,16 @@ Use "object" whenever you would otherwise write 3+ related scalar fields each ne
 Hoisted query state ($queries):
 Declare on any node to run reactive subscriptions at the node root and expose results in $local.
 Solves two problems: avoids N duplicate subscriptions inside $each loops, and makes query results available for $if conditions.
-"$queries": { "signalTypes": { "model": "SignalType", "subscribe": true } }
+"$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } }
 Results are injected into $local as read-only reactive arrays, accessible via { "$local": "signalTypes" }.
-Query options are identical to $each's $query prop (model, where, order, limit, include, perspective, subscribe).
+Query options are identical to $each's $query prop (entity, where, order, limit, include, dataset, subscribe).
 $queries and $localState share the same $local namespace — avoid duplicate names across both.
 $setLocal will warn and no-op on $queries entries (they are read-only).
 Use with $count + $gt for conditional visibility:
 { "condition": { "$gt": [{ "$count": { "items": { "$local": "signalTypes" } } }, 0] } }
 Example:
 {
-  "$queries": { "signalTypes": { "model": "SignalType", "subscribe": true } },
+  "$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } },
   "type": "Column",
   "children": [
     {
@@ -442,13 +445,13 @@ Single model item (load one record, render children with it in context):
 {
   "type": "$single",
   "props": {
-    "item": { "$query": { "model": "ModelName", "params": { ... }, "subscribe": true } },
+    "item": { "$query": { "entity": "ModelName", "params": { ... }, "subscribe": true } },
     "as": "profile"   // context key for children — default: 'item'
   },
   "children": [{ "type": "we-text", "children": ["$profile.username"] }]
 }
 Renders nothing until a matching record is found. Like $each but for a single result.
-query options (model, params, include, perspective, subscribe) work identically to $query.
+query options (entity, params, include, dataset, subscribe) work identically to $query.
 
 Route outlet:
 { "type": "$routes" }

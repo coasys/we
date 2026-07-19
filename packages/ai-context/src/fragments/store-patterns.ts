@@ -49,7 +49,7 @@ Deriving options from store:
 
 Querying model data:
 {
-  "$query": { "model": "TaskBlock", "where": { "status": "todo" } }
+  "$query": { "entity": "TaskBlock", "where": { "status": "todo" } }
 }
 
 Eager-loading relations with include (most common relational pattern):
@@ -61,8 +61,8 @@ Example — Channel list with conversation count and latest conversation:
   "props": {
     "items": {
       "$query": {
-        "model": "Channel",
-        "perspective": "spaceStore.perspective",
+        "entity": "Channel",
+        "dataset": "$currentDataset",
         "include": {
           "$conversationCount": { "from": "conversations", "count": true },
           "$latestConversation": { "from": "conversations", "order": { "createdAt": "desc" }, "limit": 1 }
@@ -83,8 +83,8 @@ Example — Channel list with conversation count and latest conversation:
 Example — Nested include (Conversations with their messages):
 {
   "$query": {
-    "model": "Conversation",
-    "perspective": "spaceStore.perspective",
+    "entity": "Conversation",
+    "dataset": "$currentDataset",
     "include": {
       "messages": {
         "order": { "createdAt": "desc" },
@@ -111,7 +111,7 @@ Example — Channel list → Conversation list:
       "children": [{
         "type": "$each",
         "props": {
-          "items": { "$query": { "model": "Channel", "perspective": "spaceStore.perspective" } },
+          "items": { "$query": { "entity": "Channel", "dataset": "$currentDataset" } },
           "as": "channel"
         },
         "children": [{
@@ -133,9 +133,9 @@ Example — Channel list → Conversation list:
         "props": {
           "items": {
             "$query": {
-              "model": "Conversation",
+              "entity": "Conversation",
               "parent": { "id": { "$store": "routeStore.segments.1" }, "relation": "conversations" },
-              "perspective": "spaceStore.perspective"
+              "dataset": "$currentDataset"
             }
           },
           "as": "convo"
@@ -151,8 +151,8 @@ Example — Channel list → Conversation list:
 Notes:
 - Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
 - Use parent when you're on a detail route and want only children belonging to the current record.
-- perspective must point to the perspective that holds the data. For external apps (e.g. Flux) opened as a WE space, use "spaceStore.perspective".
-- The relation name (in include or parent.relation) is the HasMany field name on the parent model class.
+- dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use "$currentDataset".
+- The relation name (in include or parent.relation) is the HasMany field name on the parent entity.
 
 Local state (form with validation):
 {
@@ -228,7 +228,7 @@ Use literal arrays for fixed/sample data:
 }
 
 Use $query or $store for dynamic data (more common in production):
-{ "type": "$each", "props": { "items": { "$query": { "model": "TextBlock" } }, "as": "post" }, "children": [...] }
+{ "type": "$each", "props": { "items": { "$query": { "entity": "TextBlock" } }, "as": "post" }, "children": [...] }
 { "type": "$each", "props": { "items": { "$store": "spaceStore.posts" }, "as": "post" }, "children": [...] }
 
 Per-item customization inside $each:
@@ -261,7 +261,7 @@ Pattern — live wired SignalControl (inside a $each over a model with $query in
   "props": {
     "items": {
       "$query": {
-        "model": "MyBlock",
+        "entity": "MyBlock",
         "include": {
           "$totalLikeCount": {
             "from": "signals",
@@ -272,7 +272,7 @@ Pattern — live wired SignalControl (inside a $each over a model with $query in
             "from": "signals",
             "where": {
               "signalTypeId": { "$store": "spaceStore.signalTypesBySlug.like.id" },
-              "author": { "$store": "adamStore.me.did" }
+              "author": "$me.did"
             },
             "limit": 1
           }
