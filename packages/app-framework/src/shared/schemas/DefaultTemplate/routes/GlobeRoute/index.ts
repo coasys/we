@@ -210,7 +210,7 @@ export const globeRoute: RouteSchema = {
                 $map: {
                   items: {
                     $query: {
-                      model: 'Space',
+                      entity: 'Space',
                       where: {
                         url: { not: { $store: 'adamStore.currentPerspectiveSharedCid' } },
                         name: { contains: { $local: 'searchText' } },

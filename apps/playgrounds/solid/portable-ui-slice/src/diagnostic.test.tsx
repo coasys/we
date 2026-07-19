@@ -51,7 +51,7 @@ describe('diagnostics', () => {
       children: [
         {
           type: '$each',
-          props: { items: { $query: { model: 'Post' } }, as: 'post' },
+          props: { items: { $query: { entity: 'Post' } }, as: 'post' },
           children: [{ type: 'we-text', children: ['$post.title'] }],
         },
       ],

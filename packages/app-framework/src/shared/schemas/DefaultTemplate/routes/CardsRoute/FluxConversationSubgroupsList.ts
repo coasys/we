@@ -29,8 +29,8 @@ export const fluxConversationSubgroupsList: SchemaNode = {
         props: {
           items: {
             $query: {
-              model: 'ConversationSubgroup',
-              perspective: 'adamStore.currentPerspective',
+              entity: 'ConversationSubgroup',
+              dataset: '$currentDataset',
               where: {
                 OR: [
                   { subgroupName: { contains: { $local: 'searchText' } } },

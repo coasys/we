@@ -8,8 +8,8 @@ export const themeMarketplaceBrowser: SchemaNode = {
   },
   $queries: {
     marketplaceThemes: {
-      model: 'Theme',
-      perspective: 'adamStore.marketplacePerspective',
+      entity: 'Theme',
+      dataset: 'adamStore.marketplacePerspective',
       subscribe: true,
     },
   },

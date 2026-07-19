@@ -90,14 +90,14 @@ export const agentModal = {
               children: [
                 {
                   type: '$each',
-                  props: { items: { $query: { model: 'SignalType', subscribe: true } }, as: 'sig' },
+                  props: { items: { $query: { entity: 'SignalType', subscribe: true } }, as: 'sig' },
                   children: [
                     {
                       type: 'SignalControl',
                       props: {
                         signalType: '$sig',
                         signals: [],
-                        myDid: { $store: 'adamStore.me.did' },
+                        myDid: '$me.did',
                         onSignal: {
                           $action: 'spaceStore.upsertSignal',
                           args: ['$agent.did', '$sig.id', '$arg'],

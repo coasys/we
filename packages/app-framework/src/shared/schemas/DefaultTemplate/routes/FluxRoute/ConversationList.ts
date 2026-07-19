@@ -27,8 +27,8 @@ export const conversationList: SchemaNode = {
           props: {
             items: {
               $query: {
-                model: 'Conversation',
-                perspective: 'adamStore.currentPerspective',
+                entity: 'Conversation',
+                dataset: '$currentDataset',
                 order: { timestamp: 'desc' },
                 limit: 10,
               },

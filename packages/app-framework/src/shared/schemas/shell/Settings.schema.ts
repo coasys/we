@@ -52,7 +52,7 @@ export const settingsTemplate: TemplateSchema = {
                     {
                       type: 'we-text',
                       props: { variant: 'body', styles: { 'word-break': 'break-all' } },
-                      children: [{ $store: 'adamStore.me.did' }],
+                      children: ['$me.did'],
                     },
                   ],
                 },

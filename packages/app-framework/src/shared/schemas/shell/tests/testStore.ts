@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { PerspectiveProxy } from '@coasys/ad4m';
-import { Ad4mModel, Model, Property } from '@coasys/ad4m';
+import { Ad4mModel, HasMany, Model, Property } from '@coasys/ad4m';
+import { queryIRFlag } from '@shared/queryIRFlag';
 import { registerModel } from '@shared/registries/modelRegistry';
 import { type Accessor, createEffect, createSignal } from 'solid-js';
 
@@ -10,11 +11,20 @@ import { benchmarkBasePath } from './SchemaBenchmark.schema';
 // Test model — lightweight AD4M model for $query testing
 // ---------------------------------------------------------------------------
 
+// A child model, so the query page can test the relation patterns (count / single projection /
+// include) deterministically — the trickiest IR mappings — against real AD4M.
+@Model({ name: 'TestChild' })
+export class TestChild extends Ad4mModel {
+  @Property({ through: 'we://test_child_label' }) label: string = '';
+  @Property({ through: 'we://test_child_owner' }) owner: string = '';
+}
+
 @Model({ name: 'TestItem' })
 export class TestItem extends Ad4mModel {
   @Property({ through: 'we://test_name', required: true }) name: string = '';
   @Property({ through: 'we://test_status' }) status: string = '';
   @Property({ through: 'we://test_category' }) category: string = '';
+  @HasMany(() => TestChild, { through: 'we://test_child' }) children: string[] = [];
 }
 
 // ---------------------------------------------------------------------------
@@ -23,6 +33,10 @@ export class TestItem extends Ad4mModel {
 
 export function createTestStore(testPerspective: Accessor<PerspectiveProxy | null>, navigate: (to: string) => void) {
   registerModel('TestItem', TestItem as any);
+  registerModel('TestChild', TestChild as any);
+
+  // The "current agent" stand-in for the single-projection (`$myChild`) test's `where: { owner }`.
+  const queryOwner = 'owner:me';
 
   // ---- Known values (for $store / assertion tests) ----
   const stringValue = 'hello';
@@ -181,6 +195,29 @@ export function createTestStore(testPerspective: Accessor<PerspectiveProxy | nul
     }
   }
 
+  // Force a known, deterministic dataset for the query test page:
+  //   Alpha (2 children, 1 mine) · Beta (0 children) · Gamma (1 child, mine)
+  async function seedQueryData() {
+    const p = perspective();
+    if (!p) return;
+    try {
+      for (const c of await TestChild.findAll(p)) await TestChild.delete(p, c.id);
+      for (const it of await TestItem.findAll(p)) await TestItem.delete(p, it.id);
+
+      const alpha = await TestItem.create(p, { name: 'Alpha', status: 'active', category: 'A' });
+      await TestItem.create(p, { name: 'Beta', status: 'draft', category: 'B' });
+      const gamma = await TestItem.create(p, { name: 'Gamma', status: 'active', category: 'A' });
+
+      const addChild = (parentId: string, label: string, owner: string) =>
+        TestChild.create(p, { label, owner }, { parent: { id: parentId, predicate: 'we://test_child' } });
+      await addChild(alpha.id, 'a-mine', queryOwner);
+      await addChild(alpha.id, 'a-other', 'owner:other');
+      await addChild(gamma.id, 'g-mine', queryOwner);
+    } catch (err) {
+      console.error('TestStore: failed to seed query data', err);
+    }
+  }
+
   // ---- AD4M perspective (lazy init for $query testing) ----
   const [perspective, setPerspective] = createSignal<PerspectiveProxy | null>(null);
 
@@ -197,6 +234,7 @@ export function createTestStore(testPerspective: Accessor<PerspectiveProxy | nul
     (async () => {
       try {
         await p.ensureSDNASubjectClass(TestItem);
+        await p.ensureSDNASubjectClass(TestChild);
 
         // Ensure seed data exists
         const existing = await TestItem.findAll(p);
@@ -247,6 +285,10 @@ export function createTestStore(testPerspective: Accessor<PerspectiveProxy | nul
     setQueryFilterMode: (mode: string) => setQueryFilterMode(mode),
     createTestItem,
     deleteTestItem,
+    seedQueryData,
+    queryOwner,
+    queryIRenabled: queryIRFlag.enabled,
+    toggleQueryIR: queryIRFlag.toggle,
 
     // Benchmark
     benchLastRender,

@@ -580,11 +580,11 @@ function checkTokenValue(
     checkActionRef(obj.$action, `${path}.$action`, ctx, errors);
   }
 
-  // $query token
+  // $query token — the entity is checked against the manifest's known models.
   if ('$query' in obj && typeof obj.$query === 'object' && obj.$query !== null) {
     const query = obj.$query as Record<string, unknown>;
-    if (typeof query.model === 'string') {
-      checkModelRef(query.model, `${path}.$query.model`, ctx, errors);
+    if (typeof query.entity === 'string') {
+      checkModelRef(query.entity, `${path}.$query.entity`, ctx, errors);
     }
   }
 

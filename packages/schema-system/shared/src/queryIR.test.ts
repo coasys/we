@@ -71,4 +71,34 @@ describe('QueryIR', () => {
     };
     expect(validateQueryIR(q).valid).toBe(true);
   });
+
+  it('accepts a drill-down scope (with and without an explicit anchor type)', () => {
+    expect(
+      validateQueryIR({ irVersion: 1, entity: 'Conversation', scope: { via: 'conversations', anchorId: 'ch1' } }).valid,
+    ).toBe(true);
+    expect(
+      validateQueryIR({
+        irVersion: 1,
+        entity: 'Conversation',
+        scope: { via: 'conversations', anchorId: 42, anchor: 'Channel' },
+      }).valid,
+    ).toBe(true);
+  });
+
+  it('rejects a scope missing `via` or `anchorId`', () => {
+    expect(validateQueryIR({ irVersion: 1, entity: 'Post', scope: { anchorId: 'x' } }).valid).toBe(false);
+    expect(validateQueryIR({ irVersion: 1, entity: 'Post', scope: { via: 'r' } }).valid).toBe(false);
+  });
+
+  it('accepts an aliased include (`over`) alongside a plain relation include', () => {
+    const q: QueryIR = {
+      irVersion: 1,
+      entity: 'Post',
+      include: {
+        author: true,
+        $myLike: { over: 'signals', filter: { field: 'author', op: 'eq', value: 'did:me' }, first: true },
+      },
+    };
+    expect(validateQueryIR(q).valid).toBe(true);
+  });
 });

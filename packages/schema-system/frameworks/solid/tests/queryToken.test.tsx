@@ -66,7 +66,7 @@ describe('$query token', () => {
 
     const node: SchemaNode = {
       type: 'DataDisplay',
-      props: { data: { $query: { model: 'Post', subscribe: true } } },
+      props: { data: { $query: { entity: 'Post', subscribe: true } } },
     };
 
     const { container } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
@@ -92,7 +92,7 @@ describe('$query token', () => {
 
     const node: SchemaNode = {
       type: 'DataDisplay',
-      props: { data: { $query: { model: 'Post', subscribe: true } } },
+      props: { data: { $query: { entity: 'Post', subscribe: true } } },
     };
 
     const { container } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
@@ -122,7 +122,7 @@ describe('$query token', () => {
 
     const node: SchemaNode = {
       type: 'DataDisplay',
-      props: { data: { $query: { model: 'Post', subscribe: true } } },
+      props: { data: { $query: { entity: 'Post', subscribe: true } } },
     };
 
     const container = document.createElement('div');
@@ -156,7 +156,7 @@ describe('$query token', () => {
 
     const node: SchemaNode = {
       type: 'DataDisplay',
-      props: { data: { $query: { model: 'Post', subscribe: true } } },
+      props: { data: { $query: { entity: 'Post', subscribe: true } } },
     };
 
     let dispose: () => void;
@@ -188,7 +188,7 @@ describe('$query token', () => {
 
     const node: SchemaNode = {
       type: 'DataDisplay',
-      props: { data: { $query: { model: 'Post', subscribe: true } } },
+      props: { data: { $query: { entity: 'Post', subscribe: true } } },
     };
 
     const { container } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
@@ -215,7 +215,7 @@ describe('$query token', () => {
 
     const node: SchemaNode = {
       type: 'DataDisplay',
-      props: { data: { $query: { model: 'Post', subscribe: false } } },
+      props: { data: { $query: { entity: 'Post', subscribe: false } } },
     };
 
     const { container } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
@@ -246,7 +246,7 @@ describe('$query token', () => {
 
     const node: SchemaNode = {
       type: 'DataDisplay',
-      props: { data: { $query: { model: 'Post', subscribe: false } } },
+      props: { data: { $query: { entity: 'Post', subscribe: false } } },
     };
 
     const { unmount } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
@@ -280,7 +280,7 @@ describe('$query token', () => {
 
     const node: SchemaNode = {
       type: 'DataDisplay',
-      props: { data: { $query: { model: 'Post', subscribe: false } } },
+      props: { data: { $query: { entity: 'Post', subscribe: false } } },
     };
 
     render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
@@ -310,7 +310,7 @@ describe('$query token', () => {
 
     const node: SchemaNode = {
       type: 'DataDisplay',
-      props: { data: { $query: { model: 'Post', subscribe: false } } },
+      props: { data: { $query: { entity: 'Post', subscribe: false } } },
     };
 
     // If the catch arm doesn't swallow AbortError, the unhandled rejection
@@ -335,7 +335,7 @@ describe('$query token', () => {
       props: {
         data: {
           $query: {
-            model: 'Post',
+            entity: 'Post',
             where: { status: 'published' },
             order: { createdAt: 'desc' },
             limit: 10,
@@ -365,7 +365,7 @@ describe('$query token', () => {
 
     const node: SchemaNode = {
       type: 'DataDisplay',
-      props: { data: { $query: { model: 'Post', subscribe: true } } },
+      props: { data: { $query: { entity: 'Post', subscribe: true } } },
     };
 
     const { container } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);

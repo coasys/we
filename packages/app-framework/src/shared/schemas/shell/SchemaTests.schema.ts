@@ -15,6 +15,7 @@ import type { RouteSchema, SchemaNode, TemplateSchema } from '@we/schema-shared'
 
 import { schemaBenchmarkTemplate } from './tests/SchemaBenchmark.schema.ts';
 import { schemaMutationsTemplate } from './tests/SchemaMutations.schema.ts';
+import { schemaQueriesTemplate } from './tests/SchemaQueries.schema.ts';
 import { schemaRoutingTemplate } from './tests/SchemaRouting.schema.ts';
 import { schemaTokensTemplate } from './tests/SchemaTokens.schema.ts';
 
@@ -43,6 +44,13 @@ const sections = [
     description: 'Testing updateSchema diffing engine',
     icon: 'code',
     path: '/mutations',
+  },
+  {
+    id: 'queries',
+    label: 'Queries',
+    description: 'Every $query shape through the QueryIR routing',
+    icon: 'magnifying-glass',
+    path: '/queries',
   },
   {
     id: 'routing',
@@ -140,6 +148,7 @@ export const schemaTestsTemplate: TemplateSchema = {
     testRoute('/benchmarks', schemaBenchmarkTemplate),
     testRoute('/tokens', schemaTokensTemplate),
     testRoute('/mutations', schemaMutationsTemplate),
+    testRoute('/queries', schemaQueriesTemplate),
     testRoute('/routing', schemaRoutingTemplate),
   ],
 };

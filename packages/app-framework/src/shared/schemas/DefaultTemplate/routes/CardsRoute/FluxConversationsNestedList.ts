@@ -257,8 +257,8 @@ const conversationSubgroupsList: SchemaNode = {
           props: {
             items: {
               $query: {
-                model: 'ConversationSubgroup',
-                perspective: 'adamStore.currentPerspective',
+                entity: 'ConversationSubgroup',
+                dataset: '$currentDataset',
                 // `parent: { id, relation }` is broken end-to-end in the schema-system —
                 // it never translates into ad4m's real ParentScope shape ({ model, id, field }
                 // or { id, predicate }), so it crashes resolveParentPredicate with a WeakMap
@@ -287,8 +287,8 @@ export const fluxConversationsNestedList: SchemaNode = {
         props: {
           items: {
             $query: {
-              model: 'Conversation',
-              perspective: 'adamStore.currentPerspective',
+              entity: 'Conversation',
+              dataset: '$currentDataset',
               where: {
                 OR: [
                   { conversationName: { contains: { $local: 'searchText' } } },

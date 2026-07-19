@@ -7,7 +7,7 @@
  * Pure and framework-agnostic. Operates on plain rows plus a relation map (target + cardinality +
  * foreign key) — the minimal shape any in-memory dataset can provide.
  */
-import type { Aggregation, Filter, IncludeMap, Op, QueryIR, Scalar, SortKey } from './queryIR';
+import type { Aggregation, Filter, IncludeMap, Op, QueryIR, Scalar, Scope, SortKey } from './queryIR';
 
 export type Row = Record<string, unknown> & { id: string | number };
 
@@ -153,14 +153,35 @@ function computeAggregate(row: Row, entity: string, agg: Aggregation, data: InMe
   }
 }
 
+// ─── scope (drill-down) ───────────────────────────────────────────────────────────
+
+/** Restrict rows to those reached from `anchorId` via the anchor's `via` relation. */
+function scopeRows(rows: Row[], entity: string, scope: Scope, data: InMemoryDataset): Row[] {
+  // Prefer the declared anchor type; otherwise find a relation named `via` that targets this entity.
+  let rel = scope.anchor ? data.relations?.[scope.anchor]?.[scope.via] : undefined;
+  if (!rel) {
+    for (const rels of Object.values(data.relations ?? {})) {
+      const cand = rels[scope.via];
+      if (cand && cand.target === entity) {
+        rel = cand;
+        break;
+      }
+    }
+  }
+  if (!rel) return []; // unresolvable drill-down → empty (fail closed, never silently return all rows)
+  return rows.filter((r) => r[rel!.foreignKey] === scope.anchorId);
+}
+
 // ─── include ────────────────────────────────────────────────────────────────────
 
 function hydrate(row: Row, entity: string, include: IncludeMap, data: InMemoryDataset): Row {
   const out: Row = { ...row };
-  for (const [relName, spec] of Object.entries(include)) {
+  for (const [key, spec] of Object.entries(include)) {
+    // Aliased include (`over`) resolves from that relation and attaches under the alias `key`.
+    const relName = spec !== true && spec.over ? spec.over : key;
     const resolved = relatedRows(row, entity, relName, data);
     if (!resolved) {
-      out[relName] = resolved === undefined ? null : [];
+      out[key] = resolved === undefined ? null : [];
       continue;
     }
     let rows = resolved.rows;
@@ -174,7 +195,7 @@ function hydrate(row: Row, entity: string, include: IncludeMap, data: InMemoryDa
       if (spec.include) rows = rows.map((r) => hydrate(r, resolved.rel.target, spec.include!, data));
     }
     const asObject = resolved.rel.cardinality === 'one' || (spec !== true && spec.first === true);
-    out[relName] = asObject ? (rows[0] ?? null) : rows;
+    out[key] = asObject ? (rows[0] ?? null) : rows;
   }
   return out;
 }
@@ -186,6 +207,7 @@ export function executeQueryIR(query: QueryIR, data: InMemoryDataset): Row[] {
   const entity = query.entity;
   let rows = (data.tables[entity] ?? []).slice();
 
+  if (query.scope) rows = scopeRows(rows, entity, query.scope, data);
   if (query.filter) rows = rows.filter((r) => matchesFilter(r, query.filter!, entity, data));
 
   for (const agg of query.aggregate ?? []) {

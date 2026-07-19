@@ -33,12 +33,12 @@ A styled "Community Feed" (real `Card`/`Column`/`Row` + `we-text`/`we-avatar`):
 
 ## Files
 
-| File | Role |
-|---|---|
-| `src/inMemoryBackend.ts` | the non-AD4M `DataSource` (query engine over plain arrays) |
-| `src/registry.ts` | design-system component registry (`Column`/`Row`/`Card`; `we-*` are custom-element tags) |
-| `src/feedTemplate.ts` | a real WE template: `$each` over `$query` with filter/order/include |
-| `src/main.tsx` | mounts `RenderSchema({ node, stores, registry })` + the reactivity demo button |
+| File                     | Role                                                                                     |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| `src/inMemoryBackend.ts` | the non-AD4M `DataSource` (query engine over plain arrays)                               |
+| `src/registry.ts`        | design-system component registry (`Column`/`Row`/`Card`; `we-*` are custom-element tags) |
+| `src/feedTemplate.ts`    | a real WE template: `$each` over `$query` with filter/order/include                      |
+| `src/main.tsx`           | mounts `RenderSchema({ node, stores, registry })` + the reactivity demo button           |
 
 > Duplicated `inMemoryBackend.ts` (twin of the headless test's copy) is a candidate to consolidate
 > into a shared `@we/backend-inmemory` package.

@@ -1,4 +1,5 @@
 import type {
+  FlatQuery,
   LocalFieldMeta,
   LocalStateField,
   MapProp,
@@ -7,7 +8,9 @@ import type {
   ValidationRule,
 } from '@we/schema-shared';
 import {
+  compileQuery,
   hasToken,
+  irToAd4mQuery,
   REACTIVE_ACCESSOR,
   resolveProp,
   resolveQueryProp,
@@ -169,6 +172,28 @@ function composeHandlers(handlers: unknown[]): (...args: unknown[]) => void {
  * Create a reactive signal that subscribes to a $query and updates with results.
  * Must be called within a Solid reactive owner (component or createRoot).
  */
+/**
+ * Optional dogfood: send the (already token-resolved) legacy query through the neutral `QueryIR` and
+ * back before it reaches the backend, so the live app actually exercises the IR round-trip. Falls back
+ * to the original options for anything the IR can't yet express (a `parent` drill-down → `unsupported`)
+ * or on any error, so it is always safe. Gated by `$useQueryIR`; off by default.
+ */
+function routeQueryThroughIR(model: string, options: Record<string, unknown>): Record<string, unknown> {
+  try {
+    const { ir, unsupported } = compileQuery({ model, ...options } as FlatQuery);
+    if (unsupported.length > 0) {
+      console.debug('[query-ir] fallback (unsupported):', model, unsupported);
+      return options;
+    }
+    const rebuilt = { ...(irToAd4mQuery(ir) as Record<string, unknown>) };
+    delete rebuilt.model; // model is passed separately to the backend; options carry only the query
+    return rebuilt;
+  } catch (err) {
+    console.debug('[query-ir] fallback (error):', model, err);
+    return options;
+  }
+}
+
 function createQuerySignal(
   descriptor: QueryDescriptor,
   stores: unknown,
@@ -182,8 +207,8 @@ function createQuerySignal(
 
   createEffect(() => {
     let p: unknown = null;
-    if (descriptor.perspective) {
-      const parts = descriptor.perspective.split('.');
+    if (descriptor.dataset) {
+      const parts = descriptor.dataset.split('.');
       let target: unknown = stores;
       for (const part of parts) target = (target as Record<string, unknown>)?.[part];
       p = typeof target === 'function' ? (target as () => unknown)() : target;
@@ -208,13 +233,13 @@ function createQuerySignal(
     // clean DatasetHandle provides.
     // TODO: collapse uuid??id to a single `id` once the AD4M adapter wraps perspectives in DatasetHandles.
     const datasetId = ((p as Record<string, unknown>).uuid ?? (p as Record<string, unknown>).id) as string | undefined;
-    const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.model, datasetId) : undefined;
+    const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.entity, datasetId) : undefined;
     let ModelClass: Record<string, (...args: unknown[]) => unknown>;
     try {
-      ModelClass = (dynamicCls ?? getModel(descriptor.model)) as Record<string, (...args: unknown[]) => unknown>;
+      ModelClass = (dynamicCls ?? getModel(descriptor.entity)) as Record<string, (...args: unknown[]) => unknown>;
     } catch {
       const onError = (stores as Record<string, unknown>).$onError as ((msg: string) => void) | undefined;
-      onError?.(`Model "${descriptor.model}" is not available in this perspective`);
+      onError?.(`Model "${descriptor.entity}" is not available in this perspective`);
       setItems(reconcile([]));
       return;
     }
@@ -230,10 +255,16 @@ function createQuerySignal(
             boolean | Record<string, unknown>
           >)
         : undefined;
-    const queryOptions = {
+    let queryOptions: Record<string, unknown> = {
       ...resolvedParams,
       ...(resolvedInclude !== undefined && { include: resolvedInclude }),
     };
+    // Route through the QueryIR when enabled. `$useQueryIR` is a reactive accessor (default from
+    // `seed.features.useQueryIR`, live-toggled on the Queries test page); reading it *here*, inside the
+    // effect, makes the query re-run when it flips — so toggling re-routes without a reload.
+    const irFlag = (stores as Record<string, unknown>).$useQueryIR;
+    const useQueryIR = typeof irFlag === 'function' ? (irFlag as () => unknown)() === true : irFlag === true;
+    if (useQueryIR) queryOptions = routeQueryThroughIR(descriptor.entity, queryOptions);
 
     // AD4M model instances expose `id` as a prototype getter, not an own enumerable
     // property, so Solid's reconcile({ key: 'id' }) cannot find it for keyed diffing.
@@ -587,8 +618,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       } else {
         createEffect(() => {
           let p: unknown = null;
-          if (descriptor.perspective) {
-            const parts = descriptor.perspective.split('.');
+          if (descriptor.dataset) {
+            const parts = descriptor.dataset.split('.');
             let target: unknown = stores;
             for (const part of parts) target = (target as Record<string, unknown>)?.[part];
             p = typeof target === 'function' ? (target as () => unknown)() : target;
@@ -604,17 +635,17 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
           const perspectiveUuid = (p as Record<string, unknown>).uuid as string | undefined;
           const dynamicCls = getModelForPerspective
-            ? getModelForPerspective(descriptor.model, perspectiveUuid)
+            ? getModelForPerspective(descriptor.entity, perspectiveUuid)
             : undefined;
           let ModelClass: Record<string, (...args: unknown[]) => unknown>;
           try {
-            ModelClass = (dynamicCls ?? getModelFn(descriptor.model)) as Record<
+            ModelClass = (dynamicCls ?? getModelFn(descriptor.entity)) as Record<
               string,
               (...args: unknown[]) => unknown
             >;
           } catch {
             const onError = (stores as Record<string, unknown>).$onError as ((msg: string) => void) | undefined;
-            onError?.(`Model "${descriptor.model}" is not available in this perspective`);
+            onError?.(`Model "${descriptor.entity}" is not available in this perspective`);
             setHasItem(false);
             return;
           }

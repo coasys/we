@@ -20,7 +20,7 @@ export const feedTemplate: SchemaNode = {
       props: {
         items: {
           $query: {
-            model: 'Post',
+            entity: 'Post',
             where: { OR: [{ title: { contains: 'graph' } }, { content: { contains: 'graph' } }] },
             order: { createdAt: 'desc' },
             include: { author: true },

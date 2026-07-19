@@ -99,21 +99,22 @@ const zFindToken = z
     }),
   })
   .strict();
-const zQueryToken = z
-  .object({
-    $query: z.object({
-      model: z.string().min(1),
-      where: z.record(z.string(), z.unknown()).optional(),
-      order: z.record(z.string(), z.unknown()).optional(),
-      limit: z.number().int().positive().optional(),
-      offset: z.number().int().nonnegative().optional(),
-      include: z.record(z.string(), z.unknown()).optional(),
-      parent: z.record(z.string(), z.unknown()).optional(),
-      subscribe: z.boolean().optional(),
-      perspective: z.string().optional(),
-    }),
-  })
-  .strict();
+// Neutral authoring DSL — `entity` (the entity to query) + `dataset` (the perspective/store handle).
+// `where`/`order`/`include`/`limit` are the concise DSL; the compiler maps them to the IR. No AD4M
+// vocab (`model`/`perspective`) — templates author neutral.
+const zQuery = z.object({
+  entity: z.string().min(1),
+  where: z.record(z.string(), z.unknown()).optional(),
+  order: z.record(z.string(), z.unknown()).optional(),
+  limit: z.number().int().positive().optional(),
+  offset: z.number().int().nonnegative().optional(),
+  include: z.record(z.string(), z.unknown()).optional(),
+  parent: z.record(z.string(), z.unknown()).optional(),
+  subscribe: z.boolean().optional(),
+  dataset: z.string().optional(),
+});
+
+const zQueryToken = z.object({ $query: zQuery }).strict();
 
 const zLocalToken = z.object({ $local: z.string().min(1) }).strict();
 const zSetLocalToken = z.union([
@@ -195,17 +196,7 @@ const zLocalStateField = z.object({
 });
 const zLocalStateDeclaration = z.record(z.string(), zLocalStateField);
 
-const zQueryStateField = z.object({
-  model: z.string().min(1),
-  where: z.record(z.string(), z.unknown()).optional(),
-  order: z.record(z.string(), z.unknown()).optional(),
-  limit: z.number().int().positive().optional(),
-  offset: z.number().int().nonnegative().optional(),
-  include: z.record(z.string(), z.unknown()).optional(),
-  parent: z.record(z.string(), z.unknown()).optional(),
-  subscribe: z.boolean().optional(),
-  perspective: z.string().optional(),
-});
+const zQueryStateField = zQuery; // $queries entries use the same neutral query grammar
 const zQueriesDeclaration = z.record(z.string(), zQueryStateField);
 
 /** Known node-level operator types */
