@@ -3,6 +3,7 @@ import type {
   LocalFieldMeta,
   LocalStateField,
   MapProp,
+  QueryAdapter,
   QueryDescriptor,
   QueryStateField,
   ValidationRule,
@@ -10,7 +11,6 @@ import type {
 import {
   compileQuery,
   hasToken,
-  irToAd4mQuery,
   REACTIVE_ACCESSOR,
   resolveProp,
   resolveQueryProp,
@@ -173,23 +173,39 @@ function composeHandlers(handlers: unknown[]): (...args: unknown[]) => void {
  * Must be called within a Solid reactive owner (component or createRoot).
  */
 /**
- * Optional dogfood: send the (already token-resolved) legacy query through the neutral `QueryIR` and
- * back before it reaches the backend, so the live app actually exercises the IR round-trip. Falls back
- * to the original options for anything the IR can't yet express (a `parent` drill-down → `unsupported`)
- * or on any error, so it is always safe. Gated by `$useQueryIR`; off by default.
+ * Route the (already token-resolved) query through the neutral `QueryIR` and the injected backend
+ * adapter before it reaches the backend, so the live app exercises the real IR path. `compileQuery`
+ * (DSL→IR) is neutral; the backend-specific plan + lowering come from the injected `$queryAdapter`,
+ * so this function knows nothing about AD4M. Falls back to the original options — always safe — when
+ * the IR can't express the query (a `parent` drill-down → `unsupported`), when the adapter reports a
+ * compute-up gap (until increment 2 runs it in JS), or on any error. Gated by `$useQueryIR`; off by
+ * default.
  */
-function routeQueryThroughIR(model: string, options: Record<string, unknown>): Record<string, unknown> {
+function routeQueryThroughIR(
+  entity: string,
+  options: Record<string, unknown>,
+  adapter: QueryAdapter,
+): Record<string, unknown> {
   try {
-    const { ir, unsupported } = compileQuery({ model, ...options } as FlatQuery);
+    const { ir, unsupported } = compileQuery({ entity, ...options } as FlatQuery);
     if (unsupported.length > 0) {
-      console.debug('[query-ir] fallback (unsupported):', model, unsupported);
+      console.debug('[query-ir] fallback (IR cannot express):', entity, unsupported);
       return options;
     }
-    const rebuilt = { ...(irToAd4mQuery(ir) as Record<string, unknown>) };
-    delete rebuilt.model; // model is passed separately to the backend; options carry only the query
-    return rebuilt;
+    const plan = adapter.plan(ir);
+    if (plan.gaps.length > 0) {
+      // The adapter can't push these down natively. A later increment finishes them via compute-up
+      // (executeQueryIR over the native-fetched rows); for now, fall back to the direct backend path.
+      console.debug(
+        '[query-ir] fallback (adapter compute-up gaps):',
+        entity,
+        plan.gaps.map((g) => g.feature),
+      );
+      return options;
+    }
+    return adapter.lower(ir) as Record<string, unknown>;
   } catch (err) {
-    console.debug('[query-ir] fallback (error):', model, err);
+    console.debug('[query-ir] fallback (error):', entity, err);
     return options;
   }
 }
@@ -213,13 +229,9 @@ function createQuerySignal(
       for (const part of parts) target = (target as Record<string, unknown>)?.[part];
       p = typeof target === 'function' ? (target as () => unknown)() : target;
     } else {
-      // Prefer the injected, backend-neutral $currentDataset(); fall back to the legacy
-      // AD4M-specific adamStore.currentPerspective for back-compat.
-      // TODO: drop the adamStore fallback once TemplateProvider injects $currentDataset.
-      const currentDataset =
-        ((stores as Record<string, unknown>).$currentDataset as (() => unknown) | undefined) ??
-        (((stores as Record<string, unknown>).adamStore as Record<string, unknown> | undefined)?.currentPerspective as
-          (() => unknown) | undefined);
+      // The host injects the backend-neutral $currentDataset() (AD4M's currentPerspective, another
+      // backend's equivalent) — no AD4M store reference in the renderer.
+      const currentDataset = (stores as Record<string, unknown>).$currentDataset as (() => unknown) | undefined;
       p = typeof currentDataset === 'function' ? currentDataset() : null;
     }
     if (!p) {
@@ -264,7 +276,10 @@ function createQuerySignal(
     // effect, makes the query re-run when it flips — so toggling re-routes without a reload.
     const irFlag = (stores as Record<string, unknown>).$useQueryIR;
     const useQueryIR = typeof irFlag === 'function' ? (irFlag as () => unknown)() === true : irFlag === true;
-    if (useQueryIR) queryOptions = routeQueryThroughIR(descriptor.entity, queryOptions);
+    const queryAdapter = (stores as Record<string, unknown>).$queryAdapter as QueryAdapter | undefined;
+    if (useQueryIR && queryAdapter) {
+      queryOptions = routeQueryThroughIR(descriptor.entity, queryOptions, queryAdapter);
+    }
 
     // AD4M model instances expose `id` as a prototype getter, not an own enumerable
     // property, so Solid's reconcile({ key: 'id' }) cannot find it for keyed diffing.
@@ -624,9 +639,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             for (const part of parts) target = (target as Record<string, unknown>)?.[part];
             p = typeof target === 'function' ? (target as () => unknown)() : target;
           } else {
-            const cp = ((stores as Record<string, unknown>).adamStore as Record<string, unknown> | undefined)
-              ?.currentPerspective;
-            p = typeof cp === 'function' ? (cp as () => unknown)() : null;
+            const currentDataset = (stores as Record<string, unknown>).$currentDataset as (() => unknown) | undefined;
+            p = typeof currentDataset === 'function' ? currentDataset() : null;
           }
           if (!p) {
             setHasItem(false);

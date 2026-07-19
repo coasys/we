@@ -1,5 +1,6 @@
 import type { Ad4mModel } from '@coasys/ad4m';
 import type { AdamStore, AiStore, AppStore, RouteStore, SpaceStore, TemplateStore, ThemeStore } from '@solid/stores';
+import type { QueryAdapter } from '@we/schema-shared';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ModelClass = typeof Ad4mModel & (new (...args: any[]) => Ad4mModel);
@@ -36,11 +37,11 @@ export type Stores = {
   /** Route template queries through the neutral QueryIR — reactive accessor; default from
    *  `seed.features.useQueryIR` (see `queryIRFlag`). A plain boolean is also accepted. */
   $useQueryIR?: boolean | (() => boolean);
-  /**
-   * Neutral identity — the current agent's identity object: `did` always present, profile fields
-   * (`handle`, `avatar`, …) when loaded. Templates read `$me.did` etc. instead of `adamStore.me.did`.
-   */
-  $me?: () => { did: string; [k: string]: unknown } | undefined;
+  /** Neutral identity — the current agent (templates read `$me.did`). Backed by `adamStore.me` here;
+   *  typed `unknown` (like `$currentDataset`) so the seam stays backend-agnostic. */
+  $me?: () => unknown;
   /** Neutral dataset handle — the active perspective (templates use `$currentDataset`). */
   $currentDataset?: () => unknown;
+  /** Query-execution adapter — the renderer routes each QueryIR through it (plan + lower). */
+  $queryAdapter?: QueryAdapter;
 } & Record<string, unknown>;

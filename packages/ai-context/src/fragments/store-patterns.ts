@@ -96,9 +96,11 @@ Example — Nested include (Conversations with their messages):
 Each conversation in the result has a messages array of hydrated Message instances.
 Nesting works to any depth: "include": { "messages": { "include": { "reactions": true } } }
 
-Relational drill-down (master-detail navigation across model relations):
-Use routes + $query parent when you navigate to a detail route and need only that record's children.
-The relation name must match a HasMany relation listed for that model in the externalModels description.
+Relational drill-down (master-detail navigation across entity relations):
+Use routes + a $query \`scope\` when you navigate to a detail route and need only that record's children.
+scope.anchor is the parent entity type; scope.via is its HasMany relation (see externalModels) whose targets
+are the query's entity; scope.anchorId is the parent record's id. The adapter resolves the relation to a
+backend handle, so no protocol details live in the template.
 routeStore.segments.N extracts the Nth dynamic path segment (segments splits currentPath by "/").
 
 Example — Channel list → Conversation list:
@@ -134,7 +136,7 @@ Example — Channel list → Conversation list:
           "items": {
             "$query": {
               "entity": "Conversation",
-              "parent": { "id": { "$store": "routeStore.segments.1" }, "relation": "conversations" },
+              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$store": "routeStore.segments.1" } },
               "dataset": "$currentDataset"
             }
           },
@@ -150,9 +152,9 @@ Example — Channel list → Conversation list:
 }
 Notes:
 - Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
-- Use parent when you're on a detail route and want only children belonging to the current record.
+- Use a scope drill-down when you're on a detail route and want only children belonging to the current record.
 - dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use "$currentDataset".
-- The relation name (in include or parent.relation) is the HasMany field name on the parent entity.
+- The relation name (in include, or scope.via) is the HasMany field name on the parent entity.
 
 Local state (form with validation):
 {

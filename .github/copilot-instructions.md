@@ -292,7 +292,7 @@ Compose with we-number for a full "N Members" display:
 Query (data retrieval):
 { "$query": { "entity": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the current dataset for entity instances. Always returns an array.
-Options: entity (required), where, order, limit, offset, include, parent, dataset, subscribe.
+Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
 By default $query targets the current dataset ($currentDataset). Use dataset to query a different dataset —
 required when reading entities from an external app (e.g. Flux) that is open as a WE space:
@@ -367,12 +367,14 @@ With limit: 1 the field unwraps to T | null instead of an array.
 include only works with typed relations — ones where the target model class is known.
 For WE models this is always the case. For external models, check the externalModels listing:
 relations marked "→ ModelName" are typed (safe for include); relations marked "parent query only"
-are untyped and will crash at runtime if used with include — use parent instead.
+are untyped and will crash at runtime if used with include — use a scope drill-down instead.
 
-Relational queries — fetch children by parent id (drill-down navigation):
-{ "$query": { "entity": "Conversation", "parent": { "id": "$channel.id", "relation": "conversations" } } }
-The parent.id is the id of the parent record (typically from a $each context variable or a route segment).
-The parent.relation name matches the HasMany relation listed for that model in externalModels.
+Relational queries — fetch a parent record's children (drill-down navigation):
+{ "$query": { "entity": "Conversation", "scope": { "anchor": "Channel", "via": "conversations", "anchorId": "$channel.id" } } }
+scope.anchor is the parent entity type; scope.via is its relation whose targets are this query's entity (the
+HasMany relation listed for that entity in externalModels); scope.anchorId is the parent record's id (typically
+from a $each context variable or a route segment). The adapter resolves the relation to a backend handle —
+no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
 For external-app datasets, always add dataset: "$currentDataset".
 
@@ -1521,9 +1523,11 @@ Example — Nested include (Conversations with their messages):
 Each conversation in the result has a messages array of hydrated Message instances.
 Nesting works to any depth: "include": { "messages": { "include": { "reactions": true } } }
 
-Relational drill-down (master-detail navigation across model relations):
-Use routes + $query parent when you navigate to a detail route and need only that record's children.
-The relation name must match a HasMany relation listed for that model in the externalModels description.
+Relational drill-down (master-detail navigation across entity relations):
+Use routes + a $query `scope` when you navigate to a detail route and need only that record's children.
+scope.anchor is the parent entity type; scope.via is its HasMany relation (see externalModels) whose targets
+are the query's entity; scope.anchorId is the parent record's id. The adapter resolves the relation to a
+backend handle, so no protocol details live in the template.
 routeStore.segments.N extracts the Nth dynamic path segment (segments splits currentPath by "/").
 
 Example — Channel list → Conversation list:
@@ -1559,7 +1563,7 @@ Example — Channel list → Conversation list:
           "items": {
             "$query": {
               "entity": "Conversation",
-              "parent": { "id": { "$store": "routeStore.segments.1" }, "relation": "conversations" },
+              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$store": "routeStore.segments.1" } },
               "dataset": "$currentDataset"
             }
           },
@@ -1575,9 +1579,9 @@ Example — Channel list → Conversation list:
 }
 Notes:
 - Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
-- Use parent when you're on a detail route and want only children belonging to the current record.
+- Use a scope drill-down when you're on a detail route and want only children belonging to the current record.
 - dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use "$currentDataset".
-- The relation name (in include or parent.relation) is the HasMany field name on the parent entity.
+- The relation name (in include, or scope.via) is the HasMany field name on the parent entity.
 
 Local state (form with validation):
 {

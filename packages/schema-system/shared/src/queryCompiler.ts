@@ -2,9 +2,10 @@
  * The query compiler: the flat `$query` shape ⇄ the neutral `QueryIR`.
  *
  * `compileQuery` lifts the flat, post-resolution `$query` (the neutral authoring DSL — `entity`
- * mapped to `model`, plus `where`/`order`/`include`/`limit`) up into the IR. `irToAd4mQuery` is the
- * inverse: it lowers the IR back down to the flat query AD4M's ORM consumes — the AD4M adapter's
- * push-down step.
+ * mapped to `model`, plus `where`/`order`/`include`/`limit`) up into the IR. `irToFlatQuery` is the
+ * inverse: it lowers the IR back down to the flat query dialect a `ModelClass` ORM consumes (AD4M's
+ * `Ad4mModel.query`, the in-memory harness backend). Both are neutral — the AD4M-*specific* pieces
+ * (capability profile, scope→predicate resolution) live in the adapter that composes these.
  *
  * `compileQuery` returns the IR *and* an `unsupported` list. Most shapes map losslessly — including
  * single/filtered `$`-projections (→ an aliased `include` with `over`). `unsupported` flags the shapes
@@ -14,22 +15,17 @@
  *
  * Reference for the flat `$query` grammar: the `$query` docs in `CLAUDE.md`.
  */
-import type { Aggregation, Filter, IncludeMap, IncludeSpec, Op, QueryIR, Scalar, SortKey } from './queryIR';
+import type { Aggregation, Filter, IncludeMap, IncludeSpec, Op, QueryIR, Scalar, Scope, SortKey } from './queryIR';
 
 export interface FlatQuery {
-  model: string;
+  entity: string;
   where?: Record<string, unknown>;
   order?: Record<string, 'asc' | 'desc'>;
   limit?: number;
   offset?: number;
   include?: Record<string, unknown>;
-  /**
-   * Drill-down. `{ id, relation }` is the documented form; `{ id, predicate }` is the AD4M-physical
-   * escape hatch some templates use because the relation form never resolved end-to-end. Neither
-   * carries the anchor *type* a neutral `scope` needs, so the translator flags both.
-   */
-  parent?: { id: unknown; relation: string } | { id: unknown; predicate: string };
-  perspective?: string;
+  /** Neutral drill-down; passed straight to the IR, resolved to a backend handle by the adapter. */
+  scope?: Scope;
   subscribe?: boolean;
   [k: string]: unknown;
 }
@@ -144,7 +140,7 @@ function translateInclude(
 
 export function compileQuery(query: FlatQuery): CompileResult {
   const unsupported: string[] = [];
-  const ir: QueryIR = { irVersion: 1, entity: query.model };
+  const ir: QueryIR = { irVersion: 1, entity: query.entity };
 
   if (query.where) {
     const filter = translateWhere(query.where);
@@ -161,28 +157,23 @@ export function compileQuery(query: FlatQuery): CompileResult {
     if (Object.keys(map).length) ir.include = map;
     if (aggregates.length) ir.aggregate = aggregates;
   }
+  // `scope` (neutral drill-down) passes straight through; the adapter resolves `via` to a backend
+  // handle (AD4M: the relation's predicate).
+  if (query.scope) ir.scope = query.scope;
   // subscribe defaults true → live default; only record the explicit one-shot case.
   if (query.subscribe === false) ir.live = false;
-  // `parent` → a neutral `scope` drill-down needs the anchor's *type* to resolve the relation to a
-  // backend handle (e.g. an AD4M predicate). Neither flat form carries it — `{ id, relation }` has
-  // only the relation name, `{ id, predicate }` is an AD4M-physical escape hatch — so flag rather than
-  // mis-translate. Migrating a drill-down to `scope: { anchor, via }` clears this.
-  if (query.parent) {
-    unsupported.push('parent (drill-down): a neutral scope needs the anchor type — migrate to scope: { anchor, via }');
-  }
-  // `perspective` is intentionally dropped — the dataset handle is injected, not part of the IR.
 
   return { ir, unsupported };
 }
 
-// ─── IR → flat $query (the inverse; the AD4M adapter's push-down) ────────────────
+// ─── IR → flat $query (the inverse; lower the IR to the flat ModelClass dialect) ──
 //
-// AD4M's `Ad4mModel.query`/`findAll` already speak the flat `$query` dialect (`{ where, order,
-// limit, offset, include, parent }`), so the "AD4M adapter" is just this projection back to it. It
-// only emits shapes AD4M expresses natively; a feature it can't (a non-native operator, a to-many
-// relation filter, a non-`count` aggregate) throws, because the runtime should have routed that to
-// the compute-up fallback via `planQuery` rather than trying to push it down. Round-tripping
-// `flat → IR → flat` re-derives the identical IR — the losslessness guarantee this rests on.
+// A `ModelClass` ORM (AD4M's `Ad4mModel.query`/`findAll`, the in-memory harness backend) speaks the
+// flat `$query` dialect (`{ where, order, limit, offset, include, parent }`), so lowering the IR is
+// just this projection back to it. It only emits shapes that dialect expresses; a feature it can't (a
+// non-native operator, a to-many relation filter, a non-`count` aggregate) throws, because the adapter
+// should have routed that to the compute-up fallback via `planQuery` rather than pushing it down.
+// Round-tripping `flat → IR → flat` re-derives the identical IR — the losslessness guarantee this rests on.
 
 /** A filter leaf's operator → the flat where-condition value for its field. */
 function conditionFromLeaf(op: Op, value: Scalar | Scalar[]): unknown {
@@ -198,7 +189,7 @@ function conditionFromLeaf(op: Op, value: Scalar | Scalar[]): unknown {
     case 'exists':
       return { exists: value };
     default:
-      throw new Error(`irToAd4mQuery: operator "${op}" is not expressible in an AD4M where clause`);
+      throw new Error(`irToFlatQuery: operator "${op}" is not expressible in the flat where clause`);
   }
 }
 
@@ -219,7 +210,7 @@ function whereFromFilter(filter: Filter): Record<string, unknown> {
   if ('or' in filter) return { OR: filter.or.map(whereFromFilter) };
   if ('not' in filter) return { NOT: whereFromFilter(filter.not) };
   if ('rel' in filter) {
-    throw new Error('irToAd4mQuery: relation filters are not expressible in an AD4M where clause');
+    throw new Error('irToFlatQuery: relation filters are not expressible in the flat where clause');
   }
   return { [filter.field]: conditionFromLeaf(filter.op, filter.value) };
 }
@@ -230,7 +221,7 @@ function orderFromSort(sort: SortKey[]): Record<string, 'asc' | 'desc'> {
   return order;
 }
 
-function ad4mIncludeEntry(spec: IncludeSpec): Record<string, unknown> {
+function flatIncludeEntry(spec: IncludeSpec): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (spec.over) out.from = spec.over; // aliased projection: relation source
   if (spec.filter) out.where = whereFromFilter(spec.filter);
@@ -241,21 +232,21 @@ function ad4mIncludeEntry(spec: IncludeSpec): Record<string, unknown> {
     out.limit = spec.page.limit;
     if ('offset' in spec.page && spec.page.offset !== undefined) out.offset = spec.page.offset;
   }
-  if (spec.include) out.include = ad4mIncludeFromMap(spec.include);
+  if (spec.include) out.include = flatIncludeFromMap(spec.include);
   return out;
 }
 
-function ad4mIncludeFromMap(include: IncludeMap): Record<string, unknown> {
+function flatIncludeFromMap(include: IncludeMap): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, spec] of Object.entries(include)) {
-    out[key] = spec === true ? true : ad4mIncludeEntry(spec);
+    out[key] = spec === true ? true : flatIncludeEntry(spec);
   }
   return out;
 }
 
-/** Compile a `QueryIR` back to the flat `$query` dialect the AD4M ORM consumes. */
-export function irToAd4mQuery(ir: QueryIR): FlatQuery {
-  const flat: FlatQuery = { model: ir.entity };
+/** Lower a `QueryIR` to the flat `$query` dialect a `ModelClass` ORM consumes. */
+export function irToFlatQuery(ir: QueryIR): FlatQuery {
+  const flat: FlatQuery = { entity: ir.entity };
   if (ir.filter) flat.where = whereFromFilter(ir.filter);
   if (ir.sort) flat.order = orderFromSort(ir.sort);
   if (ir.page && 'limit' in ir.page) {
@@ -265,10 +256,10 @@ export function irToAd4mQuery(ir: QueryIR): FlatQuery {
 
   // `include` is reconstructed from plain/aliased includes plus count aggregates (which lived there).
   const include: Record<string, unknown> = {};
-  if (ir.include) Object.assign(include, ad4mIncludeFromMap(ir.include));
+  if (ir.include) Object.assign(include, flatIncludeFromMap(ir.include));
   for (const agg of ir.aggregate ?? []) {
     if (agg.fn !== 'count') {
-      throw new Error(`irToAd4mQuery: aggregate fn "${agg.fn}" has no AD4M projection (only count does)`);
+      throw new Error(`irToFlatQuery: aggregate fn "${agg.fn}" has no flat projection (only count does)`);
     }
     const entry: Record<string, unknown> = { from: agg.over, count: true };
     if (agg.filter) entry.where = whereFromFilter(agg.filter);
@@ -281,7 +272,7 @@ export function irToAd4mQuery(ir: QueryIR): FlatQuery {
     // handle (an AD4M predicate) needs the manifest binding, which is the adapter's job. The AD4M
     // adapter resolves `scope` to a `ParentScope` itself and attaches it; this translator handles only
     // the binding-free parts.
-    throw new Error('irToAd4mQuery: scope (drill-down) requires adapter binding resolution, not this translator');
+    throw new Error('irToFlatQuery: scope (drill-down) requires adapter binding resolution, not this translator');
   }
   if (ir.live === false) flat.subscribe = false;
   return flat;

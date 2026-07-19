@@ -163,7 +163,7 @@ Compose with we-number for a full "N Members" display:
 Query (data retrieval):
 { "$query": { "entity": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
 Queries the current dataset for entity instances. Always returns an array.
-Options: entity (required), where, order, limit, offset, include, parent, dataset, subscribe.
+Options: entity (required), where, order, limit, offset, include, scope, dataset, subscribe.
 subscribe defaults to true — reactive live updates. Set subscribe: false to do a one-time fetch.
 By default $query targets the current dataset ($currentDataset). Use dataset to query a different dataset —
 required when reading entities from an external app (e.g. Flux) that is open as a WE space:
@@ -238,12 +238,14 @@ With limit: 1 the field unwraps to T | null instead of an array.
 include only works with typed relations — ones where the target model class is known.
 For WE models this is always the case. For external models, check the externalModels listing:
 relations marked "→ ModelName" are typed (safe for include); relations marked "parent query only"
-are untyped and will crash at runtime if used with include — use parent instead.
+are untyped and will crash at runtime if used with include — use a scope drill-down instead.
 
-Relational queries — fetch children by parent id (drill-down navigation):
-{ "$query": { "entity": "Conversation", "parent": { "id": "$channel.id", "relation": "conversations" } } }
-The parent.id is the id of the parent record (typically from a $each context variable or a route segment).
-The parent.relation name matches the HasMany relation listed for that model in externalModels.
+Relational queries — fetch a parent record's children (drill-down navigation):
+{ "$query": { "entity": "Conversation", "scope": { "anchor": "Channel", "via": "conversations", "anchorId": "$channel.id" } } }
+scope.anchor is the parent entity type; scope.via is its relation whose targets are this query's entity (the
+HasMany relation listed for that entity in externalModels); scope.anchorId is the parent record's id (typically
+from a $each context variable or a route segment). The adapter resolves the relation to a backend handle —
+no protocol details live in the template.
 Use this pattern when navigating to a detail route and loading only that record's children.
 For external-app datasets, always add dataset: "$currentDataset".
 

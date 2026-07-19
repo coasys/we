@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { irToAd4mQuery, type FlatQuery, compileQuery } from './queryCompiler';
+import { compileQuery, type FlatQuery, irToFlatQuery } from './queryCompiler';
 import { validateQueryIR } from './queryIR';
 
 describe('compileQuery', () => {
   it('translates a common feed query cleanly (model/where-OR/order/limit/include) with no gaps', () => {
     const legacy: FlatQuery = {
-      model: 'Post',
+      entity: 'Post',
       where: { OR: [{ title: { contains: 'graph' } }, { content: { contains: 'graph' } }] },
       order: { createdAt: 'desc' },
       limit: 20,
@@ -32,7 +32,7 @@ describe('compileQuery', () => {
 
   it('maps the where operator forms (eq / ne / nin / contains / exists) + implicit-AND of siblings', () => {
     const { ir } = compileQuery({
-      model: 'X',
+      entity: 'X',
       where: { a: 1, b: { not: 2 }, c: { not: [3, 4] }, d: { contains: 'z' }, e: { exists: true } },
     });
     expect(ir.filter).toEqual({
@@ -48,7 +48,7 @@ describe('compileQuery', () => {
 
   it('maps a count-projection to a top-level aggregate (alias keeps the $ for round-trip reads)', () => {
     const { ir, unsupported } = compileQuery({
-      model: 'Post',
+      entity: 'Post',
       include: { $likeCount: { from: 'signals', count: true, where: { signalTypeId: 'like' } } },
     });
     expect(unsupported).toEqual([]);
@@ -58,42 +58,34 @@ describe('compileQuery', () => {
     expect(ir.include).toBeUndefined();
   });
 
-  it('records subscribe:false as one-shot, and drops perspective', () => {
-    const { ir } = compileQuery({
-      model: 'Post',
-      subscribe: false,
-      perspective: 'adamStore.currentPerspective',
-    });
+  it('records subscribe:false as a one-shot query (live:false)', () => {
+    const { ir } = compileQuery({ entity: 'Post', subscribe: false });
     expect(ir.live).toBe(false);
-    expect('perspective' in ir).toBe(false);
   });
 
-  it('flags parent (drill-down) as needing an anchor type, while a single/filtered projection still maps', () => {
+  it('maps a single/filtered projection to an aliased include (limit:1 → first, `$` kept for reads)', () => {
     const { ir, unsupported } = compileQuery({
-      model: 'Conversation',
-      parent: { id: 'ch1', relation: 'conversations' },
+      entity: 'Conversation',
       include: { $myLike: { from: 'signals', where: { author: 'did:me' }, limit: 1 } },
     });
-    // parent can't become a neutral scope without the anchor *type* → flagged, no scope emitted
-    expect(unsupported).toContainEqual(expect.stringContaining('parent (drill-down)'));
-    expect(ir.scope).toBeUndefined();
-    // the single/filtered projection still maps losslessly, `$` kept so `$item.$myLike` still reads
+    expect(unsupported).toEqual([]);
     expect(ir.include).toEqual({
       $myLike: { over: 'signals', filter: { field: 'author', op: 'eq', value: 'did:me' }, first: true },
     });
   });
 
-  it('flags the raw-predicate parent form too (the AD4M-physical escape hatch)', () => {
-    const { unsupported } = compileQuery({
-      model: 'ConversationSubgroup',
-      parent: { id: 'c1', predicate: 'ad4m://has_child' },
+  it('passes a neutral `scope` drill-down straight to the IR (supported — the adapter resolves it)', () => {
+    const { ir, unsupported } = compileQuery({
+      entity: 'ConversationSubgroup',
+      scope: { anchor: 'Conversation', via: 'subgroupEntities', anchorId: 'c1' },
     });
-    expect(unsupported).toContainEqual(expect.stringContaining('parent (drill-down)'));
+    expect(unsupported).toEqual([]);
+    expect(ir.scope).toEqual({ anchor: 'Conversation', via: 'subgroupEntities', anchorId: 'c1' });
   });
 
   it('maps a multi-instance projection (limit > 1) to an aliased include with a page, not first', () => {
     const { ir, unsupported } = compileQuery({
-      model: 'Post',
+      entity: 'Post',
       include: { $recentLikes: { from: 'signals', order: { createdAt: 'desc' }, limit: 5 } },
     });
     expect(unsupported).toEqual([]);
@@ -104,9 +96,9 @@ describe('compileQuery', () => {
   });
 });
 
-describe('irToAd4mQuery', () => {
+describe('irToFlatQuery', () => {
   it('maps aggregate → count projection and alias → single projection', () => {
-    const legacy = irToAd4mQuery({
+    const legacy = irToFlatQuery({
       irVersion: 1,
       entity: 'Post',
       aggregate: [
@@ -117,7 +109,7 @@ describe('irToAd4mQuery', () => {
         $myLike: { over: 'signals', filter: { field: 'author', op: 'eq', value: 'did:me' }, first: true },
       },
     });
-    expect(legacy.model).toBe('Post');
+    expect(legacy.entity).toBe('Post');
     expect(legacy.include).toEqual({
       author: true,
       $myLike: { from: 'signals', where: { author: 'did:me' }, limit: 1 },
@@ -127,17 +119,17 @@ describe('irToAd4mQuery', () => {
 
   it('throws on shapes needing adapter resolution or that AD4M cannot express (scope, op, rel-filter, non-count agg)', () => {
     // scope needs binding resolution — the adapter's job, not this translator
-    expect(() => irToAd4mQuery({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1' } })).toThrow(
+    expect(() => irToFlatQuery({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1' } })).toThrow(
       /scope \(drill-down\)/,
     );
     expect(() =>
-      irToAd4mQuery({ irVersion: 1, entity: 'Post', filter: { field: 'likes', op: 'gt', value: 5 } }),
+      irToFlatQuery({ irVersion: 1, entity: 'Post', filter: { field: 'likes', op: 'gt', value: 5 } }),
     ).toThrow(/operator "gt"/);
-    expect(() => irToAd4mQuery({ irVersion: 1, entity: 'Post', filter: { rel: 'signals', op: 'some' } })).toThrow(
+    expect(() => irToFlatQuery({ irVersion: 1, entity: 'Post', filter: { rel: 'signals', op: 'some' } })).toThrow(
       /relation filters/,
     );
     expect(() =>
-      irToAd4mQuery({
+      irToFlatQuery({
         irVersion: 1,
         entity: 'Post',
         aggregate: [{ as: 's', over: 'signals', fn: 'sum', field: 'value' }],
@@ -149,28 +141,28 @@ describe('irToAd4mQuery', () => {
   // proven by re-deriving the IR from the reconstructed legacy and getting the identical IR back.
   const samples: FlatQuery[] = [
     {
-      model: 'Post',
+      entity: 'Post',
       where: { OR: [{ title: { contains: 'x' } }, { content: { contains: 'x' } }] },
       order: { createdAt: 'desc' },
       limit: 20,
       include: { author: true, comments: { where: { hidden: false }, order: { createdAt: 'asc' } } },
     },
-    { model: 'X', where: { a: 1, b: { not: 2 }, c: { not: [3, 4] }, d: { contains: 'z' }, e: { exists: true } } },
+    { entity: 'X', where: { a: 1, b: { not: 2 }, c: { not: [3, 4] }, d: { contains: 'z' }, e: { exists: true } } },
     {
-      model: 'Post',
+      entity: 'Post',
       limit: 10,
       offset: 20,
       include: { $likeCount: { from: 'signals', count: true, where: { signalTypeId: 'like' } } },
     },
-    { model: 'Post', include: { $myLike: { from: 'signals', where: { author: 'did:me' }, limit: 1 } } },
-    { model: 'Post', subscribe: false, order: { createdAt: 'desc', title: 'asc' } },
-    { model: 'Channel', include: { conversations: { include: { messages: { limit: 20 } } } } },
+    { entity: 'Post', include: { $myLike: { from: 'signals', where: { author: 'did:me' }, limit: 1 } } },
+    { entity: 'Post', subscribe: false, order: { createdAt: 'desc', title: 'asc' } },
+    { entity: 'Channel', include: { conversations: { include: { messages: { limit: 20 } } } } },
   ];
 
   it('round-trips legacy → IR → legacy → IR without drift for every representative shape', () => {
     for (const legacy of samples) {
       const ir1 = compileQuery(legacy).ir;
-      const ir2 = compileQuery(irToAd4mQuery(ir1)).ir;
+      const ir2 = compileQuery(irToFlatQuery(ir1)).ir;
       expect(ir2).toEqual(ir1);
     }
   });

@@ -259,13 +259,12 @@ const conversationSubgroupsList: SchemaNode = {
               $query: {
                 entity: 'ConversationSubgroup',
                 dataset: '$currentDataset',
-                // `parent: { id, relation }` is broken end-to-end in the schema-system —
-                // it never translates into ad4m's real ParentScope shape ({ model, id, field }
-                // or { id, predicate }), so it crashes resolveParentPredicate with a WeakMap
-                // error. Use the raw predicate form instead. `ad4m://has_child` is HasMany's
-                // default `through` value, which is what Conversation.subgroupEntities uses
-                // since it declares no explicit `through`.
-                parent: { id: '$conversation.id', predicate: 'ad4m://has_child' },
+                // Neutral drill-down: the ConversationSubgroups anchored to this Conversation via its
+                // `subgroupEntities` relation. The AD4M adapter resolves `via`→predicate from the
+                // perspective's model manifest (→ `ad4m://has_child`), so no raw predicate lives in the
+                // template — and it hands AD4M the `{ id, predicate }` form, sidestepping its broken
+                // relation-name resolver (`resolveParentPredicate`).
+                scope: { anchor: 'Conversation', via: 'subgroupEntities', anchorId: '$conversation.id' },
               },
             },
             as: 'subgroup',

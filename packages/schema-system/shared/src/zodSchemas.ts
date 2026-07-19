@@ -109,7 +109,14 @@ const zQuery = z.object({
   limit: z.number().int().positive().optional(),
   offset: z.number().int().nonnegative().optional(),
   include: z.record(z.string(), z.unknown()).optional(),
-  parent: z.record(z.string(), z.unknown()).optional(),
+  // Neutral drill-down. `anchorId` may be a token (e.g. '$conversation.id') resolved before the query runs.
+  scope: z
+    .object({
+      via: z.string().min(1),
+      anchorId: z.union([z.string(), z.number(), z.record(z.string(), z.unknown())]),
+      anchor: z.string().optional(),
+    })
+    .optional(),
   subscribe: z.boolean().optional(),
   dataset: z.string().optional(),
 });

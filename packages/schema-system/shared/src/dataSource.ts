@@ -10,6 +10,8 @@
  * forwarded verbatim. It is expected to be superseded by a specified, backend-neutral query IR; the
  * shape of the seam — dataset handle + model handle with `query`/`findAll` — stays either way.
  */
+import type { AdapterCapabilities, QueryPlan } from './queryCapabilities';
+import type { QueryIR } from './queryIR';
 
 /**
  * An opaque handle to the bounded dataset a query runs against — the backend-neutral replacement
@@ -74,6 +76,29 @@ export interface DataSource {
 }
 
 /**
+ * The query-execution port an adapter implements to run a neutral `QueryIR` on its backend.
+ *
+ * `compileQuery` (DSL→IR), `irToFlatQuery` (IR→flat options), and `executeQueryIR` (the compute-up
+ * engine) are neutral building blocks in `@we/schema-shared`. A `QueryAdapter` *composes* them with
+ * this backend's capability profile and quirks, so the renderer routes every query through the port
+ * and never hardcodes a backend. AD4M is the reference implementation; NextGraph/GraphQL/in-memory
+ * are others.
+ */
+export interface QueryAdapter {
+  /** What this backend does natively — drives {@link QueryAdapter.plan}. */
+  capabilities: AdapterCapabilities;
+  /**
+   * Classify an IR for this backend: which features push down natively vs need the compute-up
+   * fallback. Beyond `planQuery(ir, capabilities)`, an adapter folds in its own conditional
+   * degradations — e.g. AD4M silently disables its sort/pagination pushdown when `where` uses
+   * OR/AND/NOT, and a projection/relation-path sort needs a `limit`.
+   */
+  plan(ir: QueryIR): QueryPlan;
+  /** Lower a fully-native IR to the flat query options this backend's {@link ModelClass} consumes. */
+  lower(ir: QueryIR): QueryOptions;
+}
+
+/**
  * The exact keys the renderer reads off the injected `stores` bag — the empirical data contract as
  * surfaced by the in-memory reference host. A host provides these (plus any `$store` namespaces its templates
  * reference). All optional so a presentation-only (L0) host can omit the data ones entirely.
@@ -89,4 +114,6 @@ export interface RendererDataBindings {
   $onError?: (message: string) => void;
   /** Mutation surface for `model.create` / `update` / `delete` actions. */
   model?: MutationApi;
+  /** Query-execution adapter — routes a neutral `QueryIR` to this backend (plan + lower). */
+  $queryAdapter?: QueryAdapter;
 }
