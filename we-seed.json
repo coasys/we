@@ -7,7 +7,7 @@
   },
 
   "features": {
-    "useQueryIR": false
+    "useQueryIR": true
   },
 
   "ad4m": {

@@ -21,7 +21,7 @@ export const spaceModal = {
     {
       type: '$single',
       props: {
-        item: { $query: { model: 'Space', where: { id: { $local: 'selectedPin.id' } }, include: { signals: true } } },
+        item: { $query: { entity: 'Space', where: { id: { $local: 'selectedPin.id' } }, include: { signals: true } } },
         as: 'space',
       },
       children: [
@@ -85,14 +85,14 @@ export const spaceModal = {
               children: [
                 {
                   type: '$each',
-                  props: { items: { $query: { model: 'SignalType', subscribe: true } }, as: 'sig' },
+                  props: { items: { $query: { entity: 'SignalType', subscribe: true } }, as: 'sig' },
                   children: [
                     {
                       type: 'SignalControl',
                       props: {
                         signalType: '$sig',
                         signals: { $filter: { items: '$space.signals', where: { signalTypeId: '$sig.id' } } },
-                        myDid: { $store: 'adamStore.me.did' },
+                        myDid: '$me.did',
                         onSignal: { $action: 'spaceStore.upsertSignal', args: ['$space.id', '$sig.id', '$arg'] },
                       },
                     },

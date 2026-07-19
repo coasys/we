@@ -27,8 +27,8 @@ export interface WeSeedFile {
   /** Experimental feature flags (dev/rollout toggles read by the running app). */
   features?: {
     /**
-     * Route each template query through the neutral QueryIR (translateLegacyQuery → irToLegacyQuery)
-     * before it reaches the backend. Off by default; falls back to the legacy path for anything the
+     * Route each template query through the neutral QueryIR (compileQuery → irToAd4mQuery)
+     * before it reaches the backend. Off by default; falls back to the direct (non-IR) path for anything the
      * IR can't yet express, so it's always safe. In dev the seed is a watched static import, so
      * flipping this + reloading takes effect (a production build bakes the seed → needs a rebuild).
      */

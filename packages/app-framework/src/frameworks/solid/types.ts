@@ -36,4 +36,11 @@ export type Stores = {
   /** Route template queries through the neutral QueryIR — reactive accessor; default from
    *  `seed.features.useQueryIR` (see `queryIRFlag`). A plain boolean is also accepted. */
   $useQueryIR?: boolean | (() => boolean);
+  /**
+   * Neutral identity — the current agent's identity object: `did` always present, profile fields
+   * (`handle`, `avatar`, …) when loaded. Templates read `$me.did` etc. instead of `adamStore.me.did`.
+   */
+  $me?: () => { did: string; [k: string]: unknown } | undefined;
+  /** Neutral dataset handle — the active perspective (templates use `$currentDataset`). */
+  $currentDataset?: () => unknown;
 } & Record<string, unknown>;

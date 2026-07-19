@@ -7,15 +7,15 @@
  * becomes its resolved branch). Each is annotated with the source schema file it was lifted from.
  *
  * `SUPPORTED` must translate with an empty `unsupported` list AND round-trip losslessly
- * (`legacy → IR → legacy → IR` re-derives the identical IR). `FLAGGED` must be surfaced in
+ * (`flat → IR → flat → IR` re-derives the identical IR). `FLAGGED` must be surfaced in
  * `unsupported` — today only the `parent` drill-down, which needs migrating to `scope: { anchor, via }`
  * (see the gap-handling note in the portability docs).
  */
-import { irToLegacyQuery, type LegacyQuery, translateLegacyQuery } from '@we/schema-shared';
+import { irToAd4mQuery, type FlatQuery, compileQuery } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 // Fully-neutral-expressible real query shapes (token values concretised).
-const SUPPORTED: { name: string; query: LegacyQuery }[] = [
+const SUPPORTED: { name: string; query: FlatQuery }[] = [
   {
     name: 'SpacesList — sibling scalar + OR search, relation-path sort, hydrate relation',
     query: {
@@ -84,7 +84,7 @@ const SUPPORTED: { name: string; query: LegacyQuery }[] = [
 ];
 
 // Shapes that legitimately can't become a neutral IR yet — surfaced, not silently mis-translated.
-const FLAGGED: { name: string; query: LegacyQuery; expect: RegExp }[] = [
+const FLAGGED: { name: string; query: FlatQuery; expect: RegExp }[] = [
   {
     name: 'FluxConversationsNestedList — parent drill-down (raw-predicate escape hatch)',
     query: {
@@ -99,17 +99,17 @@ const FLAGGED: { name: string; query: LegacyQuery; expect: RegExp }[] = [
 describe('real template $query corpus', () => {
   for (const { name, query } of SUPPORTED) {
     it(`maps + round-trips: ${name}`, () => {
-      const { ir, unsupported } = translateLegacyQuery(query);
+      const { ir, unsupported } = compileQuery(query);
       expect(unsupported).toEqual([]);
-      // legacy → IR → legacy → IR re-derives the identical IR (the losslessness guarantee)
-      const ir2 = translateLegacyQuery(irToLegacyQuery(ir)).ir;
+      // flat → IR → flat → IR re-derives the identical IR (the losslessness guarantee)
+      const ir2 = compileQuery(irToAd4mQuery(ir)).ir;
       expect(ir2).toEqual(ir);
     });
   }
 
   for (const { name, query, expect: pattern } of FLAGGED) {
     it(`flags (not yet neutrally expressible): ${name}`, () => {
-      const { unsupported } = translateLegacyQuery(query);
+      const { unsupported } = compileQuery(query);
       expect(unsupported.some((u) => pattern.test(u))).toBe(true);
     });
   }

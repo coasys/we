@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { irToLegacyQuery, type LegacyQuery, translateLegacyQuery } from './legacyQuery';
+import { irToAd4mQuery, type FlatQuery, compileQuery } from './queryCompiler';
 import { validateQueryIR } from './queryIR';
 
-describe('translateLegacyQuery', () => {
+describe('compileQuery', () => {
   it('translates a common feed query cleanly (model/where-OR/order/limit/include) with no gaps', () => {
-    const legacy: LegacyQuery = {
+    const legacy: FlatQuery = {
       model: 'Post',
       where: { OR: [{ title: { contains: 'graph' } }, { content: { contains: 'graph' } }] },
       order: { createdAt: 'desc' },
       limit: 20,
       include: { author: true, comments: { where: { hidden: false }, order: { createdAt: 'asc' } } },
     };
-    const { ir, unsupported } = translateLegacyQuery(legacy);
+    const { ir, unsupported } = compileQuery(legacy);
     expect(unsupported).toEqual([]);
     expect(validateQueryIR(ir).valid).toBe(true);
     expect(ir.entity).toBe('Post');
@@ -31,7 +31,7 @@ describe('translateLegacyQuery', () => {
   });
 
   it('maps the where operator forms (eq / ne / nin / contains / exists) + implicit-AND of siblings', () => {
-    const { ir } = translateLegacyQuery({
+    const { ir } = compileQuery({
       model: 'X',
       where: { a: 1, b: { not: 2 }, c: { not: [3, 4] }, d: { contains: 'z' }, e: { exists: true } },
     });
@@ -47,7 +47,7 @@ describe('translateLegacyQuery', () => {
   });
 
   it('maps a count-projection to a top-level aggregate (alias keeps the $ for round-trip reads)', () => {
-    const { ir, unsupported } = translateLegacyQuery({
+    const { ir, unsupported } = compileQuery({
       model: 'Post',
       include: { $likeCount: { from: 'signals', count: true, where: { signalTypeId: 'like' } } },
     });
@@ -59,7 +59,7 @@ describe('translateLegacyQuery', () => {
   });
 
   it('records subscribe:false as one-shot, and drops perspective', () => {
-    const { ir } = translateLegacyQuery({
+    const { ir } = compileQuery({
       model: 'Post',
       subscribe: false,
       perspective: 'adamStore.currentPerspective',
@@ -69,7 +69,7 @@ describe('translateLegacyQuery', () => {
   });
 
   it('flags parent (drill-down) as needing an anchor type, while a single/filtered projection still maps', () => {
-    const { ir, unsupported } = translateLegacyQuery({
+    const { ir, unsupported } = compileQuery({
       model: 'Conversation',
       parent: { id: 'ch1', relation: 'conversations' },
       include: { $myLike: { from: 'signals', where: { author: 'did:me' }, limit: 1 } },
@@ -84,7 +84,7 @@ describe('translateLegacyQuery', () => {
   });
 
   it('flags the raw-predicate parent form too (the AD4M-physical escape hatch)', () => {
-    const { unsupported } = translateLegacyQuery({
+    const { unsupported } = compileQuery({
       model: 'ConversationSubgroup',
       parent: { id: 'c1', predicate: 'ad4m://has_child' },
     });
@@ -92,7 +92,7 @@ describe('translateLegacyQuery', () => {
   });
 
   it('maps a multi-instance projection (limit > 1) to an aliased include with a page, not first', () => {
-    const { ir, unsupported } = translateLegacyQuery({
+    const { ir, unsupported } = compileQuery({
       model: 'Post',
       include: { $recentLikes: { from: 'signals', order: { createdAt: 'desc' }, limit: 5 } },
     });
@@ -104,9 +104,9 @@ describe('translateLegacyQuery', () => {
   });
 });
 
-describe('irToLegacyQuery', () => {
+describe('irToAd4mQuery', () => {
   it('maps aggregate → count projection and alias → single projection', () => {
-    const legacy = irToLegacyQuery({
+    const legacy = irToAd4mQuery({
       irVersion: 1,
       entity: 'Post',
       aggregate: [
@@ -127,17 +127,17 @@ describe('irToLegacyQuery', () => {
 
   it('throws on shapes needing adapter resolution or that AD4M cannot express (scope, op, rel-filter, non-count agg)', () => {
     // scope needs binding resolution — the adapter's job, not this translator
-    expect(() => irToLegacyQuery({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1' } })).toThrow(
+    expect(() => irToAd4mQuery({ irVersion: 1, entity: 'Post', scope: { via: 'posts', anchorId: 'a1' } })).toThrow(
       /scope \(drill-down\)/,
     );
     expect(() =>
-      irToLegacyQuery({ irVersion: 1, entity: 'Post', filter: { field: 'likes', op: 'gt', value: 5 } }),
+      irToAd4mQuery({ irVersion: 1, entity: 'Post', filter: { field: 'likes', op: 'gt', value: 5 } }),
     ).toThrow(/operator "gt"/);
-    expect(() => irToLegacyQuery({ irVersion: 1, entity: 'Post', filter: { rel: 'signals', op: 'some' } })).toThrow(
+    expect(() => irToAd4mQuery({ irVersion: 1, entity: 'Post', filter: { rel: 'signals', op: 'some' } })).toThrow(
       /relation filters/,
     );
     expect(() =>
-      irToLegacyQuery({
+      irToAd4mQuery({
         irVersion: 1,
         entity: 'Post',
         aggregate: [{ as: 's', over: 'signals', fn: 'sum', field: 'value' }],
@@ -147,7 +147,7 @@ describe('irToLegacyQuery', () => {
 
   // The load-bearing guarantee the AD4M adapter rests on: crossing legacy → IR → legacy loses nothing,
   // proven by re-deriving the IR from the reconstructed legacy and getting the identical IR back.
-  const samples: LegacyQuery[] = [
+  const samples: FlatQuery[] = [
     {
       model: 'Post',
       where: { OR: [{ title: { contains: 'x' } }, { content: { contains: 'x' } }] },
@@ -169,8 +169,8 @@ describe('irToLegacyQuery', () => {
 
   it('round-trips legacy → IR → legacy → IR without drift for every representative shape', () => {
     for (const legacy of samples) {
-      const ir1 = translateLegacyQuery(legacy).ir;
-      const ir2 = translateLegacyQuery(irToLegacyQuery(ir1)).ir;
+      const ir1 = compileQuery(legacy).ir;
+      const ir2 = compileQuery(irToAd4mQuery(ir1)).ir;
       expect(ir2).toEqual(ir1);
     }
   });

@@ -33,8 +33,8 @@ export const fluxChannelsList: SchemaNode = {
         props: {
           items: {
             $query: {
-              model: 'Channel',
-              perspective: 'adamStore.currentPerspective',
+              entity: 'Channel',
+              dataset: '$currentDataset',
               where: {
                 OR: [
                   { name: { contains: { $local: 'searchText' } } },

@@ -47,8 +47,8 @@ export const themesRoute: SchemaNode = {
   },
   $queries: {
     themes: {
-      model: 'Theme',
-      perspective: 'adamStore.marketplacePerspective',
+      entity: 'Theme',
+      dataset: 'adamStore.marketplacePerspective',
       order: { createdAt: { $local: 'sort' } },
       include: { screenshots: true },
       subscribe: true,

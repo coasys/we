@@ -81,6 +81,22 @@ export default function TemplateProvider() {
     $getModelForPerspective: getModelForPerspective,
     $onError: (msg: string) => toastService.error(msg),
     $useQueryIR: queryIRFlag.enabled, // reactive; default from the seed, live-toggled via testStore
+    // Neutral identity/dataset vocabulary (templates say `$me` / `$currentDataset`, not
+    // `adamStore.me.did` / `adamStore.currentPerspective`). Backed by AD4M here; another host provides
+    // its own. `$me` is the current agent's identity *object*: `did` is always present (from the
+    // authoritative `adamStore.me`), and profile fields (`handle`, `avatar`, …) fill in from `ownAgent`
+    // once loaded — so templates can read `$me.did`, `$me.handle`, etc. without touching `adamStore`.
+    $me: () => {
+      const meVal = (adamStore as unknown as { me: unknown }).me;
+      const agent = (typeof meVal === 'function' ? (meVal as () => unknown)() : meVal) as { did?: string } | undefined;
+      const did = agent?.did;
+      if (!did) return undefined;
+      const ownVal = (adamStore as unknown as { ownAgent?: unknown }).ownAgent;
+      const profile = (typeof ownVal === 'function' ? (ownVal as () => unknown)() : ownVal) as
+        Record<string, unknown> | undefined;
+      return { ...(profile ?? {}), did };
+    },
+    $currentDataset: adamStore.currentPerspective,
   };
 
   // Resolves a dot-path string like 'adamStore.rootPerspective' against the stores object.

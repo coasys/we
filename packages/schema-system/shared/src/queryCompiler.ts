@@ -1,18 +1,22 @@
 /**
- * Translate the current AD4M-flavored `$query` into the neutral `QueryIR`. A back-compat translator:
- * existing templates keep their `$query` syntax and this maps it to the IR under the hood.
+ * The query compiler: the flat `$query` shape ⇄ the neutral `QueryIR`.
  *
- * It returns the IR *and* an `unsupported` list. Most legacy shapes map losslessly — including
+ * `compileQuery` lifts the flat, post-resolution `$query` (the neutral authoring DSL — `entity`
+ * mapped to `model`, plus `where`/`order`/`include`/`limit`) up into the IR. `irToAd4mQuery` is the
+ * inverse: it lowers the IR back down to the flat query AD4M's ORM consumes — the AD4M adapter's
+ * push-down step.
+ *
+ * `compileQuery` returns the IR *and* an `unsupported` list. Most shapes map losslessly — including
  * single/filtered `$`-projections (→ an aliased `include` with `over`). `unsupported` flags the shapes
- * that don't: `parent` drill-down (a neutral `scope` needs the anchor *type*, which neither legacy
- * form carries — see the gap-handling note in the portability docs), a nested count-projection, and
+ * that don't: `parent` drill-down (a neutral `scope` needs the anchor *type*, which neither flat form
+ * carries — see the gap-handling note in the portability docs), a nested count-projection, and
  * `offset` without `limit`. Surfacing them as data rather than mis-translating silently is deliberate.
  *
- * Reference for the legacy grammar: the `$query` docs in `CLAUDE.md`.
+ * Reference for the flat `$query` grammar: the `$query` docs in `CLAUDE.md`.
  */
 import type { Aggregation, Filter, IncludeMap, IncludeSpec, Op, QueryIR, Scalar, SortKey } from './queryIR';
 
-export interface LegacyQuery {
+export interface FlatQuery {
   model: string;
   where?: Record<string, unknown>;
   order?: Record<string, 'asc' | 'desc'>;
@@ -30,9 +34,9 @@ export interface LegacyQuery {
   [k: string]: unknown;
 }
 
-export interface LegacyTranslation {
+export interface CompileResult {
   ir: QueryIR;
-  /** Legacy features that don't map losslessly and would need a design decision to support. */
+  /** Flat-query features that don't map losslessly and would need a design decision to support. */
   unsupported: string[];
 }
 
@@ -138,7 +142,7 @@ function translateInclude(
 
 // ─── top level ──────────────────────────────────────────────────────────────────
 
-export function translateLegacyQuery(query: LegacyQuery): LegacyTranslation {
+export function compileQuery(query: FlatQuery): CompileResult {
   const unsupported: string[] = [];
   const ir: QueryIR = { irVersion: 1, entity: query.model };
 
@@ -160,7 +164,7 @@ export function translateLegacyQuery(query: LegacyQuery): LegacyTranslation {
   // subscribe defaults true → live default; only record the explicit one-shot case.
   if (query.subscribe === false) ir.live = false;
   // `parent` → a neutral `scope` drill-down needs the anchor's *type* to resolve the relation to a
-  // backend handle (e.g. an AD4M predicate). Neither legacy form carries it — `{ id, relation }` has
+  // backend handle (e.g. an AD4M predicate). Neither flat form carries it — `{ id, relation }` has
   // only the relation name, `{ id, predicate }` is an AD4M-physical escape hatch — so flag rather than
   // mis-translate. Migrating a drill-down to `scope: { anchor, via }` clears this.
   if (query.parent) {
@@ -171,16 +175,16 @@ export function translateLegacyQuery(query: LegacyQuery): LegacyTranslation {
   return { ir, unsupported };
 }
 
-// ─── IR → legacy $query (the inverse; what the AD4M adapter compiles to) ─────────
+// ─── IR → flat $query (the inverse; the AD4M adapter's push-down) ────────────────
 //
-// AD4M's `Ad4mModel.query`/`findAll` already speak the legacy `$query` dialect (`{ where, order,
+// AD4M's `Ad4mModel.query`/`findAll` already speak the flat `$query` dialect (`{ where, order,
 // limit, offset, include, parent }`), so the "AD4M adapter" is just this projection back to it. It
 // only emits shapes AD4M expresses natively; a feature it can't (a non-native operator, a to-many
 // relation filter, a non-`count` aggregate) throws, because the runtime should have routed that to
 // the compute-up fallback via `planQuery` rather than trying to push it down. Round-tripping
-// `legacy → IR → legacy` re-derives the identical IR — the losslessness guarantee this rests on.
+// `flat → IR → flat` re-derives the identical IR — the losslessness guarantee this rests on.
 
-/** A filter leaf's operator → the legacy where-condition value for its field. */
+/** A filter leaf's operator → the flat where-condition value for its field. */
 function conditionFromLeaf(op: Op, value: Scalar | Scalar[]): unknown {
   switch (op) {
     case 'eq':
@@ -194,7 +198,7 @@ function conditionFromLeaf(op: Op, value: Scalar | Scalar[]): unknown {
     case 'exists':
       return { exists: value };
     default:
-      throw new Error(`irToLegacyQuery: operator "${op}" is not expressible in a legacy where clause`);
+      throw new Error(`irToAd4mQuery: operator "${op}" is not expressible in an AD4M where clause`);
   }
 }
 
@@ -215,7 +219,7 @@ function whereFromFilter(filter: Filter): Record<string, unknown> {
   if ('or' in filter) return { OR: filter.or.map(whereFromFilter) };
   if ('not' in filter) return { NOT: whereFromFilter(filter.not) };
   if ('rel' in filter) {
-    throw new Error('irToLegacyQuery: relation filters are not expressible in a legacy where clause');
+    throw new Error('irToAd4mQuery: relation filters are not expressible in an AD4M where clause');
   }
   return { [filter.field]: conditionFromLeaf(filter.op, filter.value) };
 }
@@ -226,7 +230,7 @@ function orderFromSort(sort: SortKey[]): Record<string, 'asc' | 'desc'> {
   return order;
 }
 
-function legacyIncludeEntry(spec: IncludeSpec): Record<string, unknown> {
+function ad4mIncludeEntry(spec: IncludeSpec): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (spec.over) out.from = spec.over; // aliased projection: relation source
   if (spec.filter) out.where = whereFromFilter(spec.filter);
@@ -237,48 +241,48 @@ function legacyIncludeEntry(spec: IncludeSpec): Record<string, unknown> {
     out.limit = spec.page.limit;
     if ('offset' in spec.page && spec.page.offset !== undefined) out.offset = spec.page.offset;
   }
-  if (spec.include) out.include = legacyIncludeFromMap(spec.include);
+  if (spec.include) out.include = ad4mIncludeFromMap(spec.include);
   return out;
 }
 
-function legacyIncludeFromMap(include: IncludeMap): Record<string, unknown> {
+function ad4mIncludeFromMap(include: IncludeMap): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, spec] of Object.entries(include)) {
-    out[key] = spec === true ? true : legacyIncludeEntry(spec);
+    out[key] = spec === true ? true : ad4mIncludeEntry(spec);
   }
   return out;
 }
 
-/** Compile a `QueryIR` back to the legacy `$query` dialect the AD4M ORM consumes. */
-export function irToLegacyQuery(ir: QueryIR): LegacyQuery {
-  const legacy: LegacyQuery = { model: ir.entity };
-  if (ir.filter) legacy.where = whereFromFilter(ir.filter);
-  if (ir.sort) legacy.order = orderFromSort(ir.sort);
+/** Compile a `QueryIR` back to the flat `$query` dialect the AD4M ORM consumes. */
+export function irToAd4mQuery(ir: QueryIR): FlatQuery {
+  const flat: FlatQuery = { model: ir.entity };
+  if (ir.filter) flat.where = whereFromFilter(ir.filter);
+  if (ir.sort) flat.order = orderFromSort(ir.sort);
   if (ir.page && 'limit' in ir.page) {
-    legacy.limit = ir.page.limit;
-    if ('offset' in ir.page && ir.page.offset !== undefined) legacy.offset = ir.page.offset;
+    flat.limit = ir.page.limit;
+    if ('offset' in ir.page && ir.page.offset !== undefined) flat.offset = ir.page.offset;
   }
 
   // `include` is reconstructed from plain/aliased includes plus count aggregates (which lived there).
   const include: Record<string, unknown> = {};
-  if (ir.include) Object.assign(include, legacyIncludeFromMap(ir.include));
+  if (ir.include) Object.assign(include, ad4mIncludeFromMap(ir.include));
   for (const agg of ir.aggregate ?? []) {
     if (agg.fn !== 'count') {
-      throw new Error(`irToLegacyQuery: aggregate fn "${agg.fn}" has no legacy projection (only count does)`);
+      throw new Error(`irToAd4mQuery: aggregate fn "${agg.fn}" has no AD4M projection (only count does)`);
     }
     const entry: Record<string, unknown> = { from: agg.over, count: true };
     if (agg.filter) entry.where = whereFromFilter(agg.filter);
     include[agg.as] = entry;
   }
-  if (Object.keys(include).length) legacy.include = include;
+  if (Object.keys(include).length) flat.include = include;
 
   if (ir.scope) {
-    // A drill-down can't be compiled to the legacy dialect here: resolving `scope.via` to a backend
+    // A drill-down can't be compiled to the AD4M dialect here: resolving `scope.via` to a backend
     // handle (an AD4M predicate) needs the manifest binding, which is the adapter's job. The AD4M
     // adapter resolves `scope` to a `ParentScope` itself and attaches it; this translator handles only
     // the binding-free parts.
-    throw new Error('irToLegacyQuery: scope (drill-down) requires adapter binding resolution, not this translator');
+    throw new Error('irToAd4mQuery: scope (drill-down) requires adapter binding resolution, not this translator');
   }
-  if (ir.live === false) legacy.subscribe = false;
-  return legacy;
+  if (ir.live === false) flat.subscribe = false;
+  return flat;
 }

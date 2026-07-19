@@ -158,6 +158,19 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
       }
       return current;
     }
+    // Neutral global refs not in the local render context (e.g. `$me`) → a `$`-prefixed store global
+    // the host injects. Keeps identity/dataset vocabulary backend-neutral: templates say `$me`, the
+    // host provides `$me`. Local context keys are checked first, so `$item`/`$space` always win.
+    const globalKey = `$${contextKey}`;
+    const bag = stores as Record<string, unknown> | undefined;
+    if (bag && globalKey in bag) {
+      const g = bag[globalKey];
+      let current: unknown = typeof g === 'function' ? (g as () => unknown)() : g;
+      if (dotIndex !== -1) {
+        for (const seg of value.slice(dotIndex + 1).split('.')) current = (current as Record<string, unknown>)?.[seg];
+      }
+      return current;
+    }
   }
   return value;
 }

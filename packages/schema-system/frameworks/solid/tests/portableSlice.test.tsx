@@ -55,7 +55,7 @@ const feedTemplate: SchemaNode = {
       props: {
         items: {
           $query: {
-            model: 'Post',
+            entity: 'Post',
             where: {
               OR: [{ title: { contains: 'graph' } }, { content: { contains: 'graph' } }],
             },

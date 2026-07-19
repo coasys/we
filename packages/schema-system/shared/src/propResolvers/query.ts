@@ -11,12 +11,14 @@ import type { QueryDescriptor } from '../types';
  */
 export function resolveQueryProp(value: unknown): QueryDescriptor {
   const { $query } = value as { $query: Record<string, unknown> };
-  const { model, subscribe: sub, perspective, include, ...params } = $query;
+  // Neutral authoring grammar all the way through: `entity` + `dataset`. `where`/`order`/`include`/
+  // `limit` flow through in `params`, compiled to the IR downstream.
+  const { entity, subscribe: sub, dataset, include, ...params } = $query;
   return {
-    model: model as string,
+    entity: entity as string,
     params,
     subscribe: sub !== false,
-    perspective: perspective as string | undefined,
+    dataset: dataset as string | undefined,
     ...(include !== undefined && { include: include as Record<string, boolean | Record<string, unknown>> }),
   };
 }

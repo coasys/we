@@ -12,7 +12,7 @@ export const themesList: SchemaNode = {
         props: {
           items: {
             $query: {
-              model: 'Theme',
+              entity: 'Theme',
               where: { name: { contains: { $local: 'searchText' } } },
               order: { createdAt: { $local: 'sortDirection' } },
             },
@@ -91,7 +91,7 @@ export const themesList: SchemaNode = {
                         props: {
                           condition: {
                             $and: [
-                              { $eq: [{ $store: 'spaceStore.currentSpace.author' }, { $store: 'adamStore.me.did' }] },
+                              { $eq: [{ $store: 'spaceStore.currentSpace.author' }, '$me.did'] },
                               { $ne: ['$theme.id', { $store: 'spaceStore.currentSpace.defaultThemeId' }] },
                             ],
                           },
@@ -118,7 +118,7 @@ export const themesList: SchemaNode = {
                         type: '$if',
                         props: {
                           condition: {
-                            $eq: ['$theme.author', { $store: 'adamStore.me.did' }],
+                            $eq: ['$theme.author', '$me.did'],
                           },
                           then: {
                             type: 'we-button',

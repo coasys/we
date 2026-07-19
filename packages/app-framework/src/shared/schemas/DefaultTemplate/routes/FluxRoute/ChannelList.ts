@@ -73,8 +73,8 @@ export const channelList: SchemaNode = {
               props: {
                 items: {
                   $query: {
-                    model: 'Message',
-                    perspective: 'adamStore.currentPerspective',
+                    entity: 'Message',
+                    dataset: '$currentDataset',
                     order: { timestamp: 'desc' },
                     limit: 50,
                   },
@@ -125,8 +125,8 @@ export const channelList: SchemaNode = {
               props: {
                 items: {
                   $query: {
-                    model: 'Channel',
-                    perspective: 'adamStore.currentPerspective',
+                    entity: 'Channel',
+                    dataset: '$currentDataset',
                     include: { messages: true, conversations: true },
                   },
                 },

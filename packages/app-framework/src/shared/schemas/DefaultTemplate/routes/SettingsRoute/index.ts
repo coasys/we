@@ -786,7 +786,7 @@ export const settingsRoute: RouteSchema = {
             },
             {
               type: '$each',
-              props: { items: { $query: { model: 'SignalType', subscribe: true } }, as: 'signalType' },
+              props: { items: { $query: { entity: 'SignalType', subscribe: true } }, as: 'signalType' },
               children: [signalTypeCard],
             },
             {

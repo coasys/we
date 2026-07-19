@@ -6,7 +6,7 @@
  * template `$query` → shim → QueryIR → engine → render — over a non-AD4M backend, with ZERO changes
  * to the shared renderer. No `@coasys/ad4m` anywhere in this app's dependency graph.
  */
-import { executeQueryIR, type InMemoryDataset, type Row, translateLegacyQuery } from '@we/schema-shared';
+import { compileQuery, executeQueryIR, type InMemoryDataset, type Row } from '@we/schema-shared';
 
 export type { Row } from '@we/schema-shared';
 
@@ -47,7 +47,7 @@ export function createInMemoryBackend(config: BackendConfig) {
   const dataset: InMemoryDataset = { tables: config.tables, relations: toEngineRelations(config.relations) };
 
   function run(model: string, opts: QueryOpts): Row[] {
-    const { ir } = translateLegacyQuery({ model, ...opts });
+    const { ir } = compileQuery({ model, ...opts });
     return executeQueryIR(ir, dataset) as Row[];
   }
 

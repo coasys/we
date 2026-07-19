@@ -1,8 +1,8 @@
 /**
  * The AD4M query adapter — capability declaration (and, later, the `DataSource` wiring).
  *
- * AD4M's `Ad4mModel.query`/`findAll` already speak the legacy `$query` dialect, so "compiling" a
- * `QueryIR` to AD4M is just `irToLegacyQuery` (in `@we/schema-shared`). This declares what AD4M does
+ * AD4M's `Ad4mModel.query`/`findAll` already speak the flat `$query` dialect, so "compiling" a
+ * `QueryIR` to AD4M is just `irToAd4mQuery` (in `@we/schema-shared`). This declares what AD4M does
  * *natively*, so `planQuery` routes anything it can't to the compute-up fallback (`executeQueryIR`)
  * instead of silently mis-executing it.
  *

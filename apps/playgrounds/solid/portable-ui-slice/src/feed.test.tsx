@@ -70,7 +70,7 @@ describe('portable-ui harness — real design-system components over a non-AD4M 
   });
 
   it('renders identically with the QueryIR routing enabled ($useQueryIR)', async () => {
-    // Flag on → createQuerySignal round-trips each query through translateLegacyQuery → irToLegacyQuery
+    // Flag on → createQuerySignal round-trips each query through compileQuery → irToAd4mQuery
     // before hitting the backend. The feed must render exactly the same (proves the live IR path).
     const backend = seed();
     const stores = { ...backend.stores, $useQueryIR: true };

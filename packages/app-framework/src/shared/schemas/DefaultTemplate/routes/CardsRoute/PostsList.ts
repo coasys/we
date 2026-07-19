@@ -7,7 +7,7 @@ export const postsList: SchemaNode = {
   type: 'Column',
   props: { gap: '0', width: '100%' },
   $queries: {
-    signalTypes: { model: 'SignalType', subscribe: true },
+    signalTypes: { entity: 'SignalType', subscribe: true },
   },
   children: [
     gridWrapper([
@@ -16,7 +16,7 @@ export const postsList: SchemaNode = {
         props: {
           items: {
             $query: {
-              model: 'CollectionBlock',
+              entity: 'CollectionBlock',
               where: { type: 'root', textContent: { contains: { $local: 'searchText' } } },
               limit: 20,
               order: {
@@ -81,7 +81,7 @@ export const postsList: SchemaNode = {
                   {
                     type: '$if',
                     props: {
-                      condition: { $eq: ['$post.author', { $store: 'adamStore.me.did' }] },
+                      condition: { $eq: ['$post.author', '$me.did'] },
                       then: {
                         type: 'Row',
                         props: { gap: '100' },
@@ -198,7 +198,7 @@ export const postsList: SchemaNode = {
                               signals: {
                                 $filter: { items: '$post.signals', where: { signalTypeId: '$sig.id' } },
                               },
-                              myDid: { $store: 'adamStore.me.did' },
+                              myDid: '$me.did',
                               onSignal: {
                                 $action: 'spaceStore.upsertSignal',
                                 args: ['$post.id', '$sig.id', '$arg'],

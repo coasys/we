@@ -129,7 +129,7 @@ export const profileTemplate: TemplateSchema = {
             {
               type: 'we-text',
               props: { variant: 'body' },
-              children: [{ $store: 'adamStore.me.did' }],
+              children: ['$me.did'],
             },
           ],
         },

@@ -29,8 +29,8 @@ export const fluxConversationsList: SchemaNode = {
         props: {
           items: {
             $query: {
-              model: 'Conversation',
-              perspective: 'adamStore.currentPerspective',
+              entity: 'Conversation',
+              dataset: '$currentDataset',
               where: {
                 OR: [
                   { conversationName: { contains: { $local: 'searchText' } } },

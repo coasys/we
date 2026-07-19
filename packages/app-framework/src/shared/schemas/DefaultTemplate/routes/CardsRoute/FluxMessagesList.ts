@@ -29,8 +29,8 @@ export const fluxMessagesList: SchemaNode = {
         props: {
           items: {
             $query: {
-              model: 'Message',
-              perspective: 'adamStore.currentPerspective',
+              entity: 'Message',
+              dataset: '$currentDataset',
               where: { body: { contains: { $local: 'searchText' } } },
               order: { timestamp: { $local: 'sortDirection' } },
               limit: 30,

@@ -8,7 +8,7 @@ export const spacesList: SchemaNode = gridWrapper([
     props: {
       items: {
         $query: {
-          model: 'Space',
+          entity: 'Space',
           where: {
             url: { not: { $store: 'adamStore.currentPerspectiveSharedCid' } },
             OR: [
@@ -61,7 +61,7 @@ export const spacesList: SchemaNode = gridWrapper([
               {
                 type: '$if',
                 props: {
-                  condition: { $eq: [{ $store: 'spaceStore.currentSpace.author' }, { $store: 'adamStore.me.did' }] },
+                  condition: { $eq: [{ $store: 'spaceStore.currentSpace.author' }, '$me.did'] },
                   then: {
                     type: 'Row',
                     props: { gap: '100' },

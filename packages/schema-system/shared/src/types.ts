@@ -160,7 +160,8 @@ export type FindToken = { $find: { items: unknown; where?: Record<string, unknow
 export type PluralToken = { $plural: { count: unknown; one: string; other: string } };
 export type QueryToken = {
   $query: {
-    model: string;
+    /** The entity to query (neutral). */
+    entity: string;
     where?: Record<string, unknown>;
     order?: Record<string, unknown>;
     limit?: number;
@@ -168,8 +169,8 @@ export type QueryToken = {
     include?: Record<string, unknown>;
     parent?: Record<string, unknown>;
     subscribe?: boolean;
-    /** Store path to resolve perspective from (e.g. 'testStore.perspective'). Defaults to adamStore.currentPerspective. */
-    perspective?: string;
+    /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */
+    dataset?: string;
   };
 };
 
@@ -211,10 +212,10 @@ export type CallLocalToken = { $callLocal: string };
 
 /** Descriptor returned by the shared resolver — pure data, no framework effects */
 export type QueryDescriptor = {
-  model: string;
+  entity: string;
   params: Record<string, unknown>;
   subscribe: boolean;
-  perspective?: string;
+  dataset?: string;
   include?: Record<string, boolean | Record<string, unknown>>;
 };
 

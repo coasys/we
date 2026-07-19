@@ -12,7 +12,7 @@ export const templatesList: SchemaNode = {
         props: {
           items: {
             $query: {
-              model: 'Template',
+              entity: 'Template',
               where: { name: { contains: { $local: 'searchText' } } },
               order: { createdAt: { $local: 'sortDirection' } },
             },
@@ -91,7 +91,7 @@ export const templatesList: SchemaNode = {
                         props: {
                           condition: {
                             $and: [
-                              { $eq: [{ $store: 'spaceStore.currentSpace.author' }, { $store: 'adamStore.me.did' }] },
+                              { $eq: [{ $store: 'spaceStore.currentSpace.author' }, '$me.did'] },
                               { $ne: ['$template.slug', { $store: 'spaceStore.currentSpace.defaultTemplateId' }] },
                             ],
                           },
@@ -118,7 +118,7 @@ export const templatesList: SchemaNode = {
                         type: '$if',
                         props: {
                           condition: {
-                            $eq: ['$template.author', { $store: 'adamStore.me.did' }],
+                            $eq: ['$template.author', '$me.did'],
                           },
                           then: {
                             type: 'we-button',

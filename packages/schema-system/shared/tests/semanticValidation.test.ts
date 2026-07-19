@@ -343,17 +343,17 @@ describe('unknown action', () => {
 
 describe('unknown model', () => {
   it('errors for $query.model with unknown model name', () => {
-    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { model: 'Taks' } } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { entity: 'Taks' } } } }, ctx());
     expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('Unknown model "Taks"'))).toBe(true);
   });
 
   it('suggests close model matches', () => {
-    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { model: 'TasBlock' } } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { entity: 'TasBlock' } } } }, ctx());
     expect(result.errors.some((e) => e.message.includes('Did you mean "TaskBlock"'))).toBe(true);
   });
 
   it('passes for known model', () => {
-    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { model: 'TaskBlock' } } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { data: { $query: { entity: 'TaskBlock' } } } }, ctx());
     const modelErrors = result.errors.filter((e) => e.message.includes('Unknown model'));
     expect(modelErrors).toHaveLength(0);
   });

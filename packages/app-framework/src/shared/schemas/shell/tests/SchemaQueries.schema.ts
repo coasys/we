@@ -111,19 +111,19 @@ const filterSection = section(
     children: [
       labeledRow("status = 'active'", {
         $query: {
-          model: 'TestItem',
-          perspective: 'testStore.perspective',
+          entity: 'TestItem',
+          dataset: 'testStore.perspective',
           where: { status: 'active' },
           order: { name: 'asc' },
         },
       }),
       labeledRow("name contains 'et'", {
-        $query: { model: 'TestItem', perspective: 'testStore.perspective', where: { name: { contains: 'et' } } },
+        $query: { entity: 'TestItem', dataset: 'testStore.perspective', where: { name: { contains: 'et' } } },
       }),
       labeledRow("draft OR name~'lph'", {
         $query: {
-          model: 'TestItem',
-          perspective: 'testStore.perspective',
+          entity: 'TestItem',
+          dataset: 'testStore.perspective',
           where: { OR: [{ status: 'draft' }, { name: { contains: 'lph' } }] },
           order: { name: 'asc' },
         },
@@ -140,10 +140,10 @@ const sortSection = section(
     props: { gap: '300' },
     children: [
       labeledRow('order name asc', {
-        $query: { model: 'TestItem', perspective: 'testStore.perspective', order: { name: 'asc' } },
+        $query: { entity: 'TestItem', dataset: 'testStore.perspective', order: { name: 'asc' } },
       }),
       labeledRow('order name desc', {
-        $query: { model: 'TestItem', perspective: 'testStore.perspective', order: { name: 'desc' } },
+        $query: { entity: 'TestItem', dataset: 'testStore.perspective', order: { name: 'desc' } },
       }),
     ],
   },
@@ -157,12 +157,12 @@ const pageSection = section(
     props: { gap: '300' },
     children: [
       labeledRow('limit 2', {
-        $query: { model: 'TestItem', perspective: 'testStore.perspective', order: { name: 'asc' }, limit: 2 },
+        $query: { entity: 'TestItem', dataset: 'testStore.perspective', order: { name: 'asc' }, limit: 2 },
       }),
       labeledRow('limit 2, offset 1', {
         $query: {
-          model: 'TestItem',
-          perspective: 'testStore.perspective',
+          entity: 'TestItem',
+          dataset: 'testStore.perspective',
           order: { name: 'asc' },
           limit: 2,
           offset: 1,
@@ -181,8 +181,8 @@ const projectionSection = section(
       as: 'item',
       items: {
         $query: {
-          model: 'TestItem',
-          perspective: 'testStore.perspective',
+          entity: 'TestItem',
+          dataset: 'testStore.perspective',
           order: { name: 'asc' },
           include: {
             children: true,
@@ -236,7 +236,7 @@ const liveSection = section(
         children: [{ type: 'we-icon', props: { name: 'plus' } }, 'Add item'],
       },
       labeledRow('all, name asc', {
-        $query: { model: 'TestItem', perspective: 'testStore.perspective', order: { name: 'asc' } },
+        $query: { entity: 'TestItem', dataset: 'testStore.perspective', order: { name: 'asc' } },
       }),
     ],
   },
