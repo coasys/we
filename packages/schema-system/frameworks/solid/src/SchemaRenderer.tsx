@@ -944,6 +944,30 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     }
   });
 
+  /**
+   * Build this node's children ONCE and reuse the result.
+   *
+   * Both render paths below put children in `<Dynamic>`'s children position, next to
+   * `component={component()}` and a `{...reactiveAttrs()}` / `{...eventAttrs()}` spread. Solid's
+   * compiler turns a dynamic children expression into a getter, so whenever that spread recomputes
+   * — i.e. whenever *any* prop on this node is reactive and changes — `<Dynamic>` re-renders and
+   * re-invokes the getter, reconstructing the entire subtree beneath it.
+   *
+   * That is not just wasted DOM work: rebuilding the subtree re-runs `createQuerySignal` for every
+   * `$query` inside it, so each rebuild issues a *duplicate backend query*. Measured case:
+   * `gridWrapper`'s `<Grid>` has a reactive `columns` prop (`$if` on `displayMode`), so every card
+   * list built its children twice and fired two identical queries.
+   *
+   * A memo fixes it without costing reactivity: `node.children` is read from the schema store, so a
+   * genuine schema patch (visual editor / `updateSchema`) still invalidates and rebuilds, while an
+   * unrelated prop change now reuses the cached subtree.
+   *
+   * Declared after the `$if`/`$each`/`$routes` early returns above, and after the memo-creating prop
+   * setup — `createMemo` runs eagerly, so declaring it earlier would build children for nodes that
+   * never render them.
+   */
+  const childrenEl = createMemo(() => renderChildren(node.children));
+
   // Render: web components use per-prop property effects, Solid/HTML use reactive spread
   if (isWebComponent) {
     // All props delivered via per-prop effects (DOM property assignment).
@@ -993,7 +1017,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
     const wcElement = (
       <Dynamic ref={hostRef} component={component()} {...eventAttrs()} {...slotProp} {...slotElements}>
-        {renderChildren(node.children)}
+        {childrenEl()}
       </Dynamic>
     );
 
@@ -1031,7 +1055,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   const solidElement = (
     <Dynamic component={component()} {...reactiveAttrs()} {...slotProp} {...slotElements}>
-      {renderChildren(node.children)}
+      {childrenEl()}
     </Dynamic>
   );
 
