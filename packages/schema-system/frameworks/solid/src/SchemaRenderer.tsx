@@ -174,39 +174,41 @@ function composeHandlers(handlers: unknown[]): (...args: unknown[]) => void {
  */
 /**
  * Route the (already token-resolved) query through the neutral `QueryIR` and the injected backend
- * adapter before it reaches the backend, so the live app exercises the real IR path. `compileQuery`
- * (DSL→IR) is neutral; the backend-specific plan + lowering come from the injected `$queryAdapter`,
- * so this function knows nothing about AD4M. Falls back to the original options — always safe — when
- * the IR can't express the query (a `parent` drill-down → `unsupported`), when the adapter reports a
- * compute-up gap (until increment 2 runs it in JS), or on any error. Gated by `$useQueryIR`; off by
- * default.
+ * adapter before it reaches the backend. `compileQuery` (DSL→IR) is neutral; the backend-specific
+ * plan + lowering come from the injected `$queryAdapter`, so this function knows nothing about AD4M.
+ *
+ * **Fails loud.** When the IR can't express the query, when the adapter reports a capability gap, or
+ * on any error, this reports through `onError` and returns `null` — the caller then renders nothing
+ * rather than silently reverting to the raw backend path. That silent revert only ever worked because
+ * AD4M happens to be *both* the query dialect and the backend; against any other backend it would hand
+ * over a dialect the adapter never agreed to read, so it hid real gaps instead of surfacing them. A
+ * genuine capability gap is surfaced here (and, better, at author time by the capability validator) —
+ * never papered over.
  */
 function routeQueryThroughIR(
   entity: string,
   options: Record<string, unknown>,
   adapter: QueryAdapter,
-): Record<string, unknown> {
+  onError: (msg: string) => void,
+): Record<string, unknown> | null {
   try {
     const { ir, unsupported } = compileQuery({ entity, ...options } as FlatQuery);
     if (unsupported.length > 0) {
-      console.debug('[query-ir] fallback (IR cannot express):', entity, unsupported);
-      return options;
+      onError(`Query on "${entity}" uses features the query IR cannot express: ${unsupported.join(', ')}`);
+      return null;
     }
     const plan = adapter.plan(ir);
     if (plan.gaps.length > 0) {
-      // The adapter can't push these down natively. A later increment finishes them via compute-up
-      // (executeQueryIR over the native-fetched rows); for now, fall back to the direct backend path.
-      console.debug(
-        '[query-ir] fallback (adapter compute-up gaps):',
-        entity,
-        plan.gaps.map((g) => g.feature),
+      onError(
+        `Query on "${entity}" needs capabilities this backend does not support: ` +
+          plan.gaps.map((g) => g.feature).join(', '),
       );
-      return options;
+      return null;
     }
     return adapter.lower(ir) as Record<string, unknown>;
   } catch (err) {
-    console.debug('[query-ir] fallback (error):', entity, err);
-    return options;
+    onError(`Query on "${entity}" could not be compiled: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
   }
 }
 
@@ -278,7 +280,18 @@ function createQuerySignal(
     const useQueryIR = typeof irFlag === 'function' ? (irFlag as () => unknown)() === true : irFlag === true;
     const queryAdapter = (stores as Record<string, unknown>).$queryAdapter as QueryAdapter | undefined;
     if (useQueryIR && queryAdapter) {
-      queryOptions = routeQueryThroughIR(descriptor.entity, queryOptions, queryAdapter);
+      // Fail loud: an IR/adapter gap renders nothing and reports, rather than silently reverting to the
+      // raw backend path (which only ever worked because AD4M is both the dialect and the backend).
+      const lowered = routeQueryThroughIR(descriptor.entity, queryOptions, queryAdapter, (msg) => {
+        const onError = (stores as Record<string, unknown>).$onError as ((m: string) => void) | undefined;
+        if (onError) onError(msg);
+        else console.error('[query-ir]', msg);
+      });
+      if (lowered === null) {
+        setItems(reconcile([]));
+        return;
+      }
+      queryOptions = lowered;
     }
 
     // AD4M model instances expose `id` as a prototype getter, not an own enumerable

@@ -3,8 +3,9 @@
  *
  * One page that exercises every distinct `$query` shape the app uses, against a deterministic
  * `TestItem`/`TestChild` dataset. Its purpose: verify the QueryIR routing (seed.features.useQueryIR)
- * against the REAL AD4M backend — flip the flag, reload, and every section should render identically,
- * with only the Flux drill-down logging a fallback.
+ * against the REAL AD4M backend — flip the flag, reload, and every section should render identically.
+ * Every shape here (drill-down included, now that it is a neutral `scope`) routes natively through the
+ * IR; there is no silent fallback — a capability gap reports through `$onError` and renders nothing.
  *
  * Seed (click "Seed known data" first): Alpha (2 children, 1 mine) · Beta (0) · Gamma (1, mine).
  */
@@ -254,7 +255,7 @@ const notesSection = section('Not covered here — check on real screens', 'Thes
     {
       type: 'we-text',
       props: { variant: 'footnote' },
-      children: ['• parent drill-down (should fall back) → Flux nested conversations'],
+      children: ['• scope drill-down (routes natively) → Flux nested conversations'],
     },
   ],
 });
@@ -277,7 +278,7 @@ export const schemaQueriesTemplate: TemplateSchema = {
       type: 'we-text',
       props: { variant: 'body', color: 'neutral-500' },
       children: [
-        'Toggle seed.features.useQueryIR and reload — every section should render identically, and only the Flux drill-down should log a [query-ir] fallback.',
+        'Toggle seed.features.useQueryIR and reload — every section should render identically. There is no silent fallback: if a query needed a capability the backend lacks, it would report an error and render nothing rather than quietly reverting to the raw backend path.',
       ],
     },
     irToggle,
