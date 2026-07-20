@@ -227,6 +227,12 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
                 height="100%"
                 zIndex={11}
                 overflow="auto"
+                // Reserve the scrollbar gutter permanently. Without this, any shell view whose
+                // content crosses the viewport height gains and loses its scrollbar as content
+                // changes, and every reflow shifts the whole page horizontally. Most visible in the
+                // benchmark runner, which swaps between routes of wildly different heights, but it
+                // affects any shell view with variable-length content.
+                scrollbarGutter="stable"
               >
                 <ShellRouteStoreProvider>
                   <ShellOverlayInner stores={stores} view={view} />

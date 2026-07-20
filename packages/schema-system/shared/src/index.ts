@@ -98,6 +98,7 @@ export type {
   DataSource,
   QueryAdapter,
   RendererDataBindings,
+  RendererStores,
 } from './dataSource';
 export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
 export type {

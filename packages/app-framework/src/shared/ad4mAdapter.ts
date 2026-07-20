@@ -27,9 +27,12 @@
  * The real fix is upstream in AD4M; when it lands, grep `sort:under-boolean` / `sort:needs-limit`
  * and delete these two blocks.
  */
+import type { PerspectiveProxy } from '@coasys/ad4m';
 import type {
   AdapterCapabilities,
   CapabilityGap,
+  ModelClass as RendererModelClass,
+  RendererDataBindings,
   QueryAdapter,
   QueryIR,
   QueryOptions,
@@ -39,6 +42,100 @@ import type {
 import { irToFlatQuery, planQuery, whereUsesCombinator } from '@we/schema-shared';
 
 import type { ModelManifestEntry } from './AdamStore';
+import { getModel, getModelForPerspective, type ModelClass as Ad4mModelClass } from './registries/modelRegistry';
+
+/**
+ * Adapt an AD4M model class to the renderer's neutral {@link RendererModelClass}.
+ *
+ * `Ad4mModel`'s statics are `query(perspective: PerspectiveProxy, query?: TypedQuery<T>)` — the same
+ * two operations the renderer needs, under a backend-specific signature. This is the mapping every
+ * host owes the contract: the renderer depends on the *shape* (`query`/`findAll` over a dataset and
+ * options), so each backend maps its own onto it.
+ *
+ * It is a pure signature map with no data conversion, because a dataset handle is opaque to the
+ * renderer and round-trips untouched — the `PerspectiveProxy` handed out by `$currentDataset` is the
+ * very object arriving back here. (Had the contract insisted on a structural `{ id }` handle, this
+ * would instead have to flatten the proxy and re-resolve it on every query.)
+ */
+export function toRendererModel(Model: Ad4mModelClass): RendererModelClass {
+  return {
+    query: (dataset, opts) =>
+      Model.query(dataset as PerspectiveProxy, opts as Parameters<typeof Model.query>[1]) as ReturnType<
+        RendererModelClass['query']
+      >,
+    findAll: (dataset, opts, ctl) =>
+      // Called through a widened signature on purpose: `@coasys/ad4m` types `findAll` as
+      // `(perspective, query?)`, with no third argument — yet the renderer passes an abort-signal
+      // options object, and both the renderer and WE's own docs describe it as forwarded to the
+      // executor's cancel machinery. The published `.d.ts` and the documented runtime disagree.
+      // Cast rather than drop it: silently removing the signal would disable cancellation of
+      // in-flight queries. Worth confirming against the executor — if it is genuinely unsupported,
+      // the abort is already a no-op and the renderer's AbortController buys nothing.
+      (Model.findAll as unknown as (p: unknown, q: unknown, c?: unknown) => unknown)(dataset, opts, ctl) as ReturnType<
+        RendererModelClass['findAll']
+      >,
+  };
+}
+
+/**
+ * What the AD4M adapter needs from the host to satisfy the data contract.
+ *
+ * Declared structurally rather than as `AdamStore` on purpose: that interface lives under
+ * `frameworks/solid/`, and this module is framework-agnostic. Naming the four accessors it actually
+ * uses also states the adapter's real dependency surface, and makes it stubbable without a store.
+ */
+export interface Ad4mAdapterDeps {
+  /** The perspective queries run against — handed to the renderer as an opaque dataset handle. */
+  currentPerspective: () => PerspectiveProxy | null;
+  /** SHACL models of the current perspective, incl. synced foreign ones; used to resolve `scope`. */
+  currentPerspectiveModels: () => ModelManifestEntry[];
+  /**
+   * Reactive agent-profile cache. Must be *read inside* the accessor so `$agent`'s effect re-runs
+   * when a fetched profile lands. Typed by the only field this adapter needs — a `did` to match on —
+   * rather than the host's concrete profile type, which keeps this module free of app-layer imports.
+   */
+  agents: () => Array<{ did?: string }>;
+  /** Ask AD4M to fetch a profile this client hasn't cached. */
+  fetchAgent: (did: string) => Promise<void> | void;
+}
+
+/**
+ * The AD4M implementation of the renderer's data contract — `RendererDataBindings` minus the members
+ * that aren't backend-specific.
+ *
+ * This is the artifact another backend copies: everything a host must supply for the renderer to read
+ * data, in one place. `$onError` and `$useQueryIR` are deliberately excluded — surfacing an error to
+ * the UI and toggling the IR are host concerns any backend would wire the same way, so they stay with
+ * the app rather than pretending to be AD4M-specific.
+ *
+ * Note what is *not* here: no query lowering, no capability quirks, no model-shape mapping. Those are
+ * `createAd4mQueryAdapter` and `toRendererModel` above — this only composes them.
+ */
+export function createAd4mDataBindings(
+  deps: Ad4mAdapterDeps,
+): Pick<
+  RendererDataBindings,
+  '$getModel' | '$getModelForPerspective' | '$currentDataset' | '$identities' | '$queryAdapter'
+> {
+  return {
+    // Adapted, not raw: AD4M's model statics take a `PerspectiveProxy` and AD4M's own query shape,
+    // so `toRendererModel` maps them onto the neutral `query`/`findAll` the renderer depends on.
+    $getModel: (name) => toRendererModel(getModel(name)),
+    $getModelForPerspective: (name, dataset) => {
+      const model = getModelForPerspective(name, dataset);
+      return model ? toRendererModel(model) : undefined;
+    },
+    // The renderer treats this as opaque and hands it straight back, so the proxy passes through
+    // untouched — no flattening to an id, no re-resolution on the way in.
+    $currentDataset: deps.currentPerspective,
+    // Identity directory behind the `$agent` block, bound to AD4M's agent cache.
+    $identities: {
+      get: (did) => deps.agents().find((a) => a.did === did) as Record<string, unknown> | undefined,
+      fetch: (did) => void deps.fetchAgent(did),
+    },
+    $queryAdapter: createAd4mQueryAdapter(deps.currentPerspectiveModels),
+  };
+}
 
 export const ad4mCapabilities: AdapterCapabilities = {
   operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'exists'],

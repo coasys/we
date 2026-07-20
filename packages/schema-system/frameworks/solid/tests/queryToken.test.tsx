@@ -1,12 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { render } from '@solidjs/testing-library';
-import type { SchemaNode } from '@we/schema-shared';
+import type { RendererStores, SchemaNode } from '@we/schema-shared';
 import { createRoot, createSignal } from 'solid-js';
 import { render as webRender } from 'solid-js/web';
 import { describe, expect, it, vi } from 'vitest';
 
 import { RenderSchema } from '../src/SchemaRenderer';
 import type { ComponentRegistry } from '../src/types';
+
+/**
+ * Mocks are deliberately loose (vitest stubs don't structurally match `ModelClass`). The
+ * `RendererStores` contract exists to type-check real hosts at the boundary, not test doubles.
+ */
+const asStores = (s: object): RendererStores => s as unknown as RendererStores;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,7 +75,7 @@ describe('$query token', () => {
       props: { data: { $query: { entity: 'Post', subscribe: true } } },
     };
 
-    const { container } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
 
     await tick();
 
@@ -95,7 +101,7 @@ describe('$query token', () => {
       props: { data: { $query: { entity: 'Post', subscribe: true } } },
     };
 
-    const { container } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
 
     // Push data from "backend"
@@ -126,7 +132,10 @@ describe('$query token', () => {
     };
 
     const container = document.createElement('div');
-    const dispose = webRender(() => <RenderSchema node={node} stores={stores} registry={registry} />, container);
+    const dispose = webRender(
+      () => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />,
+      container,
+    );
     await tick();
 
     expect(builder.subscribe).toHaveBeenCalledOnce();
@@ -163,7 +172,7 @@ describe('$query token', () => {
     createRoot((d) => {
       dispose = d;
       const container = document.createElement('div');
-      webRender(() => <RenderSchema node={node} stores={stores} registry={registry} />, container);
+      webRender(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />, container);
     });
     await tick();
 
@@ -191,7 +200,7 @@ describe('$query token', () => {
       props: { data: { $query: { entity: 'Post', subscribe: true } } },
     };
 
-    const { container } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
 
     // Should NOT have called query — no perspective
@@ -218,7 +227,7 @@ describe('$query token', () => {
       props: { data: { $query: { entity: 'Post', subscribe: false } } },
     };
 
-    const { container } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
 
     expect(MockModel.findAll).toHaveBeenCalledOnce();
@@ -249,7 +258,7 @@ describe('$query token', () => {
       props: { data: { $query: { entity: 'Post', subscribe: false } } },
     };
 
-    const { unmount } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    const { unmount } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
 
     expect(MockModel.findAll).toHaveBeenCalledOnce();
@@ -283,7 +292,7 @@ describe('$query token', () => {
       props: { data: { $query: { entity: 'Post', subscribe: false } } },
     };
 
-    render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
     expect(signals.length).toBe(1);
     expect(signals[0].aborted).toBe(false);
@@ -315,7 +324,7 @@ describe('$query token', () => {
 
     // If the catch arm doesn't swallow AbortError, the unhandled rejection
     // would surface as a test failure.
-    render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
     expect(MockModel.findAll).toHaveBeenCalledOnce();
   });
@@ -345,7 +354,7 @@ describe('$query token', () => {
       },
     };
 
-    render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
 
     expect(MockModel.query).toHaveBeenCalledWith(
@@ -368,7 +377,7 @@ describe('$query token', () => {
       props: { data: { $query: { entity: 'Post', subscribe: true } } },
     };
 
-    const { container } = render(() => <RenderSchema node={node} stores={stores} registry={registry} />);
+    const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('$getModel not found'));

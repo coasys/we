@@ -1,3 +1,5 @@
+import type { RendererStores } from './dataSource';
+
 // Pure framework-agnostic schema types
 export type SchemaProp = string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined;
 export type StoreDeclaration = Record<string, true | { actions?: string[]; state?: string[] }>;
@@ -123,7 +125,14 @@ export type ComponentRegistry<NodeType = unknown> = {
 
 export type RenderProps<NodeType = unknown> = {
   node: SchemaNode | null;
-  stores: Record<string, unknown>;
+  /**
+   * The injected stores bag. Typed as the declared contract rather than `Record<string, unknown>`
+   * so the bindings the renderer depends on are checked at the boundary: with a bare index
+   * signature every read came back `unknown`, a truthiness guard narrowed that to `{}`, and each
+   * call site had to re-assert the shape by hand — which meant the contract was documentation
+   * nothing enforced, and could drift from what the renderer actually read.
+   */
+  stores: RendererStores;
   registry: ComponentRegistry<NodeType>;
   context?: Record<string, unknown>;
   children?: NodeType;

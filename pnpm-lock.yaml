@@ -822,6 +822,33 @@ importers:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
 
+  packages/schema-system/benchmarks:
+    devDependencies:
+      '@we/components':
+        specifier: workspace:*
+        version: link:../../design-system/4-components
+      '@we/primitives':
+        specifier: workspace:*
+        version: link:../../design-system/3-primitives
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@we/schema-solid':
+        specifier: workspace:*
+        version: link:../frameworks/solid
+      happy-dom:
+        specifier: ^20.8.4
+        version: 20.10.6
+      solid-js:
+        specifier: ^1.9.5
+        version: 1.9.14
+      vite-plugin-solid:
+        specifier: ^2.11.11
+        version: 2.11.12(solid-js@1.9.14)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
   packages/schema-system/frameworks/solid:
     dependencies:
       '@we/design-types':
