@@ -165,9 +165,46 @@ const DEFAULT_TRANSITION = 'all var(--we-transition-200, 150ms) ease';
 // Runtime: CSS custom property updates
 // ────────────────────────────────────────────
 
+/**
+ * Custom properties this element has actually written, so clearing one that was never set can skip
+ * the CSSOM call entirely.
+ *
+ * WeakMap-keyed, so entries are collected with the element and nothing leaks.
+ */
+const writtenVars = new WeakMap<HTMLElement, Set<string>>();
+
+/**
+ * Set or clear a single `--we-*` custom property.
+ *
+ * The early return on the clear path is the point. `updateCustomVars` walks a fixed list of ~59
+ * properties on every update and calls this for each, whether or not the corresponding prop is set
+ * — so a bare `we-text` with no design-system props still issued ~59 `removeProperty` calls, almost
+ * all of them clearing properties that had never been written.
+ *
+ * Measured by ablation on a 3006-element tree: `updateAllCustomVars` accounted for 83% of the flush
+ * phase (~564ms of ~681ms). Removing a property that was never set cannot change rendered output —
+ * it is a no-op by definition — so skipping it is behaviour-preserving.
+ *
+ * Safe because every one of the 66 call sites passes a prefixed custom-property name and nothing
+ * outside this module writes `--we-*` inline. If that ever changes, a property written elsewhere
+ * would not be in this set and would no longer be cleared here.
+ */
 function setProperty(el: HTMLElement, name: string, value?: string) {
-  if (value !== undefined && value !== null && value !== '') el.style.setProperty(name, value);
-  else el.style.removeProperty(name);
+  if (value !== undefined && value !== null && value !== '') {
+    el.style.setProperty(name, value);
+    let written = writtenVars.get(el);
+    if (!written) {
+      written = new Set<string>();
+      writtenVars.set(el, written);
+    }
+    written.add(name);
+    return;
+  }
+
+  const written = writtenVars.get(el);
+  if (written === undefined || !written.has(name)) return;
+  el.style.removeProperty(name);
+  written.delete(name);
 }
 
 /**
