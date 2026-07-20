@@ -1,7 +1,9 @@
 /**
  * Adapter capabilities + query planning. A backend adapter declares what it can do *natively*; this
  * classifies every feature a query uses as `native`, `compute-up` (not native but derivable in JS by
- * the fallback toolkit over rows the adapter returns), or `unsupported` (can't be faked → fail loud).
+ * the fallback toolkit over rows the adapter returns), `degraded` (the backend runs it but silently
+ * ignores the feature — a waiver for a known backend defect), or `unsupported` (can't be faked →
+ * fail loud). See {@link Disposition} for when each applies.
  *
  * This is the mechanism behind the L0–L4 tiers and "fail loudly, don't silently return nothing".
  * The compute-up toolkit itself is separate; this only decides the disposition.
@@ -27,7 +29,24 @@ export interface AdapterCapabilities {
   live: 'none' | 'poll' | 'push';
 }
 
-export type Disposition = 'native' | 'compute-up' | 'unsupported';
+/**
+ * How a backend copes with a feature a query uses.
+ *
+ * - `native` — the backend does it itself.
+ * - `compute-up` — not native, but derivable in JS by the fallback toolkit over the rows the
+ *   adapter returns. A genuine *capability* gap.
+ * - `degraded` — the backend **runs the query and returns a correct result set, except that it
+ *   silently does not honour this one feature**. A waiver for a known backend *defect*.
+ * - `unsupported` — can't be run or faked → fail loud.
+ *
+ * **`degraded` is deliberately narrow — do not reach for it to make a query "work".** It exists
+ * because the other three cannot express "runs, but lies about one thing", which is what a backend
+ * *bug* looks like (AD4M dropping its sort pushdown under an explicit OR, for instance). Use it only
+ * when every row returned is correct apart from the named feature. It is **not** a substitute for
+ * `compute-up` on a real capability gap, and the standing expectation is that it is removed once the
+ * backend is fixed — so keep the `feature` string greppable.
+ */
+export type Disposition = 'native' | 'compute-up' | 'degraded' | 'unsupported';
 
 export interface CapabilityGap {
   /** What isn't native, e.g. "operator:contains", "include", "sort:byAggregate", "pagination:cursor". */

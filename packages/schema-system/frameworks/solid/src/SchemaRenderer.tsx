@@ -172,18 +172,27 @@ function composeHandlers(handlers: unknown[]): (...args: unknown[]) => void {
  * Create a reactive signal that subscribes to a $query and updates with results.
  * Must be called within a Solid reactive owner (component or createRoot).
  */
+/** Degradations already reported, keyed `entity:feature` — a reactive re-run must not respam. */
+const warnedDegradations = new Set<string>();
+
 /**
  * Route the (already token-resolved) query through the neutral `QueryIR` and the injected backend
  * adapter before it reaches the backend. `compileQuery` (DSL→IR) is neutral; the backend-specific
  * plan + lowering come from the injected `$queryAdapter`, so this function knows nothing about AD4M.
  *
- * **Fails loud.** When the IR can't express the query, when the adapter reports a capability gap, or
- * on any error, this reports through `onError` and returns `null` — the caller then renders nothing
- * rather than silently reverting to the raw backend path. That silent revert only ever worked because
- * AD4M happens to be *both* the query dialect and the backend; against any other backend it would hand
- * over a dialect the adapter never agreed to read, so it hid real gaps instead of surfacing them. A
- * genuine capability gap is surfaced here (and, better, at author time by the capability validator) —
- * never papered over.
+ * **Fails loud.** When the IR can't express the query, when the adapter reports a blocking capability
+ * gap, or on any error, this reports through `onError` and returns `null` — the caller then renders
+ * nothing rather than silently reverting to the raw backend path. That silent revert only ever worked
+ * because AD4M happens to be *both* the query dialect and the backend; against any other backend it
+ * would hand over a dialect the adapter never agreed to read, so it hid real gaps instead of
+ * surfacing them. A genuine capability gap is surfaced here (and, better, at author time by the
+ * capability validator) — never papered over.
+ *
+ * The one exception is a **`degraded`** gap: the backend runs the query and returns correct rows but
+ * silently ignores one feature (a known backend *defect* — see `Disposition`). Failing loud there
+ * would block a working screen over a backend bug, so it proceeds and warns once instead. That is a
+ * narrow, adapter-declared waiver, not a return to the blanket fallback: the adapter has to name the
+ * feature, and it stays greppable so it can be removed when the backend is fixed.
  */
 function routeQueryThroughIR(
   entity: string,
@@ -198,12 +207,23 @@ function routeQueryThroughIR(
       return null;
     }
     const plan = adapter.plan(ir);
-    if (plan.gaps.length > 0) {
+    const blocking = plan.gaps.filter((g) => g.disposition !== 'degraded');
+    if (blocking.length > 0) {
       onError(
         `Query on "${entity}" needs capabilities this backend does not support: ` +
-          plan.gaps.map((g) => g.feature).join(', '),
+          blocking.map((g) => g.feature).join(', '),
       );
       return null;
+    }
+    // A `degraded` gap means the backend runs this and returns correct rows, but silently ignores
+    // the named feature — a known backend defect, not a capability gap. Proceed, but say so once so
+    // the waiver never becomes invisible again. Warn (not `onError`): the results are usable, and a
+    // reactive re-run must not raise an error toast on every render.
+    for (const gap of plan.gaps) {
+      const key = `${entity}:${gap.feature}`;
+      if (warnedDegradations.has(key)) continue;
+      warnedDegradations.add(key);
+      console.warn(`[query] "${entity}" runs with a degraded feature — ${gap.feature}: ${gap.note}`);
     }
     return adapter.lower(ir) as Record<string, unknown>;
   } catch (err) {

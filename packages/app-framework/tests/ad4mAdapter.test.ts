@@ -92,6 +92,46 @@ describe('adapter.plan — AD4M conditional degradations', () => {
     });
     expect(adapter.plan(ir).gaps).toEqual([]);
   });
+
+  it('classifies both quirks as `degraded`, not `compute-up`, and stays runnable', () => {
+    // These are AD4M *bugs*: it returns the correct rows and silently ignores the ordering. Marking
+    // them `compute-up` promised a JS fallback that nothing provides, so the renderer failed loud and
+    // blocked working screens. `degraded` = run it, warn once.
+    const underBoolean = base({
+      filter: {
+        or: [
+          { field: 'a', op: 'eq', value: 1 },
+          { field: 'b', op: 'eq', value: 2 },
+        ],
+      },
+      sort: [{ by: 'createdAt', dir: 'desc' }],
+      page: { limit: 20 },
+    });
+    const needsLimit = base({ sort: [{ by: 'location.country', dir: 'asc' }] });
+
+    for (const ir of [underBoolean, needsLimit]) {
+      const plan = adapter.plan(ir);
+      expect(plan.runnable).toBe(true);
+      expect(plan.gaps.every((g) => g.disposition === 'degraded')).toBe(true);
+    }
+  });
+
+  it('an implicit conjunction (sibling where keys) + sort is native — NOT a degradation', () => {
+    // Regression: `where: { a, b }` compiles to an `and` node, which an IR-level `'and' in filter`
+    // check mistook for an explicit combinator — flagging a gap on the most ordinary query shape
+    // there is and breaking the post list. It lowers back to sibling keys, which AD4M pushes down.
+    const ir = base({
+      filter: {
+        and: [
+          { field: 'type', op: 'eq', value: 'root' },
+          { field: 'textContent', op: 'contains', value: 'x' },
+        ],
+      },
+      sort: [{ by: 'createdAt', dir: 'desc' }],
+      page: { limit: 20 },
+    });
+    expect(adapter.plan(ir).gaps).toEqual([]);
+  });
 });
 
 describe('adapter.lower', () => {

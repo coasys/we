@@ -19,9 +19,13 @@
  *   **filtering by a related model's property** (`{ rel, some/none }`): AD4M's `where` has no
  *   relation quantifier, so `relationFilters` is false.
  *
- * Two documented caveats aren't clean capability booleans (conditional degradations handled at the
- * wiring step): a projection / relation-path sort silently needs a `limit`, and OR/AND/NOT in `where`
- * disables AD4M's sort/pagination pushdown.
+ * Two documented caveats aren't clean capability booleans, and aren't capability gaps at all — they
+ * are **AD4M bugs**: an explicit OR/AND/NOT in `where` disables its sort/pagination pushdown, and a
+ * projection / relation-path sort silently needs a `limit`. In both cases AD4M returns the correct
+ * rows and simply ignores the ordering, so they are reported as `degraded` (run + warn), not
+ * `compute-up` (which would fail loud until something computed them up) — see {@link Disposition}.
+ * The real fix is upstream in AD4M; when it lands, grep `sort:under-boolean` / `sort:needs-limit`
+ * and delete these two blocks.
  */
 import type {
   AdapterCapabilities,
@@ -97,8 +101,8 @@ export function createAd4mQueryAdapter(getModels: () => ModelManifestEntry[]): Q
           gaps.push({
             feature: 'sort:under-boolean',
             path: 'sort',
-            disposition: 'compute-up',
-            note: 'AD4M disables sort/pagination pushdown when where uses an explicit OR/AND/NOT',
+            disposition: 'degraded',
+            note: 'AD4M returns correct rows but silently ignores the sort when where uses an explicit OR/AND/NOT',
           });
         }
         const aggregateAliases = new Set((ir.aggregate ?? []).map((a) => a.as));
@@ -106,8 +110,8 @@ export function createAd4mQueryAdapter(getModels: () => ModelManifestEntry[]): Q
           gaps.push({
             feature: 'sort:needs-limit',
             path: 'sort',
-            disposition: 'compute-up',
-            note: 'projection/relation-path sort needs a limit to push down',
+            disposition: 'degraded',
+            note: 'AD4M returns correct rows but silently ignores a projection/relation-path sort without a limit',
           });
         }
       }
