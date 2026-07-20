@@ -176,6 +176,37 @@ function composeHandlers(handlers: unknown[]): (...args: unknown[]) => void {
 const warnedDegradations = new Set<string>();
 
 /**
+ * Report a query failure through the host's `$onError` (a toast, in the AD4M app), falling back to
+ * `console.error` when no reporter is injected.
+ *
+ * Every backend call must terminate in this, including the subscribe path: a rejection left
+ * uncaught — or rethrown from inside a `catch` — becomes an unhandled promise rejection, which
+ * makes "does the user learn the query failed?" depend on global handlers rather than on this
+ * layer. Reporting the same failure on each re-run is fine; the toast service collapses repeats.
+ */
+function reportQueryError(stores: unknown, entity: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  const onError = (stores as Record<string, unknown>).$onError as ((msg: string) => void) | undefined;
+  const text = `Query on "${entity}" failed: ${message}`;
+  if (onError) onError(text);
+  else console.error('[query]', text, err);
+}
+
+/** True for the abort we cause ourselves when an effect re-runs — expected, never reported. */
+function isAbort(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError';
+}
+
+/** Reporter passed to {@link routeQueryThroughIR}; its messages are already user-facing. */
+function irErrorReporter(stores: unknown): (msg: string) => void {
+  return (msg) => {
+    const onError = (stores as Record<string, unknown>).$onError as ((m: string) => void) | undefined;
+    if (onError) onError(msg);
+    else console.error('[query-ir]', msg);
+  };
+}
+
+/**
  * Route the (already token-resolved) query through the neutral `QueryIR` and the injected backend
  * adapter before it reaches the backend. `compileQuery` (DSL→IR) is neutral; the backend-specific
  * plan + lowering come from the injected `$queryAdapter`, so this function knows nothing about AD4M.
@@ -302,11 +333,7 @@ function createQuerySignal(
     if (useQueryIR && queryAdapter) {
       // Fail loud: an IR/adapter gap renders nothing and reports, rather than silently reverting to the
       // raw backend path (which only ever worked because AD4M is both the dialect and the backend).
-      const lowered = routeQueryThroughIR(descriptor.entity, queryOptions, queryAdapter, (msg) => {
-        const onError = (stores as Record<string, unknown>).$onError as ((m: string) => void) | undefined;
-        if (onError) onError(msg);
-        else console.error('[query-ir]', msg);
-      });
+      const lowered = routeQueryThroughIR(descriptor.entity, queryOptions, queryAdapter, irErrorReporter(stores));
       if (lowered === null) {
         setItems(reconcile([]));
         return;
@@ -335,6 +362,10 @@ function createQuerySignal(
         })
         .then((initial) => {
           setItems(reconcile(normalise(initial), { key: 'id', merge: true }));
+        })
+        .catch((err) => {
+          setItems(reconcile([]));
+          reportQueryError(stores, descriptor.entity, err);
         });
       onCleanup(() => builder.dispose());
     } else {
@@ -358,8 +389,9 @@ function createQuerySignal(
         .catch((err) => {
           // AbortError = a newer effect run or unmount cancelled this query.
           // Silently drop — no UI state to update, the new run handles it.
-          if (err instanceof DOMException && err.name === 'AbortError') return;
-          throw err;
+          if (isAbort(err)) return;
+          setItems(reconcile([]));
+          reportQueryError(stores, descriptor.entity, err);
         });
     }
   });
@@ -709,10 +741,25 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
                   boolean | Record<string, unknown>
                 >)
               : undefined;
-          const queryOptions = {
+          let queryOptions: Record<string, unknown> = {
             ...resolvedParams,
             ...(resolvedInclude !== undefined && { include: resolvedInclude }),
           };
+          // Route through the QueryIR, as the list path does. Handing options straight to the
+          // backend would skip capability planning entirely — no fail-loud on a genuine gap, no
+          // `degraded` warning, and on a non-AD4M backend it would pass a dialect the adapter
+          // never agreed to read.
+          const irFlag = (stores as Record<string, unknown>).$useQueryIR;
+          const useQueryIR = typeof irFlag === 'function' ? (irFlag as () => unknown)() === true : irFlag === true;
+          const queryAdapter = (stores as Record<string, unknown>).$queryAdapter as QueryAdapter | undefined;
+          if (useQueryIR && queryAdapter) {
+            const lowered = routeQueryThroughIR(descriptor.entity, queryOptions, queryAdapter, irErrorReporter(stores));
+            if (lowered === null) {
+              setHasItem(false);
+              return;
+            }
+            queryOptions = lowered;
+          }
 
           const handleResults = (results: unknown[]) => {
             if (results.length === 0) {
@@ -733,7 +780,13 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
               subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
               dispose: () => void;
             };
-            builder.subscribe(handleResults).then(handleResults);
+            builder
+              .subscribe(handleResults)
+              .then(handleResults)
+              .catch((err: unknown) => {
+                setHasItem(false);
+                reportQueryError(stores, descriptor.entity, err);
+              });
             onCleanup(() => builder.dispose());
           } else {
             // Same abort discipline as the list-path createQuerySignal: the
@@ -748,8 +801,9 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
                 handleResults(results);
               })
               .catch((err) => {
-                if (err instanceof DOMException && err.name === 'AbortError') return;
-                throw err;
+                if (isAbort(err)) return;
+                setHasItem(false);
+                reportQueryError(stores, descriptor.entity, err);
               });
           }
         });
