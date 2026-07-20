@@ -101,13 +101,37 @@ export const layerKeyMap: Record<DSLayer, readonly string[]> = {
   state: stateKeys,
 };
 
-/** Get the combined set of keys for the given layers (deduplicated). */
+/** Memoised results of {@link getKeysForLayers}, keyed by sorted layer set. */
+const keysForLayersCache = new Map<string, string[]>();
+
+/**
+ * Get the combined set of keys for the given layers (deduplicated).
+ *
+ * Memoised because this sits on a hot path. `DesignSystemMixin` calls it once per class, but ~20
+ * primitives (button, text, input, badge, checkbox, …) override `getInstanceProps()` and call it
+ * again on every invocation — i.e. once per instance per update. Each uncached call allocated a Set
+ * and spread it into a fresh array of up to 82 keys, so a page rendering 3000 DS elements paid that
+ * 3000 times for a result that only ever has a handful of distinct values.
+ *
+ * Safe to cache: `layerKeyMap` is a module constant, so the result is a pure function of the layer
+ * set. The returned array is shared rather than copied — callers treat it as read-only
+ * (`filterProps` takes `readonly string[]` and only filters/maps), and it must stay that way.
+ *
+ * The key is sorted so ['layout','visual'] and ['visual','layout'] share an entry; the union itself
+ * is order-independent.
+ */
 export function getKeysForLayers(layers: DSLayer[]): string[] {
+  const cacheKey = [...layers].sort().join('|');
+  const cached = keysForLayersCache.get(cacheKey);
+  if (cached) return cached;
+
   const keys = new Set<string>();
   for (const layer of layers) {
     for (const key of layerKeyMap[layer]) keys.add(key);
   }
-  return [...keys];
+  const result = [...keys];
+  keysForLayersCache.set(cacheKey, result);
+  return result;
 }
 
 // --- Backwards-compatible combined key array ---
