@@ -4,7 +4,7 @@ import { cardShell, gridWrapper } from './CardShell.ts';
 
 const blockSection = (
   contentType: string,
-  model: string,
+  entity: string,
   header: SchemaNode[],
   body: SchemaNode[],
   maxHeight?: string | Record<string, unknown>,
@@ -16,7 +16,7 @@ const blockSection = (
       {
         type: '$each',
         props: {
-          items: { $query: { model, order: { createdAt: { $local: 'sortDirection' } } } },
+          items: { $query: { entity, order: { createdAt: { $local: 'sortDirection' } } } },
           as: 'block',
         },
         children: [cardShell({ header, body, maxHeight })],
