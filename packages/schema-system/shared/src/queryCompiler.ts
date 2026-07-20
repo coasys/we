@@ -215,6 +215,31 @@ function whereFromFilter(filter: Filter): Record<string, unknown> {
   return { [filter.field]: conditionFromLeaf(filter.op, filter.value) };
 }
 
+/**
+ * Does this filter reach the backend as an **explicit** `OR`/`AND`/`NOT` in the flat `where`?
+ *
+ * Only explicit combinators change a backend's execution strategy (AD4M, for one, drops its
+ * SPARQL sort/pagination pushdown when it sees them). An *implicit* conjunction — several sibling
+ * `where` keys — also compiles to an `and` node in the IR, but {@link whereFromFilter} merges it
+ * straight back to sibling keys, which backends handle natively. Testing `'and' in filter` on the
+ * IR therefore reports a degradation for the most ordinary query shape there is
+ * (`where: { a, b }` + `order`), so adapters must ask this instead.
+ *
+ * Lives beside `whereFromFilter` deliberately: it answers the question by *performing* the
+ * lowering, so the two cannot drift apart.
+ */
+export function whereUsesCombinator(filter: Filter | undefined): boolean {
+  if (!filter) return false;
+  try {
+    const where = whereFromFilter(filter);
+    return 'OR' in where || 'AND' in where || 'NOT' in where;
+  } catch {
+    // Not lowerable to a flat where (e.g. a relation filter). That is reported as its own
+    // capability gap by the planner; it is not a sort-pushdown degradation.
+    return false;
+  }
+}
+
 function orderFromSort(sort: SortKey[]): Record<string, 'asc' | 'desc'> {
   const order: Record<string, 'asc' | 'desc'> = {};
   for (const key of sort) order[key.by] = key.dir;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { compileQuery, type FlatQuery, irToFlatQuery } from './queryCompiler';
+import { compileQuery, type FlatQuery, irToFlatQuery, whereUsesCombinator } from './queryCompiler';
 import { validateQueryIR } from './queryIR';
 
 describe('compileQuery', () => {
@@ -165,5 +165,42 @@ describe('irToFlatQuery', () => {
       const ir2 = compileQuery(irToFlatQuery(ir1)).ir;
       expect(ir2).toEqual(ir1);
     }
+  });
+});
+
+describe('whereUsesCombinator', () => {
+  const irOf = (where: Record<string, unknown>) => compileQuery({ entity: 'Post', where }).ir;
+  const filterOf = (where: Record<string, unknown>) => irOf(where).filter;
+  const flatOf = (where: Record<string, unknown>) => irToFlatQuery(irOf(where));
+
+  it('is false for an implicit conjunction — sibling where keys merge back to sibling keys', () => {
+    // The regression this guards: `where: { a, b }` compiles to an `and` node, so testing
+    // `'and' in filter` on the IR wrongly reports a combinator for the most ordinary query
+    // shape there is — and that flagged a capability gap on every multi-key filter + sort.
+    const where = { type: 'root', textContent: { contains: 'x' } };
+    expect(filterOf(where)).toHaveProperty('and');
+    expect(flatOf(where)).toMatchObject({ where: { type: 'root', textContent: { contains: 'x' } } });
+    expect(whereUsesCombinator(filterOf(where))).toBe(false);
+  });
+
+  it('is false for a single field condition, and for no filter at all', () => {
+    expect(whereUsesCombinator(filterOf({ type: 'root' }))).toBe(false);
+    expect(whereUsesCombinator(undefined)).toBe(false);
+  });
+
+  it('is true for an explicit OR / NOT that survives lowering', () => {
+    expect(whereUsesCombinator(filterOf({ OR: [{ a: 1 }, { b: 2 }] }))).toBe(true);
+    expect(whereUsesCombinator(filterOf({ NOT: { a: 1 } }))).toBe(true);
+  });
+
+  it('is true for a conjunction that collides on a key (lowers to an explicit AND)', () => {
+    // Same key on both branches cannot merge into sibling keys, so `whereFromFilter` emits `AND`.
+    const where = { AND: [{ title: { contains: 'a' } }, { title: { contains: 'b' } }] };
+    expect(flatOf(where)).toHaveProperty('where.AND');
+    expect(whereUsesCombinator(filterOf(where))).toBe(true);
+  });
+
+  it('is true when a nested OR is merged in among sibling keys', () => {
+    expect(whereUsesCombinator(filterOf({ type: 'root', OR: [{ a: 1 }, { b: 2 }] }))).toBe(true);
   });
 });

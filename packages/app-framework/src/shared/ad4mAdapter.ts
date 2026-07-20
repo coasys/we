@@ -26,14 +26,13 @@
 import type {
   AdapterCapabilities,
   CapabilityGap,
-  Filter,
   QueryAdapter,
   QueryIR,
   QueryOptions,
   QueryPlan,
   Scope,
 } from '@we/schema-shared';
-import { irToFlatQuery, planQuery } from '@we/schema-shared';
+import { irToFlatQuery, planQuery, whereUsesCombinator } from '@we/schema-shared';
 
 import type { ModelManifestEntry } from './AdamStore';
 
@@ -48,14 +47,6 @@ export const ad4mCapabilities: AdapterCapabilities = {
   pagination: ['offset'], // limit / offset; no stable cursor
   live: 'push', // perspective link subscriptions
 };
-
-/** Does this filter tree use an OR/AND/NOT combinator anywhere? (AD4M drops its sort pushdown if so.) */
-function hasBooleanCombinator(filter: Filter | undefined): boolean {
-  if (!filter) return false;
-  if ('and' in filter || 'or' in filter || 'not' in filter) return true;
-  if ('rel' in filter) return hasBooleanCombinator(filter.where);
-  return false;
-}
 
 /** A sort key AD4M can only push down with a `limit`: a projection-count or a relation-path sort. */
 function sortNeedsLimit(by: string, aggregateAliases: Set<string>): boolean {
@@ -99,12 +90,15 @@ export function createAd4mQueryAdapter(getModels: () => ModelManifestEntry[]): Q
       const base = planQuery(ir, ad4mCapabilities);
       const gaps: CapabilityGap[] = [...base.gaps];
       if (ir.sort?.length) {
-        if (hasBooleanCombinator(ir.filter)) {
+        // Judge this on the *lowered* where, not the IR: an implicit conjunction (sibling `where`
+        // keys) compiles to an `and` node but merges back to sibling keys, which AD4M pushes down
+        // natively. Only an explicit OR/AND/NOT that survives lowering costs the pushdown.
+        if (whereUsesCombinator(ir.filter)) {
           gaps.push({
             feature: 'sort:under-boolean',
             path: 'sort',
             disposition: 'compute-up',
-            note: 'AD4M disables sort/pagination pushdown when where uses OR/AND/NOT',
+            note: 'AD4M disables sort/pagination pushdown when where uses an explicit OR/AND/NOT',
           });
         }
         const aggregateAliases = new Set((ir.aggregate ?? []).map((a) => a.as));
