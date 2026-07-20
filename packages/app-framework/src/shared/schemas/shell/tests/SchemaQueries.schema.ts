@@ -269,7 +269,7 @@ export const schemaQueriesTemplate: TemplateSchema = {
     name: 'Queries',
     description: 'Exercises every $query shape through the QueryIR routing (seed.features.useQueryIR)',
     icon: 'magnifying-glass',
-    stores: { testStore: {} },
+    stores: ['testStore'],
   },
   type: 'Column',
   props: { width: '100%', bg: 'neutral-50', gap: '400', p: '400' },

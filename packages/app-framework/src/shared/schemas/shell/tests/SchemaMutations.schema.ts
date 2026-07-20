@@ -113,7 +113,9 @@ export const schemaMutationsTemplate: TemplateSchema = {
     description: 'Testing updateSchema diffing engine',
     icon: 'code',
     stores: {
-      testStore: {},
+      // `true` = "store exists, accept all members". An empty object would instead declare an
+      // *empty* member allowlist, making every `testStore.x` reference warn.
+      testStore: true,
       templateStore: {
         actions: [
           'addChild',
