@@ -3,9 +3,11 @@ import type {
   LocalFieldMeta,
   LocalStateField,
   MapProp,
+  ModelClass,
   QueryAdapter,
   QueryDescriptor,
   QueryStateField,
+  RendererStores,
   ValidationRule,
 } from '@we/schema-shared';
 import {
@@ -76,8 +78,8 @@ function isEventProp(key: string): boolean {
  */
 function hoistMapQuerySignals(
   value: unknown,
-  stores: unknown,
-  getModel: (name: string) => unknown,
+  stores: RendererStores,
+  getModel: (name: string) => ModelClass,
   context: Record<string, unknown> = {},
 ): unknown {
   if (!value || typeof value !== 'object') return value;
@@ -184,9 +186,9 @@ const warnedDegradations = new Set<string>();
  * makes "does the user learn the query failed?" depend on global handlers rather than on this
  * layer. Reporting the same failure on each re-run is fine; the toast service collapses repeats.
  */
-function reportQueryError(stores: unknown, entity: string, err: unknown): void {
+function reportQueryError(stores: RendererStores, entity: string, err: unknown): void {
   const message = err instanceof Error ? err.message : String(err);
-  const onError = (stores as Record<string, unknown>).$onError as ((msg: string) => void) | undefined;
+  const onError = stores.$onError;
   const text = `Query on "${entity}" failed: ${message}`;
   if (onError) onError(text);
   else console.error('[query]', text, err);
@@ -198,9 +200,9 @@ function isAbort(err: unknown): boolean {
 }
 
 /** Reporter passed to {@link routeQueryThroughIR}; its messages are already user-facing. */
-function irErrorReporter(stores: unknown): (msg: string) => void {
+function irErrorReporter(stores: RendererStores): (msg: string) => void {
   return (msg) => {
-    const onError = (stores as Record<string, unknown>).$onError as ((m: string) => void) | undefined;
+    const onError = stores.$onError;
     if (onError) onError(msg);
     else console.error('[query-ir]', msg);
   };
@@ -265,14 +267,13 @@ function routeQueryThroughIR(
 
 function createQuerySignal(
   descriptor: QueryDescriptor,
-  stores: unknown,
-  getModel: (name: string) => unknown,
+  stores: RendererStores,
+  getModel: (name: string) => ModelClass,
   context: Record<string, unknown> = {},
 ): () => unknown[] {
   const [items, setItems] = createStore<unknown[]>([]);
   const readItems = () => items;
-  const getModelForPerspective = (stores as Record<string, unknown>).$getModelForPerspective as
-    ((name: string, uuid?: string) => unknown) | undefined;
+  const getModelForPerspective = stores.$getModelForPerspective;
 
   createEffect(() => {
     let p: unknown = null;
@@ -284,7 +285,7 @@ function createQuerySignal(
     } else {
       // The host injects the backend-neutral $currentDataset() (AD4M's currentPerspective, another
       // backend's equivalent) — no AD4M store reference in the renderer.
-      const currentDataset = (stores as Record<string, unknown>).$currentDataset as (() => unknown) | undefined;
+      const currentDataset = stores.$currentDataset;
       p = typeof currentDataset === 'function' ? currentDataset() : null;
     }
     if (!p) {
@@ -293,32 +294,24 @@ function createQuerySignal(
     }
 
     // Dataset-scoped model lookup: prefer a dataset-specific dynamic model, fall back to the global
-    // registry. Read `uuid` first (the AD4M PerspectiveProxy exposes it, and also an unrelated
-    // `id` = subscription id that must NOT win), falling back to the backend-neutral `id` that a
-    // clean DatasetHandle provides.
-    // TODO: collapse uuid??id to a single `id` once the AD4M adapter wraps perspectives in DatasetHandles.
-    const datasetId = ((p as Record<string, unknown>).uuid ?? (p as Record<string, unknown>).id) as string | undefined;
-    const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.entity, datasetId) : undefined;
-    let ModelClass: Record<string, (...args: unknown[]) => unknown>;
+    // registry.
+    // The dataset stays opaque here: the host derives whatever key its per-dataset model registry
+    // needs, since only it knows the concrete handle type.
+    const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.entity, p) : undefined;
+    let Model: ModelClass;
     try {
-      ModelClass = (dynamicCls ?? getModel(descriptor.entity)) as Record<string, (...args: unknown[]) => unknown>;
+      Model = dynamicCls ?? getModel(descriptor.entity);
     } catch {
-      const onError = (stores as Record<string, unknown>).$onError as ((msg: string) => void) | undefined;
+      const onError = stores.$onError;
       onError?.(`Model "${descriptor.entity}" is not available in this perspective`);
       setItems(reconcile([]));
       return;
     }
 
-    const resolvedParams = deepResolveTokens(descriptor.params, stores as Record<string, unknown>, context) as Record<
-      string,
-      unknown
-    >;
+    const resolvedParams = deepResolveTokens(descriptor.params, stores, context) as Record<string, unknown>;
     const resolvedInclude =
       descriptor.include !== undefined
-        ? (deepResolveTokens(descriptor.include, stores as Record<string, unknown>, context) as Record<
-            string,
-            boolean | Record<string, unknown>
-          >)
+        ? (deepResolveTokens(descriptor.include, stores, context) as Record<string, boolean | Record<string, unknown>>)
         : undefined;
     let queryOptions: Record<string, unknown> = {
       ...resolvedParams,
@@ -327,9 +320,9 @@ function createQuerySignal(
     // Route through the QueryIR when enabled. `$useQueryIR` is a reactive accessor (default from
     // `seed.features.useQueryIR`, live-toggled on the Queries test page); reading it *here*, inside the
     // effect, makes the query re-run when it flips — so toggling re-routes without a reload.
-    const irFlag = (stores as Record<string, unknown>).$useQueryIR;
+    const irFlag = stores.$useQueryIR;
     const useQueryIR = typeof irFlag === 'function' ? (irFlag as () => unknown)() === true : irFlag === true;
-    const queryAdapter = (stores as Record<string, unknown>).$queryAdapter as QueryAdapter | undefined;
+    const queryAdapter = stores.$queryAdapter;
     if (useQueryIR && queryAdapter) {
       // Fail loud: an IR/adapter gap renders nothing and reports, rather than silently reverting to the
       // raw backend path (which only ever worked because AD4M is both the dialect and the backend).
@@ -352,7 +345,7 @@ function createQuerySignal(
       });
 
     if (descriptor.subscribe) {
-      const builder = ModelClass.query(p, queryOptions) as {
+      const builder = Model.query(p, queryOptions) as {
         subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
         dispose: () => void;
       };
@@ -381,7 +374,7 @@ function createQuerySignal(
       // to the executor's `request.cancel` machinery.
       const controller = new AbortController();
       onCleanup(() => controller.abort());
-      (ModelClass.findAll(p, queryOptions, { signal: controller.signal }) as Promise<unknown[]>)
+      (Model.findAll(p, queryOptions, { signal: controller.signal }) as Promise<unknown[]>)
         .then((results) => {
           if (controller.signal.aborted) return;
           setItems(reconcile(normalise(results), { key: 'id', merge: true }));
@@ -427,7 +420,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const resolveInitial = (raw: unknown): unknown => {
       if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
         if (Object.keys(raw).some((k) => k.startsWith('$'))) {
-          const resolved = resolveProp(raw, stores as Record<string, unknown>, context);
+          const resolved = resolveProp(raw, stores, context);
           if (typeof resolved === 'function' && REACTIVE_ACCESSOR in (resolved as object)) {
             return (resolved as () => unknown)();
           }
@@ -482,7 +475,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         !Array.isArray(rawInitial) &&
         Object.keys(rawInitial as object).some((k) => k.startsWith('$'))
       ) {
-        const reactiveVal = resolveProp(rawInitial, stores as Record<string, unknown>, context, createMemo);
+        const reactiveVal = resolveProp(rawInitial, stores, context, createMemo);
         createEffect(() => {
           const next =
             typeof reactiveVal === 'function' && REACTIVE_ACCESSOR in (reactiveVal as object)
@@ -507,7 +500,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   // Each entry runs createQuerySignal at node mount and injects the result array into
   // $local under the given name — read-only, shared across the entire subtree.
   if (node.$queries) {
-    const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+    const getModel = stores.$getModel;
     if (getModel) {
       const queryAccessors: Record<string, () => unknown[]> = {};
       for (const [name, field] of Object.entries(node.$queries as Record<string, QueryStateField>)) {
@@ -651,7 +644,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const rawItems = node.props?.items;
     if (hasToken(rawItems, '$query', 'object')) {
       const descriptor = resolveQueryProp(rawItems);
-      const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      const getModel = stores.$getModel;
       if (!getModel) {
         console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
         itemsArray = () => [];
@@ -689,9 +682,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const rawItems = node.props?.item;
     if (hasToken(rawItems, '$query', 'object')) {
       const descriptor = resolveQueryProp(rawItems);
-      const getModelFn = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
-      const getModelForPerspective = (stores as Record<string, unknown>).$getModelForPerspective as
-        ((name: string, uuid?: string) => unknown) | undefined;
+      const getModelFn = stores.$getModel;
+      const getModelForPerspective = stores.$getModelForPerspective;
 
       if (!getModelFn) {
         console.warn('Schema $single: $getModel not found in stores. Did you wire the model registry?');
@@ -704,7 +696,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             for (const part of parts) target = (target as Record<string, unknown>)?.[part];
             p = typeof target === 'function' ? (target as () => unknown)() : target;
           } else {
-            const currentDataset = (stores as Record<string, unknown>).$currentDataset as (() => unknown) | undefined;
+            const currentDataset = stores.$currentDataset;
             p = typeof currentDataset === 'function' ? currentDataset() : null;
           }
           if (!p) {
@@ -712,31 +704,24 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             return;
           }
 
-          const perspectiveUuid = (p as Record<string, unknown>).uuid as string | undefined;
-          const dynamicCls = getModelForPerspective
-            ? getModelForPerspective(descriptor.entity, perspectiveUuid)
-            : undefined;
-          let ModelClass: Record<string, (...args: unknown[]) => unknown>;
+          const dynamicCls = getModelForPerspective ? getModelForPerspective(descriptor.entity, p) : undefined;
+          let Model: ModelClass;
           try {
-            ModelClass = (dynamicCls ?? getModelFn(descriptor.entity)) as Record<
-              string,
-              (...args: unknown[]) => unknown
-            >;
+            Model = dynamicCls ?? getModelFn(descriptor.entity);
           } catch {
-            const onError = (stores as Record<string, unknown>).$onError as ((msg: string) => void) | undefined;
+            const onError = stores.$onError;
             onError?.(`Model "${descriptor.entity}" is not available in this perspective`);
             setHasItem(false);
             return;
           }
 
-          const resolvedParams = deepResolveTokens(
-            descriptor.params,
-            stores as Record<string, unknown>,
-            effectiveContext,
-          ) as Record<string, unknown>;
+          const resolvedParams = deepResolveTokens(descriptor.params, stores, effectiveContext) as Record<
+            string,
+            unknown
+          >;
           const resolvedInclude =
             descriptor.include !== undefined
-              ? (deepResolveTokens(descriptor.include, stores as Record<string, unknown>, effectiveContext) as Record<
+              ? (deepResolveTokens(descriptor.include, stores, effectiveContext) as Record<
                   string,
                   boolean | Record<string, unknown>
                 >)
@@ -749,9 +734,9 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           // backend would skip capability planning entirely — no fail-loud on a genuine gap, no
           // `degraded` warning, and on a non-AD4M backend it would pass a dialect the adapter
           // never agreed to read.
-          const irFlag = (stores as Record<string, unknown>).$useQueryIR;
+          const irFlag = stores.$useQueryIR;
           const useQueryIR = typeof irFlag === 'function' ? (irFlag as () => unknown)() === true : irFlag === true;
-          const queryAdapter = (stores as Record<string, unknown>).$queryAdapter as QueryAdapter | undefined;
+          const queryAdapter = stores.$queryAdapter;
           if (useQueryIR && queryAdapter) {
             const lowered = routeQueryThroughIR(descriptor.entity, queryOptions, queryAdapter, irErrorReporter(stores));
             if (lowered === null) {
@@ -776,7 +761,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           };
 
           if (descriptor.subscribe) {
-            const builder = ModelClass.query(p, queryOptions) as {
+            const builder = Model.query(p, queryOptions) as {
               subscribe: (cb: (results: unknown[]) => void) => Promise<unknown[]>;
               dispose: () => void;
             };
@@ -795,7 +780,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             // we don't pay its serialise + transit + deserialise tax.
             const controller = new AbortController();
             onCleanup(() => controller.abort());
-            (ModelClass.findAll(p, queryOptions, { signal: controller.signal }) as Promise<unknown[]>)
+            (Model.findAll(p, queryOptions, { signal: controller.signal }) as Promise<unknown[]>)
               .then((results) => {
                 if (controller.signal.aborted) return;
                 handleResults(results);
@@ -828,20 +813,19 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     createEffect(() => {
       const rawDid = node.props?.did;
       // resolveProp handles both '$post.author' strings and token objects like { $local: 'selectedPin.id' }
-      const did = rawDid ? String(resolveProp(rawDid, stores as Record<string, unknown>, effectiveContext) ?? '') : '';
+      const did = rawDid ? String(resolveProp(rawDid, stores, effectiveContext) ?? '') : '';
       if (!did) return;
 
-      const adamStore = (stores as Record<string, unknown>).adamStore as
-        { agents: () => Array<Record<string, unknown>>; fetchAgent: (did: string) => Promise<void> } | undefined;
-      if (!adamStore) return;
+      const identities = stores.$identities;
+      if (!identities) return;
 
-      // Track agents() so this effect re-runs when a fetch completes
-      const cached = adamStore.agents().find((a) => a.did === did);
+      // `get` reads reactively, so this effect re-runs once a `fetch` lands and the profile appears.
+      const cached = identities.get(did);
       if (cached) {
         setAgentStore(reconcile(cached, { merge: true }));
         setHasAgent(true);
       } else {
-        adamStore.fetchAgent(did);
+        identities.fetch(did);
       }
     });
 
@@ -924,7 +908,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       // $query: set up reactive subscription via createSignal + createEffect
       // instead of createMemo — subscriptions are side effects, not derivations.
       const descriptor = resolveQueryProp(rawValue);
-      const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      const getModel = stores.$getModel;
       if (!getModel) {
         console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
         propMemos[key] = () => [];
@@ -939,7 +923,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       // then pass the live signal into resolveMapProp so it re-maps on every update.
       const mapSpec = (rawValue as { $map: MapProp }).$map;
       const descriptor = resolveQueryProp(mapSpec.items);
-      const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      const getModel = stores.$getModel;
       if (!getModel) {
         console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
         propMemos[key] = () => [];
@@ -965,7 +949,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           }
         };
     } else {
-      const getModel = (stores as Record<string, unknown>).$getModel as ((name: string) => unknown) | undefined;
+      const getModel = stores.$getModel;
       const raw = getModel ? hoistMapQuerySignals(rawValue, stores, getModel, effectiveContext) : rawValue;
       propMemos[key] = createMemo(() => {
         const resolved = resolveProp(raw, stores, effectiveContext, createMemo);

@@ -14,20 +14,24 @@ import type { AdapterCapabilities, QueryPlan } from './queryCapabilities';
 import type { QueryIR } from './queryIR';
 
 /**
- * An opaque handle to the bounded dataset a query runs against — the backend-neutral replacement
- * for AD4M's `PerspectiveProxy`.
+ * A handle to the bounded dataset a query runs against — AD4M's `PerspectiveProxy`, NextGraph's
+ * document/branch, a REST host's collection id.
  *
- * Two ids on purpose (a lesson from AD4M, whose per-agent perspective `uuid`s forced shared data to
- * be addressed by `neighbourhood://` URI):
- * - `id`  — stable LOCAL identity for this client session; what the renderer keys on (dataset-scoped
- *           model registry, subscription cache, reconciliation). Always present.
- * - `uri` — stable GLOBAL identity, present only when the dataset is shared/addressable; for
- *           references that leave the client (sharing, links, persistence).
+ * **Genuinely opaque: the renderer never looks inside one.** It obtains a handle from
+ * `$currentDataset` (or a `dataset:` path), checks it is present, and hands it back to the host via
+ * `ModelClass.query` / `findAll` and `$getModelForPerspective`. Only the host that minted a handle
+ * ever interprets it.
+ *
+ * Typed `unknown` rather than a structural `{ id, uri }` on purpose. A structural shape would force
+ * every backend to *destroy* its native handle and then reconstruct it on the way back — AD4M would
+ * flatten a `PerspectiveProxy` to an id and re-resolve it through a lookup on every query — all to
+ * satisfy fields nothing reads. The contract should state what the renderer actually requires, and
+ * of a dataset it requires only that it round-trips.
+ *
+ * Anything a host needs *from* a handle (dataset-scoped model registries, subscription caches) it
+ * derives itself, in the host, where the concrete type is known.
  */
-export interface DatasetHandle {
-  id: string;
-  uri?: string;
-}
+export type DatasetHandle = unknown;
 
 /**
  * Query options passed through to a model handle. Currently the AD4M-flavored shape (opaque
@@ -104,16 +108,51 @@ export interface QueryAdapter {
  * reference). All optional so a presentation-only (L0) host can omit the data ones entirely.
  */
 export interface RendererDataBindings {
-  /** Current dataset handle. Preferred over the legacy `adamStore.currentPerspective`. */
+  /** The dataset queries run against unless a `dataset:` path overrides it. Opaque to the renderer. */
   $currentDataset?: () => DatasetHandle | null;
   /** Resolve a model name to its queryable handle. */
   $getModel?: (name: string) => ModelClass;
-  /** Dataset-scoped model resolution (for backends with per-dataset dynamic model classes). */
-  $getModelForPerspective?: (name: string, datasetId?: string) => ModelClass | undefined;
+  /**
+   * Dataset-scoped model resolution, for backends whose model classes are per-dataset (AD4M
+   * synthesises them from a perspective's SHACL). Receives the dataset **handle**, not an id
+   * extracted from it — deriving a key is the host's job, since only the host knows the concrete
+   * type. This is what lets the renderer treat a handle as fully opaque.
+   */
+  $getModelForPerspective?: (name: string, dataset?: DatasetHandle) => ModelClass | undefined;
   /** Surface a data-layer error to the host UI. */
   $onError?: (message: string) => void;
   /** Mutation surface for `model.create` / `update` / `delete` actions. */
   model?: MutationApi;
   /** Query-execution adapter — routes a neutral `QueryIR` to this backend (plan + lower). */
   $queryAdapter?: QueryAdapter;
+  /**
+   * Route queries through the neutral `QueryIR` rather than handing the host's own dialect straight
+   * to its backend. A boolean, or an accessor so a host can toggle it reactively.
+   */
+  $useQueryIR?: boolean | (() => boolean);
+  /**
+   * Identity directory backing the `$agent` block: look up a profile by id, and ask the host to
+   * fetch one it hasn't cached. Every backend has some version of this (AD4M agents/DIDs, another
+   * host's users), so the renderer names the capability and the host binds whatever it has.
+   *
+   * `get` must read reactively — the `$agent` effect re-runs on its dependencies, so a profile that
+   * arrives after `fetch` shows up without further prompting.
+   */
+  $identities?: {
+    get: (id: string) => Record<string, unknown> | undefined;
+    fetch: (id: string) => void;
+  };
+}
+
+/**
+ * The `stores` bag as the renderer sees it: the declared data bindings above, plus whatever
+ * namespaces a host's templates reach by dot-path (`$store: 'someStore.field'`). The index
+ * signature is what keeps it open — the contract is a floor, not a closed set.
+ *
+ * Declared as an extending interface rather than `RendererDataBindings & Record<string, unknown>`:
+ * intersecting with an index signature widens the declared members, losing exactly the typing this
+ * exists to provide.
+ */
+export interface RendererStores extends RendererDataBindings {
+  [key: string]: unknown;
 }

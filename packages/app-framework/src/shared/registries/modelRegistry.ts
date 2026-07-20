@@ -39,12 +39,19 @@ export function registerDynamicModels(perspectiveUuid: string, models: Record<st
  * (e.g. Flux models not known to WE at compile time).
  * Returns `undefined` (rather than throwing) so callers can fall back gracefully.
  */
-export function getModelForPerspective(name: string, perspectiveUuid?: string): ModelClass | undefined {
+/**
+ * `dataset` is the renderer's opaque dataset handle — for this backend, a `PerspectiveProxy`.
+ * Deriving the registry key from it is deliberately the host's job: the renderer never inspects a
+ * handle, so only here is the concrete type known. Note `uuid` must be read rather than `id`, since
+ * a `PerspectiveProxy` also carries an unrelated `id` (a subscription id) that must not win.
+ */
+export function getModelForPerspective(name: string, dataset?: unknown): ModelClass | undefined {
   // Prefer globally registered native class first
   const global = modelRegistry[name];
   if (global) return global;
 
   // Fall back to per-perspective synthesised class (external models)
+  const perspectiveUuid = (dataset as { uuid?: string } | undefined)?.uuid;
   if (perspectiveUuid) {
     return perspectiveModelRegistry.get(perspectiveUuid)?.[name];
   }

@@ -1,7 +1,7 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
-import { createAd4mQueryAdapter } from '@shared/ad4mAdapter';
+import { createAd4mDataBindings } from '@shared/ad4mAdapter';
 import { queryIRFlag } from '@shared/queryIRFlag';
-import { getModel, getModelForPerspective } from '@shared/registries/modelRegistry';
+import { getModel } from '@shared/registries/modelRegistry';
 import { shellRegistry } from '@shared/registries/shellRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
@@ -78,19 +78,19 @@ export default function TemplateProvider() {
     routeStore,
     consoleStore,
     model: modelStore,
-    $getModel: getModel,
-    $getModelForPerspective: getModelForPerspective,
+    // Host wiring, not backend adaptation — any backend would wire these the same way, so they stay
+    // here rather than pretending to be AD4M-specific.
     $onError: (msg: string) => toastService.error(msg),
     $useQueryIR: queryIRFlag.enabled, // reactive; default from the seed, live-toggled via testStore
-    // Neutral identity/dataset vocabulary: templates say `$me` / `$currentDataset`, not
-    // `adamStore.me` / `adamStore.currentPerspective`, so they stay backend-neutral (a NextGraph host
-    // injects its own). Both are just the AD4M store's signals; templates read `$me.did`.
+    // Template-facing vocabulary (templates read `$me.did`), as opposed to the renderer-facing
+    // bindings below: the renderer never reads `$me` itself, it resolves like any `$store` path.
     $me: adamStore.me,
-    $currentDataset: adamStore.currentPerspective,
-    // The AD4M query adapter — the renderer routes each QueryIR through it (plan + lower). Keeps all
-    // AD4M-specific query lowering + capability quirks here, out of the agnostic renderer. Given the
-    // perspective's model manifest so it can resolve a `scope` drill-down to AD4M's `parent` predicate.
-    $queryAdapter: createAd4mQueryAdapter(() => adamStore.currentPerspectiveModels()),
+    // Everything the *renderer* needs to read data, from the AD4M adapter — model resolution, the
+    // dataset handle, the identity directory, and the query adapter. One artifact, so another
+    // backend has a single thing to implement and this provider stays about rendering.
+    // `adamStore` satisfies `Ad4mAdapterDeps` structurally, so it can be passed whole while the
+    // adapter still only sees — and can only reach for — the four accessors it declares.
+    ...createAd4mDataBindings(adamStore),
   };
 
   // Resolves a dot-path string like 'adamStore.rootPerspective' against the stores object.

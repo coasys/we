@@ -1,6 +1,6 @@
 import type { Ad4mModel } from '@coasys/ad4m';
 import type { AdamStore, AiStore, AppStore, RouteStore, SpaceStore, TemplateStore, ThemeStore } from '@solid/stores';
-import type { QueryAdapter } from '@we/schema-shared';
+import type { QueryAdapter, RendererStores } from '@we/schema-shared';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ModelClass = typeof Ad4mModel & (new (...args: any[]) => Ad4mModel);
@@ -22,7 +22,24 @@ export type ModelStore = {
   delete: (modelName: string, id: string, options?: { perspective?: string }) => Promise<void>;
 };
 
-export type Stores = {
+/**
+ * This host's store bag.
+ *
+ * Extends {@link RendererStores} rather than restating the neutral bindings, so the renderer's
+ * contract is checked here, at the host's own declaration. Restating them let the two drift: this
+ * type had `$getModel` returning AD4M's `ModelClass` (whose `query` takes a `PerspectiveProxy`)
+ * where the contract asks for the neutral shape, and it omitted bindings the renderer genuinely
+ * reads. Inheriting means adding a binding to the contract surfaces here as a type error rather
+ * than at runtime.
+ *
+ * Only host-specific members are declared below; everything neutral comes from the contract, and
+ * the inherited index signature keeps `$store: 'someStore.field'` dot-paths open.
+ */
+export interface Stores extends RendererStores {
+  // Restated explicitly: an interface does not pick up an inherited index signature for
+  // assignability the way a type alias does, so without this `Stores` is not assignable to
+  // `RendererStores` despite extending it.
+  [key: string]: unknown;
   adamStore: AdamStore;
   aiStore: AiStore;
   appStore: AppStore;
@@ -31,17 +48,7 @@ export type Stores = {
   templateStore: TemplateStore;
   routeStore: RouteStore;
   model?: ModelStore;
-  $getModel?: (name: string) => ModelClass;
-  $getModelForPerspective?: (name: string, perspectiveUuid?: string) => ModelClass | undefined;
-  $onError?: (message: string) => void;
-  /** Route template queries through the neutral QueryIR — reactive accessor; default from
-   *  `seed.features.useQueryIR` (see `queryIRFlag`). A plain boolean is also accepted. */
-  $useQueryIR?: boolean | (() => boolean);
-  /** Neutral identity — the current agent (templates read `$me.did`). Backed by `adamStore.me` here;
-   *  typed `unknown` (like `$currentDataset`) so the seam stays backend-agnostic. */
+  /** Neutral identity — the current agent (templates read `$me.did`). Backed by `adamStore.me`;
+   *  typed `unknown` so the seam stays backend-agnostic. Host-specific: not part of the data contract. */
   $me?: () => unknown;
-  /** Neutral dataset handle — the active perspective (templates use `$currentDataset`). */
-  $currentDataset?: () => unknown;
-  /** Query-execution adapter — the renderer routes each QueryIR through it (plan + lower). */
-  $queryAdapter?: QueryAdapter;
-} & Record<string, unknown>;
+}
