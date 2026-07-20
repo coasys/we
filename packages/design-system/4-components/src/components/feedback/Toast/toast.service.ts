@@ -6,13 +6,10 @@ const [toasts, setToasts] = createSignal<ToastItem[]>([]);
 
 let counter = 0;
 
-/** Dismissal timers by toast id, so a repeat of a live toast can restart its countdown. */
+/** Dismissal timers by toast id, so a manual dismiss can cancel the pending auto-dismiss. */
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function scheduleDismiss(id: string, duration: number) {
-  const existing = timers.get(id);
-  if (existing) clearTimeout(existing);
-  timers.delete(id);
   if (duration > 0) {
     timers.set(
       id,
@@ -28,11 +25,14 @@ function addToast(message: string, variant: ToastVariant = 'info', duration = 40
   //
   // Deliberately scoped to toasts that are *currently visible*: once dismissed, the same message
   // can appear again, so a genuine later recurrence is still shown rather than suppressed forever.
+  //
+  // The repeat deliberately does NOT restart the countdown. A condition that refires faster than
+  // the duration — a reactive effect re-running per node on every dataset change — would otherwise
+  // reset the timer indefinitely and pin the toast on screen, unclosable, until whatever is
+  // reporting it unmounts. Keeping the original deadline means one transient failure reads as
+  // transient however many times it is reported.
   const live = toasts().find((t) => t.message === message && t.variant === variant);
-  if (live) {
-    scheduleDismiss(live.id, duration);
-    return live.id;
-  }
+  if (live) return live.id;
 
   const id = `toast-${++counter}`;
   const toast: ToastItem = { id, message, variant, duration };
