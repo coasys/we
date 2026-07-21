@@ -54,8 +54,13 @@ three levels of nesting, and content that varies per card.
 | **WE templates (JSON schema)** | **64.7ms**     | **49.7ms** |
 
 **The template layer costs 12.0ms here against 12.3ms on the simple cards** — nearly identical,
-despite 800 nodes versus 1,200 and a structurally different card. The design-system layer, by
-contrast, moves a great deal with content (36.9ms versus 65.0ms).
+despite 800 nodes versus 1,200 and a structurally different card. That flatness is the finding: the
+template layer's cost tracks neither node count nor node complexity over this range.
+
+The design-system layer's totals are **not** comparable between the two fixtures, because this one is
+smaller: 801 elements against 1,201. Per element the two agree closely — 46µs against 54µs — so the
+design system costs about the same per unit of work on both, and the raw millisecond gap is size
+rather than content. [Where the cost goes](#where-the-cost-goes) works through the normalisation.
 
 Time to screen is 63.8 against 64.7ms: indistinguishable, because both sit near the frame floor.
 
@@ -142,19 +147,35 @@ design-system prop pipeline. **Paint** = style, layout, raster, plus the frame w
 JS work attributed to each layer, from the simple ladder (which has the raw-DOM and plain-Solid rungs
 the realistic one omits — both sit at the floor regardless):
 
-| Layer           | Simple ladder | Realistic ladder | What it buys                                                                                    |
-| --------------- | ------------- | ---------------- | ----------------------------------------------------------------------------------------------- |
-| Raw DOM         | 2.5ms         | —                | —                                                                                               |
-| Solid           | **−1.7ms**    | —                | Reactivity, components, JSX — and it is _faster_ than a `createElement` loop                    |
-| Design system   | **+65.0ms**   | **+36.9ms**      | Theming, hover/focus/active states, shadow-DOM encapsulation, accessibility, design-token props |
-| Template system | **+12.3ms**   | **+12.0ms**      | Runtime-editable UI, AI-authorable templates, shareable and forkable without a build            |
+| Layer           | Simple ladder (1,201 el) | Realistic ladder (801 el) | What it buys                                                                                    |
+| --------------- | ------------------------ | ------------------------- | ----------------------------------------------------------------------------------------------- |
+| Raw DOM         | 2.5ms                    | —                         | —                                                                                               |
+| Solid           | **−1.7ms**               | —                         | Reactivity, components, JSX — and it is _faster_ than a `createElement` loop                    |
+| Design system   | **+65.0ms**              | **+36.9ms**               | Theming, hover/focus/active states, shadow-DOM encapsulation, accessibility, design-token props |
+| Template system | **+12.3ms**              | **+12.0ms**               | Runtime-editable UI, AI-authorable templates, shareable and forkable without a build            |
 
 **The template layer costs almost exactly the same on both fixtures** — 12.3ms and 12.0ms — despite
 one having 1,200 nodes and the other 800, and despite the second being five component types deep
-rather than two. The design-system layer, by contrast, scales with how much styling the content
-demands: 65.0ms for 1,201 elements of simple cards, 36.9ms for 801 elements of richer ones.
+rather than two.
 
-That makes the design system **3–5× the template system's cost**, depending on the page.
+The design-system layer looks like it moves a lot with content — 65.0ms against 36.9ms — but almost
+all of that is the fixtures being different sizes. Normalised:
+
+| Fixture              | DS cost | Elements | Props | Per element | Per prop |
+| -------------------- | ------- | -------- | ----- | ----------- | -------- |
+| Simple (400 cards)   | 65.0ms  | 1,201    | 4,000 | 54µs        | 16µs     |
+| Realistic (50 posts) | 36.9ms  | 801      | 1,950 | 46µs        | 19µs     |
+
+The two normalisations disagree in direction — the simple fixture is 17% more expensive per element
+and 14% cheaper per prop — which is what you see when there is no real per-unit difference and the
+fixtures simply differ in both element count and props per element. Both residuals are inside the
+17–27% run-to-run spread of these particular rows, so the honest reading is that **the design system
+costs about the same per unit of work on both fixtures**, and the raw millisecond gap is size.
+
+That makes the design system **5.3× the template system's cost on the simple fixture and 3.1× on the
+realistic one**. That ratio is a property of the pages measured, not a constant: it is elements ×
+props on one side against template nodes on the other, so a page with fewer, more heavily-styled
+components would move it.
 
 ---
 
