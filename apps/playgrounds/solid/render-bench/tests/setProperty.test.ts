@@ -8,8 +8,9 @@
  * name (`--we-spinner-color`, `--we-markdown-gap`).
  *
  * NOTE ON LOCATION: this belongs in @we/primitives, but that package has no test infrastructure at
- * all. It sits here because this is the only package already wired for happy-dom + primitives.
- * Move it when @we/primitives gets a test setup.
+ * all — nor do @we/components, @we/design-utils or @we/tokens. It sits here because this is the
+ * nearest home already wired for happy-dom + primitives, and because leaving a shipped behaviour
+ * change with no test anywhere is worse. Move it when @we/primitives gets a test setup.
  */
 import '@we/primitives';
 

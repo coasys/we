@@ -5,15 +5,12 @@
     "moduleResolution": "bundler",
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
+    "types": ["vite/client"],
     "strict": true,
-    "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
+    "noEmit": true,
     "isolatedModules": true,
-    "types": ["vitest/globals"],
-    "noEmit": true
+    "esModuleInterop": true
   },
-  "include": ["bench", "vitest.config.ts"],
-  "exclude": ["node_modules"]
+  "include": ["src", "bench", "tests", "vite.config.ts", "vitest.config.ts", "vitest.bench.config.ts"]
 }

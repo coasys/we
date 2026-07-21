@@ -1,0 +1,30 @@
+{
+  "private": true,
+  "name": "@we/playground-render-bench",
+  "version": "0.0.0",
+  "description": "Measurement harness — what WE's renderer and design system cost, against raw DOM and plain Solid controls. No AD4M.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run --config vitest.config.ts",
+    "bench": "vitest run --config vitest.bench.config.ts --reporter=verbose"
+  },
+  "dependencies": {
+    "@we/components": "workspace:*",
+    "@we/design-utils": "workspace:*",
+    "@we/primitives": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "@we/schema-solid": "workspace:*",
+    "@we/tokens": "workspace:*",
+    "solid-js": "^1.9.5"
+  },
+  "devDependencies": {
+    "happy-dom": "^20.8.4",
+    "typescript": "^5.9.3",
+    "vite": "^6.0.7",
+    "vite-plugin-solid": "^2.11.11",
+    "vitest": "^4.1.0"
+  }
+}
