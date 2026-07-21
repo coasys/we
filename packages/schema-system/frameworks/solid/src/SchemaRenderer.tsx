@@ -888,6 +888,14 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   // Create per-prop memos — each prop resolves independently,
   // isolating its reactive dependencies. Static props still read from
   // the store reactively so that updateSchema mutations are tracked.
+  //
+  // MEASURED DEAD END — one memo per prop looks wasteful for a node whose props are all static
+  // literals, and consolidating them into a single shared memo per node is the obvious fix. It was
+  // tried and measured **slower**: roughly +6% headless, and worse in the browser. The per-read
+  // indirection and the object allocation it introduced outweighed every memo it removed. Do not
+  // retry without a materially different approach — resolving static props at template-install time
+  // (a schema pre-compilation step) is the direction that has not been tried.
+  // See docs/architecture/performance.md for how these costs were measured.
   // resolveProp is called INSIDE the memo so that plain-value resolvers
   // ($not, $eq, $ne, $and, $or) correctly track signal dependencies.
   const propMemos: Record<string, () => unknown> = {};
