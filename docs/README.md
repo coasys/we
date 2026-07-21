@@ -17,6 +17,7 @@ How WE is designed and why.
 - [Package Conventions](architecture/package-conventions.md) — How packages are structured and named in the monorepo
 - [Why a Meta-App Instead of Many Separate Apps?](architecture/meta-app-vs-separate-apps.md) — Why shared continuity and cumulative evolution matter
 - [Practical Examples](architecture/examples.md) — Simple examples of how WE ideas work in practice
+- [Performance](architecture/performance.md) — What the template system and design system cost, measured against raw DOM and plain Solid
 
 ## Guides
 
