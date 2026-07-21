@@ -54,7 +54,6 @@ import type { ComponentRegistry } from '@we/schema-solid';
 import { CesiumGlobe, CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSidebarWidget } from '@we/widgets/solid';
 
 import WeCube from '../components/3d/WeCube';
-import { BenchmarkTimer } from '../components/BenchmarkTimer';
 import { AiPanel } from '../components/editor/AiPanel';
 import { DesignToolbar } from '../components/editor/DesignToolbar';
 import { RightPanelContainer } from '../components/editor/RightPanelContainer';
@@ -130,7 +129,6 @@ export const componentRegistry: ComponentRegistry = {
   DesignToolbar,
 
   // Testing
-  BenchmarkTimer,
   RerenderLog,
 
   // 3D
