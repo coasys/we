@@ -16,7 +16,9 @@ states, encapsulation or accessibility.
 
 On a page of realistic size, none of that is perceptible. Both finish inside a single frame.
 
-Rendering 400 identical cards, four ways. Medians of three runs:
+The 25% is measured on a 50-post feed — the fixture closest to a real page. The table below is the
+simpler 400-card fixture, because it is the only one carrying raw-DOM and plain-Solid rungs to
+compare against. Medians of three runs:
 
 | Approach                       | Time to screen | JS work    |
 | ------------------------------ | -------------- | ---------- |
@@ -45,8 +47,8 @@ untrusted sources.
 The cards above are one `Column` wrapping a text and a button — clean for isolating layer costs, but
 a fair objection is that attribution on trivial uniform content may not generalise.
 
-So the same rungs were measured again on **50 feed posts**: 800 template nodes, five component types,
-three levels of nesting, and content that varies per card.
+So the same rungs were measured again on **50 feed posts**: 800 template nodes, seven component
+types, three levels of nesting, and content that varies per card.
 
 | Approach                       | Time to screen | JS work    |
 | ------------------------------ | -------------- | ---------- |
@@ -154,9 +156,13 @@ the realistic one omits — both sit at the floor regardless):
 | Design system   | **+65.0ms**              | **+36.9ms**               | Theming, hover/focus/active states, shadow-DOM encapsulation, accessibility, design-token props |
 | Template system | **+12.3ms**              | **+12.0ms**               | Runtime-editable UI, AI-authorable templates, shareable and forkable without a build            |
 
+The realistic ladder has no plain-Solid rung, so its design-system figure subtracts the simple
+ladder's 0.8ms Solid baseline rather than one measured on that fixture. At this size the substitution
+is worth well under a millisecond, but it is an approximation and not a measurement.
+
 **The template layer costs almost exactly the same on both fixtures** — 12.3ms and 12.0ms — despite
-one having 1,200 nodes and the other 800, and despite the second being five component types deep
-rather than two.
+one having 1,200 nodes and the other 800, and despite the second using seven component types rather
+than three.
 
 The design-system layer looks like it moves a lot with content — 65.0ms against 36.9ms — but almost
 all of that is the fixtures being different sizes. Normalised:
@@ -165,6 +171,10 @@ all of that is the fixtures being different sizes. Normalised:
 | -------------------- | ------- | -------- | ----- | ----------- | -------- |
 | Simple (400 cards)   | 65.0ms  | 1,201    | 4,000 | 54µs        | 16µs     |
 | Realistic (50 posts) | 36.9ms  | 801      | 1,950 | 46µs        | 19µs     |
+
+"Props" counts every design-system prop, including those on `Column` and `Row`, because all of them
+drive design-system work. Finding 3 quotes a smaller pair of numbers (2,400 and 1,450) for the same
+fixtures — those are the subset that lands on custom elements as HTML attributes.
 
 The two normalisations disagree in direction — the simple fixture is 17% more expensive per element
 and 14% cheaper per prop — which is what you see when there is no real per-unit difference and the
@@ -216,7 +226,7 @@ against the simple one's 2,400, which is the wrong ratio and the wrong direction
 **No recommendation follows from this.** An earlier draft proposed exposing `prop:` variants in the
 generated types (they exist today only for the four object-valued state props, so property binding is
 not otherwise expressible without a cast). On evidence that does not replicate, that would mean
-changing 653 call sites on the strength of one fixture.
+changing over 800 `we-*` call sites across the repo on the strength of a single fixture.
 
 Note that finding 5's anomaly is also much larger on the simple ladder than the realistic one. Both
 oddities live in the same place and may share a cause.
@@ -230,6 +240,17 @@ oddities live in the same place and may share a cause.
 
 On top of that within-session range, the figure moves between sessions: the simple ladder's tax
 against the `prop:` control measured +25% in one session and +32% in another, from identical code.
+
+Two ways of computing this tax give different answers, and it matters which is quoted. Dividing the
+median JS-work figures in the raw-data tables gives **+32%** on the realistic ladder and **+19%** on
+the simple one. The figures above instead compute the tax within each run and take the median of
+those: **+25%** and **+16%**.
+
+The per-run figure is the one used throughout. Each run is a paired comparison — both rungs saw the
+same browser session, the same thermal state and the same window — whereas dividing medians combines
+numbers from different runs, and with a denominator this noisy that inflates the result. Neither is
+wrong, but they are not interchangeable, and the gap between them is itself a measure of how unstable
+the design-system rows are.
 
 So the honest statement is **~+25% with a range of roughly +15% to +35%**, not a point value. Both
 design-system rungs are the noisiest non-floor-bound rows in the suite (17–27% within-run spread),
@@ -283,8 +304,8 @@ roughly four fifths of it is one per-element pipeline turning design-token props
 properties.
 
 Recent work there cut flush by 27–42% by skipping redundant CSSOM writes. One further reduction is
-identified and unimplemented: all 78 design-system props are registered for attribute reflection,
-where roughly seven need it.
+identified and unimplemented: all 79 non-state design-system props are registered for attribute
+reflection, where roughly seven need it.
 
 On the template system, the largest untried idea is resolving static props at template-install time so
 the render path only walks dynamic ones. Removing the per-node wrapper `div` is worth ~11% of the
@@ -359,5 +380,5 @@ Adopting WE templates costs **~+25% in JavaScript work** versus hand-writing the
 same design system — roughly **12ms** for a 50-post feed, with a run-to-run range of +15% to +35%.
 That cost is stable across content shape: the same 12ms appeared on a structurally different fixture.
 
-**Four fifths of the total stack cost is the design system, not the template system** — so a team
-weighing adoption is mostly weighing the design system, which they would also pay for by hand.
+**The design system is 84% of the full stack's cost, not the template system** — so a team weighing
+adoption is mostly weighing the design system, which they would also pay for by hand.
