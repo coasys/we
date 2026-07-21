@@ -187,11 +187,19 @@ const BUILT = [
   { title: 'Sub-app integration', description: 'Existing AD4M applications (including Flux) can run inside WE.' },
 ];
 
-const PLANNED = [
+const IN_PROGRESS = [
   {
     title: 'Module Marketplace',
     description: 'Discovery and publishing infrastructure for templates, themes, components, and block types.',
   },
+  {
+    title: 'Visual interface editor',
+    description:
+      'Direct manipulation of templates — drag, resize, restyle — as an alternative to AI-prompted editing for communities and builders who prefer hands-on control.',
+  },
+];
+
+const PLANNED = [
   {
     title: 'Starter template library',
     description:
@@ -201,11 +209,6 @@ const PLANNED = [
     title: 'Experience builder',
     description:
       'A guided wizard for creating new experiences: pick a starter template, choose a theme, and snap in the widgets your community needs — no code, no blank canvas.',
-  },
-  {
-    title: 'Visual interface editor',
-    description:
-      'Direct manipulation of templates — drag, resize, restyle — as an alternative to AI-prompted editing for communities and builders who prefer hands-on control.',
   },
   {
     title: 'Governance and economics modules',
@@ -399,7 +402,54 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
   };
 }
 
-function roadmapItem(item: { title: string; description: string }, done: boolean) {
+type RoadmapStatus = 'built' | 'in-progress' | 'planned';
+
+const ROADMAP_ICONS: Record<RoadmapStatus, string> = {
+  built: 'check',
+  'in-progress': 'circle-half',
+  planned: 'circle-dashed',
+};
+
+function roadmapCard(
+  icon: string,
+  title: string,
+  items: { title: string; description: string }[],
+  status: RoadmapStatus,
+) {
+  return {
+    type: 'Card',
+    props: {
+      p: '700',
+      bg: 'neutral-100',
+      border: '1px solid var(--we-color-neutral-200)',
+      width: '100%',
+    },
+    children: [
+      {
+        type: 'Column',
+        props: { gap: '300' },
+        children: [
+          {
+            type: 'Row',
+            props: { gap: '400', ay: 'center', mb: '400' },
+            children: [
+              { type: 'we-icon', props: { name: icon, size: 'lg', gradient: 'primary' } },
+              {
+                type: 'we-text',
+                props: { variant: 'heading-md', textTransform: 'uppercase' },
+                children: [title],
+              },
+            ],
+          },
+          ...items.map((item) => roadmapItem(item, status)),
+        ],
+      },
+    ],
+  };
+}
+
+function roadmapItem(item: { title: string; description: string }, status: RoadmapStatus) {
+  const iconName = ROADMAP_ICONS[status];
   return {
     type: 'Card',
     props: {
@@ -413,10 +463,9 @@ function roadmapItem(item: { title: string; description: string }, done: boolean
       {
         type: 'we-icon',
         props: {
-          name: done ? 'check' : 'circle-dashed',
+          name: iconName,
           size: '30px',
-          // color: done ? 'primary-500' : 'neutral-400',
-          gradient: 'primary', // done ? 'primary' : undefined,
+          gradient: 'primary',
           weight: 'bold',
         },
       },
@@ -851,89 +900,19 @@ export const landingPageTemplate: TemplateSchema = {
         },
         {
           type: 'Row',
-          props: { gap: '600', wrap: true, mb: '180px' },
+          props: { gap: '600', wrap: true, ay: 'start', mb: '180px' },
           children: [
             {
-              type: 'Card',
-              props: {
-                p: '700',
-                bg: 'neutral-100',
-                border: '1px solid var(--we-color-neutral-200)',
-                flex: '1',
-                minWidth: '380px',
-              },
-              children: [
-                {
-                  type: 'Column',
-                  props: { gap: '300' },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { gap: '400', ay: 'center', mb: '400' },
-                      children: [
-                        {
-                          type: 'we-icon',
-                          props: {
-                            name: 'city',
-                            size: 'lg',
-                            gradient: 'primary',
-                            // weight: 'bold',
-                          },
-                        },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'heading-md', textTransform: 'uppercase' },
-                          children: ['Already built'],
-                        },
-                      ],
-                    },
-                    ...BUILT.map((item) => roadmapItem(item, true)),
-                  ],
-                },
-              ],
+              type: 'Column',
+              props: { flex: '1', minWidth: '380px' },
+              children: [roadmapCard('city', 'Already built', BUILT, 'built')],
             },
             {
-              type: 'Card',
-              props: {
-                p: '700',
-                bg: 'neutral-100',
-                border: '1px solid var(--we-color-neutral-200)',
-                flex: '1',
-                minWidth: '380px',
-              },
+              type: 'Column',
+              props: { flex: '1', minWidth: '380px', gap: '600' },
               children: [
-                {
-                  type: 'Column',
-                  props: { gap: '300' },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { gap: '400', ay: 'center', mb: '400' },
-                      children: [
-                        {
-                          type: 'we-icon',
-                          props: {
-                            name: 'hourglass',
-                            size: 'lg',
-                            gradient: 'primary',
-                            // weight: 'bold',
-                          },
-                        },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'heading-md', textTransform: 'uppercase' },
-                          children: ['On the roadmap'],
-                        },
-                      ],
-                    },
-                    ...PLANNED.map((item) => roadmapItem(item, false)),
-                  ],
-                },
-                // {
-                //   type: 'we-text',
-                //   props: { fontSize: '500', fontWeight: 'semibold', color: 'neutral-700', fontStyle: 'italic' },
-                //   children: ['The foundation is solid. The ecosystem is just beginning.'],
-                // },
+                roadmapCard('hammer', 'In progress', IN_PROGRESS, 'in-progress'),
+                roadmapCard('hourglass', 'On the roadmap', PLANNED, 'planned'),
               ],
             },
           ],
