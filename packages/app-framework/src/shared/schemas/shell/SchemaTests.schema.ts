@@ -6,14 +6,35 @@
  * with routes to the individual test templates.
  *
  * Routes:
- *   /benchmark/* — performance benchmark suite
  *   /tokens/*    — schema token integration tests
  *   /mutations/* — updateSchema diffing engine tests
+ *   /queries/*   — every $query shape through the QueryIR, against real AD4M
  *   /routing/*   — $routes token and multi-level routing tests
+ *
+ * WHY THESE LIVE IN THE APP (and the render benchmarks do not)
+ *
+ * The rule is: **move what the environment corrupts, keep what the environment validates.**
+ *
+ * Render benchmarks moved out to `apps/playgrounds/solid/render-bench` because the surrounding app
+ * changed their *results* — AD4M subscriptions, the embedded-app iframe and dev-mode frameworks all
+ * distorted the numbers, and a team adopting WE brings their own shell rather than ours.
+ *
+ * These four are correctness tests, so the environment cannot change whether they pass. For two of
+ * them the app is not incidental, it is the system under test:
+ *
+ *   - Tokens    verifies design tokens against the *live theme system*. Standing this up in an
+ *               isolated harness would mean a stub theme setup — testing something that isn't what
+ *               ships.
+ *   - Routing   verifies $routes against the app's *actual* router configuration.
+ *   - Queries   validates the AD4M adapter against a real node. In a local-first app the backend is
+ *               the user's own install (SDNA versions, perspective state), which cannot be
+ *               reproduced elsewhere — so being able to run this in situ has real diagnostic value.
+ *   - Mutations needs templateStore.
+ *
+ * So moving any of these to the neutral harness would weaken them rather than tidy them.
  */
 import type { RouteSchema, SchemaNode, TemplateSchema } from '@we/schema-shared';
 
-import { schemaBenchmarkTemplate } from './tests/SchemaBenchmark.schema.ts';
 import { schemaMutationsTemplate } from './tests/SchemaMutations.schema.ts';
 import { schemaQueriesTemplate } from './tests/SchemaQueries.schema.ts';
 import { schemaRoutingTemplate } from './tests/SchemaRouting.schema.ts';
@@ -24,13 +45,6 @@ import { schemaTokensTemplate } from './tests/SchemaTokens.schema.ts';
 // ---------------------------------------------------------------------------
 
 const sections = [
-  {
-    id: 'benchmarks',
-    label: 'Benchmarks',
-    description: 'Performance benchmark suite for schema renderer',
-    icon: 'timer',
-    path: '/benchmarks',
-  },
   {
     id: 'tokens',
     label: 'Tokens',
@@ -106,7 +120,6 @@ export const schemaTestsTemplate: TemplateSchema = {
     description: 'Schema test suites — benchmark, tokens, mutations, routing',
     icon: 'flask',
     stores: { testStore: true, templateStore: true },
-    components: ['BenchmarkTimer'],
   },
   type: 'Column',
   props: { width: '100%', minHeight: '100%', ax: 'center', bg: 'neutral-50' },
@@ -144,8 +157,7 @@ export const schemaTestsTemplate: TemplateSchema = {
     },
   ],
   routes: [
-    { path: '/', redirect: '/benchmarks' },
-    testRoute('/benchmarks', schemaBenchmarkTemplate),
+    { path: '/', redirect: '/tokens' },
     testRoute('/tokens', schemaTokensTemplate),
     testRoute('/mutations', schemaMutationsTemplate),
     testRoute('/queries', schemaQueriesTemplate),

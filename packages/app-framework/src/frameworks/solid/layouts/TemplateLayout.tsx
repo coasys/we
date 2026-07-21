@@ -94,12 +94,12 @@ const shellViews: Record<string, ShellViewEntry> = {
   settings: { schema: settingsTemplate },
   'schema-tests': {
     schema: schemaTestsTemplate,
-    stores: (base, shellRouteStore) => {
+    stores: (base) => {
       const [schemaState, setSchemaState] = createStore<TemplateSchema>(deepClone(schemaTestsTemplate));
       const mutations = schemaMutationActions(schemaState, setSchemaState);
       return {
         templateStore: { ...base.templateStore, ...mutations },
-        testStore: createTestStore(base.adamStore.testPerspective, (to) => shellRouteStore.navigate(to)),
+        testStore: createTestStore(base.adamStore.testPerspective),
         $schema: schemaState,
       };
     },
