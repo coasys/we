@@ -10,3 +10,5 @@ export type {
 
 export { validateSchema } from './validators';
 export { findMutations } from './mutations';
+export { applyPatch, validatePatches, zPatchOp, zPatchResponse } from './jsonPatch';
+export type { PatchOp, PatchResponse } from './jsonPatch';

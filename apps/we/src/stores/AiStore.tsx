@@ -2,6 +2,8 @@ import { Ad4mClient, AITask } from '@coasys/ad4m';
 import { Model } from '@coasys/ad4m/lib/src/ai/AIResolver';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
+import { applyPatch, type PatchOp, type TemplateSchema, validatePatches, validateSchema } from '@we/schema-renderer/shared';
+
 import { schemaPromptContext } from '@/prompts/schemaContext';
 import { schemaPromptExamples } from '@/prompts/schemaExamples';
 import { useAdamStore, useTemplateStore } from '@/stores';
@@ -57,7 +59,7 @@ export function AiStoreProvider(props: ParentProps) {
     const client = adamStore.adamClient();
     if (!client) return;
 
-    const fullPrompt = `{ "request": "${textPrompt}", "currentSchema": ${JSON.stringify(templateStore.currentTemplate)} }`;
+    const fullPrompt = JSON.stringify({ request: textPrompt, currentSchema: templateStore.currentTemplate });
 
     const existingSchemaTask = tasks().find((t) => t.name === schemaTask.name);
     const taskId = existingSchemaTask ? existingSchemaTask.taskId : null;
@@ -73,17 +75,36 @@ export function AiStoreProvider(props: ParentProps) {
 
     try {
       const parsedResult = JSON.parse(result || '{}');
-      const updatedSchema = parsedResult.updatedSchema;
-      const response = parsedResult.response;
+      const response: string | undefined = parsedResult.response;
 
-      console.log('updatedSchema', updatedSchema);
-      console.log('response', response);
+      // JSON Patch path (primary)
+      if (Array.isArray(parsedResult.patches) && parsedResult.patches.length > 0) {
+        const patches: PatchOp[] = parsedResult.patches;
+        const { valid, errors } = validatePatches(patches);
+        if (!valid) {
+          console.error('Invalid patches:', errors);
+          return `Patches failed validation: ${errors.join(', ')}`;
+        }
 
-      if (updatedSchema) {
-        // Update the current template schema
-        console.log('Updating template schema in store');
-        templateStore.updateTemplate(updatedSchema);
+        const patched = applyPatch(templateStore.currentTemplate, patches) as TemplateSchema;
+        const schemaValidation = validateSchema(patched);
+        if (!schemaValidation.valid) {
+          console.error('Patched schema is invalid:', schemaValidation.errors);
+          return `Patched schema failed validation: ${schemaValidation.errors.map((e) => e.message).join(', ')}`;
+        }
+
+        console.log('Applying patches:', patches);
+        templateStore.updateTemplate(patched);
+        return response;
       }
+
+      // Fallback: full schema replacement (backward compat)
+      if (parsedResult.updatedSchema) {
+        console.log('Falling back to full schema replacement');
+        templateStore.updateTemplate(parsedResult.updatedSchema);
+        return response;
+      }
+
       return response;
     } catch (e) {
       console.error('Failed to parse schema generation result', e);
