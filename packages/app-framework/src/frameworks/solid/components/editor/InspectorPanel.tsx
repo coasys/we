@@ -4,13 +4,15 @@ import { contextData } from '@we/ai-context';
 import { Column, Combobox, type ComboboxOption, Grid, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import { compressImageToFileData, ImageBlock } from '@we/models';
-import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { findNodeById, getComponentMeta, mergeNode } from '@we/schema-shared';
+import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, ScopeGroup, TemplateSchema } from '@we/schema-shared';
+import { findNodeById, getComponentMeta, getScopeAtNode, mergeNode } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
 import { CodeViewer } from './CodeViewer';
+import { ConditionEditor } from './ConditionEditor';
+import { ValueEditor } from './ValueEditor';
 
 // -----------------------------------------------------------------------
 // Schema helpers
@@ -492,15 +494,15 @@ export function InspectorPanel() {
     }
   }
 
-  function handleContentChange(value: string) {
+  /** Replace `children` wholesale. `null` deletes the key (mergeNode treats null as delete). */
+  function setChildren(children: unknown[] | null) {
     const id = visualEditor.selectedId();
     if (!id) return;
     try {
       const clone = deepClone(templateStore.currentTemplate) as TemplateSchema;
       const found = findNodeById(clone, id);
       if (!found) return;
-      const patch = value === '' ? { children: null } : { children: [value] };
-      const patched = mergeNode(found.node, patch);
+      const patched = mergeNode(found.node, { children });
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
       aiStore.pushSnapshot();
       templateStore.updateTemplate(updated);
@@ -508,6 +510,15 @@ export function InspectorPanel() {
     } catch (e) {
       console.error('[ContentChange] error:', e);
     }
+  }
+
+  function handleContentChange(value: string) {
+    setChildren(value === '' ? null : [value]);
+  }
+
+  function handleContentTokenChange(value: unknown) {
+    // Clearing a bound value leaves the node empty rather than printing "".
+    setChildren(value === '' || value === null || value === undefined ? null : [value]);
   }
 
   function onDividerMouseDown(e: MouseEvent) {
@@ -601,7 +612,13 @@ export function InspectorPanel() {
           }
         >
           {(node) => (
-            <NodeProperties node={node()} onPropChange={handlePropChange} onContentChange={handleContentChange} />
+            <NodeProperties
+              node={node()}
+              onPropChange={handlePropChange}
+              onContentChange={handleContentChange}
+              onContentTokenChange={handleContentTokenChange}
+              onChildrenChange={(children) => setChildren(children.length === 0 ? null : children)}
+            />
           )}
         </Show>
       </Column>
@@ -617,26 +634,42 @@ function NodeProperties(props: {
   node: SchemaNode;
   onPropChange: (key: string, value: unknown) => void;
   onContentChange: (value: string) => void;
+  /** Replace the single token in `children` (data binding, value-level conditional). */
+  onContentTokenChange: (value: unknown) => void;
+  /** Replace the whole `children` array (raw JSON escape hatch). */
+  onChildrenChange: (children: unknown[]) => void;
 }) {
+  const templateStore = useTemplateStore();
   const meta = createMemo(() => getComponentMeta(props.node.type ?? '', contextData));
 
-  // Content — editable `children` text. Shown when children is a single string (or
-  // empty) so authors can view/edit the common `children: ["some text"]` shape without
-  // needing the (rarely used) `text` prop.
-  const hasSimpleStringChildren = createMemo(() => {
+  // Content — what `children` holds, classified so each shape gets the right editor.
+  // Text is the common case, but a single token ({ $store }, a value-level { $if }, a
+  // $concat) is just as common in real templates and used to have no editor at all: it
+  // isn't a string, so the text field skipped it, and `props`-only scanning never saw it.
+  const contentKind = createMemo<'text' | 'token' | 'tokens' | 'nodes'>(() => {
     const children = props.node.children;
-    return !children || children.length === 0 || (children.length === 1 && typeof children[0] === 'string');
+    if (!children || children.length === 0) return 'text';
+    if (children.some((c) => isPropsSchemaNode(c))) return 'nodes';
+    if (children.length === 1) return typeof children[0] === 'string' ? 'text' : 'token';
+    return children.every((c) => typeof c === 'string') ? 'text' : 'tokens';
   });
+
   const showContent = createMemo(() => {
-    if (!hasSimpleStringChildren()) return false;
+    const kind = contentKind();
+    if (kind === 'nodes') return false;
+    if (kind !== 'text') return true;
     const children = props.node.children;
     if (children && children.length === 1) return true;
     return TEXT_CONTENT_TYPES.has(props.node.type ?? '');
   });
+
   const contentValue = createMemo(() => {
     const children = props.node.children;
     return children && children.length === 1 && typeof children[0] === 'string' ? children[0] : '';
   });
+
+  /** The single token in `children`, for the token editor. */
+  const contentToken = createMemo(() => props.node.children?.[0]);
 
   // Current prop values set on this node
   const currentProps = createMemo(() => props.node.props ?? {});
@@ -654,11 +687,32 @@ function NodeProperties(props: {
     return used;
   });
 
-  // Complex (non-primitive) props — read-only preview
+  // Props the Logic section owns — excluded from the raw JSON list below so a condition
+  // isn't editable in two places at once.
+  const logicProps = createMemo(() => (props.node.type === '$if' ? new Set(['condition']) : new Set<string>()));
+
+  // Complex (non-primitive) props — raw JSON escape hatch.
+  // SchemaNode-valued props ($if's then/else, slot content) are excluded: they're whole
+  // subtrees, already navigable and editable through the Layers tree above, and showing
+  // them here as JSON blobs buries the props that are only editable here.
   const complexProps = createMemo(() =>
-    Object.entries(currentProps()).filter(([, v]) => {
+    Object.entries(currentProps()).filter(([k, v]) => {
       const t = typeof v;
-      return t !== 'string' && t !== 'boolean' && t !== 'number';
+      if (t === 'string' || t === 'boolean' || t === 'number') return false;
+      if (logicProps().has(k)) return false;
+      if (isPropsSchemaNode(v)) return false;
+      if (Array.isArray(v) && v.length > 0 && v.every(isPropsSchemaNode)) return false;
+      return true;
+    }),
+  );
+
+  // Everything this node's props can refer to — drives the value pickers in the Logic
+  // section. Recomputed from the live template so newly added $localState or $each
+  // ancestors show up without reselecting the node.
+  const scope = createMemo<ScopeGroup[]>(() =>
+    getScopeAtNode(templateStore.currentTemplate as SchemaNode, props.node.id ?? '', {
+      storeEntries: contextData.storeEntries,
+      models: contextData.models,
     }),
   );
 
@@ -690,16 +744,63 @@ function NodeProperties(props: {
 
       {/* Scrollable content */}
       <we-scroll-area style={{ flex: '1' }}>
-        {/* Content — editable text children, shown for text-bearing nodes */}
+        {/* Content — text, a bound value, or a value-level conditional */}
         <Show when={showContent()}>
-          <Column py="200" borderBottom="1px solid neutral-100">
+          <Column py="200" gap="200" borderBottom="1px solid neutral-100">
             <SectionLabel>Content</SectionLabel>
-            <we-textarea
-              mx="300"
-              value={contentValue()}
-              placeholder="Text content"
-              rows={2}
-              on:change={(e: CustomEvent<string>) => props.onContentChange(e.detail)}
+
+            <Show when={contentKind() === 'text'}>
+              <we-textarea
+                mx="300"
+                value={contentValue()}
+                placeholder="Text content"
+                rows={2}
+                on:change={(e: CustomEvent<string>) => props.onContentChange(e.detail)}
+              />
+            </Show>
+
+            {/* A single token — bound to data, or a conditional between two values */}
+            <Show when={contentKind() === 'token'}>
+              <Column px="400">
+                <ValueEditor
+                  value={contentToken()}
+                  scope={scope()}
+                  onChange={props.onContentTokenChange}
+                  placeholder="Bind to a value"
+                />
+              </Column>
+            </Show>
+
+            {/* Several tokens concatenated in place — no row equivalent, so raw JSON */}
+            <Show when={contentKind() === 'tokens'}>
+              <Column px="400" gap="100">
+                <we-text fontSize="100" color="neutral-400">
+                  Multiple content parts — edit as JSON
+                </we-text>
+                <Column
+                  border={`1px solid ${tokenVar('color', 'neutral-100')}`}
+                  r="200"
+                  overflow="hidden"
+                  styles={{ 'max-height': '250px' }}
+                >
+                  <CodeViewer
+                    json={JSON.stringify(props.node.children ?? [], null, 2)}
+                    onSave={(json) => props.onChildrenChange(JSON.parse(json))}
+                  />
+                </Column>
+              </Column>
+            </Show>
+          </Column>
+        </Show>
+
+        {/* Logic — condition builder for $if, in place of raw JSON */}
+        <Show when={props.node.type === '$if'}>
+          <Column py="100" borderBottom="1px solid neutral-100">
+            <ConditionEditor
+              label="Show when"
+              condition={currentProps().condition}
+              scope={scope()}
+              onChange={(token) => props.onPropChange('condition', token)}
             />
           </Column>
         </Show>
@@ -776,27 +877,22 @@ function NodeProperties(props: {
           </we-text>
         </Show>
 
-        {/* Complex / dynamic props */}
+        {/* Complex / dynamic props — ValueEditor picks the right control per token and
+            falls back to the JSON editor for the ones with no row equivalent */}
         <Show when={complexProps().length > 0}>
           <Column py="100">
             <SectionLabel>Dynamic props</SectionLabel>
-            <For each={complexProps()}>
-              {([key, value]) => (
+            <For each={complexProps().map(([key]) => key)}>
+              {(key) => (
                 <Column px="400" py="100" gap="100">
                   <we-text fontSize="100" fontWeight="500" color="neutral-500">
                     {key}
                   </we-text>
-                  <Column
-                    border={`1px solid ${tokenVar('color', 'neutral-100')}`}
-                    r="200"
-                    overflow="hidden"
-                    styles={{ 'max-height': '250px' }}
-                  >
-                    <CodeViewer
-                      json={JSON.stringify(value, null, 2)}
-                      onSave={(json) => props.onPropChange(key, JSON.parse(json))}
-                    />
-                  </Column>
+                  <ValueEditor
+                    value={currentProps()[key]}
+                    scope={scope()}
+                    onChange={(value) => props.onPropChange(key, value)}
+                  />
                 </Column>
               )}
             </For>
