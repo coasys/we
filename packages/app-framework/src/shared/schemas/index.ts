@@ -4,6 +4,7 @@ export { twitterTemplate } from './TwitterTemplate.schema';
 
 // Shell
 export {
+  aiAssistantTemplate,
   bootScreen,
   createTestStore,
   landingPageTemplate,

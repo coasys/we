@@ -71,6 +71,18 @@ export const sidebar: SchemaNode = {
             ],
           },
 
+          // AI Assistant
+          {
+            id: 'ai-assistant',
+            icon: 'sparkle',
+            label: 'AI Assistant',
+            active: { $eq: [{ $store: 'templateStore.activeShellView' }, 'ai-assistant'] },
+            onClick: [
+              { $action: 'appStore.deactivateApp' },
+              { $action: 'templateStore.openShellView', args: ['ai-assistant'] },
+            ],
+          },
+
           // Spaces
           {
             type: 'group',

@@ -1,3 +1,4 @@
+export { aiAssistantTemplate } from './AiAssistant.schema';
 export { bootScreen } from './BootScreen.schema';
 export { templateEditor } from './TemplateEditor.schema';
 export { landingPageTemplate } from './about';

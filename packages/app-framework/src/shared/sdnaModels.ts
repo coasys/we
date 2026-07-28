@@ -1,6 +1,7 @@
 import { Ad4mModel, type LinkExpression, LinkQuery, Literal, PerspectiveProxy } from '@coasys/ad4m';
 import {
   AgentSettings,
+  Assistant,
   AudioBlock,
   CalloutBlock,
   ChatMessage,
@@ -14,8 +15,12 @@ import {
   ImageBlock,
   LinkBlock,
   LocationBlock,
+  McpServer,
+  Message,
+  Personality,
   Signal,
   SignalType,
+  Skill,
   Space,
   SpaceTemplatePreference,
   TagBlock,
@@ -23,6 +28,7 @@ import {
   Template,
   TextBlock,
   Theme,
+  Thread,
   VideoBlock,
   WeNode,
 } from '@we/models';
@@ -40,6 +46,16 @@ export const ROOT_MODELS = [
   Template,
   Theme,
   LocationBlock,
+  // AI assistant configuration (personal): reusable assistants and the
+  // personalities / skills / MCP servers granted to them.
+  Assistant,
+  Personality,
+  Skill,
+  McpServer,
+  // Threads + messages so a personal (non-shared) perspective can also host
+  // assistant conversations, not only shared neighbourhoods.
+  Thread,
+  Message,
 ] as const;
 
 export function getModelTargetClass(m: typeof Ad4mModel): string | undefined {
@@ -146,6 +162,9 @@ export const SPACE_MODELS = [
   TaskBlock,
   TextBlock,
   VideoBlock,
+  // Assistant conversations live in the neighbourhood they were created in.
+  Thread,
+  Message,
 ] as const;
 
 /**

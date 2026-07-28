@@ -799,7 +799,7 @@ when `relative` is enabled.
 - Grid (DesignSystemElement)
   Props: template?: string, columns?: number, minChildWidth?: string
 - IconLabelButton
-  Props: icon: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
+  Props: icon: import("/home/josh/workspaces/coasys/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/josh/workspaces/coasys/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/josh/workspaces/coasys/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/josh/workspaces/coasys/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/josh/workspaces/coasys/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/josh/workspaces/coasys/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/josh/workspaces/coasys/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
 - ImageCrop
   Props: src: string, fileName?: string, aspect?: number, maxSize?: number, outputType?: string, quality?: number, onReady?: ((ref: ImageCropRef) => void)
 - ImageLightbox
@@ -1048,6 +1048,15 @@ AgentSettings extends Ad4mModel:
   - installedThemes: HasMany → Theme [we://installed_theme]
   - spaceTemplatePreferences: HasMany → SpaceTemplatePreference [we://space_template_preference]
 
+Assistant extends WeNode:
+  Fields:
+  - name: string [we://name]
+  - modelId: string [we://model_id]
+  - systemPrompt: string [we://system_prompt]
+  - personalityIds: string [we://personality_ids]
+  - skillIds: string [we://skill_ids]
+  - mcpServerIds: string [we://mcp_server_ids]
+
 AudioBlock extends WeNode:
   Fields:
   - title: string (required) [we://title]
@@ -1157,6 +1166,28 @@ LocationBlock extends WeNode:
   - country: string [we://country]
   - version: number [we://version]
 
+McpServer extends WeNode:
+  Fields:
+  - name: string [we://name]
+  - transport: string = 'stdio' [we://transport]
+  - url: string [we://url]
+  - command: string [we://command]
+  - auth: string [we://auth]
+
+Message extends WeNode:
+  Fields:
+  - threadId: string [we://thread_id]
+  - role: string [we://role]
+  - content: string [we://content]
+  - toolCalls: string [we://tool_calls]
+  - ts: string [we://ts]
+  - status: string [we://status]
+
+Personality extends WeNode:
+  Fields:
+  - name: string [we://name]
+  - body: string [we://body]
+
 Signal extends Ad4mModel:
   Fields:
   - signalTypeId: string [we://signal_type_id]
@@ -1178,6 +1209,12 @@ SignalType extends WeNode:
   - allowChange: boolean = true [we://allow_change]
   - valueType: string = 'numeric' [we://signal_value_type]
   - schemaVersion: number = 1 [we://schema_version]
+
+Skill extends WeNode:
+  Fields:
+  - name: string [we://name]
+  - description: string [we://description]
+  - body: string [we://body]
 
 Space extends WeNode:
   Fields:
@@ -1254,6 +1291,16 @@ Theme extends WeNode:
   - overrides: string = null [we://token_overrides]
   Relations:
   - screenshots: HasMany → ImageBlock [we://screenshot]
+
+Thread extends WeNode:
+  Fields:
+  - title: string [we://title]
+  - assistantId: string [we://assistant_id]
+  - modelId: string [we://model_id]
+  - createdAt: string [we://created_at]
+  - updatedAt: string [we://updated_at]
+  Relations:
+  - messages: HasMany → Message [we://message]
 
 VideoBlock extends WeNode:
   Fields:

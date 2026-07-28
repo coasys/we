@@ -1,5 +1,14 @@
 import type { Ad4mModel } from '@coasys/ad4m';
-import type { AdamStore, AiStore, AppStore, RouteStore, SpaceStore, TemplateStore, ThemeStore } from '@solid/stores';
+import type {
+  AdamStore,
+  AiStore,
+  AppStore,
+  AssistantStore,
+  RouteStore,
+  SpaceStore,
+  TemplateStore,
+  ThemeStore,
+} from '@solid/stores';
 import type { QueryAdapter, RendererStores } from '@we/schema-shared';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,6 +52,7 @@ export interface Stores extends RendererStores {
   adamStore: AdamStore;
   aiStore: AiStore;
   appStore: AppStore;
+  assistantStore: AssistantStore;
   spaceStore: SpaceStore;
   themeStore: ThemeStore;
   templateStore: TemplateStore;

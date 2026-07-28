@@ -1,14 +1,20 @@
 export { WeNode } from './WeNode';
 export {
   AgentSettings,
+  Assistant,
   ChatMessage,
   ChatSession,
+  McpServer,
+  Message,
+  Personality,
   Signal,
   SignalType,
+  Skill,
   Space,
   SpaceTemplatePreference,
   Template,
   Theme,
+  Thread,
 } from './entities';
 export type { ThemeData } from './entities/Theme';
 export { modelToThemeData } from './entities/Theme';

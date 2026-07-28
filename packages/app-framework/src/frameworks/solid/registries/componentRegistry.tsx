@@ -54,6 +54,9 @@ import type { ComponentRegistry } from '@we/schema-solid';
 import { CesiumGlobe, CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSidebarWidget } from '@we/widgets/solid';
 
 import WeCube from '../components/3d/WeCube';
+import { AssistantConfigPanel } from '../components/assistant/AssistantConfigPanel';
+import { AssistantThreadList } from '../components/assistant/AssistantThreadList';
+import { AssistantThreadView } from '../components/assistant/AssistantThreadView';
 import { AiPanel } from '../components/editor/AiPanel';
 import { DesignToolbar } from '../components/editor/DesignToolbar';
 import { RightPanelContainer } from '../components/editor/RightPanelContainer';
@@ -127,6 +130,11 @@ export const componentRegistry: ComponentRegistry = {
 
   // Shell
   DesignToolbar,
+
+  // AI assistant surface
+  AssistantThreadList,
+  AssistantThreadView,
+  AssistantConfigPanel,
 
   // Testing
   RerenderLog,

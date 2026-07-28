@@ -1,7 +1,13 @@
 export { AgentSettings } from './AgentSettings';
+export { Assistant } from './Assistant';
 export { ChatMessage } from './ChatMessage';
 export { ChatSession } from './ChatSession';
+export { McpServer } from './McpServer';
+export { Message } from './Message';
+export { Personality } from './Personality';
 export { Signal } from './Signal';
+export { Skill } from './Skill';
+export { Thread } from './Thread';
 export { SignalType } from './SignalType';
 export type { SignalMode, SignalAggregate, SignalSemantic } from './SignalType';
 export { Space } from './Space';

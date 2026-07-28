@@ -2,6 +2,7 @@ import {
   AdamStoreProvider,
   AiStoreProvider,
   AppStoreProvider,
+  AssistantStoreProvider,
   RouteStoreProvider,
   SpaceStoreProvider,
   TemplateStoreProvider,
@@ -17,7 +18,9 @@ export default function StoreProvider(props: ParentProps) {
           <TemplateStoreProvider>
             <AiStoreProvider>
               <AppStoreProvider>
-                <SpaceStoreProvider>{props.children}</SpaceStoreProvider>
+                <SpaceStoreProvider>
+                  <AssistantStoreProvider>{props.children}</AssistantStoreProvider>
+                </SpaceStoreProvider>
               </AppStoreProvider>
             </AiStoreProvider>
           </TemplateStoreProvider>

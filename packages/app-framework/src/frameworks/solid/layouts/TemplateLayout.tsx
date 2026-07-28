@@ -21,6 +21,7 @@
  */
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import {
+  aiAssistantTemplate,
   landingPageTemplate,
   marketplaceTemplate,
   profileTemplate,
@@ -90,6 +91,7 @@ type ShellViewEntry = {
 const shellViews: Record<string, ShellViewEntry> = {
   'landing-page': { schema: landingPageTemplate },
   marketplace: { schema: marketplaceTemplate },
+  'ai-assistant': { schema: aiAssistantTemplate },
   profile: { schema: profileTemplate },
   settings: { schema: settingsTemplate },
   'schema-tests': {

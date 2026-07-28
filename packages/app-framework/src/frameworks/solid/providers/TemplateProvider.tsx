@@ -8,6 +8,7 @@ import {
   useAdamStore,
   useAiStore,
   useAppStore,
+  useAssistantStore,
   useRouteStore,
   useSpaceStore,
   useTemplateStore,
@@ -30,6 +31,7 @@ export default function TemplateProvider() {
   const adamStore = useAdamStore();
   const aiStore = useAiStore();
   const appStore = useAppStore();
+  const assistantStore = useAssistantStore();
   const spaceStore = useSpaceStore();
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
@@ -72,6 +74,7 @@ export default function TemplateProvider() {
     adamStore,
     aiStore,
     appStore,
+    assistantStore,
     spaceStore,
     themeStore,
     templateStore,
