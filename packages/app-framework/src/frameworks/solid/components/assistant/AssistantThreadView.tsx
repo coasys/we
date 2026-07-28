@@ -20,7 +20,8 @@ export function AssistantThreadView() {
   createEffect(() => {
     void store.messages().length;
     void store.messages().find((m) => m.status === 'streaming')?.content;
-    requestAnimationFrame(() => endRef?.scrollIntoView({ behavior: 'smooth' }));
+    // Optional call — scrollIntoView is unavailable in some environments (e.g. jsdom under test).
+    requestAnimationFrame(() => endRef?.scrollIntoView?.({ behavior: 'smooth' }));
   });
 
   function handleSend() {
@@ -39,7 +40,7 @@ export function AssistantThreadView() {
     <Show
       when={store.activeThread()}
       fallback={
-        <Column ax="center" ay="center" flex="1" gap="200" p="600">
+        <Column data-testid="thread-view-empty" ax="center" ay="center" flex="1" gap="200" p="600">
           <we-icon name="chat-circle-dots" size="lg" color="neutral-300" />
           <we-text fontSize="400" color="neutral-500">
             No conversation selected
@@ -51,7 +52,7 @@ export function AssistantThreadView() {
       }
     >
       {(thread) => (
-        <Column flex="1" height="100%" styles={{ 'min-width': '0' }}>
+        <Column data-testid="assistant-thread-view" flex="1" height="100%" styles={{ 'min-width': '0' }}>
           {/* Header */}
           <Row
             ay="center"
@@ -114,6 +115,7 @@ export function AssistantThreadView() {
             styles={{ 'flex-shrink': '0' }}
           >
             <we-textarea
+              data-testid="composer-input"
               value={input()}
               placeholder="Message the assistant…"
               rows={1}
@@ -129,7 +131,7 @@ export function AssistantThreadView() {
               }}
               styles={{ 'overflow-y': 'auto' }}
             />
-            <we-button size="sm" onClick={handleSend} disabled={input().trim() === ''}>
+            <we-button data-testid="composer-send" size="sm" onClick={handleSend} disabled={input().trim() === ''}>
               <we-icon name="paper-plane-tilt" size="sm" />
             </we-button>
           </Row>

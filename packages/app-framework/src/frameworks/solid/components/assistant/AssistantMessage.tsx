@@ -31,6 +31,8 @@ export function AssistantMessage(props: { message: Message }) {
       }
     >
       <Column
+        data-testid="assistant-message"
+        data-role={role()}
         gap="200"
         r="400"
         p={isUser() ? '300' : '0'}
@@ -97,12 +99,14 @@ function ToolCallBlock(props: { call: ToolCall }) {
 
   return (
     <Column
+      data-testid="tool-call"
       r="300"
       border={`1px solid ${tokenVar('color', 'ui-200')}`}
       bg="neutral-50"
       styles={{ overflow: 'hidden' }}
     >
       <Row
+        data-testid="tool-call-header"
         ay="center"
         gap="200"
         px="300"
@@ -121,7 +125,7 @@ function ToolCallBlock(props: { call: ToolCall }) {
         </we-text>
       </Row>
       <Show when={open()}>
-        <Column gap="200" px="300" py="200" borderTop={`1px solid ${tokenVar('color', 'ui-200')}`}>
+        <Column data-testid="tool-call-body" gap="200" px="300" py="200" borderTop={`1px solid ${tokenVar('color', 'ui-200')}`}>
           <we-text fontSize="150" fontWeight="600" color="neutral-500">
             Arguments
           </we-text>

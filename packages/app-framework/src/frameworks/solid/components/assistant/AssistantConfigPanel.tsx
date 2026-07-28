@@ -25,6 +25,7 @@ export function AssistantConfigPanel() {
 
   return (
     <Column
+      data-testid="assistant-config-panel"
       width="360px"
       height="100%"
       bg="neutral-25"
@@ -43,6 +44,7 @@ export function AssistantConfigPanel() {
         <For each={tabs}>
           {(t) => (
             <Row
+              data-testid={`config-tab-${t.id}`}
               ay="center"
               gap="100"
               px="200"

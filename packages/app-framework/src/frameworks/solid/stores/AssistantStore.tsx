@@ -136,7 +136,12 @@ export function parseToolCalls(json: string | undefined): ToolCall[] {
   }
 }
 
-const AssistantContext = createContext<AssistantStore>();
+/**
+ * Exported so tests and standalone harnesses can render assistant components with a mock
+ * store injected directly (`<AssistantContext.Provider value={mock}>`), without the full
+ * AD4M provider chain.
+ */
+export const AssistantContext = createContext<AssistantStore>();
 
 export function AssistantStoreProvider(props: ParentProps) {
   const adamStore = useAdamStore();

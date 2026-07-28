@@ -18,6 +18,7 @@ export function AssistantThreadList() {
 
   return (
     <Column
+      data-testid="assistant-thread-list"
       width="260px"
       height="100%"
       bg="neutral-25"
@@ -37,7 +38,7 @@ export function AssistantThreadList() {
           Chats
         </we-text>
         <we-tooltip title="New chat">
-          <we-button variant="ghost" size="sm" square onClick={newChat}>
+          <we-button data-testid="new-thread" variant="ghost" size="sm" square onClick={newChat}>
             <we-icon name="plus" size="sm" />
           </we-button>
         </we-tooltip>
@@ -64,6 +65,7 @@ export function AssistantThreadList() {
               const active = () => thread.id === store.activeThreadId();
               return (
                 <Row
+                  data-testid="thread-item"
                   ay="center"
                   gap="200"
                   px="200"
