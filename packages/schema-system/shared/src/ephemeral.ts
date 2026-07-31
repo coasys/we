@@ -194,3 +194,110 @@ export function planEphemeral(req: EphemeralRequirements, cap: EphemeralCapabili
 
   return { runnable: gaps.length === 0, gaps };
 }
+
+// ── Reference implementation ─────────────────────────────────────────────────
+
+export const inMemoryEphemeralCapabilities: EphemeralCapabilities = {
+  fanout: true,
+  // A shared in-process bus can address a single peer exactly, and knows who is connected, so it is
+  // deliberately the *opposite* profile to AD4M's on every axis that matters. That is the point: it
+  // exercises the branches a single backend would leave dead.
+  unicast: 'native',
+  reliability: 'at-least-once',
+  heartbeatRequired: false,
+  authenticatedSender: true,
+};
+
+/**
+ * An in-process {@link EphemeralPort}, for tests and as the reference a new backend copies.
+ *
+ * The sibling of `executeQueryIR`'s in-memory dataset on the query side. It exists for a reason
+ * beyond convenience: **an abstraction with one implementation is a hypothesis.** Until a second
+ * backend runs against this contract, "backend-neutral" is an argument rather than a fact — and the
+ * usual way that argument fails is that the seam turns out to sit in the wrong place. This is the
+ * cheapest possible refutation attempt.
+ *
+ * Each agent gets its own port over a shared `bus`; messages are delivered to every *other* agent on
+ * that bus, matching real broadcast semantics (a sender never receives its own).
+ */
+export function createInMemoryEphemeralPort(bus: InMemoryBus, agentId: string): EphemeralPort {
+  return (dataset) => {
+    const key = bus.keyFor(dataset);
+    const channels = new Map<string, EphemeralChannel>();
+
+    const scope: EphemeralScope = {
+      capabilities: inMemoryEphemeralCapabilities,
+
+      channel(tag) {
+        const existing = channels.get(tag);
+        if (existing) return existing;
+
+        const channel: EphemeralChannel = {
+          publish(payload, to) {
+            bus.deliver(key, tag, agentId, payload, to?.agentId);
+          },
+          onMessage(cb) {
+            return bus.subscribe(key, tag, agentId, cb);
+          },
+        };
+        channels.set(tag, channel);
+        return channel;
+      },
+
+      dispose() {
+        bus.unsubscribeAll(key, agentId);
+        channels.clear();
+      },
+    };
+
+    return scope;
+  };
+}
+
+type Subscriber = { agentId: string; cb: (from: string, payload: unknown) => void };
+
+/** The shared medium every in-memory port publishes into. One bus stands in for one network. */
+export class InMemoryBus {
+  /** dataset key → tag → subscribers */
+  #routes = new Map<string, Map<string, Subscriber[]>>();
+  #keys = new WeakMap<object, string>();
+  #next = 0;
+
+  /** Datasets are opaque handles, so identity is by reference — the same rule the renderer follows. */
+  keyFor(dataset: unknown): string {
+    if (typeof dataset !== 'object' || dataset === null) return String(dataset);
+    const existing = this.#keys.get(dataset);
+    if (existing) return existing;
+    const key = `ds-${this.#next++}`;
+    this.#keys.set(dataset, key);
+    return key;
+  }
+
+  subscribe(key: string, tag: string, agentId: string, cb: Subscriber['cb']): () => void {
+    const tags = this.#routes.get(key) ?? new Map<string, Subscriber[]>();
+    this.#routes.set(key, tags);
+    const subs = tags.get(tag) ?? [];
+    tags.set(tag, subs);
+    const entry = { agentId, cb };
+    subs.push(entry);
+    return () => {
+      const i = subs.indexOf(entry);
+      if (i !== -1) subs.splice(i, 1);
+    };
+  }
+
+  deliver(key: string, tag: string, from: string, payload: unknown, to?: string): void {
+    for (const sub of this.#routes.get(key)?.get(tag) ?? []) {
+      // Never loop back to the sender; honour addressing when a recipient is named.
+      if (sub.agentId === from) continue;
+      if (to && sub.agentId !== to) continue;
+      sub.cb(from, payload);
+    }
+  }
+
+  unsubscribeAll(key: string, agentId: string): void {
+    for (const subs of this.#routes.get(key)?.values() ?? []) {
+      for (let i = subs.length - 1; i >= 0; i--) if (subs[i].agentId === agentId) subs.splice(i, 1);
+    }
+  }
+}

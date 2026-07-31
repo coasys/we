@@ -1,4 +1,5 @@
 import { Ad4mClient, Agent, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
+import { createAd4mEphemeralPort } from '@shared/ad4mEphemeralAdapter';
 import {
   type AgentProfileSummary,
   FILE_STORAGE_LANGUAGE,
@@ -26,6 +27,7 @@ import {
   LocationBlock,
   Space,
 } from '@we/models';
+import type { EphemeralPort } from '@we/schema-shared';
 
 // Space.avatar/coverImage are typed as string (resolved data URI on read) but accept FileData on write.
 // This input type reflects the actual write-path contract.
@@ -90,6 +92,12 @@ export interface AdamStore {
   isWeSpace: Accessor<boolean>;
   joinedSpaceCids: Accessor<string[]>;
   agents: Accessor<AgentProfileSummary[]>;
+  /**
+   * The ephemeral transport, as a single shared instance. One port for the whole app because it
+   * refcounts scopes per perspective — two ports would mean two executor signal handlers on the same
+   * space. Exposed here so both `PresenceStore` and the renderer's `$ephemeral` binding use the same one.
+   */
+  ephemeralPort: EphemeralPort;
 
   // Actions
   login: (password: string) => Promise<void>;
@@ -161,6 +169,8 @@ export function AdamStoreProvider(props: ParentProps) {
   const [currentPerspectiveModels, setCurrentPerspectiveModels] = createSignal<ModelManifestEntry[]>([]);
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [agents, setAgents] = createSignal<AgentProfileSummary[]>([]);
+
+  const ephemeralPort = createAd4mEphemeralPort(() => me()?.did);
 
   // In-flight deduplication for fetchAgent — prevents concurrent fetches for the same DID
   const inflightFetches = new Map<string, Promise<void>>();
@@ -1402,6 +1412,7 @@ export function AdamStoreProvider(props: ParentProps) {
     isWeSpace,
     joinedSpaceCids,
     agents,
+    ephemeralPort,
     ownAgent,
 
     // Actions

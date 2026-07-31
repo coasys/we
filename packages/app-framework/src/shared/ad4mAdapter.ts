@@ -31,6 +31,7 @@ import type { PerspectiveProxy } from '@coasys/ad4m';
 import type {
   AdapterCapabilities,
   CapabilityGap,
+  EphemeralPort,
   ModelClass as RendererModelClass,
   QueryAdapter,
   QueryIR,
@@ -97,6 +98,12 @@ export interface Ad4mAdapterDeps {
   agents: () => Array<{ did?: string }>;
   /** Ask AD4M to fetch a profile this client hasn't cached. */
   fetchAgent: (did: string) => Promise<void> | void;
+  /**
+   * The ephemeral transport (see `ad4mEphemeralAdapter.ts`). Held by the host rather than created
+   * here so that a single instance is shared: it refcounts scopes per perspective, which only works
+   * if every consumer goes through the same port.
+   */
+  ephemeralPort: EphemeralPort;
 }
 
 /**
@@ -115,7 +122,7 @@ export function createAd4mDataBindings(
   deps: Ad4mAdapterDeps,
 ): Pick<
   RendererDataBindings,
-  '$getModel' | '$getModelForPerspective' | '$currentDataset' | '$identities' | '$queryAdapter'
+  '$getModel' | '$getModelForPerspective' | '$currentDataset' | '$identities' | '$queryAdapter' | '$ephemeral'
 > {
   return {
     // Adapted, not raw: AD4M's model statics take a `PerspectiveProxy` and AD4M's own query shape,
@@ -134,6 +141,9 @@ export function createAd4mDataBindings(
       fetch: (did) => void deps.fetchAgent(did),
     },
     $queryAdapter: createAd4mQueryAdapter(deps.currentPerspectiveModels),
+    // Named in the contract so *distributable* code can reach it — a marketplace feature module
+    // cannot import this adapter, nor know the name of a host store to call.
+    $ephemeral: deps.ephemeralPort,
   };
 }
 

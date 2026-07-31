@@ -127,7 +127,7 @@ export type {
   RendererDataBindings,
   RendererStores,
 } from './dataSource';
-export { planEphemeral } from './ephemeral';
+export { createInMemoryEphemeralPort, InMemoryBus, inMemoryEphemeralCapabilities, planEphemeral } from './ephemeral';
 export type {
   EphemeralCapabilities,
   EphemeralChannel,

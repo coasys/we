@@ -54,6 +54,16 @@ export const ad4mEphemeralCapabilities: EphemeralCapabilities = {
  * paths, and a presence source that ingests its own state as a peer double-counts.
  */
 export function createAd4mEphemeralPort(getMyDid: () => string | undefined): EphemeralPort {
+  /**
+   * One scope per dataset, shared by every consumer.
+   *
+   * Without this, each caller builds its own scope and registers its own `addSignalHandler`, so
+   * presence and the call module on the same space would mean two executor subscriptions, every
+   * message parsed twice, and one consumer's `dispose()` silently not affecting the other. Sharing
+   * is refcounted: the underlying handler is removed only when the last holder disposes.
+   */
+  const scopes = new Map<PerspectiveProxy, { scope: EphemeralScope; refs: number; teardown: () => void }>();
+
   return (dataset) => {
     const perspective = dataset as PerspectiveProxy | null;
     // A personal (unshared) space has no neighbourhood, so there is nobody to signal. Null rather
@@ -62,6 +72,12 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
 
     const neighbourhood = perspective.getNeighbourhoodProxy?.();
     if (!neighbourhood) return null;
+
+    const shared = scopes.get(perspective);
+    if (shared) {
+      shared.refs += 1;
+      return handleFor(perspective, shared);
+    }
 
     const channels = new Map<string, EphemeralChannel>();
     const subscribers = new Map<string, Set<(from: string, payload: unknown) => void>>();
@@ -156,13 +172,43 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
         return channel;
       },
 
-      dispose() {
+      // Replaced below by the refcounted handle; the real teardown is `teardown`.
+      dispose() {},
+    };
+
+    const entry = {
+      scope,
+      refs: 1,
+      teardown: () => {
         neighbourhood.removeSignalHandler(handler);
         subscribers.clear();
         channels.clear();
+        scopes.delete(perspective);
       },
     };
-
-    return scope;
+    scopes.set(perspective, entry);
+    return handleFor(perspective, entry);
   };
+
+  /**
+   * A per-caller view of a shared scope. `capabilities` and `channel` delegate; only `dispose` is
+   * per-holder, so one consumer releasing its handle cannot tear the transport out from under
+   * another. Idempotent — a double dispose must not over-decrement the refcount.
+   */
+  function handleFor(
+    perspective: PerspectiveProxy,
+    entry: { scope: EphemeralScope; refs: number; teardown: () => void },
+  ): EphemeralScope {
+    let released = false;
+    return {
+      capabilities: entry.scope.capabilities,
+      channel: (tag, options) => entry.scope.channel(tag, options),
+      dispose() {
+        if (released) return;
+        released = true;
+        entry.refs -= 1;
+        if (entry.refs <= 0) entry.teardown();
+      },
+    };
+  }
 }

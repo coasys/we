@@ -10,6 +10,7 @@
  * forwarded verbatim. It is expected to be superseded by a specified, backend-neutral query IR; the
  * shape of the seam — dataset handle + model handle with `query`/`findAll` — stays either way.
  */
+import type { EphemeralPort } from './ephemeral';
 import type { AdapterCapabilities, QueryPlan } from './queryCapabilities';
 import type { QueryIR } from './queryIR';
 
@@ -142,6 +143,18 @@ export interface RendererDataBindings {
     get: (id: string) => Record<string, unknown> | undefined;
     fetch: (id: string) => void;
   };
+  /**
+   * Ephemeral agent-to-agent transport — see `ephemeral.ts`. Absent on a host with no such
+   * capability; consumers must degrade rather than throw.
+   *
+   * **Why this is in the contract at all**, given the host's own stores could just construct one:
+   * because *distributable* code needs it. A feature module from the marketplace — the WebRTC call
+   * module, a live-cursor overlay — cannot import a host's AD4M adapter, and cannot know the name of
+   * a host store to call. Naming the capability here is what lets third-party code use it on any
+   * host. (Contrast template/theme persistence, deliberately *not* a port: only the host itself ever
+   * needs it, so it can stay a host store.)
+   */
+  $ephemeral?: EphemeralPort;
 }
 
 /**

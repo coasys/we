@@ -33,7 +33,6 @@
  * `$identities` and the `$agent` block already use. Flux's presence map *is* its profile cache, so it
  * re-hydrates every peer profile on every heartbeat — an N-peer `Promise.all` every five seconds.
  */
-import { createAd4mEphemeralPort } from '@shared/ad4mEphemeralAdapter';
 import type { AgentProfileSummary } from '@shared/agentHelpers';
 import { createTabCoordinator } from '@shared/tabCoordinator';
 import { useAdamStore } from '@solid/stores/AdamStore';
@@ -107,7 +106,10 @@ export function PresenceStoreProvider(props: ParentProps) {
   const tabs = createTabCoordinator();
   onCleanup(() => tabs.dispose());
 
-  const ephemeralPort = createAd4mEphemeralPort(() => adamStore.me()?.did);
+  // Taken from the store rather than constructed here: one shared port for the whole app, so its
+  // per-perspective scope refcounting actually works and the call module later joins the same scope
+  // instead of registering a second executor signal handler.
+  const ephemeralPort = adamStore.ephemeralPort;
 
   /**
    * The space, by its **global** uri. Never `perspective.uuid`: AD4M perspective uuids are local
