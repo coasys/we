@@ -20,7 +20,49 @@ export type Position = 'relative' | 'absolute' | 'fixed' | 'sticky';
 export type Overflow = 'hidden' | 'auto' | 'overlay';
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
 export type FontWeight = FontWeightToken | 'light' | 'normal' | 'bolder';
-export type Cursor = 'pointer' | 'default' | 'text' | 'not-allowed';
+/**
+ * The CSS cursor keywords. Unlike spacing or colour, this isn't a design decision with a
+ * curated token set — it's a closed list defined by the spec, so the type carries all of
+ * it. The previous four values meant drag handles (`ew-resize`, `row-resize`, `grab`) had
+ * to reach for the `styles` escape hatch to say something the DS prop should express.
+ */
+export type Cursor =
+  | 'auto'
+  | 'default'
+  | 'none'
+  | 'context-menu'
+  | 'help'
+  | 'pointer'
+  | 'progress'
+  | 'wait'
+  | 'cell'
+  | 'crosshair'
+  | 'text'
+  | 'vertical-text'
+  | 'alias'
+  | 'copy'
+  | 'move'
+  | 'no-drop'
+  | 'not-allowed'
+  | 'grab'
+  | 'grabbing'
+  | 'all-scroll'
+  | 'col-resize'
+  | 'row-resize'
+  | 'n-resize'
+  | 'e-resize'
+  | 's-resize'
+  | 'w-resize'
+  | 'ne-resize'
+  | 'nw-resize'
+  | 'se-resize'
+  | 'sw-resize'
+  | 'ew-resize'
+  | 'ns-resize'
+  | 'nesw-resize'
+  | 'nwse-resize'
+  | 'zoom-in'
+  | 'zoom-out';
 export type TextDecoration = 'underline' | 'line-through' | 'overline' | 'none';
 export type TextTransform = 'uppercase' | 'lowercase' | 'capitalize' | 'none';
 export type PointerEvents = 'none' | 'auto';
