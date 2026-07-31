@@ -21,6 +21,7 @@ export const stateKeys = ['hoverProps', 'activeProps', 'focusProps', 'disabledPr
 /** Layout layer: box model & positioning in parent. Every component gets this. */
 export const layoutKeys = [
   'flex',
+  'flexShrink',
   'alignSelf',
   'width',
   'height',
@@ -77,6 +78,7 @@ export const typographyKeys = [
   'letterSpacing',
   'textDecoration',
   'textTransform',
+  'whiteSpace',
 ] as const;
 
 // --- Layer composition ---
@@ -400,6 +402,7 @@ export const BASE_TYPOGRAPHY_SPECS: PropSpec[] = [
   ['letter-spacing', 'letter-spacing'],
   ['text-decoration', 'text-decoration'],
   ['text-transform', 'text-transform'],
+  ['white-space', 'white-space'],
 ];
 
 export function declCSS(prefix: string, [cssProp, varSuffix, fallback]: PropSpec): string {
@@ -599,6 +602,7 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   if (props.letterSpacing) style['letter-spacing'] = props.letterSpacing;
   if (props.textDecoration) style['text-decoration'] = props.textDecoration;
   if (props.textTransform) style['text-transform'] = props.textTransform;
+  if (props.whiteSpace) style['white-space'] = props.whiteSpace;
 
   // Interaction
   if (props.cursor) style.cursor = props.cursor;
@@ -607,6 +611,8 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
 
   // Flex item
   if (props.flex) style.flex = props.flex;
+  // `0` is the value that matters here and is falsy, so test for presence rather than truth.
+  if (props.flexShrink !== undefined) style['flex-shrink'] = props.flexShrink;
   if (props.alignSelf) style['align-self'] = props.alignSelf;
 
   // Layout

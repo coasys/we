@@ -12,12 +12,26 @@ import type {
 } from '@we/tokens';
 
 export type ElementState = 'hover' | 'focus' | 'active' | 'disabled';
-export type Display = 'flex' | 'block' | 'inline' | 'inline-block' | 'grid' | 'inline-flex' | 'none';
+export type Display =
+  | 'block'
+  | 'inline'
+  | 'inline-block'
+  | 'flex'
+  | 'inline-flex'
+  | 'grid'
+  | 'inline-grid'
+  | 'flow-root'
+  | 'contents'
+  | 'table'
+  | 'table-row'
+  | 'table-cell'
+  | 'list-item'
+  | 'none';
 export type FlexDirection = 'row' | 'row-reverse' | 'column' | 'column-reverse';
 export type FlexMainAxis = 'start' | 'center' | 'end' | 'between' | 'around' | 'even';
 export type FlexCrossAxis = 'start' | 'center' | 'end' | 'stretch';
-export type Position = 'relative' | 'absolute' | 'fixed' | 'sticky';
-export type Overflow = 'hidden' | 'auto' | 'overlay';
+export type Position = 'static' | 'relative' | 'absolute' | 'fixed' | 'sticky';
+export type Overflow = 'visible' | 'hidden' | 'clip' | 'scroll' | 'auto' | 'overlay';
 export type TextAlign = 'left' | 'center' | 'right' | 'justify';
 export type FontWeight = FontWeightToken | 'light' | 'normal' | 'bolder';
 /**
@@ -65,6 +79,7 @@ export type Cursor =
   | 'zoom-out';
 export type TextDecoration = 'underline' | 'line-through' | 'overline' | 'none';
 export type TextTransform = 'uppercase' | 'lowercase' | 'capitalize' | 'none';
+export type WhiteSpace = 'normal' | 'nowrap' | 'pre' | 'pre-wrap' | 'pre-line' | 'break-spaces';
 export type PointerEvents = 'none' | 'auto';
 export type Visibility = 'hidden' | 'visible' | 'collapse';
 export type ScrollbarWidth = 'auto' | 'thin' | 'none';
@@ -117,6 +132,7 @@ export interface DesignSystemProps {
   letterSpacing?: LetterSpacingValue;
   textDecoration?: TextDecoration;
   textTransform?: TextTransform;
+  whiteSpace?: WhiteSpace;
 
   // Interaction
   cursor?: Cursor;
@@ -137,6 +153,12 @@ export interface DesignSystemProps {
   wrap?: boolean;
   gap?: SpaceValue;
   flex?: string;
+  /**
+   * `flex-shrink`. The shorthand `flex` can express this, but only by also committing to a
+   * grow and basis — this is for the common "just don't let it shrink" case, which the
+   * codebase previously had to write through the `styles` escape hatch.
+   */
+  flexShrink?: number | string;
   alignSelf?: string;
   overflow?: Overflow;
   overflowX?: Overflow;
