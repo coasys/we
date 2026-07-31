@@ -2,7 +2,7 @@ import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import type { ConditionOperand, FormStateToken, ScopeGroup, ScopeRef, ScopeValueType } from '@we/schema-shared';
 import { inferRefKind } from '@we/schema-shared';
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
 
 /**
  * Pickers for a single value in the logic editors.
@@ -95,8 +95,6 @@ export function ValueRefPicker(props: {
   scope: ScopeGroup[];
   value?: ConditionOperand;
   onSelect: (operand: ConditionOperand) => void;
-  /** Offer a "use a fixed value" entry that switches the operand to literal mode. */
-  allowLiteral?: boolean;
   /** Offer a "count of a list" entry that wraps a reference in $count. */
   allowCount?: boolean;
   placeholder?: string;
@@ -236,24 +234,14 @@ export function ValueRefPicker(props: {
                 </Column>
               </we-scroll-area>
 
-              <Show when={props.allowLiteral || props.allowCount}>
+              <Show when={props.allowCount}>
                 <Column borderTop={`1px solid ${tokenVar('color', 'neutral-100')}`} pt="100">
-                  <Show when={props.allowCount}>
-                    <we-menu-item on:select={() => choose({ kind: 'count', items: { kind: 'context', path: '' } })}>
-                      <Row ay="center" gap="200">
-                        <we-icon name="hash" size="xs" color="neutral-400" />
-                        <we-text fontSize="200">Count of a list…</we-text>
-                      </Row>
-                    </we-menu-item>
-                  </Show>
-                  <Show when={props.allowLiteral}>
-                    <we-menu-item on:select={() => choose({ kind: 'literal', value: '' })}>
-                      <Row ay="center" gap="200">
-                        <we-icon name="text-aa" size="xs" color="neutral-400" />
-                        <we-text fontSize="200">Use a fixed value…</we-text>
-                      </Row>
-                    </we-menu-item>
-                  </Show>
+                  <we-menu-item on:select={() => choose({ kind: 'count', items: { kind: 'context', path: '' } })}>
+                    <Row ay="center" gap="200">
+                      <we-icon name="hash" size="xs" color="neutral-400" />
+                      <we-text fontSize="200">Count of a list…</we-text>
+                    </Row>
+                  </we-menu-item>
                 </Column>
               </Show>
             </Column>
@@ -281,27 +269,50 @@ export function OperandInput(props: {
   list?: boolean;
   /** Offer wrapping a reference in `$count`. */
   allowCount?: boolean;
+  /**
+   * Offer plain-text entry. False for the left side of a comparison, where a literal
+   * makes a constant condition — across the built-in templates the left operand is a
+   * reference 1823 times and a literal 10, while the right is a literal 965 times.
+   */
+  allowText?: boolean;
   placeholder?: string;
 }) {
   /**
-   * "Show me the picker" is UI state, not a property of the value.
+   * Which editor to show is UI state, not something derivable from the value.
    *
-   * It can't be derived from the operand: an empty reference serializes to `''`, which
-   * reads back as an empty *literal*, so callers that write through on every change
-   * (ValueEditor does) would bounce straight back to the literal input — the switch
-   * button did nothing at all. Holding the intent locally also means the schema keeps its
-   * current value until a reference is actually chosen.
+   * Half-made choices have no valid serialized form: an empty reference writes `''`,
+   * which reads back as an empty *literal*, and `{ $count: { items: '' } }` reads back as
+   * a count over an empty literal. Callers that write through on every change (ValueEditor
+   * does) would bounce straight out of the mode that was just asked for — which is exactly
+   * how the switch buttons ended up doing nothing and how a new count landed in raw JSON.
+   *
+   * Holding the intent here means nothing is written until the choice is complete, so the
+   * node keeps its current value while a mode is being explored.
    */
   const [refMode, setRefMode] = createSignal(false);
+  const [textMode, setTextMode] = createSignal(false);
+  const [pendingCount, setPendingCount] = createSignal<Extract<ConditionOperand, { kind: 'count' }> | null>(null);
 
-  const isLiteral = () => !refMode() && (props.value?.kind === 'literal' || props.value?.kind === 'list');
+  /** A reference is only usable once it actually points somewhere. */
+  const isResolved = (operand: ConditionOperand | undefined): boolean =>
+    !!operand && (operand.kind === 'store' || operand.kind === 'local' || operand.kind === 'context')
+      ? (operand as { path: string }).path.trim() !== ''
+      : false;
+
+  const clearOverrides = () => {
+    setRefMode(false);
+    setTextMode(false);
+    setPendingCount(null);
+  };
 
   const pick = (operand: ConditionOperand) => {
-    setRefMode(false);
-    // Backing out of the picker via "use a fixed value" restores the literal that was
-    // already there rather than clearing it — switching modes and changing your mind
-    // shouldn't cost you the text you had typed.
-    if (operand.kind === 'literal' && operand.value === '' && props.value?.kind === 'literal') return;
+    if (operand.kind === 'count' && !isResolved(operand.items)) {
+      setRefMode(false);
+      setTextMode(false);
+      setPendingCount(operand);
+      return;
+    }
+    clearOverrides();
     props.onChange(operand);
   };
 
@@ -373,20 +384,55 @@ export function OperandInput(props: {
   };
 
   /**
-   * Swap to the reference picker. Nothing is written yet — the current value stands until
-   * a reference is chosen, so cancelling out of the picker leaves the node as it was.
+   * The two ways to express a value, always both offered. Data opens the picker (whose
+   * footer also reaches list counts); Text goes straight to plain entry. Two orthogonal
+   * one-click affordances rather than routing text entry through the picker, so no mode
+   * is ever more than a click from either.
+   *
+   * Neither writes anything: the current value stands until something is picked or typed,
+   * so changing your mind costs nothing.
    */
-  const resetButton = (title: string, icon: string) => (
-    <we-tooltip title={title}>
-      <we-button variant="ghost" size="xs" square onClick={() => setRefMode(true)} aria-label={title}>
-        <we-icon name={icon} size="xs" />
-      </we-button>
-    </we-tooltip>
+  const modeButtons = () => (
+    <Row gap="0" flex="none">
+      <Show when={props.allowText !== false}>
+        <we-tooltip title="Use a fixed value">
+          <we-button
+            variant={mode() === 'literal' ? 'secondary' : 'ghost'}
+            size="xs"
+            square
+            onClick={() => {
+              setRefMode(false);
+              setPendingCount(null);
+              setTextMode(true);
+            }}
+            aria-label="Use a fixed value"
+          >
+            <we-icon name="text-aa" size="xs" />
+          </we-button>
+        </we-tooltip>
+      </Show>
+      <we-tooltip title="Pick a value from data">
+        <we-button
+          variant={mode() === 'literal' ? 'ghost' : 'secondary'}
+          size="xs"
+          square
+          onClick={() => {
+            setTextMode(false);
+            setPendingCount(null);
+            setRefMode(true);
+          }}
+          aria-label="Pick a value from data"
+        >
+          <we-icon name="database" size="xs" />
+        </we-button>
+      </we-tooltip>
+    </Row>
   );
 
   // `$count` wraps another reference, so it renders as a labelled row containing a
-  // nested picker rather than as a leaf control.
-  const countValue = () => (props.value?.kind === 'count' ? props.value : null);
+  // nested picker rather than as a leaf control. A pending count (list not yet chosen)
+  // renders the same way, so the row appears the moment it is asked for.
+  const countValue = () => pendingCount() ?? (props.value?.kind === 'count' ? props.value : null);
 
   // Validation-state readers name a field from the surrounding $localState, which is
   // exactly the `local` group of the scope — so the field list comes for free.
@@ -396,68 +442,79 @@ export function OperandInput(props: {
     return [{ label: 'the whole form', value: '$scope' }, ...fields.map((f) => ({ label: f, value: f }))];
   };
 
+  const mode = createMemo<'literal' | 'composite' | 'picker'>(() => {
+    if (textMode()) return 'literal';
+    if (refMode()) return 'picker';
+    if (countValue() || formStateValue()) return 'composite';
+    if (props.value?.kind === 'literal' || props.value?.kind === 'list') return 'literal';
+    return 'picker';
+  });
+
   return (
-    <Show
-      when={refMode() || (!countValue() && !formStateValue())}
-      fallback={
-        <Row ay="center" gap="100" minWidth="0">
-          <Show when={countValue()}>
-            {(count) => (
-              <>
-                <we-text fontSize="200" color="neutral-500" styles={{ 'white-space': 'nowrap' }}>
-                  count of
-                </we-text>
-                <Column flex="1" minWidth="0">
-                  <ValueRefPicker
-                    scope={props.scope}
-                    value={count().items}
-                    onSelect={(items) => props.onChange({ kind: 'count', items })}
-                    placeholder="Select a list"
-                  />
-                </Column>
-              </>
-            )}
-          </Show>
-          <Show when={formStateValue()}>
-            {(formState) => (
-              <>
-                <we-text fontSize="200" color="neutral-500" styles={{ 'white-space': 'nowrap' }}>
-                  {formState().token === 'error' ? 'error of' : formState().token === 'touched' ? 'edited' : 'valid'}
-                </we-text>
-                <we-select
-                  flex="1"
-                  size="xs"
-                  value={formState().field}
-                  options={localFieldOptions()}
-                  on:change={(e: CustomEvent) =>
-                    props.onChange({ kind: 'formState', token: formState().token, field: e.detail as string })
-                  }
-                />
-              </>
-            )}
-          </Show>
-          {resetButton('Pick a different value', 'arrow-counter-clockwise')}
-        </Row>
-      }
-    >
-      <Show
-        when={isLiteral()}
-        fallback={
-          <ValueRefPicker
-            scope={props.scope}
-            value={refMode() ? undefined : props.value}
-            onSelect={pick}
-            allowLiteral
-            allowCount={props.allowCount}
-            placeholder={props.placeholder}
-          />
-        }
-      >
-        <Row ay="center" gap="100" minWidth="0">
-          {literalControl()}
-          {resetButton('Pick a value from data instead', 'database')}
-        </Row>
-      </Show>
-    </Show>
+    <Row ay="center" gap="100" minWidth="0">
+      <Column flex="1" minWidth="0">
+        <Switch>
+          <Match when={mode() === 'literal'}>{literalControl()}</Match>
+
+          <Match when={mode() === 'composite'}>
+            <Row ay="center" gap="100" minWidth="0">
+              <Show when={countValue()}>
+                {(count) => (
+                  <>
+                    <we-text fontSize="200" color="neutral-500" styles={{ 'white-space': 'nowrap' }}>
+                      count of
+                    </we-text>
+                    <Column flex="1" minWidth="0">
+                      <ValueRefPicker
+                        scope={props.scope}
+                        value={isResolved(count().items) ? count().items : undefined}
+                        onSelect={(items) => {
+                          clearOverrides();
+                          props.onChange({ kind: 'count', items });
+                        }}
+                        placeholder="Select a list"
+                      />
+                    </Column>
+                  </>
+                )}
+              </Show>
+              <Show when={formStateValue()}>
+                {(formState) => (
+                  <>
+                    <we-text fontSize="200" color="neutral-500" styles={{ 'white-space': 'nowrap' }}>
+                      {formState().token === 'error'
+                        ? 'error of'
+                        : formState().token === 'touched'
+                          ? 'edited'
+                          : 'valid'}
+                    </we-text>
+                    <we-select
+                      flex="1"
+                      size="xs"
+                      value={formState().field}
+                      options={localFieldOptions()}
+                      on:change={(e: CustomEvent) =>
+                        props.onChange({ kind: 'formState', token: formState().token, field: e.detail as string })
+                      }
+                    />
+                  </>
+                )}
+              </Show>
+            </Row>
+          </Match>
+
+          <Match when={mode() === 'picker'}>
+            <ValueRefPicker
+              scope={props.scope}
+              value={refMode() ? undefined : props.value}
+              onSelect={pick}
+              allowCount={props.allowCount}
+              placeholder={props.placeholder}
+            />
+          </Match>
+        </Switch>
+      </Column>
+      {modeButtons()}
+    </Row>
   );
 }
