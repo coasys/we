@@ -234,6 +234,40 @@ export const spaceNavBar: SchemaNode = {
                 },
               ],
             },
+            // Live presence — who else is in this space right now. Hidden entirely in a personal
+            // space (no neighbourhood, so `presenceStore.available` is false) and when nobody else
+            // is around, rather than rendering "0 online now".
+            {
+              type: '$if',
+              props: {
+                condition: { $gt: [{ $count: { items: { $store: 'presenceStore.online' } } }, 0] },
+                then: {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center' },
+                  children: [
+                    {
+                      type: 'we-number',
+                      props: { value: { $count: { items: { $store: 'presenceStore.online' } } }, shorten: true },
+                    },
+                    { type: 'we-text', props: { color: 'neutral-800' }, children: ['online now'] },
+                    {
+                      type: 'AvatarStack',
+                      props: {
+                        avatars: {
+                          $map: {
+                            items: { $store: 'presenceStore.online' },
+                            select: { image: '$item.avatar', hash: '$item.did' },
+                          },
+                        },
+                        max: 5,
+                        size: 'sm',
+                        ring: '0 0 0 2px var(--we-ring-color)',
+                      },
+                    },
+                  ],
+                },
+              },
+            },
           ],
         },
       ],
