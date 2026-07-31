@@ -60,6 +60,12 @@ export interface StateMemberMeta {
   type: 'array' | 'object' | 'string' | 'boolean' | 'number';
   /** Known properties on the value (for objects) or on array items (for arrays) */
   properties?: string[];
+  /**
+   * The model this member holds instances of, when it holds model instances.
+   * Preferred over spelling out `properties` by hand: the model's fields are generated
+   * from `@we/models`, so they stay complete as the model changes. Consumers union both.
+   */
+  model?: string;
 }
 
 /** A store with its state properties and action methods */

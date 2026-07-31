@@ -2019,8 +2019,8 @@ export const contextData: ContextData = {
         currentPerspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
         currentPerspectiveModels: { type: 'array' },
         isWeSpace: { type: 'boolean' },
-        personalSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
-        sharedSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
+        personalSpaces: { type: 'array', model: 'Space' },
+        sharedSpaces: { type: 'array', model: 'Space' },
         bootState: { type: 'string' },
         passwordError: { type: 'string' },
         loginLoading: { type: 'boolean' },
@@ -2120,10 +2120,11 @@ export const contextData: ContextData = {
           properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
         },
         spaceDefaultTemplateId: { type: 'string' },
-        currentSpace: { type: 'object', properties: ['uuid', 'name', 'description', 'avatar', 'defaultTemplateId'] },
+        currentSpace: { type: 'object', model: 'Space' },
         foreignSpacePrefill: { type: 'object', properties: ['name', 'description', 'avatar'] },
         signalTypes: {
           type: 'array',
+          model: 'SignalType',
           properties: [
             'id',
             'name',

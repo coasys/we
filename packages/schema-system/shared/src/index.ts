@@ -89,6 +89,33 @@ export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from '.
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export { getComponentMeta } from './componentMeta';
 export type { ComponentMeta, PropMeta, PropLayer } from './componentMeta';
+export { findNodeChain, findScopeRef, getScopeAtNode, inferRefKind, scopeRefToToken } from './scope';
+export type { ScopeGroup, ScopeOptions, ScopeRef, ScopeRefKind, ScopeValueType } from './scope';
+export {
+  classifyContent,
+  contentAsText,
+  emptyComparison,
+  isBlankComparison,
+  isUnaryOperator,
+  MAX_CONDITION_DEPTH,
+  parseCondition,
+  parseValue,
+  parseValueIf,
+  serializeCondition,
+  serializeValue,
+  serializeValueIf,
+  UNARY_OPERATORS,
+} from './conditionModel';
+export type {
+  ComparisonOperator,
+  ConditionComparison,
+  ConditionExpr,
+  ConditionGroup,
+  ConditionOperand,
+  ContentShape,
+  FormStateToken,
+  ValueIf,
+} from './conditionModel';
 export type {
   DatasetHandle,
   QueryOptions,

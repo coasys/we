@@ -17,8 +17,8 @@ export const storeEntries: StoreEntry[] = [
       currentPerspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
       currentPerspectiveModels: { type: 'array' },
       isWeSpace: { type: 'boolean' },
-      personalSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
-      sharedSpaces: { type: 'array', properties: ['uuid', 'name', 'description', 'url', 'visibility'] },
+      personalSpaces: { type: 'array', model: 'Space' },
+      sharedSpaces: { type: 'array', model: 'Space' },
       bootState: { type: 'string' },
       passwordError: { type: 'string' },
       loginLoading: { type: 'boolean' },
@@ -124,10 +124,11 @@ export const storeEntries: StoreEntry[] = [
         properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
       spaceDefaultTemplateId: { type: 'string' },
-      currentSpace: { type: 'object', properties: ['uuid', 'name', 'description', 'avatar', 'defaultTemplateId'] },
+      currentSpace: { type: 'object', model: 'Space' },
       foreignSpacePrefill: { type: 'object', properties: ['name', 'description', 'avatar'] },
       signalTypes: {
         type: 'array',
+        model: 'SignalType',
         properties: [
           'id',
           'name',
@@ -243,8 +244,8 @@ function generateStoresText(entries: StoreEntry[]): string {
           'ModelManifestEntry[] (non-WE SHACL models from the current perspective; injected as externalModels into AI messages)',
         isWeSpace:
           "boolean — true once the current perspective is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign perspective, e.g. one synced in from Flux)",
-        personalSpaces: 'array of Space objects (local/personal spaces)',
-        sharedSpaces: 'array of Space objects (shared/neighbourhood spaces)',
+        personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
+        sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
         bootState: 'string',
         passwordError: 'string | undefined',
         loginLoading: 'boolean',
@@ -347,7 +348,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         members: 'AgentProfileSummary[] — cached profiles for all memberDids',
         spaceDefaultTemplateId:
           "string — the current space's default template ID (empty string when no space is active)",
-        currentSpace: 'Space | null — the current space model (uuid, name, description, avatar, defaultTemplateId)',
+        currentSpace:
+          'Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, plus id/author/createdAt)',
         foreignSpacePrefill:
           '{ name, description, avatar } | null — detected from a foreign app\'s own model (e.g. Flux\'s Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found',
         signalTypes: 'array of SignalType objects (community-created reaction/vote types)',

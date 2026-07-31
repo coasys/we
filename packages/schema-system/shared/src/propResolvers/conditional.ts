@@ -37,16 +37,16 @@ export function resolveIfProp(
   memo: Memo,
   resolvePropFn: typeof resolveProp,
 ): unknown {
-  const { condition, then: thenValue, else: elseValue } = (value as { $if: IfProp }).$if;
-
-  // Pre-wrap array branches into a single dispatch function so the memo always returns
-  // a function (or primitive/undefined), never a raw array.
-  const thenBranch = wrapArrayBranch(thenValue, stores, context, memo, resolvePropFn);
-  const elseBranch = wrapArrayBranch(elseValue, stores, context, memo, resolvePropFn);
+  // Read the spec lazily everywhere below. The schema is reactive in the visual editor,
+  // so a token edited in place must be picked up on the next evaluation — destructuring
+  // once here is what made edited branches invisible until the subtree remounted.
+  const spec = () => (value as { $if: IfProp }).$if;
 
   // Check if condition contains $arg tokens - if so, we need to return a function
-  // that evaluates the condition on each call with access to callback arguments
-  const conditionStr = JSON.stringify(condition) ?? '';
+  // that evaluates the condition on each call with access to callback arguments.
+  // This shape decision is made once: whether a condition uses $arg is a property of how
+  // the template was authored, not something an edit is expected to flip mid-session.
+  const conditionStr = JSON.stringify(spec().condition) ?? '';
   if (conditionStr.includes('$arg')) {
     // Return a function that evaluates the conditional when called
     return (...callArgs: unknown[]) => {
@@ -78,12 +78,15 @@ export function resolveIfProp(
       };
 
       // Resolve condition with $arg tokens replaced
+      const { condition, then: thenValue, else: elseValue } = spec();
       const resolvedCondition = resolveWithArg(condition);
       const conditionResult = resolvePropFn(resolvedCondition, stores, context, memo);
       const conditionMet = isReactiveAccessor(conditionResult) ? conditionResult() : conditionResult;
 
-      // Resolve the appropriate branch (already array-wrapped if needed)
-      const branchResult = resolvePropFn(conditionMet ? thenBranch : elseBranch, stores, context, memo);
+      // Pre-wrap array branches into a single dispatch function so the result is always a
+      // function (or primitive/undefined), never a raw array.
+      const branch = wrapArrayBranch(conditionMet ? thenValue : elseValue, stores, context, memo, resolvePropFn);
+      const branchResult = resolvePropFn(branch, stores, context, memo);
 
       // If branch result is a function (e.g., an action or wrapped array), call it with the arguments
       if (typeof branchResult === 'function') {
@@ -97,6 +100,17 @@ export function resolveIfProp(
   // Standard $if without $arg - wrap in memo to reactively re-evaluate when condition changes
   return markReactive(
     memo(() => {
+      // Re-read condition/then/else from `value` on every evaluation rather than closing
+      // over them. When the schema itself is reactive (the visual editor renders from a
+      // Solid store), destructuring once meant an edit to a branch was never picked up —
+      // the memo re-ran only when the *data* behind the condition changed, so an edited
+      // then/else only appeared after the subtree remounted.
+      const { condition, then: thenValue, else: elseValue } = spec();
+      // Pre-wrap array branches into a single dispatch function so the memo always returns
+      // a function (or primitive/undefined), never a raw array.
+      const thenBranch = wrapArrayBranch(thenValue, stores, context, memo, resolvePropFn);
+      const elseBranch = wrapArrayBranch(elseValue, stores, context, memo, resolvePropFn);
+
       const conditionResult = resolvePropFn(condition, stores, context, memo);
       // Unwrap reactive accessor if condition resolved to one (e.g. signal from $store)
       const conditionMet = isReactiveAccessor(conditionResult) ? conditionResult() : conditionResult;
