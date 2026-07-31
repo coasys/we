@@ -70,7 +70,7 @@ export function CodeViewer(props: CodeViewerProps) {
         px="400"
         py="200"
         borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
-        styles={{ 'flex-shrink': '0' }}
+        flexShrink="0"
       >
         <Show
           when={editing()}

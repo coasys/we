@@ -461,7 +461,7 @@ export function OperandInput(props: {
               <Show when={countValue()}>
                 {(count) => (
                   <>
-                    <we-text fontSize="200" color="neutral-500" styles={{ 'white-space': 'nowrap' }}>
+                    <we-text fontSize="200" color="neutral-500" whiteSpace="nowrap">
                       count of
                     </we-text>
                     <Column flex="1" minWidth="0">
@@ -481,7 +481,7 @@ export function OperandInput(props: {
               <Show when={formStateValue()}>
                 {(formState) => (
                   <>
-                    <we-text fontSize="200" color="neutral-500" styles={{ 'white-space': 'nowrap' }}>
+                    <we-text fontSize="200" color="neutral-500" whiteSpace="nowrap">
                       {formState().token === 'error'
                         ? 'error of'
                         : formState().token === 'touched'

@@ -51,7 +51,7 @@ export function AiPanel() {
         px="400"
         py="300"
         borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
-        styles={{ 'flex-shrink': '0' }}
+        flexShrink="0"
       >
         <we-text fontSize="500" fontWeight="600">
           AI Chat
@@ -77,7 +77,7 @@ export function AiPanel() {
           p="400"
           bg="neutral-50"
           borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
-          styles={{ 'flex-shrink': '0' }}
+          flexShrink="0"
         >
           <we-text fontSize="300" fontWeight="600" color="neutral-700">
             Claude API Key
@@ -122,7 +122,8 @@ export function AiPanel() {
           gap="100"
           px="300"
           borderBottom={`1px solid ${tokenVar('color', 'neutral-200')}`}
-          styles={{ 'overflow-x': 'auto', 'flex-shrink': '0' }}
+          flexShrink="0"
+          overflowX="auto"
         >
           <For each={aiStore.sessions()}>
             {(session) => {
@@ -136,7 +137,8 @@ export function AiPanel() {
                   height="32px"
                   bg={isActive() ? 'neutral-200' : 'neutral-100'}
                   cursor="pointer"
-                  styles={{ 'white-space': 'nowrap', 'flex-shrink': '0' }}
+                  whiteSpace="nowrap"
+                  flexShrink="0"
                 >
                   <we-text
                     fontSize="300"
@@ -183,13 +185,7 @@ export function AiPanel() {
       </Column>
 
       {/* Input area */}
-      <Row
-        ay="end"
-        gap="200"
-        p="400"
-        borderTop={`1px solid ${tokenVar('color', 'ui-200')}`}
-        styles={{ 'flex-shrink': '0' }}
-      >
+      <Row ay="end" gap="200" p="400" borderTop={`1px solid ${tokenVar('color', 'ui-200')}`} flexShrink="0">
         <we-textarea
           value={inputValue()}
           placeholder="Describe a change to the template..."
@@ -205,7 +201,7 @@ export function AiPanel() {
             }
           }}
           maxHeight="160px"
-          styles={{ 'overflow-y': 'auto' }}
+          overflowY="auto"
         />
         <we-button size="sm" onClick={handleSend} disabled={aiStore.isStreaming() || inputValue().trim() === ''}>
           <we-icon name="paper-plane-tilt" size="sm" />

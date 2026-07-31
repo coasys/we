@@ -362,12 +362,7 @@ function TreeNode(props: TreeNodeProps) {
 
         {/* Context label: route path, slot name, or prop name */}
         <Show when={props.contextLabel}>
-          <we-text
-            fontSize="10px"
-            lineHeight="1"
-            styles={{ 'flex-shrink': '0', 'white-space': 'nowrap' }}
-            color="neutral-400"
-          >
+          <we-text fontSize="10px" lineHeight="1" flexShrink="0" whiteSpace="nowrap" color="neutral-400">
             {props.contextLabel}:
           </we-text>
         </Show>
@@ -379,7 +374,8 @@ function TreeNode(props: TreeNodeProps) {
           overflow="hidden"
           flex="1"
           minWidth="0"
-          styles={{ 'white-space': 'nowrap', 'text-overflow': 'ellipsis' }}
+          whiteSpace="nowrap"
+          styles={{ 'text-overflow': 'ellipsis' }}
           color={isSelected() ? 'primary-700' : isSpecial() ? 'primary-500' : 'neutral-700'}
           fontWeight={isSelected() ? '600' : '400'}
         >
@@ -554,7 +550,7 @@ export function InspectorPanel() {
         px="400"
         py="300"
         borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
-        styles={{ 'flex-shrink': '0' }}
+        flexShrink="0"
       >
         <we-text fontSize="500" fontWeight="600">
           Visual Inspector
@@ -1747,14 +1743,7 @@ function BoxModel(props: {
       r="100"
       gap="0"
     >
-      <we-text
-        py="2px"
-        px="4px"
-        lineHeight="16px"
-        styles={{ 'white-space': 'nowrap' }}
-        fontSize="10px"
-        color={BOX_PADDING.label}
-      >
+      <we-text py="2px" px="4px" lineHeight="16px" whiteSpace="nowrap" fontSize="10px" color={BOX_PADDING.label}>
         padding
       </we-text>
       <Row ax="center" ay="center">
@@ -1887,14 +1876,7 @@ function BoxModel(props: {
             r="100"
             gap="0"
           >
-            <we-text
-              py="2px"
-              px="4px"
-              lineHeight="16px"
-              styles={{ 'white-space': 'nowrap' }}
-              fontSize="10px"
-              color={BOX_MARGIN.label}
-            >
+            <we-text py="2px" px="4px" lineHeight="16px" whiteSpace="nowrap" fontSize="10px" color={BOX_MARGIN.label}>
               margin
             </we-text>
             <Row ax="center" ay="center">

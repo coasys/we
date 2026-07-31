@@ -100,7 +100,7 @@ function PanelUnit(props: PanelUnitProps) {
   }
 
   return (
-    <Row height="100%" styles={{ 'flex-shrink': '0', 'user-select': resizing() ? 'none' : 'auto' }}>
+    <Row height="100%" flexShrink="0" styles={{ 'user-select': resizing() ? 'none' : 'auto' }}>
       {/* Rail — always visible in edit mode, handles both click (toggle) and drag (resize) */}
       <we-tooltip title={props.tooltip} placement="left">
         <Column
@@ -112,7 +112,7 @@ function PanelUnit(props: PanelUnitProps) {
           borderLeft={`1px solid ${tokenVar('color', 'neutral-200')}`}
           hoverProps={{ bg: 'neutral-100' }}
           cursor="ew-resize"
-          styles={{ 'flex-shrink': '0' }}
+          flexShrink="0"
           onMouseDown={onMouseDown}
         >
           <we-icon name={props.icon} size="sm" color={props.isOpen() ? 'neutral-700' : 'neutral-400'} />

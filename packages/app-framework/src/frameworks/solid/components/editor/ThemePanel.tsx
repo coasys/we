@@ -430,7 +430,7 @@ export function ThemePanel() {
         px="400"
         py="300"
         borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
-        styles={{ 'flex-shrink': '0' }}
+        flexShrink="0"
       >
         <we-text fontSize="500" fontWeight="600">
           Theme Editor
