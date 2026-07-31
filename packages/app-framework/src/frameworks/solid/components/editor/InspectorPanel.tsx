@@ -10,8 +10,8 @@ import { useVisualEditor } from '@we/schema-solid';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
-import { CodeViewer } from './CodeViewer';
 import { ConditionEditor } from './ConditionEditor';
+import { ContentEditor } from './ContentEditor';
 import { ValueEditor } from './ValueEditor';
 
 // -----------------------------------------------------------------------
@@ -642,34 +642,15 @@ function NodeProperties(props: {
   const templateStore = useTemplateStore();
   const meta = createMemo(() => getComponentMeta(props.node.type ?? '', contextData));
 
-  // Content — what `children` holds, classified so each shape gets the right editor.
-  // Text is the common case, but a single token ({ $store }, a value-level { $if }, a
-  // $concat) is just as common in real templates and used to have no editor at all: it
-  // isn't a string, so the text field skipped it, and `props`-only scanning never saw it.
-  const contentKind = createMemo<'text' | 'token' | 'tokens' | 'nodes'>(() => {
-    const children = props.node.children;
-    if (!children || children.length === 0) return 'text';
-    if (children.some((c) => isPropsSchemaNode(c))) return 'nodes';
-    if (children.length === 1) return typeof children[0] === 'string' ? 'text' : 'token';
-    return children.every((c) => typeof c === 'string') ? 'text' : 'tokens';
-  });
+  // Content — `children` holds either child nodes (owned by the Layers tree) or content
+  // the ContentEditor owns: text, a bound value, or a value-level conditional.
+  const hasChildNodes = createMemo(() => !!props.node.children?.some((c) => isPropsSchemaNode(c)));
 
   const showContent = createMemo(() => {
-    const kind = contentKind();
-    if (kind === 'nodes') return false;
-    if (kind !== 'text') return true;
-    const children = props.node.children;
-    if (children && children.length === 1) return true;
+    if (hasChildNodes()) return false;
+    if (props.node.children && props.node.children.length > 0) return true;
     return TEXT_CONTENT_TYPES.has(props.node.type ?? '');
   });
-
-  const contentValue = createMemo(() => {
-    const children = props.node.children;
-    return children && children.length === 1 && typeof children[0] === 'string' ? children[0] : '';
-  });
-
-  /** The single token in `children`, for the token editor. */
-  const contentToken = createMemo(() => props.node.children?.[0]);
 
   // Current prop values set on this node
   const currentProps = createMemo(() => props.node.props ?? {});
@@ -746,50 +727,15 @@ function NodeProperties(props: {
       <we-scroll-area style={{ flex: '1' }}>
         {/* Content — text, a bound value, or a value-level conditional */}
         <Show when={showContent()}>
-          <Column py="200" gap="200" borderBottom="1px solid neutral-100">
-            <SectionLabel>Content</SectionLabel>
-
-            <Show when={contentKind() === 'text'}>
-              <we-textarea
-                mx="300"
-                value={contentValue()}
-                placeholder="Text content"
-                rows={2}
-                on:change={(e: CustomEvent<string>) => props.onContentChange(e.detail)}
-              />
-            </Show>
-
-            {/* A single token — bound to data, or a conditional between two values */}
-            <Show when={contentKind() === 'token'}>
-              <Column px="400">
-                <ValueEditor
-                  value={contentToken()}
-                  scope={scope()}
-                  onChange={props.onContentTokenChange}
-                  placeholder="Bind to a value"
-                />
-              </Column>
-            </Show>
-
-            {/* Several tokens concatenated in place — no row equivalent, so raw JSON */}
-            <Show when={contentKind() === 'tokens'}>
-              <Column px="400" gap="100">
-                <we-text fontSize="100" color="neutral-400">
-                  Multiple content parts — edit as JSON
-                </we-text>
-                <Column
-                  border={`1px solid ${tokenVar('color', 'neutral-100')}`}
-                  r="200"
-                  overflow="hidden"
-                  styles={{ 'max-height': '250px' }}
-                >
-                  <CodeViewer
-                    json={JSON.stringify(props.node.children ?? [], null, 2)}
-                    onSave={(json) => props.onChildrenChange(JSON.parse(json))}
-                  />
-                </Column>
-              </Column>
-            </Show>
+          <Column py="200" borderBottom="1px solid neutral-100">
+            <ContentEditor
+              content={props.node.children}
+              nodeId={props.node.id}
+              scope={scope()}
+              onTextChange={props.onContentChange}
+              onTokenChange={props.onContentTokenChange}
+              onChildrenChange={props.onChildrenChange}
+            />
           </Column>
         </Show>
 

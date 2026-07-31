@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { ConditionExpr } from './conditionModel';
 import {
+  classifyContent,
+  contentAsText,
   emptyComparison,
   isBlankComparison,
   parseCondition,
@@ -229,6 +231,38 @@ describe('value positions', () => {
     expect(parseValueIf({ $if: { condition: true, then: 'a', enterTransition: { type: 'fade' } } })).toBeNull();
     expect(parseValueIf({ $if: { condition: true } })).toBeNull();
     expect(parseValueIf({ type: '$if', props: { condition: true, then: {} } })).toBeNull();
+  });
+});
+
+describe('content shapes', () => {
+  const cases: [string, unknown[] | undefined, string][] = [
+    ['no children', undefined, 'text'],
+    ['empty children', [], 'text'],
+    ['a plain string', ['About this space'], 'text'],
+    ['a store binding', [{ $store: 'spaceStore.currentSpace.name' }], 'value'],
+    ['a context ref', ['$agent.firstName'], 'text'],
+    ['a value-level $if', [{ $if: { condition: { $local: 'x' }, then: 'a', else: 'b' } }], 'conditional'],
+    ['a $concat', [{ $concat: ['a', 'b'] }], 'custom'],
+    ['several parts', ['Hello ', { $store: 'a.b' }], 'custom'],
+  ];
+
+  it.each(cases)('classifies %s', (_label, children, expected) => {
+    expect(classifyContent(children)).toBe(expected);
+  });
+
+  it('reads a context ref string as text, since that is how it is authored', () => {
+    // '$agent.firstName' is a bare string in children — the text field round-trips it.
+    expect(contentAsText('$agent.firstName')).toBe('$agent.firstName');
+  });
+
+  it('collapses a conditional to its then branch when converting to text', () => {
+    expect(contentAsText({ $if: { condition: { $local: 'x' }, then: 'Shared', else: 'Personal' } })).toBe('Shared');
+  });
+
+  it('has no text reading for a binding or a custom expression', () => {
+    expect(contentAsText({ $store: 'a.b' })).toBe('');
+    expect(contentAsText({ $concat: ['a'] })).toBe('');
+    expect(contentAsText({ $if: { condition: true, then: { $store: 'a.b' } } })).toBe('');
   });
 });
 

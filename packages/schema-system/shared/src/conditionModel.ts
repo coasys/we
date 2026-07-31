@@ -281,6 +281,35 @@ export function serializeValueIf(value: ValueIf): unknown {
   return { $if: inner };
 }
 
+/**
+ * The authoring shapes a node's `children` can take when it holds content rather than
+ * child nodes. Drives which editor the inspector shows, and what converting between
+ * them means.
+ */
+export type ContentShape = 'text' | 'value' | 'conditional' | 'custom';
+
+export function classifyContent(children: unknown[] | undefined): ContentShape {
+  if (!children || children.length === 0) return 'text';
+  // Several entries concatenated in place have no single-control equivalent.
+  if (children.length > 1) return 'custom';
+  const [only] = children;
+  if (typeof only === 'string') return 'text';
+  if (parseValueIf(only)) return 'conditional';
+  if (parseValue(only)) return 'value';
+  return 'custom';
+}
+
+/**
+ * The plain-text reading of a content token, used when converting to text. A conditional
+ * collapses to its `then` branch — the branch that renders in the common case.
+ */
+export function contentAsText(token: unknown): string {
+  if (typeof token === 'string') return token;
+  const branch = parseValueIf(token);
+  if (branch && typeof branch.then === 'string') return branch.then;
+  return '';
+}
+
 // ── Editing helpers ─────────────────────────────────────────────────────────
 
 export function isUnaryOperator(operator: ComparisonOperator): boolean {

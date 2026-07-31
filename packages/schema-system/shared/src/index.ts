@@ -92,6 +92,8 @@ export type { ComponentMeta, PropMeta, PropLayer } from './componentMeta';
 export { findNodeChain, findScopeRef, getScopeAtNode, scopeRefToToken } from './scope';
 export type { ScopeGroup, ScopeOptions, ScopeRef, ScopeRefKind, ScopeValueType } from './scope';
 export {
+  classifyContent,
+  contentAsText,
   emptyComparison,
   isBlankComparison,
   isUnaryOperator,
@@ -110,6 +112,7 @@ export type {
   ConditionExpr,
   ConditionGroup,
   ConditionOperand,
+  ContentShape,
   FormStateToken,
   ValueIf,
 } from './conditionModel';
