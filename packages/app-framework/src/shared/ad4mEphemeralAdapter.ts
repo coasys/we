@@ -100,20 +100,46 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
     const scope: EphemeralScope = {
       capabilities: ad4mEphemeralCapabilities,
 
-      channel(tag) {
+      channel(tag, options) {
         const existing = channels.get(tag);
         if (existing) return existing;
 
         const predicate = PREDICATE_PREFIX + tag;
+        let inFlight = false;
+        let failures = 0;
+
         const channel: EphemeralChannel = {
           publish(payload, to) {
+            // Backpressure for idempotent traffic. When the executor is unhealthy `sendBroadcast`
+            // hangs until a 30s RPC timeout, so a 5s heartbeat accumulates six stuck calls — piling
+            // load onto the thing that is already failing. Dropping a beat costs nothing here: the
+            // next one carries the same state.
+            if (options?.coalesce && inFlight) return;
+            inFlight = true;
+
             neighbourhood
               .sendBroadcastU({
                 links: [{ source: JSON.stringify(payload), predicate, target: to?.agentId ?? TARGET_ALL }],
               })
-              // Presence is idempotent and heartbeats again shortly, so a failed send is not worth
-              // escalating to the user — but it must not be silent either.
-              .catch((error: unknown) => console.warn(`ephemeral: broadcast failed on "${tag}"`, error));
+              .then(() => {
+                if (failures > 0) {
+                  console.info(`ephemeral: "${tag}" recovered after ${failures} failed send(s)`);
+                  failures = 0;
+                }
+              })
+              // A failed send is not worth escalating to the user — presence repairs itself on the
+              // next beat — but it must not be silent either. Log the first, then back off
+              // geometrically: an unreachable neighbourhood otherwise emits a warning every 5s and
+              // buries whatever the actual problem is.
+              .catch((error: unknown) => {
+                failures += 1;
+                if ((failures & (failures - 1)) === 0) {
+                  console.warn(`ephemeral: send failed on "${tag}" (${failures} consecutive)`, error);
+                }
+              })
+              .finally(() => {
+                inFlight = false;
+              });
           },
           onMessage(cb) {
             let listeners = subscribers.get(tag);

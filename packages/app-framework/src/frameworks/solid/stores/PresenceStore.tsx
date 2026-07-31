@@ -130,7 +130,10 @@ export function PresenceStoreProvider(props: ParentProps) {
     // Gating here rather than inside the driver keeps the neutral core unaware of browser tabs —
     // and a follower tab's suppressed heartbeat is harmless, because the leader is publishing the
     // same agent's state.
-    const raw = scope.channel('presence');
+    // coalesce: presence is last-write-wins, so a beat dropped because the previous send is still
+    // in flight costs nothing — and on an unhealthy executor it is the difference between one
+    // pending broadcast and six.
+    const raw = scope.channel('presence', { coalesce: true });
     const channel = {
       publish: (payload: unknown, to?: { agentId?: string }) => {
         if (tabs.isLeader()) raw.publish(payload, to);

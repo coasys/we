@@ -98,11 +98,30 @@ export interface EphemeralChannel {
   onMessage(cb: (from: string, payload: unknown) => void): () => void;
 }
 
+export interface ChannelOptions {
+  /**
+   * Drop a publish while a previous one is still in flight, rather than letting sends pile up.
+   *
+   * Correct only for **idempotent last-write-wins** traffic — presence, cursors, typing — where a
+   * dropped message costs nothing because the next one carries the same information. It is wrong for
+   * a handshake: an RTC offer dropped because the previous send is slow is simply lost.
+   *
+   * Earns its place from a real failure. On a struggling AD4M executor `sendBroadcast` hangs until a
+   * 30s RPC timeout while presence heartbeats every 5s, so six stuck calls accumulate at steady
+   * state, each adding load to the backend that is already the problem. Coalescing turns that into
+   * one in-flight send.
+   */
+  coalesce?: boolean;
+}
+
 /** Ephemeral traffic for one dataset. Obtain channels from it; dispose to detach from the backend. */
 export interface EphemeralScope {
   capabilities: EphemeralCapabilities;
-  /** Namespaced sub-channel. Repeated calls with the same tag return the same channel. */
-  channel(tag: string): EphemeralChannel;
+  /**
+   * Namespaced sub-channel. Repeated calls with the same tag return the same channel; options are
+   * read on first creation.
+   */
+  channel(tag: string, options?: ChannelOptions): EphemeralChannel;
   dispose(): void;
 }
 
