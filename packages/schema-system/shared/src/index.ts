@@ -137,6 +137,31 @@ export type {
   EphemeralGap,
   EphemeralPlan,
 } from './ephemeral';
+export {
+  applyFocusDepth,
+  activitiesOfType,
+  callRosters,
+  createHeartbeatPresence,
+  derivePeers,
+  peersInDataset,
+  peersMatching,
+  DEFAULT_HEARTBEAT_INTERVAL,
+  DEFAULT_THRESHOLDS,
+} from './presence';
+export type {
+  Activity,
+  Availability,
+  Focus,
+  FocusDepth,
+  HeartbeatOptions,
+  Liveness,
+  LivenessThresholds,
+  MediaSettings,
+  Peer,
+  PresenceChannel,
+  PresenceSource,
+  PresenceState,
+} from './presence';
 export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
 export type {
   ModelManifest,
