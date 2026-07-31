@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ModelEntry, StoreEntry } from './contextTypes';
-import { findNodeChain, findScopeRef, getScopeAtNode, scopeRefToToken } from './scope';
+import { findNodeChain, findScopeRef, getScopeAtNode, inferRefKind, scopeRefToToken } from './scope';
 import type { SchemaNode } from './types';
 
 const storeEntries: StoreEntry[] = [
@@ -179,6 +179,74 @@ describe('getScopeAtNode', () => {
 
   it('returns stores and context even when the node id is unknown', () => {
     expect(groupLabels({ id: 'root', type: 'Column' }, 'missing')).toEqual(['adamStore', 'Context']);
+  });
+});
+
+describe('store members that hold model instances', () => {
+  const entries: StoreEntry[] = [
+    { name: 'spaceStore', state: { currentSpace: { type: 'object', model: 'Space' } }, actions: [] },
+  ];
+
+  it('takes properties from the model registry rather than a hand-written list', () => {
+    const groups = getScopeAtNode({ id: 'n', type: 'Column' }, 'n', { storeEntries: entries, models });
+    const paths = groups.find((g) => g.label === 'spaceStore')?.refs.map((r) => r.path);
+    // `description` is a declared Space field; a hand-maintained list had omitted fields
+    // like this, so the picker could not offer them at all.
+    expect(paths).toContain('spaceStore.currentSpace.description');
+    expect(paths).toContain('spaceStore.currentSpace.location');
+  });
+
+  it('includes the base fields every model instance carries', () => {
+    const groups = getScopeAtNode({ id: 'n', type: 'Column' }, 'n', { storeEntries: entries, models });
+    const paths = groups.find((g) => g.label === 'spaceStore')?.refs.map((r) => r.path);
+    for (const base of ['id', 'author', 'createdAt', 'updatedAt']) {
+      expect(paths).toContain(`spaceStore.currentSpace.${base}`);
+    }
+  });
+
+  it('unions model fields with explicitly declared ones', () => {
+    const withComputed: StoreEntry[] = [
+      {
+        name: 'spaceStore',
+        state: { currentSpace: { type: 'object', model: 'Space', properties: ['$memberCount'] } },
+        actions: [],
+      },
+    ];
+    const groups = getScopeAtNode({ id: 'n', type: 'Column' }, 'n', { storeEntries: withComputed, models });
+    const paths = groups.find((g) => g.label === 'spaceStore')?.refs.map((r) => r.path);
+    expect(paths).toContain('spaceStore.currentSpace.name');
+    expect(paths).toContain('spaceStore.currentSpace.$memberCount');
+  });
+
+  it('falls back to declared properties when the model is unknown', () => {
+    const unknown: StoreEntry[] = [
+      { name: 'spaceStore', state: { thing: { type: 'object', model: 'Nope', properties: ['a'] } }, actions: [] },
+    ];
+    const groups = getScopeAtNode({ id: 'n', type: 'Column' }, 'n', { storeEntries: unknown, models });
+    const paths = groups.find((g) => g.label === 'spaceStore')?.refs.map((r) => r.path);
+    expect(paths).toContain('spaceStore.thing.a');
+  });
+});
+
+describe('inferRefKind', () => {
+  const tree: SchemaNode = {
+    id: 'root',
+    type: 'Column',
+    $localState: { draft: { type: 'string', initial: '' } },
+  };
+  const groups = getScopeAtNode(tree, 'root', { storeEntries });
+
+  it('resolves paths the listed scope does not contain', () => {
+    // The whole point: a store member whose metadata is incomplete is still reachable.
+    expect(inferRefKind('adamStore.somethingUndocumented.deep', groups)).toBe('store');
+    expect(inferRefKind('draft.nested', groups)).toBe('local');
+    expect(inferRefKind('$post.title', groups)).toBe('context');
+  });
+
+  it('refuses paths whose first segment matches nothing known', () => {
+    expect(inferRefKind('mysteryStore.value', groups)).toBeNull();
+    expect(inferRefKind('notAField', groups)).toBeNull();
+    expect(inferRefKind('   ', groups)).toBeNull();
   });
 });
 

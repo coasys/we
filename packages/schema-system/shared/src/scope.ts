@@ -144,11 +144,29 @@ export function findNodeChain(root: SchemaNode, nodeId: string): SchemaNode[] | 
 
 // ── Item field inference ────────────────────────────────────────────────────
 
+/**
+ * Fields every model instance carries from Ad4mModel, which aren't declared per-model.
+ * Templates use these constantly (`$post.author`, `$space.createdAt`), so leaving them
+ * out makes the picker look broken for the most common ownership/ordering conditions.
+ */
+const MODEL_BASE_FIELDS = ['id', 'author', 'createdAt', 'updatedAt'];
+
 function modelProperties(models: ModelEntry[] | undefined, entity: string): string[] | undefined {
   const model = models?.find((m) => m.name === entity || m.className === entity);
   if (!model) return undefined;
-  // `id` is present on every model instance but isn't declared as a field.
-  return ['id', ...model.fields.map((f) => f.name), ...model.relations.map((r) => r.name)];
+  return [...MODEL_BASE_FIELDS, ...model.fields.map((f) => f.name), ...model.relations.map((r) => r.name)];
+}
+
+/**
+ * The properties of a store state member: the model's fields when it holds model
+ * instances, unioned with any explicitly declared ones (a store may expose computed
+ * fields the model doesn't have).
+ */
+function memberProperties(meta: StateMemberMeta, models: ModelEntry[] | undefined): string[] | undefined {
+  const fromModel = meta.model ? modelProperties(models, meta.model) : undefined;
+  if (!fromModel) return meta.properties;
+  if (!meta.properties) return fromModel;
+  return [...new Set([...fromModel, ...meta.properties])];
 }
 
 function storeMemberMeta(
@@ -190,7 +208,7 @@ function inferItemProperties(
   }
   if (typeof token.$store === 'string') {
     const found = storeMemberMeta(options.storeEntries, token.$store);
-    return { properties: found?.meta.properties, hint: token.$store };
+    return { properties: found && memberProperties(found.meta, options.models), hint: token.$store };
   }
   if (typeof token.$local === 'string') {
     const ref = localRefs.get(token.$local);
@@ -308,18 +326,19 @@ export function getScopeAtNode(root: SchemaNode, nodeId: string, options: ScopeO
     const refs: ScopeRef[] = [];
     for (const [member, meta] of Object.entries(store.state)) {
       const path = `${store.name}.${member}`;
+      const properties = memberProperties(meta, options.models);
       refs.push({
         id: `store:${path}`,
         kind: 'store',
         path,
         label: member,
         valueType: meta.type,
-        properties: meta.properties,
+        properties,
       });
       // Objects can be drilled into directly; an array's `properties` describe its
       // *items*, which are only reachable through $each — so they aren't listed here.
-      if (meta.type === 'object' && meta.properties) {
-        for (const prop of meta.properties) {
+      if (meta.type === 'object' && properties) {
+        for (const prop of properties) {
           refs.push({
             id: `store:${path}.${prop}`,
             kind: 'store',
@@ -351,6 +370,28 @@ export function scopeRefToToken(ref: Pick<ScopeRef, 'kind' | 'path'>): unknown {
     case 'context':
       return ref.path;
   }
+}
+
+/**
+ * Work out what kind of reference a hand-typed path is, so a picker can offer paths that
+ * aren't in the listed scope — a store member whose metadata is incomplete, or a deeper
+ * nesting than the registry describes.
+ *
+ * Returns null when the path's first segment matches nothing known, rather than guessing:
+ * an unresolvable path would serialize to a token that silently reads `undefined`.
+ */
+export function inferRefKind(path: string, groups: ScopeGroup[]): ScopeRefKind | null {
+  const trimmed = path.trim();
+  if (!trimmed) return null;
+  // Context refs and iteration variables are both `$`-prefixed strings at the token level.
+  if (trimmed.startsWith('$')) return 'context';
+
+  const [head] = trimmed.split('.');
+  for (const group of groups) {
+    if (group.kind === 'store' && group.label === head) return 'store';
+    if (group.kind === 'local' && group.refs.some((r) => r.path === head)) return 'local';
+  }
+  return null;
 }
 
 /** Find the scope ref a token reads, or null if it isn't a plain reference. */

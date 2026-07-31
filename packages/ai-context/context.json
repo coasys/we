@@ -5335,11 +5335,11 @@
         },
         "personalSpaces": {
           "type": "array",
-          "properties": ["uuid", "name", "description", "url", "visibility"]
+          "model": "Space"
         },
         "sharedSpaces": {
           "type": "array",
-          "properties": ["uuid", "name", "description", "url", "visibility"]
+          "model": "Space"
         },
         "bootState": {
           "type": "string"
@@ -5512,7 +5512,7 @@
         },
         "currentSpace": {
           "type": "object",
-          "properties": ["uuid", "name", "description", "avatar", "defaultTemplateId"]
+          "model": "Space"
         },
         "foreignSpacePrefill": {
           "type": "object",
@@ -5520,6 +5520,7 @@
         },
         "signalTypes": {
           "type": "array",
+          "model": "SignalType",
           "properties": [
             "id",
             "name",
