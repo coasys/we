@@ -89,7 +89,7 @@ export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from '.
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export { getComponentMeta } from './componentMeta';
 export type { ComponentMeta, PropMeta, PropLayer } from './componentMeta';
-export { findNodeChain, findScopeRef, getScopeAtNode, scopeRefToToken } from './scope';
+export { findNodeChain, findScopeRef, getScopeAtNode, inferRefKind, scopeRefToToken } from './scope';
 export type { ScopeGroup, ScopeOptions, ScopeRef, ScopeRefKind, ScopeValueType } from './scope';
 export {
   classifyContent,

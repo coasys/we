@@ -1,6 +1,7 @@
 import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import type { ConditionOperand, FormStateToken, ScopeGroup, ScopeRef, ScopeValueType } from '@we/schema-shared';
+import { inferRefKind } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
 /**
@@ -124,6 +125,19 @@ export function ValueRefPicker(props: {
       .filter((group) => group.refs.length > 0);
   });
 
+  /**
+   * The typed text as a reference, when it resolves to a known store/local/context root
+   * and isn't already offered in the list. Lets an author reach a property the registry
+   * doesn't describe without dropping to the JSON editor.
+   */
+  const customPath = createMemo<{ kind: 'store' | 'local' | 'context'; path: string } | null>(() => {
+    const path = search().trim();
+    if (!path) return null;
+    if (props.scope.some((g) => g.refs.some((r) => r.path === path))) return null;
+    const kind = inferRefKind(path, props.scope);
+    return kind && kind !== 'item' ? { kind, path } : null;
+  });
+
   const choose = (operand: ConditionOperand) => {
     props.onSelect(operand);
     setOpen(false);
@@ -152,10 +166,27 @@ export function ValueRefPicker(props: {
                 type="text"
                 size="xs"
                 autofocus
-                placeholder="Search values…"
+                placeholder="Search or type a path…"
                 value={search()}
                 on:input={(e: CustomEvent<string>) => setSearch(e.detail)}
               />
+
+              {/* The registry describes stores by hand and so is never quite complete.
+                  Rather than dead-ending on a path it doesn't list, offer the typed one —
+                  but only when its first segment resolves to a known store, local field or
+                  context ref, so an unresolvable path can't be created by typo. */}
+              <Show when={customPath()}>
+                {(custom) => (
+                  <we-menu-item on:select={() => choose(custom())}>
+                    <Row ay="center" gap="200" minWidth="0">
+                      <we-icon name="arrow-elbow-down-right" size="xs" color="neutral-400" />
+                      <we-text fontSize="200" truncate>
+                        Use “{custom().path}”
+                      </we-text>
+                    </Row>
+                  </we-menu-item>
+                )}
+              </Show>
 
               <we-scroll-area maxHeight="240px">
                 <Column gap="100">
