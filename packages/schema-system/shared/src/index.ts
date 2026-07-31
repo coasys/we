@@ -143,8 +143,10 @@ export {
   callRosters,
   createHeartbeatPresence,
   derivePeers,
+  peerAppearance,
   peersInDataset,
   peersMatching,
+  sortByPresence,
   DEFAULT_HEARTBEAT_INTERVAL,
   DEFAULT_THRESHOLDS,
 } from './presence';
@@ -158,6 +160,7 @@ export type {
   LivenessThresholds,
   MediaSettings,
   Peer,
+  PeerAppearance,
   PresenceChannel,
   PresenceSource,
   PresenceState,

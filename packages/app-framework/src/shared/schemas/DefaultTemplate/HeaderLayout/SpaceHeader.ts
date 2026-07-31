@@ -256,12 +256,19 @@ export const spaceNavBar: SchemaNode = {
                         avatars: {
                           $map: {
                             items: { $store: 'presenceStore.online' },
-                            select: { image: '$item.avatar', hash: '$item.did' },
+                            select: {
+                              image: '$item.avatar',
+                              hash: '$item.did',
+                              // tone = declared availability (green/amber/red), emphasis = measured
+                              // liveness (fades as heartbeats go missing). Two channels, because a
+                              // peer can be busy *and* fading, and one ring colour can't say both.
+                              tone: '$item.tone',
+                              emphasis: '$item.emphasis',
+                            },
                           },
                         },
                         max: 5,
                         size: 'sm',
-                        ring: '0 0 0 2px var(--we-ring-color)',
                       },
                     },
                   ],

@@ -191,6 +191,65 @@ export function peersInDataset(peers: Peer[], datasetUri: string, includeOffline
   return peersMatching(peers, { datasetUri }, includeOffline);
 }
 
+// ── Presentation ─────────────────────────────────────────────────────────────
+// Semantic only — no colours, no opacity values. The design system owns how these render; this owns
+// what they mean.
+
+/**
+ * How a peer should be presented, split across **two independent channels because there are two
+ * independent facts**.
+ *
+ * Cramming both into one (a single ring colour, say) forces a false choice — you could show that
+ * someone is on Do Not Disturb, or that we are losing contact with them, never both. Worse, it
+ * collides with convention: amber universally reads as *away*, so spending it on a connection state
+ * makes every user misread it.
+ */
+export interface PeerAppearance {
+  /** From `availability` — what the agent declared about themselves. */
+  tone: 'success' | 'warning' | 'danger' | 'neutral';
+  /** From `liveness` — how confident we are that they are still there. */
+  emphasis: 'full' | 'muted' | 'faded';
+}
+
+const TONE_BY_AVAILABILITY: Record<Availability, PeerAppearance['tone']> = {
+  available: 'success',
+  away: 'warning',
+  busy: 'danger',
+  // An invisible agent does not publish at all, so this is unreachable in practice — declared for
+  // totality rather than as a case that renders.
+  invisible: 'neutral',
+};
+
+const EMPHASIS_BY_LIVENESS: Record<Liveness, PeerAppearance['emphasis']> = {
+  online: 'full',
+  idle: 'muted',
+  stale: 'faded',
+  // Offline peers are filtered out before rendering; 'faded' is the safe answer if one slips through.
+  offline: 'faded',
+};
+
+export function peerAppearance(peer: Peer): PeerAppearance {
+  return {
+    tone: TONE_BY_AVAILABILITY[peer.availability] ?? 'neutral',
+    emphasis: EMPHASIS_BY_LIVENESS[peer.liveness] ?? 'faded',
+  };
+}
+
+const LIVENESS_RANK: Record<Liveness, number> = { online: 0, idle: 1, stale: 2, offline: 3 };
+
+/**
+ * Most-present first.
+ *
+ * The `agentId` tiebreak is not cosmetic: peers arrive from a `Map`, so equal-liveness peers would
+ * otherwise order by insertion and **reshuffle on every heartbeat**, making a stable group of people
+ * look like it is constantly churning. Returns a new array; does not mutate.
+ */
+export function sortByPresence(peers: Peer[]): Peer[] {
+  return [...peers].sort(
+    (a, b) => LIVENESS_RANK[a.liveness] - LIVENESS_RANK[b.liveness] || a.agentId.localeCompare(b.agentId),
+  );
+}
+
 /** Every activity of a type, paired with the peer performing it. */
 export function activitiesOfType<T extends Activity['type']>(
   peers: Peer[],
@@ -257,12 +316,23 @@ export interface PresenceSource {
   stop(): void;
 }
 
-/** Wire protocol. Kept minimal: a full state, plus a flag asking peers to re-announce. */
+/** Wire protocol. Kept minimal: a full state, plus two one-bit lifecycle hints. */
 interface PresenceMessage {
   v: 1;
   state: PresenceState;
   /** Set on join. Peers seeing it re-broadcast so the joiner populates in one round trip. */
   hello?: true;
+  /**
+   * Set on leave. Peers drop the agent immediately instead of watching it decay.
+   *
+   * Without this, leaving a space is indistinguishable from a crashed laptop: the agent simply stops
+   * heartbeating and runs the full ladder, so it lingers for a full `offlineAfter` in a space it left
+   * instantly. Arrival was already one round trip via `hello`; this makes departure symmetric.
+   *
+   * An **optimisation, not a guarantee** — the transport is lossy and fire-and-forget, so a lost
+   * `bye` just means the peer decays as before. TTL remains the backstop; this is the fast path.
+   */
+  bye?: true;
 }
 
 function isPresenceMessage(payload: unknown): payload is PresenceMessage {
@@ -303,15 +373,20 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     options.onPeersChanged?.(derivePeers(states.values(), now(), thresholds));
   }
 
-  function send(hello?: true): void {
+  function send(lifecycle?: 'hello' | 'bye'): void {
     if (!running || !self) return;
     self = { ...self, updatedAt: now() };
     states.set(self.agentId, self);
     // `invisible` is a hard stop, not a client-side filter. Flux keeps broadcasting full state
     // (including route) when invisible and merely hides it on receipt, so any modified client sees
     // invisible agents and where they are.
+    //
+    // `bye` is the one exception: an invisible agent has published nothing, so peers hold no state
+    // to retract, and sending one would disclose their departure — and therefore their presence.
     if (self.availability !== 'invisible') {
-      const message: PresenceMessage = hello ? { v: 1, state: self, hello } : { v: 1, state: self };
+      const message: PresenceMessage = { v: 1, state: self };
+      if (lifecycle === 'hello') message.hello = true;
+      if (lifecycle === 'bye') message.bye = true;
       channel.publish(message);
     }
     notify();
@@ -336,6 +411,13 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
   function receive(from: string, payload: unknown): void {
     if (!running || !isPresenceMessage(payload)) return;
     if (self && from === self.agentId) return;
+
+    // A departure retracts the agent outright rather than leaving it to decay.
+    if (payload.bye) {
+      states.delete(from);
+      notify();
+      return;
+    }
 
     // Trust the transport's sender id over the payload's — a peer must not be able to write into
     // another agent's slot. Where `authenticatedSender` is false this is still the best available
@@ -362,7 +444,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       self = { ...state, updatedAt: now() };
       states.set(self.agentId, self);
       unsubscribe = channel.onMessage(receive);
-      send(true);
+      send('hello');
       schedule(interval);
     },
 
@@ -400,6 +482,11 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     },
 
     stop() {
+      // Announce the departure *before* tearing down, and while `running` is still true so `send`
+      // does not short-circuit. Peers drop us at once instead of watching a space change decay like
+      // a crash. Best-effort by design — see `PresenceMessage.bye`.
+      send('bye');
+
       running = false;
       if (timer !== null) {
         clearTimer(timer);

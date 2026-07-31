@@ -8,10 +8,12 @@ import {
   DEFAULT_THRESHOLDS,
   derivePeers,
   type Peer,
+  peerAppearance,
   peersInDataset,
   peersMatching,
   type PresenceChannel,
   type PresenceState,
+  sortByPresence,
 } from './presence';
 
 const SPACE = 'neighbourhood://QmSpace';
@@ -142,6 +144,60 @@ describe('selectors', () => {
       peersMatching(peers, { datasetUri: SPACE, path: '/kanban' }, includeOffline).map((p) => p.agentId);
     expect(at()).not.toContain('gone');
     expect(at(true)).toContain('gone');
+  });
+});
+
+describe('peerAppearance', () => {
+  const at = (overrides: Partial<PresenceState>, age = 0) =>
+    peerAppearance(derivePeers([state('a', { ...overrides, updatedAt: -age })], 0)[0]);
+
+  it('takes tone from what the agent declared, not from their connection', () => {
+    expect(at({ availability: 'available' }).tone).toBe('success');
+    expect(at({ availability: 'away' }).tone).toBe('warning');
+    expect(at({ availability: 'busy' }).tone).toBe('danger');
+  });
+
+  it('takes emphasis from the connection, not from what they declared', () => {
+    expect(at({}, 0).emphasis).toBe('full');
+    expect(at({}, DEFAULT_THRESHOLDS.idleAfter).emphasis).toBe('muted');
+    expect(at({}, DEFAULT_THRESHOLDS.staleAfter).emphasis).toBe('faded');
+  });
+
+  it('keeps the two axes independent — a busy agent can also be fading', () => {
+    // The whole reason for two channels: one ring colour could not express both at once.
+    const busyAndFading = at({ availability: 'busy' }, DEFAULT_THRESHOLDS.staleAfter);
+    expect(busyAndFading).toEqual({ tone: 'danger', emphasis: 'faded' });
+  });
+});
+
+describe('sortByPresence', () => {
+  it('puts the most present first', () => {
+    const peers = derivePeers(
+      [
+        state('stale', { updatedAt: -DEFAULT_THRESHOLDS.staleAfter }),
+        state('online', { updatedAt: 0 }),
+        state('idle', { updatedAt: -DEFAULT_THRESHOLDS.idleAfter }),
+      ],
+      0,
+    );
+    expect(sortByPresence(peers).map((p) => p.agentId)).toEqual(['online', 'idle', 'stale']);
+  });
+
+  it('orders equal-liveness peers stably, so the row does not reshuffle every heartbeat', () => {
+    // Peers arrive from a Map, so without a tiebreak their order follows insertion and a settled
+    // group of people appears to churn on each beat.
+    const forward = derivePeers([state('c'), state('a'), state('b')], 0);
+    const backward = derivePeers([state('b'), state('c'), state('a')], 0);
+
+    expect(sortByPresence(forward).map((p) => p.agentId)).toEqual(['a', 'b', 'c']);
+    expect(sortByPresence(backward).map((p) => p.agentId)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('does not mutate its input', () => {
+    const peers = derivePeers([state('b'), state('a')], 0);
+    const before = peers.map((p) => p.agentId);
+    sortByPresence(peers);
+    expect(peers.map((p) => p.agentId)).toEqual(before);
   });
 });
 
@@ -324,6 +380,38 @@ describe('createHeartbeatPresence', () => {
     const me = source.peers().find((p) => p.agentId === 'me')!;
     expect(me.focus?.path).toBe('/docs');
     expect(me.activities).toHaveLength(1);
+  });
+
+  it('announces a departure on stop, so leaving does not look like a crash', () => {
+    const { published, source } = start();
+    published.length = 0;
+
+    source.stop();
+
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatchObject({ v: 1, bye: true });
+  });
+
+  it('drops a departing peer at once rather than letting it decay', () => {
+    const { deliver, source } = start();
+    deliver('peer', { v: 1, state: state('peer') });
+    expect(source.peers().map((p) => p.agentId)).toContain('peer');
+
+    deliver('peer', { v: 1, state: state('peer'), bye: true });
+
+    // Not merely 'offline' — gone. Decay is the backstop for a lost bye, not the normal path.
+    expect(source.peers().map((p) => p.agentId)).not.toContain('peer');
+  });
+
+  it('stays silent on departure when invisible', () => {
+    // An invisible agent published nothing, so peers hold no state to retract — and a bye would
+    // disclose the departure, and therefore the presence.
+    const { published, source } = start({ availability: 'invisible' });
+    published.length = 0;
+
+    source.stop();
+
+    expect(published).toHaveLength(0);
   });
 
   it('stops cleanly and publishes nothing afterwards', () => {

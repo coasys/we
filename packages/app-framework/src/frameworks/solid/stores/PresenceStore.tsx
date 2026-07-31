@@ -38,8 +38,15 @@ import type { AgentProfileSummary } from '@shared/agentHelpers';
 import { createTabCoordinator } from '@shared/tabCoordinator';
 import { useAdamStore } from '@solid/stores/AdamStore';
 import { useRouteStore } from '@solid/stores/RouteStore';
-import type { Activity, Focus, FocusDepth, Peer, PresenceSource } from '@we/schema-shared';
-import { applyFocusDepth, callRosters, createHeartbeatPresence, peersInDataset } from '@we/schema-shared';
+import type { Activity, Focus, FocusDepth, Peer, PeerAppearance, PresenceSource } from '@we/schema-shared';
+import {
+  applyFocusDepth,
+  callRosters,
+  createHeartbeatPresence,
+  peerAppearance,
+  peersInDataset,
+  sortByPresence,
+} from '@we/schema-shared';
 import {
   type Accessor,
   createContext,
@@ -51,8 +58,13 @@ import {
   useContext,
 } from 'solid-js';
 
-/** A peer joined with whatever profile the agent cache holds. `did` mirrors `agentId` for template ergonomics. */
-export type PresentAgent = Peer & Partial<AgentProfileSummary> & { did: string };
+/**
+ * A peer joined with whatever profile the agent cache holds, plus its derived appearance.
+ *
+ * `did` mirrors `agentId`, and `tone`/`emphasis` are flattened rather than nested, so a template can
+ * reach them with a plain `$item.tone` in a `$map` — no nested path resolution needed.
+ */
+export type PresentAgent = Peer & Partial<AgentProfileSummary> & { did: string } & PeerAppearance;
 
 export interface PresenceStore {
   /** Every peer we know of in the current space, liveness-derived, offline included. */
@@ -178,9 +190,11 @@ export function PresenceStoreProvider(props: ParentProps) {
   // resolves its dids; both read the same cache that `fetchAgent` populates.
   const peers = createMemo<PresentAgent[]>(() => {
     const cached = adamStore.agents();
-    return rawPeers().map((peer) => {
+    // Sorted most-present-first, with a stable tiebreak — without it, equal-liveness peers reorder
+    // as the underlying Map iterates and the avatar row reshuffles on every heartbeat.
+    return sortByPresence(rawPeers()).map((peer) => {
       const profile = cached.find((a) => a.did === peer.agentId);
-      return { ...peer, ...profile, did: peer.agentId };
+      return { ...peer, ...profile, ...peerAppearance(peer), did: peer.agentId };
     });
   });
 
