@@ -7,11 +7,10 @@
  * Sets up Express servers for each app defined in we-seed.json
  */
 
-import express from 'express';
 import { app } from 'electron';
+import express from 'express';
 import { existsSync } from 'fs';
-import { join } from 'path';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);

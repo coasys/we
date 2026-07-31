@@ -32,11 +32,11 @@ import type {
   AdapterCapabilities,
   CapabilityGap,
   ModelClass as RendererModelClass,
-  RendererDataBindings,
   QueryAdapter,
   QueryIR,
   QueryOptions,
   QueryPlan,
+  RendererDataBindings,
   Scope,
 } from '@we/schema-shared';
 import { irToFlatQuery, planQuery, whereUsesCombinator } from '@we/schema-shared';

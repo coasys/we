@@ -1,7 +1,7 @@
-import { BlockToolbar } from '../BlockToolbar';
 import { Column } from '@we/components/solid';
 import { createSignal, Show } from 'solid-js';
 
+import { BlockToolbar } from '../BlockToolbar';
 import { DividerDisplay } from './DividerDisplay';
 
 type DividerVariant = 'solid' | 'dashed' | 'dotted';

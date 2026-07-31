@@ -257,7 +257,6 @@ export class CollectionBlockNode extends DecoratorNode<() => JSX.Element> {
   }
 
   static importJSON(serializedNode: SerializedCollectionNode): CollectionBlockNode {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { type: _t, version: _v, ...props } = serializedNode;
     return new CollectionBlockNode(props as Record<string, unknown>);
   }

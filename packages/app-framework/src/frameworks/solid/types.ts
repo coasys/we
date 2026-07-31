@@ -1,9 +1,6 @@
 import type { Ad4mModel } from '@coasys/ad4m';
 import type { AdamStore, AiStore, AppStore, RouteStore, SpaceStore, TemplateStore, ThemeStore } from '@solid/stores';
-import type { QueryAdapter, RendererStores } from '@we/schema-shared';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ModelClass = typeof Ad4mModel & (new (...args: any[]) => Ad4mModel);
+import type { RendererStores } from '@we/schema-shared';
 
 export type ModelStoreOptions = {
   perspective?: string;

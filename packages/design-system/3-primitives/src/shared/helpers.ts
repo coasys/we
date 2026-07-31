@@ -6,7 +6,6 @@ import {
   BASE_TYPOGRAPHY_SPECS as BASE_TYPOGRAPHY,
   BASE_VISUAL_SPECS as BASE_VISUAL,
   computeBgImageComposite,
-  declCSS as decl,
   getMarginValues,
   getPaddingValues,
   getRadiusValues,
@@ -23,7 +22,6 @@ import {
   resolveFontFamily,
   resolveFontWeight,
   resolveLineHeight,
-  stateDeclCSS as stateDecl,
   tokenVar,
   zIndexVar,
 } from '@we/design-utils';

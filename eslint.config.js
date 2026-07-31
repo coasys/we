@@ -178,6 +178,13 @@ export default [
       ...tsPlugin.configs.recommended.rules,
       'simple-import-sort/imports': 'error',
       '@typescript-eslint/no-explicit-any': 'warn',
+      // A leading underscore is the codebase's existing signal for "deliberately unused" —
+      // destructuring a key purely to keep it out of a `...rest` spread, or a positional
+      // parameter that exists only to reach a later one.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
     },
   },
   // Turn off any rules that conflict with prettier

@@ -168,7 +168,6 @@ export default function TemplateProvider() {
       {/* Router — keyed on template ID so buildRoutes reruns when the template changes.
            Template switching is a rare intentional action; the full remount is acceptable. */}
       <Show when={templateSchema.id || 'empty'} keyed>
-        {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
         {(_id) => (
           <Router root={Layout}>
             {buildRoutes(stores, templateSchema.routes ?? [])}

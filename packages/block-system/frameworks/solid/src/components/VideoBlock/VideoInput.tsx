@@ -1,9 +1,9 @@
-import { BlockToolbar } from '../BlockToolbar';
 import { Column, Row } from '@we/components/solid';
 import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 import { BlockPlaceholder } from '../BlockPlaceholder';
+import { BlockToolbar } from '../BlockToolbar';
 import { VideoDisplay } from './VideoDisplay';
 
 interface VideoInputProps {

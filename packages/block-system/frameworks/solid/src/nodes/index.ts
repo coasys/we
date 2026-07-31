@@ -3,8 +3,8 @@
  * Each is a DecoratorNode produced by createBlockNodeClass().
  * Register these in BlockComposer/BlockRenderer initialConfig.nodes.
  */
-import { createBlockNodeClass } from './createBlockNodeClass';
 import { CollectionBlockNode } from './CollectionBlockNode';
+import { createBlockNodeClass } from './createBlockNodeClass';
 
 export { CollectionBlockNode };
 

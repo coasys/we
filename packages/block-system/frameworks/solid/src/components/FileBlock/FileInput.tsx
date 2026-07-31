@@ -1,4 +1,3 @@
-import { BlockToolbar } from '../BlockToolbar';
 import { Column, Row } from '@we/components/solid';
 import type { FileData } from '@we/models';
 import { readFileAsFileData } from '@we/models';
@@ -6,6 +5,7 @@ import { createSignal, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 import { BlockPlaceholder } from '../BlockPlaceholder';
+import { BlockToolbar } from '../BlockToolbar';
 import { FileDisplay } from './FileDisplay';
 
 interface FileInputProps {

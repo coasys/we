@@ -8,6 +8,7 @@ import type { color as colorTokens } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
 import type { effect as effectTokens } from '../src/effect.js';
 import type { font as fontTokens } from '../src/font.js';
+import type { layout as layoutTokens } from '../src/layout.js';
 import type { shadow as shadowTokens } from '../src/shadow.js';
 import type {
   avatarSize as avatarSizeTokens,
@@ -17,7 +18,6 @@ import type {
 } from '../src/size.js';
 import type { space as spaceTokens } from '../src/space.js';
 import type { zIndex as zIndexTokens } from '../src/z-index.js';
-import type { layout as layoutTokens } from '../src/layout.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
