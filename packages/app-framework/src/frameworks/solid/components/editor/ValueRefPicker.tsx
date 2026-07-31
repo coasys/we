@@ -283,7 +283,27 @@ export function OperandInput(props: {
   allowCount?: boolean;
   placeholder?: string;
 }) {
-  const isLiteral = () => props.value?.kind === 'literal' || props.value?.kind === 'list';
+  /**
+   * "Show me the picker" is UI state, not a property of the value.
+   *
+   * It can't be derived from the operand: an empty reference serializes to `''`, which
+   * reads back as an empty *literal*, so callers that write through on every change
+   * (ValueEditor does) would bounce straight back to the literal input — the switch
+   * button did nothing at all. Holding the intent locally also means the schema keeps its
+   * current value until a reference is actually chosen.
+   */
+  const [refMode, setRefMode] = createSignal(false);
+
+  const isLiteral = () => !refMode() && (props.value?.kind === 'literal' || props.value?.kind === 'list');
+
+  const pick = (operand: ConditionOperand) => {
+    setRefMode(false);
+    // Backing out of the picker via "use a fixed value" restores the literal that was
+    // already there rather than clearing it — switching modes and changing your mind
+    // shouldn't cost you the text you had typed.
+    if (operand.kind === 'literal' && operand.value === '' && props.value?.kind === 'literal') return;
+    props.onChange(operand);
+  };
 
   const literalControl = () => {
     if (props.list) {
@@ -352,13 +372,14 @@ export function OperandInput(props: {
     );
   };
 
-  /** Swap back to picking a reference, discarding the current composite/literal value. */
-  const resetToRef = () => props.onChange({ kind: 'context', path: '' });
-
-  const resetButton = (title: string) => (
+  /**
+   * Swap to the reference picker. Nothing is written yet — the current value stands until
+   * a reference is chosen, so cancelling out of the picker leaves the node as it was.
+   */
+  const resetButton = (title: string, icon: string) => (
     <we-tooltip title={title}>
-      <we-button variant="ghost" size="xs" square onClick={resetToRef} aria-label={title}>
-        <we-icon name="arrow-counter-clockwise" size="xs" />
+      <we-button variant="ghost" size="xs" square onClick={() => setRefMode(true)} aria-label={title}>
+        <we-icon name={icon} size="xs" />
       </we-button>
     </we-tooltip>
   );
@@ -377,7 +398,7 @@ export function OperandInput(props: {
 
   return (
     <Show
-      when={!countValue() && !formStateValue()}
+      when={refMode() || (!countValue() && !formStateValue())}
       fallback={
         <Row ay="center" gap="100" minWidth="0">
           <Show when={countValue()}>
@@ -415,7 +436,7 @@ export function OperandInput(props: {
               </>
             )}
           </Show>
-          {resetButton('Pick a different value')}
+          {resetButton('Pick a different value', 'arrow-counter-clockwise')}
         </Row>
       }
     >
@@ -424,8 +445,8 @@ export function OperandInput(props: {
         fallback={
           <ValueRefPicker
             scope={props.scope}
-            value={props.value}
-            onSelect={props.onChange}
+            value={refMode() ? undefined : props.value}
+            onSelect={pick}
             allowLiteral
             allowCount={props.allowCount}
             placeholder={props.placeholder}
@@ -434,11 +455,7 @@ export function OperandInput(props: {
       >
         <Row ay="center" gap="100" minWidth="0">
           {literalControl()}
-          <we-tooltip title="Pick a value from data instead">
-            <we-button variant="ghost" size="xs" square onClick={resetToRef} aria-label="Pick from data">
-              <we-icon name="database" size="xs" />
-            </we-button>
-          </we-tooltip>
+          {resetButton('Pick a value from data instead', 'database')}
         </Row>
       </Show>
     </Show>
