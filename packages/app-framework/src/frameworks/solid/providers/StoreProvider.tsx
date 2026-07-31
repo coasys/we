@@ -2,6 +2,7 @@ import {
   AdamStoreProvider,
   AiStoreProvider,
   AppStoreProvider,
+  PresenceStoreProvider,
   RouteStoreProvider,
   SpaceStoreProvider,
   TemplateStoreProvider,
@@ -17,7 +18,12 @@ export default function StoreProvider(props: ParentProps) {
           <TemplateStoreProvider>
             <AiStoreProvider>
               <AppStoreProvider>
-                <SpaceStoreProvider>{props.children}</SpaceStoreProvider>
+                <SpaceStoreProvider>
+                  {/* Innermost: presence follows the current perspective and the route, so it needs
+                      AdamStore and RouteStore above it. App-lifetime, not view-lifetime — it must
+                      outlive navigation rather than being torn down with a view. */}
+                  <PresenceStoreProvider>{props.children}</PresenceStoreProvider>
+                </SpaceStoreProvider>
               </AppStoreProvider>
             </AiStoreProvider>
           </TemplateStoreProvider>

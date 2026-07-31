@@ -8,6 +8,7 @@ import {
   useAdamStore,
   useAiStore,
   useAppStore,
+  usePresenceStore,
   useRouteStore,
   useSpaceStore,
   useTemplateStore,
@@ -34,6 +35,7 @@ export default function TemplateProvider() {
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
   const routeStore = useRouteStore();
+  const presenceStore = usePresenceStore();
 
   // Set CSS custom property on :root so position:fixed elements (e.g. CesiumGlobe canvas)
   // can consume the sidebar width without hard-coding it.
@@ -76,6 +78,7 @@ export default function TemplateProvider() {
     themeStore,
     templateStore,
     routeStore,
+    presenceStore,
     consoleStore,
     model: modelStore,
     // Host wiring, not backend adaptation — any backend would wire these the same way, so they stay
