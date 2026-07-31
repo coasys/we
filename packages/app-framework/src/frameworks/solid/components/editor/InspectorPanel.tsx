@@ -363,7 +363,9 @@ function TreeNode(props: TreeNodeProps) {
         {/* Context label: route path, slot name, or prop name */}
         <Show when={props.contextLabel}>
           <we-text
-            styles={{ 'font-size': '10px', 'flex-shrink': '0', 'white-space': 'nowrap', 'line-height': '1' }}
+            fontSize="10px"
+            lineHeight="1"
+            styles={{ 'flex-shrink': '0', 'white-space': 'nowrap' }}
             color="neutral-400"
           >
             {props.contextLabel}:
@@ -372,15 +374,12 @@ function TreeNode(props: TreeNodeProps) {
 
         {/* Component type name */}
         <we-text
-          styles={{
-            'font-size': '11px',
-            'white-space': 'nowrap',
-            overflow: 'hidden',
-            'text-overflow': 'ellipsis',
-            flex: '1',
-            'min-width': '0',
-            'line-height': '1',
-          }}
+          fontSize="11px"
+          lineHeight="1"
+          overflow="hidden"
+          flex="1"
+          minWidth="0"
+          styles={{ 'white-space': 'nowrap', 'text-overflow': 'ellipsis' }}
           color={isSelected() ? 'primary-700' : isSpecial() ? 'primary-500' : 'neutral-700'}
           fontWeight={isSelected() ? '600' : '400'}
         >
@@ -724,7 +723,7 @@ function NodeProperties(props: {
       </Column>
 
       {/* Scrollable content */}
-      <we-scroll-area style={{ flex: '1' }}>
+      <we-scroll-area flex="1">
         {/* Content — text, a bound value, or a value-level conditional */}
         <Show when={showContent()}>
           <Column py="200" borderBottom="1px solid neutral-100">
@@ -933,7 +932,10 @@ function InlineSpaceInput(props: {
       >
         <we-text
           fontWeight={props.value ? '500' : '400'}
-          styles={{ color: textColor(), 'font-size': '10px', 'min-width': '22px', 'text-align': 'center' }}
+          color={textColor()}
+          fontSize="10px"
+          minWidth="22px"
+          textAlign="center"
         >
           {props.value || props.placeholder}
         </we-text>
@@ -1027,7 +1029,7 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       {/* Trigger */}
-      <we-button variant="outline" size="xs" style={{ width: '100%' }} onClick={() => setOpen((v) => !v)}>
+      <we-button variant="outline" size="xs" width="100%" onClick={() => setOpen((v) => !v)}>
         <Row ay="center" gap="200" width="100%">
           <div
             style={{
@@ -1231,7 +1233,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       {/* Trigger */}
-      <we-button variant="outline" size="xs" style={{ width: '100%' }} onClick={() => setOpen((v) => !v)}>
+      <we-button variant="outline" size="xs" width="100%" onClick={() => setOpen((v) => !v)}>
         <Row ay="center" gap="200" width="100%">
           <div
             style={{
@@ -1483,7 +1485,7 @@ function BgImagePicker(props: {
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       {/* Trigger */}
-      <we-button variant="outline" size="xs" style={{ width: '100%' }} onClick={() => setOpen((v) => !v)}>
+      <we-button variant="outline" size="xs" width="100%" onClick={() => setOpen((v) => !v)}>
         <Row ay="center" gap="200" width="100%">
           <div
             style={{
@@ -1562,7 +1564,7 @@ function BgImagePicker(props: {
                       </we-text>
                     }
                   >
-                    <Grid columns={4} gap="100" styles={{ 'max-height': '200px', 'overflow-y': 'auto' }}>
+                    <Grid columns={4} gap="100" maxHeight="200px" overflowY="auto">
                       <For each={images()}>
                         {(img) => (
                           <button
@@ -1738,14 +1740,18 @@ function BoxModel(props: {
   const paddingBox = () => (
     <Grid
       template="28px 1fr 28px"
-      styles={{ 'grid-template-rows': '20px 1fr 20px', 'min-height': '72px' }}
+      minHeight="72px"
+      styles={{ 'grid-template-rows': '20px 1fr 20px' }}
       bg={BOX_PADDING.bg}
       border={`1px solid ${BOX_PADDING.border}`}
       r="100"
       gap="0"
     >
       <we-text
-        styles={{ padding: '2px 4px', 'line-height': '16px', 'white-space': 'nowrap' }}
+        py="2px"
+        px="4px"
+        lineHeight="16px"
+        styles={{ 'white-space': 'nowrap' }}
         fontSize="10px"
         color={BOX_PADDING.label}
       >
@@ -1766,7 +1772,9 @@ function BoxModel(props: {
         border={`1px solid ${BOX_ELEMENT.border}`}
         r="50"
         overflow="hidden"
-        styles={{ margin: '3px', padding: '0 6px' }}
+        m="3px"
+        py="0"
+        px="6px"
       >
         <we-text fontSize="10px" fontWeight="700" color={BOX_ELEMENT.text} truncate>
           {props.meta?.typeName ?? ''}
@@ -1880,7 +1888,10 @@ function BoxModel(props: {
             gap="0"
           >
             <we-text
-              styles={{ padding: '2px 4px', 'line-height': '16px', 'white-space': 'nowrap' }}
+              py="2px"
+              px="4px"
+              lineHeight="16px"
+              styles={{ 'white-space': 'nowrap' }}
               fontSize="10px"
               color={BOX_MARGIN.label}
             >

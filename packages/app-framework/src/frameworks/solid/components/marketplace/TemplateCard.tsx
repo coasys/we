@@ -198,7 +198,7 @@ export function TemplateCard(props: Props) {
                 flex="1"
                 minWidth="0"
                 height="120px"
-                style={{ cursor: 'pointer' }}
+                cursor="pointer"
                 onClick={() => setLightboxIndex(i())}
               />
             )}

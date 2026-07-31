@@ -142,15 +142,7 @@ function HueSwatch(props: { hue: number }) {
 
 function SectionLabel(props: { children: string }) {
   return (
-    <we-text
-      style={{
-        fontSize: tokenVar('font-size', '200'),
-        fontWeight: '600',
-        color: tokenVar('color', 'neutral-500'),
-        'text-transform': 'uppercase',
-        'letter-spacing': '0.05em',
-      }}
-    >
+    <we-text fontSize="200" fontWeight="600" color="neutral-500" textTransform="uppercase" letterSpacing="0.05em">
       {props.children}
     </we-text>
   );
@@ -226,18 +218,12 @@ export function ThemePanel() {
     const val = () => (overrides()[key] as number | undefined) ?? defaultVal;
     return (
       <Row ay="center" gap="300">
-        <we-text
-          style={{
-            'min-width': '80px',
-            'font-size': tokenVar('font-size', '300'),
-            color: tokenVar('color', 'neutral-600'),
-          }}
-        >
+        <we-text minWidth="80px" fontSize="300" color="neutral-600">
           {label}
         </we-text>
         <HueSwatch hue={val()} />
         <we-slider
-          style={{ flex: '1' }}
+          flex="1"
           value={val()}
           min={0}
           max={359}
@@ -245,14 +231,7 @@ export function ThemePanel() {
           on:input={(e: CustomEvent) => setOverride(key, Number(e.detail))}
           on:change={() => saveTheme()}
         />
-        <we-text
-          style={{
-            'min-width': '32px',
-            'font-size': tokenVar('font-size', '200'),
-            color: tokenVar('color', 'neutral-500'),
-            'text-align': 'right',
-          }}
-        >
+        <we-text minWidth="32px" fontSize="200" color="neutral-500" textAlign="right">
           {val()}°
         </we-text>
       </Row>
@@ -267,17 +246,11 @@ export function ThemePanel() {
     };
     return (
       <Row ay="center" gap="300">
-        <we-text
-          style={{
-            'min-width': '130px',
-            'font-size': tokenVar('font-size', '300'),
-            color: tokenVar('color', 'neutral-600'),
-          }}
-        >
+        <we-text minWidth="130px" fontSize="300" color="neutral-600">
           {label}
         </we-text>
         <we-slider
-          style={{ flex: '1' }}
+          flex="1"
           value={numVal()}
           min={min}
           max={max}
@@ -285,14 +258,7 @@ export function ThemePanel() {
           on:input={(e: CustomEvent) => setOverride(key, `${e.detail}%`)}
           on:change={() => saveTheme()}
         />
-        <we-text
-          style={{
-            'min-width': '36px',
-            'font-size': tokenVar('font-size', '200'),
-            color: tokenVar('color', 'neutral-500'),
-            'text-align': 'right',
-          }}
-        >
+        <we-text minWidth="36px" fontSize="200" color="neutral-500" textAlign="right">
           {numVal()}%
         </we-text>
       </Row>
@@ -314,17 +280,11 @@ export function ThemePanel() {
     const val = () => (overrides()[key] as number | undefined) ?? defaultVal;
     return (
       <Row ay="center" gap="300">
-        <we-text
-          style={{
-            'min-width': '120px',
-            'font-size': tokenVar('font-size', '300'),
-            color: tokenVar('color', 'neutral-600'),
-          }}
-        >
+        <we-text minWidth="120px" fontSize="300" color="neutral-600">
           {label}
         </we-text>
         <we-slider
-          style={{ flex: '1' }}
+          flex="1"
           value={val()}
           min={min}
           max={max}
@@ -335,14 +295,7 @@ export function ThemePanel() {
           }}
           on:change={() => saveTheme()}
         />
-        <we-text
-          style={{
-            'min-width': '36px',
-            'font-size': tokenVar('font-size', '200'),
-            color: tokenVar('color', 'neutral-500'),
-            'text-align': 'right',
-          }}
-        >
+        <we-text minWidth="36px" fontSize="200" color="neutral-500" textAlign="right">
           {format(val())}
         </we-text>
       </Row>
@@ -368,17 +321,11 @@ export function ThemePanel() {
     };
     return (
       <Row ay="center" gap="300">
-        <we-text
-          style={{
-            'min-width': labelWidth,
-            'font-size': tokenVar('font-size', '300'),
-            color: tokenVar('color', 'neutral-600'),
-          }}
-        >
+        <we-text minWidth={labelWidth} fontSize="300" color="neutral-600">
           {label}
         </we-text>
         <we-select
-          style={{ flex: '1' }}
+          flex="1"
           value={current()}
           options={options}
           size="sm"
@@ -402,12 +349,7 @@ export function ThemePanel() {
     return (
       <Row gap="100">
         {(Object.keys(labels) as T[]).map((p) => (
-          <we-button
-            size="sm"
-            variant={isActive(p) ? 'secondary' : 'ghost'}
-            onClick={() => onSelect(p)}
-            style={{ flex: '1' }}
-          >
+          <we-button size="sm" variant={isActive(p) ? 'secondary' : 'ghost'} onClick={() => onSelect(p)} flex="1">
             {labels[p]}
           </we-button>
         ))}
@@ -490,7 +432,9 @@ export function ThemePanel() {
         borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
         styles={{ 'flex-shrink': '0' }}
       >
-        <we-text style={{ 'font-size': tokenVar('font-size', '500'), 'font-weight': '600' }}>Theme Editor</we-text>
+        <we-text fontSize="500" fontWeight="600">
+          Theme Editor
+        </we-text>
         <we-tooltip title="Close theme panel">
           <we-button variant="ghost" size="sm" onClick={() => aiStore.closeThemePanel()}>
             <we-icon name="x" size="sm" />
@@ -503,13 +447,7 @@ export function ThemePanel() {
         fallback={
           <Column ax="center" ay="center" flex="1" gap="300" p="500">
             <we-icon name="paint-bucket" color="neutral-300" size="xl" />
-            <we-text
-              style={{
-                'font-size': tokenVar('font-size', '400'),
-                color: tokenVar('color', 'neutral-500'),
-                'text-align': 'center',
-              }}
-            >
+            <we-text fontSize="400" color="neutral-500" textAlign="center">
               No theme selected for editing
             </we-text>
             <we-button variant="secondary" size="sm" onClick={() => themeStore.startEditing()}>
@@ -518,7 +456,7 @@ export function ThemePanel() {
           </Column>
         }
       >
-        <we-scroll-area style={{ flex: '1' }}>
+        <we-scroll-area flex="1">
           <Column gap="0" p="400">
             {/* ── Name + icon ── */}
             <Column gap="200" borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="400" mb="0">
@@ -536,7 +474,7 @@ export function ThemePanel() {
                   value={editing()!.name}
                   placeholder="Theme name"
                   size="sm"
-                  style={{ flex: '1' }}
+                  flex="1"
                   on:input={(e: CustomEvent) => themeStore.updateEditingMeta({ name: e.detail })}
                   on:blur={() => saveTheme()}
                 />
@@ -558,7 +496,7 @@ export function ThemePanel() {
                 <we-button
                   size="sm"
                   variant={(overrides().multiplier ?? 1) === 1 ? 'secondary' : 'ghost'}
-                  style={{ flex: '1' }}
+                  flex="1"
                   onClick={() => {
                     setOverrides({ multiplier: 1, subtractor: '0%' });
                   }}
@@ -569,7 +507,7 @@ export function ThemePanel() {
                 <we-button
                   size="sm"
                   variant={(overrides().multiplier ?? 1) === -1 ? 'secondary' : 'ghost'}
-                  style={{ flex: '1' }}
+                  flex="1"
                   onClick={() => {
                     setOverrides({ multiplier: -1, subtractor: '108%' });
                   }}
@@ -583,7 +521,7 @@ export function ThemePanel() {
             {/* ── Color ── */}
             <CollapsibleSection title="Color">
               <Column gap="200">
-                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                <we-text fontSize="200" color="neutral-400">
                   Hues
                 </we-text>
                 {hueSlider('Primary', 'primaryHue', 220)}
@@ -593,14 +531,14 @@ export function ThemePanel() {
                 {hueSlider('Neutral', 'neutralHue', 220)}
               </Column>
               <Column gap="200">
-                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                <we-text fontSize="200" color="neutral-400">
                   Saturation
                 </we-text>
                 {percentSlider('Colors', 'saturation', 0, 100, 50)}
                 {percentSlider('Neutrals', 'neutralSaturation', 0, 100, 20)}
               </Column>
               <Column gap="200">
-                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                <we-text fontSize="200" color="neutral-400">
                   Lightness
                 </we-text>
                 {percentSlider('Subtractor', 'subtractor', 0, 200, 0)}
@@ -610,7 +548,7 @@ export function ThemePanel() {
             {/* ── Shape ── */}
             <CollapsibleSection title="Shape">
               <Column gap="200">
-                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                <we-text fontSize="200" color="neutral-400">
                   Preset
                 </we-text>
                 {presetRow(
@@ -623,7 +561,7 @@ export function ThemePanel() {
                 )}
               </Column>
               <Column gap="200">
-                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                <we-text fontSize="200" color="neutral-400">
                   Overrides
                 </we-text>
                 {selectControl('Controls', 'controlRadius', RADIUS_OPTIONS, '80px')}
@@ -638,7 +576,7 @@ export function ThemePanel() {
               {selectControl('Letter spacing', 'letterSpacing', LETTER_SPACING_OPTIONS, '100px', 'default')}
               {selectControl('Line height', 'lineHeight', LINE_HEIGHT_OPTIONS, '100px', 'default')}
               <Column gap="200">
-                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                <we-text fontSize="200" color="neutral-400">
                   Scale
                 </we-text>
                 {presetRow(
@@ -655,7 +593,7 @@ export function ThemePanel() {
             {/* ── Spacing & Density ── */}
             <CollapsibleSection title="Spacing & Density">
               <Column gap="200">
-                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                <we-text fontSize="200" color="neutral-400">
                   Preset
                 </we-text>
                 {presetRow(
@@ -668,7 +606,7 @@ export function ThemePanel() {
                 )}
               </Column>
               <Column gap="200">
-                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                <we-text fontSize="200" color="neutral-400">
                   Overrides
                 </we-text>
                 {selectControl('Control padding', 'controlPaddingX', SPACING_OPTIONS, '120px')}
@@ -682,7 +620,7 @@ export function ThemePanel() {
             {/* ── Effects & Motion ── */}
             <CollapsibleSection title="Effects & Motion">
               <Column gap="200">
-                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                <we-text fontSize="200" color="neutral-400">
                   Shadow intensity
                 </we-text>
                 {presetRow(
@@ -711,7 +649,7 @@ export function ThemePanel() {
                 clearOnZero: true,
               })}
               <Column gap="200">
-                <we-text style={{ 'font-size': tokenVar('font-size', '200'), color: tokenVar('color', 'neutral-400') }}>
+                <we-text fontSize="200" color="neutral-400">
                   Animation speed
                 </we-text>
                 {presetRow(

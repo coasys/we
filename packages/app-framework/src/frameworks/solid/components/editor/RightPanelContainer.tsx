@@ -111,7 +111,8 @@ function PanelUnit(props: PanelUnitProps) {
           bg={props.isOpen() ? 'neutral-100' : 'neutral-50'}
           borderLeft={`1px solid ${tokenVar('color', 'neutral-200')}`}
           hoverProps={{ bg: 'neutral-100' }}
-          styles={{ cursor: 'ew-resize', 'flex-shrink': '0' }}
+          cursor="ew-resize"
+          styles={{ 'flex-shrink': '0' }}
           onMouseDown={onMouseDown}
         >
           <we-icon name={props.icon} size="sm" color={props.isOpen() ? 'neutral-700' : 'neutral-400'} />
@@ -160,11 +161,9 @@ export function RightPanelContainer() {
       right="0"
       height="100vh"
       zIndex={20}
-      styles={{
-        transform: containerTransform(),
-        transition: panelResizing() ? 'none' : 'transform 300ms ease',
-        'pointer-events': aiStore.isEditingTemplate() || aiStore.isEditingTheme() ? 'auto' : 'none',
-      }}
+      transform={containerTransform()}
+      transition={panelResizing() ? 'none' : 'transform 300ms ease'}
+      pointerEvents={aiStore.isEditingTemplate() || aiStore.isEditingTheme() ? 'auto' : 'none'}
     >
       {/* Theme panel — visible when isEditingTheme */}
       <Show when={aiStore.isEditingTheme()}>

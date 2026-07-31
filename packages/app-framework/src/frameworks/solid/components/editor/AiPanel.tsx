@@ -237,7 +237,7 @@ function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; str
         <we-markdown content={displayContent()} markdownGap="400" />
       </Show>
       <Show when={props.message.status === 'error'}>
-        <we-text fontSize="300" color="danger-500" style={{ 'margin-top': '4px' }}>
+        <we-text fontSize="300" color="danger-500" mt="4px">
           Failed to send
         </we-text>
       </Show>

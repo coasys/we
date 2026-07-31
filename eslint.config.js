@@ -214,19 +214,4 @@ export default [
       'no-restricted-syntax': ['error', ...dsPropSelectors()],
     },
   },
-  {
-    // Pre-existing violations, to be swept file by file. Delete entries as they are
-    // cleaned — the list only ever shrinks, and new files get the rule from birth.
-    name: 'design-system/prefer-ds-props-debt',
-    files: [
-      'packages/app-framework/src/frameworks/solid/components/editor/AiPanel.tsx',
-      'packages/app-framework/src/frameworks/solid/components/editor/DesignToolbar.tsx',
-      'packages/app-framework/src/frameworks/solid/components/editor/InspectorPanel.tsx',
-      'packages/app-framework/src/frameworks/solid/components/editor/RightPanelContainer.tsx',
-      'packages/app-framework/src/frameworks/solid/components/editor/ThemePanel.tsx',
-      'packages/app-framework/src/frameworks/solid/components/marketplace/TemplateCard.tsx',
-      'packages/block-system/frameworks/solid/src/components/VideoBlock/VideoDisplay.tsx',
-    ],
-    rules: { 'no-restricted-syntax': 'off' },
-  },
 ];

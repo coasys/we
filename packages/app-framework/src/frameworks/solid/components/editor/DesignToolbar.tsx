@@ -309,7 +309,8 @@ export function DesignToolbar() {
         ref={containerRef}
         position="absolute"
         top="10px"
-        styles={{ right: rowRight(), transition: panelResizing() ? 'none' : 'right 300ms ease' }}
+        right={rowRight()}
+        transition={panelResizing() ? 'none' : 'right 300ms ease'}
         pointerEvents="auto"
         ay="start"
         gap="200"
