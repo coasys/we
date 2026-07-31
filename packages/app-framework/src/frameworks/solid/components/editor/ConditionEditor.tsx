@@ -169,7 +169,7 @@ export function ConditionEditor(props: {
               border={`1px solid ${tokenVar('color', 'neutral-100')}`}
               r="200"
               overflow="hidden"
-              styles={{ 'max-height': '250px' }}
+              maxHeight="250px"
             >
               <CodeViewer
                 json={JSON.stringify(props.condition ?? null, null, 2)}
@@ -187,7 +187,7 @@ export function ConditionEditor(props: {
               </we-text>
               <we-select
                 size="xs"
-                style={{ width: '90px' }}
+                width="90px"
                 value={groupOperator()}
                 options={[
                   { label: 'all', value: 'and' },
@@ -278,7 +278,7 @@ function ConditionRow(props: {
       {(cmp) => (
         <Column gap="100" p="200" bg="neutral-50" r="200">
           <Row ay="center" gap="100">
-            <div style={{ flex: '1', 'min-width': '0' }}>
+            <Column flex="1" minWidth="0">
               <OperandInput
                 scope={props.scope}
                 value={cmp().left}
@@ -287,7 +287,7 @@ function ConditionRow(props: {
                 allowCount
                 placeholder="Select a value"
               />
-            </div>
+            </Column>
             <Show when={props.removable}>
               <we-tooltip title="Remove this condition">
                 <we-button variant="ghost" size="xs" square onClick={props.onRemove} aria-label="Remove condition">

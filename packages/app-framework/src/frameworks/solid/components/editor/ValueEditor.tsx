@@ -50,7 +50,7 @@ export function ValueEditor(props: {
                 border={`1px solid ${tokenVar('color', 'neutral-100')}`}
                 r="200"
                 overflow="hidden"
-                styles={{ 'max-height': '250px' }}
+                maxHeight="250px"
               >
                 <CodeViewer
                   json={JSON.stringify(props.value ?? null, null, 2)}

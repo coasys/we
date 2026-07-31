@@ -134,7 +134,7 @@ export function ValueRefPicker(props: {
 
   return (
     <div ref={ref} style={{ position: 'relative', 'min-width': '0' }}>
-      <we-button variant="outline" size="xs" style={{ width: '100%' }} onClick={() => setOpen((v) => !v)}>
+      <we-button variant="outline" size="xs" width="100%" onClick={() => setOpen((v) => !v)}>
         <Row ay="center" gap="200" width="100%" minWidth="0">
           <we-icon name={operandIcon(props.value)} size="xs" color="neutral-400" />
           <we-text flex="1" truncate fontSize="200" color={props.value ? 'neutral-800' : 'neutral-400'}>
@@ -145,19 +145,9 @@ export function ValueRefPicker(props: {
       </we-button>
 
       <Show when={open()}>
-        <div
-          style={{
-            position: 'absolute',
-            'z-index': '600',
-            top: '100%',
-            left: '0',
-            'margin-top': '3px',
-            'min-width': '240px',
-            'max-width': '320px',
-          }}
-        >
+        <Column position="absolute" zIndex={600} top="100%" left="0" mt="3px" minWidth="240px" maxWidth="320px">
           <we-menu>
-            <Column p="200" gap="200" styles={{ 'max-height': '320px' }}>
+            <Column p="200" gap="200" maxHeight="320px">
               <we-input
                 type="text"
                 size="xs"
@@ -167,7 +157,7 @@ export function ValueRefPicker(props: {
                 on:input={(e: CustomEvent<string>) => setSearch(e.detail)}
               />
 
-              <we-scroll-area style={{ 'max-height': '240px' }}>
+              <we-scroll-area maxHeight="240px">
                 <Column gap="100">
                   <For each={filtered()}>
                     {(group) => (
@@ -237,7 +227,7 @@ export function ValueRefPicker(props: {
               </Show>
             </Column>
           </we-menu>
-        </div>
+        </Column>
       </Show>
     </div>
   );
@@ -292,7 +282,7 @@ export function OperandInput(props: {
     if (props.valueType === 'boolean') {
       return (
         <we-select
-          style={{ flex: '1' }}
+          flex="1"
           size="xs"
           value={String(literal === true)}
           options={[
@@ -365,14 +355,14 @@ export function OperandInput(props: {
                 <we-text fontSize="200" color="neutral-500" styles={{ 'white-space': 'nowrap' }}>
                   count of
                 </we-text>
-                <div style={{ flex: '1', 'min-width': '0' }}>
+                <Column flex="1" minWidth="0">
                   <ValueRefPicker
                     scope={props.scope}
                     value={count().items}
                     onSelect={(items) => props.onChange({ kind: 'count', items })}
                     placeholder="Select a list"
                   />
-                </div>
+                </Column>
               </>
             )}
           </Show>
@@ -383,7 +373,7 @@ export function OperandInput(props: {
                   {formState().token === 'error' ? 'error of' : formState().token === 'touched' ? 'edited' : 'valid'}
                 </we-text>
                 <we-select
-                  style={{ flex: '1' }}
+                  flex="1"
                   size="xs"
                   value={formState().field}
                   options={localFieldOptions()}
