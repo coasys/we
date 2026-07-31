@@ -1,22 +1,19 @@
 /** Ring colour, as a semantic token rather than a CSS value, so themes stay in control. */
 export type AvatarTone = 'success' | 'warning' | 'danger' | 'primary' | 'neutral';
 
-/**
- * How prominent an avatar is. Separate from {@link AvatarTone} on purpose: an avatar can carry a
- * status *and* be de-emphasised, and callers routinely need both at once (e.g. "on Do Not Disturb,
- * and we are losing contact"). Folding them together would force a false choice.
- */
-export type AvatarEmphasis = 'full' | 'muted' | 'faded';
-
 export interface AvatarInfo {
   image?: string;
   hash?: string;
   initials?: string;
   icon?: string;
-  /** Per-avatar ring colour. Overrides the stack-level `ring`. */
+  /**
+   * Per-avatar ring colour. Overrides the stack-level `ring`.
+   *
+   * Colour rather than opacity is the only workable per-avatar signal here: avatars in a stack
+   * overlap, so a translucent one shows the avatar behind it through itself. The ring is opaque
+   * precisely to prevent that, which is why it is recoloured and never removed.
+   */
   tone?: AvatarTone;
-  /** Per-avatar prominence. Defaults to `full`. */
-  emphasis?: AvatarEmphasis;
 }
 
 export interface AvatarStackProps {

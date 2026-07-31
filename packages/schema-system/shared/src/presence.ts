@@ -195,44 +195,34 @@ export function peersInDataset(peers: Peer[], datasetUri: string, includeOffline
 // Semantic only — no colours, no opacity values. The design system owns how these render; this owns
 // what they mean.
 
+/** Semantic colour for a peer. The design system maps these to tokens; this only says what they mean. */
+export type PresenceTone = 'success' | 'warning' | 'danger' | 'neutral';
+
+const TONE_BY_LIVENESS: Record<Liveness, PresenceTone> = {
+  online: 'success',
+  idle: 'warning',
+  stale: 'danger',
+  // Offline peers are filtered before rendering; neutral is the safe answer if one slips through.
+  offline: 'neutral',
+};
+
 /**
- * How a peer should be presented, split across **two independent channels because there are two
- * independent facts**.
+ * Colour a peer by **liveness** — the decaying signal, which is what a viewer needs to read at a
+ * glance: green here, amber going, red nearly gone.
  *
- * Cramming both into one (a single ring colour, say) forces a false choice — you could show that
- * someone is on Do Not Disturb, or that we are losing contact with them, never both. Worse, it
- * collides with convention: amber universally reads as *away*, so spending it on a connection state
- * makes every user misread it.
+ * An earlier attempt split this across two channels — ring colour for declared `availability`,
+ * opacity for measured `liveness` — so both could be read at once. It was rejected in practice for a
+ * concrete reason worth recording: **avatars in a stack overlap**, so reducing opacity lets the
+ * avatar behind show through the one in front. The opaque separator ring is exactly what stops that.
+ * Opacity and overlap are incompatible, and the two-axis encoding was harder to read besides.
+ *
+ * `availability` is therefore not shown yet. Nothing can set it today (no idle detector, no manual
+ * control), so every peer reports `available` and the channel would be dead weight. When that UI
+ * lands, the likely rule is that availability wins while a peer is `online` and liveness takes over
+ * as they degrade — but that is a decision to make with the feature, not to guess at now.
  */
-export interface PeerAppearance {
-  /** From `availability` — what the agent declared about themselves. */
-  tone: 'success' | 'warning' | 'danger' | 'neutral';
-  /** From `liveness` — how confident we are that they are still there. */
-  emphasis: 'full' | 'muted' | 'faded';
-}
-
-const TONE_BY_AVAILABILITY: Record<Availability, PeerAppearance['tone']> = {
-  available: 'success',
-  away: 'warning',
-  busy: 'danger',
-  // An invisible agent does not publish at all, so this is unreachable in practice — declared for
-  // totality rather than as a case that renders.
-  invisible: 'neutral',
-};
-
-const EMPHASIS_BY_LIVENESS: Record<Liveness, PeerAppearance['emphasis']> = {
-  online: 'full',
-  idle: 'muted',
-  stale: 'faded',
-  // Offline peers are filtered out before rendering; 'faded' is the safe answer if one slips through.
-  offline: 'faded',
-};
-
-export function peerAppearance(peer: Peer): PeerAppearance {
-  return {
-    tone: TONE_BY_AVAILABILITY[peer.availability] ?? 'neutral',
-    emphasis: EMPHASIS_BY_LIVENESS[peer.liveness] ?? 'faded',
-  };
+export function peerTone(peer: Peer): PresenceTone {
+  return TONE_BY_LIVENESS[peer.liveness] ?? 'neutral';
 }
 
 const LIVENESS_RANK: Record<Liveness, number> = { online: 0, idle: 1, stale: 2, offline: 3 };

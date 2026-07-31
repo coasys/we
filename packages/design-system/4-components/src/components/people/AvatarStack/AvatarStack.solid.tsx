@@ -2,7 +2,7 @@ export type * from './AvatarStack.types';
 
 import { createMemo, For } from 'solid-js';
 
-import type { AvatarEmphasis, AvatarInfo, AvatarStackProps, AvatarTone } from './AvatarStack.types';
+import type { AvatarInfo, AvatarStackProps, AvatarTone } from './AvatarStack.types';
 
 /**
  * The default ring is not decoration — it is what separates overlapping avatars in the stack. So a
@@ -16,12 +16,6 @@ const TONE_RING: Record<AvatarTone, string> = {
   danger: '0 0 0 2px var(--we-color-danger-500)',
   primary: '0 0 0 2px var(--we-color-primary-500)',
   neutral: DEFAULT_RING,
-};
-
-const EMPHASIS_OPACITY: Record<AvatarEmphasis, string> = {
-  full: '1',
-  muted: '0.65',
-  faded: '0.35',
 };
 
 function ringFor(avatar: AvatarInfo, fallback?: string): string {
@@ -41,10 +35,6 @@ export function AvatarStack(props: AvatarStackProps) {
               display: 'flex',
               'margin-left': i() > 0 ? overlapPx() : '0',
               'flex-shrink': '0',
-              opacity: EMPHASIS_OPACITY[avatar.emphasis ?? 'full'],
-              // Fade rather than snap: emphasis tracks a decaying signal, so a step change reads as
-              // a glitch where a fade reads as "we're losing them".
-              transition: 'opacity var(--we-transition-400, 500ms) ease',
             }}
           >
             <we-avatar

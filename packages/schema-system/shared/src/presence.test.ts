@@ -8,9 +8,9 @@ import {
   DEFAULT_THRESHOLDS,
   derivePeers,
   type Peer,
-  peerAppearance,
   peersInDataset,
   peersMatching,
+  peerTone,
   type PresenceChannel,
   type PresenceState,
   sortByPresence,
@@ -147,26 +147,23 @@ describe('selectors', () => {
   });
 });
 
-describe('peerAppearance', () => {
-  const at = (overrides: Partial<PresenceState>, age = 0) =>
-    peerAppearance(derivePeers([state('a', { ...overrides, updatedAt: -age })], 0)[0]);
+describe('peerTone', () => {
+  const at = (age: number, overrides: Partial<PresenceState> = {}) =>
+    peerTone(derivePeers([state('a', { ...overrides, updatedAt: -age })], 0)[0]);
 
-  it('takes tone from what the agent declared, not from their connection', () => {
-    expect(at({ availability: 'available' }).tone).toBe('success');
-    expect(at({ availability: 'away' }).tone).toBe('warning');
-    expect(at({ availability: 'busy' }).tone).toBe('danger');
+  it('colours by liveness — green active, amber idle, red stale', () => {
+    expect(at(0)).toBe('success');
+    expect(at(DEFAULT_THRESHOLDS.idleAfter)).toBe('warning');
+    expect(at(DEFAULT_THRESHOLDS.staleAfter)).toBe('danger');
   });
 
-  it('takes emphasis from the connection, not from what they declared', () => {
-    expect(at({}, 0).emphasis).toBe('full');
-    expect(at({}, DEFAULT_THRESHOLDS.idleAfter).emphasis).toBe('muted');
-    expect(at({}, DEFAULT_THRESHOLDS.staleAfter).emphasis).toBe('faded');
-  });
-
-  it('keeps the two axes independent — a busy agent can also be fading', () => {
-    // The whole reason for two channels: one ring colour could not express both at once.
-    const busyAndFading = at({ availability: 'busy' }, DEFAULT_THRESHOLDS.staleAfter);
-    expect(busyAndFading).toEqual({ tone: 'danger', emphasis: 'faded' });
+  it('does not yet vary with declared availability', () => {
+    // Nothing can set availability today, so showing it would be dead weight. Recorded as a test so
+    // that when the control lands, deciding how the two axes combine is a deliberate change here
+    // rather than an accident.
+    for (const availability of ['available', 'away', 'busy'] as const) {
+      expect(at(0, { availability })).toBe('success');
+    }
   });
 });
 

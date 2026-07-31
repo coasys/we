@@ -38,13 +38,13 @@ import type { AgentProfileSummary } from '@shared/agentHelpers';
 import { createTabCoordinator } from '@shared/tabCoordinator';
 import { useAdamStore } from '@solid/stores/AdamStore';
 import { useRouteStore } from '@solid/stores/RouteStore';
-import type { Activity, Focus, FocusDepth, Peer, PeerAppearance, PresenceSource } from '@we/schema-shared';
+import type { Activity, Focus, FocusDepth, Peer, PresenceSource, PresenceTone } from '@we/schema-shared';
 import {
   applyFocusDepth,
   callRosters,
   createHeartbeatPresence,
-  peerAppearance,
   peersInDataset,
+  peerTone,
   sortByPresence,
 } from '@we/schema-shared';
 import {
@@ -61,10 +61,10 @@ import {
 /**
  * A peer joined with whatever profile the agent cache holds, plus its derived appearance.
  *
- * `did` mirrors `agentId`, and `tone`/`emphasis` are flattened rather than nested, so a template can
- * reach them with a plain `$item.tone` in a `$map` — no nested path resolution needed.
+ * `did` mirrors `agentId`, and `tone` is flattened onto the peer so a template can reach it with a
+ * plain `$item.tone` in a `$map` — no nested path resolution needed.
  */
-export type PresentAgent = Peer & Partial<AgentProfileSummary> & { did: string } & PeerAppearance;
+export type PresentAgent = Peer & Partial<AgentProfileSummary> & { did: string; tone: PresenceTone };
 
 export interface PresenceStore {
   /** Every peer we know of in the current space, liveness-derived, offline included. */
@@ -194,7 +194,7 @@ export function PresenceStoreProvider(props: ParentProps) {
     // as the underlying Map iterates and the avatar row reshuffles on every heartbeat.
     return sortByPresence(rawPeers()).map((peer) => {
       const profile = cached.find((a) => a.did === peer.agentId);
-      return { ...peer, ...profile, ...peerAppearance(peer), did: peer.agentId };
+      return { ...peer, ...profile, did: peer.agentId, tone: peerTone(peer) };
     });
   });
 

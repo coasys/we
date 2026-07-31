@@ -259,11 +259,10 @@ export const spaceNavBar: SchemaNode = {
                             select: {
                               image: '$item.avatar',
                               hash: '$item.did',
-                              // tone = declared availability (green/amber/red), emphasis = measured
-                              // liveness (fades as heartbeats go missing). Two channels, because a
-                              // peer can be busy *and* fading, and one ring colour can't say both.
+                              // Ring colour tracks liveness: green active, amber idle, red stale.
+                              // Colour rather than opacity because these avatars overlap — a
+                              // translucent one shows the avatar behind it through itself.
                               tone: '$item.tone',
-                              emphasis: '$item.emphasis',
                             },
                           },
                         },
