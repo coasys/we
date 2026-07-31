@@ -127,6 +127,16 @@ export type {
   RendererDataBindings,
   RendererStores,
 } from './dataSource';
+export { planEphemeral } from './ephemeral';
+export type {
+  EphemeralCapabilities,
+  EphemeralChannel,
+  EphemeralScope,
+  EphemeralPort,
+  EphemeralRequirements,
+  EphemeralGap,
+  EphemeralPlan,
+} from './ephemeral';
 export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
 export type {
   ModelManifest,
