@@ -279,12 +279,16 @@ function ConditionRow(props: {
         <Column gap="100" p="200" bg="neutral-50" r="200">
           <Row ay="center" gap="100">
             <Column flex="1" minWidth="0">
+              {/* No text entry on the left: this side names what is being tested, and a
+                  literal here makes the condition constant. The right side is where a
+                  fixed value belongs — that's what you're comparing against. */}
               <OperandInput
                 scope={props.scope}
                 value={cmp().left}
                 onChange={(left) => props.onChange({ ...cmp(), left })}
                 valueType={operandValueType(cmp().right, props.scope)}
                 allowCount
+                allowText={false}
                 placeholder="Select a value"
               />
             </Column>
