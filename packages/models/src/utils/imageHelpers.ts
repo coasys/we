@@ -79,6 +79,23 @@ export interface FileData {
 }
 
 /**
+ * Write a {@link FileData} blob to a model field that is declared `string`.
+ *
+ * File-backed fields — `Template.schema`, `Theme.css`, `Theme.overrides`, `ImageBlock.src`
+ * — are typed by what you read back: the expression URL the ORM resolves to once
+ * FILE_STORAGE_LANGUAGE has stored the content. On write they also accept the blob itself,
+ * which the language uploads and replaces with that URL.
+ *
+ * TypeScript cannot give a single property different read and write types, so the cast
+ * lives here — named and explained once — rather than as a bare `as any` at each of the
+ * thirty-odd assignment sites, where it read as an absent type rather than a deliberate
+ * asymmetry.
+ */
+export function asFileField(data: FileData): string {
+  return data as unknown as string;
+}
+
+/**
  * Compress a browser File to a FileData value object suitable for AD4M's
  * FILE_STORAGE_LANGUAGE. The compression percentage (0.6) and output format
  * (image/png) match the convention used across all image uploads in the app.

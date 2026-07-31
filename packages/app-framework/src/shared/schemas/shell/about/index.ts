@@ -1,4 +1,4 @@
-import type { TemplateSchema } from '@we/schema-shared';
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
 import forBuildersV1 from '../../../assets/CTAv1/ForBuilders.jpg';
 import forCommunitiesV1 from '../../../assets/CTAv1/ForCommunitiesLarge.jpg';
@@ -315,7 +315,7 @@ function bulletItem(text: string) {
   };
 }
 
-function boxSection(children: any) {
+function boxSection(children: SchemaNode['children']) {
   return {
     type: 'Card',
     props: { bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },

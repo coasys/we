@@ -4,7 +4,14 @@ import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
-import { compressImageToFileData, decodeFileAsJson, ImageBlock, SpaceTemplatePreference, Template } from '@we/models';
+import {
+  asFileField,
+  compressImageToFileData,
+  decodeFileAsJson,
+  ImageBlock,
+  SpaceTemplatePreference,
+  Template,
+} from '@we/models';
 import type { SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate, ensureNodeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
@@ -630,7 +637,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       const existingLocal = savedTemplateMap.get(templateId);
       if (existingLocal) {
         // Already installed — update schema and version in place
-        existingLocal.schema = schemaBlob as any;
+        existingLocal.schema = asFileField(schemaBlob);
         existingLocal.version = newVersion;
         await existingLocal.save();
         toastService.success(`"${schemaToInstall.meta.name}" updated to v${newVersion}`);
@@ -640,7 +647,7 @@ export function TemplateStoreProvider(props: ParentProps) {
           origin: 'marketplace',
           slug: templateId,
           version: newVersion,
-          schema: schemaBlob as any,
+          schema: asFileField(schemaBlob),
         });
         savedTemplateMap.set(templateId, newTemplate);
 
@@ -716,7 +723,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         origin: 'marketplace',
         slug: templateId,
         version: marketplaceTemplate.version || 1,
-        schema: schemaBlob as any,
+        schema: asFileField(schemaBlob),
       });
 
       await loadSpaceTemplates(spacePerspective);
@@ -764,7 +771,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     try {
       const existingTemplate = savedTemplateMap.get(templateId);
       if (existingTemplate) {
-        existingTemplate.schema = schemaBlob as any;
+        existingTemplate.schema = asFileField(schemaBlob);
         existingTemplate.name = name;
         existingTemplate.version = (existingTemplate.version || 1) + 1;
         await existingTemplate.save();
@@ -774,7 +781,7 @@ export function TemplateStoreProvider(props: ParentProps) {
           origin: 'custom',
           slug: templateId,
           version: 1,
-          schema: schemaBlob as any,
+          schema: asFileField(schemaBlob),
         });
         savedTemplateMap.set(templateId, newTemplate);
 
@@ -829,7 +836,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       const targetMap = isSpace ? spaceTemplateMap : savedTemplateMap;
       const existingTemplate = targetMap.get(templateId);
       if (existingTemplate) {
-        existingTemplate.schema = schemaBlob as any;
+        existingTemplate.schema = asFileField(schemaBlob);
         existingTemplate.name = schemaToSave.meta.name;
         existingTemplate.version = (existingTemplate.version || 1) + 1;
         await existingTemplate.save();
@@ -839,7 +846,7 @@ export function TemplateStoreProvider(props: ParentProps) {
           origin: isSpace ? 'shared' : 'custom',
           slug: templateId,
           version: 1,
-          schema: schemaBlob as any,
+          schema: asFileField(schemaBlob),
         });
         targetMap.set(templateId, newTemplate);
 
@@ -926,7 +933,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     try {
       const existing = savedTemplateMap.get(templateId) ?? spaceTemplateMap.get(templateId);
       if (!existing) return;
-      existing.schema = schemaBlob as any;
+      existing.schema = asFileField(schemaBlob);
       existing.version = (existing.version || 1) + 1;
       await existing.save();
     } catch (error) {
@@ -985,7 +992,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         origin: 'shared',
         slug: templateId,
         version: 1,
-        schema: schemaBlob as any,
+        schema: asFileField(schemaBlob),
       });
       toastService.success(`Template "${schema.meta.name}" shared to space "${spaceName}"`);
       return true;
@@ -1063,7 +1070,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         existing.description = options.description;
         existing.icon = templateIcon;
         existing.version = (existing.version || 1) + 1;
-        existing.schema = schemaBlob as any;
+        existing.schema = asFileField(schemaBlob);
         if (options.themeId !== undefined) existing.themeId = options.themeId;
         await existing.save();
 
@@ -1071,7 +1078,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         for (const file of options.screenshots) {
           const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
           const imageBlock = await ImageBlock.create(marketplacePerspective, {
-            src: fileData as any,
+            src: asFileField(fileData),
             altText: 'Screenshot',
             version: 1,
           });
@@ -1087,14 +1094,14 @@ export function TemplateStoreProvider(props: ParentProps) {
           origin: 'marketplace',
           slug,
           version: 1,
-          schema: schemaBlob as any,
+          schema: asFileField(schemaBlob),
           ...(options.themeId ? { themeId: options.themeId } : {}),
         });
 
         for (const file of options.screenshots) {
           const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
           const imageBlock = await ImageBlock.create(marketplacePerspective, {
-            src: fileData as any,
+            src: asFileField(fileData),
             altText: 'Screenshot',
             version: 1,
           });

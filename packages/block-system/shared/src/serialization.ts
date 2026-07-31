@@ -1,7 +1,7 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
 import { Ad4mModel, getPropertiesMetadata } from '@coasys/ad4m';
 import type { CollectionBlock, FileData } from '@we/models';
-import { dataURIToFileData } from '@we/models';
+import { asFileField, dataURIToFileData } from '@we/models';
 
 import { getBlockModel, getRegisteredBlockModels } from './registry';
 import type { SerializedBlockNode } from './types';
@@ -312,11 +312,11 @@ export async function createBlocks(
       const patchedNode = await preUploadFileAssets(perspective, node);
       const jsonStr = JSON.stringify(patchedNode);
       const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
-      (root as CollectionBlock).editorState = {
+      (root as CollectionBlock).editorState = asFileField({
         data_base64: base64,
         name: 'editor-state.json',
         file_type: 'application/json',
-      } as any;
+      });
       (root as CollectionBlock).textContent = extractTextContent(patchedNode);
       await root.save(tx.batchId);
     }
@@ -661,11 +661,11 @@ export async function reconcileBlocks(
     const patchedNode = await preUploadFileAssets(perspective, node);
     const jsonStr = JSON.stringify(patchedNode);
     const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
-    (existingRoot as CollectionBlock).editorState = {
+    (existingRoot as CollectionBlock).editorState = asFileField({
       data_base64: base64,
       name: 'editor-state.json',
       file_type: 'application/json',
-    } as any;
+    });
     (existingRoot as CollectionBlock).textContent = extractTextContent(patchedNode);
     await existingRoot.save(tx.batchId);
 

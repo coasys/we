@@ -32,6 +32,7 @@ export {
 } from './blocks';
 export { FILE_STORAGE_LANGUAGE } from './constants';
 export {
+  asFileField,
   dataURItoBlob,
   blobToDataURL,
   resizeImage,

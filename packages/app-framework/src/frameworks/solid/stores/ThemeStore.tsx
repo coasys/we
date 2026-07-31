@@ -2,7 +2,14 @@ import type { ThemeKey } from '@shared/registries/themeRegistry';
 import { isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
 import { toastService } from '@we/components/solid';
 import type { ThemeData } from '@we/models';
-import { compressImageToFileData, decodeFileAsString, ImageBlock, modelToThemeData, Theme } from '@we/models';
+import {
+  asFileField,
+  compressImageToFileData,
+  decodeFileAsString,
+  ImageBlock,
+  modelToThemeData,
+  Theme,
+} from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
 import { themeToStyle } from '@we/schema-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, untrack, useContext } from 'solid-js';
@@ -136,7 +143,7 @@ function injectCssString(id: string, css: string) {
 function applyThemeToDOM(theme: ThemeData) {
   const overrides: ThemeOverrides = theme.overrides ? JSON.parse(theme.overrides) : {};
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
-  if (overrides.fontFamily === 'base') delete (overrides as any).fontFamily;
+  if (overrides.fontFamily === 'base') delete overrides.fontFamily;
 
   // Set data-we-theme attribute so [data-we-theme='X'] CSS selectors match
   const baseName =
@@ -201,8 +208,11 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
  */
 function populateMissingOverrides(overrides: ThemeOverrides): ThemeOverrides {
   const result = { ...overrides };
+  // Every override is read back out of CSS as a string, then narrowed to a number for the
+  // numeric ones. Naming that shape once keeps the writes below typed.
+  const writable = result as Record<keyof ThemeOverrides, string | number>;
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
-  if (result.fontFamily === 'base') delete (result as any).fontFamily;
+  if (result.fontFamily === 'base') delete result.fontFamily;
   const styles = getComputedStyle(document.documentElement);
 
   for (const [key, cssVar] of Object.entries(OVERRIDE_CSS_VARS) as [keyof ThemeOverrides, string][]) {
@@ -219,9 +229,9 @@ function populateMissingOverrides(overrides: ThemeOverrides): ThemeOverrides {
 
     if (key === 'multiplier' || (key as string).endsWith('Hue')) {
       const n = Number(raw);
-      if (!isNaN(n)) (result as any)[key] = n;
+      if (!isNaN(n)) writable[key] = n;
     } else {
-      (result as any)[key] = raw; // percentage string e.g. '60%'
+      writable[key] = raw; // percentage string e.g. '60%'
     }
   }
 
@@ -325,7 +335,7 @@ export function ThemeStoreProvider(props: ParentProps) {
         const refs = prefs.installedThemes || [];
         const trackedIds = new Set<string>();
         for (const ref of refs) {
-          const id = typeof ref === 'string' ? ref : (ref as any).id;
+          const id = typeof ref === 'string' ? ref : (ref as { id?: string }).id;
           if (id) trackedIds.add(id);
         }
         if (trackedIds.size === 0 && models.length > 0) {
@@ -655,9 +665,9 @@ export function ThemeStoreProvider(props: ParentProps) {
         origin: 'custom',
         version: 1,
         overrides: overridesJson
-          ? (encodeToFileData(overridesJson, 'overrides.json', 'application/json') as any)
+          ? asFileField(encodeToFileData(overridesJson, 'overrides.json', 'application/json'))
           : null,
-        css: source?.css ? (encodeToFileData(source.css, 'theme.css', 'text/css') as any) : null,
+        css: source?.css ? asFileField(encodeToFileData(source.css, 'theme.css', 'text/css')) : null,
       });
       themeModelMap.set(model.id, model);
       const data: ThemeData = {
@@ -734,9 +744,9 @@ export function ThemeStoreProvider(props: ParentProps) {
         existing.name = editing.name ?? '';
         existing.icon = editing.icon ?? '';
         existing.overrides = editing.overrides
-          ? (encodeToFileData(editing.overrides, 'overrides.json', 'application/json') as any)
+          ? asFileField(encodeToFileData(editing.overrides, 'overrides.json', 'application/json'))
           : null;
-        existing.css = editing.css ? (encodeToFileData(editing.css, 'theme.css', 'text/css') as any) : null;
+        existing.css = editing.css ? asFileField(encodeToFileData(editing.css, 'theme.css', 'text/css')) : null;
         await existing.save();
         // Use the current signal state (not the captured `editing`) to avoid overwriting
         // changes made while this async save was in flight.
@@ -787,9 +797,9 @@ export function ThemeStoreProvider(props: ParentProps) {
         origin: 'custom',
         version: 1,
         overrides: editing.overrides
-          ? (encodeToFileData(editing.overrides, 'overrides.json', 'application/json') as any)
+          ? asFileField(encodeToFileData(editing.overrides, 'overrides.json', 'application/json'))
           : null,
-        css: editing.css ? (encodeToFileData(editing.css, 'theme.css', 'text/css') as any) : null,
+        css: editing.css ? asFileField(encodeToFileData(editing.css, 'theme.css', 'text/css')) : null,
       });
       themeModelMap.set(model.id, model);
       const data: ThemeData = {
@@ -863,9 +873,9 @@ export function ThemeStoreProvider(props: ParentProps) {
         existingModel.icon = source.icon;
         existingModel.version = source.version;
         existingModel.overrides = sourceOverrides
-          ? (encodeToFileData(sourceOverrides, 'overrides.json', 'application/json') as any)
+          ? asFileField(encodeToFileData(sourceOverrides, 'overrides.json', 'application/json'))
           : null;
-        existingModel.css = sourceCss ? (encodeToFileData(sourceCss, 'theme.css', 'text/css') as any) : null;
+        existingModel.css = sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null;
         await existingModel.save();
         const updated = modelToThemeData(existingModel);
         setInstalledThemes((prev) => prev.map((t) => (t.id === existingModel!.id ? updated : t)));
@@ -880,9 +890,9 @@ export function ThemeStoreProvider(props: ParentProps) {
         origin: 'marketplace',
         version: source.version,
         overrides: sourceOverrides
-          ? (encodeToFileData(sourceOverrides, 'overrides.json', 'application/json') as any)
+          ? asFileField(encodeToFileData(sourceOverrides, 'overrides.json', 'application/json'))
           : null,
-        css: sourceCss ? (encodeToFileData(sourceCss, 'theme.css', 'text/css') as any) : null,
+        css: sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null,
       });
       themeModelMap.set(model.id, model);
       setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
@@ -972,16 +982,16 @@ export function ThemeStoreProvider(props: ParentProps) {
         existing.icon = themeIcon;
         existing.version = (existing.version ?? 1) + 1;
         existing.overrides = base.overrides
-          ? (encodeToFileData(base.overrides, 'overrides.json', 'application/json') as any)
+          ? asFileField(encodeToFileData(base.overrides, 'overrides.json', 'application/json'))
           : null;
-        existing.css = base.css ? (encodeToFileData(base.css, 'theme.css', 'text/css') as any) : null;
+        existing.css = base.css ? asFileField(encodeToFileData(base.css, 'theme.css', 'text/css')) : null;
         await existing.save();
 
         await existing.setScreenshots([]);
         for (const file of options.screenshots) {
           const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
           const img = await ImageBlock.create(marketplacePerspective, {
-            src: fileData as any,
+            src: asFileField(fileData),
             altText: 'Screenshot',
             version: 1,
           });
@@ -997,14 +1007,14 @@ export function ThemeStoreProvider(props: ParentProps) {
           origin: 'marketplace',
           version: 1,
           overrides: base.overrides
-            ? (encodeToFileData(base.overrides, 'overrides.json', 'application/json') as any)
+            ? asFileField(encodeToFileData(base.overrides, 'overrides.json', 'application/json'))
             : null,
-          css: base.css ? (encodeToFileData(base.css, 'theme.css', 'text/css') as any) : null,
+          css: base.css ? asFileField(encodeToFileData(base.css, 'theme.css', 'text/css')) : null,
         });
         for (const file of options.screenshots) {
           const fileData = await compressImageToFileData(file, `screenshot-${Date.now()}`);
           const img = await ImageBlock.create(marketplacePerspective, {
-            src: fileData as any,
+            src: asFileField(fileData),
             altText: 'Screenshot',
             version: 1,
           });
@@ -1048,9 +1058,9 @@ export function ThemeStoreProvider(props: ParentProps) {
         origin: 'shared',
         version: 1,
         overrides: editing.overrides
-          ? (encodeToFileData(editing.overrides, 'overrides.json', 'application/json') as any)
+          ? asFileField(encodeToFileData(editing.overrides, 'overrides.json', 'application/json'))
           : null,
-        css: editing.css ? (encodeToFileData(editing.css, 'theme.css', 'text/css') as any) : null,
+        css: editing.css ? asFileField(encodeToFileData(editing.css, 'theme.css', 'text/css')) : null,
       });
       toastService.success(`Theme "${editing.name}" shared to space "${spaceName}"`);
       return true;
