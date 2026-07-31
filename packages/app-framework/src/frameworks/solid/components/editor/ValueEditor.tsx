@@ -2,7 +2,7 @@ import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import type { ScopeGroup } from '@we/schema-shared';
 import { parseValue, parseValueIf, serializeValue, serializeValueIf } from '@we/schema-shared';
-import { createMemo, Show } from 'solid-js';
+import { createMemo, createSignal, Match, Switch } from 'solid-js';
 
 import { CodeViewer } from './CodeViewer';
 import { ConditionEditor } from './ConditionEditor';
@@ -29,96 +29,126 @@ export function ValueEditor(props: {
 }) {
   const depth = () => props.depth ?? 0;
 
-  const valueIf = createMemo(() => (depth() < MAX_VALUE_IF_DEPTH ? parseValueIf(props.value) : null));
-  const operand = createMemo(() => (valueIf() ? null : parseValue(props.value)));
+  /**
+   * Set when the author asks to replace a custom expression with a picked value.
+   * Without it the JSON editor is a one-way door: an expression the grammar can't
+   * represent has no path back to a picker. Nothing is written until something is
+   * picked, so the existing expression survives a change of mind.
+   */
+  const [replacing, setReplacing] = createSignal(false);
+
+  const emit = (value: unknown) => {
+    setReplacing(false);
+    props.onChange(value);
+  };
+
+  const valueIf = createMemo(() => (replacing() || depth() >= MAX_VALUE_IF_DEPTH ? null : parseValueIf(props.value)));
+  const operand = createMemo(() => (replacing() || valueIf() ? null : parseValue(props.value)));
+  const mode = createMemo<'conditional' | 'operand' | 'replacing' | 'custom'>(() => {
+    if (valueIf()) return 'conditional';
+    if (operand()) return 'operand';
+    return replacing() ? 'replacing' : 'custom';
+  });
 
   return (
-    <Show
-      when={valueIf()}
-      fallback={
-        <Show
-          when={operand()}
-          fallback={
-            <Column gap="100">
-              <Row ay="center" gap="100">
-                <we-icon name="info" size="xs" color="neutral-400" />
-                <we-text fontSize="100" color="neutral-400">
-                  Custom expression — edit as JSON
-                </we-text>
-              </Row>
-              <Column
-                border={`1px solid ${tokenVar('color', 'neutral-100')}`}
-                r="200"
-                overflow="hidden"
-                maxHeight="250px"
+    <Switch>
+      <Match when={mode() === 'operand'}>
+        <OperandInput
+          scope={props.scope}
+          value={operand() ?? undefined}
+          onChange={(next) => emit(serializeValue(next))}
+          valueType="string"
+          allowCount
+          placeholder={props.placeholder}
+        />
+      </Match>
+
+      {/* Replacing a custom expression — nothing is written until something is picked */}
+      <Match when={mode() === 'replacing'}>
+        <OperandInput
+          scope={props.scope}
+          onChange={(next) => emit(serializeValue(next))}
+          valueType="string"
+          allowCount
+          placeholder={props.placeholder ?? 'Pick a replacement value'}
+        />
+      </Match>
+
+      <Match when={mode() === 'custom'}>
+        <Column gap="100">
+          <Row ay="center" ax="between" gap="100">
+            <Row ay="center" gap="100" minWidth="0">
+              <we-icon name="info" size="xs" color="neutral-400" />
+              <we-text fontSize="100" color="neutral-400" truncate>
+                Custom expression — edit as JSON
+              </we-text>
+            </Row>
+            <we-tooltip title="Pick a value from data">
+              <we-button
+                variant="ghost"
+                size="xs"
+                square
+                onClick={() => setReplacing(true)}
+                aria-label="Pick a value from data"
               >
-                <CodeViewer
-                  json={JSON.stringify(props.value ?? null, null, 2)}
-                  onSave={(json) => props.onChange(JSON.parse(json))}
+                <we-icon name="database" size="xs" />
+              </we-button>
+            </we-tooltip>
+          </Row>
+          <Column border={`1px solid ${tokenVar('color', 'neutral-100')}`} r="200" overflow="hidden" maxHeight="250px">
+            <CodeViewer json={JSON.stringify(props.value ?? null, null, 2)} onSave={(json) => emit(JSON.parse(json))} />
+          </Column>
+        </Column>
+      </Match>
+
+      <Match when={valueIf()}>
+        {(branch) => (
+          <Column gap="200" bg="neutral-50" r="200" py="100">
+            <ConditionEditor
+              label="If"
+              condition={branch().condition}
+              scope={props.scope}
+              onChange={(condition) => props.onChange(serializeValueIf({ ...branch(), condition }))}
+            />
+            <Column px="400" gap="200">
+              <Column gap="100">
+                <we-text fontSize="100" fontWeight="600" color="neutral-500">
+                  Then show
+                </we-text>
+                <ValueEditor
+                  value={branch().then}
+                  scope={props.scope}
+                  depth={depth() + 1}
+                  onChange={(then) => props.onChange(serializeValueIf({ ...branch(), then }))}
+                  placeholder="Value when true"
+                />
+              </Column>
+              <Column gap="100">
+                <we-text fontSize="100" fontWeight="600" color="neutral-500">
+                  Otherwise show
+                </we-text>
+                <ValueEditor
+                  value={branch().else ?? ''}
+                  scope={props.scope}
+                  depth={depth() + 1}
+                  onChange={(otherwise) =>
+                    props.onChange(
+                      serializeValueIf({
+                        condition: branch().condition,
+                        then: branch().then,
+                        // An empty branch means "render nothing" — drop the key rather than
+                        // writing an empty string the renderer would print.
+                        else: otherwise === '' ? undefined : otherwise,
+                      }),
+                    )
+                  }
+                  placeholder="Value when false"
                 />
               </Column>
             </Column>
-          }
-        >
-          {(value) => (
-            <OperandInput
-              scope={props.scope}
-              value={value()}
-              onChange={(next) => props.onChange(serializeValue(next))}
-              valueType="string"
-              allowCount
-              placeholder={props.placeholder}
-            />
-          )}
-        </Show>
-      }
-    >
-      {(branch) => (
-        <Column gap="200" bg="neutral-50" r="200" py="100">
-          <ConditionEditor
-            label="If"
-            condition={branch().condition}
-            scope={props.scope}
-            onChange={(condition) => props.onChange(serializeValueIf({ ...branch(), condition }))}
-          />
-          <Column px="400" gap="200">
-            <Column gap="100">
-              <we-text fontSize="100" fontWeight="600" color="neutral-500">
-                Then show
-              </we-text>
-              <ValueEditor
-                value={branch().then}
-                scope={props.scope}
-                depth={depth() + 1}
-                onChange={(then) => props.onChange(serializeValueIf({ ...branch(), then }))}
-                placeholder="Value when true"
-              />
-            </Column>
-            <Column gap="100">
-              <we-text fontSize="100" fontWeight="600" color="neutral-500">
-                Otherwise show
-              </we-text>
-              <ValueEditor
-                value={branch().else ?? ''}
-                scope={props.scope}
-                depth={depth() + 1}
-                onChange={(otherwise) =>
-                  props.onChange(
-                    serializeValueIf({
-                      condition: branch().condition,
-                      then: branch().then,
-                      // An empty branch means "render nothing" — drop the key rather than
-                      // writing an empty string the renderer would print.
-                      else: otherwise === '' ? undefined : otherwise,
-                    }),
-                  )
-                }
-                placeholder="Value when false"
-              />
-            </Column>
           </Column>
-        </Column>
-      )}
-    </Show>
+        )}
+      </Match>
+    </Switch>
   );
 }
