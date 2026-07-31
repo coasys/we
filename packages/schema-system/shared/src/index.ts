@@ -127,6 +127,44 @@ export type {
   RendererDataBindings,
   RendererStores,
 } from './dataSource';
+export { planEphemeral } from './ephemeral';
+export type {
+  EphemeralCapabilities,
+  EphemeralChannel,
+  EphemeralScope,
+  EphemeralPort,
+  EphemeralRequirements,
+  EphemeralGap,
+  EphemeralPlan,
+} from './ephemeral';
+export {
+  applyFocusDepth,
+  activitiesOfType,
+  callRosters,
+  createHeartbeatPresence,
+  derivePeers,
+  peerTone,
+  peersInDataset,
+  peersMatching,
+  sortByPresence,
+  DEFAULT_HEARTBEAT_INTERVAL,
+  DEFAULT_THRESHOLDS,
+} from './presence';
+export type {
+  Activity,
+  Availability,
+  Focus,
+  FocusDepth,
+  HeartbeatOptions,
+  Liveness,
+  LivenessThresholds,
+  MediaSettings,
+  Peer,
+  PresenceTone,
+  PresenceChannel,
+  PresenceSource,
+  PresenceState,
+} from './presence';
 export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
 export type {
   ModelManifest,

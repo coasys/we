@@ -1,5 +1,14 @@
 import type { Ad4mModel } from '@coasys/ad4m';
-import type { AdamStore, AiStore, AppStore, RouteStore, SpaceStore, TemplateStore, ThemeStore } from '@solid/stores';
+import type {
+  AdamStore,
+  AiStore,
+  AppStore,
+  PresenceStore,
+  RouteStore,
+  SpaceStore,
+  TemplateStore,
+  ThemeStore,
+} from '@solid/stores';
 import type { RendererStores } from '@we/schema-shared';
 
 export type ModelStoreOptions = {
@@ -44,6 +53,7 @@ export interface Stores extends RendererStores {
   themeStore: ThemeStore;
   templateStore: TemplateStore;
   routeStore: RouteStore;
+  presenceStore: PresenceStore;
   model?: ModelStore;
   /** Neutral identity — the current agent (templates read `$me.did`). Backed by `adamStore.me`;
    *  typed `unknown` so the seam stays backend-agnostic. Host-specific: not part of the data contract. */
