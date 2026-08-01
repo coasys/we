@@ -1,9 +1,9 @@
-import { formatDate, formatRelativeTime } from '@we/utils';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
+import { formatDate, formatRelativeTime } from '../utils';
 
 const styles = css`
   :host {

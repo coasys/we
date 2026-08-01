@@ -74,7 +74,6 @@
     "@types/leaflet": "^1.9.21",
     "@we/design-utils": "workspace:*",
     "@we/tokens": "workspace:*",
-    "@we/utils": "workspace:*",
     "jdenticon": "3.3.0",
     "leaflet": "^1.9.4",
     "dompurify": "^3.2.4",

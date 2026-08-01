@@ -1,10 +1,10 @@
 import type { DesignSystemProps } from '@we/design-types';
-import { formatCount } from '@we/utils';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
+import { formatCount } from '../utils';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ax: 'center',
