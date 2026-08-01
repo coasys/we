@@ -849,7 +849,31 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const isWc = t.includes('-');
     return registry[t] ?? (isHtml || isWc ? t : undefined);
   });
-  if (!component()) throw new Error(`Schema node has unknown type "${node.type}".`);
+  // An unrecognised type used to throw, which took down **the whole render** rather than one node —
+  // so a template referencing a component from a module that isn't enabled produced a blank page.
+  // Fail the way the rest of the system does: loud, but scoped.
+  //
+  // Dev-time loudness is not lost: `we-validate-schemas` catches unknown types before runtime, which
+  // is the right place for a typo. What changes is only the runtime, where one bad node should cost
+  // that node and nothing more.
+  if (!component()) {
+    const message = `Unknown component "${node.type}"`;
+    console.error(`${message}. It may belong to a feature module that is not enabled, or the type may be misspelt.`);
+    return (
+      <div
+        data-we-missing-component={node.type}
+        style={{
+          padding: 'var(--we-space-300, 12px)',
+          border: '1px dashed var(--we-color-danger-400, #d66)',
+          'border-radius': 'var(--we-radius-300, 6px)',
+          color: 'var(--we-color-danger-600, #a33)',
+          'font-size': 'var(--we-font-size-100, 12px)',
+        }}
+      >
+        {message}
+      </div>
+    );
+  }
 
   // Prepare the slot elements in a reactive store
   const [slotElements, setSlotElements] = createStore<Record<string, JSX.Element>>(

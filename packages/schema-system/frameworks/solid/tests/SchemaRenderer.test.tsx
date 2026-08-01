@@ -60,9 +60,13 @@ describe('SchemaRenderer', () => {
   });
 
   // --- Unknown type throws ---
-  it('throws for unknown type', () => {
+  it('renders a placeholder for an unknown type instead of throwing', () => {
+    // Throwing took down the whole render, so one unresolvable node — a component from a feature
+    // module that isn't enabled — blanked the page. `we-validate-schemas` still catches typos before
+    // runtime, so nothing is lost at dev time.
     const node: SchemaNode = { type: 'UnknownComponent' };
-    expect(() => renderSchema(node)).toThrow('Schema node has unknown type "UnknownComponent"');
+    const { container } = renderSchema(node);
+    expect(container.querySelector('[data-we-missing-component="UnknownComponent"]')).toBeTruthy();
   });
 
   // --- $store prop resolution ---
