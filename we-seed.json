@@ -9,7 +9,8 @@
     "useQueryIR": true
   },
   "modules": [
-    "globe"
+    "globe",
+    "notes"
   ],
   "ad4m": {
     "dataPath": "~/.we-native-app",

@@ -13,6 +13,18 @@ import { registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRe
 
 const host = { backend: 'ad4m', framework: 'solid' };
 
+/**
+ * Stand-in reactivity. A module store is built from injected primitives rather than an imported
+ * framework, so a plain closure satisfies the port here — which is itself the point: nothing in a
+ * module store requires Solid to exist.
+ */
+const storeDeps = {
+  signal: <T,>(initial: T): [() => T, (next: T) => void] => {
+    let value = initial;
+    return [() => value, (next: T) => (value = next)];
+  },
+};
+
 function reset() {
   for (const entry of slotRegistry.ordered()) slotRegistry.remove(entry.id);
   for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.id);
@@ -86,6 +98,7 @@ describe('moduleRegistry', () => {
         createStore: () => ({ open: true }),
       }),
       host,
+      storeDeps,
     );
 
     expect(moduleStores.notes).toEqual({ open: true });
@@ -96,7 +109,7 @@ describe('moduleRegistry', () => {
     // The whole point of the namespace convention: a template can depend on an optional module
     // because the key is missing, not present-but-inert.
     expect(moduleStores.notes).toBeUndefined();
-    moduleRegistry.register(mod({ id: 'notes', createStore: () => ({}) }), host);
+    moduleRegistry.register(mod({ id: 'notes', createStore: () => ({}) }), host, storeDeps);
     expect(moduleStores.notes).toBeDefined();
     moduleRegistry.unregister('notes');
     expect(moduleStores.notes).toBeUndefined();

@@ -23,7 +23,7 @@
  * registers. That is exactly what makes `{ $if: { condition: { $store: 'modules.notes' } } }` the
  * supported way for a template to depend on an optional module.
  */
-import type { ModuleDefinition } from '@we/schema-shared';
+import type { ModuleDefinition, ModuleStoreDeps } from '@we/schema-shared';
 import { checkModuleCompatibility } from '@we/schema-shared';
 
 import { slotRegistry } from './slotRegistry';
@@ -58,7 +58,11 @@ export const moduleRegistry = {
    * declared backend or framework doesn't match would otherwise register components that fail at
    * render time, far from the cause.
    */
-  register(definition: ModuleDefinition, host: { backend: string; framework: string }): RegisterResult {
+  register(
+    definition: ModuleDefinition,
+    host: { backend: string; framework: string },
+    storeDeps?: ModuleStoreDeps,
+  ): RegisterResult {
     const compatibility = checkModuleCompatibility(definition, host);
     if (!compatibility.compatible) {
       console.warn(`module "${definition.id}" not registered: ${compatibility.problems.join('; ')}`);
@@ -71,7 +75,8 @@ export const moduleRegistry = {
       moduleRegistry.unregister(definition.id);
     }
 
-    const store = definition.createStore?.();
+    // Reactivity is lent by the host, so a module store never imports a framework.
+    const store = storeDeps ? definition.createStore?.(storeDeps) : undefined;
     modules.set(definition.id, { definition, store });
     if (store) moduleStores[definition.id] = store;
 
@@ -115,6 +120,17 @@ export const moduleRegistry = {
    */
   components(): Record<string, unknown> {
     return Object.assign({}, ...moduleRegistry.all().map((m) => m.definition.components ?? {}));
+  },
+
+  /**
+   * Entity types every registered module owns, for the host to install into a dataset.
+   *
+   * Collected here rather than installed per-module so idempotency lives in **one** place — WE
+   * already carries `cleanupSpaceSdna` as remediation for shapes installed twice by different
+   * agents, and N modules each rolling their own install is that bug with more instances.
+   */
+  models(): unknown[] {
+    return moduleRegistry.all().flatMap((m) => m.definition.models ?? []);
   },
 
   /** Named schema fragments, keyed `<moduleId>.<fragment>` so two modules can't collide. */

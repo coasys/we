@@ -10,7 +10,8 @@
  * Adding a module here plus an id in `we-seed.json` is the whole install story for now.
  */
 import { createGlobeModule } from '@we/module-globe';
-import type { ModuleDefinition } from '@we/schema-shared';
+import { notesModule } from '@we/module-notes';
+import type { ModuleDefinition, ModuleStoreDeps } from '@we/schema-shared';
 
 /**
  * Factories rather than definitions, because a module may need something from the host to describe
@@ -24,8 +25,16 @@ export interface BundledModuleDeps {
   components: Record<string, unknown>;
 }
 
+export interface ActivationDeps extends BundledModuleDeps {
+  /** Reactivity lent to module stores, so a module needn't import a framework. */
+  storeDeps?: ModuleStoreDeps;
+}
+
 export const bundledModules: Record<string, BundledModuleFactory> = {
   globe: ({ components }) => createGlobeModule(components.CesiumGlobe),
+  // Takes nothing from the host: every piece of its UI is a schema fragment, so it imports no
+  // framework at all.
+  notes: () => notesModule,
 };
 
 export interface ModuleActivation {
@@ -46,12 +55,13 @@ export interface ModuleActivation {
  */
 export function activateSeedModules(
   ids: string[] | undefined,
-  deps: BundledModuleDeps,
+  deps: ActivationDeps,
   host: { backend: string; framework: string },
   registry: {
     register: (
       definition: ModuleDefinition,
       host: { backend: string; framework: string },
+      storeDeps?: ModuleStoreDeps,
     ) => { registered: boolean; problems: string[] };
   },
 ): ModuleActivation {
@@ -63,7 +73,7 @@ export function activateSeedModules(
       result.missing.push(id);
       continue;
     }
-    const outcome = registry.register(factory(deps), host);
+    const outcome = registry.register(factory(deps), host, deps.storeDeps);
     if (outcome.registered) result.activated.push(id);
     else result.refused.push({ id, problems: outcome.problems });
   }

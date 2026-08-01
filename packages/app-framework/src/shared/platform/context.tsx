@@ -1,5 +1,5 @@
 import { componentRegistry } from '@solid/registries/componentRegistry';
-import { createContext, ParentComponent, useContext } from 'solid-js';
+import { createContext, createSignal, ParentComponent, useContext } from 'solid-js';
 
 import { initializeIntegrations } from '../initializeIntegrations';
 import { PlatformAdapter } from './types';
@@ -11,7 +11,12 @@ export const PlatformProvider: ParentComponent<{ adapter: PlatformAdapter }> = (
   // This must run synchronously so the launcher template is ready when TemplateStoreProvider reads the registry
   // Components are handed over here, where the framework is known — `initializeIntegrations` itself
   // stays framework-neutral.
-  initializeIntegrations(props.adapter, { components: { CesiumGlobe: componentRegistry.CesiumGlobe } });
+  initializeIntegrations(props.adapter, {
+    components: { CesiumGlobe: componentRegistry.CesiumGlobe },
+    // Reactivity lent to module stores. Solid's createSignal already has the [read, write] shape the
+    // port asks for, so a module store gets reactivity without importing a framework.
+    storeDeps: { signal: <T,>(initial: T) => createSignal(initial) as [() => T, (next: T) => void] },
+  });
 
   return <PlatformContext.Provider value={props.adapter}>{props.children}</PlatformContext.Provider>;
 };

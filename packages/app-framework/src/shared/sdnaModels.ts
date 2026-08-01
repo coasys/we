@@ -27,6 +27,8 @@ import {
   WeNode,
 } from '@we/models';
 
+import { moduleRegistry } from './registries/moduleRegistry';
+
 /**
  * All SDNA models that belong to the we-root system perspective.
  * Centralised here so both AdamStore branches (create vs restore) always
@@ -155,7 +157,12 @@ export const SPACE_MODELS = [
  * are written.
  */
 export async function installSpaceSdna(p: PerspectiveProxy): Promise<void> {
-  await ensureModelsRegistered(p, SPACE_MODELS);
+  // Module-owned entities install by the same path as WE's own, so the diff-before-write check that
+  // `ensureModelsRegistered` performs applies to both. That single shared path is the whole point:
+  // `cleanupSpaceSdna` exists because shapes once got installed twice, and N modules each rolling
+  // their own install would be that bug with more instances.
+  const moduleModels = moduleRegistry.models() as (typeof Ad4mModel)[];
+  await ensureModelsRegistered(p, [...SPACE_MODELS, ...moduleModels]);
 }
 
 /**

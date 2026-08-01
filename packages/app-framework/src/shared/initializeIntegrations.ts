@@ -6,6 +6,8 @@
  * iframe mounting) is handled by AppStore and TemplateProvider at runtime.
  */
 
+import type { ModuleStoreDeps } from '@we/schema-shared';
+
 import weSeedFile from '../../../../we-seed.json';
 import type { WeSeedFile } from '../types/seed';
 import { generateIframePermissions, validateSeedForLauncher } from './integrationComposer';
@@ -25,6 +27,8 @@ export interface IntegrationDeps {
    * starts to matter once modules load dynamically.
    */
   components?: Record<string, unknown>;
+  /** Reactivity lent to module stores, so a module needn't import a framework. */
+  storeDeps?: ModuleStoreDeps;
 }
 
 export function initializeIntegrations(platformAdapter: PlatformAdapter, deps: IntegrationDeps = {}): void {
@@ -61,7 +65,7 @@ export function initializeIntegrations(platformAdapter: PlatformAdapter, deps: I
     // imported by each module, so Solid and @we/widgets stay single instances shared with the host.
     const { activated } = activateSeedModules(
       seed.modules,
-      { components: deps.components ?? {} },
+      { components: deps.components ?? {}, storeDeps: deps.storeDeps },
       { backend: 'ad4m', framework: 'solid' },
       moduleRegistry,
     );

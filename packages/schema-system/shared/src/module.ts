@@ -97,12 +97,40 @@ export interface ModuleDefinition {
   slots?: SlotContribution[];
 
   /**
+   * Durable entity types this module owns, installed by the host into the relevant dataset.
+   *
+   * Declarative on purpose: the *host* owns the install mechanism, so idempotency lives in one place
+   * rather than being re-implemented per module. That matters here more than it sounds — WE already
+   * has `cleanupSpaceSdna` as remediation for shapes that got installed twice by different agents,
+   * and N modules each rolling their own install is that bug with more instances.
+   *
+   * Typed `unknown[]` because the shape is the backend's: on AD4M these are `@Model`-decorated
+   * classes, which is why a module declaring them must also declare `backends: ['ad4m']` until a
+   * manifest→SDNA compiler exists.
+   */
+  models?: unknown[];
+
+  /**
    * Reactive state, exposed to templates at `modules.<id>.<key>`.
    *
    * A factory rather than a value so the host controls lifetime, and so a module can be registered
    * before the host is ready to instantiate it.
+   *
+   * Reactivity primitives are **injected**, not imported — the same port trick that keeps
+   * `@we/schema-shared` framework-neutral (`resolveProp` taking a `memo`). A module store written
+   * against `deps.signal` never imports Solid, so it cannot introduce the second-runtime hazard that
+   * silently breaks reactivity across a dynamically-loaded boundary.
    */
-  createStore?: () => Record<string, unknown>;
+  createStore?: (deps: ModuleStoreDeps) => Record<string, unknown>;
+}
+
+/**
+ * The reactivity a host lends a module's store, so the module needn't import a framework.
+ * Mirrors the `memo` injection that makes `@we/schema-shared` framework-neutral.
+ */
+export interface ModuleStoreDeps {
+  /** Returns a `[read, write]` pair — Solid's `createSignal` shape, which every framework can supply. */
+  signal: <T>(initial: T) => [() => T, (next: T) => void];
 }
 
 /** Identity function that exists for inference and for a greppable declaration site. */
