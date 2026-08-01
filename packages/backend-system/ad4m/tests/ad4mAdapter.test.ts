@@ -2,11 +2,10 @@
  * The AD4M QueryAdapter — focus on the logic that isn't just `planQuery`/`irToFlatQuery`: the two
  * conditional degradations `plan()` folds in, and the `scope`→`parent` predicate resolution.
  */
-import type { QueryIR } from '@we/schema-shared';
+import type { ModelManifestEntry } from '@we/backend-ad4m';
+import { createAd4mQueryAdapter } from '@we/backend-ad4m';
+import type { QueryIR } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
-
-import { createAd4mQueryAdapter } from '../src/shared/ad4mAdapter';
-import type { ModelManifestEntry } from '../src/shared/AdamStore';
 
 // A minimal perspective manifest: Conversation has a `subgroupEntities` relation bound to a predicate.
 const MODELS: ModelManifestEntry[] = [

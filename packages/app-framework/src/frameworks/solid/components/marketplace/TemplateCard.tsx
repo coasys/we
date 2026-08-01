@@ -1,4 +1,4 @@
-import type { AgentProfileSummary } from '@shared/agentHelpers';
+import type { AgentProfileSummary } from '@we/backend-ad4m';
 import { Card, Column, ImageLightbox, Row } from '@we/components/solid';
 import { createMemo, createSignal, For, onMount, Show } from 'solid-js';
 

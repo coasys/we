@@ -11,7 +11,7 @@
  * `scope` — not a round-trip case (`irToFlatQuery` defers it to the adapter), so it's covered by the
  * `scope`→predicate resolution tests in `ad4mAdapter.test.ts`.
  */
-import { compileQuery, type FlatQuery, irToFlatQuery } from '@we/schema-shared';
+import { compileQuery, type FlatQuery, irToFlatQuery } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 // Fully-neutral-expressible real query shapes (token values concretised).

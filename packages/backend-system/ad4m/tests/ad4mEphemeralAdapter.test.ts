@@ -6,9 +6,8 @@
  * get a second executor signal handler, every message parsed twice, and one consumer's `dispose()`
  * quietly killing another's transport.
  */
+import { createAd4mEphemeralPort } from '@we/backend-ad4m';
 import { describe, expect, it, vi } from 'vitest';
-
-import { createAd4mEphemeralPort } from '../src/shared/ad4mEphemeralAdapter';
 
 type Handler = (signal: unknown) => void;
 

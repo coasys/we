@@ -28,7 +28,7 @@
  * grep `unicast:emulated`. No consumer changes.
  */
 import type { PerspectiveExpression, PerspectiveProxy } from '@coasys/ad4m';
-import type { EphemeralCapabilities, EphemeralChannel, EphemeralPort, EphemeralScope } from '@we/schema-shared';
+import type { EphemeralCapabilities, EphemeralChannel, EphemeralPort, EphemeralScope } from '@we/backend-shared';
 
 /** Namespaces this traffic so it can never be confused with another protocol's links. */
 const PREDICATE_PREFIX = 'we://ephemeral/';

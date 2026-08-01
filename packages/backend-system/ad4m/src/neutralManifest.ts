@@ -8,9 +8,9 @@
  * binding — the "semantic projection" described in `@we/schema-shared`'s `manifest.ts`. The output is
  * a plain object with no AD4M dependency, so a non-AD4M consumer can hold WE's vocabulary directly.
  */
-import type { ModelManifest, PropertySchema, RelationSchema, ScalarType } from '@we/schema-shared';
+import type { ModelManifest, PropertySchema, RelationSchema, ScalarType } from '@we/backend-shared';
 
-import type { ModelManifestEntry, ModelManifestProperty } from './AdamStore';
+import type { ModelManifestEntry, ModelManifestProperty } from './manifestTypes';
 
 export interface NeutralManifestResult {
   manifest: ModelManifest;

@@ -1,7 +1,5 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
-import { createAd4mDataBindings } from '@shared/ad4mAdapter';
 import { queryIRFlag } from '@shared/queryIRFlag';
-import { getModel } from '@shared/registries/modelRegistry';
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
@@ -17,6 +15,8 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
+import { createAd4mDataBindings } from '@we/backend-ad4m';
+import { getModel } from '@we/backend-ad4m';
 import { toastService } from '@we/components/solid';
 import type { TemplateSchema } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';

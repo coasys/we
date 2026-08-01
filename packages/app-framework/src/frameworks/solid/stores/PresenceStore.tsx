@@ -33,11 +33,11 @@
  * `$identities` and the `$agent` block already use. Flux's presence map *is* its profile cache, so it
  * re-hydrates every peer profile on every heartbeat — an N-peer `Promise.all` every five seconds.
  */
-import type { AgentProfileSummary } from '@shared/agentHelpers';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { createTabCoordinator } from '@shared/tabCoordinator';
 import { useAdamStore } from '@solid/stores/AdamStore';
 import { useRouteStore } from '@solid/stores/RouteStore';
+import type { AgentProfileSummary } from '@we/backend-ad4m';
 import type { Activity, Focus, FocusDepth, Peer, PresenceSource, PresenceTone } from '@we/schema-shared';
 import {
   applyFocusDepth,

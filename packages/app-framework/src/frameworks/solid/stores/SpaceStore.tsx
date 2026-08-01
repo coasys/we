@@ -1,11 +1,11 @@
 import { parseLit } from '@coasys/ad4m';
-import type { AgentProfileSummary } from '@shared/agentHelpers';
-import { getModelForPerspective, registerModel } from '@shared/registries/modelRegistry';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
-import { ensureModelRegistered, SPACE_MODELS } from '@shared/sdnaModels';
-import { type LocationData, removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@shared/syncHelpers';
 import { deriveSlug } from '@shared/utils';
 import { useAdamStore } from '@solid/stores';
+import type { AgentProfileSummary } from '@we/backend-ad4m';
+import { getModelForPerspective, registerModel } from '@we/backend-ad4m';
+import { ensureModelRegistered, SPACE_MODELS } from '@we/backend-ad4m';
+import { type LocationData, removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@we/backend-ad4m';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import { CollectionBlock, compressImageToFileData, LocationBlock, Signal, SignalType, Space } from '@we/models';
 import {

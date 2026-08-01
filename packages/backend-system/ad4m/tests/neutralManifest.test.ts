@@ -1,8 +1,7 @@
-import { type QueryIR, validateManifest, validateQueryAgainstManifest } from '@we/schema-shared';
+import type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-ad4m';
+import { toNeutralManifest } from '@we/backend-ad4m';
+import { type QueryIR, validateManifest, validateQueryAgainstManifest } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
-
-import type { ModelManifestEntry, ModelManifestProperty } from '../src/shared/AdamStore';
-import { toNeutralManifest } from '../src/shared/neutralManifest';
 
 // Terse builder for an AD4M-side property (only the fields under test vary).
 const prop = (

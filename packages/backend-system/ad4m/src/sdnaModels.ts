@@ -27,8 +27,6 @@ import {
   WeNode,
 } from '@we/models';
 
-import { moduleRegistry } from './registries/moduleRegistry';
-
 /**
  * All SDNA models that belong to the we-root system perspective.
  * Centralised here so both AdamStore branches (create vs restore) always
@@ -156,9 +154,9 @@ export const SPACE_MODELS = [
  * independent peers on the same shared perspective — only models not already present
  * are written.
  */
-export async function installSpaceSdna(p: PerspectiveProxy): Promise<void> {
+export async function installSpaceSdna(p: PerspectiveProxy, moduleModels: readonly unknown[] = []): Promise<void> {
   await ensureModelsRegistered(p, SPACE_MODELS);
-  await installModuleSdna(p);
+  await installModuleSdna(p, moduleModels);
 }
 
 /**
@@ -178,10 +176,14 @@ export async function installSpaceSdna(p: PerspectiveProxy): Promise<void> {
  * Idempotency lives in one shared path rather than per module deliberately — `cleanupSpaceSdna`
  * exists because shapes once got installed twice by different agents, and N modules each rolling
  * their own install would be that bug with more instances.
+ *
+ * The models arrive as an argument rather than being read from the module registry. The registry is
+ * the host's, and a backend adapter reaching up into it would be the one edge that inverts this
+ * package's dependency direction — everything else here is imported *by* the shell, not from it.
+ * The caller already holds the registry, so passing `moduleRegistry.models()` costs nothing.
  */
-export async function installModuleSdna(p: PerspectiveProxy): Promise<void> {
-  const moduleModels = moduleRegistry.models() as (typeof Ad4mModel)[];
-  if (moduleModels.length) await ensureModelsRegistered(p, moduleModels);
+export async function installModuleSdna(p: PerspectiveProxy, moduleModels: readonly unknown[] = []): Promise<void> {
+  if (moduleModels.length) await ensureModelsRegistered(p, moduleModels as (typeof Ad4mModel)[]);
 }
 
 /**

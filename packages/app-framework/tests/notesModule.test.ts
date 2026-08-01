@@ -5,11 +5,11 @@
  * install path, and the predicate namespace that becomes the convention the moment it ships. It is
  * fully solo-testable, since a personal perspective is local-only and needs no neighbourhood sync.
  */
+import { getModel } from '@we/backend-ad4m';
 import { NOTE_PREDICATES, notesModule } from '@we/module-notes';
 import { checkModuleCompatibility } from '@we/module-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { getModel } from '../src/shared/registries/modelRegistry';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
 

@@ -1,5 +1,8 @@
 import { Ad4mClient, Agent, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
-import { createAd4mEphemeralPort } from '@shared/ad4mEphemeralAdapter';
+import { useBackend, usePlatform } from '@shared/platform';
+import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
+import { moduleRegistry } from '@shared/registries/moduleRegistry';
+import { createAd4mEphemeralPort } from '@we/backend-ad4m';
 import {
   type AgentProfileSummary,
   FILE_STORAGE_LANGUAGE,
@@ -7,25 +10,23 @@ import {
   isProfileEmpty,
   type PublishProfileFields,
   publishProfileToPublicPerspective,
-} from '@shared/agentHelpers';
-import { buildModelClasses, buildModelManifest, getForeignShacl } from '@shared/perspectiveHelpers';
-import { useBackend, usePlatform } from '@shared/platform';
-import { registerDynamicModels } from '@shared/registries/modelRegistry';
-import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
+} from '@we/backend-ad4m';
+import { buildModelClasses, buildModelManifest, getForeignShacl } from '@we/backend-ad4m';
+import { registerDynamicModels } from '@we/backend-ad4m';
 import {
   deduplicateSpaceSdna,
   installModuleSdna,
   installRootSdna,
   installSpaceSdna,
   isModelRegistered,
-} from '@shared/sdnaModels';
+} from '@we/backend-ad4m';
 import {
   isSpaceSelf,
   type LocationData,
   removeSpaceFromParent,
   spaceSelfWhere,
   syncSpaceToParent,
-} from '@shared/syncHelpers';
+} from '@we/backend-ad4m';
 import {
   AgentSettings,
   compressImageToFileData,
@@ -59,8 +60,8 @@ import { useRouteStore } from './RouteStore';
 
 export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 
-export type { ModelManifestEntry, ModelManifestProperty } from '@shared/AdamStore';
-import type { ModelManifestEntry } from '@shared/AdamStore';
+export type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-ad4m';
+import type { ModelManifestEntry } from '@we/backend-ad4m';
 
 export interface AdamStore {
   // State
@@ -1007,7 +1008,7 @@ export function AdamStoreProvider(props: ParentProps) {
       const spacePerspective = await client.perspective.add(name);
 
       // Register SDNA models (full set, same as SpaceStore uses)
-      await installSpaceSdna(spacePerspective);
+      await installSpaceSdna(spacePerspective, moduleRegistry.models());
 
       // HACK: Model.register resolves before the SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1103,7 +1104,7 @@ export function AdamStoreProvider(props: ParentProps) {
     if (!perspective) throw new Error('AdamStore: initializeAsWeSpace called with no active perspective');
 
     // Additive/idempotent — does not remove or touch the perspective's existing foreign SDNA.
-    await installSpaceSdna(perspective);
+    await installSpaceSdna(perspective, moduleRegistry.models());
     // HACK: Model.register resolves before SDNA is actually ready — same pattern used
     // in switchPerspective/createSpace/joinSpace.
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1186,7 +1187,7 @@ export function AdamStoreProvider(props: ParentProps) {
       // before writing (see sdnaModels.ts), so this is safe to call unconditionally
       // even when the space's creator or an earlier joiner already installed it —
       // it won't write a duplicate copy.
-      await installSpaceSdna(joinedP);
+      await installSpaceSdna(joinedP, moduleRegistry.models());
       // Give the SDNA write time to settle before reactive queries fire.
       await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -1312,7 +1313,7 @@ export function AdamStoreProvider(props: ParentProps) {
       if (!isWeSpace) {
         const shapeNames = await perspective.getShaclNames();
         if (shapeNames.length === 0) {
-          await installSpaceSdna(perspective);
+          await installSpaceSdna(perspective, moduleRegistry.models());
           await new Promise((resolve) => setTimeout(resolve, 500));
           isWeSpace = await isModelRegistered(perspective, Space);
         }
@@ -1321,7 +1322,7 @@ export function AdamStoreProvider(props: ParentProps) {
         // was created would find its shapes missing — a query failing with "No SHACL shape stored for
         // class X" in a perspective that otherwise looks healthy. Module shapes therefore install on
         // every switch; `ensureModelsRegistered` diffs first, so this is a read in the common case.
-        await installModuleSdna(perspective);
+        await installModuleSdna(perspective, moduleRegistry.models());
       }
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes

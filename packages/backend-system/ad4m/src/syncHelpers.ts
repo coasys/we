@@ -7,8 +7,9 @@
  */
 
 import { type PerspectiveProxy } from '@coasys/ad4m';
-import { ensureModelRegistered } from '@shared/sdnaModels';
 import { type FileData, LocationBlock, Space } from '@we/models';
+
+import { ensureModelRegistered } from './sdnaModels';
 
 export interface LocationData {
   latitude: number;

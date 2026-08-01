@@ -2,7 +2,7 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
 import { Ad4mModel, HasMany, Model, Property } from '@coasys/ad4m';
 import { queryIRFlag } from '@shared/queryIRFlag';
-import { registerModel } from '@shared/registries/modelRegistry';
+import { registerModel } from '@we/backend-ad4m';
 import { type Accessor, createEffect, createSignal } from 'solid-js';
 
 // ---------------------------------------------------------------------------
