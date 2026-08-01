@@ -7,7 +7,7 @@ import type { SchemaNode } from '@we/schema-shared';
  * and the toolbar for switching templates and opening the editor.
  *
  * Grouped as a single registry slot so white-labelers can remove or replace
- * the entire editing UI by overriding this entry in shellRegistry.
+ * the entire editing UI via slotRegistry.replace('core:templateEditor', node).
  *
  * Only mounted when the user is logged in (boot state === 'ready').
  * The toolbar additionally hides when an external app or shell overlay is active.

@@ -11,7 +11,7 @@ import type { WeSeedFile } from '../types/seed';
 import { generateIframePermissions, validateSeedForLauncher } from './integrationComposer';
 import type { PlatformAdapter } from './platform/types';
 import { appRegistry } from './registries/appRegistry';
-import { shellRegistry } from './registries/shellRegistry';
+import { slotRegistry } from './registries/slotRegistry';
 
 export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
   try {
@@ -23,9 +23,10 @@ export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
       return;
     }
 
-    // Apply optional white-label boot screen override
+    // Apply optional white-label boot screen override. Deployment-level configuration of shell
+    // chrome — the layer whose scope matches, unlike a per-space template.
     if (seed.host?.ui?.bootScreen) {
-      shellRegistry.bootScreen = seed.host.ui.bootScreen;
+      slotRegistry.replace('core:bootScreen', seed.host.ui.bootScreen);
     }
 
     // Resolve each app URL once and register it

@@ -6,7 +6,8 @@ import type { SchemaNode } from '@we/schema-shared';
  * Persistent app chrome sidebar that wraps around the active template.
  * Provides: template/theme switching, current space info, installed apps, logout.
  *
- * Rendered by shellRegistry alongside the boot screen and active template.
+ * Registered in slotRegistry as `core:sidebar` (anchor: dock-left), alongside the boot screen and
+ * template editor.
  * Only visible when the user is logged in (boot state === 'ready').
  */
 export const sidebar: SchemaNode = {

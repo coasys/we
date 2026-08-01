@@ -2,7 +2,8 @@ import type { PerspectiveProxy } from '@coasys/ad4m';
 import { createAd4mDataBindings } from '@shared/ad4mAdapter';
 import { queryIRFlag } from '@shared/queryIRFlag';
 import { getModel } from '@shared/registries/modelRegistry';
-import { shellRegistry } from '@shared/registries/shellRegistry';
+import { moduleStores } from '@shared/registries/moduleRegistry';
+import { slotRegistry } from '@shared/registries/slotRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAdamStore,
@@ -79,6 +80,10 @@ export default function TemplateProvider() {
     templateStore,
     routeStore,
     presenceStore,
+    // Always present, even with no modules registered: `{ $store: 'modules.x' }` resolves through the
+    // single-segment path, which indexes the store object without a guard and would throw on a
+    // missing `modules` key rather than returning undefined.
+    modules: moduleStores,
     consoleStore,
     model: modelStore,
     // Host wiring, not backend adaptation — any backend would wire these the same way, so they stay
@@ -111,11 +116,12 @@ export default function TemplateProvider() {
     return [getModel(modelName), resolvePerspective(opts?.perspective) ?? adamStore.currentPerspective()!] as const;
   }
 
-  // Shell chrome — boot screen + sidebar + template editor.
-  // Rendered once outside the keyed Router so it never remounts on template switches.
+  // Shell chrome — host slots plus anything feature modules contribute.
+  // Rendered once outside the keyed Router so it never remounts on template switches; that isolation
+  // is why a template has no channel into the shell.
   const shellSchema: TemplateSchema = {
     meta: { name: 'Shell', description: 'App shell chrome', icon: '' },
-    children: [shellRegistry.bootScreen, shellRegistry.sidebar, shellRegistry.templateEditor],
+    children: slotRegistry.nodes(),
   };
 
   const notFoundNode = {
