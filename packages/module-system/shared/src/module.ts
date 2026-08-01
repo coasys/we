@@ -21,10 +21,8 @@
  * just components that never update. A module with no framework imports cannot have that problem.
  * Fragments-first is what makes dynamic loading tractable later.
  */
-import type { DatasetHandle } from './dataSource';
-import type { EphemeralPort } from './ephemeral';
-import type { Activity, Peer } from './presence';
-import type { SchemaNode } from './types';
+import type { Activity, DatasetHandle, EphemeralPort, Peer } from '@we/backend-shared';
+import type { SchemaNode } from '@we/schema-shared';
 
 /**
  * Where persistent chrome attaches. A small fixed set on purpose: too few and modules fight for

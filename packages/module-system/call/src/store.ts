@@ -17,8 +17,10 @@
  * drives the mesh, and media drives what the mesh sends. Nothing flows back — the mesh never tells
  * presence who is in the call, because a connection failing is not the same as a peer leaving.
  */
-import type { Focus, MediaSettings, ModuleStoreDeps, Peer } from '@we/schema-shared';
-import { activitiesOfType, planEphemeral } from '@we/schema-shared';
+import type { MediaSettings } from '@we/module-shared';
+import type { Focus, ModuleStoreDeps, Peer } from '@we/module-shared';
+import { activitiesOfType } from '@we/module-shared';
+import { planEphemeral } from '@we/module-shared';
 
 import { createMediaController, type MediaController } from './media';
 import { type CallMesh, createCallMesh } from './mesh';

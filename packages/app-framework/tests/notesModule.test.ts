@@ -6,7 +6,7 @@
  * fully solo-testable, since a personal perspective is local-only and needs no neighbourhood sync.
  */
 import { NOTE_PREDICATES, notesModule } from '@we/module-notes';
-import { checkModuleCompatibility } from '@we/schema-shared';
+import { checkModuleCompatibility } from '@we/module-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { getModel } from '../src/shared/registries/modelRegistry';

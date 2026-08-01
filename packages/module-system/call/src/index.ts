@@ -23,7 +23,8 @@
  * - **No SFU.** Mesh only, so roughly four to six participants — see `mesh.ts`.
  * - **No camera *and* screen at once.** Sharing replaces the camera track — see `media.ts`.
  */
-import { defineModule, type ModuleStoreDeps, type SchemaNode } from '@we/schema-shared';
+import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
+import { type SchemaNode } from '@we/schema-shared';
 
 import { createCallStore } from './store';
 

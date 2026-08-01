@@ -18,7 +18,8 @@
  * registration into two phases with different capabilities, and "which phase am I in" is exactly the
  * kind of implicit state the last round of seam bugs came from.
  */
-import type { Activity, DatasetHandle, EphemeralPort, ModuleStoreDeps, Peer } from '@we/schema-shared';
+import type { ModuleStoreDeps } from '@we/module-shared';
+import type { Activity, DatasetHandle, EphemeralPort, Peer } from '@we/schema-shared';
 
 /** What a store publishes here once it is live. All optional: a host need not provide any of it. */
 export interface ModuleHostServices {

@@ -1,7 +1,7 @@
 {
-  "name": "@we/module-notes",
+  "name": "@we/module-call",
   "version": "0.1.0",
-  "description": "Notes feature module \u2014 a per-space scratchpad panel",
+  "description": "Call feature module \u2014 mesh WebRTC audio, video and screen share over the ephemeral port",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,18 +19,22 @@
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {},
   "peerDependencies": {
     "@we/schema-shared": "workspace:*",
-    "@coasys/ad4m": "*"
+    "@we/module-shared": "workspace:*"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/schema-shared": "workspace:*",
-    "@coasys/ad4m": "0.11.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.0",
+    "@we/module-shared": "workspace:*",
+    "@we/backend-shared": "workspace:*"
   }
 }

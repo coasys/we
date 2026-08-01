@@ -6,7 +6,7 @@
  * iframe mounting) is handled by AppStore and TemplateProvider at runtime.
  */
 
-import type { ModuleStoreDeps } from '@we/schema-shared';
+import type { ModuleStoreDeps } from '@we/module-shared';
 
 import weSeedFile from '../../../../we-seed.json';
 import type { WeSeedFile } from '../types/seed';

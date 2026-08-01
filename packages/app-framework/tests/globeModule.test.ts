@@ -10,7 +10,7 @@
  * new owner, and that the module declares itself honestly.
  */
 import { createGlobeModule, layerFactoryRegistry } from '@we/module-globe';
-import { checkModuleCompatibility } from '@we/schema-shared';
+import { checkModuleCompatibility } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
 
 import { moduleRegistry } from '../src/shared/registries/moduleRegistry';

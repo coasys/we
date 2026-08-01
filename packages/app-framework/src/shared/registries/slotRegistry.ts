@@ -25,7 +25,8 @@
  * switches. Configuration belongs to the seed (deployment), an agent preference (per-user), and the
  * module's own state — chrome that is only present when relevant needs no hiding mechanism at all.
  */
-import type { SchemaNode, SlotAnchor, SlotContribution } from '@we/schema-shared';
+import type { SlotAnchor, SlotContribution } from '@we/module-shared';
+import type { SchemaNode } from '@we/schema-shared';
 
 import { bootScreen } from '../schemas/shell/BootScreen.schema';
 import { moduleRail } from '../schemas/shell/ModuleRail.schema';

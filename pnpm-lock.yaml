@@ -426,6 +426,9 @@ importers:
       '@we/ai-context':
         specifier: workspace:*
         version: link:../ai-context
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../backend-system/shared
       '@we/block-shared':
         specifier: workspace:*
         version: link:../block-system/shared
@@ -446,13 +449,16 @@ importers:
         version: link:../models
       '@we/module-call':
         specifier: workspace:*
-        version: link:../modules/call
+        version: link:../module-system/call
       '@we/module-globe':
         specifier: workspace:*
-        version: link:../modules/globe
+        version: link:../module-system/globe
       '@we/module-notes':
         specifier: workspace:*
-        version: link:../modules/notes
+        version: link:../module-system/notes
+      '@we/module-shared':
+        specifier: workspace:*
+        version: link:../module-system/shared
       '@we/primitives':
         specifier: workspace:*
         version: link:../design-system/3-primitives
@@ -502,6 +508,28 @@ importers:
       vitest:
         specifier: ^4.0.15
         version: 4.1.10(@types/node@22.20.0)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@22.20.0)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  packages/backend-system/shared:
+    dependencies:
+      zod:
+        specifier: ^4.1.12
+        version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+      '@vitest/coverage-v8':
+        specifier: ^4.0.15
+        version: 4.1.10(vitest@4.1.10)
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/block-system/frameworks/solid:
     dependencies:
@@ -868,11 +896,17 @@ importers:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
 
-  packages/modules/call:
+  packages/module-system/call:
     devDependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../backend-system/shared
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli
+      '@we/module-shared':
+        specifier: workspace:*
+        version: link:../shared
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared
@@ -886,7 +920,7 @@ importers:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@24.13.2)(happy-dom@20.10.6)(jsdom@27.4.0)(sass@1.101.0)
 
-  packages/modules/globe:
+  packages/module-system/globe:
     dependencies:
       '@we/cesium-layers':
         specifier: workspace:*
@@ -895,6 +929,9 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli
+      '@we/module-shared':
+        specifier: workspace:*
+        version: link:../shared
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared
@@ -908,7 +945,7 @@ importers:
         specifier: ^5.3.3
         version: 5.9.3
 
-  packages/modules/notes:
+  packages/module-system/notes:
     devDependencies:
       '@coasys/ad4m':
         specifier: 0.13.0-test-9
@@ -916,6 +953,9 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli
+      '@we/module-shared':
+        specifier: workspace:*
+        version: link:../shared
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared
@@ -925,6 +965,28 @@ importers:
       typescript:
         specifier: ^5.3.3
         version: 5.9.3
+
+  packages/module-system/shared:
+    dependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../backend-system/shared
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/schema-system/frameworks/solid:
     dependencies:
@@ -962,6 +1024,9 @@ importers:
 
   packages/schema-system/shared:
     dependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../backend-system/shared
       '@we/design-utils':
         specifier: workspace:*
         version: link:../../design-system/utils

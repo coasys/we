@@ -26,7 +26,8 @@
  * The store's reactivity is injected (`deps.signal`) rather than imported, the same port trick that
  * keeps `@we/schema-shared` framework-neutral.
  */
-import { defineModule, type ModuleStoreDeps, type SchemaNode } from '@we/schema-shared';
+import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
+import { type SchemaNode } from '@we/schema-shared';
 
 import { Note, NOTE_PREDICATES } from './Note';
 

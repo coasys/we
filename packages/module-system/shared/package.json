@@ -1,0 +1,29 @@
+{
+  "name": "@we/module-shared",
+  "version": "0.1.0",
+  "description": "The feature-module contract — what a module declares, and what the host lends it",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@we/backend-shared": "workspace:*",
+    "@we/schema-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@we/cli": "workspace:*",
+    "tsup": "^8.5.1",
+    "vitest": "^4.0.15"
+  },
+  "sideEffects": false
+}

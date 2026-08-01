@@ -23,8 +23,9 @@
  * registers. That is exactly what makes `{ $if: { condition: { $store: 'modules.notes' } } }` the
  * supported way for a template to depend on an optional module.
  */
-import type { ModuleDefinition, ModuleStoreDeps, SchemaNode } from '@we/schema-shared';
-import { checkModuleCompatibility } from '@we/schema-shared';
+import type { ModuleDefinition, ModuleStoreDeps } from '@we/module-shared';
+import { checkModuleCompatibility } from '@we/module-shared';
+import type { SchemaNode } from '@we/schema-shared';
 
 import { type ModelClass, registerModel, unregisterModel } from './modelRegistry';
 import { slotRegistry } from './slotRegistry';

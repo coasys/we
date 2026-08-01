@@ -1,7 +1,7 @@
 {
-  "name": "@we/module-globe",
+  "name": "@we/module-notes",
   "version": "0.1.0",
-  "description": "Globe feature module — the Cesium layer registry, route and schema fragments",
+  "description": "Notes feature module \u2014 a per-space scratchpad panel",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -13,24 +13,26 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build",
     "dev": "tsup --watch"
   },
-  "dependencies": {
-    "@we/cesium-layers": "workspace:*"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "@we/schema-shared": "workspace:*",
-    "@we/widgets": "workspace:*"
+    "@coasys/ad4m": "*",
+    "@we/module-shared": "workspace:*"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/schema-shared": "workspace:*",
-    "@we/widgets": "workspace:*",
+    "@coasys/ad4m": "0.11.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "@we/module-shared": "workspace:*"
   }
 }

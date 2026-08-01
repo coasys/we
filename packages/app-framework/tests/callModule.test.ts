@@ -7,7 +7,7 @@
  * it actually has.
  */
 import { callModule } from '@we/module-call';
-import { checkModuleCompatibility } from '@we/schema-shared';
+import { checkModuleCompatibility } from '@we/module-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';

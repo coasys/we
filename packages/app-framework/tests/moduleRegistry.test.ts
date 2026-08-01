@@ -5,7 +5,7 @@
  * must leave the existing three shell entries rendering in exactly the same order. Everything else in
  * this PR builds on that generalisation, so if it is not faithful, nothing downstream is trustworthy.
  */
-import type { ModuleDefinition } from '@we/schema-shared';
+import type { ModuleDefinition } from '@we/module-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';

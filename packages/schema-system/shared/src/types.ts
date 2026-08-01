@@ -1,4 +1,4 @@
-import type { RendererStores } from './dataSource';
+import type { RendererStores } from '@we/backend-shared';
 
 // Pure framework-agnostic schema types
 export type SchemaProp = string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined;

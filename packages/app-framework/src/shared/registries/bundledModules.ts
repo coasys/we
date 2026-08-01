@@ -12,7 +12,7 @@
 import { callModule } from '@we/module-call';
 import { createGlobeModule } from '@we/module-globe';
 import { notesModule } from '@we/module-notes';
-import type { ModuleDefinition, ModuleStoreDeps } from '@we/schema-shared';
+import type { ModuleDefinition, ModuleStoreDeps } from '@we/module-shared';
 
 /**
  * Factories rather than definitions, because a module may need something from the host to describe

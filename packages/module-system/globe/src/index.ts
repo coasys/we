@@ -39,7 +39,7 @@ import {
   skyboxLayer,
   solarSystemLayer,
 } from '@we/cesium-layers';
-import { defineModule } from '@we/schema-shared';
+import { defineModule } from '@we/module-shared';
 
 /**
  * The layer set this module ships — a **module-private registry**, nested inside the module system.

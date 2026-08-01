@@ -10,7 +10,7 @@
  * The `RTCPeerConnection` fake is deliberately thin: it models signalling state and the callbacks the
  * mesh drives, and nothing about actual media. What is under test is the negotiation, not the browser.
  */
-import { createInMemoryEphemeralPort, InMemoryBus } from '@we/schema-shared';
+import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createCallMesh } from './mesh';
