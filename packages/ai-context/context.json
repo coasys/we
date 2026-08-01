@@ -1739,6 +1739,17 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "playsinline",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "stream",
+          "type": "MediaStream | null | undefined",
+          "optional": true
         }
       ]
     }
