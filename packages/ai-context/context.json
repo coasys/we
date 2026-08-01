@@ -1739,6 +1739,17 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "playsinline",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "stream",
+          "type": "MediaStream | null | undefined",
+          "optional": true
         }
       ]
     }
@@ -3620,7 +3631,7 @@
     },
     {
       "name": "CesiumGlobe",
-      "description": "3D globe widget using CesiumJS with a modular layer system.\nLayers are injected via factory functions (planet surface + background).\nRequires a layer factory registry mapping string names to factory functions.\nNot schema-renderable — used directly in application code.",
+      "description": "3D globe widget using CesiumJS with a modular layer system.\nLayers are injected via factory functions (planet surface + background).\nRegistered in the app's component registry, which injects `layerFactoryRegistry` — so templates\nplace it as `CesiumGlobe` without supplying that prop themselves.",
       "props": [
         {
           "name": "ionAccessToken",
@@ -4662,6 +4673,12 @@
           "type": "string",
           "predicate": "we://default_theme_id",
           "required": false
+        },
+        {
+          "name": "enabledModules",
+          "type": "string",
+          "predicate": "we://enabled_modules",
+          "required": false
         }
       ],
       "relations": [
@@ -5536,6 +5553,17 @@
         },
         "signalTypesBySlug": {
           "type": "object"
+        },
+        "enabledModules": {
+          "type": "array"
+        },
+        "moduleSettings": {
+          "type": "array",
+          "properties": ["id", "name", "description", "icon", "enabled"]
+        },
+        "moduleLaunchers": {
+          "type": "array",
+          "properties": ["id", "icon", "label", "active"]
         }
       },
       "actions": [
@@ -5545,7 +5573,9 @@
         "updateSpaceImage",
         "createSignalType",
         "upsertSignal",
-        "navigateToSpace"
+        "navigateToSpace",
+        "setModuleEnabled",
+        "launchModule"
       ]
     },
     {

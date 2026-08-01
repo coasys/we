@@ -28,6 +28,7 @@
 import type { SchemaNode, SlotAnchor, SlotContribution } from '@we/schema-shared';
 
 import { bootScreen } from '../schemas/shell/BootScreen.schema';
+import { moduleRail } from '../schemas/shell/ModuleRail.schema';
 import { sidebar } from '../schemas/shell/Sidebar.schema';
 import { templateEditor } from '../schemas/shell/TemplateEditor.schema';
 
@@ -100,6 +101,9 @@ export function registerCoreSlots(): void {
   slotRegistry.register({ id: 'core:bootScreen', anchor: 'overlay', node: bootScreen, order: 0 });
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
+  // The one place feature modules are opened from. Core rather than a module contribution, because
+  // only the host can stop launchers colliding — see ModuleRail.schema.ts.
+  slotRegistry.register({ id: 'core:moduleRail', anchor: 'dock-right', node: moduleRail, order: 10 });
 }
 
 registerCoreSlots();

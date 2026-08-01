@@ -39,6 +39,20 @@ export class Space extends WeNode {
   @Property({ through: 'we://default_theme_id' })
   defaultThemeId: string = '';
 
+  /**
+   * Which feature modules this community has turned on, as a JSON array of module ids.
+   *
+   * **Empty means "not decided", not "none".** A space created before this field existed, or by an
+   * agent who never opened the setting, must keep rendering the chrome it always had — so an unset
+   * value falls back to the modules the deployment's seed activated. Treating empty as "none" would
+   * silently strip existing spaces of every module the moment this shipped.
+   *
+   * A JSON string rather than a relation because the values are ids from the seed, not entities in
+   * the perspective — the same shape `AgentSettings.perspectiveOrder` uses for an ordered id list.
+   */
+  @Property({ through: 'we://enabled_modules' })
+  enabledModules: string = '';
+
   @HasOne(() => LocationBlock, { through: 'we://location' })
   location?: LocationBlock;
 }

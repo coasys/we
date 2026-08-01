@@ -145,6 +145,17 @@ export const storeEntries: StoreEntry[] = [
       signalTypesBySlug: {
         type: 'object',
       },
+      enabledModules: {
+        type: 'array',
+      },
+      moduleSettings: {
+        type: 'array',
+        properties: ['id', 'name', 'description', 'icon', 'enabled'],
+      },
+      moduleLaunchers: {
+        type: 'array',
+        properties: ['id', 'icon', 'label', 'active'],
+      },
     },
     actions: [
       'createPost',
@@ -154,6 +165,8 @@ export const storeEntries: StoreEntry[] = [
       'createSignalType',
       'upsertSignal',
       'navigateToSpace',
+      'setModuleEnabled',
+      'launchModule',
     ],
   },
   {
@@ -355,6 +368,12 @@ function generateStoresText(entries: StoreEntry[]): string {
         signalTypes: 'array of SignalType objects (community-created reaction/vote types)',
         signalTypesBySlug:
           'Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID',
+        enabledModules:
+          'string[] — ids of the feature modules this space has turned on. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had',
+        moduleSettings:
+          '{ id, name, description, icon, enabled }[] — every registered module paired with whether this space has it on; the shape the settings list renders',
+        moduleLaunchers:
+          '{ id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }',
       },
       actions: {
         createPost: '(editorState: unknown): creates a new post',
@@ -369,6 +388,10 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it',
         navigateToSpace:
           '(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together',
+        setModuleEnabled:
+          '(moduleId: string, enabled: boolean): turns a feature module on or off for the current space; writes the resolved list, so the first toggle also pins whatever was on by fallback',
+        launchModule:
+          "(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself",
       },
     },
     aiStore: {

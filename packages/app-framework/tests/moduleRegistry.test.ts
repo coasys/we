@@ -19,7 +19,7 @@ const host = { backend: 'ad4m', framework: 'solid' };
  * module store requires Solid to exist.
  */
 const storeDeps = {
-  signal: <T,>(initial: T): [() => T, (next: T) => void] => {
+  signal: <T>(initial: T): [() => T, (next: T) => void] => {
     let value = initial;
     return [() => value, (next: T) => (value = next)];
   },
@@ -38,9 +38,18 @@ function mod(overrides: Partial<ModuleDefinition> = {}): ModuleDefinition {
 beforeEach(reset);
 
 describe('slotRegistry — faithful generalisation of shellRegistry', () => {
-  it('renders the three host slots in the order the old hardcoded array produced', () => {
+  it('renders the original three host slots in the order the old hardcoded array produced', () => {
     // Was: [shellRegistry.bootScreen, shellRegistry.sidebar, shellRegistry.templateEditor]
-    expect(slotRegistry.ordered().map((e) => e.id)).toEqual(['core:bootScreen', 'core:sidebar', 'core:templateEditor']);
+    //
+    // `core:moduleRail` was added afterwards and sorts last, so the original three keep their exact
+    // relative order — which is the property this test exists to protect. Asserted as a prefix rather
+    // than the whole list so adding host chrome stays possible without weakening it.
+    expect(
+      slotRegistry
+        .ordered()
+        .map((e) => e.id)
+        .slice(0, 3),
+    ).toEqual(['core:bootScreen', 'core:sidebar', 'core:templateEditor']);
   });
 
   it('keeps host chrome first when a module contributes to a later anchor', () => {
@@ -49,6 +58,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:bootScreen',
       'core:sidebar',
       'core:templateEditor',
+      'core:moduleRail',
       'call',
     ]);
   });

@@ -1,6 +1,7 @@
 import { parseLit } from '@coasys/ad4m';
 import type { AgentProfileSummary } from '@shared/agentHelpers';
 import { getModelForPerspective, registerModel } from '@shared/registries/modelRegistry';
+import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { ensureModelRegistered, SPACE_MODELS } from '@shared/sdnaModels';
 import { type LocationData, removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@shared/syncHelpers';
 import { deriveSlug } from '@shared/utils';
@@ -48,6 +49,13 @@ export interface SpaceStore {
    * for prefilling the "Initialize as WE space" gate. Null once the perspective is a WE space,
    * or if no recognized foreign model is found. */
   foreignSpacePrefill: Accessor<{ name: string; description: string; avatar: string | null } | null>;
+  /** Feature modules turned on for this space. Falls back to everything the seed activated when the
+   *  space has never decided, so spaces that predate the setting keep the chrome they had. */
+  enabledModules: Accessor<string[]>;
+  /** Registered modules paired with whether this space has them on — the settings list. */
+  moduleSettings: Accessor<{ id: string; name: string; description: string; icon: string; enabled: boolean }[]>;
+  /** Launchers for the modules enabled here — what the module rail renders. */
+  moduleLaunchers: Accessor<{ id: string; icon: string; label: string; active: boolean }[]>;
 
   // Actions
   createPost: (json: unknown) => Promise<void>;
@@ -57,6 +65,8 @@ export interface SpaceStore {
   updateSpaceMeta: (updates: SpaceMetaUpdate) => Promise<void>;
   setSpaceDefaultTemplate: (templateId: string) => Promise<void>;
   setSpaceDefaultTheme: (themeId: string) => Promise<void>;
+  setModuleEnabled: (moduleId: string, enabled: boolean) => Promise<void>;
+  launchModule: (moduleId: string) => void;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
@@ -309,6 +319,115 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
 
+  /**
+   * Which modules this space has on.
+   *
+   * An unset field means "not decided", never "none" — see `Space.enabledModules`. Falling back to
+   * the registered set is what stops this shipping as a silent regression that strips every existing
+   * space of its chrome.
+   */
+  const enabledModules = createMemo<string[]>(() => {
+    const raw = currentSpace()?.enabledModules;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
+      } catch {
+        // A malformed value is a corrupt setting, not a decision to disable everything.
+        console.warn('space.enabledModules is not valid JSON; falling back to the registered set');
+      }
+    }
+    return moduleRegistry.all().map((entry) => entry.definition.id);
+  });
+
+  const moduleSettings = createMemo(() => {
+    const on = new Set(enabledModules());
+    return moduleRegistry.all().map(({ definition }) => ({
+      id: definition.id,
+      name: definition.name,
+      description: definition.description ?? '',
+      icon: definition.icon ?? 'puzzle-piece',
+      enabled: on.has(definition.id),
+    }));
+  });
+
+  /**
+   * What the module rail renders: one entry per enabled module that declares a launcher.
+   *
+   * Reads `moduleStores` so `active` tracks the module's own state — the notes tab highlights while
+   * its panel is open. A module with no `activeWhen` (a call, which starts rather than toggles) is
+   * simply never highlighted.
+   */
+  /** Read a boolean off a module's own store, unwrapping the accessor a module store exposes. */
+  const read = (moduleId: string, key: string | undefined, fallback: boolean): boolean => {
+    if (!key) return fallback;
+    const value = (moduleStores[moduleId] as Record<string, unknown> | undefined)?.[key];
+    return typeof value === 'function' ? Boolean((value as () => unknown)()) : Boolean(value);
+  };
+
+  const moduleLaunchers = createMemo(() => {
+    const on = new Set(enabledModules());
+    return moduleRegistry
+      .all()
+      .filter(({ definition }) => definition.launcher && on.has(definition.id))
+      .filter(({ definition }) => read(definition.id, definition.launcher!.availableWhen, true))
+      .map(({ definition }) => {
+        const launcher = definition.launcher!;
+        return {
+          id: definition.id,
+          icon: launcher.icon,
+          label: launcher.label,
+          active: read(definition.id, launcher.activeWhen, false),
+        };
+      });
+  });
+
+  /**
+   * Invoke a module's launcher.
+   *
+   * Here rather than in the schema because `$action` resolves a *literal* path, so a rail iterating
+   * over modules cannot build `modules.<id>.<method>` per entry. The rail passes the id instead and
+   * this dereferences it.
+   */
+  function launchModule(moduleId: string) {
+    const definition = moduleRegistry.get(moduleId)?.definition;
+    const action = definition?.launcher?.action;
+    if (!action) return;
+    const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
+    const fn = store?.[action];
+    if (typeof fn === 'function') (fn as () => void)();
+    else console.warn(`module "${moduleId}" declares launcher action "${action}" but its store has no such method`);
+  }
+
+  async function setModuleEnabled(moduleId: string, enabled: boolean) {
+    const space = currentSpace();
+    if (!space) return;
+    const next = new Set(enabledModules());
+    if (enabled) next.add(moduleId);
+    else next.delete(moduleId);
+    // Writes the resolved list, not a diff — so the first toggle also pins everything that was on by
+    // fallback, and a module added to the seed later doesn't silently appear in a space that had
+    // already made a decision.
+    space.enabledModules = JSON.stringify([...next]);
+    try {
+      await space.save();
+      setCurrentSpace(space);
+    } catch (error) {
+      // A space created before this field existed has the old SHACL shape stored in its perspective,
+      // and `we://enabled_modules` is not in it. Shapes are only installed when a class is absent
+      // entirely (`hasSubjectClassLink`), so adding a property to an existing model does not
+      // re-register — there is no shape-migration path yet.
+      //
+      // Reported rather than swallowed, and harmless either way: `enabledModules` falls back to the
+      // registered set, so such a space keeps exactly the chrome it has today.
+      console.warn(
+        `could not persist enabledModules for this space — it predates the field and its stored ` +
+          `SHACL shape has no "we://enabled_modules" property`,
+        error,
+      );
+    }
+  }
+
   // Subscribe to current space data reactively whenever the perspective changes.
   // include: { location: true } so AboutRoute can access location without a separate query.
   createEffect(() => {
@@ -494,6 +613,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceDefaultTemplateId,
     spaceDefaultThemeId,
     currentSpace,
+    enabledModules,
+    moduleSettings,
+    moduleLaunchers,
     foreignSpacePrefill,
 
     // Actions
@@ -504,6 +626,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceMeta,
     setSpaceDefaultTemplate,
     setSpaceDefaultTheme,
+    setModuleEnabled,
+    launchModule,
     createSignalType,
     upsertSignal,
     navigateToSpace,

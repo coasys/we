@@ -62,11 +62,20 @@ describe('notes module — contributions', () => {
 
   it('is reachable without any template cooperating', () => {
     // The module shipped once with only the expanded panel plus a `toggleButton` fragment nothing
-    // placed — so it registered successfully and was invisible. Chrome gated on state nothing can
-    // change is not chrome, so the slot renders a launcher in the closed case.
+    // placed — so it registered successfully and was invisible. It first grew its own launcher tab;
+    // when the call module needed the same thing and drew it somewhere else, the entry point became
+    // a declaration the host's module rail renders.
+    expect(notesModule.launcher).toEqual({ icon: 'note', label: 'Notes', action: 'toggle', activeWhen: 'open' });
+  });
+
+  it('names launcher members its own store actually has', () => {
+    // The declaration is a string, so nothing but a test connects it to the store. A typo would give
+    // a rail tab that silently does nothing.
     moduleRegistry.register(notesModule, host, storeDeps);
-    const node = slotRegistry.get('notes:0')?.node as { props?: { else?: unknown } };
-    expect(node.props?.else).toBeDefined();
+    const store = moduleStores.notes as Record<string, unknown>;
+
+    expect(typeof store[notesModule.launcher!.action]).toBe('function');
+    expect(typeof store[notesModule.launcher!.activeWhen!]).toBe('function');
   });
 
   it('keeps panel state in the store, not node-local state', () => {

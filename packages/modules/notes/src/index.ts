@@ -32,33 +32,18 @@ import { Note, NOTE_PREDICATES } from './Note';
 
 export { Note, NOTE_PREDICATES };
 
-/** Collapsed state — a launcher tab, so the module is reachable without any template cooperating. */
-const launcher: SchemaNode = {
-  type: 'we-button',
-  props: {
-    variant: 'secondary',
-    size: 'sm',
-    position: 'fixed',
-    right: '0',
-    top: '120px',
-    zIndex: 'sticky',
-    rtr: '0',
-    rbr: '0',
-    onClick: { $action: 'modules.notes.toggle' },
-  },
-  children: [{ type: 'we-icon', props: { name: 'note' } }],
-};
-
 /**
- * The docked panel, with its own launcher.
+ * The docked panel.
  *
- * A module has to be reachable on its own. Shipping only the expanded panel plus a `toggleButton`
- * fragment left no entry point at all until some template chose to place that fragment — so the
- * module was installed, registered and invisible. Chrome that gates itself on state nothing can
- * change is not chrome.
+ * A module has to be reachable on its own — shipping only the expanded panel plus a `toggleButton`
+ * fragment left no entry point until some template placed it, so the module was installed, registered
+ * and invisible. That was first fixed with a launcher tab this module drew itself, at the right edge.
+ * The call module then needed the same thing and put it somewhere else, which is how a per-module
+ * launcher became visibly the wrong shape.
  *
- * `toggleButton` is still exported for templates that want the trigger somewhere of their own
- * choosing; this is the fallback that guarantees the module is usable without one.
+ * It is now declared (`launcher` below) and drawn by the host's module rail, so every module is opened
+ * the same way. `toggleButton` is still exported for templates that want the trigger somewhere of
+ * their own choosing.
  */
 const panel: SchemaNode = {
   type: '$if',
@@ -72,16 +57,13 @@ const panel: SchemaNode = {
     // for its space — and it arrives with the marketplace, alongside consent. Until then a module's
     // chrome appears in every space, which is fine while modules are first-party and bundled.
     condition: { $and: [{ $store: 'adamStore.currentPerspective' }, { $store: 'modules.notes.open' }] },
-    else: {
-      type: '$if',
-      props: { condition: { $store: 'adamStore.currentPerspective' }, then: launcher },
-    },
     then: {
       type: 'Column',
       props: {
         position: 'fixed',
-        top: '0',
-        right: '0',
+        top: '0px',
+        // Beside the module rail, not under it — the rail has to stay reachable while a panel is open.
+        right: '48px',
         width: '320px',
         height: '100%',
         bg: 'neutral-0',
@@ -198,6 +180,10 @@ export const notesModule = defineModule({
   models: [Note],
   schemas: { toggleButton },
   slots: [{ anchor: 'dock-right', node: panel, order: 100 }],
+
+  // Drawn by the host's module rail rather than by this module, so every module is opened the same
+  // way. `activeWhen` is what makes the rail tab highlight while the panel is open.
+  launcher: { icon: 'note', label: 'Notes', action: 'toggle', activeWhen: 'open' },
 
   createStore: ({ signal }: ModuleStoreDeps) => {
     const [open, setOpen] = signal(false);

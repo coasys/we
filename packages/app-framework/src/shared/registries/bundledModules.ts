@@ -9,6 +9,7 @@
  *
  * Adding a module here plus an id in `we-seed.json` is the whole install story for now.
  */
+import { callModule } from '@we/module-call';
 import { createGlobeModule } from '@we/module-globe';
 import { notesModule } from '@we/module-notes';
 import type { ModuleDefinition, ModuleStoreDeps } from '@we/schema-shared';
@@ -35,6 +36,9 @@ export const bundledModules: Record<string, BundledModuleFactory> = {
   // Takes nothing from the host: every piece of its UI is a schema fragment, so it imports no
   // framework at all.
   notes: () => notesModule,
+  // Nor does the call module, which is the more surprising of the two — live video needs `srcObject`
+  // assigned imperatively, but that belongs to the `we-video` primitive, so the module stays data.
+  call: () => callModule,
 };
 
 export interface ModuleActivation {

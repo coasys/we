@@ -647,6 +647,8 @@ export const contextData: ContextData = {
         { name: 'autoplay', type: 'boolean', optional: false, default: 'false' },
         { name: 'loop', type: 'boolean', optional: false, default: 'false' },
         { name: 'muted', type: 'boolean', optional: false, default: 'false' },
+        { name: 'playsinline', type: 'boolean', optional: false, default: 'false' },
+        { name: 'stream', type: 'MediaStream | null | undefined', optional: true },
       ],
     },
   ],
@@ -1342,7 +1344,7 @@ export const contextData: ContextData = {
     {
       name: 'CesiumGlobe',
       description:
-        '3D globe widget using CesiumJS with a modular layer system.\nLayers are injected via factory functions (planet surface + background).\nRequires a layer factory registry mapping string names to factory functions.\nNot schema-renderable — used directly in application code.',
+        "3D globe widget using CesiumJS with a modular layer system.\nLayers are injected via factory functions (planet surface + background).\nRegistered in the app's component registry, which injects `layerFactoryRegistry` — so templates\nplace it as `CesiumGlobe` without supplying that prop themselves.",
       props: [
         { name: 'ionAccessToken', type: 'string', optional: true },
         { name: 'planetLayers', type: 'LayerConfig<unknown>[]', optional: true },
@@ -1705,6 +1707,7 @@ export const contextData: ContextData = {
         { name: 'coverImage', type: 'string', predicate: 'we://thumbnail', required: false },
         { name: 'defaultTemplateId', type: 'string', predicate: 'we://default_template_id', required: false },
         { name: 'defaultThemeId', type: 'string', predicate: 'we://default_theme_id', required: false },
+        { name: 'enabledModules', type: 'string', predicate: 'we://enabled_modules', required: false },
       ],
       relations: [{ name: 'location', kind: 'HasOne', predicate: 'we://location' }],
     },
@@ -2139,6 +2142,9 @@ export const contextData: ContextData = {
           ],
         },
         signalTypesBySlug: { type: 'object' },
+        enabledModules: { type: 'array' },
+        moduleSettings: { type: 'array', properties: ['id', 'name', 'description', 'icon', 'enabled'] },
+        moduleLaunchers: { type: 'array', properties: ['id', 'icon', 'label', 'active'] },
       },
       actions: [
         'createPost',
@@ -2148,6 +2154,8 @@ export const contextData: ContextData = {
         'createSignalType',
         'upsertSignal',
         'navigateToSpace',
+        'setModuleEnabled',
+        'launchModule',
       ],
     },
     {
