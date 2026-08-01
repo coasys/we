@@ -21,7 +21,7 @@ export type {
   LayerStore,
   LayerMetadata,
   CameraState,
-} from '../../widgets/cesium/CesiumGlobe/CesiumGlobe.types';
+} from '../../widgets/cesium/protocol';
 
 // Graph
 export { GraphWidget, type GraphWidgetProps } from '../../widgets/graph/GraphWidget/GraphWidget.solid';
