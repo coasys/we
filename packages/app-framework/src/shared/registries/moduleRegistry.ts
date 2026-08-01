@@ -23,7 +23,7 @@
  * registers. That is exactly what makes `{ $if: { condition: { $store: 'modules.notes' } } }` the
  * supported way for a template to depend on an optional module.
  */
-import type { ModuleDefinition, ModuleStoreDeps } from '@we/schema-shared';
+import type { ModuleDefinition, ModuleStoreDeps, SchemaNode } from '@we/schema-shared';
 import { checkModuleCompatibility } from '@we/schema-shared';
 
 import { type ModelClass, registerModel, unregisterModel } from './modelRegistry';
@@ -36,6 +36,27 @@ export interface RegisteredModule {
 }
 
 const modules = new Map<string, RegisteredModule>();
+
+/**
+ * Wrap a module's chrome so it only renders where the community has the module turned on.
+ *
+ * Done as a schema condition rather than by filtering the registry, for two reasons. It needs no
+ * reactivity plumbing in the host — `$if` already re-evaluates when the store changes, whereas
+ * `slotRegistry` is a plain `Map` that would have to become reactive. And it composes: the module's
+ * own visibility conditions still apply underneath, so a module never has to know it is being gated.
+ *
+ * `spaceStore.enabledModules` resolves to the seed's module list when a space has not decided, which
+ * is what keeps existing spaces rendering the chrome they already had. See `Space.enabledModules`.
+ */
+function gateOnSpace(moduleId: string, node: SchemaNode): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $in: [moduleId, { $store: 'spaceStore.enabledModules' }] },
+      then: node,
+    },
+  };
+}
 
 /**
  * The `modules.<id>.*` namespace handed to the renderer's stores bag.
@@ -92,6 +113,7 @@ export const moduleRegistry = {
     for (const [index, slot] of (definition.slots ?? []).entries()) {
       slotRegistry.register({
         ...slot,
+        node: gateOnSpace(definition.id, slot.node),
         // Namespaced, and indexed so one module can contribute more than one piece of chrome.
         id: `${definition.id}:${index}`,
       });

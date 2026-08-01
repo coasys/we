@@ -1,6 +1,7 @@
 import { parseLit } from '@coasys/ad4m';
 import type { AgentProfileSummary } from '@shared/agentHelpers';
 import { getModelForPerspective, registerModel } from '@shared/registries/modelRegistry';
+import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { ensureModelRegistered, SPACE_MODELS } from '@shared/sdnaModels';
 import { type LocationData, removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@shared/syncHelpers';
 import { deriveSlug } from '@shared/utils';
@@ -48,6 +49,11 @@ export interface SpaceStore {
    * for prefilling the "Initialize as WE space" gate. Null once the perspective is a WE space,
    * or if no recognized foreign model is found. */
   foreignSpacePrefill: Accessor<{ name: string; description: string; avatar: string | null } | null>;
+  /** Feature modules turned on for this space. Falls back to everything the seed activated when the
+   *  space has never decided, so spaces that predate the setting keep the chrome they had. */
+  enabledModules: Accessor<string[]>;
+  /** Registered modules paired with whether this space has them on — the settings list. */
+  moduleSettings: Accessor<{ id: string; name: string; description: string; icon: string; enabled: boolean }[]>;
 
   // Actions
   createPost: (json: unknown) => Promise<void>;
@@ -57,6 +63,7 @@ export interface SpaceStore {
   updateSpaceMeta: (updates: SpaceMetaUpdate) => Promise<void>;
   setSpaceDefaultTemplate: (templateId: string) => Promise<void>;
   setSpaceDefaultTheme: (themeId: string) => Promise<void>;
+  setModuleEnabled: (moduleId: string, enabled: boolean) => Promise<void>;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
@@ -309,6 +316,67 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
 
+  /**
+   * Which modules this space has on.
+   *
+   * An unset field means "not decided", never "none" — see `Space.enabledModules`. Falling back to
+   * the registered set is what stops this shipping as a silent regression that strips every existing
+   * space of its chrome.
+   */
+  const enabledModules = createMemo<string[]>(() => {
+    const raw = currentSpace()?.enabledModules;
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
+      } catch {
+        // A malformed value is a corrupt setting, not a decision to disable everything.
+        console.warn('space.enabledModules is not valid JSON; falling back to the registered set');
+      }
+    }
+    return moduleRegistry.all().map((entry) => entry.definition.id);
+  });
+
+  const moduleSettings = createMemo(() => {
+    const on = new Set(enabledModules());
+    return moduleRegistry.all().map(({ definition }) => ({
+      id: definition.id,
+      name: definition.name,
+      description: definition.description ?? '',
+      icon: definition.icon ?? 'puzzle-piece',
+      enabled: on.has(definition.id),
+    }));
+  });
+
+  async function setModuleEnabled(moduleId: string, enabled: boolean) {
+    const space = currentSpace();
+    if (!space) return;
+    const next = new Set(enabledModules());
+    if (enabled) next.add(moduleId);
+    else next.delete(moduleId);
+    // Writes the resolved list, not a diff — so the first toggle also pins everything that was on by
+    // fallback, and a module added to the seed later doesn't silently appear in a space that had
+    // already made a decision.
+    space.enabledModules = JSON.stringify([...next]);
+    try {
+      await space.save();
+      setCurrentSpace(space);
+    } catch (error) {
+      // A space created before this field existed has the old SHACL shape stored in its perspective,
+      // and `we://enabled_modules` is not in it. Shapes are only installed when a class is absent
+      // entirely (`hasSubjectClassLink`), so adding a property to an existing model does not
+      // re-register — there is no shape-migration path yet.
+      //
+      // Reported rather than swallowed, and harmless either way: `enabledModules` falls back to the
+      // registered set, so such a space keeps exactly the chrome it has today.
+      console.warn(
+        `could not persist enabledModules for this space — it predates the field and its stored ` +
+          `SHACL shape has no "we://enabled_modules" property`,
+        error,
+      );
+    }
+  }
+
   // Subscribe to current space data reactively whenever the perspective changes.
   // include: { location: true } so AboutRoute can access location without a separate query.
   createEffect(() => {
@@ -494,6 +562,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceDefaultTemplateId,
     spaceDefaultThemeId,
     currentSpace,
+    enabledModules,
+    moduleSettings,
     foreignSpacePrefill,
 
     // Actions
@@ -504,6 +574,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceMeta,
     setSpaceDefaultTemplate,
     setSpaceDefaultTheme,
+    setModuleEnabled,
     createSignalType,
     upsertSignal,
     navigateToSpace,

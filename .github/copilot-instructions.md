@@ -829,8 +829,8 @@ when `relative` is enabled.
 @we/widgets:
 - CesiumGlobe — 3D globe widget using CesiumJS with a modular layer system.
 Layers are injected via factory functions (planet surface + background).
-Requires a layer factory registry mapping string names to factory functions.
-Not schema-renderable — used directly in application code.
+Registered in the app's component registry, which injects `layerFactoryRegistry` — so templates
+place it as `CesiumGlobe` without supplying that prop themselves.
   Props: ionAccessToken?: string, planetLayers?: LayerConfig<unknown>[], backgroundLayers?: LayerConfig<unknown>[], layerFactoryRegistry: Record<string, LayerFactory<any>>
 - CollapsibleSidebar
   Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "static" | "absolute" | "fixed", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
@@ -1191,6 +1191,7 @@ Space extends WeNode:
   - coverImage: string [we://thumbnail]
   - defaultTemplateId: string [we://default_template_id]
   - defaultThemeId: string [we://default_theme_id]
+  - enabledModules: string [we://enabled_modules]
   Relations:
   - location: HasOne [we://location]
 
@@ -1368,6 +1369,8 @@ SpaceStore:
   - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found
   - signalTypes: array of SignalType objects (community-created reaction/vote types)
   - signalTypesBySlug: Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID
+  - enabledModules: string[] — ids of the feature modules this space has turned on. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had
+  - moduleSettings: { id, name, description, icon, enabled }[] — every registered module paired with whether this space has it on; the shape the settings list renders
 - Actions:
   - createPost(editorState: unknown): creates a new post
   - updatePost(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present
@@ -1376,6 +1379,7 @@ SpaceStore:
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
+  - setModuleEnabled(moduleId: string, enabled: boolean): turns a feature module on or off for the current space; writes the resolved list, so the first toggle also pins whatever was on by fallback
 
 AiStore:
 - State:

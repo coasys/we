@@ -519,6 +519,84 @@ export const settingsTemplate: TemplateSchema = {
           ],
         },
 
+        // Modules — which feature modules this space has turned on.
+        // Only offered inside a space: enablement is per-space, so there is nothing to decide from
+        // the launcher.
+        {
+          type: '$if',
+          props: {
+            condition: { $store: 'adamStore.currentPerspective' },
+            then: {
+              type: 'Column',
+              props: { gap: '300' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center' },
+                  children: [
+                    { type: 'we-icon', props: { name: 'puzzle-piece', size: '20px' } },
+                    { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Modules'] },
+                  ],
+                },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'neutral-400' },
+                  children: ['Feature modules available in this space.'],
+                },
+                {
+                  type: '$each',
+                  props: { items: { $store: 'spaceStore.moduleSettings' }, as: 'mod' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: {
+                        ay: 'center',
+                        ax: 'between',
+                        gap: '300',
+                        p: '300',
+                        bg: 'neutral-0',
+                        r: '300',
+                        border: '1px solid neutral-200',
+                      },
+                      children: [
+                        {
+                          type: 'Row',
+                          props: { gap: '300', ay: 'center' },
+                          children: [
+                            { type: 'we-icon', props: { name: '$mod.icon', size: '20px' } },
+                            {
+                              type: 'Column',
+                              props: { gap: '100' },
+                              children: [
+                                { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
+                                {
+                                  type: 'we-text',
+                                  props: { variant: 'footnote', color: 'neutral-400' },
+                                  children: ['$mod.description'],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                        {
+                          type: 'we-switch',
+                          props: {
+                            checked: '$mod.enabled',
+                            onChange: {
+                              $action: 'spaceStore.setModuleEnabled',
+                              args: ['$mod.id', '$event.detail'],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+
         // Shared Spaces
         {
           type: 'Column',
