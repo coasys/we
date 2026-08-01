@@ -6,13 +6,12 @@
  * iframe mounting) is handled by AppStore and TemplateProvider at runtime.
  */
 
-import type { ModuleStoreDeps } from '@we/module-shared';
+import { defineModule, type ModuleStoreDeps, seedCapabilityToModule } from '@we/module-shared';
 
 import weSeedFile from '../../../../we-seed.json';
 import type { WeSeedFile } from '../types/seed';
 import { generateIframePermissions, validateSeedForLauncher } from './integrationComposer';
 import type { PlatformAdapter } from './platform/types';
-import { appRegistry } from './registries/appRegistry';
 import { activateSeedModules } from './registries/bundledModules';
 import { moduleRegistry } from './registries/moduleRegistry';
 import { slotRegistry } from './registries/slotRegistry';
@@ -47,18 +46,32 @@ export function initializeIntegrations(platformAdapter: PlatformAdapter, deps: I
       slotRegistry.replace('core:bootScreen', seed.host.ui.bootScreen);
     }
 
-    // Resolve each app URL once and register it
+    const host = { backend: 'ad4m', framework: 'solid' };
+
+    // Embedded apps register as modules whose contribution is an iframe. Only the URL resolution is
+    // platform-specific, and only the host can do it — everything after that is ordinary module
+    // registration, so an embedded app is gated, refused and reported like anything else.
     const isDev = platformAdapter.isDevelopment;
+    const embedded: string[] = [];
     for (const app of seed.apps) {
-      const url = platformAdapter.resolveAppUrl(app, isDev);
-      appRegistry.push({
+      const definition = defineModule({
         id: app.id,
         name: app.name,
         icon: app.icon,
-        image: app.image,
-        url,
-        allow: generateIframePermissions(app.capabilities),
+        capabilities: app.capabilities.map(seedCapabilityToModule),
+        // An embedded app reaches the host's agent through the data layer, so it is coupled to
+        // whichever one this build runs. Declared rather than assumed: on a host without that
+        // backend it is refused at registration with a reason, instead of mounting an iframe that
+        // waits on a handshake nobody will answer.
+        backends: ['ad4m'],
+        embed: {
+          url: platformAdapter.resolveAppUrl(app, isDev),
+          allow: generateIframePermissions(app.capabilities),
+          image: app.image,
+        },
       });
+      const outcome = moduleRegistry.register(definition, host, deps.storeDeps);
+      if (outcome.registered) embedded.push(app.id);
     }
 
     // Activate the feature modules this deployment declares. Components are passed in rather than
@@ -66,12 +79,12 @@ export function initializeIntegrations(platformAdapter: PlatformAdapter, deps: I
     const { activated } = activateSeedModules(
       seed.modules,
       { components: deps.components ?? {}, storeDeps: deps.storeDeps },
-      { backend: 'ad4m', framework: 'solid' },
+      host,
       moduleRegistry,
     );
 
     console.log(
-      `✓ ${seed.project.name} initialized — ${seed.apps.length} embedded app(s)` +
+      `✓ ${seed.project.name} initialized — ${embedded.length} embedded app(s)` +
         (activated.length ? `, ${activated.length} module(s): ${activated.join(', ')}` : ''),
     );
   } catch (error) {

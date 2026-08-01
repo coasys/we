@@ -53,7 +53,37 @@ export interface SlotContribution {
  * The hook that enforcement attaches to later, if a permission broker is ever built.
  */
 export type ModuleCapability =
-  'microphone' | 'camera' | 'screen-share' | 'notifications' | 'storage' | `network:${string}` | `slot:${SlotAnchor}`;
+  | 'microphone'
+  | 'camera'
+  | 'screen-share'
+  | 'notifications'
+  | 'storage'
+  | `network:${string}`
+  | `slot:${SlotAnchor}`
+  /**
+   * Access to a slice of the agent's data layer, for a module that reaches it directly rather than
+   * through the ports — in practice an embedded application, which talks to the host's agent itself.
+   *
+   * Added when embedded apps folded into the module contract, which surfaced that the two had been
+   * describing capabilities in different vocabularies: the seed said `perspectives` / `languages` /
+   * `agents`, modules said `microphone` / `storage`. One list, because the point of the list is to be
+   * shown to a person at install, and a person reading two vocabularies has to learn both.
+   */
+  | `data:${string}`;
+
+/**
+ * Map a seed entry's capability list onto {@link ModuleCapability}.
+ *
+ * `filesystem` and `network` already had module equivalents under different names; the data-layer
+ * ones become `data:*`. Anything unrecognised passes through as `data:<name>` rather than being
+ * dropped — silently discarding a declared capability would understate what the user is agreeing to,
+ * which is the one failure mode this list must not have.
+ */
+export function seedCapabilityToModule(capability: string): ModuleCapability {
+  if (capability === 'filesystem') return 'storage';
+  if (capability === 'network') return 'network:*';
+  return `data:${capability}`;
+}
 
 export interface ModuleDefinition {
   /** Stable, unique. Namespaces this module's stores (`modules.<id>.*`) and its slot ordering ties. */
@@ -120,6 +150,21 @@ export interface ModuleDefinition {
    * manifest→SDNA compiler exists.
    */
   models?: unknown[];
+
+  /**
+   * A whole application embedded in an iframe, rather than components and fragments.
+   *
+   * This is what an "embedded app" is once you stop treating it as a separate concept: a module
+   * whose entire contribution is a URL and a set of iframe permissions. It used to have its own
+   * registry, its own seed section, its own activation path and its own launcher wiring — four
+   * parallel mechanisms for something that differs from a module only in what it contributes.
+   *
+   * Folding it in means an embedded app gets the rest of the module contract for free: `backends`
+   * gates one that needs a specific data layer to reach the host's agent, `Space.enabledModules`
+   * turns it on per community, and refusal surfaces as `problems` at registration rather than as a
+   * blank iframe and a timeout.
+   */
+  embed?: ModuleEmbed;
 
   /**
    * Reactive state, exposed to templates at `modules.<id>.<key>`.
@@ -198,6 +243,22 @@ export interface ModuleStoreDeps {
    * heartbeat, so those stay with the host.
    */
   presence?: ModulePresenceAccess;
+}
+
+/** An application embedded in an iframe — see {@link ModuleDefinition.embed}. */
+export interface ModuleEmbed {
+  /** Fully-resolved iframe URL. The host resolves it from the seed at boot, since only it knows the platform. */
+  url: string;
+  /**
+   * The iframe `allow` attribute, derived from `capabilities`.
+   *
+   * Derived rather than authored so a module cannot declare "microphone" at install and then quietly
+   * grant itself more at mount — the string the user consented to and the string the browser enforces
+   * come from the same source.
+   */
+  allow: string;
+  /** Optional avatar for the launcher, when an icon name isn't enough. */
+  image?: string;
 }
 
 /** A module's entry point in the host's module rail. */

@@ -5,7 +5,6 @@ export * from './platform';
 export * from './backend';
 
 // Registries
-export * from './registries/appRegistry';
 export * from '@we/backend-ad4m';
 export * from './registries/templateRegistry';
 export * from './registries/themeRegistry';

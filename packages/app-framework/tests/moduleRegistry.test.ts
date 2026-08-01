@@ -186,4 +186,45 @@ describe('moduleRegistry', () => {
     expect(moduleStores.banner).toBeUndefined();
     expect(moduleRegistry.components()).toEqual({});
   });
+
+  it('surfaces embedded applications through the same registry as every other module', () => {
+    moduleRegistry.register(
+      mod({
+        id: 'flux',
+        name: 'Flux',
+        icon: 'chat-circle',
+        embed: { url: 'http://localhost:8080', allow: "camera 'src'", image: '/flux.png' },
+      }),
+      host,
+    );
+    moduleRegistry.register(mod({ id: 'notes' }), host);
+
+    // Only the module that contributes an embed appears — the others are registered all the same.
+    expect(moduleRegistry.embeds()).toEqual([
+      {
+        id: 'flux',
+        name: 'Flux',
+        icon: 'chat-circle',
+        image: '/flux.png',
+        url: 'http://localhost:8080',
+        allow: "camera 'src'",
+      },
+    ]);
+    expect(moduleRegistry.has('notes')).toBe(true);
+  });
+
+  it('refuses an embedded app whose declared backend this host does not run', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = moduleRegistry.register(
+      mod({ id: 'flux', backends: ['other'], embed: { url: 'http://x', allow: '' } }),
+      host,
+    );
+
+    // The point of folding embedded apps into the module contract: refusal is immediate and carries
+    // a reason, instead of an iframe that mounts and waits on a handshake nobody will answer.
+    expect(result.registered).toBe(false);
+    expect(result.problems[0]).toContain('other');
+    expect(moduleRegistry.embeds()).toEqual([]);
+    warn.mockRestore();
+  });
 });

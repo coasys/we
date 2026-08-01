@@ -67,6 +67,16 @@ function gateOnSpace(moduleId: string, node: SchemaNode): SchemaNode {
  */
 export const moduleStores: Record<string, unknown> = {};
 
+/** A registered module's embedded application, flattened for the host that mounts the iframes. */
+export interface RegisteredEmbed {
+  id: string;
+  name: string;
+  icon: string;
+  image?: string;
+  url: string;
+  allow: string;
+}
+
 export interface RegisterResult {
   registered: boolean;
   /** Why not, if it was refused — suitable for an install prompt or a console warning. */
@@ -166,6 +176,27 @@ export const moduleRegistry = {
    */
   models(): unknown[] {
     return moduleRegistry.all().flatMap((m) => m.definition.models ?? []);
+  },
+
+  /**
+   * Every registered module that contributes an embedded application, in registration order.
+   *
+   * What used to be `appRegistry`. Embedded apps are modules whose contribution happens to be an
+   * iframe, so they arrive through the same registration, gating and refusal path as every other
+   * module rather than a parallel one.
+   */
+  embeds(): RegisteredEmbed[] {
+    return moduleRegistry
+      .all()
+      .filter((m) => m.definition.embed)
+      .map(({ definition }) => ({
+        id: definition.id,
+        name: definition.name,
+        icon: definition.icon ?? '',
+        image: definition.embed!.image,
+        url: definition.embed!.url,
+        allow: definition.embed!.allow,
+      }));
   },
 
   /** Named schema fragments, keyed `<moduleId>.<fragment>` so two modules can't collide. */

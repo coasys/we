@@ -1,13 +1,13 @@
-import { appRegistry, type RegisteredApp } from '@shared/registries/appRegistry';
+import { moduleRegistry, type RegisteredEmbed } from '@shared/registries/moduleRegistry';
 import { Accessor, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import weLogo from '../../../shared/assets/we-logo-small.png';
 
 export interface AppStore {
-  /** All installed apps from the seed file */
-  apps: Accessor<RegisteredApp[]>;
+  /** Every registered module contributing an embedded application */
+  apps: Accessor<RegisteredEmbed[]>;
   /** Apps list with a WE sentinel prepended — used by the sidebar app switcher */
-  appsWithWe: Accessor<RegisteredApp[]>;
+  appsWithWe: Accessor<RegisteredEmbed[]>;
   /** ID of the currently displayed app, or null if a template is active */
   activeAppId: Accessor<string | null>;
   /** Show the given app's iframe, hiding the template content area */
@@ -16,12 +16,12 @@ export interface AppStore {
   deactivateApp: () => void;
 }
 
-const WE_SENTINEL: RegisteredApp = { id: 'we', name: 'WE', image: weLogo, icon: '', url: '', allow: '' };
+const WE_SENTINEL: RegisteredEmbed = { id: 'we', name: 'WE', image: weLogo, icon: '', url: '', allow: '' };
 
 const AppContext = createContext<AppStore>();
 
 export function AppStoreProvider(props: ParentProps) {
-  const [apps] = createSignal<RegisteredApp[]>(appRegistry);
+  const [apps] = createSignal<RegisteredEmbed[]>(moduleRegistry.embeds());
   const [activeAppId, setActiveAppId] = createSignal<string | null>(null);
   const appsWithWe = createMemo(() => [WE_SENTINEL, ...apps()]);
 
