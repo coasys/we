@@ -11,6 +11,17 @@ export function registerModel(name: string, modelClass: ModelClass): void {
   modelRegistry[name] = modelClass;
 }
 
+/**
+ * Remove a globally registered model — a feature module being unregistered.
+ *
+ * Note this only detaches the *class*; any SDNA already installed in a perspective, and any data
+ * written through it, remain. Removing those is a separate decision (uninstall semantics) that has to
+ * be made deliberately rather than as a side effect of disabling a module.
+ */
+export function unregisterModel(name: string): void {
+  delete modelRegistry[name];
+}
+
 export function getModel(name: string): ModelClass {
   const model = modelRegistry[name];
   if (!model) throw new Error(`Model "${name}" not found in registry. Did you call registerModel()?`);

@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    // Module-owned entities are @Model-decorated AD4M classes — the same requirement @we/models has,
+    // and the reason this module declares backends: ['ad4m'].
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": ["src/**/*"]
+}

@@ -11,7 +11,13 @@ import {
 import { buildModelClasses, buildModelManifest, getForeignShacl } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
-import { deduplicateSpaceSdna, installRootSdna, installSpaceSdna, isModelRegistered } from '@shared/sdnaModels';
+import {
+  deduplicateSpaceSdna,
+  installModuleSdna,
+  installRootSdna,
+  installSpaceSdna,
+  isModelRegistered,
+} from '@shared/sdnaModels';
 import {
   isSpaceSelf,
   type LocationData,
@@ -1296,6 +1302,12 @@ export function AdamStoreProvider(props: ParentProps) {
           await new Promise((resolve) => setTimeout(resolve, 500));
           isWeSpace = await isModelRegistered(perspective, Space);
         }
+      } else {
+        // An existing WE space skips the install above by design, so a module enabled after the space
+        // was created would find its shapes missing — a query failing with "No SHACL shape stored for
+        // class X" in a perspective that otherwise looks healthy. Module shapes therefore install on
+        // every switch; `ensureModelsRegistered` diffs first, so this is a read in the common case.
+        await installModuleSdna(perspective);
       }
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes

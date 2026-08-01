@@ -127,6 +127,15 @@ export type {
   RendererDataBindings,
   RendererStores,
 } from './dataSource';
+export { checkModuleCompatibility, defineModule } from './module';
+export type {
+  ModuleCapability,
+  ModuleCompatibility,
+  ModuleDefinition,
+  ModuleStoreDeps,
+  SlotAnchor,
+  SlotContribution,
+} from './module';
 export { createInMemoryEphemeralPort, InMemoryBus, inMemoryEphemeralCapabilities, planEphemeral } from './ephemeral';
 export type {
   EphemeralCapabilities,

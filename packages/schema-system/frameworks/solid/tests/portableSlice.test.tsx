@@ -10,7 +10,7 @@
  */
 import { render } from '@solidjs/testing-library';
 import type { SchemaNode } from '@we/schema-shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { RenderSchema } from '../src/SchemaRenderer';
 import type { ComponentRegistry } from '../src/types';
@@ -122,5 +122,37 @@ describe('portable-UI slice — renderer over an in-memory (non-AD4M) backend', 
     expect(posts.length).toBe(3);
     // Newest → first.
     expect(posts[0].textContent).toContain('Graph databases');
+  });
+});
+
+describe('unknown component types', () => {
+  it('renders a scoped placeholder rather than taking down the page', async () => {
+    // Previously this threw, so a template referencing a component from a module that is not enabled
+    // produced a blank page instead of one broken node. That is the failure the module system's
+    // optional-dependency story depends on not happening.
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const backend = seedBackend();
+
+    const schema: SchemaNode = {
+      type: 'Stack',
+      props: { testid: 'root' },
+      children: [
+        { type: 'Field', children: ['before'] },
+        { type: 'CallStageView' }, // a module component that isn't registered
+        { type: 'Field', children: ['after'] },
+      ],
+    };
+
+    const { container } = render(() => <RenderSchema node={schema} stores={backend.stores} registry={registry} />);
+    await tick();
+
+    // The siblings still rendered — the page survived.
+    const root = container.querySelector('[data-testid="root"]')!;
+    expect(root.textContent).toContain('before');
+    expect(root.textContent).toContain('after');
+    // And the failure is visible rather than silent.
+    expect(container.querySelector('[data-we-missing-component="CallStageView"]')).toBeTruthy();
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 });

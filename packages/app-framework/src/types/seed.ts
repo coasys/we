@@ -35,6 +35,19 @@ export interface WeSeedFile {
     useQueryIR?: boolean;
   };
 
+  /**
+   * Feature modules this deployment ships, by module id.
+   *
+   * A deployment declaring what it includes is what the seed is *for* — "which modules to include" is
+   * already in its stated purpose. Ids here are matched against the bundled module set at boot; an id
+   * with no bundled module is reported rather than ignored, since a silently missing module surfaces
+   * later as an unexplained missing component.
+   *
+   * Bundled only for now. When modules become installable, this stays the deployment-level list and
+   * `AgentSettings.installedModules` / `Space.enabledModules` carry the per-agent and per-space halves.
+   */
+  modules?: string[];
+
   /** Host app customization (WE shell) — optional white-labeling */
   host?: {
     /** Theme overrides for the host */
