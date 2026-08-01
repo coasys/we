@@ -33,6 +33,22 @@ export { anchoredCallId, CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } 
 export { createCallStore, type CallTile } from './store';
 
 /**
+ * Where the call's chrome sits.
+ *
+ * Both at the top, controls above video. That is not where this started: the bar was docked at the
+ * bottom and only *appeared* at the top because `bottom: '400'` is not a CSS length, so the offset was
+ * dropped and `position: fixed` fell back to the static position. The accident read better than the
+ * design, so it is now the design — a call you are in should be visible where your eyes already are,
+ * not competing with whatever the space puts along the bottom.
+ *
+ * Named rather than inlined because the stage's offset is *derived* from the bar's: the two must stay
+ * stacked, and a bare `128px` in one file and `72px` in another is a relationship nothing records.
+ */
+const CALL_BAR_TOP = '72px';
+/** Bar top + its height + a gap. Keeps the stage tucked directly under the controls. */
+const STAGE_TOP = '128px';
+
+/**
  * A participant's volatile flag, looked up rather than read off the tile.
  *
  * The tile object carries only identity and stream, because `$each` renders through a
@@ -140,12 +156,7 @@ const tile: SchemaNode = {
 };
 
 /**
- * The expanded stage — every participant, at the top of the screen.
- *
- * **Top, not bottom.** It first appeared at the top by accident: `bottom: '900'` is not a CSS length,
- * so the offset was dropped and `position: fixed` fell back to the static position. That accident read
- * better than the deliberate version — video belongs where your eyes already are, and the controls
- * belong out of the way — so it is now the actual layout.
+ * The expanded stage — every participant, directly under the controls.
  *
  * A `Row` that wraps, not a `Grid`. `Grid`'s `minChildWidth` compiles to
  * `repeat(auto-fill, minmax(…, 1fr))`, and `auto-fill` keeps empty tracks — so a one-person call drew
@@ -166,7 +177,8 @@ const stage: SchemaNode = {
       type: 'Row',
       props: {
         position: 'fixed',
-        top: '72px',
+        // Directly under the control bar — see CALL_BAR_TOP.
+        top: STAGE_TOP,
         left: '16px',
         // Clears the module rail on the right edge, which is 48px wide plus a margin.
         right: '72px',
@@ -225,7 +237,7 @@ const bar: SchemaNode = {
           type: 'Row',
           props: {
             position: 'fixed',
-            bottom: '16px',
+            top: CALL_BAR_TOP,
             left: '50%',
             transform: 'translateX(-50%)',
             bg: 'neutral-0',
@@ -266,7 +278,7 @@ const bar: SchemaNode = {
       type: 'Row',
       props: {
         position: 'fixed',
-        bottom: '16px',
+        top: CALL_BAR_TOP,
         left: '50%',
         transform: 'translateX(-50%)',
         bg: 'neutral-0',
@@ -335,7 +347,7 @@ const problem: SchemaNode = {
       type: 'Row',
       props: {
         position: 'fixed',
-        bottom: '16px',
+        top: CALL_BAR_TOP,
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 'sticky',
