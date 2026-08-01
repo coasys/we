@@ -1,5 +1,3 @@
-import type { Ad4mClient } from '@coasys/ad4m';
-
 export interface AppConfig {
   id: string;
   name: string;
@@ -14,15 +12,16 @@ export interface AppConfig {
   };
 }
 
+/**
+ * Where the host is running, and what that implies for locating things.
+ *
+ * Deliberately knows nothing about the data layer — obtaining a client is `BackendConnector`'s job
+ * (`shared/backend/types.ts`). The two were one interface until they proved to vary independently:
+ * `resolveAppUrl` differs per platform, `connect()` differs per data layer, and a host picks each
+ * without reference to the other. The practical symptom was that this file imported `@coasys/ad4m`
+ * purely for a return type, so every host that wanted `isDesktop` also named the data layer.
+ */
 export interface PlatformAdapter {
-  // Build and return a configured Ad4mClient
-  // Each platform handles its own connection mechanism (ad4m-connect, Tauri invoke, Electron IPC, etc.)
-  buildAd4mClient(): Promise<Ad4mClient>;
-
-  // Optional: Get raw connection details (for desktop platforms that need to pass to iframes)
-  // Web platforms using ad4m-connect don't need this
-  getConnectionDetails?(): Promise<{ port: number; token: string; url?: string }>;
-
   // Resolve app URL for iframes (platform-specific)
   // - Dev mode: Returns devServer URL (http://localhost:PORT)
   // - Production: Platform-specific resolution

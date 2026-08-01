@@ -1,6 +1,9 @@
 // Platform abstraction
 export * from './platform';
 
+// Data-layer connection contract
+export * from './backend';
+
 // Registries
 export * from './registries/appRegistry';
 export * from './registries/modelRegistry';

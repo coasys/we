@@ -5,7 +5,8 @@ import '@we/app-framework/shared/index.scss';
 import { App, PlatformProvider } from '@we/app-framework/solid';
 import { render } from 'solid-js/web';
 
-import { electronAdapter } from './platform/electronAdapter';
+import { ad4mConnector } from './platform/ad4mConnector';
+import { electronPlatform } from './platform/electronPlatform';
 
 const root = document.getElementById('root');
 
@@ -15,7 +16,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 render(
   () => (
-    <PlatformProvider adapter={electronAdapter}>
+    <PlatformProvider platform={electronPlatform} backend={ad4mConnector}>
       <App />
     </PlatformProvider>
   ),

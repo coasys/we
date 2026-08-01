@@ -5,7 +5,8 @@ import '@we/app-framework/shared/index.scss';
 import { App, PlatformProvider } from '@we/app-framework/solid';
 import { render } from 'solid-js/web';
 
-import { webAdapter } from './platform/webAdapter';
+import { ad4mConnector } from './platform/ad4mConnector';
+import { webPlatform } from './platform/webPlatform';
 
 const root = document.getElementById('root');
 
@@ -15,7 +16,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 render(
   () => (
-    <PlatformProvider adapter={webAdapter}>
+    <PlatformProvider platform={webPlatform} backend={ad4mConnector}>
       <App />
     </PlatformProvider>
   ),

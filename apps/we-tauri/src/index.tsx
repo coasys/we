@@ -5,7 +5,8 @@ import '@we/app-framework/shared/index.scss';
 import { App, PlatformProvider } from '@we/app-framework/solid';
 import { render } from 'solid-js/web';
 
-import { tauriAdapter } from './platform/tauriAdapter';
+import { ad4mConnector } from './platform/ad4mConnector';
+import { tauriPlatform } from './platform/tauriPlatform';
 
 const root = document.getElementById('root');
 
@@ -15,7 +16,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 render(
   () => (
-    <PlatformProvider adapter={tauriAdapter}>
+    <PlatformProvider platform={tauriPlatform} backend={ad4mConnector}>
       <App />
     </PlatformProvider>
   ),

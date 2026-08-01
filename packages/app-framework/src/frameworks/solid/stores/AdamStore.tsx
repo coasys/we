@@ -9,7 +9,7 @@ import {
   publishProfileToPublicPerspective,
 } from '@shared/agentHelpers';
 import { buildModelClasses, buildModelManifest, getForeignShacl } from '@shared/perspectiveHelpers';
-import { usePlatform } from '@shared/platform';
+import { useBackend, usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import {
@@ -153,6 +153,7 @@ const AdamContext = createContext<AdamStore>();
 
 export function AdamStoreProvider(props: ParentProps) {
   const platform = usePlatform();
+  const backend = useBackend();
   const routeStore = useRouteStore();
 
   let sessionPassword = '';
@@ -422,8 +423,8 @@ export function AdamStoreProvider(props: ParentProps) {
       // seconds and the embedded app's 30-second timeout would otherwise expire.
       setupMessageListener();
 
-      if (platform.isDesktop && platform.getConnectionDetails) {
-        const { port, token, url } = await platform.getConnectionDetails();
+      if (platform.isDesktop && backend.connectionDetails) {
+        const { port, token, url } = await backend.connectionDetails();
         // Set url BEFORE signals — createEffect fires synchronously when signals change,
         // so url must be in place before setAd4mPort/setAd4mToken trigger the flush.
         if (url) ad4mUrlValue = url;
@@ -436,13 +437,13 @@ export function AdamStoreProvider(props: ParentProps) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
-      // Build the Ad4m client using platform adapter
-      const client = await platform.buildAd4mClient();
+      // Build the client through the host's connector
+      const client = await backend.connect();
       setAdamClient(client);
 
       // Web platform: credentials are only available after ad4m-connect auth completes
-      if (!platform.isDesktop && platform.getConnectionDetails) {
-        const { port, token, url } = await platform.getConnectionDetails();
+      if (!platform.isDesktop && backend.connectionDetails) {
+        const { port, token, url } = await backend.connectionDetails();
         // Set url BEFORE signals — createEffect fires synchronously when signals change,
         // so url must be in place before setAd4mPort/setAd4mToken trigger the flush.
         if (url) ad4mUrlValue = url;
@@ -1381,12 +1382,12 @@ export function AdamStoreProvider(props: ParentProps) {
   //
   // The two platforms have different timing:
   //
-  // Web: port+token are set by getConnectionDetails() AFTER ad4m-connect's auth UI completes,
+  // Web: port+token are set by backend.connectionDetails() AFTER ad4m-connect's auth UI completes,
   // so the agent is already unlocked at that point. We send immediately — no need to wait for
   // the rest of the boot chain (getMySpaces etc.), which would add unnecessary delay against
   // the ACK-cleared but still-finite wait in ad4m-connect.
   //
-  // Desktop: port+token are set early (before buildAd4mClient) from stored credentials, while
+  // Desktop: port+token are set early (before backend.connect()) from stored credentials, while
   // the agent may still be locked waiting for the user's password. Sending AD4M_CONFIG here
   // would cause ad4m-connect's checkAuth() to fail with "Agent is locked". We must wait until
   // bootState === 'ready' (set after login() completes) so the agent is unlocked first.
