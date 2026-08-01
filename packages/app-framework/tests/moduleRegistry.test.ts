@@ -19,7 +19,7 @@ const host = { backend: 'ad4m', framework: 'solid' };
  * module store requires Solid to exist.
  */
 const storeDeps = {
-  signal: <T,>(initial: T): [() => T, (next: T) => void] => {
+  signal: <T>(initial: T): [() => T, (next: T) => void] => {
     let value = initial;
     return [() => value, (next: T) => (value = next)];
   },

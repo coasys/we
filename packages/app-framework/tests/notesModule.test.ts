@@ -21,6 +21,12 @@ const storeDeps = {
   },
 };
 
+/** Strip the `$if` on `spaceStore.enabledModules` that `moduleRegistry` wraps module chrome in. */
+function unwrapGate(node: unknown): unknown {
+  const n = node as { type?: string; props?: { then?: unknown } } | undefined;
+  return n?.type === '$if' && n.props?.then ? n.props.then : node;
+}
+
 beforeEach(() => {
   for (const entry of slotRegistry.ordered()) slotRegistry.remove(entry.id);
   for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.id);
@@ -65,7 +71,8 @@ describe('notes module — contributions', () => {
     // placed — so it registered successfully and was invisible. Chrome gated on state nothing can
     // change is not chrome, so the slot renders a launcher in the closed case.
     moduleRegistry.register(notesModule, host, storeDeps);
-    const node = slotRegistry.get('notes:0')?.node as { props?: { else?: unknown } };
+    // Unwrap the per-space enablement gate the registry wraps every module slot in.
+    const node = unwrapGate(slotRegistry.get('notes:0')?.node) as { props?: { else?: unknown } };
     expect(node.props?.else).toBeDefined();
   });
 

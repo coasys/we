@@ -10,7 +10,8 @@
   },
   "modules": [
     "globe",
-    "notes"
+    "notes",
+    "call"
   ],
   "ad4m": {
     "dataPath": "~/.we-native-app",
