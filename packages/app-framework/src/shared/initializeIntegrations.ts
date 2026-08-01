@@ -11,9 +11,23 @@ import type { WeSeedFile } from '../types/seed';
 import { generateIframePermissions, validateSeedForLauncher } from './integrationComposer';
 import type { PlatformAdapter } from './platform/types';
 import { appRegistry } from './registries/appRegistry';
+import { activateSeedModules } from './registries/bundledModules';
+import { moduleRegistry } from './registries/moduleRegistry';
 import { slotRegistry } from './registries/slotRegistry';
 
-export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
+export interface IntegrationDeps {
+  /**
+   * Framework components a bundled module needs to describe itself, supplied by the caller.
+   *
+   * Injected rather than imported because this file is framework-neutral `shared/` code — importing
+   * the Solid component registry here would drag the whole component tree into it. It is also what
+   * keeps Solid and `@we/widgets` single instances shared with the host, which is the property that
+   * starts to matter once modules load dynamically.
+   */
+  components?: Record<string, unknown>;
+}
+
+export function initializeIntegrations(platformAdapter: PlatformAdapter, deps: IntegrationDeps = {}): void {
   try {
     const seed = weSeedFile as unknown as WeSeedFile;
 
@@ -43,7 +57,19 @@ export function initializeIntegrations(platformAdapter: PlatformAdapter): void {
       });
     }
 
-    console.log(`✓ ${seed.project.name} initialized — ${seed.apps.length} embedded app(s)`);
+    // Activate the feature modules this deployment declares. Components are passed in rather than
+    // imported by each module, so Solid and @we/widgets stay single instances shared with the host.
+    const { activated } = activateSeedModules(
+      seed.modules,
+      { components: deps.components ?? {} },
+      { backend: 'ad4m', framework: 'solid' },
+      moduleRegistry,
+    );
+
+    console.log(
+      `✓ ${seed.project.name} initialized — ${seed.apps.length} embedded app(s)` +
+        (activated.length ? `, ${activated.length} module(s): ${activated.join(', ')}` : ''),
+    );
   } catch (error) {
     console.error('❌ Failed to initialize integrations:', error);
   }

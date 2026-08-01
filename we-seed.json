@@ -5,25 +5,23 @@
     "description": "Pure WE application built with design system and schema renderer",
     "author": "James Weir"
   },
-
   "features": {
     "useQueryIR": true
   },
-
+  "modules": [
+    "globe"
+  ],
   "ad4m": {
     "dataPath": "~/.we-native-app",
     "executorPath": "../ad4m/target/release/ad4m-executor",
     "repoPath": "../ad4m"
   },
-
   "globalSpaceUrl": "neighbourhood://QmzSYwdZnsgCrgG4bGzmLP21AMoQTbxfwfNQeGhCXvuKqV4zXCv",
   "marketplaceUrl": "neighbourhood://QmzSYwdjBtfHQgMBAFCi5nX1fxS3SQ7prh5CcysSrc2yngqL51H",
-
   "electron": {
     "appDistPath": "dist",
     "basePort": 8080
   },
-
   "apps": [
     {
       "id": "flux",
@@ -31,7 +29,11 @@
       "icon": "camera",
       "image": "https://app.fluxsocial.io/icon.png",
       "description": "Social web3 toolkit for communities",
-      "capabilities": ["perspectives", "languages", "agents"],
+      "capabilities": [
+        "perspectives",
+        "languages",
+        "agents"
+      ],
       "paths": {
         "projectRoot": "../flux/app",
         "dist": "../flux/app/dist",
