@@ -39,8 +39,13 @@ WE's data layer is **AD4M** — an agent-centric, local-first, peer-to-peer meta
 Data is yours, stored locally and synced P2P (via Holochain) with no central server. The Solid
 app (`@we/app-framework`, hosted by the web/electron/tauri targets) talks to an **AD4M executor**
 (the ad4m runtime; `@coasys/ad4m` + `ad4m-connect`) that holds perspectives and syncs
-neighbourhoods. Stores (`adamStore`, `spaceStore`, …) wrap the AD4M client and expose reactive
-state to schemas.
+neighbourhoods. Stores (`adamStore`, `spaceStore`, …) expose reactive state to schemas.
+
+AD4M is reached through the **backend contract** rather than directly: `@we/backend-shared` declares
+the ports (`DataSource` + `QueryAdapter`, ephemeral, presence, model manifest) and
+`@we/backend-ad4m` implements them. The renderer, the design system and the module contract never
+import `@coasys/*` — which is why a template, a component or a feature module can be reasoned about
+without knowing what holds the data.
 
 Glossary (these terms pervade stores, models, and `$query`/`perspective` in schemas):
 - **Agent / DID** — a user identity; addressed by a DID (`adamStore.me.did`).
@@ -76,14 +81,26 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/widgets` | design-system/5-widgets | Large feature widgets (globe, graph, sidebar) | Solid |
 | `@we/design-utils` | design-system/utils | Shared DS-props → style computation; token resolvers | Neutral core + `/solid` binding |
 | `@we/design-types` | design-system/types | Shared DS prop/type definitions | Agnostic |
-| `@we/schema-shared` | schema-system/shared | Schema semantics: prop resolvers, validation, registry types, reactivity port | **Agnostic** |
+| `@we/schema-shared` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |
 | `@we/schema-solid` | schema-system/frameworks/solid | The schema renderer (walks the tree, mounts components) | Solid (thin adapter) |
+| `@we/backend-shared` | backend-system/shared | The backend contract: `DataSource`, query IR + engine, ephemeral & presence ports, model manifest | **Agnostic** |
+| `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ephemeral port, agent identity, SDNA install, model registry | Agnostic |
+| `@we/backend-inmemory` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
+| `@we/module-shared` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
+| `@we/module-globe` · `-call` · `-notes` | module-system/* | Bundled feature modules | Agnostic (components injected) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
-| `@we/models` | packages/models | AD4M data models (Space, Block subclasses, …) | Agnostic |
-| `@we/app-framework` | packages/app-framework | App shell, stores, built-in template schemas, AD4M wiring | Solid |
+| `@we/models` | packages/models | WE's domain models (Space, Block subclasses, …) | **AD4M-decorated** |
+| `@we/app-framework` | packages/app-framework | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 
 Apps (`apps/we-web`, `apps/we-electron`, `apps/we-tauri`) are thin hosts over `@we/app-framework`.
+Each supplies two things: a `PlatformAdapter` (where am I running) and a `BackendConnector`
+(how do I reach the data layer).
+
+**Dependency direction:** `content → shell → backend-shared ← backend-ad4m`, and
+`modules → shell → backend-shared`. Dependencies point inward toward the contract packages; there are
+no sideways edges. `@coasys/*` may be imported by `@we/backend-ad4m`, `@we/models`, and any module
+that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/package-conventions.md`.
 
 ### The Three Seams (why the layering holds)
 
@@ -126,7 +143,10 @@ Apps (`apps/we-web`, `apps/we-electron`, `apps/we-tauri`) are thin hosts over `@
 - Add/adjust a primitive → `packages/design-system/3-primitives/src/` (Lit).
 - Add/adjust a layout/composite component → `packages/design-system/4-components/src/` (Solid).
 - DS-props → CSS logic (shared) → `packages/design-system/utils/src/index.ts`; Solid binding → `.../src/solid/index.ts`.
-- Stores / app shell / AD4M wiring / built-in templates → `packages/app-framework/src/`.
+- Stores / app shell / registries / built-in templates → `packages/app-framework/src/`.
+- The backend contract (ports, query IR) → `packages/backend-system/shared/src/`.
+- AD4M wiring (query adapter, SDNA install, agent identity) → `packages/backend-system/ad4m/src/`.
+- The feature-module contract → `packages/module-system/shared/src/module.ts`; a module → `packages/module-system/<id>/`.
 - Data models (Space, blocks) → `packages/models/src/` (see packages/models/CONVENTIONS.md).
 
 For deeper detail (data sync/persistence, block & editor internals, the local dev/test loop),
