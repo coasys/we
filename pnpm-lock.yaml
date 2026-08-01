@@ -432,9 +432,6 @@ importers:
       '@we/block-solid':
         specifier: workspace:*
         version: link:../block-system/frameworks/solid
-      '@we/cesium-layers':
-        specifier: workspace:*
-        version: link:../cesium-layers
       '@we/components':
         specifier: workspace:*
         version: link:../design-system/4-components
@@ -447,6 +444,9 @@ importers:
       '@we/models':
         specifier: workspace:*
         version: link:../models
+      '@we/module-globe':
+        specifier: workspace:*
+        version: link:../modules/globe
       '@we/primitives':
         specifier: workspace:*
         version: link:../design-system/3-primitives
@@ -861,6 +861,28 @@ importers:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+
+  packages/modules/globe:
+    dependencies:
+      '@we/cesium-layers':
+        specifier: workspace:*
+        version: link:../../cesium-layers
+    devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+      '@we/widgets':
+        specifier: workspace:*
+        version: link:../../design-system/5-widgets
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
 
   packages/schema-system/frameworks/solid:
     dependencies:
