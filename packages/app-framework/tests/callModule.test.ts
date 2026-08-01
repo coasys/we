@@ -92,6 +92,24 @@ describe('call module — contributions', () => {
     expect(typeof store[callModule.launcher!.availableWhen!]).toBe('function');
   });
 
+  it('keeps volatile state off the tile, so a mute cannot remount the video', () => {
+    // `$each` renders through a reference-keyed `<For>`, so any change to a tile object remounts that
+    // row — and a remounted row builds a new `<video>`, dropping and re-attaching `srcObject`. Muting
+    // your microphone blanked your own video.
+    //
+    // Volatile flags are therefore looked up with `$find` over `modules.call.tileStates` rather than
+    // read off `$tile`. Asserted on the serialised fragment because nothing else would catch someone
+    // reasonably "simplifying" a `$find` back into a context ref.
+    const tile = JSON.stringify(moduleRegistry.schemas()['call.tile'] ?? callModule.schemas?.tile);
+
+    for (const volatile of ['audioEnabled', 'videoEnabled', 'isScreen', 'connection']) {
+      expect(tile).not.toContain(`$tile.${volatile}`);
+      expect(tile).toContain(`"select":"${volatile}"`);
+    }
+    // Identity and stream stay on the tile: both genuinely require a remount when they change.
+    expect(tile).toContain('$tile.stream');
+  });
+
   it('exposes a launcher a template can place on any node', () => {
     moduleRegistry.register(callModule, host, storeDeps);
     // Anchored calls need a per-node trigger, and only a template knows what a node is.

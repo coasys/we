@@ -32,6 +32,20 @@ export { createMediaController, type MediaController, type MediaState } from './
 export { anchoredCallId, CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } from './protocol';
 export { createCallStore, type CallTile } from './store';
 
+/**
+ * A participant's volatile flag, looked up rather than read off the tile.
+ *
+ * The tile object carries only identity and stream, because `$each` renders through a
+ * reference-keyed `<For>` and any change to the item remounts the row — taking the `<video>` with it.
+ * Muting your microphone blanked your own video for exactly that reason.
+ *
+ * `$find` over a `$store` resolves inside the renderer's prop memo, so reading the signal registers a
+ * dependency and the prop updates on its own. The row never remounts; only the badge changes.
+ */
+const stateOf = (field: string) => ({
+  $find: { items: { $store: 'modules.call.tileStates' }, where: { id: '$tile.id' }, select: field },
+});
+
 /** One participant's video, or their avatar when there is nothing to show. */
 const tile: SchemaNode = {
   type: 'Column',
@@ -41,10 +55,12 @@ const tile: SchemaNode = {
     bg: 'neutral-100',
     r: '400',
     overflow: 'hidden',
-    // Grow to share the row, but never below a size where a face is unreadable.
-    flex: '1 1 240px',
-    minWidth: '200px',
-    height: '180px',
+    // Grow to share the row, and stretch to the stage's full height rather than being capped at a
+    // fixed one — a hardcoded height was what made the video small regardless of available space.
+    flex: '1 1 280px',
+    minWidth: '220px',
+    minHeight: '160px',
+    alignSelf: 'stretch',
     ax: 'center',
     ay: 'center',
   },
@@ -54,7 +70,7 @@ const tile: SchemaNode = {
       props: {
         // A tile with no stream yet is normal for the first second or two of a join, and a peer with
         // their camera off never gets one at all. Both show the avatar rather than a black rectangle.
-        condition: { $and: ['$tile.stream', { $or: ['$tile.videoEnabled', '$tile.isScreen'] }] },
+        condition: { $and: ['$tile.stream', { $or: [stateOf('videoEnabled'), stateOf('isScreen')] }] },
         then: {
           type: 'we-video',
           props: {
@@ -68,12 +84,15 @@ const tile: SchemaNode = {
             height: '100%',
             // A desktop cropped to fill a camera-shaped tile is unreadable — `contain` letterboxes it
             // instead. Driven by the roster, because only the sender knows which it is sending.
-            fit: { $if: { condition: '$tile.isScreen', then: 'contain', else: 'cover' } },
+            fit: { $if: { condition: stateOf('isScreen'), then: 'contain', else: 'cover' } },
           },
         },
         else: {
+          // `hash` gives every participant a distinct generated avatar from their DID. Profiles are
+          // not reachable from here — presence carries `agentId` only, and joining it to a profile is
+          // the host's job — so this is what there is until an identities port is lent to modules.
           type: 'we-avatar',
-          props: { image: '$tile.avatar', initials: '$tile.name', size: 'lg' },
+          props: { image: '$tile.avatar', hash: '$tile.did', initials: '$tile.name', size: 'lg' },
         },
       },
     },
@@ -84,7 +103,7 @@ const tile: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $not: '$tile.audioEnabled' },
+            condition: { $not: stateOf('audioEnabled') },
             then: {
               type: 'we-badge',
               props: { variant: 'neutral', size: 'xs' },
@@ -95,7 +114,7 @@ const tile: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: '$tile.isScreen',
+            condition: stateOf('isScreen'),
             then: {
               type: 'we-badge',
               props: { variant: 'primary', size: 'xs' },
@@ -107,11 +126,11 @@ const tile: SchemaNode = {
           // Reconnecting is worth saying out loud — silence looks identical to a frozen call.
           type: '$if',
           props: {
-            condition: { $in: ['$tile.connection', ['connecting', 'disconnected', 'failed']] },
+            condition: { $in: [stateOf('connection'), ['connecting', 'disconnected', 'failed']] },
             then: {
               type: 'we-badge',
               props: { variant: 'warning', size: 'xs' },
-              children: ['$tile.connection'],
+              children: [stateOf('connection')],
             },
           },
         },
@@ -121,12 +140,18 @@ const tile: SchemaNode = {
 };
 
 /**
- * The expanded stage — every participant, above the bar.
+ * The expanded stage — every participant, at the top of the screen.
+ *
+ * **Top, not bottom.** It first appeared at the top by accident: `bottom: '900'` is not a CSS length,
+ * so the offset was dropped and `position: fixed` fell back to the static position. That accident read
+ * better than the deliberate version — video belongs where your eyes already are, and the controls
+ * belong out of the way — so it is now the actual layout.
  *
  * A `Row` that wraps, not a `Grid`. `Grid`'s `minChildWidth` compiles to
  * `repeat(auto-fill, minmax(…, 1fr))`, and `auto-fill` keeps empty tracks — so a one-person call drew
- * a small tile on the left and a wide band of nothing to its right. Wrapping flex items with
- * `flex: 1 1 240px` grow to fill the row instead, at every participant count.
+ * a small tile on the left and a wide band of nothing to its right. Wrapping flex items grow to fill
+ * the row instead, at every participant count, and `ay: stretch` lets them take the stage's full
+ * height rather than a hardcoded one.
  *
  * Colours are theme-relative, and that matters more than it looks. Dark themes invert the neutral
  * scale (`multiplier: -1`), so `neutral-1000` is black in the light theme and near-white in the dark
@@ -141,15 +166,17 @@ const stage: SchemaNode = {
       type: 'Row',
       props: {
         position: 'fixed',
-        bottom: '80px',
+        top: '72px',
         left: '16px',
-        right: '16px',
-        maxHeight: '46vh',
+        // Clears the module rail on the right edge, which is 48px wide plus a margin.
+        right: '72px',
+        height: '38vh',
         wrap: true,
         gap: '300',
         p: '300',
         ax: 'center',
-        ay: 'center',
+        // Stretch, so a tile fills the stage's height instead of sitting at a fixed size in the middle.
+        ay: 'stretch',
         bg: 'neutral-0',
         border: '1px solid neutral-200',
         r: '500',

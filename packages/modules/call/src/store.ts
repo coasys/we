@@ -38,6 +38,22 @@ export interface CallTile {
   /** `null` until that peer's media arrives, which is normal for the first second or two. */
   stream: MediaStream | null;
   isSelf: boolean;
+}
+
+/**
+ * A participant's *volatile* state, deliberately kept out of {@link CallTile}.
+ *
+ * This split is not tidiness, it is the fix for a visible bug. `$each` renders through Solid's
+ * `<For>`, which is keyed by reference, so any change to a tile object remounts that row — and a
+ * remounted row builds a new `<video>`, which drops and re-attaches `srcObject`. With mute state on
+ * the tile, muting your microphone blanked your own video.
+ *
+ * So the tile carries only what identifies a participant and their stream, and changes rarely. Their
+ * flags live here and a fragment reaches them with `$find` over `modules.call.tileStates` — which
+ * resolves inside the renderer's prop memo, so it stays reactive while the row itself never remounts.
+ */
+export interface CallTileState {
+  id: string;
   /** Render `contain` rather than `cover` — a cropped desktop is unreadable. From the roster. */
   isScreen: boolean;
   audioEnabled: boolean;
@@ -56,6 +72,7 @@ export function createCallStore(deps: CallStoreDeps) {
 
   const [callId, setCallId] = signal<string | null>(null);
   const [tiles, setTiles] = signal<CallTile[]>([]);
+  const [tileStates, setTileStates] = signal<CallTileState[]>([]);
   const [expanded, setExpanded] = signal(false);
   const [media, setMedia] = signal<MediaSettings>({
     audioEnabled: true,
@@ -100,20 +117,15 @@ export function createCallStore(deps: CallStoreDeps) {
    * tile with a null stream. Driving it from connections instead would make joiners invisible until
    * their media arrived, which reads as a broken call during the very seconds it is working.
    */
-  /** Reuse the previous object for a participant when every field still matches. */
+  /**
+   * Reuse the previous object for a participant unless their identity or stream changed.
+   *
+   * Only two fields can force a remount now, and both genuinely require one: a different person, or a
+   * different `MediaStream` to attach.
+   */
   function stabilise(tile: CallTile): CallTile {
     const previous = tileCache.get(tile.id);
-    if (
-      previous &&
-      previous.stream === tile.stream &&
-      previous.isSelf === tile.isSelf &&
-      previous.isScreen === tile.isScreen &&
-      previous.audioEnabled === tile.audioEnabled &&
-      previous.videoEnabled === tile.videoEnabled &&
-      previous.connection === tile.connection
-    ) {
-      return previous;
-    }
+    if (previous && previous.stream === tile.stream && previous.isSelf === tile.isSelf) return previous;
     tileCache.set(tile.id, tile);
     return tile;
   }
@@ -124,24 +136,22 @@ export function createCallStore(deps: CallStoreDeps) {
     if (!id) {
       tileCache.clear();
       setTiles([]);
+      setTileStates([]);
       return;
     }
 
     const next: CallTile[] = [];
+    const states: CallTileState[] = [];
 
     if (me) {
       const state = controller?.state();
-      next.push(
-        stabilise({
-          id: me,
-          did: me,
-          stream: controller?.displayStream() ?? null,
-          isSelf: true,
-          isScreen: state?.screenShareEnabled ?? false,
-          audioEnabled: state?.audioEnabled ?? false,
-          videoEnabled: state?.videoEnabled ?? false,
-        }),
-      );
+      next.push(stabilise({ id: me, did: me, stream: controller?.displayStream() ?? null, isSelf: true }));
+      states.push({
+        id: me,
+        isScreen: state?.screenShareEnabled ?? false,
+        audioEnabled: state?.audioEnabled ?? false,
+        videoEnabled: state?.videoEnabled ?? false,
+      });
     }
 
     for (const { peer, activity } of activitiesOfType(presence?.peers() ?? [], 'call')) {
@@ -153,14 +163,17 @@ export function createCallStore(deps: CallStoreDeps) {
           did: peer.agentId,
           stream: remoteStreams.get(peer.agentId) ?? null,
           isSelf: false,
-          // Read from the roster, never inferred from the track — the sender is the only one who
-          // knows whether the video it is sending is a camera or a desktop.
-          isScreen: settings?.screenShareEnabled ?? false,
-          audioEnabled: settings?.audioEnabled ?? true,
-          videoEnabled: settings?.videoEnabled ?? true,
-          connection: peerStates.get(peer.agentId),
         }),
       );
+      states.push({
+        id: peer.agentId,
+        // Read from the roster, never inferred from the track — the sender is the only one who knows
+        // whether the video it is sending is a camera or a desktop.
+        isScreen: settings?.screenShareEnabled ?? false,
+        audioEnabled: settings?.audioEnabled ?? true,
+        videoEnabled: settings?.videoEnabled ?? true,
+        connection: peerStates.get(peer.agentId),
+      });
     }
 
     // Drop anyone who left, so the cache cannot grow across a long-lived session.
@@ -168,6 +181,7 @@ export function createCallStore(deps: CallStoreDeps) {
     for (const key of [...tileCache.keys()]) if (!present.has(key)) tileCache.delete(key);
 
     setTiles(next);
+    setTileStates(states);
   }
 
   /** Republish the call activity so peers see mute/camera/screen changes. */
@@ -291,6 +305,7 @@ export function createCallStore(deps: CallStoreDeps) {
     // ── State ────────────────────────────────────────────────────────────────
     callId,
     tiles,
+    tileStates,
     expanded,
     media,
     problem,
