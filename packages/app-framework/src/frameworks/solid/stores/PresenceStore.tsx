@@ -34,6 +34,7 @@
  * re-hydrates every peer profile on every heartbeat — an N-peer `Promise.all` every five seconds.
  */
 import type { AgentProfileSummary } from '@shared/agentHelpers';
+import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { createTabCoordinator } from '@shared/tabCoordinator';
 import { useAdamStore } from '@solid/stores/AdamStore';
 import { useRouteStore } from '@solid/stores/RouteStore';
@@ -222,6 +223,17 @@ export function PresenceStoreProvider(props: ParentProps) {
   });
 
   const calls = createMemo(() => callRosters(online()) as Map<string, PresentAgent[]>);
+
+  // Lend feature modules the activity slice of presence. Narrowed deliberately: a module has a
+  // legitimate need to say "I am in this call" and to read who else is, but no business setting
+  // another agent's availability or driving the heartbeat. See moduleHostServices.ts.
+  provideModuleHostServices({
+    presence: {
+      peers: () => rawPeers(),
+      setActivity: (activity) => source?.setActivity(activity),
+      clearActivity: (type, id) => source?.clearActivity(type, id),
+    },
+  });
 
   const store: PresenceStore = {
     peers,

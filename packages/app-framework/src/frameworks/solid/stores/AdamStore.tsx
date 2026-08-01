@@ -11,6 +11,7 @@ import {
 import { buildModelClasses, buildModelManifest, getForeignShacl } from '@shared/perspectiveHelpers';
 import { usePlatform } from '@shared/platform';
 import { registerDynamicModels } from '@shared/registries/modelRegistry';
+import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import {
   deduplicateSpaceSdna,
   installModuleSdna,
@@ -191,6 +192,18 @@ export function AdamStoreProvider(props: ParentProps) {
   const currentPerspectiveSharedUrl = createMemo<string | undefined>(
     () => currentPerspective()?.sharedUrl ?? undefined,
   );
+  // Lend feature modules the neutral ports this store owns. Published rather than imported so a
+  // module never reaches into `adamStore` — what it receives is `EphemeralPort` and a dataset
+  // accessor, both of which any backend could satisfy. See moduleHostServices.ts.
+  provideModuleHostServices({
+    dataset: () => currentPerspective() ?? null,
+    // The *global* uri, never `perspective.uuid` — a uuid is local per-agent, so a call id derived
+    // from one would differ on every peer and each would join a call only they can see.
+    datasetUri: () => currentPerspective()?.sharedUrl ?? null,
+    selfId: () => me()?.did ?? null,
+    ephemeral: ephemeralPort,
+  });
+
   // CID-only form (neighbourhood:// stripped) for comparing against Space.url,
   // which stores only the CID to avoid URI resolution in the AD4M triple store.
   const currentPerspectiveSharedCid = createMemo<string | undefined>(

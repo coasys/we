@@ -1,7 +1,8 @@
 import { componentRegistry } from '@solid/registries/componentRegistry';
-import { createContext, createSignal, ParentComponent, useContext } from 'solid-js';
+import { createContext, createEffect, createSignal, ParentComponent, useContext } from 'solid-js';
 
 import { initializeIntegrations } from '../initializeIntegrations';
+import { createModuleStoreDeps } from '../registries/moduleHostServices';
 import { PlatformAdapter } from './types';
 
 const PlatformContext = createContext<PlatformAdapter>();
@@ -13,9 +14,14 @@ export const PlatformProvider: ParentComponent<{ adapter: PlatformAdapter }> = (
   // stays framework-neutral.
   initializeIntegrations(props.adapter, {
     components: { CesiumGlobe: componentRegistry.CesiumGlobe },
-    // Reactivity lent to module stores. Solid's createSignal already has the [read, write] shape the
-    // port asks for, so a module store gets reactivity without importing a framework.
-    storeDeps: { signal: <T,>(initial: T) => createSignal(initial) as [() => T, (next: T) => void] },
+    // Reactivity lent to module stores. Solid's primitives already have the shapes the port asks
+    // for, so a module store gets reactivity without importing a framework. The remaining deps
+    // (transport, presence, the current dataset) are bound late — the stores that own them mount
+    // below this provider. See moduleHostServices.ts.
+    storeDeps: createModuleStoreDeps({
+      signal: <T,>(initial: T) => createSignal(initial) as [() => T, (next: T) => void],
+      effect: (fn) => createEffect(fn),
+    }),
   });
 
   return <PlatformContext.Provider value={props.adapter}>{props.children}</PlatformContext.Provider>;
