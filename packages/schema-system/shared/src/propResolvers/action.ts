@@ -101,15 +101,30 @@ export function resolveActionProp(
     onFinally?: unknown[];
   };
 
-  // Split the $action string into store name and method name
-  const [storeName, methodName] = token.$action.split('.');
+  // Split the $action string into a path, taking the **last** segment as the method and everything
+  // before it as the path to the object holding it.
+  //
+  // Two segments used to be assumed (`store.method`), which quietly broke any namespaced store —
+  // `modules.notes.toggle` resolved `stores.modules.notes`, an object rather than a function, so the
+  // handler was silently dropped and the button did nothing. `$store` has always walked arbitrary
+  // depth, so this also removes an inconsistency between the two.
+  const segments = token.$action.split('.');
+  const methodName = segments[segments.length - 1];
+  const ownerPath = segments.slice(0, -1);
+  const storeName = ownerPath[0];
 
   // Retrieve args and resolve any expressions within them (but not $arg tokens yet)
   const args = token.args ?? [];
   const resolvedArgs = args.map((arg) => resolvePropFn(arg, stores, context, memo));
 
-  // Get the method from the store
-  const store = stores[storeName] as Props | undefined;
+  // Walk to the object that owns the method. Accessors are *not* called here, unlike `$store`'s
+  // walkPath: a store namespace is a plain object, and calling a signal on the way to a method would
+  // be wrong.
+  let owner: unknown = stores;
+  for (const segment of ownerPath) {
+    owner = (owner as Props | undefined)?.[segment];
+  }
+  const store = owner as Props | undefined;
   const method = store?.[methodName];
 
   // Return a callable function if the method exists
@@ -172,6 +187,6 @@ export function resolveActionProp(
   }
 
   // Warn on missing store or method for debuggability
-  if (!store) console.warn(`Schema $action: store "${storeName}" not found`);
-  else if (!method) console.warn(`Schema $action: method "${methodName}" not found on store "${storeName}"`);
+  if (!store) console.warn(`Schema $action: store "${ownerPath.join('.')}" not found`);
+  else if (!method) console.warn(`Schema $action: method "${methodName}" not found on store "${ownerPath.join('.')}"`);
 }
