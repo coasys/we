@@ -44,9 +44,15 @@ export { createCallStore, type CallTile } from './store';
  * Named rather than inlined because the stage's offset is *derived* from the bar's: the two must stay
  * stacked, and a bare `128px` in one file and `72px` in another is a relationship nothing records.
  */
-const CALL_BAR_TOP = '72px';
-/** Bar top + its height + a gap. Keeps the stage tucked directly under the controls. */
-const STAGE_TOP = '128px';
+const CALL_BAR_TOP = '10px';
+/**
+ * Bar top + bar height + a gap, so the stage sits tucked directly under the controls.
+ *
+ * The bar is 50px tall: a 32px `sm` button, plus `py: '200'` (8px) top and bottom, plus its 1px
+ * borders. 10 + 50 + 12 = 72. Written out because the two constants have to move together, and the
+ * next person to nudge the bar needs to know what the second number is made of.
+ */
+const STAGE_TOP = '72px';
 
 /**
  * A participant's volatile flag, looked up rather than read off the tile.
