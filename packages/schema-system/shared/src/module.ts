@@ -21,6 +21,9 @@
  * just components that never update. A module with no framework imports cannot have that problem.
  * Fragments-first is what makes dynamic loading tractable later.
  */
+import type { DatasetHandle } from './dataSource';
+import type { EphemeralPort } from './ephemeral';
+import type { Activity, Peer } from './presence';
 import type { SchemaNode } from './types';
 
 /**
@@ -125,12 +128,77 @@ export interface ModuleDefinition {
 }
 
 /**
- * The reactivity a host lends a module's store, so the module needn't import a framework.
- * Mirrors the `memo` injection that makes `@we/schema-shared` framework-neutral.
+ * What a host lends a module's store, so the module needn't import a framework *or* a backend.
+ *
+ * Every field is a neutral port already declared in this package — never a host object. That is the
+ * line that keeps the bag from becoming a back door: a module receiving `EphemeralPort` can signal on
+ * any backend that implements one, whereas a module receiving `adamStore` would be an AD4M module
+ * wearing a neutral type.
+ *
+ * Everything past `signal` is optional, and a module must degrade rather than throw when a port is
+ * absent — a host may legitimately have no transport (a personal space has no neighbourhood) or no
+ * presence.
  */
 export interface ModuleStoreDeps {
   /** Returns a `[read, write]` pair — Solid's `createSignal` shape, which every framework can supply. */
   signal: <T>(initial: T) => [() => T, (next: T) => void];
+
+  /**
+   * Re-run `fn` when anything it reads changes — `createEffect` in Solid, `watchEffect` in Vue.
+   *
+   * The other half of the minimal reactive kit. `signal` alone is enough for a module that only
+   * *holds* state (a panel's open flag); a module that must **reconcile** against something the host
+   * owns needs to observe it. The call mesh has to notice a peer joining the roster; polling for that
+   * would be both laggy and a busy loop.
+   */
+  effect?: (fn: () => void) => void;
+
+  /**
+   * The dataset the module is currently scoped to, read reactively. `null` outside a space.
+   *
+   * A function rather than a value because the host re-scopes on navigation, and a module that
+   * captured the dataset once would keep signalling into the space the user left.
+   */
+  dataset?: () => DatasetHandle | null;
+
+  /**
+   * The current dataset's **global** uri — the same value presence puts in `Focus.datasetUri`.
+   *
+   * Supplied separately because {@link DatasetHandle} is deliberately opaque, so a module cannot
+   * derive it without peeking at backend internals. It is needed whenever a module must name the
+   * dataset in something peers will compare: a call id built from a *local* handle id would differ on
+   * every agent, so each would join a call only they can see.
+   */
+  datasetUri?: () => string | null;
+
+  /** This agent's id in the host's identity scheme (a DID on AD4M). `null` before login. */
+  selfId?: () => string | null;
+
+  /**
+   * Peer-to-peer transport for modules that coordinate between agents rather than store data.
+   *
+   * The same port instance the host uses for presence, so scope refcounting works and a module joins
+   * the existing per-dataset subscription instead of opening a second one.
+   */
+  ephemeral?: EphemeralPort;
+
+  /**
+   * Presence, for modules that publish what this agent is doing or read who else is doing it.
+   *
+   * Narrowed to activities on purpose. A module has a legitimate need to say "I am in this call" and
+   * to read the roster; it has no business setting another agent's availability or driving the
+   * heartbeat, so those stay with the host.
+   */
+  presence?: ModulePresenceAccess;
+}
+
+/** The slice of presence a feature module may touch. */
+export interface ModulePresenceAccess {
+  /** Peers in the current dataset, liveness-derived. */
+  peers: () => Peer[];
+  /** Publish an activity of this agent's own. */
+  setActivity: (activity: Activity) => void;
+  clearActivity: (type: string, id?: string) => void;
 }
 
 /** Identity function that exists for inference and for a greppable declaration site. */
