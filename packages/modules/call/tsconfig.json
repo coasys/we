@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    // The mesh drives RTCPeerConnection and MediaStream, so it needs the browser lib even though
+    // nothing here touches the DOM directly.
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src/**/*"]
+}
