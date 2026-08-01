@@ -1,7 +1,7 @@
 import { parseLit } from '@coasys/ad4m';
 import type { AgentProfileSummary } from '@shared/agentHelpers';
 import { getModelForPerspective, registerModel } from '@shared/registries/modelRegistry';
-import { moduleRegistry } from '@shared/registries/moduleRegistry';
+import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { ensureModelRegistered, SPACE_MODELS } from '@shared/sdnaModels';
 import { type LocationData, removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@shared/syncHelpers';
 import { deriveSlug } from '@shared/utils';
@@ -54,6 +54,8 @@ export interface SpaceStore {
   enabledModules: Accessor<string[]>;
   /** Registered modules paired with whether this space has them on — the settings list. */
   moduleSettings: Accessor<{ id: string; name: string; description: string; icon: string; enabled: boolean }[]>;
+  /** Launchers for the modules enabled here — what the module rail renders. */
+  moduleLaunchers: Accessor<{ id: string; icon: string; label: string; active: boolean }[]>;
 
   // Actions
   createPost: (json: unknown) => Promise<void>;
@@ -64,6 +66,7 @@ export interface SpaceStore {
   setSpaceDefaultTemplate: (templateId: string) => Promise<void>;
   setSpaceDefaultTheme: (themeId: string) => Promise<void>;
   setModuleEnabled: (moduleId: string, enabled: boolean) => Promise<void>;
+  launchModule: (moduleId: string) => void;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
@@ -348,6 +351,54 @@ export function SpaceStoreProvider(props: ParentProps) {
     }));
   });
 
+  /**
+   * What the module rail renders: one entry per enabled module that declares a launcher.
+   *
+   * Reads `moduleStores` so `active` tracks the module's own state — the notes tab highlights while
+   * its panel is open. A module with no `activeWhen` (a call, which starts rather than toggles) is
+   * simply never highlighted.
+   */
+  /** Read a boolean off a module's own store, unwrapping the accessor a module store exposes. */
+  const read = (moduleId: string, key: string | undefined, fallback: boolean): boolean => {
+    if (!key) return fallback;
+    const value = (moduleStores[moduleId] as Record<string, unknown> | undefined)?.[key];
+    return typeof value === 'function' ? Boolean((value as () => unknown)()) : Boolean(value);
+  };
+
+  const moduleLaunchers = createMemo(() => {
+    const on = new Set(enabledModules());
+    return moduleRegistry
+      .all()
+      .filter(({ definition }) => definition.launcher && on.has(definition.id))
+      .filter(({ definition }) => read(definition.id, definition.launcher!.availableWhen, true))
+      .map(({ definition }) => {
+        const launcher = definition.launcher!;
+        return {
+          id: definition.id,
+          icon: launcher.icon,
+          label: launcher.label,
+          active: read(definition.id, launcher.activeWhen, false),
+        };
+      });
+  });
+
+  /**
+   * Invoke a module's launcher.
+   *
+   * Here rather than in the schema because `$action` resolves a *literal* path, so a rail iterating
+   * over modules cannot build `modules.<id>.<method>` per entry. The rail passes the id instead and
+   * this dereferences it.
+   */
+  function launchModule(moduleId: string) {
+    const definition = moduleRegistry.get(moduleId)?.definition;
+    const action = definition?.launcher?.action;
+    if (!action) return;
+    const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
+    const fn = store?.[action];
+    if (typeof fn === 'function') (fn as () => void)();
+    else console.warn(`module "${moduleId}" declares launcher action "${action}" but its store has no such method`);
+  }
+
   async function setModuleEnabled(moduleId: string, enabled: boolean) {
     const space = currentSpace();
     if (!space) return;
@@ -564,6 +615,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     currentSpace,
     enabledModules,
     moduleSettings,
+    moduleLaunchers,
     foreignSpacePrefill,
 
     // Actions
@@ -575,6 +627,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTemplate,
     setSpaceDefaultTheme,
     setModuleEnabled,
+    launchModule,
     createSignalType,
     upsertSignal,
     navigateToSpace,

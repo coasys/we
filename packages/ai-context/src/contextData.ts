@@ -2144,6 +2144,7 @@ export const contextData: ContextData = {
         signalTypesBySlug: { type: 'object' },
         enabledModules: { type: 'array' },
         moduleSettings: { type: 'array', properties: ['id', 'name', 'description', 'icon', 'enabled'] },
+        moduleLaunchers: { type: 'array', properties: ['id', 'icon', 'label', 'active'] },
       },
       actions: [
         'createPost',
@@ -2154,6 +2155,7 @@ export const contextData: ContextData = {
         'upsertSignal',
         'navigateToSpace',
         'setModuleEnabled',
+        'launchModule',
       ],
     },
     {

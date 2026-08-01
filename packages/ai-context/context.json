@@ -5560,6 +5560,10 @@
         "moduleSettings": {
           "type": "array",
           "properties": ["id", "name", "description", "icon", "enabled"]
+        },
+        "moduleLaunchers": {
+          "type": "array",
+          "properties": ["id", "icon", "label", "active"]
         }
       },
       "actions": [
@@ -5570,7 +5574,8 @@
         "createSignalType",
         "upsertSignal",
         "navigateToSpace",
-        "setModuleEnabled"
+        "setModuleEnabled",
+        "launchModule"
       ]
     },
     {

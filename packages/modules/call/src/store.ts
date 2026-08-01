@@ -70,6 +70,21 @@ export function createCallStore(deps: CallStoreDeps) {
   let remoteStreams = new Map<string, MediaStream>();
   let peerStates = new Map<string, RTCPeerConnectionState>();
 
+  /**
+   * The previous tile object per participant, reused when nothing about them changed.
+   *
+   * `$each` renders through Solid's `<For>`, which is **keyed by reference**. Rebuilding the tile
+   * list produces fresh objects, so every row unmounts and remounts — and a remounted row means a
+   * brand-new `<video>` element, which drops `srcObject` and re-attaches it. That is the flicker:
+   * every heartbeat, every connection-state change and every mute toggle tore down and rebuilt every
+   * video in the call.
+   *
+   * The codebase already hit this exact failure with `$query` results, where AD4M's prototype `id`
+   * getter defeated `reconcile({ key: 'id' })` — see the note in `SchemaRenderer`. Same cause, same
+   * symptom, and the fix is the same: keep identity stable across updates that change nothing.
+   */
+  const tileCache = new Map<string, CallTile>();
+
   const roster = (): Peer[] => {
     const id = callId();
     if (!id || !presence) return [];
@@ -85,10 +100,29 @@ export function createCallStore(deps: CallStoreDeps) {
    * tile with a null stream. Driving it from connections instead would make joiners invisible until
    * their media arrived, which reads as a broken call during the very seconds it is working.
    */
+  /** Reuse the previous object for a participant when every field still matches. */
+  function stabilise(tile: CallTile): CallTile {
+    const previous = tileCache.get(tile.id);
+    if (
+      previous &&
+      previous.stream === tile.stream &&
+      previous.isSelf === tile.isSelf &&
+      previous.isScreen === tile.isScreen &&
+      previous.audioEnabled === tile.audioEnabled &&
+      previous.videoEnabled === tile.videoEnabled &&
+      previous.connection === tile.connection
+    ) {
+      return previous;
+    }
+    tileCache.set(tile.id, tile);
+    return tile;
+  }
+
   function rebuildTiles() {
     const id = callId();
     const me = selfId?.() ?? null;
     if (!id) {
+      tileCache.clear();
       setTiles([]);
       return;
     }
@@ -97,33 +131,41 @@ export function createCallStore(deps: CallStoreDeps) {
 
     if (me) {
       const state = controller?.state();
-      next.push({
-        id: me,
-        did: me,
-        stream: controller?.displayStream() ?? null,
-        isSelf: true,
-        isScreen: state?.screenShareEnabled ?? false,
-        audioEnabled: state?.audioEnabled ?? false,
-        videoEnabled: state?.videoEnabled ?? false,
-      });
+      next.push(
+        stabilise({
+          id: me,
+          did: me,
+          stream: controller?.displayStream() ?? null,
+          isSelf: true,
+          isScreen: state?.screenShareEnabled ?? false,
+          audioEnabled: state?.audioEnabled ?? false,
+          videoEnabled: state?.videoEnabled ?? false,
+        }),
+      );
     }
 
     for (const { peer, activity } of activitiesOfType(presence?.peers() ?? [], 'call')) {
       if (activity.id !== id || peer.agentId === me) continue;
       const settings = activity.media;
-      next.push({
-        id: peer.agentId,
-        did: peer.agentId,
-        stream: remoteStreams.get(peer.agentId) ?? null,
-        isSelf: false,
-        // Read from the roster, never inferred from the track — the sender is the only one who knows
-        // whether the video it is sending is a camera or a desktop.
-        isScreen: settings?.screenShareEnabled ?? false,
-        audioEnabled: settings?.audioEnabled ?? true,
-        videoEnabled: settings?.videoEnabled ?? true,
-        connection: peerStates.get(peer.agentId),
-      });
+      next.push(
+        stabilise({
+          id: peer.agentId,
+          did: peer.agentId,
+          stream: remoteStreams.get(peer.agentId) ?? null,
+          isSelf: false,
+          // Read from the roster, never inferred from the track — the sender is the only one who
+          // knows whether the video it is sending is a camera or a desktop.
+          isScreen: settings?.screenShareEnabled ?? false,
+          audioEnabled: settings?.audioEnabled ?? true,
+          videoEnabled: settings?.videoEnabled ?? true,
+          connection: peerStates.get(peer.agentId),
+        }),
+      );
     }
+
+    // Drop anyone who left, so the cache cannot grow across a long-lived session.
+    const present = new Set(next.map((tile) => tile.id));
+    for (const key of [...tileCache.keys()]) if (!present.has(key)) tileCache.delete(key);
 
     setTiles(next);
   }

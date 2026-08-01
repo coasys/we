@@ -37,11 +37,14 @@ const tile: SchemaNode = {
   type: 'Column',
   props: {
     position: 'relative',
-    bg: 'neutral-900',
+    // Low-numbered, so it stays a recessed surface under both themes — see the note on `stage`.
+    bg: 'neutral-100',
     r: '400',
     overflow: 'hidden',
-    minWidth: '160px',
-    flex: '1',
+    // Grow to share the row, but never below a size where a face is unreadable.
+    flex: '1 1 240px',
+    minWidth: '200px',
+    height: '180px',
     ax: 'center',
     ay: 'center',
   },
@@ -117,25 +120,41 @@ const tile: SchemaNode = {
   ],
 };
 
-/** The expanded stage — every participant, above the bar. */
+/**
+ * The expanded stage — every participant, above the bar.
+ *
+ * A `Row` that wraps, not a `Grid`. `Grid`'s `minChildWidth` compiles to
+ * `repeat(auto-fill, minmax(…, 1fr))`, and `auto-fill` keeps empty tracks — so a one-person call drew
+ * a small tile on the left and a wide band of nothing to its right. Wrapping flex items with
+ * `flex: 1 1 240px` grow to fill the row instead, at every participant count.
+ *
+ * Colours are theme-relative, and that matters more than it looks. Dark themes invert the neutral
+ * scale (`multiplier: -1`), so `neutral-1000` is black in the light theme and near-white in the dark
+ * one — which is exactly how this shipped as a white stage. There is no "always dark" neutral; a
+ * surface that must follow the theme has to use the same low-numbered tokens as the rest of the app.
+ */
 const stage: SchemaNode = {
   type: '$if',
   props: {
     condition: { $and: [{ $store: 'modules.call.active' }, { $store: 'modules.call.expanded' }] },
     then: {
-      type: 'Grid',
+      type: 'Row',
       props: {
         position: 'fixed',
-        bottom: '900',
-        left: '400',
-        right: '400',
-        height: '40vh',
-        minChildWidth: '220px',
+        bottom: '80px',
+        left: '16px',
+        right: '16px',
+        maxHeight: '46vh',
+        wrap: true,
         gap: '300',
         p: '300',
-        bg: 'neutral-1000',
+        ax: 'center',
+        ay: 'center',
+        bg: 'neutral-0',
+        border: '1px solid neutral-200',
         r: '500',
         shadow: 'xl',
+        overflow: 'auto',
         zIndex: 'sticky',
       },
       children: [{ type: '$each', props: { items: { $store: 'modules.call.tiles' }, as: 'tile' }, children: [tile] }],
@@ -168,50 +187,18 @@ const bar: SchemaNode = {
     condition: { $store: 'modules.call.active' },
 
     // ── Not in a call ────────────────────────────────────────────────────────
-    // Two sub-cases: somebody else is in a call (join it), or nobody is (start one).
-    //
-    // The second case was very nearly omitted, on the reasoning that starting a call belongs on a
-    // deliberate affordance rather than persistent furniture — which shipped the notes module
-    // installed, registered and invisible one PR ago. `startCallButton` is exported for templates
-    // that want the trigger somewhere of their own choosing; this is the fallback that guarantees
-    // the module is usable without one.
+    // Shown only when somebody else is in one, offering to join. *Starting* a call is the module
+    // rail's job now — it was a floating pill here, which is what made the launcher inconsistency
+    // visible in the first place.
     else: {
       type: '$if',
       props: {
         condition: { $count: { items: { $store: 'modules.call.ongoing' } } },
-
-        // Nobody in a call yet. Only offered in a shared space — a personal space has no
-        // neighbourhood, so there is nobody to call and the answer would never change.
-        else: {
-          type: '$if',
-          props: {
-            condition: { $store: 'modules.call.canCall' },
-            then: {
-              type: 'we-button',
-              props: {
-                variant: 'secondary',
-                size: 'sm',
-                position: 'fixed',
-                bottom: '400',
-                right: '400',
-                r: 'pill',
-                shadow: 'lg',
-                zIndex: 'sticky',
-                onClick: { $action: 'modules.call.joinSpaceCall' },
-              },
-              children: [
-                { type: 'we-icon', props: { name: 'phone-call' } },
-                { type: 'we-text', props: { variant: 'label' }, children: ['Start call'] },
-              ],
-            },
-          },
-        },
-
         then: {
           type: 'Row',
           props: {
             position: 'fixed',
-            bottom: '400',
+            bottom: '16px',
             left: '50%',
             transform: 'translateX(-50%)',
             bg: 'neutral-0',
@@ -252,7 +239,7 @@ const bar: SchemaNode = {
       type: 'Row',
       props: {
         position: 'fixed',
-        bottom: '400',
+        bottom: '16px',
         left: '50%',
         transform: 'translateX(-50%)',
         bg: 'neutral-0',
@@ -321,7 +308,7 @@ const problem: SchemaNode = {
       type: 'Row',
       props: {
         position: 'fixed',
-        bottom: '400',
+        bottom: '16px',
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 'sticky',
@@ -376,6 +363,12 @@ export const callModule = defineModule({
   // implements one. No `frameworks`: every piece of UI here is a fragment.
 
   schemas: { anchoredCallButton, startCallButton, tile },
+
+  // Drawn by the host's module rail. No `activeWhen`: this starts a call rather than toggling a
+  // panel, and once you are in one the call bar is the thing that shows it — a highlighted rail tab
+  // as well would be saying it twice.
+  launcher: { icon: 'phone-call', label: 'Start call', action: 'joinSpaceCall', availableWhen: 'canCall' },
+
   slots: [
     { anchor: 'dock-bottom', node: bar, order: 100 },
     { anchor: 'dock-bottom', node: stage, order: 90 },

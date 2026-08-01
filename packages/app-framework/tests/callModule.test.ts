@@ -71,13 +71,25 @@ describe('call module — contributions', () => {
 
   it('is reachable without any template cooperating', () => {
     // The same bug the notes module shipped one PR ago: chrome that only renders once somebody is
-    // already using the feature leaves no way to start using it. The bar's not-in-a-call branch has
-    // to offer "Start call" when nobody is in one, or the first participant can never exist.
-    moduleRegistry.register(callModule, host, storeDeps);
-    const gate = slotRegistry.get('call:0')?.node as { props?: { then?: unknown } };
-    const bar = gate.props?.then as { props?: { else?: { props?: { else?: unknown } } } };
+    // already using the feature leaves no way to start using it. Both modules first solved it by
+    // drawing their own floating button, in different corners — so the entry point is now declared
+    // and the host's rail draws it.
+    expect(callModule.launcher).toEqual({
+      icon: 'phone-call',
+      label: 'Start call',
+      action: 'joinSpaceCall',
+      availableWhen: 'canCall',
+    });
+  });
 
-    expect(bar.props?.else?.props?.else).toBeDefined();
+  it('names a launcher action its own store actually has', () => {
+    // The declaration is a string, so nothing but a test connects it to the method. Getting it wrong
+    // would produce a rail tab that silently does nothing — the `$action` depth bug again, one layer up.
+    moduleRegistry.register(callModule, host, storeDeps);
+    const store = moduleStores.call as Record<string, unknown>;
+
+    expect(typeof store[callModule.launcher!.action]).toBe('function');
+    expect(typeof store[callModule.launcher!.availableWhen!]).toBe('function');
   });
 
   it('exposes a launcher a template can place on any node', () => {

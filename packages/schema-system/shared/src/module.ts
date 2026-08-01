@@ -100,6 +100,16 @@ export interface ModuleDefinition {
   slots?: SlotContribution[];
 
   /**
+   * How this module is opened, rendered by the host into one shared rail.
+   *
+   * Declared rather than contributed as chrome, because the first two modules to need an entry point
+   * each invented their own floating button in a different corner, and a third would have made three.
+   * A module knows what its launcher *means*; only the host knows where launchers go, and it is the
+   * host that has to keep them from colliding.
+   */
+  launcher?: ModuleLauncher;
+
+  /**
    * Durable entity types this module owns, installed by the host into the relevant dataset.
    *
    * Declarative on purpose: the *host* owns the install mechanism, so idempotency lives in one place
@@ -190,6 +200,36 @@ export interface ModuleStoreDeps {
    * heartbeat, so those stay with the host.
    */
   presence?: ModulePresenceAccess;
+}
+
+/** A module's entry point in the host's module rail. */
+export interface ModuleLauncher {
+  /** Icon name, resolved by the host's icon set. */
+  icon: string;
+  /** Shown on hover, and read by assistive tech — the rail itself is icon-only. */
+  label: string;
+  /**
+   * The method on this module's own store to call, named without the `modules.<id>.` prefix.
+   *
+   * A bare method name rather than a full `$action` path because the host invokes it: `$action` takes
+   * a literal string, so a rail iterating over modules could not build one per entry.
+   */
+  action: string;
+  /**
+   * A store key the host reads to show the launcher as active. Optional — a module whose launcher
+   * starts something (a call) rather than toggling something (a panel) has no such state.
+   */
+  activeWhen?: string;
+
+  /**
+   * A store key the host reads to decide whether to offer the launcher at all. Omit to always offer.
+   *
+   * For the case where a module is correctly enabled but cannot work *here*: calls need a
+   * neighbourhood, so in a personal space there is nobody to call. Offering the button and explaining
+   * the failure afterwards is worse than not offering it, because the answer never changes — it is a
+   * property of the space, not a failure.
+   */
+  availableWhen?: string;
 }
 
 /** The slice of presence a feature module may touch. */
