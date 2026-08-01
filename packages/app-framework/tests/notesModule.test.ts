@@ -9,6 +9,7 @@ import { NOTE_PREDICATES, notesModule } from '@we/module-notes';
 import { checkModuleCompatibility } from '@we/schema-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { getModel } from '../src/shared/registries/modelRegistry';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
 
@@ -70,6 +71,18 @@ describe('notes module — contributions', () => {
     expect(store.open()).toBe(true);
     store.close();
     expect(store.open()).toBe(false);
+  });
+
+  it('resolves its model by name, so model.create can actually write a note', () => {
+    // Two registrations are needed and they fail at different moments. SDNA install puts the *shape*
+    // in the perspective; this puts the *class* where `model.create('Note', …)` and `$query` resolve
+    // it. Missing this one, the panel renders fine and only adding a note throws — which is exactly
+    // the bug the first version of this module shipped with.
+    moduleRegistry.register(notesModule, host, storeDeps);
+    expect(() => getModel('Note')).not.toThrow();
+
+    moduleRegistry.unregister('notes');
+    expect(() => getModel('Note')).toThrow(/not found in registry/);
   });
 
   it('surfaces its model for the host to install', () => {

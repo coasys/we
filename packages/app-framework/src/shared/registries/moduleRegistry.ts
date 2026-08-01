@@ -26,6 +26,7 @@
 import type { ModuleDefinition, ModuleStoreDeps } from '@we/schema-shared';
 import { checkModuleCompatibility } from '@we/schema-shared';
 
+import { type ModelClass, registerModel, unregisterModel } from './modelRegistry';
 import { slotRegistry } from './slotRegistry';
 
 export interface RegisteredModule {
@@ -80,6 +81,14 @@ export const moduleRegistry = {
     modules.set(definition.id, { definition, store });
     if (store) moduleStores[definition.id] = store;
 
+    // Two registrations are needed for a module-owned entity, and missing either fails at a
+    // different moment: SDNA install (in `installSpaceSdna`) puts the *shape* in the perspective,
+    // while this puts the *class* where `model.create` / `$query` can resolve it by name. Without
+    // this one the panel renders and only writing a note fails.
+    for (const model of (definition.models ?? []) as ModelClass[]) {
+      registerModel((model as unknown as { className: string }).className, model);
+    }
+
     for (const [index, slot] of (definition.slots ?? []).entries()) {
       slotRegistry.register({
         ...slot,
@@ -95,6 +104,9 @@ export const moduleRegistry = {
     const entry = modules.get(id);
     if (!entry) return;
     for (const index of (entry.definition.slots ?? []).keys()) slotRegistry.remove(`${id}:${index}`);
+    for (const model of (entry.definition.models ?? []) as ModelClass[]) {
+      unregisterModel((model as unknown as { className: string }).className);
+    }
     delete moduleStores[id];
     modules.delete(id);
   },
