@@ -69,6 +69,17 @@ describe('call module — contributions', () => {
     expect(slotRegistry.get('call:0')?.anchor).toBe('dock-bottom');
   });
 
+  it('is reachable without any template cooperating', () => {
+    // The same bug the notes module shipped one PR ago: chrome that only renders once somebody is
+    // already using the feature leaves no way to start using it. The bar's not-in-a-call branch has
+    // to offer "Start call" when nobody is in one, or the first participant can never exist.
+    moduleRegistry.register(callModule, host, storeDeps);
+    const gate = slotRegistry.get('call:0')?.node as { props?: { then?: unknown } };
+    const bar = gate.props?.then as { props?: { else?: { props?: { else?: unknown } } } };
+
+    expect(bar.props?.else?.props?.else).toBeDefined();
+  });
+
   it('exposes a launcher a template can place on any node', () => {
     moduleRegistry.register(callModule, host, storeDeps);
     // Anchored calls need a per-node trigger, and only a template knows what a node is.

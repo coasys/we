@@ -168,12 +168,45 @@ const bar: SchemaNode = {
     condition: { $store: 'modules.call.active' },
 
     // ── Not in a call ────────────────────────────────────────────────────────
-    // Only shown when somebody else is, so an empty space carries no chrome at all. Starting a call
-    // from nothing belongs on a deliberate affordance, not on persistent furniture.
+    // Two sub-cases: somebody else is in a call (join it), or nobody is (start one).
+    //
+    // The second case was very nearly omitted, on the reasoning that starting a call belongs on a
+    // deliberate affordance rather than persistent furniture — which shipped the notes module
+    // installed, registered and invisible one PR ago. `startCallButton` is exported for templates
+    // that want the trigger somewhere of their own choosing; this is the fallback that guarantees
+    // the module is usable without one.
     else: {
       type: '$if',
       props: {
         condition: { $count: { items: { $store: 'modules.call.ongoing' } } },
+
+        // Nobody in a call yet. Only offered in a shared space — a personal space has no
+        // neighbourhood, so there is nobody to call and the answer would never change.
+        else: {
+          type: '$if',
+          props: {
+            condition: { $store: 'modules.call.canCall' },
+            then: {
+              type: 'we-button',
+              props: {
+                variant: 'secondary',
+                size: 'sm',
+                position: 'fixed',
+                bottom: '400',
+                right: '400',
+                r: 'pill',
+                shadow: 'lg',
+                zIndex: 'sticky',
+                onClick: { $action: 'modules.call.joinSpaceCall' },
+              },
+              children: [
+                { type: 'we-icon', props: { name: 'phone-call' } },
+                { type: 'we-text', props: { variant: 'label' }, children: ['Start call'] },
+              ],
+            },
+          },
+        },
+
         then: {
           type: 'Row',
           props: {

@@ -254,6 +254,15 @@ export function createCallStore(deps: CallStoreDeps) {
     problem,
     /** True when this agent is in a call — the call bar's visibility condition. */
     active: () => callId() !== null,
+
+    /**
+     * True where a call could actually be started.
+     *
+     * A personal space has no neighbourhood and therefore no transport, so there is nobody to call.
+     * Offering the button anyway and explaining the failure afterwards is worse than not offering it:
+     * the answer never changes, so it is not a failure, it is a property of the space.
+     */
+    canCall: () => (datasetUri?.() ?? null) !== null,
     /** Everyone in the space-wide call, whether or not this agent has joined — so the bar can offer
      *  "3 in a call · Join" rather than only appearing once you are already in one. */
     ongoing: () => {
