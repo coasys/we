@@ -157,12 +157,31 @@ export const SPACE_MODELS = [
  * are written.
  */
 export async function installSpaceSdna(p: PerspectiveProxy): Promise<void> {
-  // Module-owned entities install by the same path as WE's own, so the diff-before-write check that
-  // `ensureModelsRegistered` performs applies to both. That single shared path is the whole point:
-  // `cleanupSpaceSdna` exists because shapes once got installed twice, and N modules each rolling
-  // their own install would be that bug with more instances.
+  await ensureModelsRegistered(p, SPACE_MODELS);
+  await installModuleSdna(p);
+}
+
+/**
+ * Install the shapes of every registered feature module into a perspective.
+ *
+ * Separate from `installSpaceSdna` because the two have genuinely different lifetimes. WE's own
+ * models are installed once, when a space is created or first joined — after which
+ * `switchPerspective` deliberately skips reinstalling them (it only installs into a perspective with
+ * *no* SDNA at all, so a foreign perspective is never silently converted into a WE space).
+ *
+ * A module's shapes cannot follow that rule, because a module can be enabled **after** a space
+ * already exists — which is the normal case the moment modules are installable rather than bundled.
+ * So this runs on every switch into a WE space, relying on `ensureModelsRegistered` to diff before
+ * writing. Without it, enabling a module leaves every existing space unable to query its entities:
+ * "No SHACL shape stored for class X", from a perspective that looks perfectly healthy.
+ *
+ * Idempotency lives in one shared path rather than per module deliberately — `cleanupSpaceSdna`
+ * exists because shapes once got installed twice by different agents, and N modules each rolling
+ * their own install would be that bug with more instances.
+ */
+export async function installModuleSdna(p: PerspectiveProxy): Promise<void> {
   const moduleModels = moduleRegistry.models() as (typeof Ad4mModel)[];
-  await ensureModelsRegistered(p, [...SPACE_MODELS, ...moduleModels]);
+  if (moduleModels.length) await ensureModelsRegistered(p, moduleModels);
 }
 
 /**

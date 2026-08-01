@@ -63,8 +63,19 @@ const launcher: SchemaNode = {
 const panel: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'modules.notes.open' },
-    else: launcher,
+    // Nothing at all outside a space. Notes are written into the current dataset, so the panel is
+    // only meaningful where there is one — offering it on a screen with nowhere to save to would be
+    // an invitation to lose what you typed.
+    //
+    // This is the crude version of a question the module system hasn't answered yet: *which* spaces
+    // should show it. `Space.enabledModules` is the real answer — a community turning the module on
+    // for its space — and it arrives with the marketplace, alongside consent. Until then a module's
+    // chrome appears in every space, which is fine while modules are first-party and bundled.
+    condition: { $and: [{ $store: 'adamStore.currentPerspective' }, { $store: 'modules.notes.open' }] },
+    else: {
+      type: '$if',
+      props: { condition: { $store: 'adamStore.currentPerspective' }, then: launcher },
+    },
     then: {
       type: 'Column',
       props: {
