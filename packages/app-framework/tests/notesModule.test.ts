@@ -60,6 +60,15 @@ describe('notes module — contributions', () => {
     expect(moduleRegistry.schemas()['notes.toggleButton']).toBeDefined();
   });
 
+  it('is reachable without any template cooperating', () => {
+    // The module shipped once with only the expanded panel plus a `toggleButton` fragment nothing
+    // placed — so it registered successfully and was invisible. Chrome gated on state nothing can
+    // change is not chrome, so the slot renders a launcher in the closed case.
+    moduleRegistry.register(notesModule, host, storeDeps);
+    const node = slotRegistry.get('notes:0')?.node as { props?: { else?: unknown } };
+    expect(node.props?.else).toBeDefined();
+  });
+
   it('keeps panel state in the store, not node-local state', () => {
     // The panel is chrome, so `$localState` would reset it on every route change — which is precisely
     // what a docked panel must not do.

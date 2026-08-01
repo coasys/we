@@ -32,11 +32,39 @@ import { Note, NOTE_PREDICATES } from './Note';
 
 export { Note, NOTE_PREDICATES };
 
-/** The docked panel. Chrome, so its open state is module state rather than node-local. */
+/** Collapsed state — a launcher tab, so the module is reachable without any template cooperating. */
+const launcher: SchemaNode = {
+  type: 'we-button',
+  props: {
+    variant: 'secondary',
+    size: 'sm',
+    position: 'fixed',
+    right: '0',
+    top: '120px',
+    zIndex: 'sticky',
+    rtr: '0',
+    rbr: '0',
+    onClick: { $action: 'modules.notes.toggle' },
+  },
+  children: [{ type: 'we-icon', props: { name: 'note' } }],
+};
+
+/**
+ * The docked panel, with its own launcher.
+ *
+ * A module has to be reachable on its own. Shipping only the expanded panel plus a `toggleButton`
+ * fragment left no entry point at all until some template chose to place that fragment — so the
+ * module was installed, registered and invisible. Chrome that gates itself on state nothing can
+ * change is not chrome.
+ *
+ * `toggleButton` is still exported for templates that want the trigger somewhere of their own
+ * choosing; this is the fallback that guarantees the module is usable without one.
+ */
 const panel: SchemaNode = {
   type: '$if',
   props: {
     condition: { $store: 'modules.notes.open' },
+    else: launcher,
     then: {
       type: 'Column',
       props: {
