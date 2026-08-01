@@ -9,12 +9,12 @@
  * input to the `DataSource` interface.
  */
 import { render } from '@solidjs/testing-library';
+import { createInMemoryBackend } from '@we/backend-inmemory';
 import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { RenderSchema } from '../src/SchemaRenderer';
 import type { ComponentRegistry } from '../src/types';
-import { createInMemoryBackend } from './inMemoryDataSource';
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 

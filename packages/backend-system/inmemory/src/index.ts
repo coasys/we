@@ -16,9 +16,9 @@ import {
   type QueryAdapter,
   type QueryIR,
   type Row,
-} from '@we/schema-shared';
+} from '@we/backend-shared';
 
-export type { Row } from '@we/schema-shared';
+export type { Row } from '@we/backend-shared';
 
 export interface RelationDef {
   type: 'hasOne' | 'hasMany';

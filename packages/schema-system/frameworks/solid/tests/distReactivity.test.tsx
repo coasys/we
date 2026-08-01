@@ -16,11 +16,11 @@
  * rather than failing a fresh clone for the wrong reason.
  */
 import { render } from '@solidjs/testing-library';
+import { createInMemoryBackend } from '@we/backend-inmemory';
 import type { SchemaNode } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { RenderSchema as RenderSchemaSrc } from '../src/SchemaRenderer';
-import { createInMemoryBackend } from './inMemoryDataSource';
 
 // The specifier is built at runtime and marked @vite-ignore so vite cannot resolve it statically —
 // a literal path makes an unbuilt `dist/` a transform-time failure, which would defeat the skip

@@ -7,11 +7,11 @@
  * symptom. With dedupe (see vitest.config.ts / vite.config.ts) reactivity works and this passes.
  */
 import { render } from '@solidjs/testing-library';
+import { createInMemoryBackend, type Row } from '@we/backend-inmemory';
 import { createSignal } from 'solid-js';
 import { describe, expect, it } from 'vitest';
 
 import { feedTemplate } from './feedTemplate';
-import { createInMemoryBackend, type Row } from './inMemoryBackend';
 import { registry } from './registry';
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));

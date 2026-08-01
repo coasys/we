@@ -31,7 +31,8 @@
     "solid-js": "^1.9.5",
     "tsup": "^8.5.1",
     "vite-plugin-solid": "^2.11.11",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.0",
+    "@we/backend-inmemory": "workspace:*"
   },
   "sideEffects": false
 }

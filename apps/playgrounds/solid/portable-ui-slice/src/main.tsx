@@ -6,11 +6,11 @@
 import '@we/primitives'; // side-effect: defines all we-* custom elements
 import '@we/tokens/css'; // design-token CSS variables
 
+import { createInMemoryBackend, type Row } from '@we/backend-inmemory';
 import { RenderSchema } from '@we/schema-solid';
 import { render } from 'solid-js/web';
 
 import { feedTemplate } from './feedTemplate';
-import { createInMemoryBackend, type Row } from './inMemoryBackend';
 import { registry } from './registry';
 
 const backend = createInMemoryBackend({
