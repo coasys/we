@@ -20,8 +20,15 @@ export function clone<T>(value: T): T {
   return value;
 }
 
+/**
+ * Deep clone, via JSON round-trip.
+ *
+ * `structuredClone` was tried here and reverted, and the reason is worth stating rather than leaving
+ * as a commented-out line: callers clone Solid stores, which are proxies, and `structuredClone`
+ * throws `DataCloneError` on a proxy. The caller then aborts and the mutation silently does not
+ * happen. See `@we/editor`'s copy, which reintroduced the same bug and produced exactly that symptom.
+ */
 export function deepClone<T>(val: T): T {
-  // if (typeof (globalThis as any).structuredClone === 'function') return (globalThis as any).structuredClone(val);
   return JSON.parse(JSON.stringify(val));
 }
 
