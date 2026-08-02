@@ -2,11 +2,11 @@ import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import { createEffect, createSignal, For, Show } from 'solid-js';
 
-import type { ChatMessage } from '../../stores/AiStore';
-import { useAiStore } from '../../stores/AiStore';
+import type { EditorChatMessage as ChatMessage } from '../host';
+import { useEditorHost } from '../host';
 
 export function AiPanel() {
-  const aiStore = useAiStore();
+  const aiStore = useEditorHost().session;
 
   const [inputValue, setInputValue] = createSignal('');
   const [apiKeyInput, setApiKeyInput] = createSignal('');

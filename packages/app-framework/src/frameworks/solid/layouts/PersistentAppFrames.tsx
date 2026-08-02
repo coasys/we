@@ -14,9 +14,9 @@
  */
 import type { Stores } from '@solid/types';
 import { Column } from '@we/components/solid';
+import { panelResizing } from '@we/editor';
 import { For } from 'solid-js';
 
-import { panelResizing } from '../components/editor/RightPanelContainer';
 import { computeRightOffset, SHELL_SIDEBAR_WIDTH } from './TemplateLayout';
 
 export function PersistentAppFrames(props: { stores: Stores }) {

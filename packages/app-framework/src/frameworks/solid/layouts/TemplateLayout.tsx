@@ -36,6 +36,8 @@ import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@s
 import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
+import { EditorOverlay } from '@we/editor';
+import { panelResizing, RAIL_STRIP_WIDTH, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from '@we/editor';
 import type { TemplateSchema } from '@we/schema-shared';
 import { themeToStyle } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
@@ -43,13 +45,6 @@ import type { ParentProps } from 'solid-js';
 import { createEffect, createMemo, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
-import { EditorOverlay } from '../components/editor/EditorOverlay';
-import {
-  panelResizing,
-  RAIL_STRIP_WIDTH,
-  TEMPLATE_RAILS_WIDTH,
-  THEME_RAIL_WIDTH,
-} from '../components/editor/RightPanelContainer';
 import { buildRoutes } from '../utils/buildRoutes';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.

@@ -1,9 +1,8 @@
-import type { AgentProfileSummary } from '@we/backend-ad4m';
 import { Card, Column, ImageLightbox, Row } from '@we/components/solid';
 import { createMemo, createSignal, For, onMount, Show } from 'solid-js';
 
-import { useAdamStore } from '../../stores/AdamStore';
-import { useTemplateStore } from '../../stores/TemplateStore';
+import type { EditorAgentProfile as AgentProfileSummary } from '../host';
+import { useEditorHost } from '../host';
 
 export interface TemplateCardData {
   id?: string;
@@ -34,8 +33,8 @@ interface Props {
 }
 
 export function TemplateCard(props: Props) {
-  const adamStore = useAdamStore();
-  const templateStore = useTemplateStore();
+  const adamStore = useEditorHost().identity;
+  const templateStore = useEditorHost().template;
   const mode = () => props.mode ?? 'marketplace';
 
   onMount(() => {

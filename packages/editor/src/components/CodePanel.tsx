@@ -1,11 +1,11 @@
 import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 
-import { useAiStore } from '../../stores/AiStore';
+import { useEditorHost } from '../host';
 import { CodeViewer } from './CodeViewer';
 
 export function CodePanel() {
-  const aiStore = useAiStore();
+  const aiStore = useEditorHost().session;
 
   return (
     <Column

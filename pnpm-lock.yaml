@@ -337,6 +337,9 @@ importers:
       '@we/design-utils':
         specifier: workspace:*
         version: link:../design-system/utils
+      '@we/editor':
+        specifier: workspace:*
+        version: link:../editor
       '@we/models':
         specifier: workspace:*
         version: link:../models
@@ -842,6 +845,34 @@ importers:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+
+  packages/editor:
+    dependencies:
+      '@we/ai-context':
+        specifier: workspace:*
+        version: link:../ai-context
+      '@we/design-utils':
+        specifier: workspace:*
+        version: link:../design-system/utils
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../schema-system/shared
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+      '@we/components':
+        specifier: workspace:*
+        version: link:../design-system/4-components
+      '@we/primitives':
+        specifier: workspace:*
+        version: link:../design-system/3-primitives
+      '@we/schema-solid':
+        specifier: workspace:*
+        version: link:../schema-system/frameworks/solid
+      solid-js:
+        specifier: ^1.9.5
+        version: 1.9.14
 
   packages/models:
     dependencies:

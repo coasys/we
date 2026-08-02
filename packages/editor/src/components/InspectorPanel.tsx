@@ -1,15 +1,14 @@
-import { deepClone } from '@shared/utils';
-import { useAdamStore, useAiStore, useTemplateStore } from '@solid/stores';
 import { contextData } from '@we/ai-context';
 import { Column, Combobox, type ComboboxOption, Grid, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
-import { compressImageToFileData, ImageBlock } from '@we/models';
 import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, ScopeGroup, TemplateSchema } from '@we/schema-shared';
 import { findNodeById, getComponentMeta, getScopeAtNode, mergeNode } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
+import { type EditorImage, useEditorHost } from '../host';
+import { deepClone } from '../utils';
 import { ConditionEditor } from './ConditionEditor';
 import { ContentEditor } from './ContentEditor';
 import { ValueEditor } from './ValueEditor';
@@ -405,7 +404,7 @@ function TreeNode(props: TreeNodeProps) {
 }
 
 function NodeTree() {
-  const templateStore = useTemplateStore();
+  const templateStore = useEditorHost().template;
   const visualEditor = useVisualEditor();
   const [collapsed, setCollapsed] = createSignal(new Set<string>());
 
@@ -437,8 +436,8 @@ function NodeTree() {
 // -----------------------------------------------------------------------
 
 export function InspectorPanel() {
-  const templateStore = useTemplateStore();
-  const aiStore = useAiStore();
+  const templateStore = useEditorHost().template;
+  const aiStore = useEditorHost().session;
   const visualEditor = useVisualEditor();
   const [treeHeight, setTreeHeight] = createSignal(200);
   const [dividerResizing, setDividerResizing] = createSignal(false);
@@ -634,7 +633,7 @@ function NodeProperties(props: {
   /** Replace the whole `children` array (raw JSON escape hatch). */
   onChildrenChange: (children: unknown[]) => void;
 }) {
-  const templateStore = useTemplateStore();
+  const templateStore = useEditorHost().template;
   const meta = createMemo(() => getComponentMeta(props.node.type ?? '', contextData));
 
   // Content — `children` holds either child nodes (owned by the Layers tree) or content
@@ -1397,10 +1396,10 @@ function BgImagePicker(props: {
   onOpacityChange: (v: number | undefined) => void;
   onTintChange: (v: string) => void;
 }) {
-  const adamStore = useAdamStore();
+  const images_ = useEditorHost().images;
   const [open, setOpen] = createSignal(false);
   const [tab, setTab] = createSignal<BgImageTab>('browse');
-  const [images, setImages] = createSignal<ImageBlock[]>([]);
+  const [images, setImages] = createSignal<EditorImage[]>([]);
   const [loadingImages, setLoadingImages] = createSignal(false);
   const [uploading, setUploading] = createSignal(false);
   const [urlDraft, setUrlDraft] = createSignal('');
@@ -1415,28 +1414,30 @@ function BgImagePicker(props: {
     onCleanup(() => document.removeEventListener('mousedown', handler));
   });
 
-  // Fetch the space's existing ImageBlocks whenever the Browse tab becomes visible.
+  // Fetch the images already in this dataset whenever the Browse tab becomes visible.
+  //
+  // Through the host's image port rather than a model class: "what images are here" and "store this
+  // file, give me a URL" are host concerns, and reaching for `ImageBlock` directly would have made
+  // the whole editor backend-coupled for the sake of one picker. A host without images omits the
+  // port and the picker degrades to the URL tab.
   createEffect(() => {
     if (!open() || tab() !== 'browse') return;
-    const perspective = adamStore.currentPerspective();
-    if (!perspective) return;
+    const port = images_;
+    if (!port) return;
     setLoadingImages(true);
-    ImageBlock.findAll(perspective, { order: { createdAt: 'DESC' }, limit: 60 })
+    port
+      .list(60)
       .then(setImages)
       .catch(() => setImages([]))
       .finally(() => setLoadingImages(false));
   });
 
   async function handleUpload(file: File) {
-    const perspective = adamStore.currentPerspective();
-    if (!perspective) return;
+    const port = images_;
+    if (!port) return;
     setUploading(true);
     try {
-      // Created standalone in the current perspective — no parent CollectionBlock.
-      // Reusable in future Browse pickers, same as post-authored ImageBlocks.
-      const fileData = await compressImageToFileData(file, 'bg-image');
-      const block = await ImageBlock.create(perspective, { src: fileData });
-      props.onChange(block.src);
+      props.onChange(await port.upload(file));
       setOpen(false);
     } finally {
       setUploading(false);

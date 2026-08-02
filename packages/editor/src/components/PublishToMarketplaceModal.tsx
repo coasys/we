@@ -1,10 +1,8 @@
 import { Column, EditableImage, Row } from '@we/components/solid';
 import { createMemo, createSignal, For, Show } from 'solid-js';
 
-import { useAdamStore } from '../../stores/AdamStore';
-import { useTemplateStore } from '../../stores/TemplateStore';
-import { useThemeStore } from '../../stores/ThemeStore';
-import { TemplateCard } from '../marketplace/TemplateCard';
+import { useEditorHost } from '../host';
+import { TemplateCard } from './TemplateCard';
 
 const MAX_SCREENSHOTS = 4;
 
@@ -16,9 +14,9 @@ interface Props {
 }
 
 export function PublishToMarketplaceModal(props: Props) {
-  const adamStore = useAdamStore();
-  const templateStore = useTemplateStore();
-  const themeStore = useThemeStore();
+  const adamStore = useEditorHost().identity;
+  const templateStore = useEditorHost().template;
+  const themeStore = useEditorHost().theme;
 
   const isTheme = () => props.type === 'theme';
 

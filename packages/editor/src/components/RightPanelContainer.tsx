@@ -2,8 +2,8 @@ import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import { createSignal, JSX, Show } from 'solid-js';
 
-import { useAiStore } from '../../stores/AiStore';
-import { AiPanel } from './AiPanel';
+import { AiPanel } from '../ai/AiPanel';
+import { useEditorHost } from '../host';
 import { CodePanel } from './CodePanel';
 import { InspectorPanel } from './InspectorPanel';
 import { ThemePanel } from './ThemePanel';
@@ -141,7 +141,7 @@ function PanelUnit(props: PanelUnitProps) {
 }
 
 export function RightPanelContainer() {
-  const aiStore = useAiStore();
+  const aiStore = useEditorHost().session;
 
   // Slide the container off-screen when neither editing mode is active.
   // When either mode is active, translateX(0) keeps it visible.

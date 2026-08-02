@@ -4,8 +4,7 @@ import type { ThemeOverrides } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
 import { createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
-import { useAiStore } from '../../stores/AiStore';
-import { useThemeStore } from '../../stores/ThemeStore';
+import { useEditorHost } from '../host';
 
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -168,8 +167,8 @@ function CollapsibleSection(props: { title: string; defaultOpen?: boolean; child
 // ─── ThemePanel ───────────────────────────────────────────────────────────────
 
 export function ThemePanel() {
-  const aiStore = useAiStore();
-  const themeStore = useThemeStore();
+  const aiStore = useEditorHost().session;
+  const themeStore = useEditorHost().theme;
 
   const editing = () => themeStore.editingTheme();
   const overrides = createMemo<ThemeOverrides>(() => {

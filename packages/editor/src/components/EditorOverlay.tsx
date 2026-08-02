@@ -1,11 +1,10 @@
-import { deepClone } from '@shared/utils';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { findNodeById, insertChild, mergeNode, removeChild } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
-import { useAiStore } from '../../stores/AiStore';
-import { useTemplateStore } from '../../stores/TemplateStore';
+import { useEditorHost } from '../host';
+import { deepClone } from '../utils';
 
 // Logic node types rendered differently — dashed purple outline
 const LOGIC_TYPES = new Set(['$each', '$if', '$animate', '$single', '$routes']);
@@ -244,7 +243,7 @@ function getAllInstanceRects(nodeId: string): DOMRect[] {
 // -----------------------------------------------------------------------
 
 export function EditorOverlay() {
-  const aiStore = useAiStore();
+  const aiStore = useEditorHost().session;
   return (
     <Show when={aiStore.contentMode() === 'visual' && !aiStore.isStreaming()}>
       <VisualEditorLayer />
@@ -257,8 +256,8 @@ export function EditorOverlay() {
 // -----------------------------------------------------------------------
 
 function VisualEditorLayer() {
-  const templateStore = useTemplateStore();
-  const aiStore = useAiStore();
+  const templateStore = useEditorHost().template;
+  const aiStore = useEditorHost().session;
   const visualEditor = useVisualEditor();
 
   let overlayRef: HTMLDivElement | undefined;

@@ -2,20 +2,16 @@ import { Column, Row, Search } from '@we/components/solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
-import { useAdamStore } from '../../stores/AdamStore';
-import { useAiStore } from '../../stores/AiStore';
-import { useSpaceStore } from '../../stores/SpaceStore';
-import { useTemplateStore } from '../../stores/TemplateStore';
-import { useThemeStore } from '../../stores/ThemeStore';
+import { useEditorHost } from '../host';
 import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
 import { panelResizing, RAIL_STRIP_WIDTH, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from './RightPanelContainer';
 
 export function DesignToolbar() {
-  const templateStore = useTemplateStore();
-  const spaceStore = useSpaceStore();
-  const aiStore = useAiStore();
-  const adamStore = useAdamStore();
-  const themeStore = useThemeStore();
+  const templateStore = useEditorHost().template;
+  const spaceStore = useEditorHost().identity;
+  const aiStore = useEditorHost().session;
+  const adamStore = useEditorHost().identity;
+  const themeStore = useEditorHost().theme;
 
   let containerRef: HTMLDivElement | undefined;
 

@@ -41,15 +41,15 @@ import {
   Timeline,
   ToastContainer,
 } from '@we/components/solid';
+import { DesignToolbar } from '@we/editor';
+import { RightPanelContainer } from '@we/editor';
+import { TemplateCard } from '@we/editor';
+import { AiPanel } from '@we/editor/ai';
 import { layerFactoryRegistry } from '@we/module-globe';
 import type { ComponentRegistry } from '@we/schema-solid';
 import { CesiumGlobe, CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSidebarWidget } from '@we/widgets/solid';
 
 import WeCube from '../components/3d/WeCube';
-import { AiPanel } from '../components/editor/AiPanel';
-import { DesignToolbar } from '../components/editor/DesignToolbar';
-import { RightPanelContainer } from '../components/editor/RightPanelContainer';
-import { TemplateCard } from '../components/marketplace/TemplateCard';
 
 /**
  * The globe's layer set moved to `@we/module-globe` — the module owns it now. Re-exported so existing
