@@ -12,8 +12,9 @@ export interface MountOptions {
   /**
    * Render the overlay that draws selection and resize handles over the live template.
    *
-   * Off by default: it positions itself over the rendered template, so an application that mounts
-   * the editor beside its content rather than on top of it wants only the toolbar and panels.
+   * Off by default because it draws *over* the template — an application that mounts the editor
+   * beside its content rather than on top of it wants only the toolbar and panels. It is not off for
+   * geometry reasons: the overlay normalises against its own root and is container-relative already.
    */
   overlay?: boolean;
   /** Render the design toolbar. Default true. */
@@ -49,10 +50,13 @@ export interface MountOptions {
  * The returned function unmounts and releases every reactive subscription the surface created.
  *
  * **Geometry.** The panel dock pins to the mounted element by default (`positioning: 'container'`),
- * which is what "mount the editor here" should mean. The selection overlay is the exception: its
- * highlight and drag-ghost maths run in viewport coordinates via `getBoundingClientRect`, so it is
- * correct over a full-window template and would need offsetting by the container's rect to be
- * correct inside a panel. It is off by default for that reason.
+ * which is what "mount the editor here" should mean.
+ *
+ * The overlay is already container-relative and needs nothing: it normalises every rect against its
+ * own root (`toRelative`), so it works wherever it is mounted. It is off by default only because it
+ * draws *over* the rendered template — an application that mounts the editor beside its content
+ * rather than on top of it does not want it. Pass `overlay: true` when the editor is over the
+ * template. See `tests/geometry.test.ts`.
  */
 export function mountTemplateEditor(element: HTMLElement, options: MountOptions): () => void {
   const { host, overlay = false, toolbar = true, panels = true, positioning = 'container' } = options;

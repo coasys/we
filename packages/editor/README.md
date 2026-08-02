@@ -58,10 +58,16 @@ looks *nearly* right, which is the worst kind of wrong. `mountTemplateEditor` al
 `position: relative` on the element it is given when needed, so the default works without further
 setup.
 
-**The selection overlay is the exception.** Its highlight and drag-ghost maths run in viewport
-coordinates via `getBoundingClientRect`, so it is correct over a full-window template and would need
-offsetting by the container's rect to be correct inside a panel. It is off by default in
-`mountTemplateEditor` for that reason.
+**The selection overlay needs nothing.** It reads viewport rects via `getBoundingClientRect` — twelve
+times, which reads as viewport coupling and has twice been reported as such — but eleven of those are
+inputs to `toRelative`, which subtracts the overlay's own rect and cancels the viewport out. Its root
+is `position: absolute; width: 100%; height: 100%`, so it fills whatever it is mounted in. The
+twelfth is a cursor-tracking drag ghost appended to `document.body`, which is *supposed* to be in
+viewport coordinates.
+
+It is off by default in `mountTemplateEditor` only because it draws *over* the template, which an
+application mounting the editor beside its content does not want. `tests/geometry.test.ts` pins the
+property so the next grep gets an answer rather than an inference.
 
 ## What belongs on which side
 
