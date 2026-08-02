@@ -36,9 +36,12 @@ export function EditorHostAdapter(props: ParentProps) {
       return template as unknown as EditorHost['template'];
     },
 
-    // TODO(editor): `editingTheme` and the `updateEditing*` / `saveEditingTheme` family are editing
-    // session state, not catalogue state. They belong in the editor; they are here because that is
-    // where they live today.
+    // Including `editingTheme` and the `updateEditing*` family, which look like editor state and are
+    // not. A theme being edited is a draft of a persisted entity that *the host renders* — the live
+    // preview reads it — which makes it exactly the same shape as `currentTemplate`: the working copy
+    // lives here, and the editor mutates it through the port. Moving it into the editor would put the
+    // state somewhere other than the code that renders it, and require a `previewEditing` port to push
+    // it back.
     theme: theme as unknown as EditorHost['theme'],
 
     // Forwarded whole: every member is the editor's own session state. Narrowing it here would mean

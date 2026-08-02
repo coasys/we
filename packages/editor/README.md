@@ -63,13 +63,19 @@ coordinates via `getBoundingClientRect`, so it is correct over a full-window tem
 offsetting by the container's rect to be correct inside a panel. It is off by default in
 `mountTemplateEditor` for that reason.
 
-## Still on the host's side of the line
+## What belongs on which side
 
-Marked `TODO(editor)` in WE's adapter: `editingTheme` and the `updateEditing*` family are *editing
-session* state living in WE's `themeStore`.
+**The host owns state the host renders from; the editor mutates it through ports.**
 
-Moving them is not a file move, which is worth stating because it looks like one. `ThemeStore` reads
-`editingTheme()` to render the **live preview** while a theme is being edited. Relocating the working
-copy into the editor means inverting that too — the editor would push its working theme to the host
-through a `previewEditing` port. That is a behaviour change to the live preview, and wants verifying
-as one rather than being folded into a boundary change.
+That rule explains what can look like an inconsistency. `editingTheme` and the `updateEditing*` family
+sound like editor state, and are not: a theme being edited is a draft of a persisted entity that the
+host renders — the live preview reads it — which makes it the same shape as `currentTemplate`. Both
+working copies live in the host; the editor mutates both through the port.
+
+The same test explains why panel widths and edit modes sit in the host too: `computeRightOffset` reads
+them to size the shell's own content viewport.
+
+An earlier version of this file proposed migrating the theme session into the editor. That was wrong —
+it would move state away from the code that renders it and need a `previewEditing` port to push it
+back. Recorded here because the mistake is an easy one to repeat: "editing" in a name is not evidence
+of where state belongs.
