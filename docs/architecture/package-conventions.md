@@ -144,6 +144,19 @@ modules ──▶ shell ──▶ backend-shared ◀── backend-inmemory
 `@we/schema-shared` re-exports `@we/backend-shared`; the reverse would be circular, so
 `@we/module-shared` (which depends on both) is where anything genuinely straddling them belongs.
 
+## Packages that carry assets are consumed as source
+
+A package whose source imports assets (`.jpg`, `.glb`, `.svg`) must export `src/` and have **no build
+step** — `@we/template-shell` and `@we/template-default` are the current examples.
+
+Pre-bundling such a package resolves its asset imports at *package* build time, emitting the files
+into that package's `dist/` and freezing plain relative strings into the JS. The consuming app's
+bundler cannot rewrite a plain string, so the URLs ship unchanged and 404 at runtime — a failure that
+is silent, because nothing errors and the images are simply absent.
+
+Only the bundler that emits the final output can resolve an asset URL. `@we/app-framework` exports
+`./solid` as source for the same reason.
+
 ## Peer dependencies and injection
 
 Load-bearing, and previously written nowhere.

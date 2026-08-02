@@ -588,12 +588,6 @@ importers:
       '@types/node':
         specifier: ^24.10.0
         version: 24.13.2
-      '@we/cli':
-        specifier: workspace:*
-        version: link:../../cli
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
 
   packages/content/template-shell:
     dependencies:
@@ -604,12 +598,6 @@ importers:
       '@types/node':
         specifier: ^24.10.0
         version: 24.13.2
-      '@we/cli':
-        specifier: workspace:*
-        version: link:../../cli
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
 
   packages/design-system/1-tokens:
     devDependencies:
