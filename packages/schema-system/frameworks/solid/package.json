@@ -18,7 +18,8 @@
   },
   "dependencies": {
     "@we/design-types": "workspace:*",
-    "@we/schema-shared": "workspace:*"
+    "@we/schema-shared": "workspace:*",
+    "@we/backend-shared": "workspace:*"
   },
   "peerDependencies": {
     "solid-js": "^1.9.5"

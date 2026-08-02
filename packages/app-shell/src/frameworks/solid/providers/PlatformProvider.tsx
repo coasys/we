@@ -4,6 +4,7 @@ import { PlatformAdapter } from '@shared/platform/types';
 import { createModuleStoreDeps } from '@shared/registries/moduleHostServices';
 import { createContext, createEffect, createSignal, ParentComponent, useContext } from 'solid-js';
 
+import type { WeSeedFile } from '../../../types/seed';
 import { componentRegistry } from '../registries/componentRegistry';
 
 const PlatformContext = createContext<PlatformAdapter>();
@@ -17,12 +18,18 @@ const BackendContext = createContext<BackendConnector>();
  * is that the *contracts* are separate: `usePlatform()` never surfaces a way to reach the data
  * layer, and `useBackend()` never surfaces where the app is running.
  */
-export const PlatformProvider: ParentComponent<{ platform: PlatformAdapter; backend: BackendConnector }> = (props) => {
+export const PlatformProvider: ParentComponent<{
+  platform: PlatformAdapter;
+  backend: BackendConnector;
+  /** The deployment seed. Supplied by the app because a seed *describes* a deployment, and the
+   *  apps are the deployments — the shell has no business knowing where one lives on disk. */
+  seed: WeSeedFile;
+}> = (props) => {
   // Initialize integrations with platform adapter BEFORE rendering children
   // This must run synchronously so the launcher template is ready when TemplateStoreProvider reads the registry
   // Components are handed over here, where the framework is known — `initializeIntegrations` itself
   // stays framework-neutral.
-  initializeIntegrations(props.platform, {
+  initializeIntegrations(props.platform, props.seed, {
     components: { CesiumGlobe: componentRegistry.CesiumGlobe },
     // Reactivity lent to module stores. Solid's primitives already have the shapes the port asks
     // for, so a module store gets reactivity without importing a framework. The remaining deps

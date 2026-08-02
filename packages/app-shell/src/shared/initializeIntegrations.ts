@@ -8,13 +8,13 @@
 
 import { defineModule, type ModuleStoreDeps, seedCapabilityToModule } from '@we/module-shared';
 
-import weSeedFile from '../../../../we-seed.json';
 import type { WeSeedFile } from '../types/seed';
 import { generateIframePermissions, validateSeedForLauncher } from './integrationComposer';
 import type { PlatformAdapter } from './platform/types';
 import { activateSeedModules } from './registries/bundledModules';
 import { moduleRegistry } from './registries/moduleRegistry';
 import { slotRegistry } from './registries/slotRegistry';
+import { provideSeed } from './seedRegistry';
 
 export interface IntegrationDeps {
   /**
@@ -30,9 +30,13 @@ export interface IntegrationDeps {
   storeDeps?: ModuleStoreDeps;
 }
 
-export function initializeIntegrations(platformAdapter: PlatformAdapter, deps: IntegrationDeps = {}): void {
+export function initializeIntegrations(
+  platformAdapter: PlatformAdapter,
+  seed: WeSeedFile,
+  deps: IntegrationDeps = {},
+): void {
   try {
-    const seed = weSeedFile as unknown as WeSeedFile;
+    provideSeed(seed);
 
     const validation = validateSeedForLauncher(seed);
     if (!validation.valid) {

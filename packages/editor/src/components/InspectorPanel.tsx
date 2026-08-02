@@ -1,8 +1,7 @@
-import { contextData } from '@we/ai-context';
 import { Column, Combobox, type ComboboxOption, Grid, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, ScopeGroup, TemplateSchema } from '@we/schema-shared';
-import { findNodeById, getComponentMeta, getScopeAtNode, mergeNode } from '@we/schema-shared';
+import { contextData, findNodeById, getComponentMeta, getScopeAtNode, mergeNode } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';

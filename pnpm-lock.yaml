@@ -806,9 +806,6 @@ importers:
 
   packages/editor:
     dependencies:
-      '@we/ai-context':
-        specifier: workspace:*
-        version: link:../ai-context
       '@we/design-utils':
         specifier: workspace:*
         version: link:../design-system/utils
@@ -982,6 +979,9 @@ importers:
 
   packages/schema-system/frameworks/solid:
     dependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../../backend-system/shared
       '@we/design-types':
         specifier: workspace:*
         version: link:../../../design-system/types

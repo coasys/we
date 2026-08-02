@@ -26,6 +26,7 @@ import {
   spaceSelfWhere,
   syncSpaceToParent,
 } from '@we/backend-ad4m';
+import type { EphemeralPort } from '@we/backend-shared';
 import {
   AgentSettings,
   compressImageToFileData,
@@ -34,7 +35,6 @@ import {
   LocationBlock,
   Space,
 } from '@we/models';
-import type { EphemeralPort } from '@we/schema-shared';
 
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
 
@@ -44,6 +44,7 @@ type SpaceInput = Omit<Partial<Space>, 'avatar' | 'coverImage'> & {
   avatar?: FileData | string;
   coverImage?: FileData | string;
 };
+import { getSeed } from '@shared/seedRegistry';
 import {
   Accessor,
   batch,
@@ -55,8 +56,6 @@ import {
   useContext,
 } from 'solid-js';
 
-import weSeedFile from '../../../../../../we-seed.json';
-import type { WeSeedFile } from '../../../types/seed';
 import { useRouteStore } from './RouteStore';
 
 export { type Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
@@ -273,14 +272,14 @@ export function AdamStoreProvider(props: ParentProps) {
         };
       });
 
-    const seedUrl = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
+    const seedUrl = getSeed().globalSpaceUrl;
     const globalId = seedUrl ? seedUrl.replace('neighbourhood://', '') : null;
     const alreadyJoined = globalId ? items.some((item) => item.spaceId === globalId) : true;
     if (globalId && !alreadyJoined) {
       items.unshift({ uuid: 'global-pre-join', name: 'WE Discovery', spaceId: globalId, isGlobalPreJoin: true });
     }
 
-    const mktUrl = (weSeedFile as unknown as WeSeedFile).marketplaceUrl;
+    const mktUrl = getSeed().marketplaceUrl;
     const mktId = mktUrl ? mktUrl.replace('neighbourhood://', '') : null;
 
     return mktId ? items.filter((item) => item.spaceId !== mktId) : items;
@@ -292,10 +291,10 @@ export function AdamStoreProvider(props: ParentProps) {
 
   // Expose platform development mode to schemas
   const isDevelopment = () => platform.isDevelopment;
-  const globalSpaceConfigured = () => !!(weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
-  const marketplaceConfigured = () => !!(weSeedFile as unknown as WeSeedFile).marketplaceUrl;
+  const globalSpaceConfigured = () => !!getSeed().globalSpaceUrl;
+  const marketplaceConfigured = () => !!getSeed().marketplaceUrl;
   const marketplaceId = (): string | null => {
-    const url = (weSeedFile as unknown as WeSeedFile).marketplaceUrl;
+    const url = getSeed().marketplaceUrl;
     return url ? url.replace('neighbourhood://', '') : null;
   };
   const marketplaceJoined = createMemo(() => {
@@ -777,14 +776,14 @@ export function AdamStoreProvider(props: ParentProps) {
 
         // Restore the global perspective if previously joined — model registration is handled
         // by SpaceStore.installSpaceSdna when the perspective is navigated to.
-        const seedUrl = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
+        const seedUrl = getSeed().globalSpaceUrl;
         const existingGlobal = seedUrl ? perspectives.find((p) => p.sharedUrl === seedUrl) : undefined;
         if (existingGlobal) {
           setGlobalPerspective(existingGlobal);
           console.log('AdamStore: Restored global perspective', existingGlobal.uuid);
         }
 
-        const marketplaceUrl = (weSeedFile as unknown as WeSeedFile).marketplaceUrl;
+        const marketplaceUrl = getSeed().marketplaceUrl;
         const existingMarketplace = marketplaceUrl
           ? perspectives.find((p) => p.sharedUrl === marketplaceUrl)
           : undefined;
@@ -1193,13 +1192,13 @@ export function AdamStoreProvider(props: ParentProps) {
       await new Promise((resolve) => setTimeout(resolve, 500));
 
       // If this is the configured global space, update globalPerspective.
-      const seedUrl = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
+      const seedUrl = getSeed().globalSpaceUrl;
       if (neighbourhoodUrl === seedUrl) {
         setGlobalPerspective(joinedP);
       }
 
       // If this is the configured marketplace, update marketplacePerspective.
-      const mktUrl = (weSeedFile as unknown as WeSeedFile).marketplaceUrl;
+      const mktUrl = getSeed().marketplaceUrl;
       if (neighbourhoodUrl === mktUrl) {
         setMarketplacePerspective(joinedP);
       }
@@ -1256,7 +1255,7 @@ export function AdamStoreProvider(props: ParentProps) {
 
   /** The neighbourhood CID (with `neighbourhood://` stripped) for the global space, or null if unconfigured. */
   const globalSpaceId = (): string | null => {
-    const url = (weSeedFile as unknown as WeSeedFile).globalSpaceUrl;
+    const url = getSeed().globalSpaceUrl;
     return url ? url.replace('neighbourhood://', '') : null;
   };
 

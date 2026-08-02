@@ -88,6 +88,7 @@ export {
 export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from './indexer';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export { getComponentMeta } from './componentMeta';
+export { contextData } from './generated/contextData';
 export type { ComponentMeta, PropMeta, PropLayer } from './componentMeta';
 export { findNodeChain, findScopeRef, getScopeAtNode, inferRefKind, scopeRefToToken } from './scope';
 export type { ScopeGroup, ScopeOptions, ScopeRef, ScopeRefKind, ScopeValueType } from './scope';
@@ -116,15 +117,3 @@ export type {
   FormStateToken,
   ValueIf,
 } from './conditionModel';
-/**
- * The backend contract, re-exported.
- *
- * Partly compatibility — it lived here until the split, and consumers migrate an import at a time —
- * and partly genuine: `types.ts` types a node's `stores` bag as `RendererStores`, so the renderer's
- * own surface names the data bindings. New code should import from `@we/backend-shared` directly.
- *
- * The module contract is **not** re-exported: `@we/module-shared` depends on this package for
- * `SchemaNode`, so re-exporting it back would make the two circular. Import `defineModule` and
- * friends from `@we/module-shared`.
- */
-export * from '@we/backend-shared';

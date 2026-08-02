@@ -9,7 +9,7 @@ import type {
   TemplateStore,
   ThemeStore,
 } from '@solid/stores';
-import type { RendererStores } from '@we/schema-shared';
+import type { RendererStores } from '@we/backend-shared';
 
 export type ModelStoreOptions = {
   perspective?: string;

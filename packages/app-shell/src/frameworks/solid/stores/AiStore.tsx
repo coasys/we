@@ -1,10 +1,11 @@
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { deepClone } from '@shared/utils';
 import { type EditingTheme, useAdamStore, useTemplateStore, useThemeStore } from '@solid/stores';
-import { contextData, schemaContext } from '@we/ai-context';
+import { schemaContext } from '@we/ai-context';
 import type { ModelManifestEntry } from '@we/backend-ad4m';
 import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import { contextData } from '@we/schema-shared';
 import {
   buildValidationContext,
   ensureNodeIds,

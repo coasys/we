@@ -38,7 +38,7 @@ import { createTabCoordinator } from '@shared/tabCoordinator';
 import { useAdamStore } from '@solid/stores/AdamStore';
 import { useRouteStore } from '@solid/stores/RouteStore';
 import type { AgentProfileSummary } from '@we/backend-ad4m';
-import type { Activity, Focus, FocusDepth, Peer, PresenceSource, PresenceTone } from '@we/schema-shared';
+import type { Activity, Focus, FocusDepth, Peer, PresenceSource, PresenceTone } from '@we/backend-shared';
 import {
   applyFocusDepth,
   callRosters,
@@ -46,7 +46,7 @@ import {
   peersInDataset,
   peerTone,
   sortByPresence,
-} from '@we/schema-shared';
+} from '@we/backend-shared';
 import {
   type Accessor,
   createContext,

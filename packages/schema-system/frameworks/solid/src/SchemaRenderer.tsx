@@ -1,17 +1,14 @@
+import type { FlatQuery, ModelClass, QueryAdapter, RendererStores } from '@we/backend-shared';
+import { compileQuery } from '@we/backend-shared';
 import type {
-  FlatQuery,
   LocalFieldMeta,
   LocalStateField,
   MapProp,
-  ModelClass,
-  QueryAdapter,
   QueryDescriptor,
   QueryStateField,
-  RendererStores,
   ValidationRule,
 } from '@we/schema-shared';
 import {
-  compileQuery,
   hasToken,
   REACTIVE_ACCESSOR,
   resolveProp,

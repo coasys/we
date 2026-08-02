@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { render } from '@solidjs/testing-library';
-import type { RendererStores, SchemaNode } from '@we/schema-shared';
+import type { RendererStores } from '@we/backend-shared';
+import type { SchemaNode } from '@we/schema-shared';
 import { createRoot, createSignal } from 'solid-js';
 import { render as webRender } from 'solid-js/web';
 import { describe, expect, it, vi } from 'vitest';
