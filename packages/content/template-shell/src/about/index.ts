@@ -1,13 +1,13 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
-import forBuildersV1 from '../../../assets/CTAv1/ForBuilders.jpg';
-import forCommunitiesV1 from '../../../assets/CTAv1/ForCommunitiesLarge.jpg';
-import howItWorksV1 from '../../../assets/CTAv1/HowItWorks.jpg';
-import seeItInPracticeV1 from '../../../assets/CTAv1/SeeItInPractice.jpg';
-import forBuildersV2 from '../../../assets/CTAv2/ForBuilders.jpg';
-import forCommunitiesV2 from '../../../assets/CTAv2/ForCommunities.jpg';
-import howItWorksV2 from '../../../assets/CTAv2/HowItWorks.jpg';
-import seeItInPracticeV2 from '../../../assets/CTAv2/SeeItInPractice.jpg';
+import forBuildersV1 from '../assets/CTAv1/ForBuilders.jpg';
+import forCommunitiesV1 from '../assets/CTAv1/ForCommunitiesLarge.jpg';
+import howItWorksV1 from '../assets/CTAv1/HowItWorks.jpg';
+import seeItInPracticeV1 from '../assets/CTAv1/SeeItInPractice.jpg';
+import forBuildersV2 from '../assets/CTAv2/ForBuilders.jpg';
+import forCommunitiesV2 from '../assets/CTAv2/ForCommunities.jpg';
+import howItWorksV2 from '../assets/CTAv2/HowItWorks.jpg';
+import seeItInPracticeV2 from '../assets/CTAv2/SeeItInPractice.jpg';
 
 const IMAGE_SETS = {
   v1: {

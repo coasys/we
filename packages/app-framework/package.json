@@ -58,7 +58,9 @@
     "zod": "^4.1.11",
     "@we/backend-shared": "workspace:*",
     "@we/module-shared": "workspace:*",
-    "@we/backend-ad4m": "workspace:*"
+    "@we/backend-ad4m": "workspace:*",
+    "@we/template-default": "workspace:*",
+    "@we/template-shell": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

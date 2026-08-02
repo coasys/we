@@ -27,11 +27,7 @@
  */
 import type { SlotAnchor, SlotContribution } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
-
-import { bootScreen } from '../schemas/shell/BootScreen.schema';
-import { moduleRail } from '../schemas/shell/ModuleRail.schema';
-import { sidebar } from '../schemas/shell/Sidebar.schema';
-import { templateEditor } from '../schemas/shell/TemplateEditor.schema';
+import { bootScreen, moduleRail, sidebar, templateEditor } from '@we/template-shell';
 
 export interface SlotEntry extends SlotContribution {
   /** Unique. `core:*` for host chrome, otherwise the contributing module's id. */

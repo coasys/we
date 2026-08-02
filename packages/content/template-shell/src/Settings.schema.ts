@@ -6,7 +6,7 @@
 
 import type { TemplateSchema } from '@we/schema-shared';
 
-import { createSpaceModal } from '../DefaultTemplate/CreateSpaceModal.ts';
+import { createSpaceModal } from './CreateSpaceModal.ts';
 
 export const settingsTemplate: TemplateSchema = {
   meta: { name: 'Settings', description: 'Account settings', icon: 'gear' },

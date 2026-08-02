@@ -1,6 +1,5 @@
-// Templates
-export { defaultTemplate } from './DefaultTemplate';
-export { twitterTemplate } from './TwitterTemplate.schema';
+// Templates — data, shipped from content/
+export { defaultTemplate, twitterTemplate } from '@we/template-default';
 
 // Shell
 export {
@@ -8,9 +7,12 @@ export {
   createTestStore,
   landingPageTemplate,
   marketplaceTemplate,
+  MODULE_RAIL_WIDTH,
+  moduleRail,
   profileTemplate,
-  schemaTestsTemplate,
   schemaMutationActions,
+  schemaTestsTemplate,
   settingsTemplate,
   sidebar,
+  templateEditor,
 } from './shell';
