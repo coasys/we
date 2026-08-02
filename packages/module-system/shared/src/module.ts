@@ -148,6 +148,9 @@ export interface ModuleDefinition {
    * Typed `unknown[]` because the shape is the backend's: on AD4M these are `@Model`-decorated
    * classes, which is why a module declaring them must also declare `backends: ['ad4m']` until a
    * manifest→SDNA compiler exists.
+   *
+   * **Predicates must be minted under `we://module/<id>/`** — see
+   * {@link modulePredicateViolations}, which the registry runs at registration.
    */
   models?: unknown[];
 
@@ -315,6 +318,41 @@ export interface ModuleCompatibility {
  * Check a module against what this host actually is. Mirrors `planQuery` / `planEphemeral`: refuse
  * loudly at registration rather than half-mounting something that cannot work.
  */
+/** The subtree a module may mint predicates in. */
+export function modulePredicatePrefix(moduleId: string): string {
+  return `we://module/${moduleId}/`;
+}
+
+/**
+ * Predicates a module declares that it is not entitled to mint.
+ *
+ * The rule: **mint only under `we://module/<id>/`, but reuse the core vocabulary freely.** A module's
+ * entity using `we://name` is shared vocabulary working as intended — generic UI that displays names
+ * then works on it for free. Minting a *new* flat `we://<word>` is what has no adjudicator, and a
+ * flat namespace with no adjudicator becomes a squatting machine the moment modules are installable
+ * from a marketplace.
+ *
+ * Distinguishing "reuse" from "mint" without a registry of core names is not possible in general, so
+ * this checks the tractable half: anything under `we://module/` must be under *this* module's
+ * subtree, and any other scheme (`module://`, `myapp://`) is refused outright. That catches the two
+ * mistakes that actually happen — copying another module's predicates, and inventing a scheme —
+ * while leaving core-vocabulary reuse alone.
+ *
+ * Worth enforcing rather than documenting because predicates are how existing data is found: a
+ * mistake here is not a bug you fix later, it silently orphans everything already written.
+ *
+ * Backend-shaped, so it takes the predicates rather than the models — only the adapter that
+ * understands a model class can extract them.
+ */
+export function modulePredicateViolations(moduleId: string, predicates: readonly string[]): string[] {
+  const mine = modulePredicatePrefix(moduleId);
+  return predicates.filter((p) => {
+    if (p.startsWith(mine)) return false;
+    if (p.startsWith('we://module/')) return true; // another module's subtree
+    return !p.startsWith('we://'); // a scheme of its own
+  });
+}
+
 export function checkModuleCompatibility(
   definition: ModuleDefinition,
   host: { backend: string; framework: string },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { checkModuleCompatibility, defineModule, type ModuleDefinition } from './module';
+import { checkModuleCompatibility, defineModule, type ModuleDefinition, modulePredicateViolations } from './module';
 
 const host = { backend: 'ad4m', framework: 'solid' };
 
@@ -69,5 +69,29 @@ describe('defineModule', () => {
     expect(definition.frameworks).toBeUndefined();
     expect(definition.components).toBeUndefined();
     expect(checkModuleCompatibility(definition, { backend: 'anything', framework: 'anything' }).compatible).toBe(true);
+  });
+});
+
+describe('modulePredicateViolations', () => {
+  it('allows a module to mint inside its own subtree', () => {
+    expect(modulePredicateViolations('notes', ['we://module/notes/text'])).toEqual([]);
+  });
+
+  it('allows reuse of the core vocabulary', () => {
+    // Shared vocabulary is the point — generic UI that displays a name works on this entity for
+    // free. Only *minting* a new flat name is unadjudicated, and that is not distinguishable from
+    // reuse without a registry of core names, so reuse is permitted.
+    expect(modulePredicateViolations('notes', ['we://name', 'we://title'])).toEqual([]);
+  });
+
+  it("refuses another module's subtree", () => {
+    expect(modulePredicateViolations('notes', ['we://module/call/roster'])).toEqual(['we://module/call/roster']);
+  });
+
+  it('refuses a scheme of its own', () => {
+    expect(modulePredicateViolations('notes', ['notes://text', 'module://notes/text'])).toEqual([
+      'notes://text',
+      'module://notes/text',
+    ]);
   });
 });

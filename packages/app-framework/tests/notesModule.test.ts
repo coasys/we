@@ -7,7 +7,7 @@
  */
 import { getModel } from '@we/backend-ad4m';
 import { NOTE_PREDICATES, notesModule } from '@we/module-notes';
-import { checkModuleCompatibility } from '@we/module-shared';
+import { checkModuleCompatibility, modulePredicatePrefix, modulePredicateViolations } from '@we/module-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
@@ -121,18 +121,29 @@ describe('notes module — contributions', () => {
 });
 
 describe('notes module — the predicate namespace', () => {
-  it('namespaces predicates by module id, never under we://', () => {
+  it('mints under its own delegated subtree of we://', () => {
     // A one-way door: predicates are how existing data is found, so changing this scheme later
     // orphans every note silently — the links remain and simply stop matching.
+    //
+    // One root for the ecosystem (`we://`), with `module/<id>` as a subtree whose adjudicator is
+    // module-id uniqueness rather than the WE core team. The namespace shape documents the
+    // governance.
     for (const predicate of Object.values(NOTE_PREDICATES)) {
-      expect(predicate).toMatch(/^module:\/\/notes\/[a-z]+$/);
+      expect(predicate).toMatch(/^we:\/\/module\/notes\/[a-z]+$/);
     }
   });
 
-  it("does not claim we://, which belongs to WE's own models", () => {
-    // `we://text` would collide with TextBlock.text the moment both are installed in one perspective.
+  it('does not mint a bare we:// name, which has no adjudicator for modules', () => {
+    // `we://text` would collide with TextBlock.text the moment both are installed in one
+    // perspective — and nothing arbitrates who gets the name.
     for (const predicate of Object.values(NOTE_PREDICATES)) {
-      expect(predicate.startsWith('we://')).toBe(false);
+      expect(predicate.startsWith(modulePredicatePrefix('notes'))).toBe(true);
     }
+  });
+
+  it('is refused at registration if it ever mints outside that subtree', () => {
+    // The rule is enforced, not documented — see `modulePredicateViolations`.
+    expect(modulePredicateViolations('notes', Object.values(NOTE_PREDICATES))).toEqual([]);
+    expect(modulePredicateViolations('notes', ['we://module/call/roster'])).toHaveLength(1);
   });
 });

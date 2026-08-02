@@ -28,6 +28,22 @@ why in its own dependency list.
 
 **Anything a single module needs but the others don't.** That belongs in the module.
 
+## Predicates — mint under your own subtree
+
+A module that owns entities writes them under **`we://module/<your-id>/<property>`**.
+
+**Reuse the core vocabulary freely.** If your entity really has a name, `we://name` is the right
+predicate — shared vocabulary is the point, and generic UI that displays names then works on your
+entity for free. What you may not do is *mint* a new flat `we://<word>`: that namespace has one
+adjudicator (WE core), and a shared namespace with no adjudicator becomes a squatting machine the
+moment modules install from a marketplace. Under `we://module/<id>/` the adjudicator is module-id
+uniqueness, which the registry already enforces.
+
+`modulePredicateViolations` runs at registration and refuses a module that mints outside its subtree
+or invents a scheme of its own. It is enforced rather than documented because predicates are how
+existing data is found — a mistake here is not a bug you fix later, it silently orphans everything
+already written.
+
 ## Dependency shape
 
 Depends on both sibling contracts on purpose — slots are `SchemaNode`s so chrome stays inspectable

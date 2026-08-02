@@ -23,9 +23,14 @@
  * registers. That is exactly what makes `{ $if: { condition: { $store: 'modules.notes' } } }` the
  * supported way for a template to depend on an optional module.
  */
-import { type ModelClass, registerModel, unregisterModel } from '@we/backend-ad4m';
-import type { ModuleDefinition, ModuleStoreDeps } from '@we/module-shared';
-import { checkModuleCompatibility } from '@we/module-shared';
+import { getModelPredicates, type ModelClass, registerModel, unregisterModel } from '@we/backend-ad4m';
+import {
+  checkModuleCompatibility,
+  type ModuleDefinition,
+  modulePredicatePrefix,
+  modulePredicateViolations,
+  type ModuleStoreDeps,
+} from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
 
 import { slotRegistry } from './slotRegistry';
@@ -96,6 +101,20 @@ export const moduleRegistry = {
     host: { backend: string; framework: string },
     storeDeps?: ModuleStoreDeps,
   ): RegisterResult {
+    // Predicates are how existing data is found, so minting one outside the module's own subtree is
+    // not a bug to fix later — by the time it is noticed, data has been written under a name nobody
+    // can adjudicate. Refused at registration for the same reason an incompatible backend is.
+    const badPredicates = (definition.models ?? []).flatMap((model) =>
+      modulePredicateViolations(definition.id, getModelPredicates(model as Parameters<typeof getModelPredicates>[0])),
+    );
+    if (badPredicates.length) {
+      const problems = [
+        `declares predicates outside ${modulePredicatePrefix(definition.id)}: ${badPredicates.join(', ')}`,
+      ];
+      console.warn(`module "${definition.id}" not registered: ${problems[0]}`);
+      return { registered: false, problems };
+    }
+
     const compatibility = checkModuleCompatibility(definition, host);
     if (!compatibility.compatible) {
       console.warn(`module "${definition.id}" not registered: ${compatibility.problems.join('; ')}`);

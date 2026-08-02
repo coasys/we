@@ -11,7 +11,13 @@
  * other two.
  */
 
-export { checkModuleCompatibility, defineModule, seedCapabilityToModule } from './module';
+export {
+  checkModuleCompatibility,
+  defineModule,
+  modulePredicatePrefix,
+  modulePredicateViolations,
+  seedCapabilityToModule,
+} from './module';
 export type {
   ModuleCapability,
   ModuleCompatibility,
