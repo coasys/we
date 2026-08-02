@@ -27,4 +27,5 @@ export {
 export { TemplateCard } from './components/TemplateCard';
 export { ThemePanel } from './components/ThemePanel';
 
+export { mountTemplateEditor, type MountOptions } from './mount';
 export * from './host';

@@ -7,11 +7,15 @@ import '@we/primitives'; // side-effect: defines all we-* custom elements
 import '@we/tokens/css'; // design-token CSS variables
 
 import { createInMemoryBackend, type Row } from '@we/backend-inmemory';
+import { mountTemplateEditor } from '@we/editor';
+import type { TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
+import { onCleanup } from 'solid-js';
 import { render } from 'solid-js/web';
 
 import { feedTemplate } from './feedTemplate';
 import { registry } from './registry';
+import { createStandaloneEditorHost } from './standaloneEditorHost';
 
 const backend = createInMemoryBackend({
   id: 'in-memory-dataset',
@@ -46,9 +50,33 @@ function addPost() {
   });
 }
 
+/**
+ * The editing surface, over the same in-memory backend.
+ *
+ * `@we/editor` claims to reach its application only through ports. This is the proof: a host built
+ * from plain signals (`standaloneEditorHost.ts`), no WE shell, no stores, no perspective, and no
+ * `@coasys/*` anywhere in this app's dependency graph — and the toolbar and panels mount and run.
+ */
+const editor = createStandaloneEditorHost(feedTemplate as TemplateSchema);
+
+function EditingSurface() {
+  let el!: HTMLDivElement;
+  onCleanup(() => dispose?.());
+  let dispose: (() => void) | undefined;
+  return (
+    <div
+      ref={(node) => {
+        el = node;
+        dispose = mountTemplateEditor(el, { host: editor.host });
+      }}
+    />
+  );
+}
+
 function App() {
   return (
     <div>
+      <EditingSurface />
       <button
         onClick={addPost}
         style={{
