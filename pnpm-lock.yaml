@@ -369,10 +369,10 @@ importers:
         version: link:../schema-system/frameworks/solid
       '@we/template-default':
         specifier: workspace:*
-        version: link:../templates/template-default
+        version: link:../templates/default
       '@we/template-shell':
         specifier: workspace:*
-        version: link:../templates/template-shell
+        version: link:../templates/shell
       '@we/themes':
         specifier: workspace:*
         version: link:../design-system/2-themes
@@ -1036,20 +1036,20 @@ importers:
         specifier: ^4.0.15
         version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
-  packages/templates/template-default:
+  packages/templates/default:
     dependencies:
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared
       '@we/template-shell':
         specifier: workspace:*
-        version: link:../template-shell
+        version: link:../shell
     devDependencies:
       '@types/node':
         specifier: ^24.10.0
         version: 24.13.2
 
-  packages/templates/template-shell:
+  packages/templates/shell:
     dependencies:
       '@we/schema-shared':
         specifier: workspace:*
