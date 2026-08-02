@@ -3630,33 +3630,6 @@
       "source": "components"
     },
     {
-      "name": "CesiumGlobe",
-      "description": "3D globe widget using CesiumJS with a modular layer system.\nLayers are injected via factory functions (planet surface + background).\nRegistered in the app's component registry, which injects `layerFactoryRegistry` — so templates\nplace it as `CesiumGlobe` without supplying that prop themselves.",
-      "props": [
-        {
-          "name": "ionAccessToken",
-          "type": "string",
-          "optional": true
-        },
-        {
-          "name": "planetLayers",
-          "type": "LayerConfig<unknown>[]",
-          "optional": true
-        },
-        {
-          "name": "backgroundLayers",
-          "type": "LayerConfig<unknown>[]",
-          "optional": true
-        },
-        {
-          "name": "layerFactoryRegistry",
-          "type": "Record<string, LayerFactory<any>>",
-          "optional": false
-        }
-      ],
-      "source": "widgets"
-    },
-    {
       "name": "CollapsibleSidebar",
       "props": [
         {

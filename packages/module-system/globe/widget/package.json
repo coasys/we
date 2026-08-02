@@ -1,0 +1,24 @@
+{
+  "name": "@we/globe-widget",
+  "version": "0.1.0",
+  "description": "The Cesium globe renderer \u2014 implements @we/globe-protocol; consumed as source like every Solid surface package",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@we/globe-protocol": "workspace:*"
+  },
+  "peerDependencies": {
+    "cesium": "^1.136.0",
+    "solid-js": "^1.9.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "cesium": "^1.136.0",
+    "solid-js": "^1.9.5"
+  }
+}

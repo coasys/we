@@ -22,7 +22,7 @@
     "dev": "tsup --watch"
   },
   "dependencies": {
-    "@we/cesium-layers": "workspace:*"
+    "@we/globe-layers": "workspace:*"
   },
   "peerDependencies": {
     "@we/schema-shared": "workspace:*",

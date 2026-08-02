@@ -45,9 +45,10 @@ import { DesignToolbar } from '@we/editor';
 import { RightPanelContainer } from '@we/editor';
 import { TemplateCard } from '@we/editor';
 import { AiPanel } from '@we/editor/ai';
+import { CesiumGlobe } from '@we/globe-widget';
 import { layerFactoryRegistry } from '@we/module-globe';
 import type { ComponentRegistry } from '@we/schema-solid';
-import { CesiumGlobe, CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSidebarWidget } from '@we/widgets/solid';
+import { CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSidebarWidget } from '@we/widgets/solid';
 
 import WeCube from '../components/3d/WeCube';
 

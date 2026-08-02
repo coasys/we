@@ -44,9 +44,41 @@ packages/
 ├── block-system/     ← @we/block-shared, @we/block-solid
 ├── backend-system/   ← @we/backend-shared, @we/backend-ad4m, @we/backend-inmemory
 ├── module-system/    ← @we/module-shared, @we/module-globe, @we/module-call, …
-├── globe-system/     ← @we/globe-protocol, @we/cesium-layers
 ├── templates/        ← @we/template-shell, @we/template-default  (data, no build step)
 ```
+
+**Platform systems live at the top level; feature domains live in `module-system/`.** The top level
+is the machinery WE is *made of* — how templates render, where data lives, how features install. A
+feature is a thing WE *has*, and the module system is the feature-packaging mechanism, so features
+live under it: one package while simple, a **family** when the feature grows its own extension
+point:
+
+```
+module-system/
+├── shared/            the module contract
+├── notes/             simple module — one package
+├── call/              simple module — one package
+└── globe/             a feature family:
+    ├── module/        @we/module-globe       shell integration
+    ├── protocol/      @we/globe-protocol     the extension contract (pure types)
+    ├── layers/        @we/globe-layers       first-party plugins
+    └── widget/        @we/globe-widget       the renderer
+```
+
+When `GraphWidget` grows plugins it becomes `module-system/graph/` the same way. This is also why
+`design-system/5-widgets` holds only *generic* widgets — a feature's widget belongs to its family,
+and moving the globe out of the design system is what took `cesium` out of the design system's
+dependency graph.
+
+Two consequences worth stating:
+
+- **A family's contract may be `protocol/` instead of `shared/`** — `shared/` when it carries shared
+  logic (a query engine, validators), `protocol/` when it is pure types. Both self-identify as the
+  contract; the navigation rule "look for shared/" extends to "or protocol/".
+- **Two naming orderings coexist inside a family, deliberately.** `@we/module-globe` is kind-first,
+  matching its module siblings across families; `@we/globe-protocol` / `@we/globe-layers` /
+  `@we/globe-widget` are domain-first, matching each other. Each package aligns with the family it
+  is greppable against.
 
 **`templates/` is deliberately not `template-system/`.** A `-system` holds a contract plus its
 implementations; `templates/` holds **content** — its contract (`TemplateSchema`) lives in

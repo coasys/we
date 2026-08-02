@@ -61,7 +61,8 @@
     "@we/backend-ad4m": "workspace:*",
     "@we/template-default": "workspace:*",
     "@we/template-shell": "workspace:*",
-    "@we/editor": "workspace:*"
+    "@we/editor": "workspace:*",
+    "@we/globe-widget": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

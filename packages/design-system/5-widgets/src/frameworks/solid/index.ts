@@ -11,17 +11,6 @@ export {
 } from '../../widgets/sidebars/CollapsibleSidebar';
 
 // Cesium
-export { CesiumGlobe, type CesiumGlobeProps } from '../../widgets/cesium/CesiumGlobe/CesiumGlobe.solid';
-export type {
-  CesiumLayer,
-  LayerFactory,
-  LayerConfig,
-  LayerContext,
-  LayerEventBus,
-  LayerStore,
-  LayerMetadata,
-  CameraState,
-} from '@we/globe-protocol';
 
 // Graph
 export { GraphWidget, type GraphWidgetProps } from '../../widgets/graph/GraphWidget/GraphWidget.solid';

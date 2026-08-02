@@ -78,7 +78,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/themes` | design-system/2-themes | Theme definitions layered over tokens | Agnostic |
 | `@we/primitives` | design-system/3-primitives | UI primitives (`we-button`, `we-input`, …) | **Lit web components — agnostic** |
 | `@we/components` | design-system/4-components | Layout & composite components (Column, Row, Card, …) | Solid (`.types.ts` + `.solid.tsx`) |
-| `@we/widgets` | design-system/5-widgets | Large feature widgets (globe, graph, sidebar) | Solid |
+| `@we/widgets` | design-system/5-widgets | Generic widgets (graph, sidebar) — feature widgets live in their module family | Solid |
 | `@we/design-utils` | design-system/utils | Shared DS-props → style computation; token resolvers | Neutral core + `/solid` binding |
 | `@we/design-types` | design-system/types | Shared DS prop/type definitions | Agnostic |
 | `@we/template-shell` · `@we/template-default` | templates/* | WE's shell surfaces and built-in space templates, as data | Agnostic |
@@ -89,7 +89,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ephemeral port, agent identity, SDNA install, model registry | Agnostic |
 | `@we/backend-inmemory` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
 | `@we/module-shared` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
-| `@we/module-globe` · `-call` · `-notes` | module-system/* | Bundled feature modules | Agnostic (components injected) |
+| `@we/module-globe` · `-call` · `-notes` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
 | `@we/models` | packages/models | WE's domain models (Space, Block subclasses, …) | **AD4M-decorated** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
@@ -851,11 +851,6 @@ when `relative` is enabled.
   Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center", styles?: Record<string, string | number>
 
 @we/widgets:
-- CesiumGlobe — 3D globe widget using CesiumJS with a modular layer system.
-Layers are injected via factory functions (planet surface + background).
-Registered in the app's component registry, which injects `layerFactoryRegistry` — so templates
-place it as `CesiumGlobe` without supplying that prop themselves.
-  Props: ionAccessToken?: string, planetLayers?: LayerConfig<unknown>[], backgroundLayers?: LayerConfig<unknown>[], layerFactoryRegistry: Record<string, LayerFactory<any>>
 - CollapsibleSidebar
   Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "static" | "absolute" | "fixed", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
 - GraphWidget — 2D force-directed graph visualization using D3-force layout and Canvas rendering.

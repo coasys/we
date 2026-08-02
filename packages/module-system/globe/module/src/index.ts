@@ -11,7 +11,7 @@
  *
  * Only the *wiring* moved. `CesiumGlobe` stays in `@we/widgets` — it passes the props-only test
  * (`layerFactoryRegistry` is injected, and its `LayerStore` is a private `Map`, not a WE store), so it
- * is correctly a design-system widget. The layers stay in `@we/cesium-layers`. What was scattered
+ * is correctly a design-system widget. The layers stay in `@we/globe-layers`. What was scattered
  * across `componentRegistry.tsx` — the layer set, the component wrapper — is now owned here.
  *
  * ## Why this module has no store
@@ -38,7 +38,7 @@ import {
   proceduralStarsLayer,
   skyboxLayer,
   solarSystemLayer,
-} from '@we/cesium-layers';
+} from '@we/globe-layers';
 import { defineModule } from '@we/module-shared';
 
 /**
