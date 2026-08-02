@@ -27,7 +27,7 @@ pnpm dev:tauri     # Tauri app
 
 ### Packages
 
-- **[@we/app-framework](./packages/app-framework)** - Core framework for building WE launcher applications with platform adapters, stores, and SolidJS integration
+- **[@we/app-shell](./packages/app-shell)** - Core framework for building WE launcher applications with platform adapters, stores, and SolidJS integration
 - **[@we/schema-shared](./packages/schema-system/shared)** + **[@we/schema-solid](./packages/schema-system/solid)** - Schema-driven UI renderer with shared types/validators and SolidJS rendering
 - **[@we/design-system](./packages/design-system)** - Complete design system with tokens, themes, elements, components, widgets, pages, and templates
 - **[@we/block-solid](./packages/block-system/solid)** + **[@we/block-shared](./packages/block-system/shared)** - Block-based content composition system

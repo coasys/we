@@ -1,0 +1,33 @@
+{
+  "name": "@we/backend-ad4m",
+  "version": "0.1.0",
+  "description": "The AD4M implementation of WE's backend contract — query adapter, ephemeral port, identity, SDNA install",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run"
+  },
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@we/backend-shared": "workspace:*",
+    "@we/models": "workspace:*"
+  },
+  "peerDependencies": {
+    "@coasys/ad4m": "*"
+  },
+  "devDependencies": {
+    "@coasys/ad4m": "0.11.0",
+    "@types/node": "^24.10.0",
+    "@we/cli": "workspace:*",
+    "tsup": "^8.5.1",
+    "vitest": "^4.0.15"
+  },
+  "sideEffects": false
+}

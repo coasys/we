@@ -7,8 +7,12 @@ packages:
   - packages/schema-system/frameworks/*
   - packages/block-system/*
   - packages/block-system/frameworks/*
+  - packages/backend-system/*
+  - packages/templates/*
+  - packages/editor
   # Feature modules — the developer rung above blocks (see notes/we/August-2026/feature-modules.md)
-  - packages/modules/*
+  - packages/module-system/*
+  - packages/module-system/*/*
 
 onlyBuiltDependencies:
   - electron

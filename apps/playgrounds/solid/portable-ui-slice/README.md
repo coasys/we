@@ -31,6 +31,28 @@ A styled "Community Feed" (real `Card`/`Column`/`Row` + `we-text`/`we-avatar`):
   built bundle contains no `@coasys` / `PerspectiveProxy` (only the renderer's inert `adamStore`
   fallback string, never executed here).
 
+## The editing surface
+
+`@we/editor` mounts here too, over the same in-memory backend — the proof that it reaches its
+application only through ports:
+
+```ts
+const editor = createStandaloneEditorHost(feedTemplate);
+mountTemplateEditor(el, { host: editor.host });
+```
+
+`standaloneEditorHost.ts` is a complete `EditorHost` built from plain signals and one array. No WE
+shell, no stores, no perspective. It is also the honest answer to "what would adopting this cost?" —
+that file is the whole integration for an application that already has templates of its own.
+
+Verified the same way as the renderer: `pnpm why @coasys/ad4m` in this package resolves to nothing,
+and the built bundle's only `@coasys` / `PerspectiveProxy` occurrences are **string literals inside
+generated component metadata** (type names in the docs data), never an import.
+
+The surface currently positions against the viewport rather than the element it is mounted into —
+inherited from having only ever run inside WE's shell. Fine for a full-screen editing mode; making it
+container-relative is the next step for editing inside a panel.
+
 ## Files
 
 | File                     | Role                                                                                     |
@@ -38,6 +60,7 @@ A styled "Community Feed" (real `Card`/`Column`/`Row` + `we-text`/`we-avatar`):
 | `src/inMemoryBackend.ts` | the non-AD4M `DataSource` (query engine over plain arrays)                               |
 | `src/registry.ts`        | design-system component registry (`Column`/`Row`/`Card`; `we-*` are custom-element tags) |
 | `src/feedTemplate.ts`    | a real WE template: `$each` over `$query` with filter/order/include                      |
+| `src/standaloneEditorHost.ts` | a complete `EditorHost` from plain signals — the embedding proof |
 | `src/main.tsx`           | mounts `RenderSchema({ node, stores, registry })` + the reactivity demo button           |
 
 > Duplicated `inMemoryBackend.ts` (twin of the headless test's copy) is a candidate to consolidate

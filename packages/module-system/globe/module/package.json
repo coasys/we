@@ -1,0 +1,40 @@
+{
+  "name": "@we/module-globe",
+  "version": "0.1.0",
+  "description": "Globe feature module \u2014 the Cesium layer registry, route and schema fragments",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "@we/globe-layers": "workspace:*"
+  },
+  "peerDependencies": {
+    "@we/schema-shared": "workspace:*",
+    "@we/widgets": "workspace:*",
+    "@we/module-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "@we/widgets": "workspace:*",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.3",
+    "@we/module-shared": "workspace:*"
+  }
+}

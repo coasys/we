@@ -88,6 +88,7 @@ export {
 export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from './indexer';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export { getComponentMeta } from './componentMeta';
+export { contextData } from './generated/contextData';
 export type { ComponentMeta, PropMeta, PropLayer } from './componentMeta';
 export { findNodeChain, findScopeRef, getScopeAtNode, inferRefKind, scopeRefToToken } from './scope';
 export type { ScopeGroup, ScopeOptions, ScopeRef, ScopeRefKind, ScopeValueType } from './scope';
@@ -116,92 +117,3 @@ export type {
   FormStateToken,
   ValueIf,
 } from './conditionModel';
-export type {
-  DatasetHandle,
-  QueryOptions,
-  QuerySubscription,
-  ModelClass,
-  MutationApi,
-  DataSource,
-  QueryAdapter,
-  RendererDataBindings,
-  RendererStores,
-} from './dataSource';
-export { checkModuleCompatibility, defineModule } from './module';
-export type {
-  ModuleCapability,
-  ModuleCompatibility,
-  ModuleDefinition,
-  ModuleStoreDeps,
-  SlotAnchor,
-  SlotContribution,
-} from './module';
-export { createInMemoryEphemeralPort, InMemoryBus, inMemoryEphemeralCapabilities, planEphemeral } from './ephemeral';
-export type {
-  EphemeralCapabilities,
-  EphemeralChannel,
-  EphemeralScope,
-  EphemeralPort,
-  EphemeralRequirements,
-  EphemeralGap,
-  EphemeralPlan,
-} from './ephemeral';
-export {
-  applyFocusDepth,
-  activitiesOfType,
-  callRosters,
-  createHeartbeatPresence,
-  derivePeers,
-  peerTone,
-  peersInDataset,
-  peersMatching,
-  sortByPresence,
-  DEFAULT_HEARTBEAT_INTERVAL,
-  DEFAULT_THRESHOLDS,
-} from './presence';
-export type {
-  Activity,
-  Availability,
-  Focus,
-  FocusDepth,
-  HeartbeatOptions,
-  Liveness,
-  LivenessThresholds,
-  MediaSettings,
-  Peer,
-  PresenceTone,
-  PresenceChannel,
-  PresenceSource,
-  PresenceState,
-} from './presence';
-export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
-export type {
-  ModelManifest,
-  EntitySchema,
-  PropertySchema,
-  RelationSchema,
-  ScalarType,
-  Cardinality,
-  ManifestError,
-} from './manifest';
-export { queryIRSchema, filterSchema, validateQueryIR } from './queryIR';
-export { validateQueryAgainstManifest } from './queryValidation';
-export { planQuery } from './queryCapabilities';
-export type { AdapterCapabilities, AggregateFn, Disposition, CapabilityGap, QueryPlan } from './queryCapabilities';
-export { compileQuery, irToFlatQuery, whereUsesCombinator } from './queryCompiler';
-export type { FlatQuery, CompileResult } from './queryCompiler';
-export { executeQueryIR } from './queryEngine';
-export type { Row, InMemoryDataset, InMemoryRelation } from './queryEngine';
-export type {
-  QueryIR,
-  Filter,
-  Op,
-  Scalar,
-  SortKey,
-  Page,
-  IncludeSpec,
-  IncludeMap,
-  Aggregation,
-  Scope,
-  IRError,
-} from './queryIR';

@@ -135,7 +135,7 @@ The monorepo is structured to support this explicitly:
 
 - **`packages/schema-system`** — pure TypeScript, no framework dependency. Token types, Zod validators, and `resolveProp` are already renderer-agnostic.
 - **`packages/design-system`** — each component directory contains per-framework implementation files (e.g. `MyComponent.solid.ts`, `MyComponent.react.ts`). Adding a new framework means adding co-located implementation files alongside the existing ones, keeping all variants of a component together.
-- **`packages/app-framework/src/frameworks/`** — the renderer itself, one per framework. Today only `solid/` exists.
+- **`packages/app-shell/src/frameworks/`** — the renderer itself, one per framework. Today only `solid/` exists.
 
 Adding a React or Vue renderer requires:
 

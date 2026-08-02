@@ -1,10 +1,10 @@
 /* Diagnostic — isolate WHERE the feed breaks: backend? renderer reactivity? the $query effect? */
 import { render } from '@solidjs/testing-library';
+import { createInMemoryBackend } from '@we/backend-inmemory';
 import type { SchemaNode } from '@we/schema-solid';
 import { RenderSchema } from '@we/schema-solid';
 import { describe, expect, it } from 'vitest';
 
-import { createInMemoryBackend } from './inMemoryBackend';
 import { registry } from './registry';
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));

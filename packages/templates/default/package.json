@@ -1,0 +1,19 @@
+{
+  "name": "@we/template-default",
+  "version": "0.1.0",
+  "description": "WE's built-in space templates \u2014 shipped as data, versioned independently of the framework that renders them",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@we/schema-shared": "workspace:*",
+    "@we/template-shell": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0"
+  }
+}

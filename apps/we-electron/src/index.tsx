@@ -1,11 +1,13 @@
 /* @refresh reload */
-// Import global styles from app-framework
-import '@we/app-framework/shared/index.scss';
+// Import global styles from app-shell
+import '@we/app-shell/shared/index.scss';
 
-import { App, PlatformProvider } from '@we/app-framework/solid';
+import { App, PlatformProvider, type WeSeedFile } from '@we/app-shell/solid';
 import { render } from 'solid-js/web';
 
-import { electronAdapter } from './platform/electronAdapter';
+import weSeed from '../../../we-seed.json';
+import { ad4mConnector } from './platform/ad4mConnector';
+import { electronPlatform } from './platform/electronPlatform';
 
 const root = document.getElementById('root');
 
@@ -15,7 +17,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 
 render(
   () => (
-    <PlatformProvider adapter={electronAdapter}>
+    <PlatformProvider seed={weSeed as unknown as WeSeedFile} platform={electronPlatform} backend={ad4mConnector}>
       <App />
     </PlatformProvider>
   ),

@@ -520,7 +520,7 @@ import governanceWidget from '@we/governance/schemas/governance-widget.json';
 ### App Framework Setup
 
 ```typescript
-// packages/app-framework/src/frameworks/solid/registries/moduleRegistry.ts
+// packages/app-shell/src/frameworks/solid/registries/moduleRegistry.ts
 import { governanceModule } from '@we/governance';
 import { economicsModule } from '@we/economics';
 
@@ -732,7 +732,7 @@ export const reputationModule = {
   "files": ["dist", "schemas"],
   "keywords": ["we", "governance", "dao", "voting"],
   "peerDependencies": {
-    "@we/app-framework": "^0.1.0",
+    "@we/app-shell": "^0.1.0",
     "@perspect3vism/ad4m": "^0.8.0",
     "solid-js": "^1.8.0"
   }

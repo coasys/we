@@ -18,9 +18,9 @@ export default defineConfig({
   optimizeDeps: { exclude: ['@coasys/ad4m', '@coasys/ad4m-connect'] },
   resolve: {
     alias: {
-      // Resolve @we/app-framework internal aliases
-      '@shared': path.resolve(__dirname, '../../packages/app-framework/src/shared'),
-      '@solid': path.resolve(__dirname, '../../packages/app-framework/src/frameworks/solid'),
+      // Resolve @we/app-shell internal aliases
+      '@shared': path.resolve(__dirname, '../../packages/app-shell/src/shared'),
+      '@solid': path.resolve(__dirname, '../../packages/app-shell/src/frameworks/solid'),
     },
   },
 });

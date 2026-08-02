@@ -45,6 +45,7 @@ const knownPrimitiveTypes = new Set([
   'array',
   'HTMLElement',
   'File',
+  'MediaStream',
 ]);
 
 /**
@@ -137,7 +138,9 @@ function resolveType(rawType: string, typeAliases: Map<string, string>): string 
     if (part.includes('=>')) continue; // function types
     if (part.includes('<')) continue; // generic types like Partial<...>
     if (part.startsWith('(')) continue; // grouped types like (string | ...)[]
-    console.warn(`⚠ Unresolved type "${part}" in "${rawType}" — add to typeExpansions in cem.ts`);
+    console.warn(
+      `⚠ Unresolved type "${part}" in "${rawType}" — add it to typeExpansions in cem.ts if it expands to a literal union, or to knownPrimitiveTypes if it is a platform type like HTMLElement`,
+    );
   }
 
   return result;
