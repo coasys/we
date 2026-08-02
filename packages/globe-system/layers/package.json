@@ -1,7 +1,7 @@
 {
   "name": "@we/cesium-layers",
   "version": "0.1.0",
-  "description": "Modular layer system for Cesium globe - user locations, country outlines, H3 hexagons",
+  "description": "WE's first-party globe layers \u2014 implementations of @we/globe-protocol",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -35,12 +35,13 @@
   },
   "peerDependencies": {
     "cesium": "^1.136.0",
-    "@we/widgets": "workspace:*"
+    "@we/globe-protocol": "workspace:*"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@types/cesium": "^1.70.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "@we/globe-protocol": "workspace:*"
   }
 }

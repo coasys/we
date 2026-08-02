@@ -1,0 +1,17 @@
+{
+  "name": "@we/globe-protocol",
+  "version": "0.1.0",
+  "description": "The globe's layer contract — what a layer implements, with no dependency on the renderer",
+  "type": "module",
+  "scripts": { "build:steps": "tsup", "build": "we-build" },
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "peerDependencies": { "cesium": "^1.136.0" },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@we/cli": "workspace:*",
+    "cesium": "^1.136.0",
+    "tsup": "^8.5.1"
+  },
+  "sideEffects": false
+}

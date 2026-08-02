@@ -44,8 +44,18 @@ packages/
 ├── block-system/     ← @we/block-shared, @we/block-solid
 ├── backend-system/   ← @we/backend-shared, @we/backend-ad4m, @we/backend-inmemory
 ├── module-system/    ← @we/module-shared, @we/module-globe, @we/module-call, …
+├── globe-system/     ← @we/globe-protocol, @we/cesium-layers
 ├── templates/        ← @we/template-shell, @we/template-default  (data, no build step)
 ```
+
+**`templates/` is deliberately not `template-system/`.** A `-system` holds a contract plus its
+implementations; `templates/` holds **content** — its contract (`TemplateSchema`) lives in
+`schema-system`. Same category of exception as `apps/`. The distinction to preserve: systems vary by
+*implementation*, content directories vary by *what they say*.
+
+**Directory names drop the kind prefix; package names carry it.** `@we/backend-ad4m` lives in
+`backend-system/ad4m/`, `@we/template-default` in `templates/default/` — the parent directory
+supplies what the npm name has to spell out, because npm names have no parent.
 
 Every `-system` has a `shared/` holding its contract. **Look for `shared/` to find the contract** is
 the one navigation rule worth memorising.

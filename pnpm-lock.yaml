@@ -548,31 +548,6 @@ importers:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
 
-  packages/cesium-layers:
-    dependencies:
-      '@we/widgets':
-        specifier: workspace:*
-        version: link:../design-system/5-widgets
-      cesium:
-        specifier: ^1.136.0
-        version: 1.143.0
-      h3-js:
-        specifier: ^4.1.0
-        version: 4.5.0
-    devDependencies:
-      '@types/cesium':
-        specifier: ^1.70.0
-        version: 1.70.4
-      '@we/cli':
-        specifier: workspace:*
-        version: link:../cli
-      tsup:
-        specifier: ^8.0.0
-        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
-      typescript:
-        specifier: ^5.3.3
-        version: 5.9.3
-
   packages/cli:
     devDependencies:
       '@types/node':
@@ -746,6 +721,9 @@ importers:
 
   packages/design-system/5-widgets:
     dependencies:
+      '@we/globe-protocol':
+        specifier: workspace:*
+        version: link:../../globe-system/protocol
       cesium:
         specifier: ^1.136.0
         version: 1.143.0
@@ -857,6 +835,46 @@ importers:
         specifier: ^4.0.15
         version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
+  packages/globe-system/layers:
+    dependencies:
+      cesium:
+        specifier: ^1.136.0
+        version: 1.143.0
+      h3-js:
+        specifier: ^4.1.0
+        version: 4.5.0
+    devDependencies:
+      '@types/cesium':
+        specifier: ^1.70.0
+        version: 1.70.4
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      '@we/globe-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+
+  packages/globe-system/protocol:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      cesium:
+        specifier: ^1.136.0
+        version: 1.143.0
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+
   packages/models:
     dependencies:
       '@coasys/ad4m':
@@ -898,7 +916,7 @@ importers:
     dependencies:
       '@we/cesium-layers':
         specifier: workspace:*
-        version: link:../../cesium-layers
+        version: link:../../globe-system/layers
     devDependencies:
       '@we/cli':
         specifier: workspace:*

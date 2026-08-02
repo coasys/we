@@ -29,7 +29,8 @@
   ],
   "dependencies": {
     "cesium": "^1.136.0",
-    "d3-force": "^3.0.0"
+    "d3-force": "^3.0.0",
+    "@we/globe-protocol": "workspace:*"
   },
   "peerDependencies": {
     "@we/components": "^0.1.0",

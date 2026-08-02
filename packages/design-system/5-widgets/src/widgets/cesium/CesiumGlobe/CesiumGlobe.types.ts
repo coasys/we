@@ -5,9 +5,9 @@
  * and placing the globe are separate jobs done by different people, increasingly including
  * third-party authors. Re-exported below so existing imports keep working.
  */
-export type * from '../protocol';
+export type * from '@we/globe-protocol';
 
-import type { LayerConfig, LayerFactory } from '../protocol';
+import type { LayerConfig, LayerFactory } from '@we/globe-protocol';
 
 /**
  * @ai 3D globe widget using CesiumJS with a modular layer system.
