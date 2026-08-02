@@ -28,4 +28,5 @@ export { TemplateCard } from './components/TemplateCard';
 export { ThemePanel } from './components/ThemePanel';
 
 export { mountTemplateEditor, type MountOptions } from './mount';
+export { EditorSurfaceProvider, type EditorSurface, type SurfacePositioning, useEditorSurface } from './surface';
 export * from './host';

@@ -4,6 +4,7 @@ import { createSignal, JSX, Show } from 'solid-js';
 
 import { AiPanel } from '../ai/AiPanel';
 import { useEditorHost } from '../host';
+import { useEditorSurface } from '../surface';
 import { CodePanel } from './CodePanel';
 import { InspectorPanel } from './InspectorPanel';
 import { ThemePanel } from './ThemePanel';
@@ -105,7 +106,7 @@ function PanelUnit(props: PanelUnitProps) {
       <we-tooltip title={props.tooltip} placement="left">
         <Column
           width={`${RAIL_STRIP_WIDTH}px`}
-          height="100vh"
+          height="100%"
           ax="center"
           ay="center"
           bg={props.isOpen() ? 'neutral-100' : 'neutral-50'}
@@ -141,6 +142,7 @@ function PanelUnit(props: PanelUnitProps) {
 }
 
 export function RightPanelContainer() {
+  const surface = useEditorSurface();
   const aiStore = useEditorHost().session;
 
   // Slide the container off-screen when neither editing mode is active.
@@ -156,10 +158,12 @@ export function RightPanelContainer() {
 
   return (
     <Row
-      position="fixed"
+      // `fixed` beside the whole window in WE's shell; `absolute` within a host's own container when
+      // the editor is embedded in a panel. See `useEditorSurface`.
+      position={surface.positioning === 'container' ? 'absolute' : 'fixed'}
       top="0"
       right="0"
-      height="100vh"
+      height={surface.positioning === 'container' ? '100%' : '100vh'}
       zIndex={20}
       transform={containerTransform()}
       transition={panelResizing() ? 'none' : 'transform 300ms ease'}

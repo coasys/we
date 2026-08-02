@@ -4,6 +4,7 @@ import { DesignToolbar } from './components/DesignToolbar';
 import { EditorOverlay } from './components/EditorOverlay';
 import { RightPanelContainer } from './components/RightPanelContainer';
 import { type EditorHost, EditorHostProvider } from './host';
+import { EditorSurfaceProvider, type SurfacePositioning } from './surface';
 
 export interface MountOptions {
   /** Ports the editor reaches its application through. */
@@ -19,6 +20,15 @@ export interface MountOptions {
   toolbar?: boolean;
   /** Render the right-hand panel dock. Default true. */
   panels?: boolean;
+  /**
+   * Where the chrome pins itself. Defaults to `container` — an application mounting the editor into
+   * an element almost always means "inside this element", and the mount function makes that element
+   * a positioned ancestor so the default is correct without further setup.
+   *
+   * Pass `viewport` for a full-screen editing mode that should own the window regardless of where it
+   * was mounted.
+   */
+  positioning?: SurfacePositioning;
 }
 
 /**
@@ -38,21 +48,30 @@ export interface MountOptions {
  *
  * The returned function unmounts and releases every reactive subscription the surface created.
  *
- * **Geometry note.** The surface currently positions itself against the viewport (`position: fixed`),
- * inherited from having only ever run inside WE's shell. It therefore overlays the whole window
- * rather than the element passed here — usable for a full-screen editing mode, not yet for editing
- * inside a panel. Making it container-relative is a contained change to the two positioned
- * components and does not affect this signature.
+ * **Geometry.** The panel dock pins to the mounted element by default (`positioning: 'container'`),
+ * which is what "mount the editor here" should mean. The selection overlay is the exception: its
+ * highlight and drag-ghost maths run in viewport coordinates via `getBoundingClientRect`, so it is
+ * correct over a full-window template and would need offsetting by the container's rect to be
+ * correct inside a panel. It is off by default for that reason.
  */
 export function mountTemplateEditor(element: HTMLElement, options: MountOptions): () => void {
-  const { host, overlay = false, toolbar = true, panels = true } = options;
+  const { host, overlay = false, toolbar = true, panels = true, positioning = 'container' } = options;
+
+  // `absolute` chrome needs a positioned ancestor, and the element handed to us is the one the caller
+  // means. Setting it here rather than documenting it removes the most likely way to mis-integrate:
+  // chrome that lands against the window because a `position` declaration was missed.
+  if (positioning === 'container' && getComputedStyle(element).position === 'static') {
+    element.style.position = 'relative';
+  }
 
   return render(
     () => (
       <EditorHostProvider value={host}>
-        {overlay ? <EditorOverlay /> : null}
-        {toolbar ? <DesignToolbar /> : null}
-        {panels ? <RightPanelContainer /> : null}
+        <EditorSurfaceProvider value={{ positioning }}>
+          {overlay ? <EditorOverlay /> : null}
+          {toolbar ? <DesignToolbar /> : null}
+          {panels ? <RightPanelContainer /> : null}
+        </EditorSurfaceProvider>
       </EditorHostProvider>
     ),
     element,
