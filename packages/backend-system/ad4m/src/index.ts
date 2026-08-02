@@ -3,7 +3,7 @@
  *
  * Everything that knows what a `PerspectiveProxy` is lives here: the query adapter and its
  * capability profile, the ephemeral port, agent identity, SDNA install, and the model registry.
- * Gathered from six files scattered through `app-framework/src/shared/`, where AD4M knowledge sat
+ * Gathered from six files scattered through `app-shell/src/shared/`, where AD4M knowledge sat
  * beside host concerns and was consequently impossible to see the shape of.
  *
  * Dependencies point *inward* — this package is imported by the shell and imports nothing from it.

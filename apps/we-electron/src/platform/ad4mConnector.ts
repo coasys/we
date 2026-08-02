@@ -1,5 +1,5 @@
 import type { Ad4mClient } from '@coasys/ad4m';
-import type { BackendConnectionDetails, BackendConnector } from '@we/app-framework/shared';
+import type { BackendConnectionDetails, BackendConnector } from '@we/app-shell/shared';
 
 import { buildAd4mClientWithApollo } from '../utils/apolloClient';
 

@@ -79,7 +79,7 @@ Examples:
   we-seed ./we-seed.json --validate
 
   # Generate integration code
-  we-seed ./we-seed.json --output ./packages/app-framework/src/shared/schemas/integrations
+  we-seed ./we-seed.json --output ./packages/app-shell/src/shared/schemas/integrations
 
   # Process with verbose output
   we-seed ./we-seed.json --verbose
@@ -134,7 +134,7 @@ async function run() {
     // Write output files
     const outputDir =
       options.output ||
-      path.join(process.cwd(), 'packages/app-framework/src/shared/schemas/integrations', result.metadata.integrationId);
+      path.join(process.cwd(), 'packages/app-shell/src/shared/schemas/integrations', result.metadata.integrationId);
 
     await fs.mkdir(outputDir, { recursive: true });
 

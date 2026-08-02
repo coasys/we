@@ -147,9 +147,9 @@ importers:
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.14)
-      '@we/app-framework':
+      '@we/app-shell':
         specifier: workspace:*
-        version: link:../../packages/app-framework
+        version: link:../../packages/app-shell
       electron-context-menu:
         specifier: ^4.1.1
         version: 4.1.2
@@ -217,9 +217,9 @@ importers:
       '@tauri-apps/plugin-opener':
         specifier: 2.4.0
         version: 2.4.0
-      '@we/app-framework':
+      '@we/app-shell':
         specifier: workspace:*
-        version: link:../../packages/app-framework
+        version: link:../../packages/app-shell
       graphql:
         specifier: 15.7.2
         version: 15.7.2
@@ -257,9 +257,9 @@ importers:
       '@coasys/ad4m-connect':
         specifier: 0.13.0-test-9
         version: 0.13.0-test-9
-      '@we/app-framework':
+      '@we/app-shell':
         specifier: workspace:*
-        version: link:../../packages/app-framework
+        version: link:../../packages/app-shell
       solid-js:
         specifier: ^1.9.5
         version: 1.9.14
@@ -308,7 +308,7 @@ importers:
         specifier: ^4.0.15
         version: 4.1.10(@types/node@22.20.0)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@22.20.0)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
-  packages/app-framework:
+  packages/app-shell:
     dependencies:
       '@coasys/ad4m':
         specifier: 0.13.0-test-9
@@ -369,10 +369,10 @@ importers:
         version: link:../schema-system/frameworks/solid
       '@we/template-default':
         specifier: workspace:*
-        version: link:../content/template-default
+        version: link:../templates/template-default
       '@we/template-shell':
         specifier: workspace:*
-        version: link:../content/template-shell
+        version: link:../templates/template-shell
       '@we/themes':
         specifier: workspace:*
         version: link:../design-system/2-themes
@@ -581,29 +581,6 @@ importers:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
-
-  packages/content/template-default:
-    dependencies:
-      '@we/schema-shared':
-        specifier: workspace:*
-        version: link:../../schema-system/shared
-      '@we/template-shell':
-        specifier: workspace:*
-        version: link:../template-shell
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.13.2
-
-  packages/content/template-shell:
-    dependencies:
-      '@we/schema-shared':
-        specifier: workspace:*
-        version: link:../../schema-system/shared
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.0
-        version: 24.13.2
 
   packages/design-system/1-tokens:
     devDependencies:
@@ -1058,6 +1035,29 @@ importers:
       vitest:
         specifier: ^4.0.15
         version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  packages/templates/template-default:
+    dependencies:
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+      '@we/template-shell':
+        specifier: workspace:*
+        version: link:../template-shell
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+
+  packages/templates/template-shell:
+    dependencies:
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
 
 packages:
 

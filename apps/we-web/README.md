@@ -1,6 +1,6 @@
 # WE Web App
 
-Browser-based launcher for the WE platform. This web application uses the `@we/app-framework` package to provide a platform-agnostic interface with web-specific authentication via `ad4m-connect`.
+Browser-based launcher for the WE platform. This web application uses the `@we/app-shell` package to provide a platform-agnostic interface with web-specific authentication via `ad4m-connect`.
 
 ## What This App Does
 
@@ -9,11 +9,11 @@ The WE web launcher:
 - Runs entirely in the browser (no installation required for the launcher itself)
 - Authenticates with AD4M using the `ad4m-connect` desktop application
 - Provides the same core functionality as the desktop launchers (Electron, Tauri)
-- Shares the same codebase via `@we/app-framework`
+- Shares the same codebase via `@we/app-shell`
 
 ## Architecture
 
-- **Frontend** (`src/`): SolidJS app using the shared `@we/app-framework`
+- **Frontend** (`src/`): SolidJS app using the shared `@we/app-shell`
 - **Platform Adapter** (`src/platform/webAdapter.ts`): Implements AD4M connection using `ad4m-connect`
 - **Build Tool**: Vite with SolidJS plugin
 
@@ -171,7 +171,7 @@ If the build fails:
 - `@we/we-electron` - Electron desktop launcher
 - `@we/we-tauri` - Tauri desktop launcher
 
-Both use the same `@we/app-framework` but with different platform adapters.
+Both use the same `@we/app-shell` but with different platform adapters.
 
 ## License
 

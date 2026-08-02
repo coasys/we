@@ -338,7 +338,7 @@ Moves Storybook from `3-primitives/.storybook/` to the monorepo root (`we/.story
 **Depends on:** Shared `*.types.ts` (#7a) ✅
 **Unblocks:** auto-extracted AI context, replacement of hand-written `schemaContext.ts`, instruction files for local AI agents
 
-Creates `@we/ai-context` with 4 extractors (CEM, TypeScript, tokens, models), 6 hand-maintained fragments (schema-operators, design-system-props, routing, stores, store-patterns, rules), assembler, and generate script. Exports lightweight `schemaContext` constant for runtime (~25KB bundle). Generates instruction files for Copilot (`.github/copilot-instructions.md`), Claude Code (`CLAUDE.md`), and Cursor (`.cursor/rules/we-schema.mdc`). Migrates `@we/app-framework` to import from `@we/ai-context`. 9 tests passing.
+Creates `@we/ai-context` with 4 extractors (CEM, TypeScript, tokens, models), 6 hand-maintained fragments (schema-operators, design-system-props, routing, stores, store-patterns, rules), assembler, and generate script. Exports lightweight `schemaContext` constant for runtime (~25KB bundle). Generates instruction files for Copilot (`.github/copilot-instructions.md`), Claude Code (`CLAUDE.md`), and Cursor (`.cursor/rules/we-schema.mdc`). Migrates `@we/app-shell` to import from `@we/ai-context`. 9 tests passing.
 
 **Output targets:** Copilot custom instructions, Claude Code project instructions, Cursor rules, and runtime `schemaContext` constant. All version-controlled with the repo — any local AI agent automatically has full component/token/convention knowledge without requiring an MCP server.
 

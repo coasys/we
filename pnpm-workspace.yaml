@@ -8,7 +8,7 @@ packages:
   - packages/block-system/*
   - packages/block-system/frameworks/*
   - packages/backend-system/*
-  - packages/content/*
+  - packages/templates/*
   - packages/editor
   # Feature modules — the developer rung above blocks (see notes/we/August-2026/feature-modules.md)
   - packages/module-system/*

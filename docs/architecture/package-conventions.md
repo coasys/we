@@ -44,6 +44,7 @@ packages/
 ├── block-system/     ← @we/block-shared, @we/block-solid
 ├── backend-system/   ← @we/backend-shared, @we/backend-ad4m, @we/backend-inmemory
 ├── module-system/    ← @we/module-shared, @we/module-globe, @we/module-call, …
+├── templates/        ← @we/template-shell, @we/template-default  (data, no build step)
 ```
 
 Every `-system` has a `shared/` holding its contract. **Look for `shared/` to find the contract** is
@@ -118,7 +119,7 @@ Each sub-package builds and versions independently. Adding a framework means add
     └── frameworks/solid/
 ```
 
-Consumers use subpath exports: `@we/components/solid`. `app-framework` is Pattern B with the same
+Consumers use subpath exports: `@we/components/solid`. `app-shell` is Pattern B with the same
 `src/shared/` + `src/frameworks/solid/` split.
 
 ## Dependency direction
@@ -126,14 +127,14 @@ Consumers use subpath exports: `@we/components/solid`. `app-framework` is Patter
 The invariant everything else rests on, and the one a lint rule can enforce.
 
 ```
-content ──▶ shell ──▶ backend-shared ◀── backend-ad4m
+templates ──▶ shell ──▶ backend-shared ◀── backend-ad4m
 modules ──▶ shell ──▶ backend-shared ◀── backend-inmemory
                           ▲
                     schema-shared
 ```
 
 - **Dependencies point inward** toward the contract packages.
-- **No sideways edges.** No `content → modules`, no `modules → modules`, no `backend-* → shell`.
+- **No sideways edges.** No `templates → modules`, no `modules → modules`, no `backend-* → shell`.
   Where such an edge existed it was inverted rather than tolerated: `installSpaceSdna` takes the
   module-owned models as an argument instead of reading the host's registry.
 - `@we/shell-*`, `@we/schema-shared`, `@we/backend-shared`, `@we/module-shared` and `@we/*-solid`
@@ -147,14 +148,14 @@ modules ──▶ shell ──▶ backend-shared ◀── backend-inmemory
 ## Packages that carry assets are consumed as source
 
 A package whose source imports assets (`.jpg`, `.glb`, `.svg`) must export `src/` and have **no build
-step** — `@we/template-shell` and `@we/template-default` are the current examples.
+step** — the two packages under `templates/` are the current examples.
 
 Pre-bundling such a package resolves its asset imports at *package* build time, emitting the files
 into that package's `dist/` and freezing plain relative strings into the JS. The consuming app's
 bundler cannot rewrite a plain string, so the URLs ship unchanged and 404 at runtime — a failure that
 is silent, because nothing errors and the images are simply absent.
 
-Only the bundler that emits the final output can resolve an asset URL. `@we/app-framework` exports
+Only the bundler that emits the final output can resolve an asset URL. `@we/app-shell` exports
 `./solid` as source for the same reason.
 
 ## Peer dependencies and injection
@@ -180,4 +181,4 @@ runtime gets a *second* one, and reactivity silently stops crossing the boundary
 5. Add the workspace glob to `pnpm-workspace.yaml` if the parent isn't already matched.
 6. Add a `README.md`. For a `shared/` contract package it must state **what belongs here and what
    doesn't** — that section is the thing that stops the package re-accreting, which is how both
-   `app-framework` and `schema-shared` became hubs.
+   `app-shell` and `schema-shared` became hubs.

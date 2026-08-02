@@ -1,4 +1,4 @@
-import type { AppConfig, PlatformAdapter } from '@we/app-framework/shared';
+import type { AppConfig, PlatformAdapter } from '@we/app-shell/shared';
 
 import portMap from '../generated/seed-port-map.json';
 

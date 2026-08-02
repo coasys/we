@@ -193,7 +193,7 @@ The launcher automatically detects its mode based on the seed configuration:
 UI customizations are registered in `launcherUIRegistry`:
 
 ```typescript
-import { launcherUIRegistry } from '@we/app-framework/shared';
+import { launcherUIRegistry } from '@we/app-shell/shared';
 
 // Access current schemas
 const bootScreen = launcherUIRegistry.bootScreen;
@@ -212,7 +212,7 @@ const canSwitchTemplates = launcherUIRegistry.enableTemplateSwitching;
 ### File Structure
 
 ```
-packages/app-framework/src/shared/
+packages/app-shell/src/shared/
 ├── schemas/
 │   ├── defaults/               ← Default launcher UI fragments
 │   │   ├── BootScreen.schema.ts

@@ -152,7 +152,7 @@ the validator directly from TypeScript source via \`tsx\`, so no build step is r
 pnpm --filter @we/schema-shared validate
 \`\`\`
 
-This validates all \`.schema.ts\` files under \`packages/app-framework/src/shared/schemas/\`.
+This validates all \`.schema.ts\` files under \`packages/app-shell/src/shared/schemas/\`.
 For per-file validation or other options, see the **Schema Validation** section above.
 
 ---

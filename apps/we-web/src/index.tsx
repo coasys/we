@@ -1,8 +1,8 @@
 /* @refresh reload */
-// Import global styles from app-framework
-import '@we/app-framework/shared/index.scss';
+// Import global styles from app-shell
+import '@we/app-shell/shared/index.scss';
 
-import { App, PlatformProvider } from '@we/app-framework/solid';
+import { App, PlatformProvider } from '@we/app-shell/solid';
 import { render } from 'solid-js/web';
 
 import { ad4mConnector } from './platform/ad4mConnector';

@@ -19,7 +19,7 @@ string, so the URLs ship unchanged and 404 at runtime: the about page renders wi
 missing, and nothing fails loudly.
 
 Consumed as source, the **app's** bundler sees the asset imports, emits them into its own output, and
-rewrites the URLs. This is the same reason `@we/app-framework` exports `./solid` as source.
+rewrites the URLs. This is the same reason `@we/app-shell` exports `./solid` as source.
 
 Practical rule: **a package containing asset imports must be consumed as source.** Only the bundler
 that emits the final output can resolve an asset URL.

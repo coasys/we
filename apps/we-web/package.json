@@ -11,7 +11,7 @@
     "serve": "vite preview"
   },
   "dependencies": {
-    "@we/app-framework": "workspace:*",
+    "@we/app-shell": "workspace:*",
     "@coasys/ad4m": "0.11.0",
     "@coasys/ad4m-connect": "0.11.0",
     "solid-js": "^1.9.5"

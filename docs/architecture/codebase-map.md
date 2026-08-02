@@ -52,7 +52,7 @@ WE's data layer is [AD4M](https://ad4m.dev): agent-centric, local-first, peer-to
   `include`, relation accessors). CRUD conventions are in the generated **Developer Patterns**
   section; model authoring rules are in `packages/models/CONVENTIONS.md`.
 
-The Solid app (`@we/app-framework`) connects to an **AD4M executor** via `@coasys/ad4m` /
+The Solid app (`@we/app-shell`) connects to an **AD4M executor** via `@coasys/ad4m` /
 `ad4m-connect`; the executor holds perspectives and drives P2P sync. Stores wrap the client and
 expose reactive state to schemas.
 

@@ -7,7 +7,7 @@
  * It is a *separate* artifact from any query and from any backend. A third-party host authors a
  * manifest for its own entities; the AD4M adapter produces one from its own models.
  *
- * Relationship to the AD4M-specific manifest (`ModelManifestEntry` in `@we/app-framework`): that one
+ * Relationship to the AD4M-specific manifest (`ModelManifestEntry` in `@we/app-shell`): that one
  * is the AD4M adapter's richer, flatter form — properties and relations in one list, plus RDF
  * binding (`predicate`, `resolveLanguage`, `targetClass`). This neutral form is the semantic
  * projection it maps onto: scalars vs relations separated, keyed by name, no backend binding. The

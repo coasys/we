@@ -1,6 +1,6 @@
 import type { Ad4mClient } from '@coasys/ad4m';
 import { getAd4mConnect } from '@coasys/ad4m-connect';
-import type { BackendConnectionDetails, BackendConnector } from '@we/app-framework/shared';
+import type { BackendConnectionDetails, BackendConnector } from '@we/app-shell/shared';
 
 let ad4mCore: Awaited<ReturnType<typeof getAd4mConnect>>['core'] | null = null;
 

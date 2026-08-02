@@ -170,7 +170,7 @@ When `apps` array has **2+ apps**:
 ## Development Workflow
 
 1. **Edit seed file**: Modify `we/we-seed.json`
-2. **Rebuild**: `cd packages/app-framework && pnpm build`
+2. **Rebuild**: `cd packages/app-shell && pnpm build`
 3. **Restart dev server**: `cd apps/we-web && pnpm dev`
 4. **See changes**: Refresh browser
 
@@ -273,7 +273,7 @@ Result: Sidebar with Flux and My App navigation
 ```
 we/
   we-seed.json                     ← Your seed file (REQUIRED)
-  packages/app-framework/src/
+  packages/app-shell/src/
     shared/
       initializeIntegrations.ts    ← Loads seed, generates launcher
       integrationComposer.ts       ← Generates template from seed
@@ -285,7 +285,7 @@ we/
 ## Tips
 
 - **Seed file location**: Must be at `we/we-seed.json` (workspace root)
-- **Requires rebuild**: Changes require `pnpm build` in app-framework
+- **Requires rebuild**: Changes require `pnpm build` in app-shell
 - **Dev server ports**: Ensure no conflicts (Flux: 3030, WE: 3000, etc.)
 - **Path resolution**: Relative paths are from workspace root (`we/`)
 
@@ -293,7 +293,7 @@ we/
 
 **Launcher not updating?**
 
-- Rebuild app-framework: `cd packages/app-framework && pnpm build`
+- Rebuild app-shell: `cd packages/app-shell && pnpm build`
 - Restart dev server: `cd apps/we-web && pnpm dev`
 - Hard refresh browser (Cmd/Ctrl + Shift + R)
 

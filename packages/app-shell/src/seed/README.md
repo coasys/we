@@ -278,7 +278,7 @@ packages/app-framework/src/shared/schemas/integrations/{app-id}/
 After generating integration files, use the integration loader to dynamically load them at runtime:
 
 ```typescript
-import { loadIntegrations, getIntegration, getIntegrationUrl } from '@we/app-framework';
+import { loadIntegrations, getIntegration, getIntegrationUrl } from '@we/app-shell';
 
 // Load all integrations for current platform
 const integrations = await loadIntegrations('electron'); // or 'tauri' or 'web'
@@ -302,7 +302,7 @@ const url = getIntegrationUrl(flux.manifest, isDevelopment, flux.metadata?.seed?
 The integration loader works seamlessly with platform adapters:
 
 ```typescript
-import { loadIntegrations, getIntegrationUrl } from '@we/app-framework';
+import { loadIntegrations, getIntegrationUrl } from '@we/app-shell';
 
 // In your platform adapter
 async function loadExternalApps(platform: 'electron' | 'tauri' | 'web') {
@@ -326,7 +326,7 @@ async function loadExternalApps(platform: 'electron' | 'tauri' | 'web') {
 Check if an integration has specific capabilities:
 
 ```typescript
-import { hasCapability } from '@we/app-framework';
+import { hasCapability } from '@we/app-shell';
 
 const flux = await getIntegration('flux', 'electron');
 if (flux) {

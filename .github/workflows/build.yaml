@@ -118,7 +118,7 @@ jobs:
 
       # Non-blocking on first CI introduction.  Same rationale as Lint:
       # `dev` carries pre-existing failures in unrelated packages (e.g.
-      # an app-framework test imports a file that no longer exists) and
+      # an app-shell test imports a file that no longer exists) and
       # this PR is the first to actually run vitest in CI.  Surface the
       # failures in the run summary so a follow-up can clear the
       # backlog, but don't block the abort-controller work on unrelated

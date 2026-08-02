@@ -8,7 +8,7 @@
     "build": "we-build",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
-    "validate": "tsx src/cli/we-validate-schemas.ts ../../app-framework/src/shared/schemas/"
+    "validate": "tsx src/cli/we-validate-schemas.ts ../../app-shell/src/shared/schemas/"
   },
   "bin": {
     "we-validate-schemas": "./dist/cli/we-validate-schemas.js"

@@ -1,10 +1,10 @@
-# @we/app-framework
+# @we/app-shell
 
 Core framework package for the WE launcher applications. Provides platform-agnostic UI components, stores, and utilities that are shared across all launcher implementations (web, Electron, Tauri).
 
 ## What This Package Does
 
-The `@we/app-framework` serves as the foundation for building WE launcher applications across different platforms. It provides:
+The `@we/app-shell` serves as the foundation for building WE launcher applications across different platforms. It provides:
 
 - **Platform Abstraction Layer**: Common interface for different runtime environments (web, Electron, Tauri)
 - **SolidJS Framework Integration**: Pre-configured SolidJS app with routing, stores, and components
@@ -66,14 +66,14 @@ src/
 1. **Install the package:**
 
 ```bash
-pnpm add @we/app-framework
+pnpm add @we/app-shell
 ```
 
 2. **Create a platform adapter:**
 
 ```typescript
 // src/platform/webAdapter.ts
-import type { PlatformAdapter } from '@we/app-framework/shared';
+import type { PlatformAdapter } from '@we/app-shell/shared';
 
 export const webAdapter: PlatformAdapter = {
   async buildAd4mClient() {
@@ -89,7 +89,7 @@ export const webAdapter: PlatformAdapter = {
 ```typescript
 // src/main.tsx
 import { render } from 'solid-js/web';
-import { App, PlatformProvider } from '@we/app-framework/solid';
+import { App, PlatformProvider } from '@we/app-shell/solid';
 import { webAdapter } from './platform/webAdapter';
 
 render(
@@ -107,7 +107,7 @@ render(
 Access the platform adapter anywhere in your app:
 
 ```typescript
-import { usePlatform } from '@we/app-framework/shared';
+import { usePlatform } from '@we/app-shell/shared';
 
 function MyComponent() {
   const platform = usePlatform();
@@ -123,7 +123,7 @@ function MyComponent() {
 ### Accessing Stores
 
 ```typescript
-import { useAdamStore } from '@we/app-framework/solid';
+import { useAdamStore } from '@we/app-shell/solid';
 
 function MyComponent() {
   const adam = useAdamStore();
@@ -143,7 +143,7 @@ function MyComponent() {
 
 ## Package Exports
 
-### `@we/app-framework/shared`
+### `@we/app-shell/shared`
 
 Platform-agnostic types, utilities, and schemas. Use this for:
 
@@ -153,7 +153,7 @@ Platform-agnostic types, utilities, and schemas. Use this for:
 - Theme registries
 - Shared utilities
 
-### `@we/app-framework/solid`
+### `@we/app-shell/solid`
 
 SolidJS framework integration. Use this for:
 
@@ -162,7 +162,7 @@ SolidJS framework integration. Use this for:
 - Application stores
 - UI components
 
-### `@we/app-framework/shared/index.scss`
+### `@we/app-shell/shared/index.scss`
 
 Shared styles and design system imports.
 

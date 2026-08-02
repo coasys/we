@@ -45,8 +45,8 @@ Separately: after wiring all of this up, edits were persisting correctly but not
 
 - [x] `pnpm --filter @we/block-shared exec tsc --noEmit` — clean
 - [x] `pnpm --filter @we/block-solid exec tsc --noEmit` — only pre-existing, unrelated baseline error (`LexicalNode` name resolution in `BlockKeyboardPlugin.tsx`)
-- [x] `pnpm --filter @we/app-framework exec tsc --noEmit` — only pre-existing, unrelated baseline errors (`AdamStore` module resolution, `integrationLoader` test, `commands` property in `validator.test.ts`)
-- [x] `pnpm --filter @we/block-shared build` / `pnpm --filter @we/block-solid build` / `pnpm --filter @we/app-framework build` — all succeed
+- [x] `pnpm --filter @we/app-shell exec tsc --noEmit` — only pre-existing, unrelated baseline errors (`AdamStore` module resolution, `integrationLoader` test, `commands` property in `validator.test.ts`)
+- [x] `pnpm --filter @we/block-shared build` / `pnpm --filter @we/block-solid build` / `pnpm --filter @we/app-shell build` — all succeed
 - [x] `we-validate-schemas` on `HeaderLayout`/`SidebarLayout` (which transitively pull in `PostsList.ts`) — no schema issues
 - [x] Manual: edit a post and confirm the change appears in the post list immediately, without navigating away/refreshing (this was the `BlockRenderer` bug — confirmed fixed)
 - [ ] Manual: edit a post containing an image — confirm the image is *updated*, not recreated (check its AD4M id is unchanged before/after save)

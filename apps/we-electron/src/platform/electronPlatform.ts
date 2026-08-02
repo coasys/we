@@ -1,4 +1,4 @@
-import type { AppConfig, PlatformAdapter } from '@we/app-framework/shared';
+import type { AppConfig, PlatformAdapter } from '@we/app-shell/shared';
 
 // Import auto-generated port mapping
 import portMap from '../../electron/seed-port-map.json';

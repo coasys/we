@@ -17,7 +17,7 @@ This plan **only** covers the WE-side client. It does not touch AD4M's native AI
 
 ## Current State (as of investigation)
 
-All of this lives in one file: `packages/app-framework/src/frameworks/solid/stores/AiStore.tsx` (1594 lines). No AI SDK is installed (`@anthropic-ai/sdk` is not a dependency) — everything is hand-rolled JSON against a REST endpoint, which is actually good news for portability: there's no typed SDK object model to unwind.
+All of this lives in one file: `packages/app-shell/src/frameworks/solid/stores/AiStore.tsx` (1594 lines). No AI SDK is installed (`@anthropic-ai/sdk` is not a dependency) — everything is hand-rolled JSON against a REST endpoint, which is actually good news for portability: there's no typed SDK object model to unwind.
 
 | Piece                   | Location                                                                           | Notes                                                                                                                                                      |
 | ----------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -29,7 +29,7 @@ All of this lives in one file: `packages/app-framework/src/frameworks/solid/stor
 | Agentic tool loop       | `AiStore.tsx:1007-~1200` (`sendViaClaude`)                                         | Up to 5 continuation turns; builds conversation history as Anthropic content-block arrays; applies `update_schema` patches                                 |
 | Message building        | `AiStore.tsx:1356-1393` (`buildClaudeMessages`)                                    | Embeds full template JSON + request into each user turn                                                                                                    |
 | Entry point             | `AiStore.tsx:829` (`sendMessage`)                                                  | Real entry point — `we/CLAUDE.md`'s documented `handleSchemaPrompt` name is stale and should be corrected separately                                       |
-| Key-entry UI            | `packages/app-framework/src/frameworks/solid/components/editor/AiPanel.tsx:74-110` | Single-field gate: "Enter your Anthropic API key..." — needs to become a small provider-config form                                                        |
+| Key-entry UI            | `packages/app-shell/src/frameworks/solid/components/editor/AiPanel.tsx:74-110` | Single-field gate: "Enter your Anthropic API key..." — needs to become a small provider-config form                                                        |
 | Settings persistence    | `AdamStore.tsx:~753-760`                                                           | `setApiKey` → `Object.assign(settings, updates); await settings.save()` via the AD4M model directly — no separate backend call, this plumbing stays as-is  |
 
 Feature surface actually in use is narrow: no extended thinking, no multi-block/complex tool responses, no server-side tools, one tool definition, one cache breakpoint. This is a shallow integration, which makes the swap more contained than the file size suggests.

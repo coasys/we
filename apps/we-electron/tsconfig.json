@@ -21,8 +21,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["../../packages/app-framework/src/shared/*"],
-      "@solid/*": ["../../packages/app-framework/src/frameworks/solid/*"]
+      "@shared/*": ["../../packages/app-shell/src/shared/*"],
+      "@solid/*": ["../../packages/app-shell/src/frameworks/solid/*"]
     }
   },
   "include": ["src"]

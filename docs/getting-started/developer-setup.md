@@ -226,7 +226,7 @@ we/
 │   ├── setup-workspace.cjs       # Setup automation
 │   └── validate-seed.cjs         # Validation tool
 ├── packages/
-│   ├── app-framework/            # Core framework
+│   ├── app-shell/               # WE's own app host — stores, registries, shell chrome
 │   └── cli/                      # Build tooling
 └── apps/
     ├── we-web/                   # Web app

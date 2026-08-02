@@ -19,7 +19,7 @@ Shell-level `SchemaNode` / `TemplateSchema` values, and the assets they referenc
 
 ## What doesn't
 
-Anything with behaviour. `SchemaTests` stays in `app-framework` for exactly this reason — its store
+Anything with behaviour. `SchemaTests` stays in `app-shell` for exactly this reason — its store
 and mutation actions are real code driving models and signals, so it is a developer surface rather
 than content.
 
@@ -37,7 +37,7 @@ string, so the URLs ship unchanged and 404 at runtime: the about page renders wi
 missing, and nothing fails loudly.
 
 Consumed as source, the **app's** bundler sees the asset imports, emits them into its own output, and
-rewrites the URLs. This is the same reason `@we/app-framework` exports `./solid` as source.
+rewrites the URLs. This is the same reason `@we/app-shell` exports `./solid` as source.
 
 Practical rule: **a package containing asset imports must be consumed as source.** Only the bundler
 that emits the final output can resolve an asset URL.

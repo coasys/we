@@ -25,7 +25,7 @@
     "@apollo/client": "^3.7.10",
     "@coasys/ad4m": "0.11.0",
     "@solidjs/router": "^0.15.3",
-    "@we/app-framework": "workspace:*",
+    "@we/app-shell": "workspace:*",
     "electron-context-menu": "^4.1.1",
     "express": "^5.2.1",
     "graphql": "15.7.2",
