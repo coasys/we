@@ -8,8 +8,9 @@ import '@we/block-solid/styles';
 // App
 export { default as App } from './App';
 
-// Platform abstraction
+// Platform abstraction — the contracts are framework-neutral, the provider is Solid's
 export * from '../../shared/platform';
+export * from './providers/PlatformProvider';
 
 // Stores
 export * from './stores';

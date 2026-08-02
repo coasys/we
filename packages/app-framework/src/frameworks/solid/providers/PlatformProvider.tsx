@@ -1,10 +1,10 @@
-import { componentRegistry } from '@solid/registries/componentRegistry';
+import type { BackendConnector } from '@shared/backend/types';
+import { initializeIntegrations } from '@shared/initializeIntegrations';
+import { PlatformAdapter } from '@shared/platform/types';
+import { createModuleStoreDeps } from '@shared/registries/moduleHostServices';
 import { createContext, createEffect, createSignal, ParentComponent, useContext } from 'solid-js';
 
-import type { BackendConnector } from '../backend/types';
-import { initializeIntegrations } from '../initializeIntegrations';
-import { createModuleStoreDeps } from '../registries/moduleHostServices';
-import { PlatformAdapter } from './types';
+import { componentRegistry } from '../registries/componentRegistry';
 
 const PlatformContext = createContext<PlatformAdapter>();
 const BackendContext = createContext<BackendConnector>();

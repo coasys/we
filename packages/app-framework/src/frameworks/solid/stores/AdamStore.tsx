@@ -1,5 +1,4 @@
 import { Ad4mClient, Agent, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
-import { useBackend, usePlatform } from '@shared/platform';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { createAd4mEphemeralPort } from '@we/backend-ad4m';
@@ -36,6 +35,8 @@ import {
   Space,
 } from '@we/models';
 import type { EphemeralPort } from '@we/schema-shared';
+
+import { useBackend, usePlatform } from '../providers/PlatformProvider';
 
 // Space.avatar/coverImage are typed as string (resolved data URI on read) but accept FileData on write.
 // This input type reflects the actual write-path contract.
