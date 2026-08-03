@@ -54,7 +54,7 @@ export function EditorHostAdapter(props: ParentProps) {
 
     identity: {
       me: () => sessionStore.me(),
-      currentPerspective: () => datasetStore.currentDataset(),
+      currentPerspective: () => datasetStore.currentDataset()?.handle ?? null,
       orderedSidebarItems: () => space.orderedSidebarItems(),
       marketplaceJoined: () => datasetStore.marketplaceJoined(),
       spaceDefaultTemplateId: () => space.spaceDefaultTemplateId(),

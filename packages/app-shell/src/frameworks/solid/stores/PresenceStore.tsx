@@ -132,7 +132,7 @@ export function PresenceStoreProvider(props: ParentProps) {
   // retaining its peers. Retention without subscription only preserves state that is already past its
   // TTL, and the join handshake repopulates in one round trip on return anyway.
   createEffect(() => {
-    const perspective = datasetStore.currentDataset();
+    const perspective = datasetStore.currentDataset()?.handle;
     const did = session.me()?.did;
 
     source?.stop();

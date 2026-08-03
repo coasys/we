@@ -110,7 +110,8 @@ export default function TemplateProvider() {
 
   const boundBindings = createMemo(() =>
     sessionStore.backendPorts()?.dataBindings({
-      currentDataset: datasetStore.currentDataset,
+      // The backend's own handle, not the shell's ref — these bindings feed model calls.
+      currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
       currentDatasetModels: datasetStore.currentDatasetModels,
       profiles: profileStore.profiles,
       fetchProfile: profileStore.fetchProfile,

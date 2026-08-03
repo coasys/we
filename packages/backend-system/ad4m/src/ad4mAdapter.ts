@@ -31,6 +31,7 @@ import type { PerspectiveProxy } from '@coasys/ad4m';
 import type {
   AdapterCapabilities,
   CapabilityGap,
+  DatasetHandle,
   EphemeralPort,
   ModelClass as RendererModelClass,
   QueryAdapter,
@@ -58,10 +59,25 @@ import type { ModelManifestEntry } from './manifestTypes';
  * very object arriving back here. (Had the contract insisted on a structural `{ id }` handle, this
  * would instead have to flatten the proxy and re-resolve it on every query.)
  */
+/**
+ * Guard against a host passing a *described* dataset (a `DatasetRef`, which wraps the handle)
+ * where the backend's own handle is required. `DatasetHandle` is `unknown` by contract, so the
+ * compiler cannot catch this; without the guard the failure surfaces deep inside the SDK as
+ * "modelSubscribe is not a function", pointing nowhere near the mistake.
+ */
+function asPerspective(dataset: DatasetHandle): PerspectiveProxy {
+  if (dataset && typeof dataset === 'object' && 'handle' in dataset) {
+    throw new Error(
+      'AD4M adapter received a DatasetRef where a dataset handle was expected — pass `ref.handle`, not the ref.',
+    );
+  }
+  return dataset as PerspectiveProxy;
+}
+
 export function toRendererModel(Model: Ad4mModelClass): RendererModelClass {
   return {
     query: (dataset, opts) =>
-      Model.query(dataset as PerspectiveProxy, opts as Parameters<typeof Model.query>[1]) as ReturnType<
+      Model.query(asPerspective(dataset), opts as Parameters<typeof Model.query>[1]) as ReturnType<
         RendererModelClass['query']
       >,
     findAll: (dataset, opts, ctl) =>
