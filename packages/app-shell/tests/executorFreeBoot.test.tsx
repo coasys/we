@@ -1,20 +1,23 @@
 /**
- * The executor-free boot suite: the REAL session/dataset/profile/space stores and the real
- * BootController, mounted against the in-memory backend ports — no AD4M executor anywhere.
+ * The executor-free boot suite: the REAL session/dataset/profile/space stores, the real
+ * BootController, and real entities — no AD4M executor anywhere.
  *
- * This is what the backend contract exists to make possible: boot (already-unlocked and
- * lock→login flows), system-dataset creation, dataset switching, and space create/publish/join/
- * remove all run as vitest tests. The only stub left is the model layer (Ad4mModel statics are
- * executor RPC by construction — neutralizing them is the entity-engine phase); every port runs
- * the real in-memory implementation, supplied through the connector exactly as a host would.
+ * Boot (already-unlocked and lock→login flows), system-dataset creation, dataset switching, and
+ * space create/publish/join/remove all run as vitest tests. Entities used to be stubbed here,
+ * which meant every assertion about stored data was really an assertion about the stub: a space
+ * "created" by a `vi.fn()` returning `{...data, id}` proves the store called something, not that
+ * anything was written. They are now compiled from the core manifest and backed by rows, so the
+ * suite can read data back the way the app does — and a store that writes the wrong field, or
+ * writes nothing at all, fails here rather than in a browser.
  */
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
+import { AgentSettings, Space } from '@we/models';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
-// The platform provider supplies the in-memory backend; the model layer and the AD4M-only
-// helpers are stubbed; the template/theme/route stores (not under test) become minimal fakes.
+// The platform provider supplies the in-memory backend; the template/theme/route stores (not
+// under test) become minimal fakes. Nothing about the data layer is mocked.
 
 let lifecycle: InMemoryLifecycle;
 let agentOptions: InMemoryAgentOptions;
@@ -52,29 +55,6 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
     clearSpaceTheme: () => {},
   }),
 }));
-
-// Fake Space/AgentSettings statics — the model layer is executor RPC; see the header comment.
-const fakeSettings = { datasetOrder: '', claudeApiKey: '', save: vi.fn(async () => {}) };
-let spaceCounter = 0;
-
-vi.mock('@we/models', async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  return {
-    ...actual,
-    AgentSettings: {
-      findOne: vi.fn(async () => fakeSettings),
-      create: vi.fn(async () => fakeSettings),
-    },
-    Space: {
-      findOne: vi.fn(async () => null),
-      findAll: vi.fn(async () => []),
-      create: vi.fn(async (_p: unknown, data: Record<string, unknown>) => ({ ...data, id: `space-${++spaceCounter}` })),
-      update: vi.fn(async () => ({})),
-      query: () => ({ subscribe: async (cb: (r: unknown[]) => void) => (cb([]), []), dispose: () => {} }),
-    },
-    LocationBlock: { create: vi.fn(async () => ({})), findAll: vi.fn(async () => []) },
-  };
-});
 
 // ── Harness ───────────────────────────────────────────────────────────────────
 import { BootController } from '../src/frameworks/solid/providers/BootController';
@@ -219,5 +199,59 @@ describe('dataset lifecycle through the real stores', () => {
     lifecycle.removeRemotely(target.id);
     await vi.waitFor(() => expect(stores.datasets.datasets().some((d) => d.id === target.id)).toBe(false));
     expect(stores.spaces.mySpaces()).toEqual([]);
+  }, 10000);
+});
+
+describe('what the stores actually wrote', () => {
+  // These assertions were impossible while entities were stubbed: a stubbed `create` returns
+  // whatever it was handed, so it agrees with any store, including one that stored the wrong
+  // thing. Reading it back through the same import the app uses is the whole point.
+
+  it('writes a space into its own dataset, with the fields the caller gave', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Readable', 'written by the store', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Readable')!;
+
+    const spaces = await Space.findAll(ref.handle as never);
+    expect(spaces).toHaveLength(1);
+    expect(spaces[0].name).toBe('Readable');
+    expect(spaces[0].description).toBe('written by the store');
+    expect(spaces[0].author).toBe('did:test:james');
+  }, 10000);
+
+  it('persists sidebar order as settings, not just as store state', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Ordered', 'x', 'personal', 'hidden');
+    const created = (await lifecycle.list()).find((d) => d.name === 'Ordered')!;
+    const root = (await lifecycle.list()).find((d) => d.name === 'we-root')!;
+
+    // The store reports an order; this checks it survived as data an agent carries between
+    // sessions, in the dataset that holds settings.
+    const settings = await AgentSettings.findOne(root.handle as never);
+    expect(settings?.datasetOrder).toContain(created.id);
+    expect(stores.datasets.getDatasetOrder()).toContain(created.id);
+  }, 10000);
+
+  it('records a shared space by its global id, and a personal one without', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('Public', 'x', 'shared', 'listed');
+    await stores.spaces.createSpace('Private', 'x', 'personal', 'hidden');
+
+    const shared = (await lifecycle.list()).find((d) => d.name === 'Public')!;
+    const personal = (await lifecycle.list()).find((d) => d.name === 'Private')!;
+
+    const [publicSpace] = await Space.findAll(shared.handle as never);
+    const [privateSpace] = await Space.findAll(personal.handle as never);
+
+    // `url` carries the shared id — the fact `Space.access` used to duplicate.
+    expect(publicSpace.url).toBe(shared.sharedId);
+    expect(privateSpace.url).toBeFalsy();
+    expect(publicSpace.discovery).toBe('listed');
   }, 10000);
 });
