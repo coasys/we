@@ -84,7 +84,8 @@ export function isProfileEmpty(summary: AgentProfileSummary): boolean {
  * Fetch and parse an agent's profile from their public AD4M perspective.
  * Reads WE format (we://profile source) first, falls back to Flux/SIOC format.
  */
-export async function getProfile(did: string, client: Ad4mClient): Promise<AgentProfileSummary> {
+export async function getProfile(did: string, backendClient: unknown): Promise<AgentProfileSummary> {
+  const client = backendClient as Ad4mClient;
   const cleanedDid = did.replace('did://', '');
   const result: AgentProfileSummary = { did: cleanedDid, firstName: '', lastName: '', handle: '', bio: '' };
 
@@ -181,8 +182,9 @@ export async function getProfile(did: string, client: Ad4mClient): Promise<Agent
  */
 export async function publishProfileToPublicPerspective(
   fields: PublishProfileFields,
-  client: Ad4mClient,
+  backendClient: unknown,
 ): Promise<void> {
+  const client = backendClient as Ad4mClient;
   const me = await client.agent.me();
   const existingLinks: LinkExpression[] = me.perspective?.links ?? [];
 
@@ -322,3 +324,12 @@ export function summaryFromAgentProfile(
 
 // Re-export so callers only need to import from this module
 export { FILE_STORAGE_LANGUAGE };
+
+/**
+ * Store a serialized file payload as an expression in the file-storage language and return its
+ * expression URL. Thin adapter wrapper so the shell never touches the client directly.
+ */
+export async function createFileExpression(backendClient: unknown, serialized: string): Promise<string> {
+  const client = backendClient as Ad4mClient;
+  return client.expression.create(serialized, FILE_STORAGE_LANGUAGE);
+}

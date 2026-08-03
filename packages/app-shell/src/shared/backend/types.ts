@@ -1,5 +1,3 @@
-import type { Ad4mClient } from '@coasys/ad4m';
-
 /**
  * Raw connection details for the running executor, for callers that need to reach it directly
  * rather than through the client — currently the embedded-app handshake, which forwards them into
@@ -25,8 +23,11 @@ export interface BackendConnectionDetails {
  * every host that wanted `isDesktop` also named the data layer.
  */
 export interface BackendConnector {
-  /** Build and return a configured client. Called once during boot. */
-  connect(): Promise<Ad4mClient>;
+  /**
+   * Build and return a configured client, opaque to the shell. Called once during boot; the shell
+   * hands it to the backend adapter's port factories and never inspects it itself.
+   */
+  connect(): Promise<unknown>;
 
   /**
    * Optional: the raw connection details, for hosts that must hand them to something other than the

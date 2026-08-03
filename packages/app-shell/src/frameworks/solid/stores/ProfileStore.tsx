@@ -8,7 +8,7 @@
  */
 import {
   type AgentProfileSummary,
-  FILE_STORAGE_LANGUAGE,
+  createFileExpression,
   getProfile,
   isProfileEmpty,
   type PublishProfileFields,
@@ -105,7 +105,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     // data_base64 from compressImageToFileData is raw base64 (no "data:" prefix) — rebuild the data URI
     // the same way resolveExpressionToDataUri does when reading it back after a refetch.
     const dataUri = `data:${fileData.file_type};base64,${fileData.data_base64}`;
-    const expressionUrl = await client.expression.create(JSON.stringify(fileData), FILE_STORAGE_LANGUAGE);
+    const expressionUrl = await createFileExpression(client, JSON.stringify(fileData));
 
     setProfiles((prev) => {
       const existing = prev.find((a) => a.did === myDid);

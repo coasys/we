@@ -26,16 +26,15 @@ export function BootController() {
   const initialPath = window.location.pathname;
 
   session.onSessionUnlocked(async () => {
-    const client = session.client();
-    if (!client) return;
+    if (!session.lifecycle()) return;
 
     // initSystemDatasets must complete before loadDatasets/loadSpaces so that the
     // dataset snapshot always includes we-root and we-test — even on first boot when
     // they don't exist yet and have to be created.
-    await Promise.all([session.refreshMe(client), datasetStore.initSystemDatasets(client)]);
-    await datasetStore.loadDatasets(client);
+    await Promise.all([session.refreshMe(), datasetStore.initSystemDatasets()]);
+    await datasetStore.loadDatasets();
     await spaceStore.loadSpaces();
-    datasetStore.subscribeToChanges(client);
+    datasetStore.subscribeToChanges();
     session.markReady();
 
     // Seed own profile into the cache from the public dataset

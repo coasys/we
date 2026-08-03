@@ -96,6 +96,10 @@ export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): In
       return toRef(e);
     },
 
+    async members() {
+      return [];
+    },
+
     subscribe(handlers) {
       subscribers.add(handlers);
       return () => subscribers.delete(handlers);

@@ -22,7 +22,8 @@ function toRef(p: PerspectiveProxy): DatasetRef {
   };
 }
 
-export function createAd4mDatasetLifecycle(client: Ad4mClient): DatasetLifecyclePort {
+export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifecyclePort {
+  const client = backendClient as Ad4mClient;
   return {
     async list() {
       return (await client.perspective.all()).map(toRef);
@@ -64,6 +65,10 @@ export function createAd4mDatasetLifecycle(client: Ad4mClient): DatasetLifecycle
       return toRef(joined);
     },
 
+    async members(id) {
+      return client.neighbourhood.otherAgents(id);
+    },
+
     /**
      * AD4M's listener API has no detach; the returned unsubscribe guards the callbacks instead.
      * In practice the shell subscribes once for the app's lifetime.
@@ -99,7 +104,8 @@ export function createAd4mDatasetLifecycle(client: Ad4mClient): DatasetLifecycle
   };
 }
 
-export function createAd4mAgentSession(client: Ad4mClient): AgentSessionPort {
+export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort {
+  const client = backendClient as Ad4mClient;
   return {
     async status() {
       const status = await client.agent.status();

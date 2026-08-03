@@ -1,4 +1,3 @@
-import type { PerspectiveProxy } from '@coasys/ad4m';
 import { queryIRFlag } from '@shared/queryIRFlag';
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import { slotRegistry } from '@shared/registries/slotRegistry';
@@ -21,6 +20,7 @@ import { Route, Router } from '@solidjs/router';
 import { createAd4mDataBindings } from '@we/backend-ad4m';
 import { getModel } from '@we/backend-ad4m';
 import { toastService } from '@we/components/solid';
+import type { DatasetProxy } from '@we/models';
 import type { TemplateSchema } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
@@ -117,7 +117,7 @@ export default function TemplateProvider() {
 
   // Resolves a dot-path string like 'datasetStore.rootDataset' against the stores object.
   // Only called at action-dispatch time, so `stores` is always fully initialized.
-  function resolvePerspective(path?: string): PerspectiveProxy | null {
+  function resolvePerspective(path?: string): DatasetProxy | null {
     if (!path) return null;
     const [storeName, ...rest] = path.split('.');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

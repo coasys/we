@@ -1,35 +1,57 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { PerspectiveProxy } from '@coasys/ad4m';
-import { Ad4mModel, HasMany, Model, Property } from '@coasys/ad4m';
 import { queryIRFlag } from '@shared/queryIRFlag';
-import { registerModel } from '@we/backend-ad4m';
+import { compileManifest, registerModel } from '@we/backend-ad4m';
+import type { DatasetProxy } from '@we/models';
 import { type Accessor, createEffect, createSignal } from 'solid-js';
 
 // ---------------------------------------------------------------------------
-// Test model — lightweight AD4M model for $query testing
+// Test models — declared as a manifest and compiled, not hand-decorated.
+//
+// This is the manifest compiler exercised inside the real app: the same entities the schema-tests
+// page always used, now *declared* (with predicate overrides pinning the original predicates, so
+// previously created test data keeps resolving). The child model exists so the query page can test
+// the relation patterns (count / single projection / include) — the trickiest IR mappings.
 // ---------------------------------------------------------------------------
 
-// A child model, so the query page can test the relation patterns (count / single projection /
-// include) deterministically — the trickiest IR mappings — against real AD4M.
-@Model({ name: 'TestChild' })
-export class TestChild extends Ad4mModel {
-  @Property({ through: 'we://test_child_label' }) label: string = '';
-  @Property({ through: 'we://test_child_owner' }) owner: string = '';
-}
+const testModels = compileManifest(
+  {
+    version: '1',
+    entities: {
+      TestChild: {
+        properties: { label: { type: 'string' }, owner: { type: 'string' } },
+        relations: {},
+      },
+      TestItem: {
+        properties: {
+          name: { type: 'string', required: true },
+          status: { type: 'string' },
+          category: { type: 'string' },
+        },
+        relations: { children: { target: 'TestChild', cardinality: 'many' } },
+      },
+    },
+  },
+  {
+    moduleId: 'test',
+    predicates: {
+      'TestChild.label': 'we://test_child_label',
+      'TestChild.owner': 'we://test_child_owner',
+      'TestItem.name': 'we://test_name',
+      'TestItem.status': 'we://test_status',
+      'TestItem.category': 'we://test_category',
+      'TestItem.children': 'we://test_child',
+    },
+  },
+);
 
-@Model({ name: 'TestItem' })
-export class TestItem extends Ad4mModel {
-  @Property({ through: 'we://test_name', required: true }) name: string = '';
-  @Property({ through: 'we://test_status' }) status: string = '';
-  @Property({ through: 'we://test_category' }) category: string = '';
-  @HasMany(() => TestChild, { through: 'we://test_child' }) children: string[] = [];
-}
+export const TestChild = testModels.TestChild;
+export const TestItem = testModels.TestItem;
 
 // ---------------------------------------------------------------------------
 // Store factory — test-oriented signals for integration test template
 // ---------------------------------------------------------------------------
 
-export function createTestStore(testPerspective: Accessor<PerspectiveProxy | null>) {
+export function createTestStore(testPerspective: Accessor<DatasetProxy | null>) {
   registerModel('TestItem', TestItem as any);
   registerModel('TestChild', TestChild as any);
 
@@ -150,7 +172,7 @@ export function createTestStore(testPerspective: Accessor<PerspectiveProxy | nul
   }
 
   // ---- AD4M perspective (lazy init for $query testing) ----
-  const [perspective, setPerspective] = createSignal<PerspectiveProxy | null>(null);
+  const [perspective, setPerspective] = createSignal<DatasetProxy | null>(null);
 
   const seedItems = [
     { name: 'Alpha', status: 'active', category: 'A' },

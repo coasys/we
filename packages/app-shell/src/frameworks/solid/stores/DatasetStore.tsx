@@ -6,7 +6,7 @@
  * the active dataset (with its registered models and we-space status), the system datasets
  * (root/test/global/marketplace), and the agent's root-dataset settings.
  *
- * The store's public shape is backend-neutral; its internals speak `PerspectiveProxy` directly —
+ * The store's public shape is backend-neutral; its internals speak `DatasetProxy` directly —
  * the declared coupling this package holds until a dataset-lifecycle port exists in the backend
  * contract.
  *
@@ -14,7 +14,6 @@
  * which layers on top of this store and reacts to dataset changes via `onDatasetRemoved` and the
  * `currentDataset` signal.
  */
-import { Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
@@ -30,7 +29,7 @@ import {
   isModelRegistered,
   registerDynamicModels,
 } from '@we/backend-ad4m';
-import { AgentSettings, Space } from '@we/models';
+import { AgentSettings, type DatasetProxy, Space } from '@we/models';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useSessionStore } from './SessionStore';
@@ -39,9 +38,9 @@ export type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-ad4m
 
 export interface DatasetStore {
   // State
-  datasets: Accessor<PerspectiveProxy[]>;
-  orderedDatasets: Accessor<PerspectiveProxy[]>;
-  currentDataset: Accessor<PerspectiveProxy | null>;
+  datasets: Accessor<DatasetProxy[]>;
+  orderedDatasets: Accessor<DatasetProxy[]>;
+  currentDataset: Accessor<DatasetProxy | null>;
   currentDatasetUri: Accessor<string | undefined>;
   currentDatasetCid: Accessor<string | undefined>;
   currentDatasetModels: Accessor<ModelManifestEntry[]>;
@@ -49,10 +48,10 @@ export interface DatasetStore {
   isWeSpace: Accessor<boolean>;
   joinedSpaceCids: Accessor<string[]>;
   systemDatasetUuids: Accessor<string[]>;
-  rootDataset: Accessor<PerspectiveProxy | null>;
-  testDataset: Accessor<PerspectiveProxy | null>;
-  globalDataset: Accessor<PerspectiveProxy | null>;
-  marketplaceDataset: Accessor<PerspectiveProxy | null>;
+  rootDataset: Accessor<DatasetProxy | null>;
+  testDataset: Accessor<DatasetProxy | null>;
+  globalDataset: Accessor<DatasetProxy | null>;
+  marketplaceDataset: Accessor<DatasetProxy | null>;
   agentSettings: Accessor<AgentSettings | null>;
   globalSpaceConfigured: Accessor<boolean>;
   globalSpaceId: () => string | null;
@@ -75,14 +74,14 @@ export interface DatasetStore {
 
   // Wiring for SpaceStore and the boot controller (not schema-facing)
   /** Eagerly add a just-created dataset to the list and persist its ordering slot. */
-  addDataset: (p: PerspectiveProxy) => Promise<void>;
+  addDataset: (p: DatasetProxy) => Promise<void>;
   /** Add a just-joined dataset, adopting it as the global/marketplace dataset if the seed says so. */
-  adoptJoinedDataset: (p: PerspectiveProxy) => void;
+  adoptJoinedDataset: (p: DatasetProxy) => void;
   /** Register a callback fired after a dataset is removed (locally or by any client). */
   onDatasetRemoved: (cb: (uuid: string) => void) => void;
-  initSystemDatasets: (client: Ad4mClient) => Promise<void>;
-  loadDatasets: (client: Ad4mClient) => Promise<void>;
-  subscribeToChanges: (client: Ad4mClient) => void;
+  initSystemDatasets: () => Promise<void>;
+  loadDatasets: () => Promise<void>;
+  subscribeToChanges: () => void;
   getDatasetOrder: () => string[];
 }
 
@@ -91,14 +90,14 @@ const DatasetContext = createContext<DatasetStore>();
 export function DatasetStoreProvider(props: ParentProps) {
   const session = useSessionStore();
 
-  const [datasets, setDatasets] = createSignal<PerspectiveProxy[]>([]);
-  const [currentDataset, setCurrentDataset] = createSignal<PerspectiveProxy | null>(null);
+  const [datasets, setDatasets] = createSignal<DatasetProxy[]>([]);
+  const [currentDataset, setCurrentDataset] = createSignal<DatasetProxy | null>(null);
   const [currentDatasetModels, setCurrentDatasetModels] = createSignal<ModelManifestEntry[]>([]);
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
-  const [rootDataset, setRootDataset] = createSignal<PerspectiveProxy | null>(null);
-  const [testDataset, setTestDataset] = createSignal<PerspectiveProxy | null>(null);
-  const [globalDataset, setGlobalDataset] = createSignal<PerspectiveProxy | null>(null);
-  const [marketplaceDataset, setMarketplaceDataset] = createSignal<PerspectiveProxy | null>(null);
+  const [rootDataset, setRootDataset] = createSignal<DatasetProxy | null>(null);
+  const [testDataset, setTestDataset] = createSignal<DatasetProxy | null>(null);
+  const [globalDataset, setGlobalDataset] = createSignal<DatasetProxy | null>(null);
+  const [marketplaceDataset, setMarketplaceDataset] = createSignal<DatasetProxy | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
 
   const removedCallbacks: Array<(uuid: string) => void> = [];
@@ -188,58 +187,52 @@ export function DatasetStoreProvider(props: ParentProps) {
     setAgentSettings(settings);
   }
 
-  function subscribeToChanges(client: Ad4mClient): void {
-    client.perspective.addPerspectiveAddedListener((handle) => {
-      if (datasets().some((p) => p.uuid === handle.uuid)) return null;
-      client.perspective.byUUID(handle.uuid).then((perspective) => {
-        if (!perspective) return;
+  function subscribeToChanges(): void {
+    const lifecycle = session.lifecycle();
+    if (!lifecycle) return;
+    lifecycle.subscribe({
+      onAdded: (ref) => {
+        const perspective = ref.handle as DatasetProxy;
+        if (datasets().some((p) => p.uuid === ref.id)) return;
         // Log unexpected datasets so we can identify and filter system ones
         const meAgent = session.me();
         const publicPerspectiveUuid = (meAgent?.perspective as { uuid?: string } | undefined)?.uuid;
-        if (publicPerspectiveUuid && perspective.uuid === publicPerspectiveUuid) {
-          console.log(
-            'DatasetStore: suppressing agent public perspective from sidebar',
-            perspective.name,
-            perspective.uuid,
-          );
+        if (publicPerspectiveUuid && ref.id === publicPerspectiveUuid) {
+          console.log('DatasetStore: suppressing agent public perspective from sidebar', ref.name, ref.id);
           return;
         }
-        if (perspective.name?.toLowerCase().startsWith('agent perspective')) {
-          console.log('DatasetStore: suppressing agent perspective from sidebar', perspective.name, perspective.uuid);
+        if (ref.name?.toLowerCase().startsWith('agent perspective')) {
+          console.log('DatasetStore: suppressing agent perspective from sidebar', ref.name, ref.id);
           return;
         }
         // Re-check after the async gap: createSpace's eager update may have run while
-        // we were waiting for byUUID to resolve, which would add a duplicate.
-        if (datasets().some((p) => p.uuid === handle.uuid)) return;
+        // the adapter resolved the handle, which would add a duplicate.
+        if (datasets().some((p) => p.uuid === ref.id)) return;
         setDatasets((prev) => [...prev, perspective]);
-        reorderDatasets([...getDatasetOrder(), perspective.uuid]).catch(console.error);
-      });
-      return null;
-    });
+        reorderDatasets([...getDatasetOrder(), ref.id]).catch(console.error);
+      },
 
-    // perspectiveUpdated fires on renames and neighbourhood sync-state transitions — not on link
-    // changes. Space model data lives in links, so there's nothing to refresh here beyond the handle.
-    client.perspective.addPerspectiveUpdatedListener((handle) => {
-      client.perspective.byUUID(handle.uuid).then((perspective) => {
-        if (!perspective) return;
-        setDatasets((prev) => prev.map((p) => (p.uuid === handle.uuid ? perspective : p)));
-      });
-      return null;
-    });
+      // Update events fire on renames and share-state transitions — not on link changes.
+      // Space model data lives in links, so there's nothing to refresh here beyond the handle.
+      onUpdated: (ref) => {
+        setDatasets((prev) => prev.map((p) => (p.uuid === ref.id ? (ref.handle as DatasetProxy) : p)));
+      },
 
-    // perspectiveRemoved fires for deletions from any client
-    client.perspective.addPerspectiveRemovedListener((uuid) => {
-      setDatasets((prev) => prev.filter((p) => p.uuid !== uuid));
-      removedCallbacks.forEach((cb) => cb(uuid));
-      reorderDatasets(getDatasetOrder().filter((id) => id !== uuid)).catch(console.error);
-      return null;
+      // Removal fires for deletions from any client
+      onRemoved: (uuid) => {
+        setDatasets((prev) => prev.filter((p) => p.uuid !== uuid));
+        removedCallbacks.forEach((cb) => cb(uuid));
+        reorderDatasets(getDatasetOrder().filter((id) => id !== uuid)).catch(console.error);
+      },
     });
   }
 
   /** Load the dataset snapshot and bootstrap the sidebar ordering on first run. */
-  async function loadDatasets(client: Ad4mClient): Promise<void> {
+  async function loadDatasets(): Promise<void> {
+    const lifecycle = session.lifecycle();
+    if (!lifecycle) return;
     try {
-      const perspectives = await client.perspective.all();
+      const perspectives = (await lifecycle.list()).map((ref) => ref.handle as DatasetProxy);
       setDatasets(perspectives);
 
       // Bootstrap dataset order on first load (when no order has been saved yet)
@@ -264,9 +257,11 @@ export function DatasetStoreProvider(props: ParentProps) {
 
   /** Find or create the root dataset and all other system datasets.
    * Also restores global/marketplace datasets if previously joined. */
-  async function initSystemDatasets(client: Ad4mClient): Promise<void> {
+  async function initSystemDatasets(): Promise<void> {
+    const lifecycle = session.lifecycle();
+    if (!lifecycle) return;
     try {
-      const perspectives = await client.perspective.all();
+      const perspectives = (await lifecycle.list()).map((ref) => ref.handle as DatasetProxy);
       const rootP = perspectives.find((p) => p.name === 'we-root');
 
       if (rootP) {
@@ -282,7 +277,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         if (existingTest) {
           setTestDataset(existingTest);
         } else {
-          const testP = await client.perspective.add('we-test');
+          const testP = (await lifecycle.create('we-test')).handle as DatasetProxy;
           setTestDataset(testP);
         }
 
@@ -309,7 +304,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
       // No root dataset exists — create one
       console.log('DatasetStore: creating root dataset');
-      const perspective = await client.perspective.add('we-root');
+      const perspective = (await lifecycle.create('we-root')).handle as DatasetProxy;
       await installRootSdna(perspective);
       // Model.register resolves before SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -326,12 +321,12 @@ export function DatasetStoreProvider(props: ParentProps) {
       console.log('DatasetStore: created root dataset', perspective.uuid);
 
       // Find or create we-test system dataset
-      const allPersp = await client.perspective.all();
-      const existingTest = allPersp.find((p: PerspectiveProxy) => p.name === 'we-test');
+      const allPersp = (await lifecycle.list()).map((ref) => ref.handle as DatasetProxy);
+      const existingTest = allPersp.find((p: DatasetProxy) => p.name === 'we-test');
       if (existingTest) {
         setTestDataset(existingTest);
       } else {
-        const testP = await client.perspective.add('we-test');
+        const testP = (await lifecycle.create('we-test')).handle as DatasetProxy;
         setTestDataset(testP);
       }
     } catch (error) {
@@ -349,13 +344,13 @@ export function DatasetStoreProvider(props: ParentProps) {
     setAgentSettings(settings);
   }
 
-  async function addDataset(p: PerspectiveProxy): Promise<void> {
+  async function addDataset(p: DatasetProxy): Promise<void> {
     if (datasets().some((existing) => existing.uuid === p.uuid)) return;
     setDatasets((prev) => [...prev, p]);
     await reorderDatasets([...getDatasetOrder(), p.uuid]);
   }
 
-  function adoptJoinedDataset(p: PerspectiveProxy): void {
+  function adoptJoinedDataset(p: DatasetProxy): void {
     // If this is the configured global space or marketplace, adopt it as such.
     const seedUrl = getSeed().globalSpaceUrl;
     if (p.sharedUrl && p.sharedUrl === seedUrl) setGlobalDataset(p);
@@ -371,11 +366,11 @@ export function DatasetStoreProvider(props: ParentProps) {
   }
 
   async function removeDataset(uuid: string): Promise<void> {
-    const client = session.client();
-    if (!client) return;
+    const lifecycle = session.lifecycle();
+    if (!lifecycle) return;
 
     try {
-      await client.perspective.remove(uuid);
+      await lifecycle.remove(uuid);
       setDatasets((prev) => prev.filter((p) => p.uuid !== uuid));
       removedCallbacks.forEach((cb) => cb(uuid));
     } catch (error) {
@@ -384,11 +379,11 @@ export function DatasetStoreProvider(props: ParentProps) {
   }
 
   async function switchDataset(uuid: string): Promise<void> {
-    const client = session.client();
-    if (!client) return;
+    const lifecycle = session.lifecycle();
+    if (!lifecycle) return;
 
     try {
-      const perspective = await client.perspective.byUUID(uuid);
+      const perspective = (await lifecycle.get(uuid))?.handle as DatasetProxy | undefined;
       if (!perspective) return;
 
       // Check whether SDNA is already installed. Prefer the reliable SubjectClass
@@ -464,8 +459,8 @@ export function DatasetStoreProvider(props: ParentProps) {
   }
 
   async function cleanupSpaceSdna(uuid?: string): Promise<string> {
-    const client = session.client();
-    if (!client) return '';
+    const lifecycle = session.lifecycle();
+    if (!lifecycle) return '';
 
     const targetUuid = uuid ?? currentDataset()?.uuid;
     if (!targetUuid) {
@@ -474,7 +469,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
 
     try {
-      const perspective = await client.perspective.byUUID(targetUuid);
+      const perspective = (await lifecycle.get(targetUuid))?.handle as DatasetProxy | undefined;
       if (!perspective) return '';
       const { removed, authors } = await deduplicateSpaceSdna(perspective);
       if (removed === 0) return 'No duplicate SDNA links found.';

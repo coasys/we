@@ -51,6 +51,8 @@ export interface DatasetLifecyclePort {
   publish?(id: string): Promise<string>;
   /** Join a shared dataset by URI. */
   join?(uri: string): Promise<DatasetRef>;
+  /** Other agents holding a shared dataset (member roster), by dataset id. */
+  members?(id: string): Promise<string[]>;
   /** Subscribe to change events. Returns an unsubscribe function. */
   subscribe(handlers: DatasetChangeHandlers): () => void;
 }
