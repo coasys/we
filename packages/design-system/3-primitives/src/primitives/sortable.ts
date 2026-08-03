@@ -21,8 +21,10 @@ const CSS_STYLES = css`
  * Drag-to-reorder container primitive.
  *
  * Usage: wrap a list of elements that each have a `data-we-id` attribute.
- * Fires a `we-reorder` CustomEvent<string[]> on drop with the new ordered
- * array of IDs.
+ * Fires a `reorder` CustomEvent<string[]> on drop with the new ordered array
+ * of IDs — the event name is unprefixed, like every other primitive's
+ * (`change`, `select`, `toggle`). In Solid, listen with `on:reorder`; a
+ * listener for `we-reorder` never fires and the drop silently does nothing.
  *
  * @fires reorder - detail: string[] — new ordered array of `data-we-id` values
  */

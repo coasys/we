@@ -489,7 +489,7 @@ export const contextData: ContextData = {
       tagName: 'we-sortable',
       className: 'Sortable',
       description:
-        'Drag-to-reorder container primitive.\n\nUsage: wrap a list of elements that each have a `data-we-id` attribute.\nFires a `we-reorder` CustomEvent<string[]> on drop with the new ordered\narray of IDs.',
+        "Drag-to-reorder container primitive.\n\nUsage: wrap a list of elements that each have a `data-we-id` attribute.\nFires a `reorder` CustomEvent<string[]> on drop with the new ordered array\nof IDs — the event name is unprefixed, like every other primitive's\n(`change`, `select`, `toggle`). In Solid, listen with `on:reorder`; a\nlistener for `we-reorder` never fires and the drop silently does nothing.",
       superclass: 'DesignSystemElement',
       ownProps: [
         { name: 'direction', type: "'vertical' | 'horizontal'", optional: false, default: "'vertical'" },
