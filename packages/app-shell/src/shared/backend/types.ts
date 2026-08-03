@@ -1,3 +1,5 @@
+import type { AgentSessionPort, DatasetLifecyclePort } from '@we/backend-shared';
+
 /**
  * Raw connection details for the running executor, for callers that need to reach it directly
  * rather than through the client — currently the embedded-app handshake, which forwards them into
@@ -23,6 +25,13 @@ export interface BackendConnectionDetails {
  * every host that wanted `isDesktop` also named the data layer.
  */
 export interface BackendConnector {
+  /**
+   * Optional: supply the backend's port implementations directly. When absent the shell builds
+   * the AD4M ports over the client — so existing connectors change nothing, while a non-AD4M or
+   * test host can hand the shell a complete backend by implementing two small interfaces.
+   */
+  ports?(client: unknown): { agentSession: AgentSessionPort; lifecycle: DatasetLifecyclePort };
+
   /**
    * Build and return a configured client, opaque to the shell. Called once during boot; the shell
    * hands it to the backend adapter's port factories and never inspects it itself.

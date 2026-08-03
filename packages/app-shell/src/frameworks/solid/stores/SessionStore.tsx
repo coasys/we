@@ -145,9 +145,13 @@ export function SessionStoreProvider(props: ParentProps) {
       // stays opaque to this store — everything it needs goes through the two ports.
       const c = await backend.connect();
       setClient(c);
-      const session = createAd4mAgentSession(c);
+      const ports = backend.ports?.(c) ?? {
+        agentSession: createAd4mAgentSession(c),
+        lifecycle: createAd4mDatasetLifecycle(c),
+      };
+      const session = ports.agentSession;
       setAgentSession(session);
-      setLifecycle(createAd4mDatasetLifecycle(c));
+      setLifecycle(ports.lifecycle);
 
       // Web platform: credentials are only available after ad4m-connect auth completes
       if (!platform.isDesktop && backend.connectionDetails) {
