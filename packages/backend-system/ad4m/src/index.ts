@@ -34,3 +34,10 @@ export { type NeutralManifestResult, toNeutralManifest } from './neutralManifest
 export * from './perspectiveHelpers';
 export * from './sdnaModels';
 export * from './syncHelpers';
+export {
+  buildModelFromEntry,
+  compileManifest,
+  type CompileManifestOptions,
+  CORE_VOCABULARY,
+  manifestToEntries,
+} from './manifestCompiler';
