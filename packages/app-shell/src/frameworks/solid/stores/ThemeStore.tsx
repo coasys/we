@@ -258,7 +258,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [pendingSpaceThemeId, setPendingSpaceThemeId] = createSignal<string | null>(null);
   const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
 
-  // ── History (delegated to unified AiStore history) ──
+  // ── History (delegated to the unified EditSessionStore history) ──
   const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
 
   let pendingSnapshot: EditingTheme | null = null;

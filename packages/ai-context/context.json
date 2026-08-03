@@ -5591,7 +5591,7 @@
       ]
     },
     {
-      "name": "aiStore",
+      "name": "editSessionStore",
       "state": {
         "models": {
           "type": "array",

@@ -2159,7 +2159,7 @@ export const contextData: ContextData = {
       ],
     },
     {
-      name: 'aiStore',
+      name: 'editSessionStore',
       state: {
         models: { type: 'array', properties: ['id', 'name'] },
         tasks: { type: 'array', properties: ['id', 'status', 'result'] },

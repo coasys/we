@@ -1421,7 +1421,7 @@ SpaceStore:
   - setModuleEnabled(moduleId: string, enabled: boolean): turns a feature module on or off for the current space; writes the resolved list, so the first toggle also pins whatever was on by fallback
   - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
 
-AiStore:
+EditSessionStore:
 - State:
   - models: array of Model objects
   - tasks: array of AITask objects

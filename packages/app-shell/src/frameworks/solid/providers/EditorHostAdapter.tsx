@@ -3,8 +3,8 @@ import { EditorHostProvider } from '@we/editor';
 import { compressImageToFileData, ImageBlock } from '@we/models';
 import type { ParentProps } from 'solid-js';
 
-import { useAiStore } from '../stores/AiStore';
 import { useDatasetStore } from '../stores/DatasetStore';
+import { useEditSessionStore } from '../stores/EditSessionStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useSessionStore } from '../stores/SessionStore';
 import { useSpaceStore } from '../stores/SpaceStore';
@@ -25,7 +25,7 @@ import { useThemeStore } from '../stores/ThemeStore';
  * of it changes this file and nothing in the editor.
  */
 export function EditorHostAdapter(props: ParentProps) {
-  const editSession = useAiStore();
+  const editSession = useEditSessionStore();
   const template = useTemplateStore();
   const theme = useThemeStore();
   const sessionStore = useSessionStore();

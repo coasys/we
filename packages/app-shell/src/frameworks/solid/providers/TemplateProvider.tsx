@@ -4,9 +4,9 @@ import { moduleStores } from '@shared/registries/moduleRegistry';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
-  useAiStore,
   useAppStore,
   useDatasetStore,
+  useEditSessionStore,
   usePresenceStore,
   useProfileStore,
   useRouteStore,
@@ -34,7 +34,7 @@ export default function TemplateProvider() {
   const sessionStore = useSessionStore();
   const datasetStore = useDatasetStore();
   const profileStore = useProfileStore();
-  const aiStore = useAiStore();
+  const editSessionStore = useEditSessionStore();
   const appStore = useAppStore();
   const spaceStore = useSpaceStore();
   const themeStore = useThemeStore();
@@ -79,7 +79,7 @@ export default function TemplateProvider() {
     sessionStore,
     datasetStore,
     profileStore,
-    aiStore,
+    editSessionStore,
     appStore,
     spaceStore,
     themeStore,
@@ -153,7 +153,7 @@ export default function TemplateProvider() {
   const [hoveredNodeId, setHoveredNodeId] = createSignal<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | null>(null);
   const nodeRegistry = new Map<string, HTMLElement>();
-  const isVisualMode = () => aiStore.contentMode() === 'visual' && aiStore.isEditingTemplate();
+  const isVisualMode = () => editSessionStore.contentMode() === 'visual' && editSessionStore.isEditingTemplate();
 
   createEffect(() => {
     if (!isVisualMode()) {
