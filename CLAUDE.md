@@ -324,6 +324,9 @@ required when reading entities from an external app (e.g. Flux) that is open as 
 
 Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
 - $currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
+  A host store's dataset accessor (e.g. `dataset: 'datasetStore.marketplaceDataset'`) works as a dataset value too.
+  When passing a dataset to a *component prop* rather than a query, append `.handle` — component props take the
+  backend's own dataset handle: { "perspective": { "$store": "datasetStore.currentDataset.handle" } }.
 - $me — the current agent's identity object. Use $me.did for their DID (ownership checks, author filters, e.g. { "$eq": ["$post.author", "$me.did"] }); $me.handle / $me.avatar for profile fields once loaded.
 
 Eager-loading relations with include (most common relational pattern):
@@ -1058,7 +1061,7 @@ AgentSettings extends Ad4mModel:
   - currentThemeId: string = 'default' [we://current_theme]
   - defaultThemeId: string = 'default' [we://default_theme]
   - claudeApiKey: string [we://claude_api_key]
-  - perspectiveOrder: string [we://perspective_order]
+  - datasetOrder: string [we://dataset_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
   - globalSpaceUrl: string [we://global_space_url]
   - useSpaceTemplate: boolean = true [we://use_space_template]
@@ -1204,7 +1207,6 @@ Space extends WeNode:
   - url: string [we://url]
   - name: string (required) [we://name]
   - description: string (required) [we://description]
-  - access: string = 'personal' [we://access]
   - discovery: string = 'hidden' [we://discovery]
   - avatar: string [we://image]
   - coverImage: string [we://thumbnail]

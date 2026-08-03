@@ -74,7 +74,6 @@ export async function syncSpaceToParent(
     existing.url = space.url;
     existing.name = space.name;
     existing.description = space.description;
-    existing.access = space.access;
     existing.discovery = space.discovery;
     if (avatarField !== undefined) existing.avatar = avatarField as string;
     if (coverImageField !== undefined) existing.coverImage = coverImageField as string;
@@ -86,14 +85,13 @@ export async function syncSpaceToParent(
       url: space.url,
       name: space.name,
       description: space.description,
-      access: space.access,
       discovery: space.discovery,
       ...(avatarField !== undefined && { avatar: avatarField as string }),
       ...(coverImageField !== undefined && { coverImage: coverImageField as string }),
     });
   }
 
-  // Mirror location into targetP, scoped to this space's location relation.
+  // Mirror location into the target dataset, scoped to this space's location relation.
   if (loc) {
     await schemas.ensure(targetP, LocationBlock);
     // Always delete + recreate so setLocation updates the Space's we://location triple.
@@ -112,7 +110,7 @@ export async function syncSpaceToParent(
     });
     await target.setLocation(newLoc);
   } else if (options?.locationData === null && existing) {
-    // Explicit removal — delete the location block from the target perspective
+    // Explicit removal — delete the location block from the target dataset
     const [locToRemove] = await LocationBlock.findAll(targetP, {
       parent: { id: existing.id, predicate: 'we://location' },
     });
@@ -121,7 +119,7 @@ export async function syncSpaceToParent(
 }
 
 /**
- * Remove a Space record from `targetP` by UUID.
+ * Remove a Space record from the target dataset by uuid.
  * Called when a space is removed from global discovery or access is revoked.
  */
 export async function removeSpaceFromParent(spaceUuid: string, targetP: DatasetProxy): Promise<void> {
@@ -145,13 +143,11 @@ export async function removeSpaceFromParent(spaceUuid: string, targetP: DatasetP
  * Personal (unshared) perspectives have no CID and only ever contain their own
  * creator's Space entity, so `uuid` matching is safe there.
  */
-export function spaceSelfWhere(p: DatasetProxy): { url: string } | { uuid: string } {
-  const cid = p.sharedUrl?.replace('neighbourhood://', '');
-  return cid ? { url: cid } : { uuid: p.uuid };
+export function spaceSelfWhere(ds: { id: string; sharedId?: string }): { url: string } | { uuid: string } {
+  return ds.sharedId ? { url: ds.sharedId } : { uuid: ds.id };
 }
 
 /** Companion predicate for matching an already-fetched Space against a perspective — see spaceSelfWhere. */
-export function isSpaceSelf(space: Pick<Space, 'uuid' | 'url'>, p: DatasetProxy): boolean {
-  const cid = p.sharedUrl?.replace('neighbourhood://', '');
-  return cid ? space.url === cid : space.uuid === p.uuid;
+export function isSpaceSelf(space: Pick<Space, 'uuid' | 'url'>, ds: { id: string; sharedId?: string }): boolean {
+  return ds.sharedId ? space.url === ds.sharedId : space.uuid === ds.id;
 }

@@ -3895,9 +3895,9 @@
           "required": false
         },
         {
-          "name": "perspectiveOrder",
+          "name": "datasetOrder",
           "type": "string",
-          "predicate": "we://perspective_order",
+          "predicate": "we://dataset_order",
           "required": false
         },
         {
@@ -4608,13 +4608,6 @@
           "type": "string",
           "predicate": "we://description",
           "required": true
-        },
-        {
-          "name": "access",
-          "type": "string",
-          "predicate": "we://access",
-          "required": false,
-          "default": "'personal'"
         },
         {
           "name": "discovery",

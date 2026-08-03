@@ -1,5 +1,4 @@
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
-import { getSeed } from '@shared/seedRegistry';
 import {
   isSpaceSelf,
   type LocationData,
@@ -34,7 +33,7 @@ import {
   useContext,
 } from 'solid-js';
 
-import { useDatasetStore } from './DatasetStore';
+import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
@@ -121,7 +120,7 @@ export interface SpaceStore {
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   getSubgroupMessages: (subgroupId: string) => Promise<FluxSubgroupMessage[]>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
-  updateSpaceInCache: (dataset: DatasetProxy, updates: Partial<Space>) => void;
+  updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
   // Boot wiring (used by the boot controller, not by schemas)
   loadSpaces: () => Promise<void>;
@@ -144,9 +143,14 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [creatingSpace, setCreatingSpace] = createSignal(false);
 
-  // Derived: personal and shared spaces
-  const personalSpaces = createMemo(() => mySpaces().filter((s) => s.access === 'personal'));
-  const sharedSpaces = createMemo(() => mySpaces().filter((s) => s.access === 'shared'));
+  // Derived: personal and shared spaces.
+  //
+  // Shared-ness is read from `url` — the space's global (shared) id, set when its dataset is
+  // published — not from the stored `Space.access` field, which records the same fact a second
+  // time and can only ever agree or be wrong. `url` is also the fact every backend has, however
+  // it implements sharing (a neighbourhood, a published branch, an `is_public` row).
+  const personalSpaces = createMemo(() => mySpaces().filter((s) => !s.url));
+  const sharedSpaces = createMemo(() => mySpaces().filter((s) => !!s.url));
 
   // TemplateStore mounts above this store and cannot read it directly — hand it the space lookup
   // it needs to resolve a space's default template (see TemplateStore.provideSpaceLookup).
@@ -176,26 +180,23 @@ export function SpaceStoreProvider(props: ParentProps) {
         .map((s) => [s.url!, s]),
     );
     const items: { uuid: string; name: string; avatar?: string; spaceId: string; isGlobalPreJoin?: boolean }[] =
-      datasetStore.orderedDatasets().map((p) => {
-        const cid = p.sharedUrl?.replace('neighbourhood://', '');
-        const s = (cid ? spaceByUrl.get(cid) : undefined) ?? spaceByUuid.get(p.uuid);
+      datasetStore.orderedDatasets().map((d) => {
+        const s = (d.sharedId ? spaceByUrl.get(d.sharedId) : undefined) ?? spaceByUuid.get(d.id);
         return {
-          uuid: p.uuid,
-          name: s?.name ?? p.name,
+          uuid: d.id,
+          name: s?.name ?? d.name,
           avatar: typeof s?.avatar === 'string' ? s.avatar : undefined,
-          spaceId: p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid,
+          spaceId: d.sharedId ?? d.id,
         };
       });
 
-    const seedUrl = getSeed().globalSpaceUrl;
-    const globalId = seedUrl ? seedUrl.replace('neighbourhood://', '') : null;
+    const globalId = datasetStore.globalSpaceId();
     const alreadyJoined = globalId ? items.some((item) => item.spaceId === globalId) : true;
     if (globalId && !alreadyJoined) {
       items.unshift({ uuid: 'global-pre-join', name: 'WE Discovery', spaceId: globalId, isGlobalPreJoin: true });
     }
 
-    const mktUrl = getSeed().marketplaceUrl;
-    const mktId = mktUrl ? mktUrl.replace('neighbourhood://', '') : null;
+    const mktId = datasetStore.marketplaceId();
 
     return mktId ? items.filter((item) => item.spaceId !== mktId) : items;
   });
@@ -206,17 +207,14 @@ export function SpaceStoreProvider(props: ParentProps) {
       // we-root and we-test are system datasets that never have Space SDNA installed —
       // calling Space.findOne on them produces an RPC 500 "No SHACL shape" error.
       const SYSTEM_PERSPECTIVES = ['we-root', 'we-test'];
-      const candidates = datasetStore.datasets().filter((p) => !SYSTEM_PERSPECTIVES.includes(p.name));
+      const candidates = datasetStore.datasets().filter((d) => !SYSTEM_PERSPECTIVES.includes(d.name));
       // Any other joined dataset without Space SDNA installed (e.g. a Flux
       // neighbourhood) would throw the same "No SHACL shape" error. Since these run in a
       // Promise.all, one rejection would otherwise abort the whole batch and hide every
       // real space's data (including avatars) until each is visited individually. Catch
       // per-dataset so one bad dataset can't poison the rest.
       const spaces = await Promise.all(
-        candidates.map(
-          async (perspective) =>
-            await Space.findOne(perspective, { where: spaceSelfWhere(perspective) }).catch(() => null),
-        ),
+        candidates.map(async (ds) => await Space.findOne(ds.handle, { where: spaceSelfWhere(ds) }).catch(() => null)),
       );
       const filteredSpaces = spaces
         .filter((s): s is Space => !!s)
@@ -227,14 +225,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  async function addSpaceToPerspective(
-    perspective: DatasetProxy,
+  async function addSpaceToDataset(
+    dataset: DatasetProxy,
     space: SpaceInput,
     location?: Partial<LocationBlock>,
   ): Promise<Space> {
-    const spaceModel = await Space.create(perspective, space as Partial<Space>);
+    const spaceModel = await Space.create(dataset, space as Partial<Space>);
     if (location) {
-      const locationModel = await LocationBlock.create(perspective, location);
+      const locationModel = await LocationBlock.create(dataset, location);
       await spaceModel.setLocation(locationModel);
     }
     return spaceModel;
@@ -256,17 +254,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       // Create the dataset
       const spaceRef = await lifecycle.create(name);
-      const spacePerspective = spaceRef.handle as DatasetProxy;
+      const spaceHandle = spaceRef.handle as DatasetProxy;
+      let publishedSharedId: string | undefined;
 
       // Register SDNA models (full set, same as switchDataset uses)
-      await session.backendPorts()!.schemas.installSpace(spacePerspective, moduleRegistry.models());
+      const schemas = session.backendPorts()!.schemas;
+      await schemas.installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas));
 
       // If shared, publish — capture the returned URL so it can be stored on the Space model
       // (the dataset handle's own sharedUrl is not updated in-place).
-      let neighbourhoodUrl: string | undefined;
       if (access === 'shared') {
         if (!lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
-        neighbourhoodUrl = await lifecycle.publish(spaceRef.id);
+        publishedSharedId = (await lifecycle.publish(spaceRef.id)).sharedId;
       }
 
       // Process avatar image if provided
@@ -277,11 +276,10 @@ export function SpaceStoreProvider(props: ParentProps) {
 
       // Assemble Space + optional location data — used for both own and parent datasets
       const spaceData = {
-        uuid: spacePerspective.uuid,
-        url: neighbourhoodUrl?.replace('neighbourhood://', ''),
+        uuid: spaceRef.id,
+        url: publishedSharedId,
         name,
         description,
-        access,
         discovery,
         defaultTemplateId: 'default',
         defaultThemeId: 'dark',
@@ -291,16 +289,16 @@ export function SpaceStoreProvider(props: ParentProps) {
       const locationData = location ?? undefined;
 
       // Write to own dataset
-      const spaceModel = await addSpaceToPerspective(spacePerspective, spaceData, locationData);
+      const spaceModel = await addSpaceToDataset(spaceHandle, spaceData, locationData);
       console.log('SpaceStore: created space model for new dataset', spaceModel);
 
       // Sync to global discovery space when the user opted in.
       // Space.create returns relations unhydrated, so we pass avatarData, coverImageData,
       // and locationData directly rather than reading them back from spaceModel.
       if (discovery === 'listed') {
-        const globalP = datasetStore.globalDataset();
-        if (globalP) {
-          await syncSpaceToParent(spaceModel, globalP, session.backendPorts()!.schemas, {
+        const globalDs = datasetStore.globalDataset();
+        if (globalDs) {
+          await syncSpaceToParent(spaceModel, globalDs.handle, session.backendPorts()!.schemas, {
             locationData,
             avatarData,
             coverImageData,
@@ -308,10 +306,9 @@ export function SpaceStoreProvider(props: ParentProps) {
         }
       }
 
-      // Update sidebar. Eagerly add for web (where the perspective-added listener may not
-      // fire); addDataset guards so we don't double-add on desktop when the subscription has
-      // already resolved its byUUID fetch and added the dataset first.
-      await datasetStore.addDataset(spacePerspective);
+      // Track locally so the sidebar updates with the action rather than with the backend's
+      // change event (which may lag, or on web may not fire at all).
+      await datasetStore.trackDataset(spaceRef);
       setMySpaces((prev) => [...prev, spaceModel]);
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
@@ -333,11 +330,12 @@ export function SpaceStoreProvider(props: ParentProps) {
     description: string,
     avatarValue?: File | string | null,
   ): Promise<Space> {
-    const perspective = datasetStore.currentDataset();
-    if (!perspective) throw new Error('SpaceStore: initializeAsWeSpace called with no active dataset');
+    const ds = datasetStore.currentDataset();
+    if (!ds) throw new Error('SpaceStore: initializeAsWeSpace called with no active dataset');
 
     // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
-    await session.backendPorts()!.schemas.installSpace(perspective, moduleRegistry.models());
+    const initSchemas = session.backendPorts()!.schemas;
+    await initSchemas.installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas));
 
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
@@ -349,18 +347,17 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     const spaceData: SpaceInput = {
-      uuid: perspective.uuid,
-      url: perspective.sharedUrl?.replace('neighbourhood://', ''),
+      uuid: ds.id,
+      url: ds.sharedId,
       name,
       description,
-      access: 'shared',
       discovery: 'hidden',
       defaultTemplateId: 'default',
       defaultThemeId: 'dark',
       ...(avatarData && { avatar: avatarData }),
     };
 
-    const spaceModel = await addSpaceToPerspective(perspective, spaceData);
+    const spaceModel = await addSpaceToDataset(ds.handle, spaceData);
 
     if (!mySpaces().some((s) => s.uuid === spaceModel.uuid)) {
       setMySpaces((prev) => [...prev, spaceModel]);
@@ -370,7 +367,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // classes/registerDynamicModels/manifest refresh: this atomically flips isWeSpace,
     // refreshes the dynamic model registry, and hands this store a new dataset handle
     // so its currentSpace effect re-fires now that a Space instance exists.
-    await datasetStore.switchDataset(perspective.uuid);
+    await datasetStore.switchDataset(ds.id);
 
     return spaceModel;
   }
@@ -383,73 +380,63 @@ export function SpaceStoreProvider(props: ParentProps) {
       return;
     }
 
-    // Normalise the identifier to a full neighbourhood URL when appropriate:
-    //   - Full URL passed directly → use as-is
-    //   - CID (no hyphens, no '://') → prepend 'neighbourhood://'
-    //   - UUID (contains '-') → no neighbourhood URL; only local lookup
-    const neighbourhoodUrl = id.includes('://') ? id : !id.includes('-') ? 'neighbourhood://' + id : null;
-
-    // If already joined locally, just focus the dataset.
-    const existing = datasetStore
-      .datasets()
-      .find((p) => p.uuid === id || (neighbourhoodUrl && p.sharedUrl === neighbourhoodUrl));
+    // If already joined locally (by local id, shared id, or full URI), just focus the dataset.
+    const existing = datasetStore.datasets().find((d) => d.id === id || d.sharedId === id || d.sharedUri === id);
     if (existing) {
-      await datasetStore.switchDataset(existing.uuid);
+      await datasetStore.switchDataset(existing.id);
       return;
     }
 
-    if (!neighbourhoodUrl) {
-      console.warn('SpaceStore: joinSpace — cannot determine neighbourhood URL for', id);
-      return;
-    }
-
-    console.log('SpaceStore: joining neighbourhood', neighbourhoodUrl);
+    console.log('SpaceStore: joining shared dataset', id);
     try {
-      const joinedRef = await lifecycle.join(neighbourhoodUrl);
-      const joinedP = joinedRef.handle as DatasetProxy;
+      // The adapter normalizes bare shared ids to its own URI scheme.
+      const joinedRef = await lifecycle.join(id);
+      const joinedHandle = joinedRef.handle as DatasetProxy;
 
       // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
-      // immediately. installSpaceSdna diffs against the dataset's actual state
-      // before writing, so this is safe to call unconditionally even when the space's
-      // creator or an earlier joiner already installed it — it won't write a duplicate copy.
-      await session.backendPorts()!.schemas.installSpace(joinedP, moduleRegistry.models());
+      // immediately. installSpace diffs against the dataset's actual state before writing,
+      // so this is safe to call unconditionally even when the space's creator or an earlier
+      // joiner already installed it — it won't write a duplicate copy.
+      const joinSchemas = session.backendPorts()!.schemas;
+      await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
 
-      // Adopt as global/marketplace dataset when the seed says so, and eagerly add to the
-      // dataset list so derived state (e.g. marketplaceJoined) updates immediately.
-      datasetStore.adoptJoinedDataset(joinedP);
+      // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
+      // the seed-configured global/marketplace slots) update with the join.
+      await datasetStore.trackDataset(joinedRef);
 
       // Load the Space model and push into mySpaces so the sidebar shows the correct
       // name immediately, without requiring a reboot.
-      const cid = neighbourhoodUrl.replace('neighbourhood://', '');
-      const joinedSpaceModel = await Space.findOne(joinedP, { where: { url: cid } }).catch(() => null);
+      const joinedSpaceModel = joinedRef.sharedId
+        ? await Space.findOne(joinedHandle, { where: { url: joinedRef.sharedId } }).catch(() => null)
+        : null;
       if (joinedSpaceModel && !mySpaces().some((s) => s.url === joinedSpaceModel.url)) {
         setMySpaces((prev) => [...prev, joinedSpaceModel]);
       }
 
-      await datasetStore.switchDataset(joinedP.uuid);
-      console.log('SpaceStore: joined space', joinedP.uuid);
+      await datasetStore.switchDataset(joinedRef.id);
+      console.log('SpaceStore: joined space', joinedRef.id);
     } catch (error) {
       console.error('SpaceStore: joinSpace error', error);
     }
   }
 
   async function removeSpaceFromGlobal(spaceUuid: string): Promise<void> {
-    const globalP = datasetStore.globalDataset();
-    if (!globalP) return;
-    return removeSpaceFromParent(spaceUuid, globalP);
+    const globalDs = datasetStore.globalDataset();
+    if (!globalDs) return;
+    return removeSpaceFromParent(spaceUuid, globalDs.handle);
   }
 
   async function removeSpace(uuid: string): Promise<void> {
     try {
-      const globalP = datasetStore.globalDataset();
+      const globalDs = datasetStore.globalDataset();
       const myDid = session.me()?.did;
-      if (globalP && myDid) {
+      if (globalDs && myDid) {
         // Only remove from global discovery if the current user is the author of that
         // space entry — a peer who joined and later deletes their local copy should not
         // affect the global listing.
-        const spaceInGlobal = await Space.findOne(globalP, { where: { uuid } }).catch(() => null);
+        const spaceInGlobal = await Space.findOne(globalDs.handle, { where: { uuid } }).catch(() => null);
         if (spaceInGlobal && spaceInGlobal.author === myDid) {
-          await removeSpaceFromParent(uuid, globalP).catch((err) =>
+          await removeSpaceFromParent(uuid, globalDs.handle).catch((err) =>
             console.error('SpaceStore: removeSpaceFromParent on delete error', err),
           );
         }
@@ -461,7 +448,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  function updateSpaceInCache(dataset: DatasetProxy, updates: Partial<Space>): void {
+  function updateSpaceInCache(dataset: AppDataset, updates: Partial<Space>): void {
     setMySpaces((prev) =>
       prev.map((s) =>
         isSpaceSelf(s, dataset) ? Object.assign(Object.create(Object.getPrototypeOf(s)), s, updates) : s,
@@ -473,12 +460,12 @@ export function SpaceStoreProvider(props: ParentProps) {
   // join time (joinSpace's Space.findOne may have returned null if the creator's record hadn't
   // propagated from Holochain yet). Re-runs on every dataset switch.
   createEffect(() => {
-    const p = datasetStore.currentDataset();
-    if (!p?.sharedUrl) return;
-    const sharedCid = p.sharedUrl.replace('neighbourhood://', '');
+    const ds = datasetStore.currentDataset();
+    if (!ds?.sharedId) return;
+    const sharedCid = ds.sharedId;
     if (untrack(mySpaces).some((s) => s.url === sharedCid)) return;
     void (async () => {
-      const spaceModel = await Space.findOne(p, { where: { url: sharedCid } }).catch(() => null);
+      const spaceModel = await Space.findOne(ds.handle, { where: { url: sharedCid } }).catch(() => null);
       if (spaceModel && !untrack(mySpaces).some((s) => s.url === spaceModel.url)) {
         setMySpaces((prev) => [...prev, spaceModel]);
       }
@@ -486,7 +473,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
 
   async function test() {
-    const p = datasetStore.currentDataset();
+    const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
     const spaces = await Space.findAll(p, { include: { location: true } });
     console.log('Spaces in dataset:', spaces);
@@ -494,13 +481,13 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function createPost(json: unknown): Promise<void> {
-    const p = datasetStore.currentDataset();
+    const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
     await createBlocks(p, json);
   }
 
   async function updatePost(postId: string, json: unknown): Promise<void> {
-    const p = datasetStore.currentDataset();
+    const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
     const existingRoot = await CollectionBlock.findOne(p, { where: { id: postId } });
     if (!existingRoot) return;
@@ -508,21 +495,19 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function deletePost(postId: string): Promise<void> {
-    const p = datasetStore.currentDataset();
+    const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
     await deleteBlocks(p, postId);
   }
 
   async function navigateToSpace(spaceId: string, view?: string): Promise<void> {
-    // Resolve dataset from spaceId (CID has no hyphens, UUID does)
-    const perspective = spaceId.includes('-')
-      ? datasetStore.datasets().find((p) => p.uuid === spaceId)
-      : datasetStore.datasets().find((p) => p.sharedUrl === 'neighbourhood://' + spaceId);
+    // spaceId may be a local id or a shared id — no shape-guessing needed with refs.
+    const ds = datasetStore.datasets().find((d) => d.id === spaceId || d.sharedId === spaceId);
 
-    if (perspective) {
+    if (ds) {
       // Pre-load space templates before switching so the template and data arrive together
-      await templateStore.preloadSpaceTemplates(perspective);
-      await datasetStore.switchDataset(perspective.uuid);
+      await templateStore.preloadSpaceTemplates(ds);
+      await datasetStore.switchDataset(ds.id);
     }
     // If no dataset found, route change alone will show the join gate
 
@@ -547,17 +532,17 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File): Promise<void> {
-    const currentDataset = datasetStore.currentDataset();
-    if (!currentDataset) return;
+    const ds = datasetStore.currentDataset();
+    if (!ds) return;
     const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'space-image' : 'space-cover');
-    const [spaceModel] = await Space.findAll(currentDataset, { where: spaceSelfWhere(currentDataset) });
+    const [spaceModel] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (!spaceModel) return;
-    await Space.update(currentDataset, spaceModel.id, { [field]: fileData });
+    await Space.update(ds.handle, spaceModel.id, { [field]: fileData });
     if (spaceModel.discovery === 'listed') {
-      const globalP = datasetStore.globalDataset();
-      if (globalP) {
+      const globalDs = datasetStore.globalDataset();
+      if (globalDs) {
         const imageOpt = field === 'avatar' ? { avatarData: fileData } : { coverImageData: fileData };
-        await syncSpaceToParent(spaceModel, globalP, session.backendPorts()!.schemas, imageOpt).catch((err) =>
+        await syncSpaceToParent(spaceModel, globalDs.handle, session.backendPorts()!.schemas, imageOpt).catch((err) =>
           console.error('SpaceStore: sync image to global failed', err),
         );
       }
@@ -565,11 +550,12 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function updateSpaceMeta(updates: SpaceMetaUpdate): Promise<void> {
-    const currentDataset = datasetStore.currentDataset();
-    if (!currentDataset) return;
+    const ds = datasetStore.currentDataset();
+    if (!ds) return;
+    const currentDataset = ds.handle;
 
     const [spaceModel] = await Space.findAll(currentDataset, {
-      where: spaceSelfWhere(currentDataset),
+      where: spaceSelfWhere(ds),
       include: { location: true },
     });
     if (!spaceModel) return;
@@ -611,26 +597,26 @@ export function SpaceStoreProvider(props: ParentProps) {
       }
     }
 
-    const globalP = datasetStore.globalDataset();
-    if (!globalP) return;
+    const globalDs = datasetStore.globalDataset();
+    if (!globalDs) return;
 
     const effectiveDiscovery = updates.discovery ?? previousDiscovery;
     if (effectiveDiscovery === 'listed') {
       // Pass locationData explicitly when location changed — the included spaceModel.location
       // snapshot is stale after our delete+recreate. null signals explicit removal to syncSpaceToParent.
       const syncOpts = updates.location !== undefined ? { locationData: updates.location } : {};
-      await syncSpaceToParent(spaceModel, globalP, session.backendPorts()!.schemas, syncOpts).catch((err) =>
+      await syncSpaceToParent(spaceModel, globalDs.handle, session.backendPorts()!.schemas, syncOpts).catch((err) =>
         console.error('SpaceStore: sync meta to global failed', err),
       );
     } else if (previousDiscovery === 'listed') {
-      await removeSpaceFromParent(spaceModel.uuid, globalP).catch((err) =>
+      await removeSpaceFromParent(spaceModel.uuid, globalDs.handle).catch((err) =>
         console.error('SpaceStore: remove from global failed', err),
       );
     }
   }
 
   async function createSignalType(config: Partial<SignalType>): Promise<void> {
-    const p = datasetStore.currentDataset();
+    const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
     // Fixed ranges for modes where the user doesn't configure them
     const rangeOverrides: Record<string, { rangeMin: number; rangeMax: number }> = {
@@ -646,7 +632,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
-    const p = datasetStore.currentDataset();
+    const p = datasetStore.currentDataset()?.handle;
     const myDid = session.me()?.did;
     if (!p || !myDid) return;
 
@@ -663,11 +649,11 @@ export function SpaceStoreProvider(props: ParentProps) {
   // Ecosystem dialect, feature-detected through the connector's interop surface — a backend
   // without it simply returns nothing.
   async function getSubgroupMessages(subgroupId: string): Promise<FluxSubgroupMessage[]> {
-    const p = datasetStore.currentDataset();
+    const ds = datasetStore.currentDataset();
     const fetchMessages = session.backendPorts()?.interop?.fluxSubgroupMessages;
-    if (!p || !fetchMessages) return [];
+    if (!ds || !fetchMessages) return [];
     try {
-      return await fetchMessages(p, subgroupId);
+      return await fetchMessages(ds.handle, subgroupId);
     } catch (err) {
       console.error('SpaceStore: getSubgroupMessages failed', err);
       return [];
@@ -788,13 +774,13 @@ export function SpaceStoreProvider(props: ParentProps) {
   // Subscribe to current space data reactively whenever the dataset changes.
   // include: { location: true } so AboutRoute can access location without a separate query.
   createEffect(() => {
-    const p = datasetStore.currentDataset();
-    if (!p || !datasetStore.isWeSpace()) {
+    const ds = datasetStore.currentDataset();
+    if (!ds || !datasetStore.isWeSpace()) {
       setCurrentSpace(null);
       return;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const builder = (Space as any).query(p, { where: spaceSelfWhere(p), include: { location: true } }) as {
+    const builder = (Space as any).query(ds.handle, { where: spaceSelfWhere(ds), include: { location: true } }) as {
       subscribe: (cb: (results: Space[]) => void) => Promise<Space[]>;
       dispose: () => void;
     };
@@ -839,34 +825,34 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTemplateId(templateId);
     const template = templateStore.allTemplates().find((t) => t.id === templateId);
     if (template) templateStore.replaceTemplate(template);
-    const p = datasetStore.currentDataset();
-    if (!p) return;
+    const ds = datasetStore.currentDataset();
+    if (!ds) return;
     // Keep mySpaces cache in sync so template pre-loading uses the fresh defaultTemplateId
-    updateSpaceInCache(p, { defaultTemplateId: templateId } as never);
-    const [space] = await Space.findAll(p, { where: spaceSelfWhere(p) });
-    if (space) await Space.update(p, space.id, { defaultTemplateId: templateId });
+    updateSpaceInCache(ds, { defaultTemplateId: templateId } as never);
+    const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+    if (space) await Space.update(ds.handle, space.id, { defaultTemplateId: templateId });
   }
 
   async function setSpaceDefaultTheme(themeId: string): Promise<void> {
     setSpaceDefaultThemeId(themeId);
-    const p = datasetStore.currentDataset();
-    if (!p) return;
-    updateSpaceInCache(p, { defaultThemeId: themeId } as never);
-    const [space] = await Space.findAll(p, { where: spaceSelfWhere(p) });
-    if (space) await Space.update(p, space.id, { defaultThemeId: themeId });
+    const ds = datasetStore.currentDataset();
+    if (!ds) return;
+    updateSpaceInCache(ds, { defaultThemeId: themeId } as never);
+    const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
+    if (space) await Space.update(ds.handle, space.id, { defaultThemeId: themeId });
   }
 
   // Load neighbourhood members whenever the current dataset changes
   createEffect(() => {
-    const p = datasetStore.currentDataset();
+    const ds = datasetStore.currentDataset();
     const lifecycle = session.lifecycle();
     const myDid = session.me()?.did;
-    if (!p || !lifecycle?.members) {
+    if (!ds || !lifecycle?.members) {
       setMemberDids(myDid ? [myDid] : []);
       return;
     }
     lifecycle
-      .members(p.uuid)
+      .members(ds.id)
       .then((dids: string[]) => {
         const allDids = myDid ? [...new Set([myDid, ...dids])] : dids;
         setMemberDids(allDids);
@@ -896,30 +882,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (segs[0] !== 'space' || !segs[1]) return;
     const seg = segs[1];
 
-    // CID — neighbourhood space: find an already-joined local dataset by sharedUrl
-    if (!seg.includes('-')) {
-      const p = datasetStore.datasets().find((ap) => ap.sharedUrl === 'neighbourhood://' + seg);
-      if (!p) {
-        datasetStore.clearCurrentDataset();
-        return;
-      }
-      const current = untrack(datasetStore.currentDataset);
-      if (current?.uuid === p.uuid) return;
-      void (async () => {
-        await templateStore.preloadSpaceTemplates(p);
-        await datasetStore.switchDataset(p.uuid);
-      })();
+    const ds = datasetStore.datasets().find((d) => d.id === seg || d.sharedId === seg);
+    if (!ds) {
+      // Routing policy, not backend dialect: a segment that isn't a local id is treated as a
+      // shared link the agent hasn't joined — clear the current dataset so the join gate shows.
+      // Local ids (UUIDs, with hyphens) may just be momentarily missing; leave the view alone.
+      if (!seg.includes('-')) datasetStore.clearCurrentDataset();
       return;
     }
-
-    // UUID — local/private dataset
     const current = untrack(datasetStore.currentDataset);
-    if (current?.uuid === seg) return;
-    const p = datasetStore.datasets().find((ap) => ap.uuid === seg);
-    if (!p) return;
+    if (current?.id === ds.id) return;
     void (async () => {
-      await templateStore.preloadSpaceTemplates(p);
-      await datasetStore.switchDataset(p.uuid);
+      await templateStore.preloadSpaceTemplates(ds);
+      await datasetStore.switchDataset(ds.id);
     })();
   });
 
@@ -932,28 +907,28 @@ export function SpaceStoreProvider(props: ParentProps) {
   } | null>(null);
 
   createEffect(() => {
-    const p = datasetStore.currentDataset();
+    const ds = datasetStore.currentDataset();
     const weSpace = datasetStore.isWeSpace();
-    // Force a re-run once registerDynamicModels has populated the per-dataset registry —
-    // that happens in switchDataset's background IIFE, strictly before currentDatasetModels
-    // is set, so tracking it here guarantees a second run right when getModelForPerspective is ready.
+    // Force a re-run once the dataset's foreign schemas have been registered — that happens in
+    // switchDataset's background pass, strictly before currentDatasetModels is set, so tracking
+    // it here guarantees a second run right when model resolution is ready.
     void datasetStore.currentDatasetModels();
 
-    if (!p || weSpace) {
+    if (!ds || weSpace) {
       setForeignSpacePrefill(null);
       return;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const CommunityClass = getModelForPerspective('Community', p.uuid) as any;
+    const CommunityClass = getModelForPerspective('Community', ds.handle) as any;
     if (!CommunityClass) {
       setForeignSpacePrefill(null);
       return;
     }
 
-    CommunityClass.findOne(p, {})
+    CommunityClass.findOne(ds.handle, {})
       .then((instance: { name?: string; description?: string; thumbnail?: string } | null) => {
-        if (!instance || untrack(datasetStore.currentDataset)?.uuid !== p.uuid) return;
+        if (!instance || untrack(datasetStore.currentDataset)?.id !== ds.id) return;
         setForeignSpacePrefill({
           name: instance.name ?? '',
           description: instance.description ?? '',

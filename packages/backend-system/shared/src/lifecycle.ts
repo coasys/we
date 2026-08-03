@@ -23,6 +23,11 @@ export interface DatasetRef {
   name: string;
   /** Global shared URI once published/joined (AD4M: `neighbourhood://<cid>`). Absent when local. */
   sharedUri?: string;
+  /**
+   * The scheme-less global id (AD4M: the neighbourhood CID) — what shared records store and
+   * compare. Minted by the adapter alongside `sharedUri` so no consumer ever parses a URI.
+   */
+  sharedId?: string;
   /** The opaque handle query/model calls consume. See `DatasetHandle`. */
   handle: DatasetHandle;
 }
@@ -47,10 +52,13 @@ export interface DatasetLifecyclePort {
   get(id: string): Promise<DatasetRef | null>;
   create(name: string): Promise<DatasetRef>;
   remove(id: string): Promise<void>;
-  /** Publish an existing local dataset for sharing. Returns its shared URI. */
-  publish?(id: string): Promise<string>;
-  /** Join a shared dataset by URI. */
-  join?(uri: string): Promise<DatasetRef>;
+  /** Publish an existing local dataset for sharing. Returns its shared URI and scheme-less id. */
+  publish?(id: string): Promise<{ uri: string; sharedId: string }>;
+  /**
+   * Join a shared dataset. Accepts the backend's full URI or a bare shared id — normalization is
+   * the adapter's dialect, not the caller's.
+   */
+  join?(idOrUri: string): Promise<DatasetRef>;
   /** Other agents holding a shared dataset (member roster), by dataset id. */
   members?(id: string): Promise<string[]>;
   /** Subscribe to change events. Returns an unsubscribe function. */

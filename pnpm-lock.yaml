@@ -574,6 +574,9 @@ importers:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/cli:
     devDependencies:
@@ -855,6 +858,9 @@ importers:
       '@coasys/ad4m':
         specifier: 0.13.0-test-9
         version: 0.13.0-test-9
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../backend-system/shared
     devDependencies:
       '@we/cli':
         specifier: workspace:*
@@ -862,6 +868,9 @@ importers:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/module-system/call:
     devDependencies:
@@ -969,10 +978,11 @@ importers:
         version: 1.9.14
 
   packages/module-system/notes:
+    dependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../backend-system/shared
     devDependencies:
-      '@coasys/ad4m':
-        specifier: 0.13.0-test-9
-        version: 0.13.0-test-9
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli

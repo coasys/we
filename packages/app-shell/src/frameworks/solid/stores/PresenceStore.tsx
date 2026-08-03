@@ -132,7 +132,7 @@ export function PresenceStoreProvider(props: ParentProps) {
   // retaining its peers. Retention without subscription only preserves state that is already past its
   // TTL, and the join handshake repopulates in one round trip on return anyway.
   createEffect(() => {
-    const perspective = datasetStore.currentDataset();
+    const datasetHandle = datasetStore.currentDataset()?.handle;
     const did = session.me()?.did;
 
     source?.stop();
@@ -140,9 +140,9 @@ export function PresenceStoreProvider(props: ParentProps) {
     setRawPeers([]);
     setAvailable(false);
 
-    if (!perspective || !did) return;
+    if (!datasetHandle || !did) return;
 
-    const scope = ephemeralPort(perspective);
+    const scope = ephemeralPort(datasetHandle);
     if (!scope) return; // personal space — no neighbourhood, no presence
 
     // Only the focused tab publishes; every tab still subscribes, so each one's UI stays live.

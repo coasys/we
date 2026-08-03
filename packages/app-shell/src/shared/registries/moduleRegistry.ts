@@ -23,6 +23,7 @@
  * registers. That is exactly what makes `{ $if: { condition: { $store: 'modules.notes' } } }` the
  * supported way for a template to depend on an optional module.
  */
+import type { SchemaPort } from '@we/backend-shared';
 import { getModelPredicates, type ModelClass, registerModel, unregisterModel } from '@we/models';
 import {
   checkModuleCompatibility,
@@ -88,6 +89,8 @@ export interface RegisterResult {
   problems: string[];
 }
 
+const compiledEntities = new Map<string, unknown[]>();
+
 export const moduleRegistry = {
   /**
    * Register a module against this host.
@@ -104,9 +107,15 @@ export const moduleRegistry = {
     // Predicates are how existing data is found, so minting one outside the module's own subtree is
     // not a bug to fix later — by the time it is noticed, data has been written under a name nobody
     // can adjudicate. Refused at registration for the same reason an incompatible backend is.
-    const badPredicates = (definition.models ?? []).flatMap((model) =>
-      modulePredicateViolations(definition.id, getModelPredicates(model as Parameters<typeof getModelPredicates>[0])),
-    );
+    const badPredicates = [
+      ...(definition.models ?? []).flatMap((model) =>
+        modulePredicateViolations(definition.id, getModelPredicates(model as Parameters<typeof getModelPredicates>[0])),
+      ),
+      // Declared entities mint under the module's subtree by construction, so the only way a bad
+      // predicate enters is an explicit override — which exists precisely to name something the
+      // minting rule wouldn't, and therefore needs the same adjudication.
+      ...modulePredicateViolations(definition.id, Object.values(definition.entities?.predicates ?? {})),
+    ];
     if (badPredicates.length) {
       const problems = [
         `declares predicates outside ${modulePredicatePrefix(definition.id)}: ${badPredicates.join(', ')}`,
@@ -159,6 +168,13 @@ export const moduleRegistry = {
     for (const model of (entry.definition.models ?? []) as ModelClass[]) {
       unregisterModel((model as unknown as { className: string }).className);
     }
+    // Declared entities are compiled lazily and cached, so withdrawing a module has to drop both
+    // the resolvable classes and the cache — otherwise re-registering it would reuse classes
+    // compiled against the previous declaration.
+    for (const entityName of Object.keys(entry.definition.entities?.manifest.entities ?? {})) {
+      unregisterModel(entityName);
+    }
+    compiledEntities.delete(id);
     delete moduleStores[id];
     modules.delete(id);
   },
@@ -195,6 +211,32 @@ export const moduleRegistry = {
    */
   models(): unknown[] {
     return moduleRegistry.all().flatMap((m) => m.definition.models ?? []);
+  },
+
+  /**
+   * Every module-owned entity type in the form the backend installs — the union of modules that
+   * ship backend-written classes (`models`) and modules that *declare* theirs (`entities`).
+   *
+   * Declared entities are compiled through the backend's own schema port, so a module that
+   * declares rather than writes needs no knowledge of which backend is running. Results are
+   * memoised per module: install runs on every dataset switch, and compiling produces fresh
+   * classes each time, which would otherwise churn the model registry underneath live queries.
+   */
+  moduleSchemas(schemas: SchemaPort): unknown[] {
+    const declared = moduleRegistry.all().flatMap(({ definition }) => {
+      if (!definition.entities) return [];
+      const cached = compiledEntities.get(definition.id);
+      if (cached) return cached;
+      const compiled = Object.values(
+        schemas.declare(definition.entities.manifest, {
+          moduleId: definition.id,
+          predicates: definition.entities.predicates,
+        }),
+      );
+      compiledEntities.set(definition.id, compiled);
+      return compiled;
+    });
+    return [...moduleRegistry.models(), ...declared];
   },
 
   /**

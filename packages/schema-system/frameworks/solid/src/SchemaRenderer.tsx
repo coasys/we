@@ -279,6 +279,10 @@ function createQuerySignal(
       let target: unknown = stores;
       for (const part of parts) target = (target as Record<string, unknown>)?.[part];
       p = typeof target === 'function' ? (target as () => unknown)() : target;
+      // A host store may expose datasets as `DatasetRef`s (described fields + the backend's own
+      // handle). Data consumers take the handle; both shapes are contract types, so unwrap here
+      // rather than making every template know which one a given store hands back.
+      if (p && typeof p === 'object' && 'handle' in p) p = (p as { handle: unknown }).handle;
     } else {
       // The host injects the backend-neutral $currentDataset() (AD4M's currentPerspective, another
       // backend's equivalent) — no AD4M store reference in the renderer.
@@ -692,6 +696,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             let target: unknown = stores;
             for (const part of parts) target = (target as Record<string, unknown>)?.[part];
             p = typeof target === 'function' ? (target as () => unknown)() : target;
+            // See the $each dataset resolution above — a store may hand back a DatasetRef.
+            if (p && typeof p === 'object' && 'handle' in p) p = (p as { handle: unknown }).handle;
           } else {
             const currentDataset = stores.$currentDataset;
             p = typeof currentDataset === 'function' ? currentDataset() : null;

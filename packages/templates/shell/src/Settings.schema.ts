@@ -407,7 +407,7 @@ export const settingsTemplate: TemplateSchema = {
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $store: 'datasetStore.datasets' }, as: 'perspective' },
+                      props: { items: { $store: 'datasetStore.datasets' }, as: 'dataset' },
                       children: [
                         {
                           type: 'Card',
@@ -428,7 +428,7 @@ export const settingsTemplate: TemplateSchema = {
                                   type: 'we-icon',
                                   props: {
                                     name: {
-                                      $if: { condition: '$perspective.sharedUrl', then: 'globe', else: 'folder' },
+                                      $if: { condition: '$dataset.sharedUri', then: 'globe', else: 'folder' },
                                     },
                                     size: '16px',
                                   },
@@ -436,19 +436,19 @@ export const settingsTemplate: TemplateSchema = {
                                 {
                                   type: 'we-text',
                                   props: { variant: 'body', fontWeight: 'medium' },
-                                  children: ['$perspective.name'],
+                                  children: ['$dataset.name'],
                                 },
                               ],
                             },
                             {
                               type: 'we-text',
                               props: { variant: 'body' },
-                              children: [{ $concat: ['UUID: ', '$perspective.uuid'] }],
+                              children: [{ $concat: ['ID: ', '$dataset.id'] }],
                             },
                             {
                               type: 'we-text',
                               props: { variant: 'body' },
-                              children: [{ $concat: ['URL: ', '$perspective.sharedUrl'] }],
+                              children: [{ $concat: ['URL: ', '$dataset.sharedUri'] }],
                             },
                             {
                               type: 'Row',
@@ -461,7 +461,7 @@ export const settingsTemplate: TemplateSchema = {
                                     size: 'sm',
                                     onClick: {
                                       $action: 'datasetStore.cleanupSpaceSdna',
-                                      args: ['$perspective.uuid'],
+                                      args: ['$dataset.id'],
                                       onSuccess: [{ $setLocal: 'sdnaCleanupResult', from: '$result' }],
                                     },
                                   },
@@ -479,7 +479,7 @@ export const settingsTemplate: TemplateSchema = {
                                   props: {
                                     variant: 'danger',
                                     size: 'sm',
-                                    onClick: { $action: 'spaceStore.removeSpace', args: ['$perspective.uuid'] },
+                                    onClick: { $action: 'spaceStore.removeSpace', args: ['$dataset.id'] },
                                   },
                                   children: [
                                     { type: 'we-icon', props: { name: 'trash', size: '16px' } },

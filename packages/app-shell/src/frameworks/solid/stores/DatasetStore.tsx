@@ -18,7 +18,7 @@
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
-import type { ModelManifestEntry } from '@we/backend-shared';
+import type { DatasetRef, ModelManifestEntry } from '@we/backend-shared';
 import { AgentSettings, type DatasetProxy } from '@we/models';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
@@ -26,11 +26,22 @@ import { useSessionStore } from './SessionStore';
 
 export type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-shared';
 
+/**
+ * A DatasetRef whose handle is narrowed to the model layer's dataset type — cast once where refs
+ * enter the shell (this store), typed everywhere downstream. The described fields (id/name/
+ * sharedUri/sharedId) are what UI logic reads; `handle` is what model calls consume.
+ */
+export interface AppDataset extends Omit<DatasetRef, 'handle'> {
+  handle: DatasetProxy;
+}
+
+const toApp = (ref: DatasetRef): AppDataset => ref as AppDataset;
+
 export interface DatasetStore {
   // State
-  datasets: Accessor<DatasetProxy[]>;
-  orderedDatasets: Accessor<DatasetProxy[]>;
-  currentDataset: Accessor<DatasetProxy | null>;
+  datasets: Accessor<AppDataset[]>;
+  orderedDatasets: Accessor<AppDataset[]>;
+  currentDataset: Accessor<AppDataset | null>;
   currentDatasetUri: Accessor<string | undefined>;
   currentDatasetCid: Accessor<string | undefined>;
   currentDatasetModels: Accessor<ModelManifestEntry[]>;
@@ -38,10 +49,10 @@ export interface DatasetStore {
   isWeSpace: Accessor<boolean>;
   joinedSpaceCids: Accessor<string[]>;
   systemDatasetUuids: Accessor<string[]>;
-  rootDataset: Accessor<DatasetProxy | null>;
-  testDataset: Accessor<DatasetProxy | null>;
-  globalDataset: Accessor<DatasetProxy | null>;
-  marketplaceDataset: Accessor<DatasetProxy | null>;
+  rootDataset: Accessor<AppDataset | null>;
+  testDataset: Accessor<AppDataset | null>;
+  globalDataset: Accessor<AppDataset | null>;
+  marketplaceDataset: Accessor<AppDataset | null>;
   agentSettings: Accessor<AgentSettings | null>;
   globalSpaceConfigured: Accessor<boolean>;
   globalSpaceId: () => string | null;
@@ -63,10 +74,13 @@ export interface DatasetStore {
   cleanupSpaceSdna: (uuid?: string) => Promise<string>;
 
   // Wiring for SpaceStore and the boot controller (not schema-facing)
-  /** Eagerly add a just-created dataset to the list and persist its ordering slot. */
-  addDataset: (p: DatasetProxy) => Promise<void>;
-  /** Add a just-joined dataset, adopting it as the global/marketplace dataset if the seed says so. */
-  adoptJoinedDataset: (p: DatasetProxy) => void;
+  /**
+   * Take a dataset the app just created or joined into local state, before the backend's own
+   * change event arrives. The event fires too — both paths are idempotent — but gates that read
+   * the dataset list (marketplaceJoined, the sidebar) would otherwise lag behind the action that
+   * caused them.
+   */
+  trackDataset: (ref: DatasetRef) => Promise<void>;
   /** Register a callback fired after a dataset is removed (locally or by any client). */
   onDatasetRemoved: (cb: (uuid: string) => void) => void;
   initSystemDatasets: () => Promise<void>;
@@ -80,14 +94,12 @@ const DatasetContext = createContext<DatasetStore>();
 export function DatasetStoreProvider(props: ParentProps) {
   const session = useSessionStore();
 
-  const [datasets, setDatasets] = createSignal<DatasetProxy[]>([]);
-  const [currentDataset, setCurrentDataset] = createSignal<DatasetProxy | null>(null);
+  const [datasets, setDatasets] = createSignal<AppDataset[]>([]);
+  const [currentDataset, setCurrentDataset] = createSignal<AppDataset | null>(null);
   const [currentDatasetModels, setCurrentDatasetModels] = createSignal<ModelManifestEntry[]>([]);
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
-  const [rootDataset, setRootDataset] = createSignal<DatasetProxy | null>(null);
-  const [testDataset, setTestDataset] = createSignal<DatasetProxy | null>(null);
-  const [globalDataset, setGlobalDataset] = createSignal<DatasetProxy | null>(null);
-  const [marketplaceDataset, setMarketplaceDataset] = createSignal<DatasetProxy | null>(null);
+  const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
+  const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
 
   const removedCallbacks: Array<(uuid: string) => void> = [];
@@ -96,37 +108,35 @@ export function DatasetStoreProvider(props: ParentProps) {
   // module never reaches into host stores — what it receives is `EphemeralPort` and dataset
   // accessors, all of which any backend could satisfy. See moduleHostServices.ts.
   provideModuleHostServices({
-    dataset: () => currentDataset() ?? null,
+    dataset: () => currentDataset()?.handle ?? null,
     // The *global* uri, never the local uuid — a uuid is local per-agent, so a call id derived
     // from one would differ on every peer and each would join a call only they can see.
-    datasetUri: () => currentDataset()?.sharedUrl ?? null,
+    datasetUri: () => currentDataset()?.sharedUri ?? null,
     selfId: () => session.me()?.did ?? null,
     ephemeral: session.ephemeralPort,
   });
 
   // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,
-  // personal datasets (no sharedUrl) produce {} rather than {"url":null}.
-  const currentDatasetUri = createMemo<string | undefined>(() => currentDataset()?.sharedUrl ?? undefined);
+  // personal datasets (no shared uri) produce {} rather than {"url":null}.
+  const currentDatasetUri = createMemo<string | undefined>(() => currentDataset()?.sharedUri ?? undefined);
 
-  // CID-only form (neighbourhood:// stripped) for comparing against Space.url,
-  // which stores only the CID to avoid URI resolution in the AD4M triple store.
-  const currentDatasetCid = createMemo<string | undefined>(
-    () => currentDataset()?.sharedUrl?.replace('neighbourhood://', '') ?? undefined,
-  );
+  // The scheme-less shared id, for comparing against Space.url — which stores that form so the
+  // backend never has to resolve a URI mid-query.
+  const currentDatasetCid = createMemo<string | undefined>(() => currentDataset()?.sharedId ?? undefined);
   const joinedSpaceCids = createMemo<string[]>(() =>
     datasets()
-      .filter((p) => p.sharedUrl)
-      .map((p) => p.sharedUrl!.replace('neighbourhood://', '')),
+      .map((d) => d.sharedId)
+      .filter((id): id is string => !!id),
   );
 
   const systemDatasetUuids = createMemo(() =>
     datasets()
-      .filter((p) => ['we-root', 'we-test'].includes(p.name))
-      .map((p) => p.uuid),
+      .filter((d) => ['we-root', 'we-test'].includes(d.name))
+      .map((d) => d.id),
   );
 
   function getDatasetOrder(): string[] {
-    const json = agentSettings()?.perspectiveOrder;
+    const json = agentSettings()?.datasetOrder;
     if (!json) return [];
     try {
       return JSON.parse(json);
@@ -137,22 +147,24 @@ export function DatasetStoreProvider(props: ParentProps) {
 
   // Derived: datasets sorted by user-defined order (falls back to load order), system datasets excluded
   const orderedDatasets = createMemo(() => {
-    const all = datasets().filter((p) => !['we-root', 'we-test'].includes(p.name));
+    const all = datasets().filter((d) => !['we-root', 'we-test'].includes(d.name));
     const order = getDatasetOrder();
     if (order.length === 0) return all;
-    const byUuid = new Map(all.map((p) => [p.uuid, p]));
+    const byUuid = new Map(all.map((d) => [d.id, d]));
     const ordered = order.flatMap((uuid) => {
       const p = byUuid.get(uuid);
       return p ? [p] : [];
     });
     const inOrder = new Set(order);
-    const appended = all.filter((p) => !inOrder.has(p.uuid));
+    const appended = all.filter((d) => !inOrder.has(d.id));
     return [...ordered, ...appended];
   });
 
+  // Seed URLs are backend-native deployment values (full URIs); correlating them with
+  // scheme-less shared ids is the one sanctioned strip in the shell, defined here once.
   const globalSpaceConfigured = () => !!getSeed().globalSpaceUrl;
   const marketplaceConfigured = () => !!getSeed().marketplaceUrl;
-  /** The neighbourhood CID (with `neighbourhood://` stripped) for the global space, or null if unconfigured. */
+  /** The scheme-less shared id for the global space, or null if unconfigured. */
   const globalSpaceId = (): string | null => {
     const url = getSeed().globalSpaceUrl;
     return url ? url.replace('neighbourhood://', '') : null;
@@ -166,13 +178,30 @@ export function DatasetStoreProvider(props: ParentProps) {
     return id ? joinedSpaceCids().includes(id) : false;
   });
 
+  /**
+   * The seed-configured datasets are *recognised*, not assigned: whichever joined dataset carries
+   * the seed's uri is the global space / marketplace. Derived rather than set imperatively so
+   * there is no path — restore on boot, join at runtime — that can forget to claim one.
+   *
+   * (`rootDataset`/`testDataset` stay explicit signals below: those the host *creates* when
+   * absent, which is a lifecycle step rather than a match.)
+   */
+  const globalDataset = createMemo<AppDataset | null>(() => {
+    const seedUrl = getSeed().globalSpaceUrl;
+    return seedUrl ? (datasets().find((d) => d.sharedUri === seedUrl) ?? null) : null;
+  });
+  const marketplaceDataset = createMemo<AppDataset | null>(() => {
+    const mktUrl = getSeed().marketplaceUrl;
+    return mktUrl ? (datasets().find((d) => d.sharedUri === mktUrl) ?? null) : null;
+  });
+
   async function reorderDatasets(newOrder: string[]): Promise<void> {
     const settings = agentSettings();
     if (!settings) return;
     // Deduplicate while preserving order — guards against any remaining race between
-    // the eager update in createSpace and the perspective-added subscription.
+    // the eager update in createSpace and the dataset-added subscription.
     const deduped = [...new Set(newOrder)];
-    settings.perspectiveOrder = JSON.stringify(deduped);
+    settings.datasetOrder = JSON.stringify(deduped);
     await settings.save();
     setAgentSettings(settings);
   }
@@ -182,35 +211,26 @@ export function DatasetStoreProvider(props: ParentProps) {
     if (!lifecycle) return;
     lifecycle.subscribe({
       onAdded: (ref) => {
-        const perspective = ref.handle as DatasetProxy;
-        if (datasets().some((p) => p.uuid === ref.id)) return;
-        // Log unexpected datasets so we can identify and filter system ones
-        const meAgent = session.me();
-        const publicPerspectiveUuid = (meAgent?.perspective as { uuid?: string } | undefined)?.uuid;
-        if (publicPerspectiveUuid && ref.id === publicPerspectiveUuid) {
-          console.log('DatasetStore: suppressing agent public perspective from sidebar', ref.name, ref.id);
-          return;
-        }
-        if (ref.name?.toLowerCase().startsWith('agent perspective')) {
-          console.log('DatasetStore: suppressing agent perspective from sidebar', ref.name, ref.id);
-          return;
-        }
+        if (datasets().some((d) => d.id === ref.id)) return;
+        // Backend bookkeeping datasets never arrive here — the adapter filters its own (see
+        // createAd4mDatasetLifecycle). What this store still filters is the HOST's convention:
+        // we-root/we-test, excluded from the sidebar by `orderedDatasets`.
         // Re-check after the async gap: createSpace's eager update may have run while
         // the adapter resolved the handle, which would add a duplicate.
-        if (datasets().some((p) => p.uuid === ref.id)) return;
-        setDatasets((prev) => [...prev, perspective]);
+        if (datasets().some((d) => d.id === ref.id)) return;
+        setDatasets((prev) => [...prev, toApp(ref)]);
         reorderDatasets([...getDatasetOrder(), ref.id]).catch(console.error);
       },
 
       // Update events fire on renames and share-state transitions — not on link changes.
       // Space model data lives in links, so there's nothing to refresh here beyond the handle.
       onUpdated: (ref) => {
-        setDatasets((prev) => prev.map((p) => (p.uuid === ref.id ? (ref.handle as DatasetProxy) : p)));
+        setDatasets((prev) => prev.map((d) => (d.id === ref.id ? toApp(ref) : d)));
       },
 
       // Removal fires for deletions from any client
       onRemoved: (uuid) => {
-        setDatasets((prev) => prev.filter((p) => p.uuid !== uuid));
+        setDatasets((prev) => prev.filter((d) => d.id !== uuid));
         removedCallbacks.forEach((cb) => cb(uuid));
         reorderDatasets(getDatasetOrder().filter((id) => id !== uuid)).catch(console.error);
       },
@@ -222,13 +242,13 @@ export function DatasetStoreProvider(props: ParentProps) {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
     try {
-      const perspectives = (await lifecycle.list()).map((ref) => ref.handle as DatasetProxy);
-      setDatasets(perspectives);
+      const refs = (await lifecycle.list()).map(toApp);
+      setDatasets(refs);
 
       // Bootstrap dataset order on first load (when no order has been saved yet)
-      if (!agentSettings()?.perspectiveOrder) {
+      if (!agentSettings()?.datasetOrder) {
         const systemOrder = ['we-root', 'we-test', 'we-global'];
-        const initialOrder = [...perspectives]
+        const initialOrder = [...refs]
           .sort((a, b) => {
             const ai = systemOrder.indexOf(a.name);
             const bi = systemOrder.indexOf(b.name);
@@ -237,7 +257,7 @@ export function DatasetStoreProvider(props: ParentProps) {
             if (bi === -1) return -1;
             return ai - bi;
           })
-          .map((p) => p.uuid);
+          .map((d) => d.id);
         await reorderDatasets(initialOrder);
       }
     } catch (error) {
@@ -251,42 +271,23 @@ export function DatasetStoreProvider(props: ParentProps) {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return;
     try {
-      const perspectives = (await lifecycle.list()).map((ref) => ref.handle as DatasetProxy);
-      const rootP = perspectives.find((p) => p.name === 'we-root');
+      const refs = (await lifecycle.list()).map(toApp);
+      const rootRef = refs.find((d) => d.name === 'we-root');
 
-      if (rootP) {
+      if (rootRef) {
         // Ensure all models are registered (handles new models added after initial creation)
-        await session.backendPorts()!.schemas.installRoot(rootP);
-        setRootDataset(rootP);
+        await session.backendPorts()!.schemas.installRoot(rootRef.handle);
+        setRootDataset(rootRef);
 
-        const settings = await AgentSettings.findOne(rootP);
+        const settings = await AgentSettings.findOne(rootRef.handle);
         if (settings) setAgentSettings(settings);
 
         // Find or create we-test system dataset (uses same snapshot)
-        const existingTest = perspectives.find((p) => p.name === 'we-test');
+        const existingTest = refs.find((d) => d.name === 'we-test');
         if (existingTest) {
           setTestDataset(existingTest);
         } else {
-          const testP = (await lifecycle.create('we-test')).handle as DatasetProxy;
-          setTestDataset(testP);
-        }
-
-        // Restore the global dataset if previously joined — model registration is handled
-        // by SpaceStore/installSpaceSdna when the dataset is navigated to.
-        const seedUrl = getSeed().globalSpaceUrl;
-        const existingGlobal = seedUrl ? perspectives.find((p) => p.sharedUrl === seedUrl) : undefined;
-        if (existingGlobal) {
-          setGlobalDataset(existingGlobal);
-          console.log('DatasetStore: restored global dataset', existingGlobal.uuid);
-        }
-
-        const marketplaceUrl = getSeed().marketplaceUrl;
-        const existingMarketplace = marketplaceUrl
-          ? perspectives.find((p) => p.sharedUrl === marketplaceUrl)
-          : undefined;
-        if (existingMarketplace) {
-          setMarketplaceDataset(existingMarketplace);
-          console.log('DatasetStore: restored marketplace dataset', existingMarketplace.uuid);
+          setTestDataset(toApp(await lifecycle.create('we-test')));
         }
 
         return;
@@ -294,28 +295,27 @@ export function DatasetStoreProvider(props: ParentProps) {
 
       // No root dataset exists — create one
       console.log('DatasetStore: creating root dataset');
-      const perspective = (await lifecycle.create('we-root')).handle as DatasetProxy;
-      await session.backendPorts()!.schemas.installRoot(perspective);
+      const rootCreated = toApp(await lifecycle.create('we-root'));
+      await session.backendPorts()!.schemas.installRoot(rootCreated.handle);
 
-      const settings = await AgentSettings.create(perspective, {
+      const settings = await AgentSettings.create(rootCreated.handle, {
         currentTemplateId: 'default',
         currentThemeId: 'dark',
         defaultThemeId: 'dark',
       });
 
-      setRootDataset(perspective);
+      setRootDataset(rootCreated);
       setAgentSettings(settings);
 
-      console.log('DatasetStore: created root dataset', perspective.uuid);
+      console.log('DatasetStore: created root dataset', rootCreated.id);
 
       // Find or create we-test system dataset
-      const allPersp = (await lifecycle.list()).map((ref) => ref.handle as DatasetProxy);
-      const existingTest = allPersp.find((p: DatasetProxy) => p.name === 'we-test');
+      const allRefs = (await lifecycle.list()).map(toApp);
+      const existingTest = allRefs.find((d) => d.name === 'we-test');
       if (existingTest) {
         setTestDataset(existingTest);
       } else {
-        const testP = (await lifecycle.create('we-test')).handle as DatasetProxy;
-        setTestDataset(testP);
+        setTestDataset(toApp(await lifecycle.create('we-test')));
       }
     } catch (error) {
       console.error('DatasetStore: initSystemDatasets error', error);
@@ -332,25 +332,11 @@ export function DatasetStoreProvider(props: ParentProps) {
     setAgentSettings(settings);
   }
 
-  async function addDataset(p: DatasetProxy): Promise<void> {
-    if (datasets().some((existing) => existing.uuid === p.uuid)) return;
-    setDatasets((prev) => [...prev, p]);
-    await reorderDatasets([...getDatasetOrder(), p.uuid]);
-  }
-
-  function adoptJoinedDataset(p: DatasetProxy): void {
-    // If this is the configured global space or marketplace, adopt it as such.
-    const seedUrl = getSeed().globalSpaceUrl;
-    if (p.sharedUrl && p.sharedUrl === seedUrl) setGlobalDataset(p);
-    const mktUrl = getSeed().marketplaceUrl;
-    if (p.sharedUrl && p.sharedUrl === mktUrl) setMarketplaceDataset(p);
-
-    // Eagerly add so derived state (e.g. marketplaceJoined, joinedSpaceCids) updates immediately —
-    // the perspective-added listener will also fire, but that backend event can lag or arrive too
-    // late for gates that key off the dataset list.
-    if (!datasets().some((existing) => existing.uuid === p.uuid)) {
-      setDatasets((prev) => [...prev, p]);
-    }
+  async function trackDataset(ref: DatasetRef): Promise<void> {
+    if (datasets().some((existing) => existing.id === ref.id)) return;
+    setDatasets((prev) => [...prev, toApp(ref)]);
+    // reorderDatasets dedupes, so re-tracking a dataset the change event already ordered is safe.
+    await reorderDatasets([...getDatasetOrder(), ref.id]);
   }
 
   async function removeDataset(uuid: string): Promise<void> {
@@ -359,7 +345,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
     try {
       await lifecycle.remove(uuid);
-      setDatasets((prev) => prev.filter((p) => p.uuid !== uuid));
+      setDatasets((prev) => prev.filter((d) => d.id !== uuid));
       removedCallbacks.forEach((cb) => cb(uuid));
     } catch (error) {
       console.error('DatasetStore: removeDataset error', error);
@@ -371,12 +357,14 @@ export function DatasetStoreProvider(props: ParentProps) {
     if (!lifecycle) return;
 
     try {
-      const perspective = (await lifecycle.get(uuid))?.handle as DatasetProxy | undefined;
-      if (!perspective) return;
+      const ref = await lifecycle.get(uuid);
+      if (!ref) return;
+      const app = toApp(ref);
+      const handle = app.handle;
 
-      // Check whether SDNA is already installed. Prefer the reliable SubjectClass
-      // marker (isModelRegistered) over getAllShacl() emptiness for the actual
-      // isWeSpace determination — getAllShacl()'s underlying triples can lag behind
+      // Check whether the schema is already installed. The port's `hasCoreSchema` uses the
+      // reliable marker rather than a shape listing for the isWeSpace determination — a listing's
+      // underlying triples can lag behind
       // on a freshly-switched-to, not-yet-fully-synced dataset (e.g. over a
       // remote backend connection) even though the space's SDNA is already installed
       // and queryable.
@@ -388,22 +376,22 @@ export function DatasetStoreProvider(props: ParentProps) {
       // space here. That's exactly what the "Initialize as WE space" gate (see
       // foreignSpacePrefill in SpaceStore) exists to ask the user about explicitly.
       // Only a dataset with no SDNA of any kind — the genuine first-time join
-      // race (the perspective-added listener fires before joinSpace reaches
-      // installSpaceSdna) — should hit the install path here.
+      // race (the dataset-added listener fires before joinSpace reaches the schema install)
+      // — should hit the install path here.
       const schemas = session.backendPorts()!.schemas;
-      let weSpace = await schemas.hasCoreSchema(perspective);
+      let weSpace = await schemas.hasCoreSchema(handle);
       if (!weSpace) {
-        if (!(await schemas.hasAnySchema(perspective))) {
-          await schemas.installSpace(perspective, moduleRegistry.models());
-          weSpace = await schemas.hasCoreSchema(perspective);
+        if (!(await schemas.hasAnySchema(handle))) {
+          await schemas.installSpace(handle, moduleRegistry.moduleSchemas(schemas));
+          weSpace = await schemas.hasCoreSchema(handle);
         }
       } else {
         // An existing WE space skips the install above by design, so a module enabled after the
         // space was created would find its shapes missing — a query failing with "No SHACL shape
         // stored for class X" in a dataset that otherwise looks healthy. Module shapes therefore
-        // install on every switch; `ensureModelsRegistered` diffs first, so this is a read in the
+        // install on every switch; the port diffs before writing, so this is a read in the
         // common case.
-        await schemas.installModules(perspective, moduleRegistry.models());
+        await schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas));
       }
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes
@@ -411,21 +399,20 @@ export function DatasetStoreProvider(props: ParentProps) {
       // for the visible switch at all — it's only consumed below, in the background.
       batch(() => {
         setIsWeSpace(weSpace);
-        setCurrentDataset(perspective);
+        setCurrentDataset(app);
       });
 
-      // Background: fetch foreign SHACL shapes once and derive both the dynamic model
-      // classes and the AI-facing manifest from that single result — they're pure,
-      // synchronous transforms of the same data, not separate fetches (see
-      // getForeignShacl's doc comment).
+      // Background: discover schemas foreign to the host (another app's entities synced into
+      // this dataset) and publish their manifest — the port registers them for name-based query
+      // resolution as part of the same pass.
       // Stale guard: if the user navigated away before this resolves, skip updates.
       void (async () => {
         try {
-          const manifest = await schemas.foreignSchemas(perspective);
-          if (currentDataset()?.uuid === uuid) setCurrentDatasetModels(manifest);
+          const manifest = await schemas.foreignSchemas(handle);
+          if (currentDataset()?.id === uuid) setCurrentDatasetModels(manifest);
         } catch (err) {
           console.warn('DatasetStore: foreignSchemas failed', err);
-          if (currentDataset()?.uuid === uuid) setCurrentDatasetModels([]);
+          if (currentDataset()?.id === uuid) setCurrentDatasetModels([]);
         }
       })();
     } catch (error) {
@@ -437,18 +424,18 @@ export function DatasetStoreProvider(props: ParentProps) {
     const lifecycle = session.lifecycle();
     if (!lifecycle) return '';
 
-    const targetUuid = uuid ?? currentDataset()?.uuid;
+    const targetUuid = uuid ?? currentDataset()?.id;
     if (!targetUuid) {
       console.warn('DatasetStore: cleanupSpaceSdna called with no uuid and no active dataset');
       return '';
     }
 
     try {
-      const perspective = (await lifecycle.get(targetUuid))?.handle as DatasetProxy | undefined;
-      if (!perspective) return '';
+      const handle = (await lifecycle.get(targetUuid))?.handle as DatasetProxy | undefined;
+      if (!handle) return '';
       const dedupe = session.backendPorts()?.schemas.dedupe;
       if (!dedupe) return '';
-      const { removed, authors } = await dedupe(perspective);
+      const { removed, authors } = await dedupe(handle);
       if (removed === 0) return 'No duplicate SDNA links found.';
       const myDid = session.me()?.did;
       const authorList = authors.map((did) => (did === myDid ? `${did} (you)` : did)).join(', ');
@@ -492,8 +479,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     },
     cleanupSpaceSdna,
 
-    addDataset,
-    adoptJoinedDataset,
+    trackDataset,
     onDatasetRemoved: (cb) => removedCallbacks.push(cb),
     initSystemDatasets,
     loadDatasets,

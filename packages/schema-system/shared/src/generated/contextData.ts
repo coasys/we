@@ -1438,7 +1438,7 @@ export const contextData: ContextData = {
           default: "'default'",
         },
         { name: 'claudeApiKey', type: 'string', predicate: 'we://claude_api_key', required: false },
-        { name: 'perspectiveOrder', type: 'string', predicate: 'we://perspective_order', required: false },
+        { name: 'datasetOrder', type: 'string', predicate: 'we://dataset_order', required: false },
         {
           name: 'globalSpaceJoined',
           type: 'boolean',
@@ -1689,7 +1689,6 @@ export const contextData: ContextData = {
         { name: 'url', type: 'string', predicate: 'we://url', required: false },
         { name: 'name', type: 'string', predicate: 'we://name', required: true },
         { name: 'description', type: 'string', predicate: 'we://description', required: true },
-        { name: 'access', type: 'string', predicate: 'we://access', required: false, default: "'personal'" },
         { name: 'discovery', type: 'string', predicate: 'we://discovery', required: false, default: "'hidden'" },
         { name: 'avatar', type: 'string', predicate: 'we://image', required: false },
         { name: 'coverImage', type: 'string', predicate: 'we://thumbnail', required: false },

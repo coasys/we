@@ -110,7 +110,8 @@ export default function TemplateProvider() {
 
   const boundBindings = createMemo(() =>
     sessionStore.backendPorts()?.dataBindings({
-      currentDataset: datasetStore.currentDataset,
+      // The backend's own handle, not the shell's ref — these bindings feed model calls.
+      currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
       currentDatasetModels: datasetStore.currentDatasetModels,
       profiles: profileStore.profiles,
       fetchProfile: profileStore.fetchProfile,
@@ -140,13 +141,19 @@ export default function TemplateProvider() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let val: any = (stores as Record<string, unknown>)[storeName];
     for (const key of rest) val = val?.[key];
-    return typeof val === 'function' ? val() : (val ?? null);
+    if (typeof val === 'function') val = val();
+    // Dataset accessors resolve to refs; model calls consume the handle inside.
+    if (val && typeof val === 'object' && 'handle' in val) val = val.handle;
+    return val ?? null;
   }
 
   // Mutations need the raw model class (create/update/delete), not the renderer's read-only
   // handle — resolved through the model layer's own registry.
   function resolve(modelName: string, opts?: { perspective?: string }) {
-    return [getModel(modelName), resolvePerspective(opts?.perspective) ?? datasetStore.currentDataset()!] as const;
+    return [
+      getModel(modelName),
+      resolvePerspective(opts?.perspective) ?? datasetStore.currentDataset()!.handle,
+    ] as const;
   }
 
   // Shell chrome — host slots plus anything feature modules contribute.

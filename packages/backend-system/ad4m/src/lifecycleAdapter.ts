@@ -13,20 +13,46 @@ import type {
   DatasetRef,
 } from '@we/backend-shared';
 
+const SCHEME = 'neighbourhood://';
+
 function toRef(p: PerspectiveProxy): DatasetRef {
   return {
     id: p.uuid,
     name: p.name,
-    ...(p.sharedUrl ? { sharedUri: p.sharedUrl } : {}),
+    ...(p.sharedUrl ? { sharedUri: p.sharedUrl, sharedId: p.sharedUrl.replace(SCHEME, '') } : {}),
     handle: p,
   };
 }
 
 export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifecyclePort {
   const client = backendClient as Ad4mClient;
+
+  /**
+   * AD4M keeps its own bookkeeping in perspectives too: the agent's public profile perspective,
+   * and the "Agent perspective …" ones the executor materialises for peers. They are not user
+   * datasets, so they never leave this adapter — which datasets are an implementation detail of
+   * the backend is the backend's question, not the shell's.
+   */
+  let ownProfileDatasetId: string | undefined;
+  let ownProfileResolved = false;
+  async function resolveOwnProfileDatasetId(): Promise<void> {
+    if (ownProfileResolved) return;
+    try {
+      const me = await client.agent.me();
+      ownProfileDatasetId = (me.perspective as { uuid?: string } | undefined)?.uuid;
+      ownProfileResolved = true;
+    } catch {
+      // Identity not usable yet (locked agent) — retry next call rather than caching a miss.
+    }
+  }
+
+  const isBackendBookkeeping = (p: PerspectiveProxy): boolean =>
+    p.uuid === ownProfileDatasetId || !!p.name?.toLowerCase().startsWith('agent perspective');
+
   return {
     async list() {
-      return (await client.perspective.all()).map(toRef);
+      await resolveOwnProfileDatasetId();
+      return (await client.perspective.all()).filter((p) => !isBackendBookkeeping(p)).map(toRef);
     },
 
     async get(id) {
@@ -55,10 +81,13 @@ export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifec
       if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
       const templateData = JSON.stringify({ uid, name: `${p.name}-link-language` });
       const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
-      return client.neighbourhood.publishFromPerspective(id, linkLanguage.address, new Perspective([]));
+      const uri = await client.neighbourhood.publishFromPerspective(id, linkLanguage.address, new Perspective([]));
+      return { uri, sharedId: uri.replace(SCHEME, '') };
     },
 
-    async join(uri) {
+    async join(idOrUri) {
+      // Accept a bare shared id: this backend's URIs carry the neighbourhood scheme.
+      const uri = idOrUri.includes('://') ? idOrUri : SCHEME + idOrUri;
       const handle = await client.neighbourhood.joinFromUrl(uri);
       const joined = await client.perspective.byUUID(handle.uuid);
       if (!joined) throw new Error(`join: no dataset handle after joining ${uri}`);
@@ -78,9 +107,11 @@ export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifec
 
       client.perspective.addPerspectiveAddedListener((handle) => {
         if (!active) return null;
-        client.perspective.byUUID(handle.uuid).then((p) => {
-          if (active && p) handlers.onAdded?.(toRef(p));
-        });
+        void (async () => {
+          await resolveOwnProfileDatasetId();
+          const p = await client.perspective.byUUID(handle.uuid);
+          if (active && p && !isBackendBookkeeping(p)) handlers.onAdded?.(toRef(p));
+        })();
         return null;
       });
 

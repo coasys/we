@@ -9,10 +9,10 @@
  * compile path mints its own type flag; models needing the rest stay decorated).
  */
 import type { Ad4mModel, SHACLShape } from '@coasys/ad4m';
-import { getModelPredicates } from '@we/models';
+import { FILE_STORAGE_LANGUAGE, getModelPredicates } from '@we/models';
 import { describe, expect, it } from 'vitest';
 
-import { buildModelFromEntry, compileManifest, manifestToEntries } from '../src/manifestCompiler';
+import { buildModelFromEntry, compileManifest, CORE_VOCABULARY, manifestToEntries } from '../src/manifestCompiler';
 import { buildModelManifest } from '../src/perspectiveHelpers';
 import { ROOT_MODELS, SPACE_MODELS } from '../src/sdnaModels';
 
@@ -52,6 +52,93 @@ describe('manifest compiler — golden round-trip over every hand-written model'
   }
 });
 
+describe('file-valued properties', () => {
+  // The projection the golden test compares (name/predicate/type/resolveLanguage/…) does not
+  // carry transforms, so a compiled model could silently lose the data-URI read and the
+  // round-trip would still pass. These assert against the generated shape itself.
+  const shapeOf = (cls: unknown) => (cls as Shaped).generateSHACL().shape!;
+
+  it('distinguishes a file read back rendered from one read back raw', () => {
+    // WE stores both kinds: avatars and image blocks read as data URIs, while stored templates,
+    // themes and editor state are decoded by the caller. Collapsing them would either break
+    // rendering or corrupt what the caller decodes, so `readAs` is explicit.
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Doc: {
+            properties: {
+              image: { type: 'string', format: 'file', readAs: 'dataUri' },
+              blob: { type: 'string', format: 'file' },
+              caption: { type: 'string' },
+            },
+            relations: {},
+          },
+        },
+      },
+      { moduleId: 'test' },
+    );
+
+    const props = shapeOf(classes.Doc).properties;
+    const image = props.find((p) => p.name === 'image')!;
+    const blob = props.find((p) => p.name === 'blob')!;
+    const caption = props.find((p) => p.name === 'caption')!;
+
+    expect(image.resolveLanguage).toBe(FILE_STORAGE_LANGUAGE);
+    expect(image.transform, 'declared readAs: dataUri').toBeDefined();
+
+    expect(blob.resolveLanguage, 'still stored as a file').toBe(FILE_STORAGE_LANGUAGE);
+    expect(blob.transform, 'but handed back for the caller to decode').toBeUndefined();
+
+    // A plain scalar keeps the decorator's default storage and gains no transform.
+    expect(caption.resolveLanguage).toBe('literal');
+    expect(caption.transform).toBeUndefined();
+  });
+
+  it('carries declared defaults onto the class and its stored initial value', () => {
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Task: {
+            properties: {
+              status: { type: 'string', default: 'todo' },
+              weight: { type: 'number', default: 3 },
+            },
+            relations: {},
+          },
+        },
+      },
+      { moduleId: 'test' },
+    );
+
+    const instance = new (classes.Task as unknown as new () => Record<string, unknown>)();
+    expect(instance.status).toBe('todo');
+    expect(instance.weight).toBe(3);
+  });
+
+  it('matches how the hand-written models declare the same thing', () => {
+    // Space.avatar is the reference: file storage + data-URI transform.
+    const spaceImage = shapeOf(ALL_MODELS.find((m) => m.name === 'Space')!).properties.find(
+      (p) => p.name === 'avatar',
+    )!;
+    const compiled = compileManifest(
+      {
+        version: '1',
+        entities: {
+          X: { properties: { avatar: { type: 'string', format: 'file', readAs: 'dataUri' } }, relations: {} },
+        },
+      },
+      { moduleId: 'test', predicates: { 'X.avatar': 'we://image' } },
+    );
+    const compiledImage = shapeOf(compiled.X).properties.find((p) => p.name === 'avatar')!;
+
+    expect(compiledImage.path).toBe(spaceImage.path);
+    expect(compiledImage.resolveLanguage).toBe(spaceImage.resolveLanguage);
+    expect(typeof compiledImage.transform).toBe(typeof spaceImage.transform);
+  });
+});
+
 describe('compileManifest — module-declared entities', () => {
   const manifest = {
     version: '1',
@@ -75,17 +162,29 @@ describe('compileManifest — module-declared entities', () => {
     },
   };
 
-  it('mints predicates under the module subtree and reuses core vocabulary', () => {
+  it('mints every predicate inside the module subtree, sharing nothing by accident', () => {
     const entries = manifestToEntries(manifest, { moduleId: 'notes' });
     const note = entries.find((e) => e.name === 'Note')!;
     const byName = Object.fromEntries(note.properties.map((p) => [p.name, p.predicate]));
-    // Core vocabulary reused where the property name matches its meaning…
-    expect(byName.title).toBe('we://title');
-    expect(byName.content).toBe('we://content');
-    // …novel properties mint in the module's subtree, snake_cased.
+
+    // Names that happen to match core vocabulary are NOT quietly bound to it: a module's `title`
+    // is its own until the author says otherwise. Predicates are a one-way door, so inheriting a
+    // shared name by accident is not a trade the compiler gets to make.
+    expect(byName.title).toBe('we://module/notes/title');
+    expect(byName.content).toBe('we://module/notes/content');
     expect(byName.pinned).toBe('we://module/notes/pinned');
     expect(byName.viewCount).toBe('we://module/notes/view_count');
     expect(byName.attachments).toBe('we://module/notes/attachments');
+  });
+
+  it('shares a core predicate when the declaration asks for it', () => {
+    // Opting in is what makes generic UI keyed on `we://name` work against a module's entity.
+    const entries = manifestToEntries(manifest, {
+      moduleId: 'notes',
+      predicates: { 'Note.title': CORE_VOCABULARY.title },
+    });
+    const note = entries.find((e) => e.name === 'Note')!;
+    expect(note.properties.find((p) => p.name === 'title')!.predicate).toBe('we://title');
   });
 
   it('honours explicit predicate overrides', () => {

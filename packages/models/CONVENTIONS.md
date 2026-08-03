@@ -136,3 +136,19 @@ Rules:
 4. Add a `version: number` property if and only if it's a block.
 5. Export from the folder's `index.ts` and from `src/index.ts`.
 6. Register the model in any perspective that needs it (e.g. in `AdamStore.createSpace` or `initSystemPerspectives`).
+7. Regenerate the manifest: `pnpm --filter @we/models build && pnpm --filter @we/models generate:manifest`.
+
+### The generated manifest
+
+`src/generated/coreManifest.ts` is a machine-readable description of every model here, derived from
+the classes by `scripts/generateCoreManifest.mjs`. It is what the manifest compiler — the same one
+feature modules declare their entities through — is tested against, so a stale manifest means the
+compiler is being tested against a data model we no longer have.
+
+It is **not** generated during `build`: the script imports the *built* classes, so it has to run
+after a build rather than as part of one. Nothing depends on you remembering, though — the
+equivalence suite in `@we/backend-ad4m` compares every entity against its class and fails with the
+command to run. If you add a model, change a property, or change a predicate, expect that suite to
+go red until you regenerate.
+
+Never hand-edit the generated file.

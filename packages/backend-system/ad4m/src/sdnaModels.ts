@@ -26,7 +26,7 @@ import {
   Theme,
   VideoBlock,
   WeNode,
-} from '@we/models';
+} from '@we/models/classes';
 
 /**
  * All SDNA models that belong to the we-root system perspective.

@@ -54,7 +54,7 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 }));
 
 // Fake Space/AgentSettings statics — the model layer is executor RPC; see the header comment.
-const fakeSettings = { perspectiveOrder: '', claudeApiKey: '', save: vi.fn(async () => {}) };
+const fakeSettings = { datasetOrder: '', claudeApiKey: '', save: vi.fn(async () => {}) };
 let spaceCounter = 0;
 
 vi.mock('@we/models', async (importOriginal) => {
@@ -182,8 +182,8 @@ describe('dataset lifecycle through the real stores', () => {
 
     const created = (await lifecycle.list()).find((d) => d.name === 'Shared Space')!;
     expect(created.sharedUri).toMatch(/^inmemory:\/\//);
-    // The Space model stored the CID form (scheme stripped).
-    expect(stores.spaces.mySpaces()[0].url).toBe(created.sharedUri!.replace('neighbourhood://', ''));
+    // The Space model stores the adapter-minted scheme-less shared id.
+    expect(stores.spaces.mySpaces()[0].url).toBe(created.sharedId);
   }, 10000);
 
   it("joins a peer's published dataset and switches to it", async () => {
@@ -217,7 +217,7 @@ describe('dataset lifecycle through the real stores', () => {
     const target = (await lifecycle.list()).find((d) => d.name === 'Remote-Doomed')!;
 
     lifecycle.removeRemotely(target.id);
-    await vi.waitFor(() => expect(stores.datasets.datasets().some((d) => d.uuid === target.id)).toBe(false));
+    await vi.waitFor(() => expect(stores.datasets.datasets().some((d) => d.id === target.id)).toBe(false));
     expect(stores.spaces.mySpaces()).toEqual([]);
   }, 10000);
 });

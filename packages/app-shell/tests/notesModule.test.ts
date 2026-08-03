@@ -5,7 +5,7 @@
  * install path, and the predicate namespace that becomes the convention the moment it ships. It is
  * fully solo-testable, since a personal perspective is local-only and needs no neighbourhood sync.
  */
-import { getModel } from '@we/backend-ad4m';
+import { createAd4mSchemaPort, getModel } from '@we/backend-ad4m';
 import { NOTE_PREDICATES, notesModule } from '@we/module-notes';
 import { checkModuleCompatibility, modulePredicatePrefix, modulePredicateViolations } from '@we/module-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -28,12 +28,16 @@ beforeEach(() => {
 });
 
 describe('notes module — declared coupling', () => {
-  it('declares ad4m, because it owns entities and there is no manifest→SDNA compiler', () => {
-    // The escape hatch working as designed: entity-owning modules stay unblocked, and the coupling is
-    // visible at install rather than discovered later.
-    expect(notesModule.backends).toEqual(['ad4m']);
-    const plan = checkModuleCompatibility(notesModule, { backend: 'nextgraph', framework: 'solid' });
-    expect(plan.compatible).toBe(false);
+  it('declares no backend, because it declares its entity rather than writing one', () => {
+    // This module used to declare `backends: ['ad4m']` — honestly, since owning an entity meant
+    // shipping a decorated class. Declaring the entity as a manifest removes the reason: the host
+    // compiles it through whichever schema port is connected, so nothing here names a backend.
+    expect(notesModule.backends).toBeUndefined();
+    expect(notesModule.entities?.manifest.entities.Note).toBeDefined();
+
+    for (const backend of ['ad4m', 'nextgraph', 'inmemory']) {
+      expect(checkModuleCompatibility(notesModule, { backend, framework: 'solid' }).compatible).toBe(true);
+    }
   });
 
   it('is framework-agnostic, because every piece of its UI is a fragment', () => {
@@ -91,23 +95,34 @@ describe('notes module — contributions', () => {
     expect(store.open()).toBe(false);
   });
 
-  it('resolves its model by name, so model.create can actually write a note', () => {
-    // Two registrations are needed and they fail at different moments. SDNA install puts the *shape*
-    // in the perspective; this puts the *class* where `model.create('Note', …)` and `$query` resolve
-    // it. Missing this one, the panel renders fine and only adding a note throws — which is exactly
-    // the bug the first version of this module shipped with.
+  it('resolves its entity by name once the host compiles it, so model.create can write a note', () => {
+    // Two things have to happen and they fail at different moments: install puts the *schema* in the
+    // dataset, and compiling puts the *class* where `model.create('Note', …)` and `$query` resolve
+    // it. Missing the second, the panel renders fine and only adding a note throws — the bug the
+    // first version of this module shipped with. Registration alone no longer does it: the class
+    // exists only once a backend has compiled the declaration.
+    const schemas = createAd4mSchemaPort({});
     moduleRegistry.register(notesModule, host, storeDeps);
+
+    const payloads = moduleRegistry.moduleSchemas(schemas);
+    expect(payloads).toHaveLength(1);
     expect(() => getModel('Note')).not.toThrow();
 
     moduleRegistry.unregister('notes');
     expect(() => getModel('Note')).toThrow(/not found in registry/);
   });
 
-  it('surfaces its model for the host to install', () => {
-    // Declarative: the host owns the install mechanism, so the diff-before-write check lives in one
-    // place rather than being re-implemented per module.
+  it('compiles its declaration to the predicates the convention mints', () => {
+    // The declaration says `text`; the scheme says `we://module/notes/text`. Nothing keeps those in
+    // step except the compiler, so this asserts the binding rather than trusting it.
+    const schemas = createAd4mSchemaPort({});
     moduleRegistry.register(notesModule, host, storeDeps);
-    expect(moduleRegistry.models()).toHaveLength(1);
+    moduleRegistry.moduleSchemas(schemas);
+
+    const shape = (
+      getModel('Note') as unknown as { generateSHACL(): { shape: { properties: { name?: string; path: string }[] } } }
+    ).generateSHACL().shape.properties;
+    expect(shape.find((p) => p.name === 'text')?.path).toBe(NOTE_PREDICATES.text);
   });
 
   it('withdraws everything on unregister', () => {
@@ -117,6 +132,7 @@ describe('notes module — contributions', () => {
     expect(moduleStores.notes).toBeUndefined();
     expect(slotRegistry.get('notes:0')).toBeUndefined();
     expect(moduleRegistry.models()).toHaveLength(0);
+    expect(() => getModel('Note')).toThrow(/not found in registry/);
   });
 });
 
