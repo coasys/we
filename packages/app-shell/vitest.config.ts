@@ -10,7 +10,8 @@ const alias = { '@shared': r('./src/shared'), '@solid': r('./src/frameworks/soli
 
 // Tests that mount real Solid components/providers — they need jsdom, browser resolve
 // conditions, and the solid transform. Everything else stays in the plain node project.
-const SOLID_TESTS = ['tests/executorFreeBoot.test.tsx'];
+// bundledModules imports the assistant module's Solid components through its definition.
+const SOLID_TESTS = ['tests/executorFreeBoot.test.tsx', 'tests/bundledModules.test.ts'];
 
 export default defineConfig({
   test: {

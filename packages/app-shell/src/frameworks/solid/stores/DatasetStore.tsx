@@ -100,8 +100,17 @@ export function DatasetStoreProvider(props: ParentProps) {
     // The *global* uri, never the local uuid — a uuid is local per-agent, so a call id derived
     // from one would differ on every peer and each would join a call only they can see.
     datasetUri: () => currentDataset()?.sharedUrl ?? null,
+    // The personal root dataset, for modules with agent-scoped models (assistant config etc.).
+    rootDataset: () => rootDataset() ?? null,
     selfId: () => session.me()?.did ?? null,
     ephemeral: session.ephemeralPort,
+    // Backend connection details for modules that declare this backend and talk to its HTTP
+    // surface directly. Degrades to null like presence on hosts without one.
+    connection: () => {
+      const port = session.port();
+      const token = session.token();
+      return port !== undefined && token !== undefined ? { port, token, url: session.serverUrl() } : null;
+    },
   });
 
   // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,
@@ -257,6 +266,9 @@ export function DatasetStoreProvider(props: ParentProps) {
       if (rootP) {
         // Ensure all models are registered (handles new models added after initial creation)
         await session.backendPorts()!.schemas.installRoot(rootP);
+        // Agent-scoped module models install to the personal root dataset at boot (space-scoped
+        // ones install per space switch) — see ModuleDefinition.agentModels.
+        await session.backendPorts()!.schemas.installModules(rootP, moduleRegistry.agentModels());
         setRootDataset(rootP);
 
         const settings = await AgentSettings.findOne(rootP);
@@ -296,6 +308,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       console.log('DatasetStore: creating root dataset');
       const perspective = (await lifecycle.create('we-root')).handle as DatasetProxy;
       await session.backendPorts()!.schemas.installRoot(perspective);
+      await session.backendPorts()!.schemas.installModules(perspective, moduleRegistry.agentModels());
 
       const settings = await AgentSettings.create(perspective, {
         currentTemplateId: 'default',

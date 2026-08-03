@@ -358,6 +358,9 @@ importers:
       '@we/models':
         specifier: workspace:*
         version: link:../models
+      '@we/module-assistant':
+        specifier: workspace:*
+        version: link:../module-system/assistant
       '@we/module-call':
         specifier: workspace:*
         version: link:../module-system/call
@@ -862,6 +865,48 @@ importers:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+
+  packages/module-system/assistant:
+    devDependencies:
+      '@coasys/ad4m':
+        specifier: 0.13.0-test-9
+        version: 0.13.0-test-9
+      '@solidjs/testing-library':
+        specifier: ^0.8.10
+        version: 0.8.10(@solidjs/router@0.15.4(solid-js@1.9.14))(solid-js@1.9.14)
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+      '@we/components':
+        specifier: workspace:*
+        version: link:../../design-system/4-components
+      '@we/design-utils':
+        specifier: workspace:*
+        version: link:../../design-system/utils
+      '@we/models':
+        specifier: workspace:*
+        version: link:../../models
+      '@we/module-shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@we/primitives':
+        specifier: workspace:*
+        version: link:../../design-system/3-primitives
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+      jsdom:
+        specifier: ^27.2.0
+        version: 27.4.0
+      solid-js:
+        specifier: ^1.9.5
+        version: 1.9.14
+      vite-plugin-solid:
+        specifier: ^2.11.10
+        version: 2.11.12(solid-js@1.9.14)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/module-system/call:
     devDependencies:

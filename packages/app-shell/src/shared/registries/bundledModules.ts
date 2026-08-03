@@ -9,6 +9,7 @@
  *
  * Adding a module here plus an id in `we-seed.json` is the whole install story for now.
  */
+import { assistantModule } from '@we/module-assistant';
 import { callModule } from '@we/module-call';
 import { createGlobeModule } from '@we/module-globe';
 import { notesModule } from '@we/module-notes';
@@ -33,6 +34,8 @@ export interface ActivationDeps extends BundledModuleDeps {
 
 export const bundledModules: Record<string, BundledModuleFactory> = {
   globe: ({ components }) => createGlobeModule(components.CesiumGlobe),
+  // Ships its own Solid components (declared via `frameworks`), so it takes nothing from the host.
+  assistant: () => assistantModule,
   // Takes nothing from the host: every piece of its UI is a schema fragment, so it imports no
   // framework at all.
   notes: () => notesModule,
