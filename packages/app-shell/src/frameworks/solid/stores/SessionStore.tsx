@@ -139,38 +139,22 @@ export function SessionStoreProvider(props: ParentProps) {
 
   async function initialise(): Promise<void> {
     try {
-      if (platform.isDesktop && backend.connectionDetails) {
-        const details = await backend.connectionDetails();
-        // Set url BEFORE port/token — signal writes fire effects synchronously (the appBridge
-        // flush effect reads all three), so url must be in place before port/token trigger it.
-        if (details.url) setServerUrl(details.url);
-        setPort(details.port);
-        setToken(details.token);
-      }
-
-      // Small delay to ensure executor has time to start (desktop only)
-      if (platform.isDesktop) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-
-      // Build the client through the host's connector, then the ports over it. The client itself
-      // stays opaque to this store — everything it needs goes through the two ports.
-      const c = await backend.connect();
+      // The connector owns the entire connection choreography (spawn/attach, auth, credential
+      // acquisition, settling delays) — the shell receives a ready backend and runs the session
+      // state machine over it.
+      const { client: c, ports, connection } = await backend.initialize({ selfId: () => me()?.did });
       setClient(c);
-      // The connector supplies the complete backend — the shell names no adapter.
-      const ports = backend.ports(c, { selfId: () => me()?.did });
       setBackendPorts(ports);
       const session = ports.agentSession;
       setAgentSession(session);
       setLifecycle(ports.lifecycle);
 
-      // Web platform: credentials are only available after the connector's auth flow completes
-      if (!platform.isDesktop && backend.connectionDetails) {
-        const details = await backend.connectionDetails();
-        // Set url BEFORE port/token — same ordering constraint as above.
-        if (details.url) setServerUrl(details.url);
-        setPort(details.port);
-        setToken(details.token);
+      if (connection) {
+        // Set url BEFORE port/token — signal writes fire effects synchronously (the appBridge
+        // flush effect reads all three), so url must be in place before port/token trigger it.
+        if (connection.url) setServerUrl(connection.url);
+        setPort(connection.port);
+        setToken(connection.token);
       }
 
       const status = await session.status();

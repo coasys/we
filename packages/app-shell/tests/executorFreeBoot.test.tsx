@@ -22,12 +22,11 @@ let agentOptions: InMemoryAgentOptions;
 vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
   usePlatform: () => ({ isDesktop: false, isDevelopment: true }),
   useBackend: () => ({
-    connect: async () => ({}),
     // The real in-memory bundle — the same thing a backend-less host would supply.
-    ports: (_client: unknown, ctx: { selfId(): string | undefined }) => {
+    initialize: async (ctx: { selfId(): string | undefined }) => {
       const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions });
       lifecycle = ports.lifecycle;
-      return ports;
+      return { client: {}, ports };
     },
   }),
 }));

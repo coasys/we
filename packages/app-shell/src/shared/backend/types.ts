@@ -24,22 +24,22 @@ export interface BackendConnectionDetails {
  * The practical symptom: `platform/types.ts` imported `@coasys/ad4m` purely for a return type, so
  * every host that wanted `isDesktop` also named the data layer.
  */
+/** Everything `initialize()` hands the shell — the connected client, the port bundle over it,
+ * and (when the backend has something to forward) the raw connection details the embed bridge
+ * relays to hosted apps. */
+export interface BackendInitResult {
+  client: unknown;
+  ports: BackendPorts;
+  connection?: BackendConnectionDetails;
+}
+
 export interface BackendConnector {
   /**
-   * Supply the backend's complete port bundle over the connected client. The shell consumes only
-   * this contract — which port implementations arrive here is the app's whole choice of backend.
+   * Perform this backend's entire connection choreography — spawn/attach, auth, credential
+   * acquisition, any settling delays — and return the ready-to-use result. Called once during
+   * boot. The shell holds no opinions about how a backend comes up; ordering quirks (an executor
+   * that needs a moment to start, credentials that only exist after an auth UI) live with the
+   * connector that owns them.
    */
-  ports(client: unknown, ctx: BackendPortsContext): BackendPorts;
-
-  /**
-   * Build and return a configured client, opaque to the shell. Called once during boot; the shell
-   * hands it to the backend adapter's port factories and never inspects it itself.
-   */
-  connect(): Promise<unknown>;
-
-  /**
-   * Optional: the raw connection details, for hosts that must hand them to something other than the
-   * client. Absent on connectors with nothing to forward.
-   */
-  connectionDetails?(): Promise<BackendConnectionDetails>;
+  initialize(ctx: BackendPortsContext): Promise<BackendInitResult>;
 }

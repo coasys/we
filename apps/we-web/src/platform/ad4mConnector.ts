@@ -1,12 +1,9 @@
-import type { Ad4mClient } from '@coasys/ad4m';
 import { getAd4mConnect } from '@coasys/ad4m-connect';
-import type { BackendConnectionDetails, BackendConnector } from '@we/app-shell/shared';
+import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { createAd4mBackendPorts } from '@we/backend-ad4m';
 
-let ad4mCore: Awaited<ReturnType<typeof getAd4mConnect>>['core'] | null = null;
-
 export const ad4mConnector: BackendConnector = {
-  async connect(): Promise<Ad4mClient> {
+  async initialize(ctx): Promise<BackendInitResult> {
     // TODO: update with new ad4m connect logic
     const { core, client } = getAd4mConnect({
       appInfo: {
@@ -18,18 +15,14 @@ export const ad4mConnector: BackendConnector = {
       hosting: true,
       capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
     });
-    ad4mCore = core;
-    return client;
-  },
 
-  // The connector is where the app chooses its backend: hand the shell the complete AD4M bundle.
-  ports: createAd4mBackendPorts,
-
-  async connectionDetails(): Promise<BackendConnectionDetails> {
-    if (!ad4mCore?.token) throw new Error('AD4M not authenticated — call connect() first');
-    // Use baseUrl (not url) so wss:// remote-host URLs are normalized to https:// before
-    // being forwarded in AD4M_CONFIG — the embedded app's startsWith('http') guard would
-    // otherwise reject raw wss:// URLs and fall back to localhost.
-    return { port: ad4mCore.port, token: ad4mCore.token, url: ad4mCore.baseUrl };
+    return {
+      client,
+      ports: createAd4mBackendPorts(client, ctx),
+      // Use baseUrl (not url) so wss:// remote-host URLs are normalized to https:// before
+      // being forwarded in AD4M_CONFIG — the embedded app's startsWith('http') guard would
+      // otherwise reject raw wss:// URLs and fall back to localhost.
+      ...(core.token ? { connection: { port: core.port, token: core.token, url: core.baseUrl } } : {}),
+    };
   },
 };

@@ -261,9 +261,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Register SDNA models (full set, same as switchDataset uses)
       await session.backendPorts()!.schemas.installSpace(spacePerspective, moduleRegistry.models());
 
-      // HACK: Model.register resolves before the SDNA is actually ready
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
       // If shared, publish — capture the returned URL so it can be stored on the Space model
       // (the dataset handle's own sharedUrl is not updated in-place).
       let neighbourhoodUrl: string | undefined;
@@ -341,9 +338,6 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
     await session.backendPorts()!.schemas.installSpace(perspective, moduleRegistry.models());
-    // HACK: Model.register resolves before SDNA is actually ready — same pattern used
-    // in switchDataset/createSpace/joinSpace.
-    await new Promise((resolve) => setTimeout(resolve, 500));
 
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
@@ -419,8 +413,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       // before writing, so this is safe to call unconditionally even when the space's
       // creator or an earlier joiner already installed it — it won't write a duplicate copy.
       await session.backendPorts()!.schemas.installSpace(joinedP, moduleRegistry.models());
-      // Give the SDNA write time to settle before reactive queries fire.
-      await new Promise((resolve) => setTimeout(resolve, 500));
 
       // Adopt as global/marketplace dataset when the seed says so, and eagerly add to the
       // dataset list so derived state (e.g. marketplaceJoined) updates immediately.

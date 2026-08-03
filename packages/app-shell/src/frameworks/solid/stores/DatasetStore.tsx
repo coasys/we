@@ -296,8 +296,6 @@ export function DatasetStoreProvider(props: ParentProps) {
       console.log('DatasetStore: creating root dataset');
       const perspective = (await lifecycle.create('we-root')).handle as DatasetProxy;
       await session.backendPorts()!.schemas.installRoot(perspective);
-      // Model.register resolves before SDNA is actually ready
-      await new Promise((resolve) => setTimeout(resolve, 500));
 
       const settings = await AgentSettings.create(perspective, {
         currentTemplateId: 'default',
@@ -397,7 +395,6 @@ export function DatasetStoreProvider(props: ParentProps) {
       if (!weSpace) {
         if (!(await schemas.hasAnySchema(perspective))) {
           await schemas.installSpace(perspective, moduleRegistry.models());
-          await new Promise((resolve) => setTimeout(resolve, 500));
           weSpace = await schemas.hasCoreSchema(perspective);
         }
       } else {

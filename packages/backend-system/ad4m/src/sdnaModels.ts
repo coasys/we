@@ -79,6 +79,11 @@ async function ensureModelsRegistered(p: PerspectiveProxy, models: readonly (typ
   const missing = models.filter((_, i) => !present[i]);
   if (missing.length > 0) {
     await Ad4mModel.registerAll(p, [...missing]);
+    // registerAll resolves before the written SDNA is actually queryable — settle before callers
+    // run reactive queries against the fresh shapes. This wait is a property of THIS backend's
+    // write path (the shell used to carry five copies of it as a "HACK" sleep); living here, it
+    // also runs only when something was actually written.
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 }
 
