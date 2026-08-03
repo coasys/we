@@ -21,6 +21,17 @@ export type Cardinality = 'one' | 'many';
 export interface PropertySchema {
   type: ScalarType;
   required?: boolean;
+  /**
+   * How the value is *stored*, when that differs from how it reads. `'file'` means the property
+   * holds binary content: writes take file data, reads come back as something directly usable
+   * (a data URI). Every backend has this problem and solves it differently — AD4M stores an
+   * expression through its file-storage language, a SQL host would keep a URL beside a blob
+   * store — so the manifest names the intent and each adapter supplies the mechanism.
+   *
+   * Without this, entities holding images (a space's avatar, an image block's source) cannot be
+   * declared neutrally and have to stay hand-written per backend.
+   */
+  format?: 'file';
 }
 
 export interface RelationSchema {
@@ -49,7 +60,11 @@ export interface ModelManifest {
 const scalarType = z.enum(['string', 'number', 'boolean', 'datetime', 'json']);
 const cardinality = z.enum(['one', 'many']);
 
-const propertySchema = z.object({ type: scalarType, required: z.boolean().optional() });
+const propertySchema = z.object({
+  type: scalarType,
+  required: z.boolean().optional(),
+  format: z.literal('file').optional(),
+});
 const relationSchema = z.object({
   target: z.string(),
   cardinality,

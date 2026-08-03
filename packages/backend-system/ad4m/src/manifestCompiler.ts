@@ -12,8 +12,9 @@
  * v1 scope: scalars and typed relations. Flags are minted automatically (one type flag per
  * entity); defaults, enums, and asset kinds are out of scope — models needing those stay decorated.
  */
-import { Ad4mModel, Flag, HasMany, HasOne, Model, Property } from '@coasys/ad4m';
+import { Ad4mModel, fileToDataUri, Flag, HasMany, HasOne, Model, Property } from '@coasys/ad4m';
 import type { ModelManifest } from '@we/backend-shared';
+import { FILE_STORAGE_LANGUAGE } from '@we/models';
 
 import type { ModelManifestEntry } from './manifestTypes';
 
@@ -98,11 +99,16 @@ export function buildModelFromEntry(
     } else {
       const defaults = scalarDefaults(p.type);
       proto[p.name] = defaults.value;
+      // A property stored through the file-storage language reads back as a data URI — the
+      // transform is what makes that true, so it travels with the language rather than being a
+      // separate thing an author has to remember.
+      const isFile = p.resolveLanguage === FILE_STORAGE_LANGUAGE;
       Property({
         through: p.predicate,
         ...(p.required ? { required: true } : {}),
         ...(p.writable === false ? { readOnly: true } : {}),
         ...(p.resolveLanguage !== undefined ? { resolveLanguage: p.resolveLanguage } : {}),
+        ...(isFile ? { transform: fileToDataUri } : {}),
         ...(defaults.initial !== undefined && p.required ? { initial: defaults.initial } : {}),
       })(proto as never, p.name as never);
     }
@@ -128,6 +134,9 @@ export function manifestToEntries(manifest: ModelManifest, opts: CompileManifest
       ...Object.entries(entity.properties).map(([propName, spec]) => ({
         name: propName,
         predicate: resolvePredicate(name, propName),
+        // The neutral `format: 'file'` binds to this backend's file-storage language; the
+        // compiler adds the read transform alongside it (see buildModelFromEntry).
+        ...(spec.format === 'file' ? { resolveLanguage: FILE_STORAGE_LANGUAGE } : {}),
         // datetime/json have no SHACL datatype of their own — stored as strings, like the
         // hand-written models store timestamps.
         type: (spec.type === 'number' ? 'number' : spec.type === 'boolean' ? 'boolean' : 'string') as

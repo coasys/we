@@ -9,7 +9,7 @@
  * compile path mints its own type flag; models needing the rest stay decorated).
  */
 import type { Ad4mModel, SHACLShape } from '@coasys/ad4m';
-import { getModelPredicates } from '@we/models';
+import { FILE_STORAGE_LANGUAGE, getModelPredicates } from '@we/models';
 import { describe, expect, it } from 'vitest';
 
 import { buildModelFromEntry, compileManifest, manifestToEntries } from '../src/manifestCompiler';
@@ -50,6 +50,54 @@ describe('manifest compiler — golden round-trip over every hand-written model'
       expect(strip(recompiled)).toEqual(strip(original));
     });
   }
+});
+
+describe('file-valued properties', () => {
+  // The projection the golden test compares (name/predicate/type/resolveLanguage/…) does not
+  // carry transforms, so a compiled model could silently lose the data-URI read and the
+  // round-trip would still pass. These assert against the generated shape itself.
+  const shapeOf = (cls: unknown) => (cls as Shaped).generateSHACL().shape!;
+
+  it('binds a declared file property to the storage language AND the read transform', () => {
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Avatar: {
+            properties: { image: { type: 'string', format: 'file' }, caption: { type: 'string' } },
+            relations: {},
+          },
+        },
+      },
+      { moduleId: 'test' },
+    );
+
+    const props = shapeOf(classes.Avatar).properties;
+    const image = props.find((p) => p.name === 'image')!;
+    const caption = props.find((p) => p.name === 'caption')!;
+
+    expect(image.resolveLanguage).toBe(FILE_STORAGE_LANGUAGE);
+    expect(image.transform, 'a file property reads back as a data URI').toBeDefined();
+    // A plain scalar keeps the decorator's default storage ('literal') and gains no transform.
+    expect(caption.resolveLanguage).toBe('literal');
+    expect(caption.transform).toBeUndefined();
+  });
+
+  it('matches how the hand-written models declare the same thing', () => {
+    // Space.avatar is the reference: file storage + data-URI transform.
+    const spaceImage = shapeOf(ALL_MODELS.find((m) => m.name === 'Space')!).properties.find(
+      (p) => p.name === 'avatar',
+    )!;
+    const compiled = compileManifest(
+      { version: '1', entities: { X: { properties: { avatar: { type: 'string', format: 'file' } }, relations: {} } } },
+      { moduleId: 'test', predicates: { 'X.avatar': 'we://image' } },
+    );
+    const compiledImage = shapeOf(compiled.X).properties.find((p) => p.name === 'avatar')!;
+
+    expect(compiledImage.path).toBe(spaceImage.path);
+    expect(compiledImage.resolveLanguage).toBe(spaceImage.resolveLanguage);
+    expect(typeof compiledImage.transform).toBe(typeof spaceImage.transform);
+  });
 });
 
 describe('compileManifest — module-declared entities', () => {
