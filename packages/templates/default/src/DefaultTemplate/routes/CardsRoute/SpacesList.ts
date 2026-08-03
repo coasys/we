@@ -152,9 +152,7 @@ export const spacesList: SchemaNode = gridWrapper([
                   {
                     type: 'we-text',
                     props: { color: 'neutral-800' },
-                    children: [
-                      { $if: { condition: { $eq: ['$space.access', 'shared'] }, then: 'Shared', else: 'Personal' } },
-                    ],
+                    children: [{ $if: { condition: '$space.url', then: 'Shared', else: 'Personal' } }],
                   },
                 ],
               },

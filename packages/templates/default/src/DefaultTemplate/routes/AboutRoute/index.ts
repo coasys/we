@@ -80,7 +80,7 @@ export const aboutRoute: RouteSchema = {
                           children: [
                             {
                               $if: {
-                                condition: { $eq: [{ $store: 'spaceStore.currentSpace.access' }, 'shared'] },
+                                condition: { $store: 'spaceStore.currentSpace.url' },
                                 then: 'Shared',
                                 else: 'Personal',
                               },
@@ -95,7 +95,7 @@ export const aboutRoute: RouteSchema = {
                       children: [
                         {
                           $if: {
-                            condition: { $eq: [{ $store: 'spaceStore.currentSpace.access' }, 'shared'] },
+                            condition: { $store: 'spaceStore.currentSpace.url' },
                             then: 'Joinable by anyone with the link',
                             else: 'Only visible to you',
                           },

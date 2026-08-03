@@ -143,9 +143,14 @@ export function SpaceStoreProvider(props: ParentProps) {
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [creatingSpace, setCreatingSpace] = createSignal(false);
 
-  // Derived: personal and shared spaces
-  const personalSpaces = createMemo(() => mySpaces().filter((s) => s.access === 'personal'));
-  const sharedSpaces = createMemo(() => mySpaces().filter((s) => s.access === 'shared'));
+  // Derived: personal and shared spaces.
+  //
+  // Shared-ness is read from `url` — the space's global (shared) id, set when its dataset is
+  // published — not from the stored `Space.access` field, which records the same fact a second
+  // time and can only ever agree or be wrong. `url` is also the fact every backend has, however
+  // it implements sharing (a neighbourhood, a published branch, an `is_public` row).
+  const personalSpaces = createMemo(() => mySpaces().filter((s) => !s.url));
+  const sharedSpaces = createMemo(() => mySpaces().filter((s) => !!s.url));
 
   // TemplateStore mounts above this store and cannot read it directly — hand it the space lookup
   // it needs to resolve a space's default template (see TemplateStore.provideSpaceLookup).
