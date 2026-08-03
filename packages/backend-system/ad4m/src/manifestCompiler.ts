@@ -13,10 +13,16 @@
  * entity); defaults, enums, and asset kinds are out of scope — models needing those stay decorated.
  */
 import { Ad4mModel, fileToDataUri, Flag, HasMany, HasOne, Model, Property } from '@coasys/ad4m';
-import type { ModelManifest } from '@we/backend-shared';
+import type { EntitySchema, ModelManifest } from '@we/backend-shared';
 import { FILE_STORAGE_LANGUAGE } from '@we/models';
 
 import type { ModelManifestEntry } from './manifestTypes';
+
+/** A manifest entry plus the declared extras the neutral projection has no place for. */
+export type CompilableEntry = ModelManifestEntry & {
+  flag?: { predicate: string; value: string };
+  abstract?: boolean;
+};
 
 /**
  * WE's core vocabulary, for a declaration that genuinely wants to *share* a predicate rather than
@@ -55,36 +61,44 @@ export interface CompileManifestOptions {
   predicates?: Record<string, string>;
 }
 
-/** Instance-default + `initial` for a scalar type, so shape generation infers the right datatype. */
-function scalarDefaults(type: string): { value: unknown; initial?: string } {
-  switch (type) {
-    case 'number':
-      return { value: 0, initial: '0' };
-    case 'boolean':
-      return { value: false, initial: 'false' };
-    default:
-      return { value: '' };
-  }
-}
-
 /**
  * Build one model class from an AD4M-side manifest entry (predicates already resolved).
  * Exported for the golden test; `compileManifest` is the author-facing entry point.
  */
 export function buildModelFromEntry(
-  entry: ModelManifestEntry,
+  entry: CompilableEntry,
   opts?: {
     classResolver?: (name: string) => typeof Ad4mModel | undefined;
     flag?: { through: string; value: string };
   },
 ): typeof Ad4mModel {
-  const cls = class extends Ad4mModel {};
+  // Field defaults are assigned per instance rather than left on the prototype: a hand-written
+  // class initialises them in its constructor, so anything walking an instance's own properties —
+  // which the write path does — would otherwise see an object with no fields at all.
+  const fieldDefaults: Record<string, unknown> = {};
+  const cls = class extends Ad4mModel {
+    constructor(...args: unknown[]) {
+      super(...(args as ConstructorParameters<typeof Ad4mModel>));
+      Object.assign(this, fieldDefaults);
+    }
+  };
   Object.defineProperty(cls, 'name', { value: entry.name });
   const proto = cls.prototype as unknown as Record<string, unknown>;
 
-  if (opts?.flag) {
-    proto.type = '';
-    Flag({ through: opts.flag.through, value: opts.flag.value })(proto as never, 'type' as never);
+  // A declaration's own flag wins over one the caller mints: the value is vocabulary, and a
+  // compiler inventing `we://module/x/space` for an entity whose data says `we://space` would
+  // orphan every existing instance.
+  // An abstract entity is never instantiated, so it carries no type marker — minting one anyway
+  // would tag every subtype's instances as the base type too.
+  const flag = entry.abstract
+    ? undefined
+    : entry.flag
+      ? { through: entry.flag.predicate, value: entry.flag.value }
+      : opts?.flag;
+  if (flag) {
+    proto.flag = '';
+    fieldDefaults.flag = '';
+    Flag({ through: flag.through, value: flag.value })(proto as never, 'flag' as never);
   }
 
   for (const p of entry.properties) {
@@ -95,25 +109,31 @@ export function buildModelFromEntry(
       const resolver = opts?.classResolver;
       const related = p.relatedModel;
       const decorator = p.isCollection ? HasMany : HasOne;
-      proto[p.name] = p.isCollection ? [] : '';
+      if (p.isCollection) {
+        proto[p.name] = [];
+        fieldDefaults[p.name] = [];
+      }
       decorator({
         through: p.predicate,
         ...(resolver && related !== undefined ? { target: () => resolver(related) as never } : {}),
       })(proto as never, p.name as never);
     } else {
-      const defaults = scalarDefaults(p.type);
-      proto[p.name] = defaults.value;
-      // A property stored through the file-storage language reads back as a data URI — the
-      // transform is what makes that true, so it travels with the language rather than being a
-      // separate thing an author has to remember.
-      const isFile = p.resolveLanguage === FILE_STORAGE_LANGUAGE;
+      // Only what the declaration states. `null` is itself a declared default (an unset file
+      // reference), which is why absence is tested rather than falsiness — and a property with no
+      // declared default starts unset, so nothing writes an empty value on its behalf.
+      const declared = (p as { default?: string | number | boolean | null }).default;
+      if (declared !== undefined) {
+        proto[p.name] = declared;
+        fieldDefaults[p.name] = declared;
+      }
       Property({
         through: p.predicate,
         ...(p.required ? { required: true } : {}),
         ...(p.writable === false ? { readOnly: true } : {}),
         ...(p.resolveLanguage !== undefined ? { resolveLanguage: p.resolveLanguage } : {}),
-        ...(isFile ? { transform: fileToDataUri } : {}),
-        ...(defaults.initial !== undefined && p.required ? { initial: defaults.initial } : {}),
+        // Only file properties declared to read back rendered get the data-URI transform; the
+        // rest (stored templates, themes, editor state) hand back what the caller decodes itself.
+        ...((p as { readAs?: string }).readAs === 'dataUri' ? { transform: fileToDataUri } : {}),
       })(proto as never, p.name as never);
     }
   }
@@ -131,35 +151,55 @@ export function manifestToEntries(manifest: ModelManifest, opts: CompileManifest
   const resolvePredicate = (entity: string, prop: string): string =>
     opts.predicates?.[`${entity}.${prop}`] ?? `${prefix}${snakeCase(prop)}`;
 
-  return Object.entries(manifest.entities).map(([name, entity]) => ({
-    name,
-    targetClass: '',
-    properties: [
-      ...Object.entries(entity.properties).map(([propName, spec]) => ({
-        name: propName,
-        predicate: resolvePredicate(name, propName),
-        // The neutral `format: 'file'` binds to this backend's file-storage language; the
-        // compiler adds the read transform alongside it (see buildModelFromEntry).
-        ...(spec.format === 'file' ? { resolveLanguage: FILE_STORAGE_LANGUAGE } : {}),
-        // datetime/json have no SHACL datatype of their own — stored as strings, like the
-        // hand-written models store timestamps.
-        type: (spec.type === 'number' ? 'number' : spec.type === 'boolean' ? 'boolean' : 'string') as
-          'string' | 'number' | 'boolean',
-        isCollection: false,
-        required: spec.required ?? false,
-        writable: true,
-      })),
-      ...Object.entries(entity.relations).map(([relName, spec]) => ({
-        name: relName,
-        predicate: resolvePredicate(name, relName),
-        type: 'uri' as const,
-        isCollection: spec.cardinality === 'many',
-        required: false,
-        writable: true,
-        relatedModel: spec.target,
-      })),
-    ],
-  }));
+  /** Everything an entity declares, including whatever it inherits. */
+  const resolved = (name: string): EntitySchema => {
+    const entity = manifest.entities[name];
+    const parent = entity.extends ? resolved(entity.extends) : undefined;
+    if (!parent) return entity;
+    return {
+      ...entity,
+      properties: { ...parent.properties, ...entity.properties },
+      relations: { ...parent.relations, ...entity.relations },
+      flag: entity.flag ?? parent.flag,
+    };
+  };
+
+  return Object.keys(manifest.entities).map((name) => {
+    const entity = resolved(name);
+    return {
+      name,
+      targetClass: '',
+      flag: entity.flag,
+      ...(entity.abstract ? { abstract: true } : {}),
+      properties: [
+        ...Object.entries(entity.properties).map(([propName, spec]) => ({
+          name: propName,
+          predicate: spec.predicate ?? resolvePredicate(name, propName),
+          // The neutral `format: 'file'` binds to this backend's file-storage language; `readAs`
+          // decides whether reads come back transformed (see buildModelFromEntry).
+          ...(spec.format === 'file' ? { resolveLanguage: FILE_STORAGE_LANGUAGE } : {}),
+          ...(spec.readAs === 'dataUri' ? { readAs: 'dataUri' as const } : {}),
+          ...(spec.default !== undefined ? { default: spec.default } : {}),
+          // datetime/json have no SHACL datatype of their own — stored as strings, like the
+          // hand-written models store timestamps.
+          type: (spec.type === 'number' ? 'number' : spec.type === 'boolean' ? 'boolean' : 'string') as
+            'string' | 'number' | 'boolean',
+          isCollection: false,
+          required: spec.required ?? false,
+          writable: true,
+        })),
+        ...Object.entries(entity.relations).map(([relName, spec]) => ({
+          name: relName,
+          predicate: spec.predicate ?? resolvePredicate(name, relName),
+          type: 'uri' as const,
+          isCollection: spec.cardinality === 'many',
+          required: false,
+          writable: true,
+          ...(spec.target ? { relatedModel: spec.target } : {}),
+        })),
+      ],
+    };
+  });
 }
 
 /**

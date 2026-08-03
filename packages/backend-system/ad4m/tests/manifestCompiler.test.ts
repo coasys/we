@@ -58,13 +58,20 @@ describe('file-valued properties', () => {
   // round-trip would still pass. These assert against the generated shape itself.
   const shapeOf = (cls: unknown) => (cls as Shaped).generateSHACL().shape!;
 
-  it('binds a declared file property to the storage language AND the read transform', () => {
+  it('distinguishes a file read back rendered from one read back raw', () => {
+    // WE stores both kinds: avatars and image blocks read as data URIs, while stored templates,
+    // themes and editor state are decoded by the caller. Collapsing them would either break
+    // rendering or corrupt what the caller decodes, so `readAs` is explicit.
     const classes = compileManifest(
       {
         version: '1',
         entities: {
-          Avatar: {
-            properties: { image: { type: 'string', format: 'file' }, caption: { type: 'string' } },
+          Doc: {
+            properties: {
+              image: { type: 'string', format: 'file', readAs: 'dataUri' },
+              blob: { type: 'string', format: 'file' },
+              caption: { type: 'string' },
+            },
             relations: {},
           },
         },
@@ -72,15 +79,42 @@ describe('file-valued properties', () => {
       { moduleId: 'test' },
     );
 
-    const props = shapeOf(classes.Avatar).properties;
+    const props = shapeOf(classes.Doc).properties;
     const image = props.find((p) => p.name === 'image')!;
+    const blob = props.find((p) => p.name === 'blob')!;
     const caption = props.find((p) => p.name === 'caption')!;
 
     expect(image.resolveLanguage).toBe(FILE_STORAGE_LANGUAGE);
-    expect(image.transform, 'a file property reads back as a data URI').toBeDefined();
-    // A plain scalar keeps the decorator's default storage ('literal') and gains no transform.
+    expect(image.transform, 'declared readAs: dataUri').toBeDefined();
+
+    expect(blob.resolveLanguage, 'still stored as a file').toBe(FILE_STORAGE_LANGUAGE);
+    expect(blob.transform, 'but handed back for the caller to decode').toBeUndefined();
+
+    // A plain scalar keeps the decorator's default storage and gains no transform.
     expect(caption.resolveLanguage).toBe('literal');
     expect(caption.transform).toBeUndefined();
+  });
+
+  it('carries declared defaults onto the class and its stored initial value', () => {
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Task: {
+            properties: {
+              status: { type: 'string', default: 'todo' },
+              weight: { type: 'number', default: 3 },
+            },
+            relations: {},
+          },
+        },
+      },
+      { moduleId: 'test' },
+    );
+
+    const instance = new (classes.Task as unknown as new () => Record<string, unknown>)();
+    expect(instance.status).toBe('todo');
+    expect(instance.weight).toBe(3);
   });
 
   it('matches how the hand-written models declare the same thing', () => {
@@ -89,7 +123,12 @@ describe('file-valued properties', () => {
       (p) => p.name === 'avatar',
     )!;
     const compiled = compileManifest(
-      { version: '1', entities: { X: { properties: { avatar: { type: 'string', format: 'file' } }, relations: {} } } },
+      {
+        version: '1',
+        entities: {
+          X: { properties: { avatar: { type: 'string', format: 'file', readAs: 'dataUri' } }, relations: {} },
+        },
+      },
       { moduleId: 'test', predicates: { 'X.avatar': 'we://image' } },
     );
     const compiledImage = shapeOf(compiled.X).properties.find((p) => p.name === 'avatar')!;

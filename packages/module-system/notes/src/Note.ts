@@ -31,7 +31,7 @@ export const NOTE_MANIFEST: ModelManifest = {
   version: '1',
   entities: {
     Note: {
-      properties: { text: { type: 'string' } },
+      properties: { text: { type: 'string', default: '' } },
       relations: {},
     },
   },
