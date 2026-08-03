@@ -1,19 +1,24 @@
 {
   "name": "@we/models",
   "version": "0.1.0",
-  "description": "Shared WE models — WeNode base class and entity models",
+  "description": "Shared WE models \u2014 WeNode base class and entity models",
   "author": "James Weir",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
-    "build": "we-build"
+    "build": "we-build",
+    "test": "vitest run"
   },
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.js"
+    },
+    "./classes": {
+      "import": "./dist/classes.js",
+      "require": "./dist/classes.js"
     }
   },
   "files": [
@@ -24,7 +29,8 @@
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "vitest": "^4.0.15"
   },
   "publishConfig": {
     "access": "public"

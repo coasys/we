@@ -1,5 +1,5 @@
 import { Ad4mModel, type LinkExpression, LinkQuery, Literal, PerspectiveProxy } from '@coasys/ad4m';
-import { getModelTargetClass } from '@we/models';
+import { getModelTargetClass } from '@we/models/classes';
 import {
   AgentSettings,
   AudioBlock,
@@ -26,7 +26,7 @@ import {
   Theme,
   VideoBlock,
   WeNode,
-} from '@we/models';
+} from '@we/models/classes';
 
 /**
  * All SDNA models that belong to the we-root system perspective.

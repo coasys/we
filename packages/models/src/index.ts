@@ -1,35 +1,72 @@
-export { WeNode } from './WeNode';
-export {
-  AgentSettings,
-  ChatMessage,
-  ChatSession,
-  Signal,
-  SignalType,
-  Space,
-  SpaceTemplatePreference,
-  Template,
-  Theme,
-} from './entities';
+/**
+ * WE's entity vocabulary.
+ *
+ * Each entity below is exported twice over: as a *type* (its instance shape) and as a *value*
+ * that stands in for whichever backend implementation is registered — see entityProxy.ts. A
+ * consumer writes `Space.findAll(dataset, …)` and never names a backend; the AD4M adapter
+ * registers decorated classes at connect time, and another backend registers its own.
+ *
+ * The implementations themselves live behind `@we/models/classes`, which only a backend adapter
+ * should import.
+ */
+import type * as C from './classes';
+import { defineEntity } from './entityProxy';
+
+export type WeNode = C.WeNode;
+export const WeNode = defineEntity('WeNode') as unknown as typeof C.WeNode;
+export type AgentSettings = C.AgentSettings;
+export const AgentSettings = defineEntity('AgentSettings') as unknown as typeof C.AgentSettings;
+export type ChatMessage = C.ChatMessage;
+export const ChatMessage = defineEntity('ChatMessage') as unknown as typeof C.ChatMessage;
+export type ChatSession = C.ChatSession;
+export const ChatSession = defineEntity('ChatSession') as unknown as typeof C.ChatSession;
+export type Signal = C.Signal;
+export const Signal = defineEntity('Signal') as unknown as typeof C.Signal;
+export type SignalType = C.SignalType;
+export const SignalType = defineEntity('SignalType') as unknown as typeof C.SignalType;
+export type Space = C.Space;
+export const Space = defineEntity('Space') as unknown as typeof C.Space;
+export type SpaceTemplatePreference = C.SpaceTemplatePreference;
+export const SpaceTemplatePreference = defineEntity(
+  'SpaceTemplatePreference',
+) as unknown as typeof C.SpaceTemplatePreference;
+export type Template = C.Template;
+export const Template = defineEntity('Template') as unknown as typeof C.Template;
+export type Theme = C.Theme;
+export const Theme = defineEntity('Theme') as unknown as typeof C.Theme;
 export type { ThemeData } from './entities/Theme';
 export { modelToThemeData } from './entities/Theme';
 export type { SignalMode, SignalAggregate, SignalSemantic } from './entities';
-export {
-  AudioBlock,
-  CalloutBlock,
-  CodeBlock,
-  CollectionBlock,
-  DividerBlock,
-  EmbedBlock,
-  EventBlock,
-  FileBlock,
-  ImageBlock,
-  LinkBlock,
-  LocationBlock,
-  TagBlock,
-  TaskBlock,
-  TextBlock,
-  VideoBlock,
-} from './blocks';
+export type AudioBlock = C.AudioBlock;
+export const AudioBlock = defineEntity('AudioBlock') as unknown as typeof C.AudioBlock;
+export type CalloutBlock = C.CalloutBlock;
+export const CalloutBlock = defineEntity('CalloutBlock') as unknown as typeof C.CalloutBlock;
+export type CodeBlock = C.CodeBlock;
+export const CodeBlock = defineEntity('CodeBlock') as unknown as typeof C.CodeBlock;
+export type CollectionBlock = C.CollectionBlock;
+export const CollectionBlock = defineEntity('CollectionBlock') as unknown as typeof C.CollectionBlock;
+export type DividerBlock = C.DividerBlock;
+export const DividerBlock = defineEntity('DividerBlock') as unknown as typeof C.DividerBlock;
+export type EmbedBlock = C.EmbedBlock;
+export const EmbedBlock = defineEntity('EmbedBlock') as unknown as typeof C.EmbedBlock;
+export type EventBlock = C.EventBlock;
+export const EventBlock = defineEntity('EventBlock') as unknown as typeof C.EventBlock;
+export type FileBlock = C.FileBlock;
+export const FileBlock = defineEntity('FileBlock') as unknown as typeof C.FileBlock;
+export type ImageBlock = C.ImageBlock;
+export const ImageBlock = defineEntity('ImageBlock') as unknown as typeof C.ImageBlock;
+export type LinkBlock = C.LinkBlock;
+export const LinkBlock = defineEntity('LinkBlock') as unknown as typeof C.LinkBlock;
+export type LocationBlock = C.LocationBlock;
+export const LocationBlock = defineEntity('LocationBlock') as unknown as typeof C.LocationBlock;
+export type TagBlock = C.TagBlock;
+export const TagBlock = defineEntity('TagBlock') as unknown as typeof C.TagBlock;
+export type TaskBlock = C.TaskBlock;
+export const TaskBlock = defineEntity('TaskBlock') as unknown as typeof C.TaskBlock;
+export type TextBlock = C.TextBlock;
+export const TextBlock = defineEntity('TextBlock') as unknown as typeof C.TextBlock;
+export type VideoBlock = C.VideoBlock;
+export const VideoBlock = defineEntity('VideoBlock') as unknown as typeof C.VideoBlock;
 export { FILE_STORAGE_LANGUAGE } from './constants';
 export {
   asFileField,

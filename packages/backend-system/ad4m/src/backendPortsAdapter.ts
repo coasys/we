@@ -14,7 +14,7 @@ import type {
   ProfileDirectoryPort,
   SchemaPort,
 } from '@we/backend-shared';
-import { type ModelClass, registerDynamicModels, registerModel, Space } from '@we/models';
+import { type ModelClass, registerDynamicModels, registerModel, Space } from '@we/models/classes';
 
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
