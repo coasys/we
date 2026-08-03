@@ -14,7 +14,8 @@ import type { ThemeOverrides } from '@we/schema-shared';
 import { themeToStyle } from '@we/schema-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, untrack, useContext } from 'solid-js';
 
-import { useAdamStore } from './AdamStore';
+import { useDatasetStore } from './DatasetStore';
+import { useSessionStore } from './SessionStore';
 
 const THEME_KEY = 'we.theme';
 const EDITING_THEME_KEY = 'we.editing-theme';
@@ -239,7 +240,8 @@ function populateMissingOverrides(overrides: ThemeOverrides): ThemeOverrides {
 }
 
 export function ThemeStoreProvider(props: ParentProps) {
-  const adamStore = useAdamStore();
+  const session = useSessionStore();
+  const datasetStore = useDatasetStore();
 
   const builtInThemes: Accessor<ThemeData[]> = () => Object.keys(themeRegistry).map(registryToThemeData);
 
@@ -256,7 +258,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [pendingSpaceThemeId, setPendingSpaceThemeId] = createSignal<string | null>(null);
   const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
 
-  // ── History (delegated to unified AiStore history) ──
+  // ── History (delegated to the unified EditorStore history) ──
   const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
 
   let pendingSnapshot: EditingTheme | null = null;
@@ -307,7 +309,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   const themeModelMap = new Map<string, Theme>();
 
   async function loadSpaceThemes() {
-    const perspective = adamStore.currentPerspective();
+    const perspective = datasetStore.currentDataset();
     if (!perspective) {
       setSpaceThemes([]);
       return;
@@ -322,7 +324,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function loadInstalledThemes() {
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!perspective) return;
     try {
       const models = await Theme.findAll(perspective);
@@ -330,7 +332,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       setInstalledThemes(models.map(modelToThemeData));
 
       // Build visible set from AgentSettings.installedThemes HasMany
-      const prefs = adamStore.agentSettings();
+      const prefs = datasetStore.agentSettings();
       if (prefs) {
         const refs = prefs.installedThemes || [];
         const trackedIds = new Set<string>();
@@ -356,12 +358,12 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   // Load installed themes when root perspective is ready
   createEffect(() => {
-    if (adamStore.rootPerspective()) loadInstalledThemes();
+    if (datasetStore.rootDataset()) loadInstalledThemes();
   });
 
   // Load space themes when the current space perspective changes
   createEffect(() => {
-    if (adamStore.currentPerspective()) loadSpaceThemes();
+    if (datasetStore.currentDataset()) loadSpaceThemes();
     else setSpaceThemes([]);
   });
 
@@ -386,7 +388,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   // would otherwise reset the theme to defaultThemeId mid-session.
   let lastAppliedDefaultThemeId: string | undefined;
   createEffect(() => {
-    const prefs = adamStore.agentSettings();
+    const prefs = datasetStore.agentSettings();
     if (!prefs?.defaultThemeId) return;
     // Don't override currentThemeId while the user is actively editing a theme —
     // agentSettings can update (e.g. when a theme save triggers AD4M subscriptions)
@@ -405,7 +407,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   // Keep localStorage in sync with the agent's default theme so the bootscreen
   // can apply it immediately on next launch without waiting for AD4M to load.
   createEffect(() => {
-    const prefs = adamStore.agentSettings();
+    const prefs = datasetStore.agentSettings();
     if (!prefs?.defaultThemeId) return;
     localStorage.setItem(THEME_KEY, prefs.defaultThemeId);
   });
@@ -442,7 +444,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     );
   }
 
-  const defaultThemeId: Accessor<string> = () => adamStore.agentSettings()?.defaultThemeId || 'light';
+  const defaultThemeId: Accessor<string> = () => datasetStore.agentSettings()?.defaultThemeId || 'light';
 
   const themeManagementList: Accessor<ThemeManagementItem[]> = () => {
     const defaultId = defaultThemeId();
@@ -486,7 +488,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       // scoped wrapper picks up editingTheme() directly, so editing preview stays visible.
       setSpaceThemeData(td ?? cur);
       const personalId =
-        localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
+        localStorage.getItem(THEME_KEY) ?? datasetStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
       applyThemeToDOM(resolveThemeData(personalId));
     } else {
       // scoped → global: clear the scoped wrapper. Non-editing: apply the space theme to
@@ -502,12 +504,12 @@ export function ThemeStoreProvider(props: ParentProps) {
     localStorage.setItem(THEME_KEY, themeId);
     setCurrentThemeId(themeId);
     applyThemeToDOM(resolveThemeData(themeId));
-    adamStore.updateAgentSettings({ defaultThemeId: themeId });
+    datasetStore.updateAgentSettings({ defaultThemeId: themeId });
   }
 
   async function toggleThemeInstalled(themeId: string) {
     const model = themeModelMap.get(themeId);
-    const prefs = adamStore.agentSettings();
+    const prefs = datasetStore.agentSettings();
     if (!model || !prefs) return;
     if (visibleThemeIds().has(themeId)) {
       await prefs.removeInstalledThemes(model).catch(() => {});
@@ -541,7 +543,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   function restorePersonalTheme() {
     setPendingSpaceThemeId(null);
     setSpaceThemeData(null);
-    const id = localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
+    const id = localStorage.getItem(THEME_KEY) ?? datasetStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
     setCurrentThemeId(id);
     // In global mode the space theme was on documentElement — restore the personal theme.
     // In scoped mode documentElement was never changed by the space theme, so no DOM rewrite needed.
@@ -566,7 +568,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       applyThemeToDOM(base);
       initialOverrides = populateMissingOverrides(storedOverrides);
       const personalId =
-        localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
+        localStorage.getItem(THEME_KEY) ?? datasetStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
       applyThemeToDOM(resolveThemeData(personalId));
     } else {
       initialOverrides = populateMissingOverrides(storedOverrides);
@@ -639,7 +641,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     destination: 'personal' | 'space' = 'personal',
   ): Promise<boolean> {
     const source = sourceId ? allThemes().find((t) => t.id === sourceId) : null;
-    const perspective = destination === 'space' ? adamStore.currentPerspective() : adamStore.rootPerspective();
+    const perspective = destination === 'space' ? datasetStore.currentDataset() : datasetStore.rootDataset();
     if (!perspective) {
       toastService.error(`Cannot save theme: no ${destination} perspective available`);
       return false;
@@ -682,7 +684,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       };
       setInstalledThemes((prev) => [...prev, data]);
       setVisibleThemeIds((prev) => new Set([...prev, model.id]));
-      const prefs = adamStore.agentSettings();
+      const prefs = datasetStore.agentSettings();
       if (prefs) await prefs.addInstalledThemes(model).catch(() => {});
       setCurrentTheme(data.id);
       setEditingTheme({ ...data, isDirty: false });
@@ -717,7 +719,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       // documentElement holds the personal theme in scoped mode; reaffirm it to flush
       // any stale inline CSS vars from a prior global-mode editing session.
       const personalId =
-        localStorage.getItem(THEME_KEY) ?? adamStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
+        localStorage.getItem(THEME_KEY) ?? datasetStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
       applyThemeToDOM(resolveThemeData(personalId));
     } else {
       // In global mode restore the actual current theme to documentElement.
@@ -735,7 +737,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     commitSnapshot();
     const editing = editingTheme();
     if (!editing) return null;
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!perspective) return null;
 
     try {
@@ -785,7 +787,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   async function saveEditingThemeAs(name: string, icon: string): Promise<ThemeData | null> {
     const editing = editingTheme();
     if (!editing) return null;
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!perspective) return null;
 
     try {
@@ -840,8 +842,8 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function installFromMarketplace(marketplaceThemeId: string) {
-    const marketplacePerspective = adamStore.marketplacePerspective();
-    const rootPerspective = adamStore.rootPerspective();
+    const marketplacePerspective = datasetStore.marketplaceDataset();
+    const rootPerspective = datasetStore.rootDataset();
     if (!marketplacePerspective || !rootPerspective) return;
 
     setOperationLoading(`marketplace-install:${marketplaceThemeId}`);
@@ -897,7 +899,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       themeModelMap.set(model.id, model);
       setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
 
-      const settings = adamStore.agentSettings();
+      const settings = datasetStore.agentSettings();
       if (settings) await settings.addInstalledThemes(model);
 
       toastService.success(`Theme "${source.name}" installed`);
@@ -910,7 +912,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function deleteMarketplaceTheme(themeId: string): Promise<void> {
-    const marketplacePerspective = adamStore.marketplacePerspective();
+    const marketplacePerspective = datasetStore.marketplaceDataset();
     if (!marketplacePerspective) {
       toastService.error('Marketplace not connected');
       return;
@@ -933,7 +935,7 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   async function uninstallTheme(themeId: string) {
     const model = themeModelMap.get(themeId);
-    const settings = adamStore.agentSettings();
+    const settings = datasetStore.agentSettings();
     if (!model || !settings) return;
     try {
       await settings.removeInstalledThemes(model);
@@ -955,7 +957,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     slug?: string;
     screenshots: File[];
   }): Promise<boolean> {
-    const marketplacePerspective = adamStore.marketplacePerspective();
+    const marketplacePerspective = datasetStore.marketplaceDataset();
     if (!marketplacePerspective) {
       toastService.error('Marketplace not connected');
       return false;
@@ -970,7 +972,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     const themeIcon = options.icon ?? base.icon;
 
     const existing = await Theme.findOne(marketplacePerspective, { where: { slug: themeSlug } });
-    if (existing && existing.author !== adamStore.me()?.did) {
+    if (existing && existing.author !== session.me()?.did) {
       toastService.error(`A theme with slug "${themeSlug}" already exists in the marketplace by a different author`);
       return false;
     }
@@ -1031,7 +1033,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
-    const perspective = adamStore.allPerspectives().find((p) => p.uuid === perspectiveUuid);
+    const perspective = datasetStore.datasets().find((p) => p.uuid === perspectiveUuid);
     if (!perspective) {
       toastService.error('Space not found');
       return false;

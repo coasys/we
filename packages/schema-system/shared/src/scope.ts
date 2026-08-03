@@ -28,10 +28,10 @@ export interface ScopeRef {
   kind: ScopeRefKind;
   /**
    * The path as it appears inside the emitted token:
-   * store → `adamStore.me.did`, local → `searchText`, item/context → `$post.name`.
+   * store → `sessionStore.me.did`, local → `searchText`, item/context → `$post.name`.
    */
   path: string;
-  /** Display label, relative to its group (e.g. `me.did` inside the `adamStore` group). */
+  /** Display label, relative to its group (e.g. `me.did` inside the `sessionStore` group). */
   label: string;
   valueType: ScopeValueType;
   /** Known sub-properties: an object's own keys, or an array's *item* keys. */

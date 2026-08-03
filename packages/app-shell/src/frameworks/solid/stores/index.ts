@@ -1,9 +1,12 @@
-export { type AdamStore, useAdamStore, AdamStoreProvider } from './AdamStore';
+export { type SessionStore, type BootState, useSessionStore, SessionStoreProvider } from './SessionStore';
+export { type DatasetStore, useDatasetStore, DatasetStoreProvider } from './DatasetStore';
+export { type ProfileStore, useProfileStore, ProfileStoreProvider } from './ProfileStore';
 export { type SpaceStore, useSpaceStore, SpaceStoreProvider } from './SpaceStore';
 export { type ThemeStore, type EditingTheme, useThemeStore, ThemeStoreProvider } from './ThemeStore';
 export { type TemplateStore, useTemplateStore, TemplateStoreProvider } from './TemplateStore';
 export { type RouteStore, useRouteStore, RouteStoreProvider } from './RouteStore';
-export { type AiStore, useAiStore, AiStoreProvider } from './AiStore';
+export { type EditorStore, useEditorStore, EditorStoreProvider } from './EditorStore';
 export { type AppStore, useAppStore, AppStoreProvider } from './AppStore';
 export { type PresenceStore, type PresentAgent, usePresenceStore, PresenceStoreProvider } from './PresenceStore';
+export { type ShellStore, useShellStore, ShellStoreProvider } from './ShellStore';
 export { useShellRouteStore, ShellRouteStoreProvider, ShellRouterRoot } from './ShellRouteStore';

@@ -10,7 +10,7 @@ export const spacesList: SchemaNode = gridWrapper([
         $query: {
           entity: 'Space',
           where: {
-            url: { not: { $store: 'adamStore.currentPerspectiveSharedCid' } },
+            url: { not: { $store: 'datasetStore.currentDatasetCid' } },
             OR: [
               { name: { contains: { $local: 'searchText' } } },
               { description: { contains: { $local: 'searchText' } } },
@@ -242,7 +242,7 @@ export const spacesList: SchemaNode = gridWrapper([
               then: {
                 type: '$if',
                 props: {
-                  condition: { $in: ['$space.url', { $store: 'adamStore.joinedSpaceCids' }] },
+                  condition: { $in: ['$space.url', { $store: 'datasetStore.joinedSpaceCids' }] },
                   then: {
                     type: 'we-button',
                     props: {
@@ -265,7 +265,7 @@ export const spacesList: SchemaNode = gridWrapper([
                       onClick: [
                         { $setLocal: 'joining', value: true },
                         {
-                          $action: 'adamStore.joinSpace',
+                          $action: 'spaceStore.joinSpace',
                           args: ['$space.url'],
                           onSuccess: [{ $action: 'spaceStore.navigateToSpace', args: ['$space.url'] }],
                           onError: [{ $setLocal: 'joining', value: false }],

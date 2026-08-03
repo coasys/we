@@ -3,7 +3,7 @@ import type { SchemaNode } from '@we/schema-shared';
 import { cardShell, gridWrapper } from './CardShell.ts';
 
 const hasConversationSubgroupModel = {
-  $find: { items: { $store: 'adamStore.currentPerspectiveModels' }, where: { name: 'ConversationSubgroup' } },
+  $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'ConversationSubgroup' } },
 };
 
 const emptyState: SchemaNode = {
@@ -76,7 +76,7 @@ export const fluxConversationSubgroupsList: SchemaNode = {
                           select: {
                             image: {
                               $find: {
-                                items: { $store: 'adamStore.agents' },
+                                items: { $store: 'profileStore.profiles' },
                                 where: { did: '$item' },
                                 select: 'avatar',
                               },

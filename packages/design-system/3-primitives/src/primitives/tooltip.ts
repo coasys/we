@@ -19,11 +19,18 @@ let tooltipIdCounter = 0;
 const CSS_STYLES = css`
   :host {
     --we-tooltip-host-display: inline-block;
+    /* The var must actually be consumed: without a display rule the host falls back to the
+       custom-element default (inline), which ignores explicit width/height — a trigger that
+       should fill its container (e.g. a full-height panel rail) collapses to content size. */
+    display: var(--we-tooltip-host-display, inline-block);
     position: relative;
   }
 
   [part='trigger'] {
     display: inline-block;
+    /* Follow an explicit host height so slotted triggers can use height: 100%.
+       With the default content-sized host this resolves to auto — no change. */
+    height: 100%;
   }
 
   [part='tooltip'] {

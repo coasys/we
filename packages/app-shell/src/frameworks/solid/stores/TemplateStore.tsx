@@ -18,8 +18,9 @@ import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
-import { useAdamStore } from './AdamStore';
+import { useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
+import { useSessionStore } from './SessionStore';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
 const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', children: [], slots: {}, routes: [] };
@@ -37,7 +38,16 @@ export type TemplateManagementItem = {
 export type TemplateSwitcherItem = { id: string; name: string; icon: string };
 export type TemplateSwitcherGroup = { label: string; items: TemplateSwitcherItem[] };
 
+/** The slice of a Space model this store needs to resolve default templates. */
+export interface SpaceLike {
+  uuid?: string;
+  url?: string;
+  defaultTemplateId?: string;
+}
+
 export interface TemplateStore {
+  /** Injected by SpaceStore (mounted below) — see resolveSpaceFromPerspective. */
+  provideSpaceLookup: (lookup: () => SpaceLike[]) => void;
   // State
   personalTemplates: Accessor<TemplateSchema[]>;
   spaceTemplates: Accessor<TemplateSchema[]>;
@@ -49,7 +59,6 @@ export interface TemplateStore {
   currentTemplate: TemplateSchema;
   loading: Accessor<boolean>;
   defaultTemplateId: Accessor<string>;
-  activeShellView: Accessor<string | null>;
 
   // Actions
   updateTemplate: (newTemplate: TemplateSchema) => void;
@@ -80,9 +89,6 @@ export interface TemplateStore {
   loadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
   refreshSpaceTemplates: () => Promise<void>;
   clearSpaceTemplates: () => void;
-  openShellView: (id: string) => void;
-  closeShellView: () => void;
-  scrollToId: (id: string) => void;
 
   // Loading state
   operationLoading: Accessor<string | null>;
@@ -98,7 +104,8 @@ const TemplateContext = createContext<TemplateStore>();
 const SPACE_PREFIX = 'space::';
 
 export function TemplateStoreProvider(props: ParentProps) {
-  const adamStore = useAdamStore();
+  const session = useSessionStore();
+  const datasetStore = useDatasetStore();
   const routeStore = useRouteStore();
 
   // Map template ID → AD4M model instance for we-root templates
@@ -146,7 +153,6 @@ export function TemplateStoreProvider(props: ParentProps) {
   const [currentTemplate, setCurrentTemplate] = createStore<TemplateSchema>(initialTemplate);
   const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
   // Shell overlay: which shell view (if any) is currently shown above the active template
-  const [activeShellView, setActiveShellView] = createSignal<string | null>('landing-page');
 
   const personalTemplates = () => {
     const installed = installedIds();
@@ -176,12 +182,12 @@ export function TemplateStoreProvider(props: ParentProps) {
     { label: 'Built-in', items: toSwitcherItems(builtInTemplatesAccessor()) },
   ];
 
-  const defaultTemplateId = () => adamStore.agentSettings()?.defaultTemplateId || 'default';
+  const defaultTemplateId = () => datasetStore.agentSettings()?.defaultTemplateId || 'default';
 
   /** Load saved templates from root perspective and merge with built-in */
   async function loadSavedTemplates(): Promise<void> {
     try {
-      const perspective = adamStore.rootPerspective();
+      const perspective = datasetStore.rootDataset();
       if (!perspective) return;
 
       const allDbTemplates = await Template.findAll(perspective);
@@ -214,7 +220,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       // Build a reverse map from AD4M model ID → template slug so we can match them.
       // Merge with existing installedIds to preserve any just-added entries
       // (HasMany may not reflect recent addInstalledTemplates calls yet).
-      const prefs = adamStore.agentSettings();
+      const prefs = datasetStore.agentSettings();
       if (prefs) {
         const installedRefs = prefs.installedTemplates || [];
         const modelIdToSlug = new Map<string, string>();
@@ -319,14 +325,23 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   // Load saved templates when root perspective becomes available
   createEffect(() => {
-    if (adamStore.rootPerspective()) {
+    if (datasetStore.rootDataset()) {
       loadSavedTemplates().finally(() => setLoading(false));
     }
   });
 
+  // Space models are owned by SpaceStore, which mounts BELOW this store (it depends on template
+  // preloading). It injects this lookup at creation, keeping the dependency one-directional; the
+  // empty default only exists between this provider mounting and SpaceStore mounting, during
+  // which no space can be open.
+  let spaceLookup: () => SpaceLike[] = () => [];
+  function provideSpaceLookup(lookup: () => SpaceLike[]): void {
+    spaceLookup = lookup;
+  }
+
   function resolveSpaceFromPerspective(perspective: PerspectiveProxy) {
     const sharedCid = perspective.sharedUrl?.replace('neighbourhood://', '');
-    const allKnownSpaces = [...adamStore.personalSpaces(), ...adamStore.sharedSpaces()];
+    const allKnownSpaces = spaceLookup();
     return sharedCid
       ? allKnownSpaces.find((s) => s.url === sharedCid)
       : allKnownSpaces.find((s) => s.uuid === perspective.uuid);
@@ -337,7 +352,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   // template switches synchronously here. For deep links / page refresh, takes the async path.
   let lastSpacePerspectiveUuid: string | null = null;
   createEffect(() => {
-    const perspective = adamStore.currentPerspective();
+    const perspective = datasetStore.currentDataset();
     if (!perspective) {
       clearSpaceTemplates();
       lastSpacePerspectiveUuid = null;
@@ -372,7 +387,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     // Check per-space preference stored in we-root
     const sharedCid = perspective.sharedUrl?.replace('neighbourhood://', '');
-    const rootPerspective = adamStore.rootPerspective();
+    const rootPerspective = datasetStore.rootDataset();
     const spaceUrl = sharedCid || perspective.uuid;
     let perSpacePref: string | null = null;
     if (rootPerspective) {
@@ -391,11 +406,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (!spaceTemplate) return;
 
     // Guard: if the user navigated away before the async work completed, skip
-    if (adamStore.currentPerspective()?.uuid !== perspective.uuid) return;
+    if (datasetStore.currentDataset()?.uuid !== perspective.uuid) return;
 
     replaceTemplate(spaceTemplate);
 
-    const settings = adamStore.agentSettings();
+    const settings = datasetStore.agentSettings();
     if (settings && !settings.useSpaceTemplate && perSpacePref !== 'space') {
       toastService.info(`Viewing with this space's template. Open Settings to use your own.`, 7000);
     }
@@ -404,7 +419,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   // Restore persisted template choice on boot (runs once, then stops)
   let initialRestoreDone = false;
   createEffect(() => {
-    const prefs = adamStore.agentSettings();
+    const prefs = datasetStore.agentSettings();
     if (loading() || initialRestoreDone) return;
     // Use defaultTemplateId for boot, fall back to currentTemplateId for backward compat
     const bootId = prefs?.defaultTemplateId || prefs?.currentTemplateId;
@@ -470,29 +485,17 @@ export function TemplateStoreProvider(props: ParentProps) {
       const segs = routeStore.segments();
       const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
       const view = lastViewByTemplate.get(realId) ?? currentView;
-      const p = adamStore.currentPerspective();
+      const p = datasetStore.currentDataset();
       if (p) {
         const spaceId = p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid;
         routeStore.navigate('/space/' + spaceId + '/' + view);
       } else {
         routeStore.navigate('/');
       }
-      adamStore.updateAgentSettings({ currentTemplateId: realId });
+      datasetStore.updateAgentSettings({ currentTemplateId: realId });
     } else {
       console.error(`TemplateStore: switchTemplate - Invalid templateId "${newTemplateId}"`);
     }
-  }
-
-  function openShellView(id: string) {
-    setActiveShellView(id);
-  }
-
-  function closeShellView() {
-    setActiveShellView(null);
-  }
-
-  function scrollToId(id: string) {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function removeTemplate() {
@@ -509,7 +512,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         return next;
       });
       // Unlink from AgentSettings and delete template
-      const prefs = adamStore.agentSettings();
+      const prefs = datasetStore.agentSettings();
       if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
       template.delete?.().catch((err: unknown) => console.error('TemplateStore: delete error', err));
     }
@@ -526,7 +529,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     // Delete from AD4M first, before updating local state
     try {
-      const prefs = adamStore.agentSettings();
+      const prefs = datasetStore.agentSettings();
       if (prefs) await prefs.removeInstalledTemplates(template).catch(() => {});
       await template.delete();
     } catch (err) {
@@ -561,7 +564,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     const template = savedTemplateMap.get(templateId)!;
 
     setOperationLoading(`install:${templateId}`);
-    const prefs = adamStore.agentSettings();
+    const prefs = datasetStore.agentSettings();
     if (prefs) {
       await prefs.addInstalledTemplates(template).catch(() => {});
     }
@@ -580,7 +583,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     const template = savedTemplateMap.get(templateId)!;
 
     setOperationLoading(`uninstall:${templateId}`);
-    const prefs = adamStore.agentSettings();
+    const prefs = datasetStore.agentSettings();
     if (prefs) {
       await prefs.removeInstalledTemplates(template).catch(() => {});
     }
@@ -595,8 +598,8 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Fetch a template from the marketplace perspective and save it to the user's root perspective */
   async function installFromMarketplace(marketplaceTemplateId: string): Promise<void> {
-    const marketplacePerspective = adamStore.marketplacePerspective();
-    const rootPerspective = adamStore.rootPerspective();
+    const marketplacePerspective = datasetStore.marketplaceDataset();
+    const rootPerspective = datasetStore.rootDataset();
     if (!marketplacePerspective || !rootPerspective) {
       toastService.error('Cannot install: marketplace not connected');
       return;
@@ -651,7 +654,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         });
         savedTemplateMap.set(templateId, newTemplate);
 
-        const prefs = adamStore.agentSettings();
+        const prefs = datasetStore.agentSettings();
         if (prefs) await prefs.addInstalledTemplates(newTemplate);
 
         setInstalledIds((prev) => {
@@ -673,15 +676,15 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Re-fetch space templates for the current perspective — call after any mutation (delete, install) */
   async function refreshSpaceTemplates(): Promise<void> {
-    const perspective = adamStore.currentPerspective();
+    const perspective = datasetStore.currentDataset();
     if (!perspective) return;
     await loadSpaceTemplates(perspective);
   }
 
   /** Fetch a template from the marketplace and install it into the current space's perspective */
   async function installToSpace(marketplaceTemplateId: string): Promise<void> {
-    const marketplacePerspective = adamStore.marketplacePerspective();
-    const spacePerspective = adamStore.currentPerspective();
+    const marketplacePerspective = datasetStore.marketplaceDataset();
+    const spacePerspective = datasetStore.currentDataset();
     if (!marketplacePerspective || !spacePerspective) {
       toastService.error('Cannot install: no active space or marketplace not connected');
       return;
@@ -738,11 +741,11 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Set a template as the default (loaded on boot) */
   function setDefaultTemplate(templateId: string): void {
-    adamStore.updateAgentSettings({ defaultTemplateId: templateId });
+    datasetStore.updateAgentSettings({ defaultTemplateId: templateId });
   }
 
   async function saveTemplate(name: string): Promise<void> {
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!perspective) {
       console.error('TemplateStore: No root perspective available');
       return;
@@ -752,7 +755,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     const schemaToSave: TemplateSchema = {
       ...deepClone(currentTemplate),
       id: templateId,
-      author: adamStore.me()?.did,
+      author: session.me()?.did,
       meta: { ...currentTemplate.meta, name },
     };
 
@@ -786,7 +789,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         savedTemplateMap.set(templateId, newTemplate);
 
         // Link to AgentSettings via @HasMany relation
-        const prefs = adamStore.agentSettings();
+        const prefs = datasetStore.agentSettings();
         if (prefs) await prefs.addInstalledTemplates(newTemplate);
 
         // Immediately mark as installed so it shows in sidebar
@@ -811,7 +814,7 @@ export function TemplateStoreProvider(props: ParentProps) {
    */
   async function saveTemplateAs(schema: TemplateSchema, destination: 'root' | 'space' = 'root'): Promise<boolean> {
     const isSpace = destination === 'space';
-    const perspective = isSpace ? adamStore.currentPerspective() : adamStore.rootPerspective();
+    const perspective = isSpace ? datasetStore.currentDataset() : datasetStore.rootDataset();
     if (!perspective) {
       toastService.error(`Cannot save template: no ${isSpace ? 'space' : 'root'} perspective available`);
       return false;
@@ -819,7 +822,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
     setOperationLoading('save');
-    const schemaToSave: TemplateSchema = { ...deepClone(schema), id: templateId, author: adamStore.me()?.did };
+    const schemaToSave: TemplateSchema = { ...deepClone(schema), id: templateId, author: session.me()?.did };
 
     const storedTemplate = createStoredTemplate(schemaToSave);
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
@@ -852,7 +855,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
         if (!isSpace) {
           // Link to AgentSettings so it appears in the sidebar
-          const prefs = adamStore.agentSettings();
+          const prefs = datasetStore.agentSettings();
           if (prefs) await prefs.addInstalledTemplates(newTemplate);
         }
 
@@ -884,7 +887,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       });
 
       setCurrentTemplate(reconcile(deepClone(schemaToSave)));
-      const p = adamStore.currentPerspective();
+      const p = datasetStore.currentDataset();
       if (p) {
         const spaceId = p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid;
         const segs = routeStore.segments();
@@ -893,7 +896,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       } else {
         routeStore.navigate('/');
       }
-      adamStore.updateAgentSettings({ currentTemplateId: templateId });
+      datasetStore.updateAgentSettings({ currentTemplateId: templateId });
       setOperationLoading(null);
       return true;
     } catch (error) {
@@ -909,12 +912,12 @@ export function TemplateStoreProvider(props: ParentProps) {
     const templateId = currentTemplate.id;
     if (!templateId || (!savedTemplateMap.has(templateId) && !spaceTemplateMap.has(templateId))) return;
 
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!perspective) return;
 
     const cloned = deepClone(currentTemplate);
     delete cloned._fromSpace;
-    const schemaToSave: TemplateSchema = { ...cloned, author: adamStore.me()?.did };
+    const schemaToSave: TemplateSchema = { ...cloned, author: session.me()?.did };
     const storedTemplate = createStoredTemplate(schemaToSave);
     // Include a timestamp so the content hash is unique per save — avoids
     // "Key already exists" rejections from the content-addressed store when
@@ -962,7 +965,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Copy the current template into a specific space perspective */
   async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
-    const perspective = adamStore.allPerspectives().find((p) => p.uuid === perspectiveUuid);
+    const perspective = datasetStore.datasets().find((p) => p.uuid === perspectiveUuid);
     if (!perspective) {
       toastService.error('Space not found');
       return false;
@@ -1007,7 +1010,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Publish the current template to the marketplace perspective */
   async function deleteMarketplaceTemplate(templateId: string): Promise<void> {
-    const marketplacePerspective = adamStore.marketplacePerspective();
+    const marketplacePerspective = datasetStore.marketplaceDataset();
     if (!marketplacePerspective) {
       toastService.error('Marketplace not connected');
       return;
@@ -1036,7 +1039,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     slug?: string;
     screenshots: File[];
   }): Promise<boolean> {
-    const marketplacePerspective = adamStore.marketplacePerspective();
+    const marketplacePerspective = datasetStore.marketplaceDataset();
     if (!marketplacePerspective) {
       toastService.error('Marketplace not connected');
       return false;
@@ -1047,14 +1050,14 @@ export function TemplateStoreProvider(props: ParentProps) {
     const slug = (options.slug || localId).trim().toLowerCase().replace(/\s+/g, '-');
 
     const existing = await Template.findOne(marketplacePerspective, { where: { slug } });
-    if (existing && existing.author !== adamStore.me()?.did) {
+    if (existing && existing.author !== session.me()?.did) {
       toastService.error(`A template with slug "${slug}" already exists in the marketplace by a different author`);
       return false;
     }
 
     setOperationLoading('publish-marketplace');
 
-    const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: localId, author: adamStore.me()?.did });
+    const storedTemplate = createStoredTemplate({ ...deepClone(schema), id: localId, author: session.me()?.did });
     const jsonBytes = new TextEncoder().encode(JSON.stringify(storedTemplate));
     let binary = '';
     for (let i = 0; i < jsonBytes.length; i++) binary += String.fromCharCode(jsonBytes[i]);
@@ -1166,6 +1169,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   };
 
   const store: TemplateStore = {
+    provideSpaceLookup,
     // State
     personalTemplates,
     spaceTemplates,
@@ -1177,7 +1181,6 @@ export function TemplateStoreProvider(props: ParentProps) {
     currentTemplate,
     loading,
     defaultTemplateId,
-    activeShellView,
 
     // Actions
     updateTemplate,
@@ -1201,9 +1204,6 @@ export function TemplateStoreProvider(props: ParentProps) {
     preloadSpaceTemplates,
     loadSpaceTemplates,
     clearSpaceTemplates,
-    openShellView,
-    closeShellView,
-    scrollToId,
 
     // Loading state
     operationLoading,

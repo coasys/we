@@ -45,23 +45,23 @@ Supports async lifecycle callbacks — fired after the store method's Promise re
   onFinally: [...actions]  — fired regardless of outcome
 Non-promise (synchronous) methods are unaffected — lifecycle keys are ignored.
 Example — close modal after async submission:
-{ "$action": "adamStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
+{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
 Example — navigate to newly created item:
-{ "$action": "adamStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$result.uuid"] }] }] }
+{ "$action": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$result.uuid"] }] }] }
 
 Model mutations via $action (use these for creating/updating/deleting model instances):
 model.create — creates a model instance in the current perspective (default) or a specified one:
-{ "$action": "model.create", "args": ["ModelName", { "field": "value" }, { "perspective": "adamStore.rootPerspective" }] }
+{ "$action": "model.create", "args": ["ModelName", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
 The third argument is an options object. Omit it to use the current space perspective.
 
 model.update — updates a model instance:
 { "$action": "model.update", "args": ["ModelName", "$item.id", { "field": "newValue" }] }
-To target a non-current perspective: { "$action": "model.update", "args": ["ModelName", "$item.id", { "field": "value" }, { "perspective": "adamStore.rootPerspective" }] }
+To target a non-current perspective: { "$action": "model.update", "args": ["ModelName", "$item.id", { "field": "value" }, { "perspective": "datasetStore.rootDataset" }] }
 
 model.delete — deletes a model instance:
 { "$action": "model.delete", "args": ["ModelName", "$item.id"] }
 
-Use perspective: 'adamStore.rootPerspective' for we-root models (AgentSettings, ChatSession, etc.).
+Use perspective: 'datasetStore.rootDataset' for we-root models (AgentSettings, ChatSession, etc.).
 Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
 
 Conditional logic:
@@ -96,7 +96,7 @@ Example: { "$gt": [{ "$count": { "items": { "$store": "listStore.items" } } }, 0
 
 Set membership:
 { "$in": [value, array] } — true if array contains value (false if second operand is not an array)
-Example: { "$in": [{ "$store": "spaceStore.uuid" }, { "$store": "adamStore.systemPerspectiveUuids" }] }
+Example: { "$in": [{ "$store": "spaceStore.uuid" }, { "$store": "datasetStore.systemDatasetUuids" }] }
 Example: { "$in": ["$item.role", ["admin", "moderator"]] }
 
 Boolean logic:
@@ -169,7 +169,7 @@ By default $query targets the current dataset ($currentDataset). Use dataset to 
 required when reading entities from an external app (e.g. Flux) that is open as a WE space:
 { "$query": { "entity": "Channel", "dataset": "$currentDataset" } }
 
-Backend-neutral identity & dataset refs — prefer these over adamStore.* store paths inside $query and conditions:
+Backend-neutral identity & dataset refs — prefer these over backend-store paths inside $query and conditions:
 - $currentDataset — the currently active dataset (an AD4M perspective, in the AD4M backend). Use as a dataset value.
 - $me — the current agent's identity object. Use $me.did for their DID (ownership checks, author filters, e.g. { "$eq": ["$post.author", "$me.did"] }); $me.handle / $me.avatar for profile fields once loaded.
 

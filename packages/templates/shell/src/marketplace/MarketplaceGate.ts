@@ -43,8 +43,8 @@ const joinPrompt: SchemaNode = {
         onClick: [
           { $setLocal: 'joining', value: true },
           {
-            $action: 'adamStore.joinSpace',
-            args: [{ $store: 'adamStore.marketplaceId' }],
+            $action: 'spaceStore.joinSpace',
+            args: [{ $store: 'datasetStore.marketplaceId' }],
             onFinally: [{ $setLocal: 'joining', value: false }],
           },
         ],
@@ -57,7 +57,7 @@ const joinPrompt: SchemaNode = {
 export const marketplaceGate: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'adamStore.marketplaceConfigured' },
+    condition: { $store: 'datasetStore.marketplaceConfigured' },
     then: joinPrompt,
     else: notConfiguredPrompt,
   },

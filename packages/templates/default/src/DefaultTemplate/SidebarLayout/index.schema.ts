@@ -26,11 +26,11 @@ export const sidebarLayout: TemplateSchema = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'adamStore.currentPerspective' },
+            condition: { $store: 'datasetStore.currentDataset' },
             then: {
               type: '$if',
               props: {
-                condition: { $store: 'adamStore.isWeSpace' },
+                condition: { $store: 'datasetStore.isWeSpace' },
                 then: {
                   type: 'Row',
                   props: { flex: '1', height: '100%' },

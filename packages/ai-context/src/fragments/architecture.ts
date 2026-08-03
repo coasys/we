@@ -43,7 +43,7 @@ WE's data layer is **AD4M** — an agent-centric, local-first, peer-to-peer meta
 Data is yours, stored locally and synced P2P (via Holochain) with no central server. The Solid
 app (\`@we/app-shell\`, hosted by the web/electron/tauri targets) talks to an **AD4M executor**
 (the ad4m runtime; \`@coasys/ad4m\` + \`ad4m-connect\`) that holds perspectives and syncs
-neighbourhoods. Stores (\`adamStore\`, \`spaceStore\`, …) expose reactive state to schemas.
+neighbourhoods. Stores (\`sessionStore\`, \`datasetStore\`, \`spaceStore\`, …) expose reactive state to schemas.
 
 AD4M is reached through the **backend contract** rather than directly: \`@we/backend-shared\` declares
 the ports (\`DataSource\` + \`QueryAdapter\`, ephemeral, presence, model manifest) and
@@ -52,9 +52,9 @@ import \`@coasys/*\` — which is why a template, a component or a feature modul
 without knowing what holds the data.
 
 Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in schemas):
-- **Agent / DID** — a user identity; addressed by a DID (\`adamStore.me.did\`).
+- **Agent / DID** — a user identity; addressed by a DID (\`sessionStore.me.did\`).
 - **Perspective** — a local knowledge graph (links/triples). Each Space is backed by one;
-  \`adamStore.currentPerspective\` is the active one, \`rootPerspective\` holds we-root models.
+  \`datasetStore.currentDataset\` is the active one, \`rootPerspective\` holds we-root models.
 - **Neighbourhood** — a *shared* perspective, synced peer-to-peer. A shared Space is a neighbourhood.
 - **SDNA (Social DNA)** — SHACL schemas installed into a perspective that define its data model.
   WE's models are SDNA-typed; \`initializeAsWeSpace\` installs WE's Space SDNA into a foreign perspective.

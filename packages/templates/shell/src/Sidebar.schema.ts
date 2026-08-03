@@ -13,7 +13,7 @@ import type { SchemaNode } from '@we/schema-shared';
 export const sidebar: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: [{ $store: 'adamStore.bootState' }, 'ready'] },
+    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'ready'] },
     then: {
       type: 'CollapsibleSidebar',
       props: {
@@ -41,10 +41,10 @@ export const sidebar: SchemaNode = {
             id: 'profile',
             icon: 'user',
             label: 'Profile',
-            active: { $eq: [{ $store: 'templateStore.activeShellView' }, 'profile'] },
+            active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'profile'] },
             onClick: [
               { $action: 'appStore.deactivateApp' },
-              { $action: 'templateStore.openShellView', args: ['profile'] },
+              { $action: 'shellStore.openShellView', args: ['profile'] },
             ],
           },
 
@@ -53,10 +53,10 @@ export const sidebar: SchemaNode = {
             id: 'settings',
             icon: 'gear',
             label: 'Settings',
-            active: { $eq: [{ $store: 'templateStore.activeShellView' }, 'settings'] },
+            active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'settings'] },
             onClick: [
               { $action: 'appStore.deactivateApp' },
-              { $action: 'templateStore.openShellView', args: ['settings'] },
+              { $action: 'shellStore.openShellView', args: ['settings'] },
             ],
           },
 
@@ -65,10 +65,10 @@ export const sidebar: SchemaNode = {
             id: 'marketplace',
             icon: 'storefront',
             label: 'Marketplace',
-            active: { $eq: [{ $store: 'templateStore.activeShellView' }, 'marketplace'] },
+            active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'marketplace'] },
             onClick: [
               { $action: 'appStore.deactivateApp' },
-              { $action: 'templateStore.openShellView', args: ['marketplace'] },
+              { $action: 'shellStore.openShellView', args: ['marketplace'] },
             ],
           },
 
@@ -78,10 +78,10 @@ export const sidebar: SchemaNode = {
             id: 'spaces',
             label: 'Spaces',
             reorderable: true,
-            onReorder: { $action: 'adamStore.reorderPerspectives' },
+            onReorder: { $action: 'datasetStore.reorderDatasets' },
             items: {
               $map: {
-                items: { $store: 'adamStore.orderedSidebarItems' },
+                items: { $store: 'spaceStore.orderedSidebarItems' },
                 select: {
                   id: '$item.uuid',
                   avatar: { src: '$item.avatar', name: '$item.name' },
@@ -116,9 +116,9 @@ export const sidebar: SchemaNode = {
                   onClick: {
                     $if: {
                       condition: { $eq: ['$item.id', 'we'] },
-                      then: [{ $action: 'appStore.deactivateApp' }, { $action: 'templateStore.closeShellView' }],
+                      then: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.closeShellView' }],
                       else: [
-                        { $action: 'templateStore.closeShellView' },
+                        { $action: 'shellStore.closeShellView' },
                         { $action: 'appStore.activateApp', args: ['$item.id'] },
                       ],
                     },
@@ -135,17 +135,17 @@ export const sidebar: SchemaNode = {
             id: 'schema-tests',
             icon: 'flask',
             label: 'Schema Tests',
-            active: { $eq: [{ $store: 'templateStore.activeShellView' }, 'schema-tests'] },
+            active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'schema-tests'] },
             onClick: [
               { $action: 'appStore.deactivateApp' },
-              { $action: 'templateStore.openShellView', args: ['schema-tests'] },
+              { $action: 'shellStore.openShellView', args: ['schema-tests'] },
             ],
           },
           {
             id: 'logout',
             icon: 'sign-out',
             label: 'Logout',
-            onClick: { $action: 'adamStore.logout' },
+            onClick: { $action: 'sessionStore.logout' },
           },
         ],
       },
@@ -158,7 +158,7 @@ export const sidebar: SchemaNode = {
             ax: 'center',
             ay: 'center',
             styles: { cursor: 'pointer' },
-            onClick: { $action: 'templateStore.openShellView', args: ['landing-page'] },
+            onClick: { $action: 'shellStore.openShellView', args: ['landing-page'] },
             title: 'About WE',
           },
           children: [

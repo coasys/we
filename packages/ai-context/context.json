@@ -5300,78 +5300,94 @@
   ],
   "storeEntries": [
     {
-      "name": "adamStore",
+      "name": "sessionStore",
       "state": {
-        "adamClient": {
+        "client": {
           "type": "object"
         },
         "me": {
           "type": "object",
           "properties": ["did", "perspective", "directMessageLanguage"]
         },
-        "allPerspectives": {
+        "bootState": {
+          "type": "string"
+        },
+        "passwordError": {
+          "type": "boolean"
+        },
+        "loginLoading": {
+          "type": "boolean"
+        }
+      },
+      "actions": ["login", "logout"]
+    },
+    {
+      "name": "datasetStore",
+      "state": {
+        "datasets": {
           "type": "array",
           "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
         },
-        "currentPerspective": {
+        "orderedDatasets": {
+          "type": "array",
+          "properties": ["uuid", "name", "sharedUrl"]
+        },
+        "currentDataset": {
           "type": "object",
           "properties": ["uuid", "name", "sharedUrl"]
         },
-        "currentPerspectiveModels": {
+        "currentDatasetCid": {
+          "type": "string"
+        },
+        "currentDatasetModels": {
           "type": "array"
         },
         "isWeSpace": {
           "type": "boolean"
         },
-        "personalSpaces": {
-          "type": "array",
-          "model": "Space"
+        "joinedSpaceCids": {
+          "type": "array"
         },
-        "sharedSpaces": {
-          "type": "array",
-          "model": "Space"
+        "systemDatasetUuids": {
+          "type": "array"
         },
-        "bootState": {
-          "type": "string"
-        },
-        "passwordError": {
-          "type": "string"
-        },
-        "loginLoading": {
-          "type": "boolean"
-        },
-        "creatingSpace": {
-          "type": "boolean"
-        },
-        "agents": {
-          "type": "array",
-          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
-        },
-        "ownAgent": {
+        "rootDataset": {
           "type": "object",
-          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+          "properties": ["uuid", "name"]
         },
-        "orderedSidebarItems": {
-          "type": "array",
-          "properties": ["uuid", "name", "avatar", "spaceId"]
+        "globalDataset": {
+          "type": "object",
+          "properties": ["uuid", "name", "sharedUrl"]
+        },
+        "marketplaceDataset": {
+          "type": "object",
+          "properties": ["uuid", "name", "sharedUrl"]
+        },
+        "globalSpaceConfigured": {
+          "type": "boolean"
+        },
+        "marketplaceConfigured": {
+          "type": "boolean"
+        },
+        "marketplaceJoined": {
+          "type": "boolean"
         }
       },
-      "actions": [
-        "navigate",
-        "addNewSpace",
-        "createSpace",
-        "initializeAsWeSpace",
-        "switchPerspective",
-        "removePerspective",
-        "reorderPerspectives",
-        "login",
-        "logout",
-        "fetchAgent",
-        "updateOwnProfile",
-        "updateProfileImage",
-        "updateAgentLocation",
-        "cleanupSpaceSdna"
-      ]
+      "actions": ["switchDataset", "reorderDatasets", "updateAgentSettings", "cleanupSpaceSdna"]
+    },
+    {
+      "name": "profileStore",
+      "state": {
+        "profiles": {
+          "type": "array",
+          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        },
+        "ownProfile": {
+          "type": "object",
+          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        }
+      },
+      "actions": ["fetchProfile", "updateOwnProfile", "updateProfileImage", "updateOwnLocation"]
     },
     {
       "name": "routeStore",
@@ -5462,9 +5478,6 @@
         "operationLoading": {
           "type": "boolean"
         },
-        "activeShellView": {
-          "type": "string"
-        },
         "templateManagementList": {
           "type": "array",
           "properties": ["id", "name", "icon", "description", "isBuiltIn", "isInstalled", "isDefault"]
@@ -5481,14 +5494,31 @@
         "saveTemplate",
         "toggleInstalled",
         "setDefaultTemplate",
-        "deleteTemplate",
-        "openShellView",
-        "closeShellView"
+        "deleteTemplate"
       ]
     },
     {
       "name": "spaceStore",
       "state": {
+        "mySpaces": {
+          "type": "array",
+          "model": "Space"
+        },
+        "personalSpaces": {
+          "type": "array",
+          "model": "Space"
+        },
+        "sharedSpaces": {
+          "type": "array",
+          "model": "Space"
+        },
+        "creatingSpace": {
+          "type": "boolean"
+        },
+        "orderedSidebarItems": {
+          "type": "array",
+          "properties": ["uuid", "name", "avatar", "spaceId"]
+        },
         "memberDids": {
           "type": "array",
           "properties": ["did"]
@@ -5540,6 +5570,10 @@
         }
       },
       "actions": [
+        "createSpace",
+        "joinSpace",
+        "initializeAsWeSpace",
+        "removeSpace",
         "createPost",
         "updatePost",
         "deletePost",
@@ -5552,7 +5586,7 @@
       ]
     },
     {
-      "name": "aiStore",
+      "name": "editorStore",
       "state": {
         "models": {
           "type": "array",
@@ -5644,6 +5678,15 @@
         "undo",
         "redo"
       ]
+    },
+    {
+      "name": "shellStore",
+      "state": {
+        "activeShellView": {
+          "type": "string"
+        }
+      },
+      "actions": ["openShellView", "closeShellView", "scrollToId"]
     },
     {
       "name": "appStore",

@@ -110,7 +110,7 @@ export const spaceModal = {
                 then: {
                   type: '$if',
                   props: {
-                    condition: { $in: ['$space.url', { $store: 'adamStore.joinedSpaceCids' }] },
+                    condition: { $in: ['$space.url', { $store: 'datasetStore.joinedSpaceCids' }] },
                     then: {
                       type: 'we-button',
                       props: {
@@ -130,7 +130,7 @@ export const spaceModal = {
                         variant: 'primary',
                         height: '40px',
                         onClick: {
-                          $action: 'adamStore.joinSpace',
+                          $action: 'spaceStore.joinSpace',
                           args: ['$space.url'],
                           onSuccess: [
                             { $setLocal: 'selectedPin', value: null },

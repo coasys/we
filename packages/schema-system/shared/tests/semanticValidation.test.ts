@@ -75,7 +75,7 @@ function makeContext(overrides?: Partial<ContextData>): ContextData {
     tokens: [],
     storeEntries: [
       {
-        name: 'adamStore',
+        name: 'sessionStore',
         state: { loading: { type: 'boolean' }, bootState: { type: 'string' }, me: { type: 'object' } },
         actions: ['login'],
       },
@@ -129,11 +129,11 @@ describe('buildValidationContext', () => {
 
   it('builds store names and members', () => {
     const c = ctx();
-    expect(c.storeNames.has('adamStore')).toBe(true);
+    expect(c.storeNames.has('sessionStore')).toBe(true);
     expect(c.storeNames.has('routeStore')).toBe(true);
     expect(c.storeNames.has('unknownStore')).toBe(false);
 
-    const adamMembers = c.storeMembers.get('adamStore')!;
+    const adamMembers = c.storeMembers.get('sessionStore')!;
     expect(adamMembers.has('loading')).toBe(true);
     expect(adamMembers.has('login')).toBe(true);
 
@@ -275,7 +275,10 @@ describe('prop type mismatch', () => {
   });
 
   it('skips token objects', () => {
-    const result = validateSemantic({ type: 'we-button', props: { disabled: { $store: 'adamStore.loading' } } }, ctx());
+    const result = validateSemantic(
+      { type: 'we-button', props: { disabled: { $store: 'sessionStore.loading' } } },
+      ctx(),
+    );
     const typeErrors = result.errors.filter((e) => e.message.includes('expects'));
     expect(typeErrors).toHaveLength(0);
   });
@@ -295,7 +298,7 @@ describe('unknown store', () => {
   });
 
   it('passes for known store', () => {
-    const result = validateSemantic({ type: 'we-button', props: { text: { $store: 'adamStore.loading' } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { text: { $store: 'sessionStore.loading' } } }, ctx());
     const storeErrors = result.errors.filter((e) => e.message.includes('Unknown store'));
     expect(storeErrors).toHaveLength(0);
   });
@@ -303,14 +306,17 @@ describe('unknown store', () => {
 
 describe('unknown store member', () => {
   it('warns for unknown member path', () => {
-    const result = validateSemantic({ type: 'we-button', props: { text: { $store: 'adamStore.nonExistent' } } }, ctx());
+    const result = validateSemantic(
+      { type: 'we-button', props: { text: { $store: 'sessionStore.nonExistent' } } },
+      ctx(),
+    );
     expect(
       result.errors.some((e) => e.severity === 'warning' && e.message.includes('Unknown member "nonExistent"')),
     ).toBe(true);
   });
 
   it('passes for known member', () => {
-    const result = validateSemantic({ type: 'we-button', props: { text: { $store: 'adamStore.loading' } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { text: { $store: 'sessionStore.loading' } } }, ctx());
     const memberErrors = result.errors.filter((e) => e.message.includes('Unknown member'));
     expect(memberErrors).toHaveLength(0);
   });
@@ -325,7 +331,7 @@ describe('unknown action', () => {
   });
 
   it('warns for $action with unknown method on known store', () => {
-    const result = validateSemantic({ type: 'we-button', props: { onClick: { $action: 'adamStore.goTo' } } }, ctx());
+    const result = validateSemantic({ type: 'we-button', props: { onClick: { $action: 'sessionStore.goTo' } } }, ctx());
     expect(result.errors.some((e) => e.severity === 'warning' && e.message.includes('Unknown method "goTo"'))).toBe(
       true,
     );
@@ -648,7 +654,7 @@ describe('nested detection', () => {
       {
         type: 'we-button',
         props: {
-          disabled: { $eq: [{ $store: 'adamStore.loading' }, { $store: 'fakeStore.val' }] },
+          disabled: { $eq: [{ $store: 'sessionStore.loading' }, { $store: 'fakeStore.val' }] },
         },
       },
       ctx(),

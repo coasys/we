@@ -1,18 +1,24 @@
-import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
+/**
+ * EditorStore — the editor's state: chat sessions and messages per template,
+ * panel visibility and widths, preview/visual mode, unified template+theme undo/redo, pending
+ * (buffered) changes for read-only templates, and the fork/fresh picker.
+ *
+ * The AI half of a session is deliberately elsewhere: the Anthropic client, streaming, prompt
+ * assembly and tool definition live in `shared/ai/aiInfra`, and patch application in
+ * `shared/ai/schemaPatches` — this store orchestrates them against its own signals. That split is
+ * what keeps a future backend-executed assistant a drop-in: it would replace the infra modules
+ * and the `sendViaClaude` orchestration, not the session state.
+ */
+import { formatExternalManifestForPrompt, sendClaudeRequest } from '@shared/ai/aiInfra';
+import { applySchemaPatches, type SchemaPatch } from '@shared/ai/schemaPatches';
 import { deepClone } from '@shared/utils';
-import { type EditingTheme, useAdamStore, useTemplateStore, useThemeStore } from '@solid/stores';
-import { schemaContext } from '@we/ai-context';
-import type { ModelManifestEntry } from '@we/backend-ad4m';
+import { type EditingTheme, useDatasetStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData } from '@we/schema-shared';
 import {
   buildValidationContext,
   ensureNodeIds,
-  findNodeById,
-  insertChild,
-  mergeNode,
-  removeChild,
   stripNodeIds,
   validateSemantic,
   validateStructure,
@@ -39,10 +45,10 @@ export interface ChatMessage {
 type HistoryEntry = { type: 'template'; snapshot: TemplateSchema } | { type: 'theme'; snapshot: EditingTheme };
 
 // Base validation context built once from the static generated context data.
-// External perspective models are merged in reactively inside AiStoreProvider.
+// External perspective models are merged in reactively inside EditorStoreProvider.
 const baseValidationCtx = buildValidationContext(contextData);
 
-export interface AiStore {
+export interface EditorStore {
   // --- Chat state ---
   messages: Accessor<ChatMessage[]>;
   isOpen: Accessor<boolean>;
@@ -140,113 +146,7 @@ export interface AiStore {
   setApiKey: (key: string) => void;
 }
 
-const AiContext = createContext<AiStore>();
-
-// Build the full system prompt for Claude chat
-const chatSystemPrompt = chatSystemPreamble + schemaContext;
-
-// Tool definition for schema mutations (ID-based patching)
-const updateSchemaTool = {
-  name: 'update_schema',
-  description:
-    'Apply patches to the current template schema. Each patch targets a node by its id. Exactly one of node, insert, or remove must be provided per patch.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      patches: {
-        type: 'array' as const,
-        items: {
-          type: 'object' as const,
-          properties: {
-            targetId: {
-              type: 'string' as const,
-              description:
-                'For node (update): the id of the node to merge into. For insert/remove: the id of the PARENT node whose children/routes array to modify. Use "" for root.',
-            },
-            node: {
-              type: 'object' as const,
-              description:
-                'Partial node to merge (JSON Merge Patch). Absent keys preserved, null deletes a key. Mutually exclusive with insert/remove.',
-            },
-            insert: {
-              type: 'object' as const,
-              properties: {
-                children: {
-                  type: 'object' as const,
-                  properties: {
-                    node: { type: 'object' as const, description: 'The new node to insert.' },
-                    after: { type: 'string' as const, description: 'ID of sibling to insert after. Omit to append.' },
-                    before: { type: 'string' as const, description: 'ID of sibling to insert before.' },
-                  },
-                  required: ['node'],
-                },
-                routes: {
-                  type: 'object' as const,
-                  properties: {
-                    node: { type: 'object' as const, description: 'The new route node to insert.' },
-                    after: {
-                      type: 'string' as const,
-                      description: 'ID of sibling route to insert after. Omit to append.',
-                    },
-                    before: { type: 'string' as const, description: 'ID of sibling route to insert before.' },
-                  },
-                  required: ['node'],
-                },
-              },
-              description: 'Insert into children or routes array. Mutually exclusive with node/remove.',
-            },
-            remove: {
-              type: 'object' as const,
-              properties: {
-                children: { type: 'string' as const, description: 'ID of child to remove.' },
-                routes: { type: 'string' as const, description: 'ID of route to remove.' },
-              },
-              description: 'Remove from children or routes array by child ID. Mutually exclusive with node/insert.',
-            },
-          },
-          required: ['targetId'],
-        },
-      },
-    },
-    required: ['patches'],
-  },
-};
-
-/**
- * Format external (non-WE) manifest entries into a human-readable text block.
- * WE models are already described in schemaContext so only their names are sent;
- * external models need full property descriptions because the AI has no other
- * knowledge of their structure.
- */
-function formatExternalManifestForPrompt(manifest: ModelManifestEntry[]): string {
-  if (!manifest.length) return '';
-  const lines: string[] = ['## External Perspective Models', ''];
-  for (const entry of manifest) {
-    lines.push(`### ${entry.name}`);
-    // A HasMany relation is a collection of IRIs (type === 'uri' && isCollection).
-    // Scalar properties are everything else (strings, numbers, booleans, or single IRIs).
-    const dataProps = entry.properties.filter((p) => !(p.isCollection && p.type === 'uri'));
-    const relations = entry.properties.filter((p) => p.isCollection && p.type === 'uri');
-    for (const prop of dataProps) {
-      const flags: string[] = [prop.type];
-      if (prop.required) flags.push('required');
-      if (prop.isCollection) flags.push('collection');
-      lines.push(`- ${prop.name} (${flags.join(', ')})`);
-    }
-    if (relations.length > 0) {
-      lines.push('HasMany relations — typed (→ Model) support both include and parent; untyped support parent only:');
-      for (const rel of relations) {
-        if (rel.relatedModel) {
-          lines.push(`- ${rel.name} → ${rel.relatedModel} (include or parent)`);
-        } else {
-          lines.push(`- ${rel.name} (untyped — parent query only, do NOT use with include)`);
-        }
-      }
-    }
-    lines.push('');
-  }
-  return lines.join('\n');
-}
+const EditorContext = createContext<EditorStore>();
 
 let msgIdCounter = 0;
 function createMessage(role: ChatMessage['role'], content: string, status?: ChatMessage['status']): ChatMessage {
@@ -283,8 +183,8 @@ const starterTemplate: SchemaNode = {
   ],
 };
 
-export function AiStoreProvider(props: ParentProps) {
-  const adamStore = useAdamStore();
+export function EditorStoreProvider(props: ParentProps) {
+  const datasetStore = useDatasetStore();
   const templateStore = useTemplateStore();
   const themeStore = useThemeStore();
 
@@ -294,7 +194,7 @@ export function AiStoreProvider(props: ParentProps) {
   // not present in the manifest (e.g. CollectionBlock in we-root) are excluded.
   // Falls back to the all-WE base context when no perspective is set.
   const getValidationCtx = createMemo(() => {
-    const manifest = adamStore.currentPerspectiveModels();
+    const manifest = datasetStore.currentDatasetModels();
     if (manifest.length === 0) return baseValidationCtx;
     const perspectiveModelNames = new Set(manifest.map((m) => m.name));
     return { ...baseValidationCtx, modelNames: perspectiveModelNames };
@@ -434,7 +334,7 @@ export function AiStoreProvider(props: ParentProps) {
   const [pickerAction, setPickerAction] = createSignal<'fork' | 'fresh'>('fork');
   const [pickerDefaultName, setPickerDefaultName] = createSignal('');
   const [pickerDefaultIcon, setPickerDefaultIcon] = createSignal('cube');
-  const pickerShowDestination = () => !!adamStore.currentPerspective();
+  const pickerShowDestination = () => !!datasetStore.currentDataset();
 
   // ----------------------------------------------------------------
   // Session management — load, create, switch, delete
@@ -460,7 +360,7 @@ export function AiStoreProvider(props: ParentProps) {
       return;
     }
 
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!perspective) return;
 
     try {
@@ -504,7 +404,7 @@ export function AiStoreProvider(props: ParentProps) {
     }
 
     const templateModel = templateStore.getTemplateModel(templateId);
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!templateModel || !perspective) return;
 
     try {
@@ -543,7 +443,7 @@ export function AiStoreProvider(props: ParentProps) {
     if (!templateId) return;
 
     const templateModel = templateStore.getTemplateModel(templateId);
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!templateModel || !perspective) return;
 
     try {
@@ -582,7 +482,7 @@ export function AiStoreProvider(props: ParentProps) {
   async function persistMessage(role: 'user' | 'assistant', content: string) {
     if (!activeSessionModel) return;
 
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!perspective) return;
 
     try {
@@ -744,12 +644,12 @@ export function AiStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   function setApiKey(key: string) {
     setApiKeySignal(key);
-    adamStore.updateAgentSettings({ claudeApiKey: key });
+    datasetStore.updateAgentSettings({ claudeApiKey: key });
   }
 
   // Load persisted API key when agentSettings become available
   createEffect(() => {
-    const settings = adamStore.agentSettings();
+    const settings = datasetStore.agentSettings();
     if (settings?.claudeApiKey) {
       setApiKeySignal(settings.claudeApiKey);
     }
@@ -848,7 +748,7 @@ export function AiStoreProvider(props: ParentProps) {
     try {
       await sendViaClaude(text);
     } catch (err) {
-      console.error('[AiStore] sendMessage caught error:', err);
+      console.error('[EditorStore] sendMessage caught error:', err);
       const errorText = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [...prev, createMessage('assistant', `Error: ${errorText}`)]);
     } finally {
@@ -860,149 +760,8 @@ export function AiStoreProvider(props: ParentProps) {
   }
 
   // ----------------------------------------------------------------
-  // Claude API path (SSE streaming with tool_use)
+  // Claude API path (client + streaming live in shared/ai/aiInfra)
   // ----------------------------------------------------------------
-
-  /** Parse an SSE stream and return extracted text + tool calls + stop reason */
-  async function parseSSEStream(
-    reader: ReadableStreamDefaultReader<Uint8Array>,
-    onTextDelta: (text: string) => void,
-    onToolUseStart?: (textSoFar: string) => void,
-  ): Promise<{
-    textContent: string;
-    toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }>;
-    stopReason: string;
-  }> {
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let textContent = '';
-    let stopReason = '';
-
-    // Tool use tracking
-    let currentBlockType: 'text' | 'tool_use' | null = null;
-    let currentToolId = '';
-    let currentToolName = '';
-    let toolInputBuffer = '';
-    const toolCalls: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6);
-        if (data === '[DONE]') continue;
-
-        try {
-          const event = JSON.parse(data);
-
-          switch (event.type) {
-            case 'content_block_start':
-              if (event.content_block?.type === 'text') {
-                currentBlockType = 'text';
-              } else if (event.content_block?.type === 'tool_use') {
-                currentBlockType = 'tool_use';
-                currentToolId = event.content_block.id ?? '';
-                currentToolName = event.content_block.name ?? '';
-                toolInputBuffer = '';
-                onToolUseStart?.(textContent);
-              }
-              break;
-
-            case 'content_block_delta':
-              if (currentBlockType === 'text' && event.delta?.text) {
-                textContent += event.delta.text;
-                onTextDelta(textContent);
-              } else if (currentBlockType === 'tool_use' && event.delta?.partial_json) {
-                toolInputBuffer += event.delta.partial_json;
-              }
-              break;
-
-            case 'content_block_stop':
-              if (currentBlockType === 'tool_use' && currentToolId) {
-                try {
-                  const input = JSON.parse(toolInputBuffer);
-                  toolCalls.push({ id: currentToolId, name: currentToolName, input });
-                } catch {
-                  // Malformed tool input — will be handled as no tool calls
-                  console.error('Failed to parse tool input:', toolInputBuffer.slice(0, 200));
-                }
-              }
-              currentBlockType = null;
-              break;
-
-            case 'message_delta':
-              if (event.delta?.stop_reason) {
-                stopReason = event.delta.stop_reason;
-              }
-              break;
-          }
-        } catch {
-          // Skip malformed SSE events
-        }
-      }
-    }
-
-    return { textContent, toolCalls, stopReason };
-  }
-
-  /** Send a request to Claude and handle the response stream */
-  async function sendClaudeRequest(
-    claudeMessages: Array<{ role: string; content: unknown }>,
-    onTextDelta: (text: string) => void,
-    onToolUseStart?: (textSoFar: string) => void,
-  ) {
-    // Abort after 90 seconds to prevent hanging on stalled connections
-    const controller = new AbortController();
-    const timeout = setTimeout(() => {
-      console.error('[AiStore] Request timed out after 90s — aborting');
-      controller.abort();
-    }, 90_000);
-
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey(),
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 16384,
-          stream: true,
-          tools: [updateSchemaTool],
-          system: [
-            {
-              type: 'text',
-              text: chatSystemPrompt,
-              cache_control: { type: 'ephemeral' },
-            },
-          ],
-          messages: claudeMessages,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text().catch(() => '');
-        throw new Error(`Claude API error ${response.status}: ${errorBody}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      return await parseSSEStream(reader, onTextDelta, onToolUseStart);
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
 
   async function sendViaClaude(text: string) {
     const claudeMessages: Array<{ role: string; content: unknown }> = buildClaudeMessages(text);
@@ -1023,6 +782,7 @@ export function AiStoreProvider(props: ParentProps) {
       let streamResult;
       try {
         streamResult = await sendClaudeRequest(
+          apiKey(),
           claudeMessages,
           (accumulated) => {
             const sep = allTextContent && accumulated ? '\n\n' : '';
@@ -1035,7 +795,7 @@ export function AiStoreProvider(props: ParentProps) {
           },
         );
       } catch (err) {
-        console.error(`[AiStore] Turn ${turn}: sendClaudeRequest threw`, err);
+        console.error(`[EditorStore] Turn ${turn}: sendClaudeRequest threw`, err);
         throw err;
       }
       const { textContent, toolCalls, stopReason } = streamResult;
@@ -1082,16 +842,7 @@ export function AiStoreProvider(props: ParentProps) {
 
       for (const tc of toolCalls) {
         if (tc.name === 'update_schema') {
-          type IdPatch = {
-            targetId: string;
-            node?: Record<string, unknown>;
-            insert?: {
-              children?: { node: SchemaNode; after?: string; before?: string };
-              routes?: { node: SchemaNode; after?: string; before?: string };
-            };
-            remove?: { children?: string; routes?: string };
-          };
-          const patches = (tc.input as { patches: IdPatch[] }).patches;
+          const patches = (tc.input as { patches: SchemaPatch[] }).patches;
 
           if (!patches || !Array.isArray(patches)) {
             toolResults.push({
@@ -1104,136 +855,40 @@ export function AiStoreProvider(props: ParentProps) {
             continue;
           }
 
-          console.log(`[AiStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
+          console.log(`[EditorStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
           for (const p of patches) {
             const op = p.node ? 'update' : p.insert ? 'insert' : 'remove';
             console.log(`  targetId: "${p.targetId}", op: ${op}`);
           }
-          console.log('[AiStore] Patch detail:', JSON.stringify(patches, null, 2));
+          console.log('[EditorStore] Patch detail:', JSON.stringify(patches, null, 2));
 
-          // Apply ID-based patches to the accumulated schema (not to the store yet)
-          try {
-            let patchError: string | undefined;
-
-            for (const patch of patches) {
-              const opCount = [patch.node, patch.insert, patch.remove].filter(Boolean).length;
-              if (opCount !== 1) {
-                patchError = `Patch for targetId "${patch.targetId}" must have exactly one of: node, insert, remove.`;
-                break;
-              }
-
-              if (patch.node) {
-                // Merge update
-                if (patch.targetId === '') {
-                  // Root merge
-                  accumulatedSchema = mergeNode(accumulatedSchema, patch.node);
-                } else {
-                  const found = findNodeById(accumulatedSchema, patch.targetId);
-                  if (!found) {
-                    patchError = `No node with id "${patch.targetId}" found in the current schema.`;
-                    break;
-                  }
-                  const merged = mergeNode(found.node, patch.node);
-                  // Replace the node in its parent
-                  if (found.parent) {
-                    if (found.key === 'children' && found.parent.children) {
-                      found.parent.children[found.index] = merged;
-                    } else if (found.key === 'routes' && found.parent.routes) {
-                      found.parent.routes[found.index] = merged as SchemaNode & { path: string };
-                    } else if (found.key.startsWith('slots.') && found.parent.slots) {
-                      const slotName = found.key.slice(6);
-                      found.parent.slots[slotName] = merged;
-                    } else if (found.key.startsWith('props.') && found.parent.props) {
-                      const propName = found.key.slice(6);
-                      const existing = (found.parent.props as Record<string, unknown>)[propName];
-                      if (Array.isArray(existing)) {
-                        (existing as SchemaNode[])[found.index] = merged;
-                      } else {
-                        (found.parent.props as Record<string, unknown>)[propName] = merged;
-                      }
-                    }
-                  } else {
-                    // found.node IS the root — merge into accumulated
-                    accumulatedSchema = merged;
-                  }
-                }
-              } else if (patch.insert) {
-                // Insert child or route
-                const insertSpec = patch.insert.children ?? patch.insert.routes;
-                const arrayKey = patch.insert.children ? 'children' : 'routes';
-                if (!insertSpec) {
-                  patchError = `Insert patch for targetId "${patch.targetId}" must specify children or routes.`;
-                  break;
-                }
-                const position = insertSpec.after
-                  ? { after: insertSpec.after }
-                  : insertSpec.before
-                    ? { before: insertSpec.before }
-                    : undefined;
-                // Strip positioning keys that the AI sometimes misplaces inside the node body.
-                // These are patch directives, not valid SchemaNode fields — leaving them on the
-                // node causes zSchemaNode.strict() to reject the schema with "Unrecognized key".
-                const cleanNode = { ...(insertSpec.node as Record<string, unknown>) };
-                delete cleanNode.after;
-                delete cleanNode.before;
-                const nodeToInsert = cleanNode as SchemaNode;
-                const err = insertChild(accumulatedSchema, patch.targetId, arrayKey, nodeToInsert, position);
-                if (err) {
-                  patchError = err.error;
-                  break;
-                }
-              } else if (patch.remove) {
-                // Remove child or route
-                const childId = patch.remove.children ?? patch.remove.routes;
-                const arrayKey = patch.remove.children ? 'children' : 'routes';
-                if (!childId) {
-                  patchError = `Remove patch for targetId "${patch.targetId}" must specify children or routes.`;
-                  break;
-                }
-                const err = removeChild(accumulatedSchema, patch.targetId, arrayKey, childId);
-                if (err) {
-                  patchError = err.error;
-                  break;
-                }
-              }
-            }
-
-            if (patchError) {
-              console.warn(`[AiStore] Patch validation failed: ${patchError}`);
-              allTextContent += '\n\n<span class="warning">⚠ Template failed validation. Retrying...</span>';
-              setStreamingContent(allTextContent);
-              toolResults.push({
-                type: 'tool_result',
-                tool_use_id: tc.id,
-                content: `Patching failed: ${patchError}`,
-                is_error: true,
-              });
-              allPatchesValid = false;
-              continue;
-            }
-
-            // Assign IDs to any newly inserted nodes
-            ensureNodeIds(accumulatedSchema);
-
-            // Mark success for this tool call (actual store apply deferred)
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: tc.id,
-              content: 'Patches applied.',
-            });
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : 'Unknown patching error';
-            console.warn(`[AiStore] Patch apply failed: ${errMsg}`);
-            allTextContent += '\n\n<span class="warning">⚠ Patch error — retrying...</span>';
+          // Apply ID-based patches to the accumulated schema (not to the store yet) — the
+          // mechanics live in shared/ai/schemaPatches.
+          const result = applySchemaPatches(accumulatedSchema, patches);
+          if (result.error) {
+            console.warn(`[EditorStore] Patch apply failed: ${result.error}`);
+            allTextContent += '\n\n<span class="warning">⚠ Template failed validation. Retrying...</span>';
             setStreamingContent(allTextContent);
             toolResults.push({
               type: 'tool_result',
               tool_use_id: tc.id,
-              content: `Patching failed: ${errMsg}. Please check your node structure and try again.`,
+              content: `Patching failed: ${result.error}`,
               is_error: true,
             });
             allPatchesValid = false;
+            continue;
           }
+          accumulatedSchema = result.schema;
+
+          // Assign IDs to any newly inserted nodes
+          ensureNodeIds(accumulatedSchema);
+
+          // Mark success for this tool call (actual store apply deferred)
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: tc.id,
+            content: 'Patches applied.',
+          });
         } else {
           toolResults.push({
             type: 'tool_result',
@@ -1247,12 +902,12 @@ export function AiStoreProvider(props: ParentProps) {
       // --- Atomic apply: validate + apply only if ALL tool calls succeeded ---
       if (allPatchesValid) {
         const mergedTemplate = accumulatedSchema as TemplateSchema;
-        console.log('[AiStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
+        console.log('[EditorStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
 
         // Step 1: Structural validation (Zod schema check)
         const structural = validateStructure(mergedTemplate);
         if (!structural.valid) {
-          console.warn(`[AiStore] Structural validation failed (${structural.errors.length} issues):`);
+          console.warn(`[EditorStore] Structural validation failed (${structural.errors.length} issues):`);
           for (const issue of structural.errors) {
             console.warn(`  [${issue.severity}] ${issue.path}: ${issue.message}`);
           }
@@ -1267,7 +922,7 @@ export function AiStoreProvider(props: ParentProps) {
             tr.is_error = true;
           }
         } else {
-          console.log('[AiStore] Structural validation passed');
+          console.log('[EditorStore] Structural validation passed');
 
           // Step 2: Semantic validation (component/prop/store checks)
           // Only fail on NEW issues introduced by the patch, not pre-existing ones
@@ -1278,11 +933,11 @@ export function AiStoreProvider(props: ParentProps) {
           const isClean = newIssues.length === 0;
 
           if (semantic.errors.length > 0 && newIssues.length === 0) {
-            console.log(`[AiStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`);
+            console.log(`[EditorStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`);
           }
 
           if (!isClean) {
-            console.warn(`[AiStore] Semantic validation failed (${newIssues.length} new issues):`);
+            console.warn(`[EditorStore] Semantic validation failed (${newIssues.length} new issues):`);
             for (const issue of newIssues) {
               console.warn(`  [${issue.severity}] ${issue.path}: ${issue.message}`);
             }
@@ -1297,14 +952,14 @@ export function AiStoreProvider(props: ParentProps) {
               tr.is_error = true;
             }
           } else if (isReadOnly()) {
-            console.log('[AiStore] Semantic validation passed — buffering (read-only template)');
+            console.log('[EditorStore] Semantic validation passed — buffering (read-only template)');
             pushSnapshot();
             setPendingTemplate(stripNodeIds(mergedTemplate) as TemplateSchema);
             for (const tr of toolResults) {
               tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
             }
           } else {
-            console.log('[AiStore] Semantic validation passed — applying to store');
+            console.log('[EditorStore] Semantic validation passed — applying to store');
             pushSnapshot();
             templateStore.updateTemplate({
               ...stripNodeIds(mergedTemplate),
@@ -1371,7 +1026,7 @@ export function AiStoreProvider(props: ParentProps) {
 
     // Add current message with latest schema (with node IDs for ID-based patching)
     const schemaWithIds = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
-    const manifest = adamStore.currentPerspectiveModels();
+    const manifest = datasetStore.currentDatasetModels();
     const payload: Record<string, unknown> = {
       request: latestText,
       currentSchema: schemaWithIds,
@@ -1452,7 +1107,7 @@ export function AiStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   createEffect(() => {
     const templateId = templateStore.currentTemplate.id;
-    if (templateId && adamStore.rootPerspective()) {
+    if (templateId && datasetStore.rootDataset()) {
       loadSessionsForTemplate(templateId);
       setContentModeSignal('preview');
       setIsEditingTemplate(false);
@@ -1484,7 +1139,7 @@ export function AiStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   // Store object
   // ----------------------------------------------------------------
-  const store: AiStore = {
+  const store: EditorStore = {
     // Chat state
     messages,
     isOpen,
@@ -1582,13 +1237,13 @@ export function AiStoreProvider(props: ParentProps) {
     setApiKey,
   };
 
-  return <AiContext.Provider value={store}>{props.children}</AiContext.Provider>;
+  return <EditorContext.Provider value={store}>{props.children}</EditorContext.Provider>;
 }
 
-export function useAiStore(): AiStore {
-  const ctx = useContext(AiContext);
-  if (!ctx) throw new Error('useAiStore must be used within AiStoreProvider');
+export function useEditorStore(): EditorStore {
+  const ctx = useContext(EditorContext);
+  if (!ctx) throw new Error('useEditorStore must be used within EditorStoreProvider');
   return ctx;
 }
 
-export default AiStoreProvider;
+export default EditorStoreProvider;

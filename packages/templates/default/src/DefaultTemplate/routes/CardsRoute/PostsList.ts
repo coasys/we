@@ -176,7 +176,7 @@ export const postsList: SchemaNode = {
                 type: 'BlockRenderer',
                 props: {
                   editorState: '$post.editorState',
-                  perspective: { $store: 'adamStore.currentPerspective' },
+                  perspective: { $store: 'datasetStore.currentDataset' },
                 },
               },
               {

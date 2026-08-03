@@ -230,7 +230,7 @@ export const createSpaceModal = {
                   type: '$if',
                   props: {
                     condition: {
-                      $and: [{ $eq: [{ $local: 'access' }, 'shared'] }, { $store: 'adamStore.globalPerspective' }],
+                      $and: [{ $eq: [{ $local: 'access' }, 'shared'] }, { $store: 'datasetStore.globalDataset' }],
                     },
                     then: {
                       type: 'we-text',
@@ -282,7 +282,7 @@ export const createSpaceModal = {
                 disabled: {
                   $or: [
                     { $not: { $eq: [{ $local: 'access' }, 'shared'] } },
-                    { $not: { $store: 'adamStore.globalPerspective' } },
+                    { $not: { $store: 'datasetStore.globalDataset' } },
                   ],
                 },
                 labelOff: 'Hidden',
@@ -307,8 +307,8 @@ export const createSpaceModal = {
           props: {
             condition: {
               $and: [
-                { $store: 'adamStore.globalSpaceConfigured' },
-                { $not: { $store: 'adamStore.globalPerspective' } },
+                { $store: 'datasetStore.globalSpaceConfigured' },
+                { $not: { $store: 'datasetStore.globalDataset' } },
               ],
             },
             then: {
@@ -355,7 +355,7 @@ export const createSpaceModal = {
                 $if: {
                   condition: { $formValid: '$scope' },
                   then: {
-                    $action: 'adamStore.createSpace',
+                    $action: 'spaceStore.createSpace',
                     args: [
                       { $local: 'name' },
                       { $local: 'description' },

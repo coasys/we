@@ -4,11 +4,14 @@ import { moduleStores } from '@shared/registries/moduleRegistry';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
-  useAdamStore,
-  useAiStore,
   useAppStore,
+  useDatasetStore,
+  useEditorStore,
   usePresenceStore,
+  useProfileStore,
   useRouteStore,
+  useSessionStore,
+  useShellStore,
   useSpaceStore,
   useTemplateStore,
   useThemeStore,
@@ -29,13 +32,16 @@ import { buildRoutes } from '../utils/buildRoutes';
 
 export default function TemplateProvider() {
   // Stores
-  const adamStore = useAdamStore();
-  const aiStore = useAiStore();
+  const sessionStore = useSessionStore();
+  const datasetStore = useDatasetStore();
+  const profileStore = useProfileStore();
+  const editorStore = useEditorStore();
   const appStore = useAppStore();
   const spaceStore = useSpaceStore();
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
   const routeStore = useRouteStore();
+  const shellStore = useShellStore();
   const presenceStore = usePresenceStore();
 
   // Set CSS custom property on :root so position:fixed elements (e.g. CesiumGlobe canvas)
@@ -54,7 +60,7 @@ export default function TemplateProvider() {
 
   // Model store — wraps Ad4m static model methods with automatic perspective injection.
   // Pass `{ perspective: 'store.path' }` in options to target a different perspective
-  // (e.g. 'adamStore.rootPerspective' for we-root models like AgentProfile).
+  // (e.g. 'datasetStore.rootDataset' for we-root models like AgentProfile).
   const modelStore = {
     create: (modelName: string, data: Record<string, unknown> = {}, options?: Record<string, unknown>) => {
       const [Model, p] = resolve(modelName, options as { perspective?: string });
@@ -72,13 +78,16 @@ export default function TemplateProvider() {
   };
 
   const stores: Stores = {
-    adamStore,
-    aiStore,
+    sessionStore,
+    datasetStore,
+    profileStore,
+    editorStore,
     appStore,
     spaceStore,
     themeStore,
     templateStore,
     routeStore,
+    shellStore,
     presenceStore,
     // Always present, even with no modules registered: `{ $store: 'modules.x' }` resolves through the
     // single-segment path, which indexes the store object without a guard and would throw on a
@@ -92,16 +101,21 @@ export default function TemplateProvider() {
     $useQueryIR: queryIRFlag.enabled, // reactive; default from the seed, live-toggled via testStore
     // Template-facing vocabulary (templates read `$me.did`), as opposed to the renderer-facing
     // bindings below: the renderer never reads `$me` itself, it resolves like any `$store` path.
-    $me: adamStore.me,
+    $me: sessionStore.me,
     // Everything the *renderer* needs to read data, from the AD4M adapter — model resolution, the
     // dataset handle, the identity directory, and the query adapter. One artifact, so another
-    // backend has a single thing to implement and this provider stays about rendering.
-    // `adamStore` satisfies `Ad4mAdapterDeps` structurally, so it can be passed whole while the
-    // adapter still only sees — and can only reach for — the four accessors it declares.
-    ...createAd4mDataBindings(adamStore),
+    // backend has a single thing to implement and this provider stays about rendering. Composed
+    // explicitly from the owning stores — exactly the four accessors the adapter declares.
+    ...createAd4mDataBindings({
+      currentPerspective: datasetStore.currentDataset,
+      currentPerspectiveModels: datasetStore.currentDatasetModels,
+      agents: profileStore.profiles,
+      fetchAgent: profileStore.fetchProfile,
+      ephemeralPort: sessionStore.ephemeralPort,
+    }),
   };
 
-  // Resolves a dot-path string like 'adamStore.rootPerspective' against the stores object.
+  // Resolves a dot-path string like 'datasetStore.rootDataset' against the stores object.
   // Only called at action-dispatch time, so `stores` is always fully initialized.
   function resolvePerspective(path?: string): PerspectiveProxy | null {
     if (!path) return null;
@@ -113,7 +127,7 @@ export default function TemplateProvider() {
   }
 
   function resolve(modelName: string, opts?: { perspective?: string }) {
-    return [getModel(modelName), resolvePerspective(opts?.perspective) ?? adamStore.currentPerspective()!] as const;
+    return [getModel(modelName), resolvePerspective(opts?.perspective) ?? datasetStore.currentDataset()!] as const;
   }
 
   // Shell chrome — host slots plus anything feature modules contribute.
@@ -142,7 +156,7 @@ export default function TemplateProvider() {
   const [hoveredNodeId, setHoveredNodeId] = createSignal<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | null>(null);
   const nodeRegistry = new Map<string, HTMLElement>();
-  const isVisualMode = () => aiStore.contentMode() === 'visual' && aiStore.isEditingTemplate();
+  const isVisualMode = () => editorStore.contentMode() === 'visual' && editorStore.isEditingTemplate();
 
   createEffect(() => {
     if (!isVisualMode()) {

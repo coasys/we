@@ -1,10 +1,13 @@
 import type { Ad4mModel } from '@coasys/ad4m';
 import type {
-  AdamStore,
-  AiStore,
   AppStore,
+  DatasetStore,
+  EditorStore,
   PresenceStore,
+  ProfileStore,
   RouteStore,
+  SessionStore,
+  ShellStore,
   SpaceStore,
   TemplateStore,
   ThemeStore,
@@ -46,16 +49,19 @@ export interface Stores extends RendererStores {
   // assignability the way a type alias does, so without this `Stores` is not assignable to
   // `RendererStores` despite extending it.
   [key: string]: unknown;
-  adamStore: AdamStore;
-  aiStore: AiStore;
+  sessionStore: SessionStore;
+  datasetStore: DatasetStore;
+  profileStore: ProfileStore;
+  editorStore: EditorStore;
   appStore: AppStore;
   spaceStore: SpaceStore;
   themeStore: ThemeStore;
   templateStore: TemplateStore;
   routeStore: RouteStore;
+  shellStore: ShellStore;
   presenceStore: PresenceStore;
   model?: ModelStore;
-  /** Neutral identity — the current agent (templates read `$me.did`). Backed by `adamStore.me`;
+  /** Neutral identity — the current agent (templates read `$me.did`). Backed by `sessionStore.me`;
    *  typed `unknown` so the seam stays backend-agnostic. Host-specific: not part of the data contract. */
   $me?: () => unknown;
 }
