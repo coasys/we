@@ -11,7 +11,8 @@
   "modules": [
     "globe",
     "notes",
-    "call"
+    "call",
+    "assistant"
   ],
   "ad4m": {
     "dataPath": "~/.we-native-app",

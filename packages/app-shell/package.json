@@ -62,7 +62,8 @@
     "@we/template-default": "workspace:*",
     "@we/template-shell": "workspace:*",
     "@we/editor": "workspace:*",
-    "@we/globe-widget": "workspace:*"
+    "@we/globe-widget": "workspace:*",
+    "@we/module-assistant": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -70,6 +71,8 @@
     "@vitest/coverage-v8": "^4.0.15",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
-    "vitest": "^4.0.15"
+    "vitest": "^4.0.15",
+    "jsdom": "^27.2.0",
+    "vite-plugin-solid": "^2.11.10"
   }
 }
