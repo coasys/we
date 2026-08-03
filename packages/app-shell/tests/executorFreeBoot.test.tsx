@@ -54,7 +54,7 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 }));
 
 // Fake Space/AgentSettings statics — the model layer is executor RPC; see the header comment.
-const fakeSettings = { perspectiveOrder: '', claudeApiKey: '', save: vi.fn(async () => {}) };
+const fakeSettings = { datasetOrder: '', claudeApiKey: '', save: vi.fn(async () => {}) };
 let spaceCounter = 0;
 
 vi.mock('@we/models', async (importOriginal) => {

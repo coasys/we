@@ -134,10 +134,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       .map((d) => d.id),
   );
 
-  // `perspectiveOrder` is a persisted AgentSettings field (predicate we://perspective_order) —
-  // renaming it would be a data migration, so the stored name outlives the vocabulary change.
   function getDatasetOrder(): string[] {
-    const json = agentSettings()?.perspectiveOrder;
+    const json = agentSettings()?.datasetOrder;
     if (!json) return [];
     try {
       return JSON.parse(json);
@@ -185,7 +183,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     // Deduplicate while preserving order — guards against any remaining race between
     // the eager update in createSpace and the dataset-added subscription.
     const deduped = [...new Set(newOrder)];
-    settings.perspectiveOrder = JSON.stringify(deduped);
+    settings.datasetOrder = JSON.stringify(deduped);
     await settings.save();
     setAgentSettings(settings);
   }
@@ -196,19 +194,9 @@ export function DatasetStoreProvider(props: ParentProps) {
     lifecycle.subscribe({
       onAdded: (ref) => {
         if (datasets().some((d) => d.id === ref.id)) return;
-        // Log unexpected datasets so we can identify and filter system ones
-        const meAgent = session.me();
-        // The agent's own profile dataset is backend bookkeeping, not a space — keep it out of
-        // the sidebar. `me` is the backend's identity object, so this reads its own vocabulary.
-        const ownProfileDatasetId = (meAgent?.perspective as { uuid?: string } | undefined)?.uuid;
-        if (ownProfileDatasetId && ref.id === ownProfileDatasetId) {
-          console.log('DatasetStore: suppressing own profile dataset from sidebar', ref.name, ref.id);
-          return;
-        }
-        if (ref.name?.toLowerCase().startsWith('agent perspective')) {
-          console.log('DatasetStore: suppressing agent dataset from sidebar', ref.name, ref.id);
-          return;
-        }
+        // Backend bookkeeping datasets never arrive here — the adapter filters its own (see
+        // createAd4mDatasetLifecycle). What this store still filters is the HOST's convention:
+        // we-root/we-test, excluded from the sidebar by `orderedDatasets`.
         // Re-check after the async gap: createSpace's eager update may have run while
         // the adapter resolved the handle, which would add a duplicate.
         if (datasets().some((d) => d.id === ref.id)) return;
@@ -240,7 +228,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       setDatasets(refs);
 
       // Bootstrap dataset order on first load (when no order has been saved yet)
-      if (!agentSettings()?.perspectiveOrder) {
+      if (!agentSettings()?.datasetOrder) {
         const systemOrder = ['we-root', 'we-test', 'we-global'];
         const initialOrder = [...refs]
           .sort((a, b) => {

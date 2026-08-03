@@ -1438,7 +1438,7 @@ export const contextData: ContextData = {
           default: "'default'",
         },
         { name: 'claudeApiKey', type: 'string', predicate: 'we://claude_api_key', required: false },
-        { name: 'perspectiveOrder', type: 'string', predicate: 'we://perspective_order', required: false },
+        { name: 'datasetOrder', type: 'string', predicate: 'we://dataset_order', required: false },
         {
           name: 'globalSpaceJoined',
           type: 'boolean',

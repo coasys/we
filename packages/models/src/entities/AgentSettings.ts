@@ -24,8 +24,8 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://claude_api_key' })
   claudeApiKey: string = '';
 
-  @Property({ through: 'we://perspective_order' })
-  perspectiveOrder: string = '';
+  @Property({ through: 'we://dataset_order' })
+  datasetOrder: string = '';
 
   @Property({ through: 'we://global_space_joined' })
   globalSpaceJoined: boolean = false;

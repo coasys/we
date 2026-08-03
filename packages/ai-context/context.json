@@ -3895,9 +3895,9 @@
           "required": false
         },
         {
-          "name": "perspectiveOrder",
+          "name": "datasetOrder",
           "type": "string",
-          "predicate": "we://perspective_order",
+          "predicate": "we://dataset_order",
           "required": false
         },
         {

@@ -48,7 +48,7 @@ export class Space extends WeNode {
    * silently strip existing spaces of every module the moment this shipped.
    *
    * A JSON string rather than a relation because the values are ids from the seed, not entities in
-   * the perspective — the same shape `AgentSettings.perspectiveOrder` uses for an ordered id list.
+   * the perspective — the same shape `AgentSettings.datasetOrder` uses for an ordered id list.
    */
   @Property({ through: 'we://enabled_modules' })
   enabledModules: string = '';

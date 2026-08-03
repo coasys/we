@@ -1061,7 +1061,7 @@ AgentSettings extends Ad4mModel:
   - currentThemeId: string = 'default' [we://current_theme]
   - defaultThemeId: string = 'default' [we://default_theme]
   - claudeApiKey: string [we://claude_api_key]
-  - perspectiveOrder: string [we://perspective_order]
+  - datasetOrder: string [we://dataset_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
   - globalSpaceUrl: string [we://global_space_url]
   - useSpaceTemplate: boolean = true [we://use_space_template]
