@@ -225,14 +225,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  async function addSpaceToPerspective(
-    perspective: DatasetProxy,
+  async function addSpaceToDataset(
+    dataset: DatasetProxy,
     space: SpaceInput,
     location?: Partial<LocationBlock>,
   ): Promise<Space> {
-    const spaceModel = await Space.create(perspective, space as Partial<Space>);
+    const spaceModel = await Space.create(dataset, space as Partial<Space>);
     if (location) {
-      const locationModel = await LocationBlock.create(perspective, location);
+      const locationModel = await LocationBlock.create(dataset, location);
       await spaceModel.setLocation(locationModel);
     }
     return spaceModel;
@@ -254,11 +254,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       // Create the dataset
       const spaceRef = await lifecycle.create(name);
-      const spacePerspective = spaceRef.handle as DatasetProxy;
+      const spaceHandle = spaceRef.handle as DatasetProxy;
       let publishedSharedId: string | undefined;
 
       // Register SDNA models (full set, same as switchDataset uses)
-      await session.backendPorts()!.schemas.installSpace(spacePerspective, moduleRegistry.models());
+      await session.backendPorts()!.schemas.installSpace(spaceHandle, moduleRegistry.models());
 
       // If shared, publish — capture the returned URL so it can be stored on the Space model
       // (the dataset handle's own sharedUrl is not updated in-place).
@@ -288,7 +288,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       const locationData = location ?? undefined;
 
       // Write to own dataset
-      const spaceModel = await addSpaceToPerspective(spacePerspective, spaceData, locationData);
+      const spaceModel = await addSpaceToDataset(spaceHandle, spaceData, locationData);
       console.log('SpaceStore: created space model for new dataset', spaceModel);
 
       // Sync to global discovery space when the user opted in.
@@ -355,7 +355,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       ...(avatarData && { avatar: avatarData }),
     };
 
-    const spaceModel = await addSpaceToPerspective(ds.handle, spaceData);
+    const spaceModel = await addSpaceToDataset(ds.handle, spaceData);
 
     if (!mySpaces().some((s) => s.uuid === spaceModel.uuid)) {
       setMySpaces((prev) => [...prev, spaceModel]);
@@ -389,13 +389,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       // The adapter normalizes bare shared ids to its own URI scheme.
       const joinedRef = await lifecycle.join(id);
-      const joinedP = joinedRef.handle as DatasetProxy;
+      const joinedHandle = joinedRef.handle as DatasetProxy;
 
       // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
       // immediately. installSpace diffs against the dataset's actual state before writing,
       // so this is safe to call unconditionally even when the space's creator or an earlier
       // joiner already installed it — it won't write a duplicate copy.
-      await session.backendPorts()!.schemas.installSpace(joinedP, moduleRegistry.models());
+      await session.backendPorts()!.schemas.installSpace(joinedHandle, moduleRegistry.models());
 
       // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
       // the seed-configured global/marketplace slots) update with the join.
@@ -404,7 +404,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Load the Space model and push into mySpaces so the sidebar shows the correct
       // name immediately, without requiring a reboot.
       const joinedSpaceModel = joinedRef.sharedId
-        ? await Space.findOne(joinedP, { where: { url: joinedRef.sharedId } }).catch(() => null)
+        ? await Space.findOne(joinedHandle, { where: { url: joinedRef.sharedId } }).catch(() => null)
         : null;
       if (joinedSpaceModel && !mySpaces().some((s) => s.url === joinedSpaceModel.url)) {
         setMySpaces((prev) => [...prev, joinedSpaceModel]);
@@ -906,9 +906,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   createEffect(() => {
     const ds = datasetStore.currentDataset();
     const weSpace = datasetStore.isWeSpace();
-    // Force a re-run once registerDynamicModels has populated the per-dataset registry —
-    // that happens in switchDataset's background IIFE, strictly before currentDatasetModels
-    // is set, so tracking it here guarantees a second run right when getModelForPerspective is ready.
+    // Force a re-run once the dataset's foreign schemas have been registered — that happens in
+    // switchDataset's background pass, strictly before currentDatasetModels is set, so tracking
+    // it here guarantees a second run right when model resolution is ready.
     void datasetStore.currentDatasetModels();
 
     if (!ds || weSpace) {

@@ -91,7 +91,7 @@ export async function syncSpaceToParent(
     });
   }
 
-  // Mirror location into targetP, scoped to this space's location relation.
+  // Mirror location into the target dataset, scoped to this space's location relation.
   if (loc) {
     await schemas.ensure(targetP, LocationBlock);
     // Always delete + recreate so setLocation updates the Space's we://location triple.
@@ -110,7 +110,7 @@ export async function syncSpaceToParent(
     });
     await target.setLocation(newLoc);
   } else if (options?.locationData === null && existing) {
-    // Explicit removal — delete the location block from the target perspective
+    // Explicit removal — delete the location block from the target dataset
     const [locToRemove] = await LocationBlock.findAll(targetP, {
       parent: { id: existing.id, predicate: 'we://location' },
     });
@@ -119,7 +119,7 @@ export async function syncSpaceToParent(
 }
 
 /**
- * Remove a Space record from `targetP` by UUID.
+ * Remove a Space record from the target dataset by uuid.
  * Called when a space is removed from global discovery or access is revoked.
  */
 export async function removeSpaceFromParent(spaceUuid: string, targetP: DatasetProxy): Promise<void> {
