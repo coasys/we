@@ -301,10 +301,9 @@ export function SpaceStoreProvider(props: ParentProps) {
         }
       }
 
-      // Update sidebar. Eagerly add for web (where the perspective-added listener may not
-      // fire); addDataset guards so we don't double-add on desktop when the subscription has
-      // already resolved its byUUID fetch and added the dataset first.
-      await datasetStore.addDataset(spaceRef);
+      // Track locally so the sidebar updates with the action rather than with the backend's
+      // change event (which may lag, or on web may not fire at all).
+      await datasetStore.trackDataset(spaceRef);
       setMySpaces((prev) => [...prev, spaceModel]);
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
@@ -395,9 +394,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       // joiner already installed it — it won't write a duplicate copy.
       await session.backendPorts()!.schemas.installSpace(joinedP, moduleRegistry.models());
 
-      // Adopt as global/marketplace dataset when the seed says so, and eagerly add to the
-      // dataset list so derived state (e.g. marketplaceJoined) updates immediately.
-      datasetStore.adoptJoinedDataset(joinedRef);
+      // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
+      // the seed-configured global/marketplace slots) update with the join.
+      await datasetStore.trackDataset(joinedRef);
 
       // Load the Space model and push into mySpaces so the sidebar shows the correct
       // name immediately, without requiring a reboot.

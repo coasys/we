@@ -74,10 +74,13 @@ export interface DatasetStore {
   cleanupSpaceSdna: (uuid?: string) => Promise<string>;
 
   // Wiring for SpaceStore and the boot controller (not schema-facing)
-  /** Eagerly add a just-created dataset to the list and persist its ordering slot. */
-  addDataset: (ref: DatasetRef) => Promise<void>;
-  /** Add a just-joined dataset, adopting it as the global/marketplace dataset if the seed says so. */
-  adoptJoinedDataset: (ref: DatasetRef) => void;
+  /**
+   * Take a dataset the app just created or joined into local state, before the backend's own
+   * change event arrives. The event fires too — both paths are idempotent — but gates that read
+   * the dataset list (marketplaceJoined, the sidebar) would otherwise lag behind the action that
+   * caused them.
+   */
+  trackDataset: (ref: DatasetRef) => Promise<void>;
   /** Register a callback fired after a dataset is removed (locally or by any client). */
   onDatasetRemoved: (cb: (uuid: string) => void) => void;
   initSystemDatasets: () => Promise<void>;
@@ -97,8 +100,6 @@ export function DatasetStoreProvider(props: ParentProps) {
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
   const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
-  const [globalDataset, setGlobalDataset] = createSignal<AppDataset | null>(null);
-  const [marketplaceDataset, setMarketplaceDataset] = createSignal<AppDataset | null>(null);
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
 
   const removedCallbacks: Array<(uuid: string) => void> = [];
@@ -175,6 +176,23 @@ export function DatasetStoreProvider(props: ParentProps) {
   const marketplaceJoined = createMemo(() => {
     const id = marketplaceId();
     return id ? joinedSpaceCids().includes(id) : false;
+  });
+
+  /**
+   * The seed-configured datasets are *recognised*, not assigned: whichever joined dataset carries
+   * the seed's uri is the global space / marketplace. Derived rather than set imperatively so
+   * there is no path — restore on boot, join at runtime — that can forget to claim one.
+   *
+   * (`rootDataset`/`testDataset` stay explicit signals below: those the host *creates* when
+   * absent, which is a lifecycle step rather than a match.)
+   */
+  const globalDataset = createMemo<AppDataset | null>(() => {
+    const seedUrl = getSeed().globalSpaceUrl;
+    return seedUrl ? (datasets().find((d) => d.sharedUri === seedUrl) ?? null) : null;
+  });
+  const marketplaceDataset = createMemo<AppDataset | null>(() => {
+    const mktUrl = getSeed().marketplaceUrl;
+    return mktUrl ? (datasets().find((d) => d.sharedUri === mktUrl) ?? null) : null;
   });
 
   async function reorderDatasets(newOrder: string[]): Promise<void> {
@@ -272,22 +290,6 @@ export function DatasetStoreProvider(props: ParentProps) {
           setTestDataset(toApp(await lifecycle.create('we-test')));
         }
 
-        // Restore the global dataset if previously joined — schema install happens when the
-        // dataset is navigated to (see switchDataset).
-        const seedUrl = getSeed().globalSpaceUrl;
-        const existingGlobal = seedUrl ? refs.find((d) => d.sharedUri === seedUrl) : undefined;
-        if (existingGlobal) {
-          setGlobalDataset(existingGlobal);
-          console.log('DatasetStore: restored global dataset', existingGlobal.id);
-        }
-
-        const marketplaceUrl = getSeed().marketplaceUrl;
-        const existingMarketplace = marketplaceUrl ? refs.find((d) => d.sharedUri === marketplaceUrl) : undefined;
-        if (existingMarketplace) {
-          setMarketplaceDataset(existingMarketplace);
-          console.log('DatasetStore: restored marketplace dataset', existingMarketplace.id);
-        }
-
         return;
       }
 
@@ -330,26 +332,11 @@ export function DatasetStoreProvider(props: ParentProps) {
     setAgentSettings(settings);
   }
 
-  async function addDataset(ref: DatasetRef): Promise<void> {
+  async function trackDataset(ref: DatasetRef): Promise<void> {
     if (datasets().some((existing) => existing.id === ref.id)) return;
     setDatasets((prev) => [...prev, toApp(ref)]);
+    // reorderDatasets dedupes, so re-tracking a dataset the change event already ordered is safe.
     await reorderDatasets([...getDatasetOrder(), ref.id]);
-  }
-
-  function adoptJoinedDataset(ref: DatasetRef): void {
-    const app = toApp(ref);
-    // If this is the configured global space or marketplace, adopt it as such.
-    const seedUrl = getSeed().globalSpaceUrl;
-    if (app.sharedUri && app.sharedUri === seedUrl) setGlobalDataset(app);
-    const mktUrl = getSeed().marketplaceUrl;
-    if (app.sharedUri && app.sharedUri === mktUrl) setMarketplaceDataset(app);
-
-    // Eagerly add so derived state (e.g. marketplaceJoined, joinedSpaceCids) updates immediately —
-    // the dataset-added listener will also fire, but that backend event can lag or arrive too
-    // late for gates that key off the dataset list.
-    if (!datasets().some((existing) => existing.id === app.id)) {
-      setDatasets((prev) => [...prev, app]);
-    }
   }
 
   async function removeDataset(uuid: string): Promise<void> {
@@ -492,8 +479,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     },
     cleanupSpaceSdna,
 
-    addDataset,
-    adoptJoinedDataset,
+    trackDataset,
     onDatasetRemoved: (cb) => removedCallbacks.push(cb),
     initSystemDatasets,
     loadDatasets,
