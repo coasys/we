@@ -1,0 +1,103 @@
+/**
+ * The complete AD4M backend bundle — what an app's connector returns from
+ * `BackendConnector.ports()`. One construction site for every port the shell consumes, so
+ * "use AD4M" is a single line in the app and the shell names no backend at all.
+ */
+import type { Ad4mClient, PerspectiveProxy } from '@coasys/ad4m';
+import type {
+  BackendPorts,
+  BackendPortsContext,
+  DataBindingDeps,
+  DatasetHandle,
+  ModelManifest,
+  ModelManifestEntry,
+  ProfileDirectoryPort,
+  SchemaPort,
+} from '@we/backend-shared';
+import { type ModelClass, registerDynamicModels, registerModel, Space } from '@we/models';
+
+import { createAd4mDataBindings } from './ad4mAdapter';
+import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
+import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
+import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
+import { compileManifest } from './manifestCompiler';
+import { buildModelClasses, buildModelManifest, getForeignShacl } from './perspectiveHelpers';
+import {
+  deduplicateSpaceSdna,
+  ensureModelRegistered,
+  installModuleSdna,
+  installRootSdna,
+  installSpaceSdna,
+  isModelRegistered,
+  ROOT_MODELS,
+  SPACE_MODELS,
+} from './sdnaModels';
+import { getFluxSubgroupMessages } from './syncHelpers';
+
+const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
+
+export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
+  const client = backendClient as Ad4mClient;
+  void client; // schema install operates on dataset handles; the client stays for future needs
+
+  return {
+    installRoot: (dataset) => installRootSdna(proxy(dataset)),
+    installSpace: (dataset, moduleSchemas) => installSpaceSdna(proxy(dataset), moduleSchemas),
+    installModules: (dataset, moduleSchemas) => installModuleSdna(proxy(dataset), moduleSchemas),
+    ensure: (dataset, schema) => ensureModelRegistered(proxy(dataset), schema as never),
+    hasCoreSchema: (dataset) => isModelRegistered(proxy(dataset), Space as never),
+    hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,
+
+    async foreignSchemas(dataset): Promise<ModelManifestEntry[]> {
+      const shapes = await getForeignShacl(proxy(dataset));
+      registerDynamicModels(proxy(dataset).uuid, buildModelClasses(shapes));
+      return buildModelManifest(shapes);
+    },
+
+    declare(manifest: ModelManifest, opts) {
+      const classes = compileManifest(manifest, opts);
+      for (const [name, cls] of Object.entries(classes)) registerModel(name, cls as ModelClass);
+      return classes;
+    },
+
+    dedupe: (dataset) => deduplicateSpaceSdna(proxy(dataset)),
+  };
+}
+
+export function createAd4mProfileDirectory(backendClient: unknown): ProfileDirectoryPort {
+  return {
+    get: (id) => getProfile(id, backendClient),
+    publish: (fields) => publishProfileToPublicPerspective(fields, backendClient),
+    uploadFile: (serialized) => createFileExpression(backendClient, serialized),
+  };
+}
+
+export function createAd4mBackendPorts(backendClient: unknown, ctx: BackendPortsContext): BackendPorts {
+  // Register the native model classes for name-based $query resolution. Previously a module-load
+  // side effect in the shell; it belongs to the backend choice. Use .className (set by @Model)
+  // rather than .name — bundlers mangle the native .name in production builds.
+  for (const M of [...ROOT_MODELS, ...SPACE_MODELS]) {
+    registerModel((M as { className?: string }).className ?? M.name, M as unknown as ModelClass);
+  }
+
+  const ephemeral = createAd4mEphemeralPort(ctx.selfId);
+
+  return {
+    agentSession: createAd4mAgentSession(backendClient),
+    lifecycle: createAd4mDatasetLifecycle(backendClient),
+    schemas: createAd4mSchemaPort(backendClient),
+    profiles: createAd4mProfileDirectory(backendClient),
+    ephemeral,
+    dataBindings: (deps: DataBindingDeps) =>
+      createAd4mDataBindings({
+        currentPerspective: () => (deps.currentDataset() as PerspectiveProxy | null) ?? null,
+        currentPerspectiveModels: deps.currentDatasetModels,
+        agents: deps.profiles,
+        fetchAgent: deps.fetchProfile,
+        ephemeralPort: deps.ephemeral,
+      }),
+    interop: {
+      fluxSubgroupMessages: getFluxSubgroupMessages,
+    },
+  };
+}

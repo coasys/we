@@ -23,10 +23,10 @@ function roundTrip(token: unknown): unknown {
 
 describe('parseCondition', () => {
   it('reads a bare store reference as a truthy check', () => {
-    expect(parseCondition({ $store: 'adamStore.isWeSpace' })).toEqual({
+    expect(parseCondition({ $store: 'sessionStore.isWeSpace' })).toEqual({
       type: 'comparison',
       operator: 'truthy',
-      left: { kind: 'store', path: 'adamStore.isWeSpace' },
+      left: { kind: 'store', path: 'sessionStore.isWeSpace' },
     });
   });
 
@@ -152,7 +152,7 @@ describe('parseCondition — outside the grammar', () => {
 
 describe('serializeCondition', () => {
   const tokens: [string, unknown][] = [
-    ['bare store ref', { $store: 'adamStore.isWeSpace' }],
+    ['bare store ref', { $store: 'sessionStore.isWeSpace' }],
     ['bare local ref', { $local: 'showComments' }],
     ['context ref', '$post.highlighted'],
     ['$not', { $not: { $store: 'userStore.isLoggedIn' } }],

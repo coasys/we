@@ -56,17 +56,17 @@ export const SHELL_SIDEBAR_WIDTH = '80px';
 // same viewport the template content occupies.
 export function computeRightOffset(stores: Stores): string {
   let offset = 0;
-  if (stores.aiStore.isEditingTheme()) {
+  if (stores.editorStore.isEditingTheme()) {
     offset += THEME_RAIL_WIDTH;
-    if (stores.aiStore.themePanelOpen()) offset += stores.aiStore.themePanelWidth();
+    if (stores.editorStore.themePanelOpen()) offset += stores.editorStore.themePanelWidth();
   }
-  if (stores.aiStore.isEditingTemplate()) {
+  if (stores.editorStore.isEditingTemplate()) {
     offset += TEMPLATE_RAILS_WIDTH;
-    if (stores.aiStore.isOpen()) offset += stores.aiStore.aiPanelWidth();
-    if (stores.aiStore.codePanelOpen()) offset += stores.aiStore.codePanelWidth();
-    if (stores.aiStore.contentMode() === 'visual') {
+    if (stores.editorStore.isOpen()) offset += stores.editorStore.aiPanelWidth();
+    if (stores.editorStore.codePanelOpen()) offset += stores.editorStore.codePanelWidth();
+    if (stores.editorStore.contentMode() === 'visual') {
       offset += RAIL_STRIP_WIDTH;
-      if (stores.aiStore.visualPanelOpen()) offset += stores.aiStore.visualPanelWidth();
+      if (stores.editorStore.visualPanelOpen()) offset += stores.editorStore.visualPanelWidth();
     }
   }
   return offset ? `${offset}px` : '0px';
@@ -94,7 +94,10 @@ const shellViews: Record<string, ShellViewEntry> = {
       const mutations = schemaMutationActions(schemaState, setSchemaState);
       return {
         templateStore: { ...base.templateStore, ...mutations },
-        testStore: createTestStore(base.adamStore.testPerspective),
+        testStore: createTestStore(
+          base.datasetStore.testDataset,
+          () => base.sessionStore.backendPorts()?.schemas ?? null,
+        ),
         $schema: schemaState,
       };
     },
@@ -140,7 +143,7 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
 
   // Exit template editing when a shell view (settings, profile, marketplace) opens.
   createEffect(() => {
-    if (stores.templateStore.activeShellView()) stores.aiStore.exitTemplateEditing();
+    if (stores.shellStore.activeShellView()) stores.editorStore.exitTemplateEditing();
   });
 
   // Scoped space theme — applied to the template content area only.
@@ -208,7 +211,7 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
         <EditorOverlay />
 
         {/* Shell overlay rendered above the template */}
-        <Show when={stores.templateStore.activeShellView()} keyed>
+        <Show when={stores.shellStore.activeShellView()} keyed>
           {(shellViewId) => {
             const view = shellViews[shellViewId];
             if (!view) return null;

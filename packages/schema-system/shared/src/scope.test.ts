@@ -6,7 +6,7 @@ import type { SchemaNode } from './types';
 
 const storeEntries: StoreEntry[] = [
   {
-    name: 'adamStore',
+    name: 'sessionStore',
     state: {
       isWeSpace: { type: 'boolean' },
       me: { type: 'object', properties: ['did', 'handle'] },
@@ -121,7 +121,7 @@ describe('getScopeAtNode', () => {
     const tree: SchemaNode = {
       id: 'root',
       type: '$each',
-      props: { items: { $store: 'adamStore.personalSpaces' } },
+      props: { items: { $store: 'sessionStore.personalSpaces' } },
       children: [{ id: 'card', type: 'Column' }],
     };
     const item = getScopeAtNode(tree, 'card', { storeEntries, models }).find((g) => g.kind === 'item');
@@ -143,7 +143,7 @@ describe('getScopeAtNode', () => {
     const tree: SchemaNode = {
       id: 'root',
       type: '$each',
-      props: { items: { $store: 'adamStore.personalSpaces' } },
+      props: { items: { $store: 'sessionStore.personalSpaces' } },
       children: [
         {
           id: 'inner',
@@ -166,19 +166,19 @@ describe('getScopeAtNode', () => {
       $localState: { open: { type: 'boolean', initial: false } },
       children: [{ id: 'leaf', type: 'we-text' }],
     };
-    expect(groupLabels(tree, 'leaf')).toEqual(['item — literal list', 'Page state', 'adamStore', 'Context']);
+    expect(groupLabels(tree, 'leaf')).toEqual(['item — literal list', 'Page state', 'sessionStore', 'Context']);
   });
 
   it('drills into object-typed store members but not array members', () => {
     const tree: SchemaNode = { id: 'root', type: 'Column' };
-    const store = getScopeAtNode(tree, 'root', { storeEntries }).find((g) => g.label === 'adamStore');
+    const store = getScopeAtNode(tree, 'root', { storeEntries }).find((g) => g.label === 'sessionStore');
     const paths = store?.refs.map((r) => r.path);
-    expect(paths).toContain('adamStore.me.did');
-    expect(paths).not.toContain('adamStore.personalSpaces.uuid');
+    expect(paths).toContain('sessionStore.me.did');
+    expect(paths).not.toContain('sessionStore.personalSpaces.uuid');
   });
 
   it('returns stores and context even when the node id is unknown', () => {
-    expect(groupLabels({ id: 'root', type: 'Column' }, 'missing')).toEqual(['adamStore', 'Context']);
+    expect(groupLabels({ id: 'root', type: 'Column' }, 'missing')).toEqual(['sessionStore', 'Context']);
   });
 });
 
@@ -238,7 +238,7 @@ describe('inferRefKind', () => {
 
   it('resolves paths the listed scope does not contain', () => {
     // The whole point: a store member whose metadata is incomplete is still reachable.
-    expect(inferRefKind('adamStore.somethingUndocumented.deep', groups)).toBe('store');
+    expect(inferRefKind('sessionStore.somethingUndocumented.deep', groups)).toBe('store');
     expect(inferRefKind('draft.nested', groups)).toBe('local');
     expect(inferRefKind('$post.title', groups)).toBe('context');
   });
@@ -266,7 +266,7 @@ describe('token conversion', () => {
     };
     const groups = getScopeAtNode(tree, 'root', { storeEntries });
     expect(findScopeRef(groups, { $local: 'open' })?.id).toBe('local:open');
-    expect(findScopeRef(groups, { $store: 'adamStore.isWeSpace' })?.id).toBe('store:adamStore.isWeSpace');
+    expect(findScopeRef(groups, { $store: 'sessionStore.isWeSpace' })?.id).toBe('store:sessionStore.isWeSpace');
     expect(findScopeRef(groups, '$me.did')?.id).toBe('context:$me.did');
   });
 

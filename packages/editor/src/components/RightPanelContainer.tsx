@@ -102,8 +102,10 @@ function PanelUnit(props: PanelUnitProps) {
 
   return (
     <Row height="100%" flexShrink="0" styles={{ 'user-select': resizing() ? 'none' : 'auto' }}>
-      {/* Rail — always visible in edit mode, handles both click (toggle) and drag (resize) */}
-      <we-tooltip title={props.tooltip} placement="left">
+      {/* Rail — always visible in edit mode, handles both click (toggle) and drag (resize).
+          height on the tooltip host is what lets the rail Column's 100% resolve — the trigger
+          part follows the host height (see the tooltip primitive's CSS). */}
+      <we-tooltip title={props.tooltip} placement="left" height="100%">
         <Column
           width={`${RAIL_STRIP_WIDTH}px`}
           height="100%"

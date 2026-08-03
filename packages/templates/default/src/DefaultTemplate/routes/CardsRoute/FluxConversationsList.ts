@@ -3,7 +3,7 @@ import type { SchemaNode } from '@we/schema-shared';
 import { cardShell, gridWrapper } from './CardShell.ts';
 
 const hasConversationModel = {
-  $find: { items: { $store: 'adamStore.currentPerspectiveModels' }, where: { name: 'Conversation' } },
+  $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'Conversation' } },
 };
 
 const emptyState: SchemaNode = {
@@ -80,7 +80,7 @@ export const fluxConversationsList: SchemaNode = {
                           select: {
                             image: {
                               $find: {
-                                items: { $store: 'adamStore.agents' },
+                                items: { $store: 'profileStore.profiles' },
                                 where: { did: '$item' },
                                 select: 'avatar',
                               },

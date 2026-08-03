@@ -3,7 +3,7 @@ import type { SchemaNode } from '@we/schema-shared';
 import { cardShell, gridWrapper } from './CardShell.ts';
 
 const hasMessageModel = {
-  $find: { items: { $store: 'adamStore.currentPerspectiveModels' }, where: { name: 'Message' } },
+  $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'Message' } },
 };
 
 const emptyState: SchemaNode = {

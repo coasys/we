@@ -28,7 +28,7 @@ export const templatesRoute: SchemaNode = {
   $queries: {
     templates: {
       entity: 'Template',
-      dataset: 'adamStore.marketplacePerspective',
+      dataset: 'datasetStore.marketplaceDataset',
       order: { createdAt: { $local: 'sort' } },
       include: { screenshots: true },
       subscribe: true,

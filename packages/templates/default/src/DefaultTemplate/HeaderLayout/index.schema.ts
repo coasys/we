@@ -36,11 +36,11 @@ export const headerLayout: TemplateSchema = {
           // isn't a WE space yet, so it gets the "Initialize as WE space" gate instead.
           type: '$if',
           props: {
-            condition: { $store: 'adamStore.currentPerspective' },
+            condition: { $store: 'datasetStore.currentDataset' },
             then: {
               type: '$if',
               props: {
-                condition: { $store: 'adamStore.isWeSpace' },
+                condition: { $store: 'datasetStore.isWeSpace' },
                 then: {
                   type: 'Column',
                   children: [

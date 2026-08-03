@@ -3,8 +3,10 @@ import { EditorHostProvider } from '@we/editor';
 import { compressImageToFileData, ImageBlock } from '@we/models';
 import type { ParentProps } from 'solid-js';
 
-import { useAdamStore } from '../stores/AdamStore';
-import { useAiStore } from '../stores/AiStore';
+import { useDatasetStore } from '../stores/DatasetStore';
+import { useEditorStore } from '../stores/EditorStore';
+import { useProfileStore } from '../stores/ProfileStore';
+import { useSessionStore } from '../stores/SessionStore';
 import { useSpaceStore } from '../stores/SpaceStore';
 import { useTemplateStore } from '../stores/TemplateStore';
 import { useThemeStore } from '../stores/ThemeStore';
@@ -23,10 +25,12 @@ import { useThemeStore } from '../stores/ThemeStore';
  * of it changes this file and nothing in the editor.
  */
 export function EditorHostAdapter(props: ParentProps) {
-  const session = useAiStore();
+  const editor = useEditorStore();
   const template = useTemplateStore();
   const theme = useThemeStore();
-  const adam = useAdamStore();
+  const sessionStore = useSessionStore();
+  const datasetStore = useDatasetStore();
+  const profileStore = useProfileStore();
   const space = useSpaceStore();
 
   const host: EditorHost = {
@@ -46,17 +50,17 @@ export function EditorHostAdapter(props: ParentProps) {
 
     // Forwarded whole: every member is the editor's own session state. Narrowing it here would mean
     // listing sixty members twice — it moves into the editor rather than being trimmed.
-    session: session as unknown as EditorHost['session'],
+    session: editor as unknown as EditorHost['session'],
 
     identity: {
-      me: () => adam.me(),
-      currentPerspective: () => adam.currentPerspective(),
-      orderedSidebarItems: () => adam.orderedSidebarItems(),
-      marketplaceJoined: () => adam.marketplaceJoined(),
+      me: () => sessionStore.me(),
+      currentPerspective: () => datasetStore.currentDataset(),
+      orderedSidebarItems: () => space.orderedSidebarItems(),
+      marketplaceJoined: () => datasetStore.marketplaceJoined(),
       spaceDefaultTemplateId: () => space.spaceDefaultTemplateId(),
       spaceDefaultThemeId: () => space.spaceDefaultThemeId(),
-      agents: () => adam.agents(),
-      fetchAgent: (did) => adam.fetchAgent(did),
+      agents: () => profileStore.profiles(),
+      fetchAgent: (did) => profileStore.fetchProfile(did),
     },
 
     // The background picker's two host concerns. Supplying them here is what lets the editor browse
@@ -64,13 +68,13 @@ export function EditorHostAdapter(props: ParentProps) {
     // this and the picker degrades to its URL tab.
     images: {
       list: async (limit = 60) => {
-        const perspective = adam.currentPerspective();
+        const perspective = datasetStore.currentDataset();
         if (!perspective) return [];
         const blocks = await ImageBlock.findAll(perspective, { order: { createdAt: 'DESC' }, limit });
         return blocks.map((b) => ({ id: b.id, src: b.src, altText: b.altText }));
       },
       upload: async (file) => {
-        const perspective = adam.currentPerspective();
+        const perspective = datasetStore.currentDataset();
         if (!perspective) throw new Error('no dataset to upload into');
         // Standalone in the current perspective — no parent CollectionBlock, so it is reusable by
         // future browse pickers exactly like a post-authored ImageBlock.

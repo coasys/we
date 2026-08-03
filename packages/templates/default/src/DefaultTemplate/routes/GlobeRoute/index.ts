@@ -212,7 +212,7 @@ export const globeRoute: RouteSchema = {
                     $query: {
                       entity: 'Space',
                       where: {
-                        url: { not: { $store: 'adamStore.currentPerspectiveSharedCid' } },
+                        url: { not: { $store: 'datasetStore.currentDatasetCid' } },
                         name: { contains: { $local: 'searchText' } },
                       },
                       include: { location: true },

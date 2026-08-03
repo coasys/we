@@ -44,3 +44,10 @@ export type { FileData } from './utils/imageHelpers';
 export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';
 export { aggregateSignals } from './utils/signalAggregate';
 export { decodeFileAsString, decodeFileAsJson } from './utils/fileTransforms';
+
+// The model layer's dataset type — what every generated model's static methods accept. Re-exported
+// under a neutral name so the app shell can type dataset handles without importing the backend SDK
+// directly (@coasys imports are confined to this package, backend-ad4m, and ad4m-declaring modules).
+export type { PerspectiveProxy as DatasetProxy } from '@coasys/ad4m';
+export type { Ad4mModel } from '@coasys/ad4m';
+export * from './modelRegistry';

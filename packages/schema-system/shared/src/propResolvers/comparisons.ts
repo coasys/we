@@ -39,7 +39,7 @@ export function resolveNeProp(
   return resolvedA !== resolvedB;
 }
 
-// Resolves $not (logical not) props: { $not: { $store: 'adamStore.showPassword' } }
+// Resolves $not (logical not) props: { $not: { $store: 'sessionStore.showPassword' } }
 export function resolveNotProp(
   value: unknown,
   stores: Props,

@@ -1,16 +1,2 @@
-export type ModelManifestProperty = {
-  name: string;
-  predicate: string;
-  type: 'string' | 'number' | 'boolean' | 'uri';
-  isCollection: boolean;
-  required: boolean;
-  writable: boolean;
-  resolveLanguage?: string;
-  relatedModel?: string;
-};
-
-export type ModelManifestEntry = {
-  name: string;
-  targetClass: string;
-  properties: ModelManifestProperty[];
-};
+// Moved to the contract — kept as a compat alias for internal imports.
+export type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-shared';

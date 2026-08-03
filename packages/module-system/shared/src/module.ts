@@ -202,7 +202,7 @@ export interface ModuleDefinition {
  *
  * Every field is a neutral port already declared in this package — never a host object. That is the
  * line that keeps the bag from becoming a back door: a module receiving `EphemeralPort` can signal on
- * any backend that implements one, whereas a module receiving `adamStore` would be an AD4M module
+ * any backend that implements one, whereas a module receiving a backend store would be a backend-coupled module
  * wearing a neutral type.
  *
  * Everything past `signal` is optional, and a module must degrade rather than throw when a port is

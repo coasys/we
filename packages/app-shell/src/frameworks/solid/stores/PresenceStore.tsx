@@ -29,15 +29,17 @@
  *
  * ## What it never does
  *
- * Fetch profiles. Presence carries `agentId` only; profiles come from `adamStore.agents()`, the cache
+ * Fetch profiles. Presence carries `agentId` only; profiles come from `profileStore.profiles()`, the cache
  * `$identities` and the `$agent` block already use. Flux's presence map *is* its profile cache, so it
  * re-hydrates every peer profile on every heartbeat — an N-peer `Promise.all` every five seconds.
  */
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { createTabCoordinator } from '@shared/tabCoordinator';
-import { useAdamStore } from '@solid/stores/AdamStore';
+import { useDatasetStore } from '@solid/stores/DatasetStore';
+import { useProfileStore } from '@solid/stores/ProfileStore';
 import { useRouteStore } from '@solid/stores/RouteStore';
-import type { AgentProfileSummary } from '@we/backend-ad4m';
+import { useSessionStore } from '@solid/stores/SessionStore';
+import type { AgentProfileSummary } from '@we/backend-shared';
 import type { Activity, Focus, FocusDepth, Peer, PresenceSource, PresenceTone } from '@we/backend-shared';
 import {
   applyFocusDepth,
@@ -92,7 +94,9 @@ export interface PresenceStore {
 const PresenceContext = createContext<PresenceStore>();
 
 export function PresenceStoreProvider(props: ParentProps) {
-  const adamStore = useAdamStore();
+  const session = useSessionStore();
+  const datasetStore = useDatasetStore();
+  const profileStore = useProfileStore();
   const routeStore = useRouteStore();
 
   const [rawPeers, setRawPeers] = createSignal<Peer[]>([]);
@@ -110,14 +114,14 @@ export function PresenceStoreProvider(props: ParentProps) {
   // Taken from the store rather than constructed here: one shared port for the whole app, so its
   // per-perspective scope refcounting actually works and the call module later joins the same scope
   // instead of registering a second executor signal handler.
-  const ephemeralPort = adamStore.ephemeralPort;
+  const ephemeralPort = session.ephemeralPort;
 
   /**
    * The space, by its **global** uri. Never `perspective.uuid`: AD4M perspective uuids are local
    * per-agent, so the same neighbourhood has a different one on every peer — broadcasting it produces
    * a focus nobody else can interpret. Fails silently across peers while looking fine locally.
    */
-  const datasetUri = createMemo(() => adamStore.currentPerspectiveSharedUrl());
+  const datasetUri = createMemo(() => datasetStore.currentDatasetUri());
 
   const myFocus = createMemo<Focus | undefined>(() =>
     applyFocusDepth({ datasetUri: datasetUri(), path: routeStore.currentPath?.() }, focusDepth()),
@@ -128,8 +132,8 @@ export function PresenceStoreProvider(props: ParentProps) {
   // retaining its peers. Retention without subscription only preserves state that is already past its
   // TTL, and the join handshake repopulates in one round trip on return anyway.
   createEffect(() => {
-    const perspective = adamStore.currentPerspective();
-    const did = adamStore.me()?.did;
+    const perspective = datasetStore.currentDataset();
+    const did = session.me()?.did;
 
     source?.stop();
     source = null;
@@ -192,7 +196,7 @@ export function PresenceStoreProvider(props: ParentProps) {
   // Join against the shared agent cache. `find` over `agents()` matches how SpaceStore.members
   // resolves its dids; both read the same cache that `fetchAgent` populates.
   const peers = createMemo<PresentAgent[]>(() => {
-    const cached = adamStore.agents();
+    const cached = profileStore.profiles();
     // Sorted most-present-first, with a stable tiebreak — without it, equal-liveness peers reorder
     // as the underlying Map iterates and the avatar row reshuffles on every heartbeat.
     return sortByPresence(rawPeers()).map((peer) => {
@@ -204,9 +208,9 @@ export function PresenceStoreProvider(props: ParentProps) {
   // Ask AD4M for any peer whose profile we have not cached. The effect re-runs as peers arrive, and
   // `fetchAgent` already deduplicates in-flight requests, so this is safe to call repeatedly.
   createEffect(() => {
-    const cached = adamStore.agents();
+    const cached = profileStore.profiles();
     for (const peer of rawPeers()) {
-      if (!cached.some((a) => a.did === peer.agentId)) void adamStore.fetchAgent(peer.agentId);
+      if (!cached.some((a) => a.did === peer.agentId)) void profileStore.fetchProfile(peer.agentId);
     }
   });
 

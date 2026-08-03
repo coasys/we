@@ -78,7 +78,7 @@ export const marketplaceTemplate: TemplateSchema = {
     {
       type: '$if',
       props: {
-        condition: { $store: 'adamStore.marketplaceJoined' },
+        condition: { $store: 'datasetStore.marketplaceJoined' },
         then: marketplaceBrowser,
         else: marketplaceGate,
       },

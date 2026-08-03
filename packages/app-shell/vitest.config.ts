@@ -1,10 +1,17 @@
+import { fileURLToPath } from 'node:url';
+
 import solidPlugin from 'vite-plugin-solid';
 import { defineConfig } from 'vitest/config';
 
-// bundledModules.test.ts imports the bundled module definitions, and the assistant module ships its
-// own Solid components — so that import chain needs the browser build of solid-js and the solid
-// transform. Everything else stays in the plain node project.
-const MODULE_TESTS = ['tests/bundledModules.test.ts'];
+const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+
+// Mirror tsconfig's path aliases for source files imported through the test graph.
+const alias = { '@shared': r('./src/shared'), '@solid': r('./src/frameworks/solid') };
+
+// Tests that mount real Solid components/providers — they need jsdom, browser resolve
+// conditions, and the solid transform. Everything else stays in the plain node project.
+// bundledModules imports the assistant module's Solid components through its definition.
+const SOLID_TESTS = ['tests/executorFreeBoot.test.tsx', 'tests/bundledModules.test.ts'];
 
 export default defineConfig({
   test: {
@@ -25,23 +32,25 @@ export default defineConfig({
       {
         test: {
           name: 'node',
+          alias,
           globals: true,
           include: ['tests/**/*.test.{ts,tsx}'],
-          exclude: ['**/node_modules/**', ...MODULE_TESTS],
+          exclude: ['**/node_modules/**', ...SOLID_TESTS],
         },
       },
       {
         plugins: [solidPlugin()],
         resolve: {
-          conditions: ['development', 'browser'],
           // A single solid-js instance across transformed source and prebuilt dists.
           dedupe: ['solid-js', 'solid-js/web', 'solid-js/store'],
+          conditions: ['development', 'browser'],
         },
         test: {
-          name: 'modules',
+          name: 'solid',
+          alias,
           globals: true,
           environment: 'jsdom',
-          include: MODULE_TESTS,
+          include: SOLID_TESTS,
         },
       },
     ],

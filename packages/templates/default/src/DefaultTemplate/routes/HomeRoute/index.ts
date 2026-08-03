@@ -35,7 +35,7 @@ export const homeRoute: RouteSchema = {
             {
               type: '$each',
               props: {
-                items: { $store: 'adamStore.orderedSidebarItems' },
+                items: { $store: 'spaceStore.orderedSidebarItems' },
                 as: 'space',
               },
               children: [
@@ -83,7 +83,7 @@ export const homeRoute: RouteSchema = {
         {
           type: '$if',
           props: {
-            condition: { $not: { $store: 'adamStore.orderedSidebarItems.length' } },
+            condition: { $not: { $store: 'spaceStore.orderedSidebarItems.length' } },
             then: {
               type: 'Card',
               props: { ax: 'center', bg: 'neutral-0', width: '100%' },

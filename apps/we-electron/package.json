@@ -31,7 +31,8 @@
     "graphql": "15.7.2",
     "graphql-ws": "5.12.0",
     "solid-js": "^1.9.5",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.0",
+    "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",

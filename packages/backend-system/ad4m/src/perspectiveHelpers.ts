@@ -1,8 +1,7 @@
 import { Ad4mModel, type PerspectiveProxy, type SHACLShape } from '@coasys/ad4m';
+import { getModel, getModelTargetClass, getRegisteredModelNames, type ModelClass } from '@we/models';
 
 import type { ModelManifestEntry, ModelManifestProperty } from './manifestTypes';
-import { getModel, getRegisteredModelNames, type ModelClass } from './modelRegistry';
-import { getModelTargetClass } from './sdnaModels';
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
