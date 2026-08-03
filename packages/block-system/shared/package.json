@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
-    "build": "we-build"
+    "build": "we-build",
+    "test": "vitest run"
   },
   "types": "dist/index.d.ts",
   "exports": {
@@ -23,7 +24,8 @@
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "vitest": "^4.0.15"
   },
   "sideEffects": false
 }

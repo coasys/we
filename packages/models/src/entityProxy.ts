@@ -15,6 +15,18 @@
  * error rather than a compile error. That error is therefore made as loud and specific as
  * possible: silence would reproduce exactly the failure mode this contract exists to prevent — a
  * seam that resolves to nothing and breaks somewhere unrelated.
+ *
+ * ## The one thing a stand-in cannot do
+ *
+ * A proxy forwards *operations*, but it cannot forward *identity*. Anything that keys off the
+ * class object itself — AD4M's decorator metadata (`getPropertiesMetadata`), its memoised SHACL,
+ * a `WeakMap` of any kind — will look up the stand-in, find nothing, and quietly behave as though
+ * the class had no properties. Calls succeed; metadata vanishes.
+ *
+ * So the rule: **code that hands a model class to the backend's own APIs must import from
+ * `@we/models/classes`, not from the package root.** In practice that is exactly the code which
+ * already imports `@coasys/ad4m` directly — backend adapters and the block layer. Application
+ * code, which only ever calls statics and instance methods, uses the root and stays neutral.
  */
 import { getModel, type ModelClass } from './modelRegistry';
 

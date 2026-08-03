@@ -1,3 +1,6 @@
+// Real classes, not the package root's stand-ins: this module hands them to AD4M's own
+// decorator-metadata APIs (see serialization.ts), which key off class identity — a stand-in
+// would resolve every *call* correctly and still miss every metadata *lookup*.
 import {
   AudioBlock,
   CalloutBlock,
@@ -14,7 +17,7 @@ import {
   TaskBlock,
   TextBlock,
   VideoBlock,
-} from '@we/models';
+} from '@we/models/classes';
 
 import { registerBlock } from './registry';
 
