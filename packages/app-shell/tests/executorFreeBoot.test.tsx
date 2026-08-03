@@ -255,3 +255,26 @@ describe('what the stores actually wrote', () => {
     expect(publicSpace.discovery).toBe('listed');
   }, 10000);
 });
+
+describe('sidebar ordering', () => {
+  it('reorders, and the new order survives as persisted settings', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.spaces.createSpace('First', 'x', 'personal', 'hidden');
+    await stores.spaces.createSpace('Second', 'x', 'personal', 'hidden');
+
+    const before = stores.datasets.orderedDatasets().map((d) => d.id);
+    expect(before).toHaveLength(2);
+
+    await stores.datasets.reorderDatasets([before[1], before[0]]);
+
+    // The derived list the sidebar renders must follow the new order...
+    expect(stores.datasets.orderedDatasets().map((d) => d.id)).toEqual([before[1], before[0]]);
+
+    // ...and it must have been written, or the order is lost on the next boot.
+    const root = (await lifecycle.list()).find((d) => d.name === 'we-root')!;
+    const settings = await AgentSettings.findOne(root.handle as never);
+    expect(JSON.parse(settings!.datasetOrder as string)).toEqual([before[1], before[0]]);
+  }, 10000);
+});
