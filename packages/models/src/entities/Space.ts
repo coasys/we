@@ -21,15 +21,6 @@ export class Space extends WeNode {
   @Property({ through: 'we://description', required: true })
   description: string = '';
 
-  /**
-   * Legacy duplicate of shared-ness — `url` (the space's global id, present once its dataset is
-   * published) is the fact consumers read. Still written at creation so the stored value never
-   * disagrees; removing the property is a shape change, so it waits for the model work that
-   * carries a migration path.
-   */
-  @Property({ through: 'we://access' })
-  access: string = 'personal';
-
   @Property({ through: 'we://discovery' })
   discovery: string = 'hidden';
 

@@ -74,7 +74,6 @@ export async function syncSpaceToParent(
     existing.url = space.url;
     existing.name = space.name;
     existing.description = space.description;
-    existing.access = space.access;
     existing.discovery = space.discovery;
     if (avatarField !== undefined) existing.avatar = avatarField as string;
     if (coverImageField !== undefined) existing.coverImage = coverImageField as string;
@@ -86,7 +85,6 @@ export async function syncSpaceToParent(
       url: space.url,
       name: space.name,
       description: space.description,
-      access: space.access,
       discovery: space.discovery,
       ...(avatarField !== undefined && { avatar: avatarField as string }),
       ...(coverImageField !== undefined && { coverImage: coverImageField as string }),

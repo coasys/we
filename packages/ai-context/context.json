@@ -4610,13 +4610,6 @@
           "required": true
         },
         {
-          "name": "access",
-          "type": "string",
-          "predicate": "we://access",
-          "required": false,
-          "default": "'personal'"
-        },
-        {
           "name": "discovery",
           "type": "string",
           "predicate": "we://discovery",
