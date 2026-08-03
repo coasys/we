@@ -39,7 +39,7 @@ import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
 import { useRouteStore } from '@solid/stores/RouteStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
-import type { AgentProfileSummary } from '@we/backend-ad4m';
+import type { AgentProfileSummary } from '@we/backend-shared';
 import type { Activity, Focus, FocusDepth, Peer, PresenceSource, PresenceTone } from '@we/backend-shared';
 import {
   applyFocusDepth,

@@ -1,5 +1,5 @@
-import type { Ad4mClient } from '@coasys/ad4m';
-import type { BackendConnectionDetails, BackendConnector } from '@we/app-shell/shared';
+import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
+import { createAd4mBackendPorts } from '@we/backend-ad4m';
 
 import { buildAd4mClientWithApollo } from '../utils/apolloClient';
 
@@ -16,27 +16,28 @@ declare global {
 }
 
 export const ad4mConnector: BackendConnector = {
-  async connect(): Promise<Ad4mClient> {
+  async initialize(ctx): Promise<BackendInitResult> {
     // Check if electron bridge is available
     if (!window.electron) {
       throw new Error('Electron IPC bridge not available. Make sure preload script is loaded.');
     }
 
-    // Get connection details from Electron main process via IPC
+    // Get connection details from the Electron main process via IPC
     const port = await window.electron.getPort();
     const token = await window.electron.getToken();
 
-    // Build Apollo-based Ad4mClient
+    // The main process spawns the executor alongside the window — give it a moment to come up
+    // before opening connections against it. This wait is a property of how THIS platform starts
+    // its backend, which is why it lives here and not in the shell.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     const { client } = await buildAd4mClientWithApollo(port, token);
 
-    return client;
-  },
-
-  async connectionDetails(): Promise<BackendConnectionDetails> {
-    // Desktop platforms expose connection details for iframe communication
-    const port = await window.electron.getPort();
-    const token = await window.electron.getToken();
-
-    return { port, token };
+    return {
+      client,
+      ports: createAd4mBackendPorts(client, ctx),
+      // Forwarded to hosted app iframes by the embed bridge.
+      connection: { port, token },
+    };
   },
 };

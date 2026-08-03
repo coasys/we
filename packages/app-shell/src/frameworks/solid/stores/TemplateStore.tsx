@@ -1,8 +1,8 @@
-import type { PerspectiveProxy } from '@coasys/ad4m';
 import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
+import type { DatasetProxy } from '@we/models';
 import type { FileData } from '@we/models';
 import {
   asFileField,
@@ -85,8 +85,8 @@ export interface TemplateStore {
     screenshots: File[];
   }) => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
-  preloadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
-  loadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
+  preloadSpaceTemplates: (perspective: DatasetProxy) => Promise<void>;
+  loadSpaceTemplates: (perspective: DatasetProxy) => Promise<void>;
   refreshSpaceTemplates: () => Promise<void>;
   clearSpaceTemplates: () => void;
 
@@ -261,7 +261,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   /** Load templates from a space perspective, merge into allTemplates, and populate the cache */
-  async function loadSpaceTemplates(perspective: PerspectiveProxy): Promise<void> {
+  async function loadSpaceTemplates(perspective: DatasetProxy): Promise<void> {
     clearSpaceTemplates();
     try {
       const spaceDbTemplates = await Template.findAll(perspective);
@@ -304,7 +304,7 @@ export function TemplateStoreProvider(props: ParentProps) {
    * Cache hit: restores synchronously from session cache (no AD4M fetch).
    * Cache miss: full async load that also populates the cache.
    */
-  async function preloadSpaceTemplates(perspective: PerspectiveProxy): Promise<void> {
+  async function preloadSpaceTemplates(perspective: DatasetProxy): Promise<void> {
     const cached = spaceTemplateCache.get(perspective.uuid);
     if (cached) {
       clearSpaceTemplates();
@@ -339,7 +339,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     spaceLookup = lookup;
   }
 
-  function resolveSpaceFromPerspective(perspective: PerspectiveProxy) {
+  function resolveSpaceFromPerspective(perspective: DatasetProxy) {
     const sharedCid = perspective.sharedUrl?.replace('neighbourhood://', '');
     const allKnownSpaces = spaceLookup();
     return sharedCid
@@ -376,7 +376,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   });
 
-  async function applySpaceTemplate(perspective: PerspectiveProxy): Promise<void> {
+  async function applySpaceTemplate(perspective: DatasetProxy): Promise<void> {
     // preloadSpaceTemplates handles cache hit (sync restore) or miss (AD4M fetch)
     await preloadSpaceTemplates(perspective);
 

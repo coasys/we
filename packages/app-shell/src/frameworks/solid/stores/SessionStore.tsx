@@ -10,10 +10,13 @@
  * boot controller via `onSessionUnlocked` — this store only knows *when* the session becomes
  * usable, not what the app loads into it.
  */
-import type { Agent } from '@coasys/ad4m';
-import { Ad4mClient } from '@coasys/ad4m';
-import { createAd4mEphemeralPort } from '@we/backend-ad4m';
-import type { EphemeralPort } from '@we/backend-shared';
+import type {
+  AgentIdentity,
+  AgentSessionPort,
+  BackendPorts,
+  DatasetLifecyclePort,
+  EphemeralPort,
+} from '@we/backend-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
@@ -21,13 +24,24 @@ import { startAppBridge } from '../services/appBridge';
 
 export type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
 
+/** The authenticated identity as the shell holds it — neutral `id` plus the backend's own fields
+ * (`did` is template-facing vocabulary: `$me.did`). */
+export type SessionIdentity = AgentIdentity & { did?: string; perspective?: unknown };
+
 export interface SessionStore {
   // State
   bootState: Accessor<BootState>;
   passwordError: Accessor<boolean>;
   loginLoading: Accessor<boolean>;
-  client: Accessor<Ad4mClient | undefined>;
-  me: Accessor<Agent | undefined>;
+  /** The backend client, opaque to the shell — handed to adapter helpers, never inspected. */
+  client: Accessor<unknown>;
+  /** The agent-session port over that client. Null until connected. */
+  agentSession: Accessor<AgentSessionPort | null>;
+  /** The dataset-lifecycle port over that client. Null until connected. */
+  lifecycle: Accessor<DatasetLifecyclePort | null>;
+  /** The full port bundle the connector supplied. Null until connected. */
+  backendPorts: Accessor<BackendPorts | null>;
+  me: Accessor<SessionIdentity | undefined>;
   port: Accessor<number | undefined>;
   token: Accessor<string | undefined>;
   serverUrl: Accessor<string | undefined>;
@@ -45,7 +59,7 @@ export interface SessionStore {
 
   // Boot wiring (used by the boot controller, not by schemas)
   /** Re-fetch `me` from the backend. */
-  refreshMe: (client: Ad4mClient) => Promise<void>;
+  refreshMe: () => Promise<void>;
   /** Flip boot state to 'ready' — called by the boot controller once user data is loaded. */
   markReady: () => void;
   /** Register the post-unlock loader. Runs on boot when already unlocked, and after login(). */
@@ -63,16 +77,23 @@ export function SessionStoreProvider(props: ParentProps) {
   const [bootState, setBootState] = createSignal<BootState>('initialising');
   const [passwordError, setPasswordError] = createSignal(false);
   const [loginLoading, setLoginLoading] = createSignal(false);
-  const [client, setClient] = createSignal<Ad4mClient | undefined>(undefined);
-  const [me, setMe] = createSignal<Agent | undefined>(undefined);
+  const [client, setClient] = createSignal<unknown>(undefined);
+  const [agentSession, setAgentSession] = createSignal<AgentSessionPort | null>(null);
+  const [lifecycle, setLifecycle] = createSignal<DatasetLifecyclePort | null>(null);
+  const [me, setMe] = createSignal<SessionIdentity | undefined>(undefined);
   const [port, setPort] = createSignal<number | undefined>(undefined);
   const [token, setToken] = createSignal<string | undefined>(undefined);
   const [serverUrl, setServerUrl] = createSignal<string | undefined>(undefined);
 
-  const ephemeralPort = createAd4mEphemeralPort(() => me()?.did);
+  const [backendPorts, setBackendPorts] = createSignal<BackendPorts | null>(null);
+
+  // EphemeralPort is a function (dataset → scope | null), so this stable delegate can exist
+  // before the connector's ports do — pre-connect it reports the capability as absent, which is
+  // the contract's own degradation mode. Consumers hold one reference for the app's lifetime.
+  const ephemeralPort: EphemeralPort = (dataset) => backendPorts()?.ephemeral(dataset) ?? null;
 
   // Start the embed bridge synchronously, BEFORE any async boot work, so REQUEST_AD4M_CONFIG
-  // from embedded apps (e.g. Flux) is never dropped — including during the ad4m-connect auth
+  // from embedded apps (e.g. Flux) is never dropped — including during the connector's auth
   // flow on first load, where auth can take many seconds and the embedded app's 30-second
   // timeout would otherwise expire.
   startAppBridge({
@@ -106,9 +127,11 @@ export function SessionStoreProvider(props: ParentProps) {
     await loadUserData();
   }
 
-  async function refreshMe(c: Ad4mClient): Promise<void> {
+  async function refreshMe(): Promise<void> {
+    const session = agentSession();
+    if (!session) return;
     try {
-      setMe(await c.agent.me());
+      setMe((await session.me()) as SessionIdentity);
     } catch (error) {
       console.error('SessionStore: refreshMe error', error);
     }
@@ -116,43 +139,34 @@ export function SessionStoreProvider(props: ParentProps) {
 
   async function initialise(): Promise<void> {
     try {
-      if (platform.isDesktop && backend.connectionDetails) {
-        const details = await backend.connectionDetails();
+      // The connector owns the entire connection choreography (spawn/attach, auth, credential
+      // acquisition, settling delays) — the shell receives a ready backend and runs the session
+      // state machine over it.
+      const { client: c, ports, connection } = await backend.initialize({ selfId: () => me()?.did });
+      setClient(c);
+      setBackendPorts(ports);
+      const session = ports.agentSession;
+      setAgentSession(session);
+      setLifecycle(ports.lifecycle);
+
+      if (connection) {
         // Set url BEFORE port/token — signal writes fire effects synchronously (the appBridge
         // flush effect reads all three), so url must be in place before port/token trigger it.
-        if (details.url) setServerUrl(details.url);
-        setPort(details.port);
-        setToken(details.token);
+        if (connection.url) setServerUrl(connection.url);
+        setPort(connection.port);
+        setToken(connection.token);
       }
 
-      // Small delay to ensure executor has time to start (desktop only)
-      if (platform.isDesktop) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-
-      // Build the client through the host's connector
-      const c = await backend.connect();
-      setClient(c);
-
-      // Web platform: credentials are only available after ad4m-connect auth completes
-      if (!platform.isDesktop && backend.connectionDetails) {
-        const details = await backend.connectionDetails();
-        // Set url BEFORE port/token — same ordering constraint as above.
-        if (details.url) setServerUrl(details.url);
-        setPort(details.port);
-        setToken(details.token);
-      }
-
-      const status = await c.agent.status();
+      const status = await session.status();
 
       // If no agent exists, go to create agent screen
-      if (!status.did) {
+      if (!status.hasAgent) {
         setBootState('createAgent');
         return;
       }
 
       // If agent is locked, go to login screen
-      if (!status.isUnlocked) {
+      if (!status.unlocked) {
         setBootState('login');
         return;
       }
@@ -166,9 +180,9 @@ export function SessionStoreProvider(props: ParentProps) {
   }
 
   async function login(password: string) {
-    const c = client();
-    if (!c) {
-      console.error('SessionStore: no client available for login');
+    const session = agentSession();
+    if (!session) {
+      console.error('SessionStore: no session available for login');
       return;
     }
 
@@ -177,7 +191,7 @@ export function SessionStoreProvider(props: ParentProps) {
     setPasswordError(false);
 
     try {
-      await c.agent.unlock(password, true);
+      await session.unlock(password);
       // Same post-unlock load as the already-unlocked boot path.
       await runPostUnlockLoad();
     } catch (err) {
@@ -189,14 +203,14 @@ export function SessionStoreProvider(props: ParentProps) {
   }
 
   async function logout(): Promise<void> {
-    const c = client();
-    if (!c) {
-      console.error('SessionStore: no client available for logout');
+    const session = agentSession();
+    if (!session) {
+      console.error('SessionStore: no session available for logout');
       return;
     }
 
     try {
-      await c.agent.lock(sessionPassword);
+      await session.lock(sessionPassword);
     } catch (err) {
       console.error('SessionStore: agent lock failed during logout', err);
     } finally {
@@ -213,6 +227,9 @@ export function SessionStoreProvider(props: ParentProps) {
     passwordError,
     loginLoading,
     client,
+    agentSession,
+    lifecycle,
+    backendPorts,
     me,
     port,
     token,

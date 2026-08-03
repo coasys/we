@@ -10,7 +10,7 @@
  */
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { schemaContext } from '@we/ai-context';
-import type { ModelManifestEntry } from '@we/backend-ad4m';
+import type { ModelManifestEntry } from '@we/backend-shared';
 
 /** The full system prompt for schema-editing chat. */
 export const chatSystemPrompt = chatSystemPreamble + schemaContext;

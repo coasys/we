@@ -1,18 +1,22 @@
-import { parseLit, Perspective, type PerspectiveProxy } from '@coasys/ad4m';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
+import {
+  isSpaceSelf,
+  type LocationData,
+  removeSpaceFromParent,
+  spaceSelfWhere,
+  syncSpaceToParent,
+} from '@shared/spaceSync';
 import { deriveSlug } from '@shared/utils';
-import type { AgentProfileSummary } from '@we/backend-ad4m';
-import { getModelForPerspective, registerModel } from '@we/backend-ad4m';
-import { ensureModelRegistered, SPACE_MODELS } from '@we/backend-ad4m';
-import { installSpaceSdna, isSpaceSelf } from '@we/backend-ad4m';
-import { type LocationData, removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@we/backend-ad4m';
+import type { AgentProfileSummary } from '@we/backend-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import {
   CollectionBlock,
   compressImageToFileData,
+  type DatasetProxy,
   dataURIToFileData,
   type FileData,
+  getModelForPerspective,
   LocationBlock,
   Signal,
   SignalType,
@@ -117,7 +121,7 @@ export interface SpaceStore {
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   getSubgroupMessages: (subgroupId: string) => Promise<FluxSubgroupMessage[]>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
-  updateSpaceInCache: (dataset: PerspectiveProxy, updates: Partial<Space>) => void;
+  updateSpaceInCache: (dataset: DatasetProxy, updates: Partial<Space>) => void;
 
   // Boot wiring (used by the boot controller, not by schemas)
   loadSpaces: () => Promise<void>;
@@ -127,12 +131,6 @@ export interface SpaceStore {
 }
 
 const SpaceContext = createContext<SpaceStore>();
-
-// Register JS classes for $query model resolution (runs once at module load)
-// Use .className (set by @Model decorator) rather than .name — bundlers mangle
-// the native .name property in production builds, breaking registry lookups.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-for (const M of SPACE_MODELS) registerModel((M as any).className, M as any);
 
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
@@ -230,7 +228,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function addSpaceToPerspective(
-    perspective: PerspectiveProxy,
+    perspective: DatasetProxy,
     space: SpaceInput,
     location?: Partial<LocationBlock>,
   ): Promise<Space> {
@@ -251,35 +249,24 @@ export function SpaceStoreProvider(props: ParentProps) {
     coverImageFile?: File,
     location?: LocationData | null,
   ): Promise<void> {
-    const client = session.client();
-    if (!client) return;
+    const lifecycle = session.lifecycle();
+    if (!lifecycle) return;
     setCreatingSpace(true);
 
     try {
       // Create the dataset
-      const spacePerspective = await client.perspective.add(name);
+      const spaceRef = await lifecycle.create(name);
+      const spacePerspective = spaceRef.handle as DatasetProxy;
 
       // Register SDNA models (full set, same as switchDataset uses)
-      await installSpaceSdna(spacePerspective, moduleRegistry.models());
+      await session.backendPorts()!.schemas.installSpace(spacePerspective, moduleRegistry.models());
 
-      // HACK: Model.register resolves before the SDNA is actually ready
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // If shared, publish as neighbourhood — capture the returned URL so it can be
-      // stored on the Space model (spacePerspective.sharedUrl is not updated in-place).
+      // If shared, publish — capture the returned URL so it can be stored on the Space model
+      // (the dataset handle's own sharedUrl is not updated in-place).
       let neighbourhoodUrl: string | undefined;
       if (access === 'shared') {
-        const uid = crypto.randomUUID();
-        const languages = await client.runtime.knownLinkLanguageTemplates();
-        const templateAddress = languages?.[0];
-        if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
-        const templateData = JSON.stringify({ uid, name: `${name}-link-language` });
-        const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
-        neighbourhoodUrl = await client.neighbourhood.publishFromPerspective(
-          spacePerspective.uuid,
-          linkLanguage.address,
-          new Perspective([]),
-        );
+        if (!lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
+        neighbourhoodUrl = await lifecycle.publish(spaceRef.id);
       }
 
       // Process avatar image if provided
@@ -313,7 +300,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (discovery === 'listed') {
         const globalP = datasetStore.globalDataset();
         if (globalP) {
-          await syncSpaceToParent(spaceModel, globalP, {
+          await syncSpaceToParent(spaceModel, globalP, session.backendPorts()!.schemas, {
             locationData,
             avatarData,
             coverImageData,
@@ -350,10 +337,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!perspective) throw new Error('SpaceStore: initializeAsWeSpace called with no active dataset');
 
     // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
-    await installSpaceSdna(perspective, moduleRegistry.models());
-    // HACK: Model.register resolves before SDNA is actually ready — same pattern used
-    // in switchDataset/createSpace/joinSpace.
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await session.backendPorts()!.schemas.installSpace(perspective, moduleRegistry.models());
 
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
@@ -392,8 +376,8 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function joinSpace(id: string): Promise<void> {
-    const client = session.client();
-    if (!client) return;
+    const lifecycle = session.lifecycle();
+    if (!lifecycle?.join) return;
     if (!id || typeof id !== 'string') {
       console.warn('SpaceStore: joinSpace called with invalid id', id);
       return;
@@ -421,20 +405,14 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     console.log('SpaceStore: joining neighbourhood', neighbourhoodUrl);
     try {
-      const handle = await client.neighbourhood.joinFromUrl(neighbourhoodUrl);
-      const joinedP = await client.perspective.byUUID(handle.uuid);
-      if (!joinedP) {
-        console.error('SpaceStore: failed to get dataset handle after joining');
-        return;
-      }
+      const joinedRef = await lifecycle.join(neighbourhoodUrl);
+      const joinedP = joinedRef.handle as DatasetProxy;
 
       // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
       // immediately. installSpaceSdna diffs against the dataset's actual state
       // before writing, so this is safe to call unconditionally even when the space's
       // creator or an earlier joiner already installed it — it won't write a duplicate copy.
-      await installSpaceSdna(joinedP, moduleRegistry.models());
-      // Give the SDNA write time to settle before reactive queries fire.
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await session.backendPorts()!.schemas.installSpace(joinedP, moduleRegistry.models());
 
       // Adopt as global/marketplace dataset when the seed says so, and eagerly add to the
       // dataset list so derived state (e.g. marketplaceJoined) updates immediately.
@@ -483,7 +461,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  function updateSpaceInCache(dataset: PerspectiveProxy, updates: Partial<Space>): void {
+  function updateSpaceInCache(dataset: DatasetProxy, updates: Partial<Space>): void {
     setMySpaces((prev) =>
       prev.map((s) =>
         isSpaceSelf(s, dataset) ? Object.assign(Object.create(Object.getPrototypeOf(s)), s, updates) : s,
@@ -579,7 +557,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       const globalP = datasetStore.globalDataset();
       if (globalP) {
         const imageOpt = field === 'avatar' ? { avatarData: fileData } : { coverImageData: fileData };
-        await syncSpaceToParent(spaceModel, globalP, imageOpt).catch((err) =>
+        await syncSpaceToParent(spaceModel, globalP, session.backendPorts()!.schemas, imageOpt).catch((err) =>
           console.error('SpaceStore: sync image to global failed', err),
         );
       }
@@ -620,7 +598,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         // LocationBlock.update only changes nested triples and doesn't trigger the Space query.
         const [existingLoc] = await LocationBlock.findAll(currentDataset);
         if (existingLoc) await existingLoc.delete();
-        await ensureModelRegistered(currentDataset, LocationBlock);
+        await session.backendPorts()!.schemas.ensure(currentDataset, LocationBlock);
         const newLoc = await LocationBlock.create(currentDataset, {
           latitude: loc.latitude,
           longitude: loc.longitude,
@@ -641,7 +619,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Pass locationData explicitly when location changed — the included spaceModel.location
       // snapshot is stale after our delete+recreate. null signals explicit removal to syncSpaceToParent.
       const syncOpts = updates.location !== undefined ? { locationData: updates.location } : {};
-      await syncSpaceToParent(spaceModel, globalP, syncOpts).catch((err) =>
+      await syncSpaceToParent(spaceModel, globalP, session.backendPorts()!.schemas, syncOpts).catch((err) =>
         console.error('SpaceStore: sync meta to global failed', err),
       );
     } else if (previousDiscovery === 'listed') {
@@ -682,38 +660,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
 
-  // Flux's ConversationSubgroup has no typed HasMany relation to its items — they're
-  // heterogeneous (messages/posts/tasks), linked only via the raw `flux://has_item`
-  // predicate and resolved in Flux's own code through ad-hoc SPARQL (see
-  // ConversationSubgroup.itemsData() in @coasys/flux-api). That means the normal
-  // $query/include/parent path can't reach them, since it only knows about relations
-  // registered in the target model's shape. This mirrors that same SPARQL shape directly
-  // against the dataset, scoped to messages only, without depending on the flux package.
+  // Ecosystem dialect, feature-detected through the connector's interop surface — a backend
+  // without it simply returns nothing.
   async function getSubgroupMessages(subgroupId: string): Promise<FluxSubgroupMessage[]> {
     const p = datasetStore.currentDataset();
-    if (!p) return [];
-    const sparqlQuery = `
-      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-      SELECT ?id ?author ?timestamp ?body WHERE {
-        <${subgroupId}> <flux://has_item> ?id .
-        ?_reifier rdf:reifies <<( <${subgroupId}> <flux://has_item> ?id )>> .
-        ?_reifier <ad4m://ontology/timestamp> ?timestamp .
-        ?id <flux://entry_type> <flux://has_message> .
-        ?_typeReifier rdf:reifies <<( ?id <flux://entry_type> <flux://has_message> )>> .
-        ?_typeReifier <ad4m://ontology/author> ?author .
-        OPTIONAL { ?id <flux://body> ?body . }
-      }
-      ORDER BY ?timestamp
-    `;
-    type Binding = { id: string; author: string; timestamp: string; body?: string };
+    const fetchMessages = session.backendPorts()?.interop?.fluxSubgroupMessages;
+    if (!p || !fetchMessages) return [];
     try {
-      const result = await p.querySparql<Binding[]>(sparqlQuery);
-      return (result || []).map((r) => ({
-        id: r.id,
-        author: r.author,
-        timestamp: r.timestamp,
-        body: parseLit(r.body),
-      }));
+      return await fetchMessages(p, subgroupId);
     } catch (err) {
       console.error('SpaceStore: getSubgroupMessages failed', err);
       return [];
@@ -905,14 +859,14 @@ export function SpaceStoreProvider(props: ParentProps) {
   // Load neighbourhood members whenever the current dataset changes
   createEffect(() => {
     const p = datasetStore.currentDataset();
-    const client = session.client();
+    const lifecycle = session.lifecycle();
     const myDid = session.me()?.did;
-    if (!p || !client) {
+    if (!p || !lifecycle?.members) {
       setMemberDids(myDid ? [myDid] : []);
       return;
     }
-    client.neighbourhood
-      .otherAgents(p.uuid)
+    lifecycle
+      .members(p.uuid)
       .then((dids: string[]) => {
         const allDids = myDid ? [...new Set([myDid, ...dids])] : dids;
         setMemberDids(allDids);

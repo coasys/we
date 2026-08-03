@@ -150,6 +150,9 @@ importers:
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
+      '@we/backend-ad4m':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/ad4m
       electron-context-menu:
         specifier: ^4.1.1
         version: 4.1.2
@@ -220,6 +223,9 @@ importers:
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
+      '@we/backend-ad4m':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/ad4m
       graphql:
         specifier: 15.7.2
         version: 15.7.2
@@ -260,6 +266,9 @@ importers:
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
+      '@we/backend-ad4m':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/ad4m
       solid-js:
         specifier: ^1.9.5
         version: 1.9.14
@@ -398,6 +407,9 @@ importers:
         specifier: ^4.1.11
         version: 4.4.3
     devDependencies:
+      '@solidjs/testing-library':
+        specifier: ^0.8.10
+        version: 0.8.10(@solidjs/router@0.15.4(solid-js@1.9.14))(solid-js@1.9.14)
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.0
@@ -407,12 +419,21 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.0.15
         version: 4.1.10(vitest@4.1.10)
+      '@we/backend-inmemory':
+        specifier: workspace:*
+        version: link:../backend-system/inmemory
       '@we/cli':
         specifier: workspace:*
         version: link:../cli
+      jsdom:
+        specifier: ^27.2.0
+        version: 27.4.0
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      vite-plugin-solid:
+        specifier: ^2.11.10
+        version: 2.11.12(solid-js@1.9.14)(vite@7.3.6(@types/node@22.20.0)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.0.15
         version: 4.1.10(@types/node@22.20.0)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@22.20.0)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
@@ -457,6 +478,9 @@ importers:
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/backend-system/shared:
     dependencies:
@@ -12218,6 +12242,19 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  vite-plugin-solid@2.11.12(solid-js@1.9.14)(vite@7.3.6(@types/node@22.20.0)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)):
+    dependencies:
+      '@babel/core': 7.29.7
+      '@types/babel__core': 7.20.5
+      babel-preset-solid: 1.9.12(@babel/core@7.29.7)(solid-js@1.9.14)
+      merge-anything: 5.1.7
+      solid-js: 1.9.14
+      solid-refresh: 0.6.3(solid-js@1.9.14)
+      vite: 7.3.6(@types/node@22.20.0)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)
+      vitefu: 1.1.3(vite@7.3.6(@types/node@22.20.0)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+    transitivePeerDependencies:
+      - supports-color
+
   vite-plugin-solid@2.11.12(solid-js@1.9.14)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)):
     dependencies:
       '@babel/core': 7.29.7
@@ -12316,6 +12353,10 @@ snapshots:
   vitefu@1.1.3(vite@6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)):
     optionalDependencies:
       vite: 6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)
+
+  vitefu@1.1.3(vite@7.3.6(@types/node@22.20.0)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)):
+    optionalDependencies:
+      vite: 7.3.6(@types/node@22.20.0)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)
 
   vitefu@1.1.3(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)):
     optionalDependencies:

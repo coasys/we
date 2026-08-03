@@ -94,7 +94,10 @@ const shellViews: Record<string, ShellViewEntry> = {
       const mutations = schemaMutationActions(schemaState, setSchemaState);
       return {
         templateStore: { ...base.templateStore, ...mutations },
-        testStore: createTestStore(base.datasetStore.testDataset),
+        testStore: createTestStore(
+          base.datasetStore.testDataset,
+          () => base.sessionStore.backendPorts()?.schemas ?? null,
+        ),
         $schema: schemaState,
       };
     },

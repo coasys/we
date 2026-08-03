@@ -41,9 +41,9 @@ import type {
   Scope,
 } from '@we/backend-shared';
 import { irToFlatQuery, planQuery, whereUsesCombinator } from '@we/backend-shared';
+import { getModel, getModelForPerspective, type ModelClass as Ad4mModelClass } from '@we/models';
 
 import type { ModelManifestEntry } from './manifestTypes';
-import { getModel, getModelForPerspective, type ModelClass as Ad4mModelClass } from './modelRegistry';
 
 /**
  * Adapt an AD4M model class to the renderer's neutral {@link RendererModelClass}.

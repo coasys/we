@@ -1,4 +1,3 @@
-import type { Ad4mModel } from '@coasys/ad4m';
 import type {
   AppStore,
   DatasetStore,
@@ -13,6 +12,7 @@ import type {
   ThemeStore,
 } from '@solid/stores';
 import type { RendererStores } from '@we/backend-shared';
+import type { Ad4mModel } from '@we/models';
 
 export type ModelStoreOptions = {
   perspective?: string;
