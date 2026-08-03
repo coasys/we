@@ -15,7 +15,7 @@ import type { SchemaNode } from '@we/schema-shared';
 export const templateEditor: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: [{ $store: 'adamStore.bootState' }, 'ready'] },
+    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'ready'] },
     then: {
       type: 'Column',
       children: [

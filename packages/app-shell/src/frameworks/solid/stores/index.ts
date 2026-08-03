@@ -1,4 +1,6 @@
-export { type AdamStore, useAdamStore, AdamStoreProvider } from './AdamStore';
+export { type SessionStore, type BootState, useSessionStore, SessionStoreProvider } from './SessionStore';
+export { type DatasetStore, useDatasetStore, DatasetStoreProvider } from './DatasetStore';
+export { type ProfileStore, useProfileStore, ProfileStoreProvider } from './ProfileStore';
 export { type SpaceStore, useSpaceStore, SpaceStoreProvider } from './SpaceStore';
 export { type ThemeStore, type EditingTheme, useThemeStore, ThemeStoreProvider } from './ThemeStore';
 export { type TemplateStore, useTemplateStore, TemplateStoreProvider } from './TemplateStore';

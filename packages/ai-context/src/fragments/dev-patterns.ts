@@ -318,7 +318,7 @@ include: {
     from: 'signals',
     where: {
       signalTypeId: { $store: 'spaceStore.signalTypesBySlug.like.id' },
-      author: { $store: 'adamStore.me.did' },
+      author: { $store: 'sessionStore.me.did' },
     },
     limit: 1,
   },

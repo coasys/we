@@ -13,7 +13,7 @@ import type { SchemaNode } from '@we/schema-shared';
 export const sidebar: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: [{ $store: 'adamStore.bootState' }, 'ready'] },
+    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'ready'] },
     then: {
       type: 'CollapsibleSidebar',
       props: {
@@ -78,10 +78,10 @@ export const sidebar: SchemaNode = {
             id: 'spaces',
             label: 'Spaces',
             reorderable: true,
-            onReorder: { $action: 'adamStore.reorderPerspectives' },
+            onReorder: { $action: 'datasetStore.reorderDatasets' },
             items: {
               $map: {
-                items: { $store: 'adamStore.orderedSidebarItems' },
+                items: { $store: 'spaceStore.orderedSidebarItems' },
                 select: {
                   id: '$item.uuid',
                   avatar: { src: '$item.avatar', name: '$item.name' },
@@ -145,7 +145,7 @@ export const sidebar: SchemaNode = {
             id: 'logout',
             icon: 'sign-out',
             label: 'Logout',
-            onClick: { $action: 'adamStore.logout' },
+            onClick: { $action: 'sessionStore.logout' },
           },
         ],
       },

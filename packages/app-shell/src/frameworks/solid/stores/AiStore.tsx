@@ -1,6 +1,6 @@
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
 import { deepClone } from '@shared/utils';
-import { type EditingTheme, useAdamStore, useTemplateStore, useThemeStore } from '@solid/stores';
+import { type EditingTheme, useDatasetStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import { schemaContext } from '@we/ai-context';
 import type { ModelManifestEntry } from '@we/backend-ad4m';
 import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
@@ -284,7 +284,7 @@ const starterTemplate: SchemaNode = {
 };
 
 export function AiStoreProvider(props: ParentProps) {
-  const adamStore = useAdamStore();
+  const datasetStore = useDatasetStore();
   const templateStore = useTemplateStore();
   const themeStore = useThemeStore();
 
@@ -294,7 +294,7 @@ export function AiStoreProvider(props: ParentProps) {
   // not present in the manifest (e.g. CollectionBlock in we-root) are excluded.
   // Falls back to the all-WE base context when no perspective is set.
   const getValidationCtx = createMemo(() => {
-    const manifest = adamStore.currentPerspectiveModels();
+    const manifest = datasetStore.currentDatasetModels();
     if (manifest.length === 0) return baseValidationCtx;
     const perspectiveModelNames = new Set(manifest.map((m) => m.name));
     return { ...baseValidationCtx, modelNames: perspectiveModelNames };
@@ -434,7 +434,7 @@ export function AiStoreProvider(props: ParentProps) {
   const [pickerAction, setPickerAction] = createSignal<'fork' | 'fresh'>('fork');
   const [pickerDefaultName, setPickerDefaultName] = createSignal('');
   const [pickerDefaultIcon, setPickerDefaultIcon] = createSignal('cube');
-  const pickerShowDestination = () => !!adamStore.currentPerspective();
+  const pickerShowDestination = () => !!datasetStore.currentDataset();
 
   // ----------------------------------------------------------------
   // Session management — load, create, switch, delete
@@ -460,7 +460,7 @@ export function AiStoreProvider(props: ParentProps) {
       return;
     }
 
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!perspective) return;
 
     try {
@@ -504,7 +504,7 @@ export function AiStoreProvider(props: ParentProps) {
     }
 
     const templateModel = templateStore.getTemplateModel(templateId);
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!templateModel || !perspective) return;
 
     try {
@@ -543,7 +543,7 @@ export function AiStoreProvider(props: ParentProps) {
     if (!templateId) return;
 
     const templateModel = templateStore.getTemplateModel(templateId);
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!templateModel || !perspective) return;
 
     try {
@@ -582,7 +582,7 @@ export function AiStoreProvider(props: ParentProps) {
   async function persistMessage(role: 'user' | 'assistant', content: string) {
     if (!activeSessionModel) return;
 
-    const perspective = adamStore.rootPerspective();
+    const perspective = datasetStore.rootDataset();
     if (!perspective) return;
 
     try {
@@ -744,12 +744,12 @@ export function AiStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   function setApiKey(key: string) {
     setApiKeySignal(key);
-    adamStore.updateAgentSettings({ claudeApiKey: key });
+    datasetStore.updateAgentSettings({ claudeApiKey: key });
   }
 
   // Load persisted API key when agentSettings become available
   createEffect(() => {
-    const settings = adamStore.agentSettings();
+    const settings = datasetStore.agentSettings();
     if (settings?.claudeApiKey) {
       setApiKeySignal(settings.claudeApiKey);
     }
@@ -1371,7 +1371,7 @@ export function AiStoreProvider(props: ParentProps) {
 
     // Add current message with latest schema (with node IDs for ID-based patching)
     const schemaWithIds = ensureNodeIds(deepClone(templateStore.currentTemplate) as SchemaNode);
-    const manifest = adamStore.currentPerspectiveModels();
+    const manifest = datasetStore.currentDatasetModels();
     const payload: Record<string, unknown> = {
       request: latestText,
       currentSchema: schemaWithIds,
@@ -1452,7 +1452,7 @@ export function AiStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   createEffect(() => {
     const templateId = templateStore.currentTemplate.id;
-    if (templateId && adamStore.rootPerspective()) {
+    if (templateId && datasetStore.rootDataset()) {
       loadSessionsForTemplate(templateId);
       setContentModeSignal('preview');
       setIsEditingTemplate(false);

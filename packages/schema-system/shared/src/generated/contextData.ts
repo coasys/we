@@ -2002,46 +2002,49 @@ export const contextData: ContextData = {
   ],
   storeEntries: [
     {
-      name: 'adamStore',
+      name: 'sessionStore',
       state: {
-        adamClient: { type: 'object' },
+        client: { type: 'object' },
         me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
-        allPerspectives: { type: 'array', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
-        currentPerspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
-        currentPerspectiveModels: { type: 'array' },
-        isWeSpace: { type: 'boolean' },
-        personalSpaces: { type: 'array', model: 'Space' },
-        sharedSpaces: { type: 'array', model: 'Space' },
         bootState: { type: 'string' },
-        passwordError: { type: 'string' },
+        passwordError: { type: 'boolean' },
         loginLoading: { type: 'boolean' },
-        creatingSpace: { type: 'boolean' },
-        agents: {
+      },
+      actions: ['login', 'logout'],
+    },
+    {
+      name: 'datasetStore',
+      state: {
+        datasets: { type: 'array', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
+        orderedDatasets: { type: 'array', properties: ['uuid', 'name', 'sharedUrl'] },
+        currentDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
+        currentDatasetCid: { type: 'string' },
+        currentDatasetModels: { type: 'array' },
+        isWeSpace: { type: 'boolean' },
+        joinedSpaceCids: { type: 'array' },
+        systemDatasetUuids: { type: 'array' },
+        rootDataset: { type: 'object', properties: ['uuid', 'name'] },
+        globalDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
+        marketplaceDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
+        globalSpaceConfigured: { type: 'boolean' },
+        marketplaceConfigured: { type: 'boolean' },
+        marketplaceJoined: { type: 'boolean' },
+      },
+      actions: ['switchDataset', 'reorderDatasets', 'updateAgentSettings', 'cleanupSpaceSdna'],
+    },
+    {
+      name: 'profileStore',
+      state: {
+        profiles: {
           type: 'array',
           properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
         },
-        ownAgent: {
+        ownProfile: {
           type: 'object',
           properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
         },
-        orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
       },
-      actions: [
-        'navigate',
-        'addNewSpace',
-        'createSpace',
-        'initializeAsWeSpace',
-        'switchPerspective',
-        'removePerspective',
-        'reorderPerspectives',
-        'login',
-        'logout',
-        'fetchAgent',
-        'updateOwnProfile',
-        'updateProfileImage',
-        'updateAgentLocation',
-        'cleanupSpaceSdna',
-      ],
+      actions: ['fetchProfile', 'updateOwnProfile', 'updateProfileImage', 'updateOwnLocation'],
     },
     {
       name: 'routeStore',
@@ -2105,6 +2108,11 @@ export const contextData: ContextData = {
     {
       name: 'spaceStore',
       state: {
+        mySpaces: { type: 'array', model: 'Space' },
+        personalSpaces: { type: 'array', model: 'Space' },
+        sharedSpaces: { type: 'array', model: 'Space' },
+        creatingSpace: { type: 'boolean' },
+        orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
         memberDids: { type: 'array', properties: ['did'] },
         members: {
           type: 'array',
@@ -2135,6 +2143,10 @@ export const contextData: ContextData = {
         moduleLaunchers: { type: 'array', properties: ['id', 'icon', 'label', 'active'] },
       },
       actions: [
+        'createSpace',
+        'joinSpace',
+        'initializeAsWeSpace',
+        'removeSpace',
         'createPost',
         'updatePost',
         'deletePost',

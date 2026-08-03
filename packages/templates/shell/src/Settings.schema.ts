@@ -400,14 +400,14 @@ export const settingsTemplate: TemplateSchema = {
             {
               type: '$if',
               props: {
-                condition: { $store: 'adamStore.allPerspectives.length' },
+                condition: { $store: 'datasetStore.datasets.length' },
                 then: {
                   type: 'Column',
                   props: { gap: '300' },
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $store: 'adamStore.allPerspectives' }, as: 'perspective' },
+                      props: { items: { $store: 'datasetStore.datasets' }, as: 'perspective' },
                       children: [
                         {
                           type: 'Card',
@@ -460,7 +460,7 @@ export const settingsTemplate: TemplateSchema = {
                                     variant: 'secondary',
                                     size: 'sm',
                                     onClick: {
-                                      $action: 'adamStore.cleanupSpaceSdna',
+                                      $action: 'datasetStore.cleanupSpaceSdna',
                                       args: ['$perspective.uuid'],
                                       onSuccess: [{ $setLocal: 'sdnaCleanupResult', from: '$result' }],
                                     },
@@ -479,7 +479,7 @@ export const settingsTemplate: TemplateSchema = {
                                   props: {
                                     variant: 'danger',
                                     size: 'sm',
-                                    onClick: { $action: 'adamStore.removePerspective', args: ['$perspective.uuid'] },
+                                    onClick: { $action: 'spaceStore.removeSpace', args: ['$perspective.uuid'] },
                                   },
                                   children: [
                                     { type: 'we-icon', props: { name: 'trash', size: '16px' } },
@@ -525,7 +525,7 @@ export const settingsTemplate: TemplateSchema = {
         {
           type: '$if',
           props: {
-            condition: { $store: 'adamStore.currentPerspective' },
+            condition: { $store: 'datasetStore.currentDataset' },
             then: {
               type: 'Column',
               props: { gap: '300' },
@@ -613,14 +613,14 @@ export const settingsTemplate: TemplateSchema = {
             {
               type: '$if',
               props: {
-                condition: { $store: 'adamStore.sharedSpaces.length' },
+                condition: { $store: 'spaceStore.sharedSpaces.length' },
                 then: {
                   type: 'Row',
                   props: { gap: '300', wrap: true },
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $store: 'adamStore.sharedSpaces' }, as: 'space' },
+                      props: { items: { $store: 'spaceStore.sharedSpaces' }, as: 'space' },
                       children: [
                         {
                           type: 'Card',
@@ -684,14 +684,14 @@ export const settingsTemplate: TemplateSchema = {
             {
               type: '$if',
               props: {
-                condition: { $store: 'adamStore.personalSpaces.length' },
+                condition: { $store: 'spaceStore.personalSpaces.length' },
                 then: {
                   type: 'Row',
                   props: { gap: '300', wrap: true },
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $store: 'adamStore.personalSpaces' }, as: 'space' },
+                      props: { items: { $store: 'spaceStore.personalSpaces' }, as: 'space' },
                       children: [
                         {
                           type: 'Card',

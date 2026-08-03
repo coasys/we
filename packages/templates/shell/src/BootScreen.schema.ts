@@ -3,7 +3,7 @@ import type { SchemaNode } from '@we/schema-shared';
 export const bootScreen: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $ne: [{ $store: 'adamStore.bootState' }, 'ready'] },
+    condition: { $ne: [{ $store: 'sessionStore.bootState' }, 'ready'] },
     exitTransition: { type: 'fade', duration: 500, easing: 'ease-out' },
     then: {
       type: 'Column',
@@ -28,7 +28,7 @@ export const bootScreen: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $store: 'adamStore.bootState' }, 'initialising'] },
+            condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'initialising'] },
             // condition: true,
             then: {
               type: 'Row',
@@ -44,7 +44,7 @@ export const bootScreen: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $store: 'adamStore.bootState' }, 'login'] },
+            condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'login'] },
             // condition: false,
             then: {
               type: 'Column',
@@ -79,7 +79,7 @@ export const bootScreen: SchemaNode = {
                         then: { $error: 'password' },
                         else: {
                           $if: {
-                            condition: { $store: 'adamStore.passwordError' },
+                            condition: { $store: 'sessionStore.passwordError' },
                             then: 'Incorrect password',
                             else: '',
                           },
@@ -105,7 +105,7 @@ export const bootScreen: SchemaNode = {
                             onKeyDown: {
                               $if: {
                                 condition: { $eq: ['$arg.detail.key', 'Enter'] },
-                                then: { $action: 'adamStore.login', args: [{ $local: 'password' }] },
+                                then: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
                               },
                             },
                             type: {
@@ -157,13 +157,13 @@ export const bootScreen: SchemaNode = {
                     color: 'neutral-0',
                     bg: 'primary-500',
                     disabled: { $not: { $formValid: '$scope' } },
-                    loading: { $store: 'adamStore.loginLoading' },
+                    loading: { $store: 'sessionStore.loginLoading' },
                     onClick: [
                       { $touch: '$all' },
                       {
                         $if: {
                           condition: { $formValid: '$scope' },
-                          then: { $action: 'adamStore.login', args: [{ $local: 'password' }] },
+                          then: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
                         },
                       },
                     ],

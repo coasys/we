@@ -31,7 +31,7 @@ export const MODULE_RAIL_WIDTH = '48px';
 export const moduleRail: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'adamStore.currentPerspective' },
+    condition: { $store: 'datasetStore.currentDataset' },
     then: {
       type: '$if',
       props: {

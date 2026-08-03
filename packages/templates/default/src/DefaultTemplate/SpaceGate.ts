@@ -2,7 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 
 // The join prompt body differs depending on whether this is the WE global discovery space
 // or just a regular shared space the user hasn't joined yet.
-const isGlobalSpace = { $eq: [{ $store: 'routeStore.segments.1' }, { $store: 'adamStore.globalSpaceId' }] };
+const isGlobalSpace = { $eq: [{ $store: 'routeStore.segments.1' }, { $store: 'datasetStore.globalSpaceId' }] };
 
 const globalSpaceJoinPrompt: SchemaNode = {
   type: 'Column',
@@ -32,7 +32,7 @@ const globalSpaceJoinPrompt: SchemaNode = {
         onClick: [
           { $setLocal: 'joining', value: true },
           {
-            $action: 'adamStore.joinSpace',
+            $action: 'spaceStore.joinSpace',
             args: [{ $store: 'routeStore.segments.1' }],
             onFinally: [{ $setLocal: 'joining', value: false }],
           },
@@ -68,7 +68,7 @@ const regularSpaceJoinPrompt: SchemaNode = {
         onClick: [
           { $setLocal: 'joining', value: true },
           {
-            $action: 'adamStore.joinSpace',
+            $action: 'spaceStore.joinSpace',
             args: [{ $store: 'routeStore.segments.1' }],
             onFinally: [{ $setLocal: 'joining', value: false }],
           },
@@ -101,7 +101,7 @@ const notConfiguredPrompt: SchemaNode = {
 export const spaceGate: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $store: 'adamStore.globalSpaceConfigured' },
+    condition: { $store: 'datasetStore.globalSpaceConfigured' },
     then: {
       type: '$if',
       props: {

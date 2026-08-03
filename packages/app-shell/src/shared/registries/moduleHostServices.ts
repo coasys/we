@@ -40,7 +40,7 @@ const services: ModuleHostServices = {};
  * Publish a slice of host services to registered modules.
  *
  * Merges rather than replaces, because the slices arrive from different stores at different times —
- * `AdamStore` has the dataset and the transport, `PresenceStore` has the roster.
+ * `DatasetStore`/`SessionStore` have the dataset and the transport, `PresenceStore` has the roster.
  */
 export function provideModuleHostServices(slice: ModuleHostServices): void {
   Object.assign(services, slice);

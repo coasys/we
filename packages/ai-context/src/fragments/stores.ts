@@ -9,49 +9,49 @@ import type { StoreEntry } from '../types.js';
 
 export const storeEntries: StoreEntry[] = [
   {
-    name: 'adamStore',
+    name: 'sessionStore',
     state: {
-      adamClient: { type: 'object' },
+      client: { type: 'object' },
       me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
-      allPerspectives: { type: 'array', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
-      currentPerspective: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
-      currentPerspectiveModels: { type: 'array' },
-      isWeSpace: { type: 'boolean' },
-      personalSpaces: { type: 'array', model: 'Space' },
-      sharedSpaces: { type: 'array', model: 'Space' },
       bootState: { type: 'string' },
-      passwordError: { type: 'string' },
+      passwordError: { type: 'boolean' },
       loginLoading: { type: 'boolean' },
-      creatingSpace: { type: 'boolean' },
-      agents: {
+    },
+    actions: ['login', 'logout'],
+  },
+  {
+    name: 'datasetStore',
+    state: {
+      datasets: { type: 'array', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
+      orderedDatasets: { type: 'array', properties: ['uuid', 'name', 'sharedUrl'] },
+      currentDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
+      currentDatasetCid: { type: 'string' },
+      currentDatasetModels: { type: 'array' },
+      isWeSpace: { type: 'boolean' },
+      joinedSpaceCids: { type: 'array' },
+      systemDatasetUuids: { type: 'array' },
+      rootDataset: { type: 'object', properties: ['uuid', 'name'] },
+      globalDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
+      marketplaceDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
+      globalSpaceConfigured: { type: 'boolean' },
+      marketplaceConfigured: { type: 'boolean' },
+      marketplaceJoined: { type: 'boolean' },
+    },
+    actions: ['switchDataset', 'reorderDatasets', 'updateAgentSettings', 'cleanupSpaceSdna'],
+  },
+  {
+    name: 'profileStore',
+    state: {
+      profiles: {
         type: 'array',
         properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
-      ownAgent: {
+      ownProfile: {
         type: 'object',
         properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
-      orderedSidebarItems: {
-        type: 'array',
-        properties: ['uuid', 'name', 'avatar', 'spaceId'],
-      },
     },
-    actions: [
-      'navigate',
-      'addNewSpace',
-      'createSpace',
-      'initializeAsWeSpace',
-      'switchPerspective',
-      'removePerspective',
-      'reorderPerspectives',
-      'login',
-      'logout',
-      'fetchAgent',
-      'updateOwnProfile',
-      'updateProfileImage',
-      'updateAgentLocation',
-      'cleanupSpaceSdna',
-    ],
+    actions: ['fetchProfile', 'updateOwnProfile', 'updateProfileImage', 'updateOwnLocation'],
   },
   {
     name: 'routeStore',
@@ -118,6 +118,11 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'spaceStore',
     state: {
+      mySpaces: { type: 'array', model: 'Space' },
+      personalSpaces: { type: 'array', model: 'Space' },
+      sharedSpaces: { type: 'array', model: 'Space' },
+      creatingSpace: { type: 'boolean' },
+      orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
       memberDids: { type: 'array', properties: ['did'] },
       members: {
         type: 'array',
@@ -158,6 +163,10 @@ export const storeEntries: StoreEntry[] = [
       },
     },
     actions: [
+      'createSpace',
+      'joinSpace',
+      'initializeAsWeSpace',
+      'removeSpace',
       'createPost',
       'updatePost',
       'deletePost',
@@ -247,51 +256,62 @@ function generateStoresText(entries: StoreEntry[]): string {
   ];
 
   const descriptions: Record<string, { state: Record<string, string>; actions: Record<string, string> }> = {
-    adamStore: {
+    sessionStore: {
       state: {
-        adamClient: 'Ad4mClient | undefined',
-        me: 'Agent | undefined',
-        allPerspectives: 'array of PerspectiveProxy objects (all AD4M perspectives)',
-        currentPerspective: 'PerspectiveProxy | null (the perspective currently being viewed)',
-        currentPerspectiveModels:
-          'ModelManifestEntry[] (non-WE SHACL models from the current perspective; injected as externalModels into AI messages)',
-        isWeSpace:
-          "boolean — true once the current perspective is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign perspective, e.g. one synced in from Flux)",
-        personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
-        sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
-        bootState: 'string',
-        passwordError: 'string | undefined',
+        client: 'the backend client handle | undefined',
+        me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
+        bootState: "string — 'initialising' | 'login' | 'createAgent' | 'ready' | 'error'",
+        passwordError: 'boolean — true after a failed unlock attempt',
         loginLoading: 'boolean',
-        agents:
-          'AgentProfileSummary[] — cache of all fetched agent profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)',
-        ownAgent:
-          "AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from agents cache)",
-        creatingSpace: 'boolean (true while a new space is being created)',
-        orderedSidebarItems:
-          'array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged',
       },
       actions: {
-        navigate: '(to: string, options?): navigates to a route',
-        addNewSpace: '(space: Space): adds a new space',
-        createSpace:
-          '(name: string, description: string, shared: boolean, imageFile?: File): creates a new space with full setup',
-        initializeAsWeSpace:
-          "(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native perspective (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the perspective is already a published neighbourhood",
-        switchPerspective:
-          '(uuid: string): switches to a perspective by UUID, registers its SHACL models as dynamic model classes, and populates currentPerspectiveModels',
-        removePerspective: '(uuid: string): removes a perspective by UUID',
-        reorderPerspectives: '(newOrder: string[]): reorders the sidebar items by UUID array',
-        login: '(password: string): logs in the agent with password',
-        logout: '(): locks the agent and returns to login screen',
-        fetchAgent: "(did: string): fetches and caches an agent's profile from their public AD4M perspective",
-        updateOwnProfile:
-          '(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to public perspective',
-        updateProfileImage:
-          '(field: "avatar" | "coverImage", imageFile: File): uploads image to FILE_STORAGE_LANGUAGE and publishes expression URL to public perspective',
-        updateAgentLocation:
-          '(update: { latitude?, longitude?, city?, country?, countryCode? }): merges location update into cache and publishes to public perspective',
+        login: '(password: string): unlocks the agent and loads user data',
+        logout: '(): locks the agent and returns to the login screen',
+      },
+    },
+    datasetStore: {
+      state: {
+        datasets: 'array of dataset handles (all joined datasets; AD4M perspectives in this backend)',
+        orderedDatasets: 'datasets sorted by user-defined sidebar order, system datasets excluded',
+        currentDataset: 'dataset handle | null (the dataset currently being viewed)',
+        currentDatasetCid: 'string | undefined — the neighbourhood CID of the current dataset (prefix stripped)',
+        currentDatasetModels:
+          'ModelManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalModels into AI messages)',
+        isWeSpace:
+          "boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)",
+        joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
+        systemDatasetUuids: 'string[] — uuids of the we-root/we-test system datasets',
+        rootDataset: "dataset handle | null — the agent's personal root dataset (we-root models live here)",
+        globalDataset: 'dataset handle | null — the seed-configured global discovery space, once joined',
+        marketplaceDataset: 'dataset handle | null — the seed-configured marketplace, once joined',
+        globalSpaceConfigured: 'boolean — the seed declares a global space',
+        marketplaceConfigured: 'boolean — the seed declares a marketplace',
+        marketplaceJoined: 'boolean — the marketplace dataset is joined locally',
+      },
+      actions: {
+        switchDataset:
+          '(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetModels',
+        reorderDatasets: '(newOrder: string[]): reorders the sidebar items by UUID array',
+        updateAgentSettings: '(updates: Partial<AgentSettings>): merges and persists root-dataset agent settings',
         cleanupSpaceSdna:
-          '(uuid?: string): one-time remediation for a perspective that accumulated duplicate SDNA installs (e.g. from before joinSpace checked for existing SDNA before installing) — removes the redundant duplicate link copies. Defaults to the current perspective. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up',
+          '(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up',
+      },
+    },
+    profileStore: {
+      state: {
+        profiles:
+          'AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)',
+        ownProfile:
+          "AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache)",
+      },
+      actions: {
+        fetchProfile: "(did: string): fetches and caches an agent's profile from their public dataset",
+        updateOwnProfile:
+          '(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset',
+        updateProfileImage:
+          '(field: "avatar" | "coverImage", imageFile: File): uploads the image and publishes its expression URL to the public dataset',
+        updateOwnLocation:
+          '(update: { latitude?, longitude?, city?, country?, countryCode? }): merges the location update into the cache and publishes to the public dataset',
       },
     },
     routeStore: {
@@ -357,6 +377,12 @@ function generateStoresText(entries: StoreEntry[]): string {
     },
     spaceStore: {
       state: {
+        mySpaces: 'array of Space objects — every space the agent holds, across all joined datasets',
+        personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
+        sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
+        creatingSpace: 'boolean (true while a new space is being created)',
+        orderedSidebarItems:
+          'array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged',
         memberDids: 'string[] — DIDs of all members in the current space (includes own DID)',
         members: 'AgentProfileSummary[] — cached profiles for all memberDids',
         spaceDefaultTemplateId:
@@ -376,6 +402,13 @@ function generateStoresText(entries: StoreEntry[]): string {
           '{ id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }',
       },
       actions: {
+        createSpace:
+          "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup",
+        joinSpace: '(id: string): joins a shared space by neighbourhood URL, CID, or focuses it if already joined',
+        initializeAsWeSpace:
+          "(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native dataset (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the dataset is already a published neighbourhood",
+        removeSpace:
+          '(uuid: string): removes a space — clears its global-discovery listing (when authored by this agent) and removes the backing dataset',
         createPost: '(editorState: unknown): creates a new post',
         updatePost:
           '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',

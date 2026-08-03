@@ -95,7 +95,7 @@ export const initializeSpaceGate: SchemaNode = {
                 $if: {
                   condition: { $formValid: '$scope' },
                   then: {
-                    $action: 'adamStore.initializeAsWeSpace',
+                    $action: 'spaceStore.initializeAsWeSpace',
                     args: [{ $local: 'name' }, { $local: 'description' }, { $local: 'avatar' }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],
                   },

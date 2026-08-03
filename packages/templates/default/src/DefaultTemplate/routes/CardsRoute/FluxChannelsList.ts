@@ -7,7 +7,7 @@ import { cardShell, gridWrapper } from './CardShell.ts';
 // WE space just shows the empty-state message instead of firing a query for a model that
 // isn't registered here (which would otherwise surface as an error toast).
 const hasChannelModel = {
-  $find: { items: { $store: 'adamStore.currentPerspectiveModels' }, where: { name: 'Channel' } },
+  $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'Channel' } },
 };
 
 const emptyState: SchemaNode = {
