@@ -27,6 +27,28 @@ beforeEach(() => {
   FakeSpace.create.mockClear();
 });
 
+describe('registry ownership (the bundling trap)', () => {
+  it('keys state globally, so duplicate module instances still share one registry', async () => {
+    // This package ships two entries: the root (stand-ins, which read) and /classes (the
+    // implementations, which a backend registers). A bundler that gives each its own module scope
+    // silently splits the registry in two — everything registers, every lookup fails, and the
+    // symptom looks like missing data rather than a build setting. Source-level tests import one
+    // copy and cannot see that, so this asserts the property that makes it impossible: the state
+    // hangs off a well-known global, not module scope.
+    class Impl {
+      static tag = 'impl';
+    }
+    registerModel('GlobalCheck', Impl as unknown as ModelClass);
+
+    const globals = globalThis as unknown as Record<symbol, Record<string, unknown> | undefined>;
+    const shared = globals[Symbol.for('we.models.registry')];
+    expect(shared, 'registry must be reachable via Symbol.for, independent of module instance').toBeDefined();
+    expect(shared!.GlobalCheck).toBe(Impl);
+
+    unregisterModel('GlobalCheck');
+  });
+});
+
 describe('defineEntity', () => {
   it('forwards statics to whichever implementation is registered', async () => {
     registerModel('Space', FakeSpace as unknown as ModelClass);

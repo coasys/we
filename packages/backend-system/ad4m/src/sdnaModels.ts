@@ -1,5 +1,5 @@
 import { Ad4mModel, type LinkExpression, LinkQuery, Literal, PerspectiveProxy } from '@coasys/ad4m';
-import { getModelTargetClass } from '@we/models/classes';
+import { getModelTargetClass } from '@we/models';
 import {
   AgentSettings,
   AudioBlock,

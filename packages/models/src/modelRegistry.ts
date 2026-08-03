@@ -3,9 +3,28 @@ import type { Ad4mModel } from '@coasys/ad4m';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ModelClass = typeof Ad4mModel & (new (...args: any[]) => Ad4mModel);
 
-// ─── Global registry (WE-native models, registered at module load) ────────────
+// ─── Global registry (populated by whichever backend connects) ────────────────
 
-const modelRegistry: Record<string, ModelClass> = {};
+/**
+ * The maps hang off `globalThis` rather than module scope on purpose.
+ *
+ * This package has two entry points — the root (entity stand-ins, which *read* the registry) and
+ * `/classes` (the AD4M implementations, which a backend adapter *registers*). A bundler that
+ * emits those entries without sharing chunks gives each its own module scope, and the two halves
+ * then talk to different maps: everything registers successfully, every lookup fails, and the
+ * symptom ("Model X is not available in this perspective") points at data rather than at
+ * bundling. Keying the state globally makes the failure impossible instead of merely unlikely.
+ */
+const REGISTRY_KEY = Symbol.for('we.models.registry');
+const REGISTRY_BY_DATASET_KEY = Symbol.for('we.models.registry.byDataset');
+
+type GlobalRegistries = {
+  [REGISTRY_KEY]?: Record<string, ModelClass>;
+  [REGISTRY_BY_DATASET_KEY]?: Map<string, Record<string, ModelClass>>;
+};
+
+const globalRegistries = globalThis as unknown as GlobalRegistries;
+const modelRegistry: Record<string, ModelClass> = (globalRegistries[REGISTRY_KEY] ??= {});
 
 export function registerModel(name: string, modelClass: ModelClass): void {
   modelRegistry[name] = modelClass;
@@ -34,7 +53,8 @@ export function getRegisteredModelNames(): string[] {
 
 // ─── Per-perspective registry (synthesised classes, scoped by UUID) ───────────
 
-const perspectiveModelRegistry = new Map<string, Record<string, ModelClass>>();
+const perspectiveModelRegistry: Map<string, Record<string, ModelClass>> = (globalRegistries[REGISTRY_BY_DATASET_KEY] ??=
+  new Map());
 
 /** Register a batch of synthesised Ad4mModel classes for a specific perspective UUID. */
 export function registerDynamicModels(perspectiveUuid: string, models: Record<string, ModelClass>): void {
