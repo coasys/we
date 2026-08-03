@@ -16,7 +16,8 @@
     }
   },
   "dependencies": {
-    "@we/backend-shared": "workspace:*"
+    "@we/backend-shared": "workspace:*",
+    "@we/models": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

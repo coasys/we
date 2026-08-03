@@ -6,6 +6,7 @@
  * fully solo-testable, since a personal perspective is local-only and needs no neighbourhood sync.
  */
 import { createAd4mSchemaPort, getModel } from '@we/backend-ad4m';
+import { createInMemorySchemaPort } from '@we/backend-inmemory';
 import { NOTE_PREDICATES, notesModule } from '@we/module-notes';
 import { checkModuleCompatibility, modulePredicatePrefix, modulePredicateViolations } from '@we/module-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -110,6 +111,28 @@ describe('notes module — contributions', () => {
 
     moduleRegistry.unregister('notes');
     expect(() => getModel('Note')).toThrow(/not found in registry/);
+  });
+
+  it('is a working entity on a backend that stores nothing like the first one', async () => {
+    // The declaration's real claim is that it does not encode one backend's storage model. AD4M
+    // compiles it into triples against minted predicates; this compiles it into rows in a table,
+    // where predicates mean nothing at all. If the manifest were quietly AD4M-shaped, this is
+    // where it would show — a module author would ship something that only half worked.
+    const schemas = createInMemorySchemaPort({ selfId: () => 'did:test:author' });
+    moduleRegistry.register(notesModule, host, storeDeps);
+    moduleRegistry.moduleSchemas(schemas);
+
+    const Note = getModel('Note') as unknown as {
+      create(d: unknown, data: Record<string, unknown>): Promise<{ text: string; author: string }>;
+      findAll(d: unknown, q?: Record<string, unknown>): Promise<{ text: string }[]>;
+    };
+    const dataset = { id: 'ds-notes', tables: {} };
+
+    await Note.create(dataset, { text: 'written without a backend' });
+    const notes = await Note.findAll(dataset, { where: { text: { contains: 'without' } } });
+
+    expect(notes).toHaveLength(1);
+    expect(notes[0].text).toBe('written without a backend');
   });
 
   it('compiles its declaration to the predicates the convention mints', () => {

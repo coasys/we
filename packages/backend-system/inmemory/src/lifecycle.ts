@@ -17,9 +17,14 @@ import type {
   DatasetChangeHandlers,
   DatasetLifecyclePort,
   DatasetRef,
+  ModelManifest,
   ProfileDirectoryPort,
   SchemaPort,
 } from '@we/backend-shared';
+import { registerModel } from '@we/models';
+import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
+
+import { compileEntities, type EntityRuntime } from './entities';
 
 export interface InMemoryDatasetSeed {
   id: string;
@@ -167,12 +172,16 @@ export function createInMemoryAgentSession(opts: InMemoryAgentOptions = {}): Age
 // ─── Schema + profile ports, and the full bundle ──────────────────────────────
 
 /**
- * The in-memory schema port: installs are no-ops (there is no schema engine to feed yet — that
- * arrives when compiled models bridge onto the neutral query engine), presence checks answer
- * "core schema installed" so the shell treats every dataset as a WE space, and `declare` stores
- * the manifest verbatim as the payload.
+ * The in-memory schema port. Installs are no-ops because rows need no schema written ahead of
+ * them — the shape of a table is whatever its manifest says, resolved at query time. Presence
+ * checks answer "core schema installed" so the shell treats every dataset as a WE space.
+ *
+ * `declare` is the part that carries weight: it compiles a module's manifest into row-backed
+ * entities and registers them by name, which is the same contract the AD4M port fulfils by
+ * compiling that manifest into decorated classes. A module declaring an entity gets a working
+ * one here without knowing either backend exists.
  */
-export function createInMemorySchemaPort(): SchemaPort {
+export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
   return {
     installRoot: async () => {},
     installSpace: async () => {},
@@ -181,7 +190,11 @@ export function createInMemorySchemaPort(): SchemaPort {
     hasCoreSchema: async () => true,
     hasAnySchema: async () => true,
     foreignSchemas: async () => [],
-    declare: (manifest) => ({ ...manifest.entities }),
+    declare: (manifest) => {
+      const compiled = compileEntities(manifest, runtime);
+      for (const [name, cls] of Object.entries(compiled)) registerModel(name, cls as never);
+      return compiled;
+    },
   };
 }
 
@@ -219,23 +232,36 @@ export function createInMemoryProfileDirectory(ctx: BackendPortsContext): Profil
 export interface InMemoryBackendPortsOptions {
   agent?: InMemoryAgentOptions;
   datasets?: InMemoryDatasetSeed[];
+  /**
+   * The entity vocabulary to compile and register on connect. Defaults to the host's own core
+   * manifest, which is what makes `Space.findAll(...)` work in a test with no executor running.
+   */
+  entities?: ModelManifest | null;
 }
 
 /**
  * The complete in-memory backend — what a test (or a backend-less demo host) returns from
- * `BackendConnector.ports()`. Ephemeral reports the capability absent; data bindings expose the
- * dataset handle (query execution over declared entities arrives with the entity-engine phase).
+ * `BackendConnector.ports()`. Ephemeral reports the capability absent.
+ *
+ * Connecting registers the core entities, which is when `Space`, `AgentSettings` and the rest
+ * resolve to something that works. That mirrors the AD4M connector: entities exist because a
+ * backend supplied them, never because a module was imported.
  */
 export function createInMemoryBackendPorts(
   ctx: BackendPortsContext,
   opts: InMemoryBackendPortsOptions = {},
 ): BackendPorts & { lifecycle: InMemoryLifecycle } {
   const lifecycle = createInMemoryLifecycle(opts.datasets);
+  const runtime: EntityRuntime = { selfId: () => ctx.selfId() };
+  const schemas = createInMemorySchemaPort(runtime);
+
+  const manifest = opts.entities === undefined ? CORE_MANIFEST : opts.entities;
+  if (manifest) schemas.declare(manifest, { moduleId: 'core' });
 
   return {
     agentSession: createInMemoryAgentSession(opts.agent),
     lifecycle,
-    schemas: createInMemorySchemaPort(),
+    schemas,
     profiles: createInMemoryProfileDirectory(ctx),
     ephemeral: () => null,
     dataBindings: (deps) => ({ $currentDataset: deps.currentDataset, $ephemeral: deps.ephemeral }),
