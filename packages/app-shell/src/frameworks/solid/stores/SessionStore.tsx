@@ -81,7 +81,7 @@ export function SessionStoreProvider(props: ParentProps) {
   const ephemeralPort = createAd4mEphemeralPort(() => me()?.did);
 
   // Start the embed bridge synchronously, BEFORE any async boot work, so REQUEST_AD4M_CONFIG
-  // from embedded apps (e.g. Flux) is never dropped — including during the ad4m-connect auth
+  // from embedded apps (e.g. Flux) is never dropped — including during the connector's auth
   // flow on first load, where auth can take many seconds and the embedded app's 30-second
   // timeout would otherwise expire.
   startAppBridge({
@@ -153,7 +153,7 @@ export function SessionStoreProvider(props: ParentProps) {
       setAgentSession(session);
       setLifecycle(ports.lifecycle);
 
-      // Web platform: credentials are only available after ad4m-connect auth completes
+      // Web platform: credentials are only available after the connector's auth flow completes
       if (!platform.isDesktop && backend.connectionDetails) {
         const details = await backend.connectionDetails();
         // Set url BEFORE port/token — same ordering constraint as above.

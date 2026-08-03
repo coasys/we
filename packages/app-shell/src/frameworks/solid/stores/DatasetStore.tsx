@@ -6,9 +6,10 @@
  * the active dataset (with its registered models and we-space status), the system datasets
  * (root/test/global/marketplace), and the agent's root-dataset settings.
  *
- * The store's public shape is backend-neutral; its internals speak `DatasetProxy` directly —
- * the declared coupling this package holds until a dataset-lifecycle port exists in the backend
- * contract.
+ * Dataset lifecycle (list/create/remove/subscribe) runs through the session's
+ * `DatasetLifecyclePort`. The coupling that remains is the model layer: schema install and
+ * model reads operate on the handles (typed `DatasetProxy` via @we/models) — that half
+ * neutralizes when compiled models bridge onto the neutral query engine.
  *
  * Space-model concerns (the `Space` entities that *describe* shared datasets) live in SpaceStore,
  * which layers on top of this store and reacts to dataset changes via `onDatasetRemoved` and the
@@ -390,7 +391,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       // marker (isModelRegistered) over getAllShacl() emptiness for the actual
       // isWeSpace determination — getAllShacl()'s underlying triples can lag behind
       // on a freshly-switched-to, not-yet-fully-synced dataset (e.g. over a
-      // remote ad4m-connect link) even though the space's SDNA is already installed
+      // remote backend connection) even though the space's SDNA is already installed
       // and queryable.
       //
       // But the *install-triggering* condition below must stay "is ANYTHING at all
