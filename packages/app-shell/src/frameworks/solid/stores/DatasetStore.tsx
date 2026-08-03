@@ -116,11 +116,11 @@ export function DatasetStoreProvider(props: ParentProps) {
   });
 
   // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,
-  // personal datasets (no sharedUrl) produce {} rather than {"url":null}.
+  // personal datasets (no shared uri) produce {} rather than {"url":null}.
   const currentDatasetUri = createMemo<string | undefined>(() => currentDataset()?.sharedUri ?? undefined);
 
-  // CID-only form (neighbourhood:// stripped) for comparing against Space.url,
-  // which stores only the CID to avoid URI resolution in the AD4M triple store.
+  // The scheme-less shared id, for comparing against Space.url — which stores that form so the
+  // backend never has to resolve a URI mid-query.
   const currentDatasetCid = createMemo<string | undefined>(() => currentDataset()?.sharedId ?? undefined);
   const joinedSpaceCids = createMemo<string[]>(() =>
     datasets()
@@ -134,6 +134,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       .map((d) => d.id),
   );
 
+  // `perspectiveOrder` is a persisted AgentSettings field (predicate we://perspective_order) —
+  // renaming it would be a data migration, so the stored name outlives the vocabulary change.
   function getDatasetOrder(): string[] {
     const json = agentSettings()?.perspectiveOrder;
     if (!json) return [];
@@ -163,7 +165,7 @@ export function DatasetStoreProvider(props: ParentProps) {
   // scheme-less shared ids is the one sanctioned strip in the shell, defined here once.
   const globalSpaceConfigured = () => !!getSeed().globalSpaceUrl;
   const marketplaceConfigured = () => !!getSeed().marketplaceUrl;
-  /** The neighbourhood CID (with `neighbourhood://` stripped) for the global space, or null if unconfigured. */
+  /** The scheme-less shared id for the global space, or null if unconfigured. */
   const globalSpaceId = (): string | null => {
     const url = getSeed().globalSpaceUrl;
     return url ? url.replace('neighbourhood://', '') : null;
@@ -181,7 +183,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     const settings = agentSettings();
     if (!settings) return;
     // Deduplicate while preserving order — guards against any remaining race between
-    // the eager update in createSpace and the perspective-added subscription.
+    // the eager update in createSpace and the dataset-added subscription.
     const deduped = [...new Set(newOrder)];
     settings.perspectiveOrder = JSON.stringify(deduped);
     await settings.save();
@@ -196,13 +198,15 @@ export function DatasetStoreProvider(props: ParentProps) {
         if (datasets().some((d) => d.id === ref.id)) return;
         // Log unexpected datasets so we can identify and filter system ones
         const meAgent = session.me();
-        const publicPerspectiveUuid = (meAgent?.perspective as { uuid?: string } | undefined)?.uuid;
-        if (publicPerspectiveUuid && ref.id === publicPerspectiveUuid) {
-          console.log('DatasetStore: suppressing agent public perspective from sidebar', ref.name, ref.id);
+        // The agent's own profile dataset is backend bookkeeping, not a space — keep it out of
+        // the sidebar. `me` is the backend's identity object, so this reads its own vocabulary.
+        const ownProfileDatasetId = (meAgent?.perspective as { uuid?: string } | undefined)?.uuid;
+        if (ownProfileDatasetId && ref.id === ownProfileDatasetId) {
+          console.log('DatasetStore: suppressing own profile dataset from sidebar', ref.name, ref.id);
           return;
         }
         if (ref.name?.toLowerCase().startsWith('agent perspective')) {
-          console.log('DatasetStore: suppressing agent perspective from sidebar', ref.name, ref.id);
+          console.log('DatasetStore: suppressing agent dataset from sidebar', ref.name, ref.id);
           return;
         }
         // Re-check after the async gap: createSpace's eager update may have run while
@@ -280,8 +284,8 @@ export function DatasetStoreProvider(props: ParentProps) {
           setTestDataset(toApp(await lifecycle.create('we-test')));
         }
 
-        // Restore the global dataset if previously joined — model registration is handled
-        // by SpaceStore/installSpaceSdna when the dataset is navigated to.
+        // Restore the global dataset if previously joined — schema install happens when the
+        // dataset is navigated to (see switchDataset).
         const seedUrl = getSeed().globalSpaceUrl;
         const existingGlobal = seedUrl ? refs.find((d) => d.sharedUri === seedUrl) : undefined;
         if (existingGlobal) {
@@ -381,11 +385,11 @@ export function DatasetStoreProvider(props: ParentProps) {
       const ref = await lifecycle.get(uuid);
       if (!ref) return;
       const app = toApp(ref);
-      const perspective = app.handle;
+      const handle = app.handle;
 
-      // Check whether SDNA is already installed. Prefer the reliable SubjectClass
-      // marker (isModelRegistered) over getAllShacl() emptiness for the actual
-      // isWeSpace determination — getAllShacl()'s underlying triples can lag behind
+      // Check whether the schema is already installed. The port's `hasCoreSchema` uses the
+      // reliable marker rather than a shape listing for the isWeSpace determination — a listing's
+      // underlying triples can lag behind
       // on a freshly-switched-to, not-yet-fully-synced dataset (e.g. over a
       // remote backend connection) even though the space's SDNA is already installed
       // and queryable.
@@ -397,22 +401,22 @@ export function DatasetStoreProvider(props: ParentProps) {
       // space here. That's exactly what the "Initialize as WE space" gate (see
       // foreignSpacePrefill in SpaceStore) exists to ask the user about explicitly.
       // Only a dataset with no SDNA of any kind — the genuine first-time join
-      // race (the perspective-added listener fires before joinSpace reaches
-      // installSpaceSdna) — should hit the install path here.
+      // race (the dataset-added listener fires before joinSpace reaches the schema install)
+      // — should hit the install path here.
       const schemas = session.backendPorts()!.schemas;
-      let weSpace = await schemas.hasCoreSchema(perspective);
+      let weSpace = await schemas.hasCoreSchema(handle);
       if (!weSpace) {
-        if (!(await schemas.hasAnySchema(perspective))) {
-          await schemas.installSpace(perspective, moduleRegistry.models());
-          weSpace = await schemas.hasCoreSchema(perspective);
+        if (!(await schemas.hasAnySchema(handle))) {
+          await schemas.installSpace(handle, moduleRegistry.models());
+          weSpace = await schemas.hasCoreSchema(handle);
         }
       } else {
         // An existing WE space skips the install above by design, so a module enabled after the
         // space was created would find its shapes missing — a query failing with "No SHACL shape
         // stored for class X" in a dataset that otherwise looks healthy. Module shapes therefore
-        // install on every switch; `ensureModelsRegistered` diffs first, so this is a read in the
+        // install on every switch; the port diffs before writing, so this is a read in the
         // common case.
-        await schemas.installModules(perspective, moduleRegistry.models());
+        await schemas.installModules(handle, moduleRegistry.models());
       }
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes
@@ -423,14 +427,13 @@ export function DatasetStoreProvider(props: ParentProps) {
         setCurrentDataset(app);
       });
 
-      // Background: fetch foreign SHACL shapes once and derive both the dynamic model
-      // classes and the AI-facing manifest from that single result — they're pure,
-      // synchronous transforms of the same data, not separate fetches (see
-      // getForeignShacl's doc comment).
+      // Background: discover schemas foreign to the host (another app's entities synced into
+      // this dataset) and publish their manifest — the port registers them for name-based query
+      // resolution as part of the same pass.
       // Stale guard: if the user navigated away before this resolves, skip updates.
       void (async () => {
         try {
-          const manifest = await schemas.foreignSchemas(perspective);
+          const manifest = await schemas.foreignSchemas(handle);
           if (currentDataset()?.id === uuid) setCurrentDatasetModels(manifest);
         } catch (err) {
           console.warn('DatasetStore: foreignSchemas failed', err);
@@ -453,11 +456,11 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
 
     try {
-      const perspective = (await lifecycle.get(targetUuid))?.handle as DatasetProxy | undefined;
-      if (!perspective) return '';
+      const handle = (await lifecycle.get(targetUuid))?.handle as DatasetProxy | undefined;
+      if (!handle) return '';
       const dedupe = session.backendPorts()?.schemas.dedupe;
       if (!dedupe) return '';
-      const { removed, authors } = await dedupe(perspective);
+      const { removed, authors } = await dedupe(handle);
       if (removed === 0) return 'No duplicate SDNA links found.';
       const myDid = session.me()?.did;
       const authorList = authors.map((did) => (did === myDid ? `${did} (you)` : did)).join(', ');
