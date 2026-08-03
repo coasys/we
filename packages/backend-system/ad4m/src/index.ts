@@ -41,3 +41,4 @@ export {
   CORE_VOCABULARY,
   manifestToEntries,
 } from './manifestCompiler';
+export { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';

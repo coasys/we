@@ -125,3 +125,11 @@ export function createInMemoryBackend(config: BackendConfig) {
     },
   };
 }
+
+export {
+  createInMemoryAgentSession,
+  createInMemoryLifecycle,
+  type InMemoryAgentOptions,
+  type InMemoryDatasetSeed,
+  type InMemoryLifecycle,
+} from './lifecycle';

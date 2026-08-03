@@ -97,3 +97,11 @@ export type {
   Scope,
   IRError,
 } from './queryIR';
+export type {
+  AgentIdentity,
+  AgentSessionPort,
+  AgentSessionStatus,
+  DatasetChangeHandlers,
+  DatasetLifecyclePort,
+  DatasetRef,
+} from './lifecycle';
