@@ -155,6 +155,20 @@ export interface ModuleDefinition {
   models?: unknown[];
 
   /**
+   * Entity types installed into the **agent's root dataset** rather than each space — personal
+   * configuration, not community content.
+   *
+   * A separate list because the two have different lifetimes and different homes: space models
+   * install on every switch into a space (a module can be enabled after a space exists), while
+   * agent models install once at boot into the dataset that holds the user's own settings. An
+   * entity that is both personal and shareable (the assistant's Thread/Message: personal
+   * conversations *and* neighbourhood ones) appears in both lists.
+   *
+   * Same predicate rule, same `unknown[]` reasoning as {@link ModuleDefinition.models}.
+   */
+  agentModels?: unknown[];
+
+  /**
    * A whole application embedded in an iframe, rather than components and fragments.
    *
    * This is what an "embedded app" is once you stop treating it as a separate concept: a module
@@ -227,8 +241,25 @@ export interface ModuleStoreDeps {
    */
   datasetUri?: () => string | null;
 
+  /**
+   * The agent's root dataset — where a module's `agentModels` live and where personal
+   * configuration reads and writes go. `null` before login. Distinct from {@link dataset}, which
+   * follows navigation; this one is the same for the whole session.
+   */
+  rootDataset?: () => DatasetHandle | null;
+
   /** This agent's id in the host's identity scheme (a DID on AD4M). `null` before login. */
   selfId?: () => string | null;
+
+  /**
+   * Raw connection details for the host's backend runtime, for a module that talks to it over
+   * HTTP directly rather than through the data ports — model discovery, health checks.
+   *
+   * Backend-specific by nature, which is why it is optional and why a module reading it should
+   * declare the backend in `backends`: on a host without a reachable runtime this returns `null`
+   * and the module degrades, exactly like presence.
+   */
+  connection?: () => { url?: string; port?: number; token?: string } | null;
 
   /**
    * Peer-to-peer transport for modules that coordinate between agents rather than store data.

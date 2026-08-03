@@ -25,6 +25,8 @@ import type { ModuleStoreDeps } from '@we/module-shared';
 export interface ModuleHostServices {
   dataset?: () => DatasetHandle | null;
   datasetUri?: () => string | null;
+  rootDataset?: () => DatasetHandle | null;
+  connection?: () => { url?: string; port?: number; token?: string } | null;
   selfId?: () => string | null;
   ephemeral?: EphemeralPort;
   presence?: {
@@ -67,6 +69,8 @@ export function createModuleStoreDeps(framework: {
 
     dataset: () => services.dataset?.() ?? null,
     datasetUri: () => services.datasetUri?.() ?? null,
+    rootDataset: () => services.rootDataset?.() ?? null,
+    connection: () => services.connection?.() ?? null,
     selfId: () => services.selfId?.() ?? null,
 
     // A stable function that forwards, so a module capturing `deps.ephemeral` at construction still

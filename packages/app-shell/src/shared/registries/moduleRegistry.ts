@@ -104,7 +104,7 @@ export const moduleRegistry = {
     // Predicates are how existing data is found, so minting one outside the module's own subtree is
     // not a bug to fix later — by the time it is noticed, data has been written under a name nobody
     // can adjudicate. Refused at registration for the same reason an incompatible backend is.
-    const badPredicates = (definition.models ?? []).flatMap((model) =>
+    const badPredicates = [...(definition.models ?? []), ...(definition.agentModels ?? [])].flatMap((model) =>
       modulePredicateViolations(definition.id, getModelPredicates(model as Parameters<typeof getModelPredicates>[0])),
     );
     if (badPredicates.length) {
@@ -136,7 +136,10 @@ export const moduleRegistry = {
     // different moment: SDNA install (in `installSpaceSdna`) puts the *shape* in the perspective,
     // while this puts the *class* where `model.create` / `$query` can resolve it by name. Without
     // this one the panel renders and only writing a note fails.
-    for (const model of (definition.models ?? []) as ModelClass[]) {
+    // Space-scoped and agent-scoped models both register as resolvable classes; the same entity may
+    // appear in both lists (installed into both kinds of dataset), so dedupe by class.
+    const allModels = [...new Set([...(definition.models ?? []), ...(definition.agentModels ?? [])])];
+    for (const model of allModels as ModelClass[]) {
       registerModel((model as unknown as { className: string }).className, model);
     }
 
@@ -156,7 +159,8 @@ export const moduleRegistry = {
     const entry = modules.get(id);
     if (!entry) return;
     for (const index of (entry.definition.slots ?? []).keys()) slotRegistry.remove(`${id}:${index}`);
-    for (const model of (entry.definition.models ?? []) as ModelClass[]) {
+    const allModels = [...new Set([...(entry.definition.models ?? []), ...(entry.definition.agentModels ?? [])])];
+    for (const model of allModels as ModelClass[]) {
       unregisterModel((model as unknown as { className: string }).className);
     }
     delete moduleStores[id];
@@ -195,6 +199,11 @@ export const moduleRegistry = {
    */
   models(): unknown[] {
     return moduleRegistry.all().flatMap((m) => m.definition.models ?? []);
+  },
+
+  /** Entity types modules install into the agent's root dataset — see `ModuleDefinition.agentModels`. */
+  agentModels(): unknown[] {
+    return moduleRegistry.all().flatMap((m) => m.definition.agentModels ?? []);
   },
 
   /**

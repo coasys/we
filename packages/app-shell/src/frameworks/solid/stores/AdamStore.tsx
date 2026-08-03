@@ -202,8 +202,17 @@ export function AdamStoreProvider(props: ParentProps) {
     // The *global* uri, never `perspective.uuid` — a uuid is local per-agent, so a call id derived
     // from one would differ on every peer and each would join a call only they can see.
     datasetUri: () => currentPerspective()?.sharedUrl ?? null,
+    // Where a module's agentModels live, and where its personal configuration reads go.
+    rootDataset: () => rootPerspective() ?? null,
     selfId: () => me()?.did ?? null,
     ephemeral: ephemeralPort,
+    // For modules that talk to the executor's HTTP surface directly (model discovery). Null until
+    // credentials exist, so a module polling early degrades instead of fetching localhost:undefined.
+    connection: () => {
+      const port = ad4mPort();
+      const token = ad4mToken();
+      return port && token ? { port, token, url: ad4mUrlValue } : null;
+    },
   });
 
   // CID-only form (neighbourhood:// stripped) for comparing against Space.url,
@@ -760,6 +769,7 @@ export function AdamStoreProvider(props: ParentProps) {
       if (rootP) {
         // Ensure all models are registered (handles new models added after initial creation)
         await installRootSdna(rootP);
+        await installModuleSdna(rootP, moduleRegistry.agentModels());
         setRootPerspective(rootP);
 
         const settings = await AgentSettings.findOne(rootP);
@@ -799,6 +809,7 @@ export function AdamStoreProvider(props: ParentProps) {
       console.log('AdamStore: Creating root perspective');
       const perspective = await client.perspective.add('we-root');
       await installRootSdna(perspective);
+      await installModuleSdna(perspective, moduleRegistry.agentModels());
       // Model.register resolves before SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
