@@ -8,7 +8,8 @@
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate:manifest": "node scripts/generateCoreManifest.mjs > src/generated/coreManifest.ts"
   },
   "types": "dist/index.d.ts",
   "exports": {
@@ -19,6 +20,10 @@
     "./classes": {
       "import": "./dist/classes.js",
       "require": "./dist/classes.js"
+    },
+    "./generated/coreManifest": {
+      "import": "./dist/generated/coreManifest.js",
+      "require": "./dist/generated/coreManifest.js"
     }
   },
   "files": [
@@ -37,5 +42,8 @@
   },
   "context": {
     "type": "models"
+  },
+  "dependencies": {
+    "@we/backend-shared": "workspace:*"
   }
 }

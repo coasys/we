@@ -858,6 +858,9 @@ importers:
       '@coasys/ad4m':
         specifier: 0.13.0-test-9
         version: 0.13.0-test-9
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../backend-system/shared
     devDependencies:
       '@we/cli':
         specifier: workspace:*
