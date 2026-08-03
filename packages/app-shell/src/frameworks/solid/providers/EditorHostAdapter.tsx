@@ -4,7 +4,7 @@ import { compressImageToFileData, ImageBlock } from '@we/models';
 import type { ParentProps } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
-import { useEditSessionStore } from '../stores/EditSessionStore';
+import { useEditorStore } from '../stores/EditorStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useSessionStore } from '../stores/SessionStore';
 import { useSpaceStore } from '../stores/SpaceStore';
@@ -25,7 +25,7 @@ import { useThemeStore } from '../stores/ThemeStore';
  * of it changes this file and nothing in the editor.
  */
 export function EditorHostAdapter(props: ParentProps) {
-  const editSession = useEditSessionStore();
+  const editor = useEditorStore();
   const template = useTemplateStore();
   const theme = useThemeStore();
   const sessionStore = useSessionStore();
@@ -50,7 +50,7 @@ export function EditorHostAdapter(props: ParentProps) {
 
     // Forwarded whole: every member is the editor's own session state. Narrowing it here would mean
     // listing sixty members twice — it moves into the editor rather than being trimmed.
-    session: editSession as unknown as EditorHost['session'],
+    session: editor as unknown as EditorHost['session'],
 
     identity: {
       me: () => sessionStore.me(),

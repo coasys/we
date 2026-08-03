@@ -5586,7 +5586,7 @@
       ]
     },
     {
-      "name": "editSessionStore",
+      "name": "editorStore",
       "state": {
         "models": {
           "type": "array",

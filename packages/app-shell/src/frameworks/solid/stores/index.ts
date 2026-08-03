@@ -5,7 +5,7 @@ export { type SpaceStore, useSpaceStore, SpaceStoreProvider } from './SpaceStore
 export { type ThemeStore, type EditingTheme, useThemeStore, ThemeStoreProvider } from './ThemeStore';
 export { type TemplateStore, useTemplateStore, TemplateStoreProvider } from './TemplateStore';
 export { type RouteStore, useRouteStore, RouteStoreProvider } from './RouteStore';
-export { type EditSessionStore, useEditSessionStore, EditSessionStoreProvider } from './EditSessionStore';
+export { type EditorStore, useEditorStore, EditorStoreProvider } from './EditorStore';
 export { type AppStore, useAppStore, AppStoreProvider } from './AppStore';
 export { type PresenceStore, type PresentAgent, usePresenceStore, PresenceStoreProvider } from './PresenceStore';
 export { type ShellStore, useShellStore, ShellStoreProvider } from './ShellStore';

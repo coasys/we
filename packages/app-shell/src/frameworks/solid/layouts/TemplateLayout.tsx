@@ -56,17 +56,17 @@ export const SHELL_SIDEBAR_WIDTH = '80px';
 // same viewport the template content occupies.
 export function computeRightOffset(stores: Stores): string {
   let offset = 0;
-  if (stores.editSessionStore.isEditingTheme()) {
+  if (stores.editorStore.isEditingTheme()) {
     offset += THEME_RAIL_WIDTH;
-    if (stores.editSessionStore.themePanelOpen()) offset += stores.editSessionStore.themePanelWidth();
+    if (stores.editorStore.themePanelOpen()) offset += stores.editorStore.themePanelWidth();
   }
-  if (stores.editSessionStore.isEditingTemplate()) {
+  if (stores.editorStore.isEditingTemplate()) {
     offset += TEMPLATE_RAILS_WIDTH;
-    if (stores.editSessionStore.isOpen()) offset += stores.editSessionStore.aiPanelWidth();
-    if (stores.editSessionStore.codePanelOpen()) offset += stores.editSessionStore.codePanelWidth();
-    if (stores.editSessionStore.contentMode() === 'visual') {
+    if (stores.editorStore.isOpen()) offset += stores.editorStore.aiPanelWidth();
+    if (stores.editorStore.codePanelOpen()) offset += stores.editorStore.codePanelWidth();
+    if (stores.editorStore.contentMode() === 'visual') {
       offset += RAIL_STRIP_WIDTH;
-      if (stores.editSessionStore.visualPanelOpen()) offset += stores.editSessionStore.visualPanelWidth();
+      if (stores.editorStore.visualPanelOpen()) offset += stores.editorStore.visualPanelWidth();
     }
   }
   return offset ? `${offset}px` : '0px';
@@ -140,7 +140,7 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
 
   // Exit template editing when a shell view (settings, profile, marketplace) opens.
   createEffect(() => {
-    if (stores.shellStore.activeShellView()) stores.editSessionStore.exitTemplateEditing();
+    if (stores.shellStore.activeShellView()) stores.editorStore.exitTemplateEditing();
   });
 
   // Scoped space theme — applied to the template content area only.

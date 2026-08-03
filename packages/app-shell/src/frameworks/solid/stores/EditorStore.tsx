@@ -1,5 +1,5 @@
 /**
- * EditSessionStore — the state of an editing session: chat sessions and messages per template,
+ * EditorStore — the editor's state: chat sessions and messages per template,
  * panel visibility and widths, preview/visual mode, unified template+theme undo/redo, pending
  * (buffered) changes for read-only templates, and the fork/fresh picker.
  *
@@ -45,10 +45,10 @@ export interface ChatMessage {
 type HistoryEntry = { type: 'template'; snapshot: TemplateSchema } | { type: 'theme'; snapshot: EditingTheme };
 
 // Base validation context built once from the static generated context data.
-// External perspective models are merged in reactively inside EditSessionStoreProvider.
+// External perspective models are merged in reactively inside EditorStoreProvider.
 const baseValidationCtx = buildValidationContext(contextData);
 
-export interface EditSessionStore {
+export interface EditorStore {
   // --- Chat state ---
   messages: Accessor<ChatMessage[]>;
   isOpen: Accessor<boolean>;
@@ -146,7 +146,7 @@ export interface EditSessionStore {
   setApiKey: (key: string) => void;
 }
 
-const EditSessionContext = createContext<EditSessionStore>();
+const EditorContext = createContext<EditorStore>();
 
 let msgIdCounter = 0;
 function createMessage(role: ChatMessage['role'], content: string, status?: ChatMessage['status']): ChatMessage {
@@ -183,7 +183,7 @@ const starterTemplate: SchemaNode = {
   ],
 };
 
-export function EditSessionStoreProvider(props: ParentProps) {
+export function EditorStoreProvider(props: ParentProps) {
   const datasetStore = useDatasetStore();
   const templateStore = useTemplateStore();
   const themeStore = useThemeStore();
@@ -748,7 +748,7 @@ export function EditSessionStoreProvider(props: ParentProps) {
     try {
       await sendViaClaude(text);
     } catch (err) {
-      console.error('[EditSessionStore] sendMessage caught error:', err);
+      console.error('[EditorStore] sendMessage caught error:', err);
       const errorText = err instanceof Error ? err.message : 'Unknown error';
       setMessages((prev) => [...prev, createMessage('assistant', `Error: ${errorText}`)]);
     } finally {
@@ -795,7 +795,7 @@ export function EditSessionStoreProvider(props: ParentProps) {
           },
         );
       } catch (err) {
-        console.error(`[EditSessionStore] Turn ${turn}: sendClaudeRequest threw`, err);
+        console.error(`[EditorStore] Turn ${turn}: sendClaudeRequest threw`, err);
         throw err;
       }
       const { textContent, toolCalls, stopReason } = streamResult;
@@ -855,18 +855,18 @@ export function EditSessionStoreProvider(props: ParentProps) {
             continue;
           }
 
-          console.log(`[EditSessionStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
+          console.log(`[EditorStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
           for (const p of patches) {
             const op = p.node ? 'update' : p.insert ? 'insert' : 'remove';
             console.log(`  targetId: "${p.targetId}", op: ${op}`);
           }
-          console.log('[EditSessionStore] Patch detail:', JSON.stringify(patches, null, 2));
+          console.log('[EditorStore] Patch detail:', JSON.stringify(patches, null, 2));
 
           // Apply ID-based patches to the accumulated schema (not to the store yet) — the
           // mechanics live in shared/ai/schemaPatches.
           const result = applySchemaPatches(accumulatedSchema, patches);
           if (result.error) {
-            console.warn(`[EditSessionStore] Patch apply failed: ${result.error}`);
+            console.warn(`[EditorStore] Patch apply failed: ${result.error}`);
             allTextContent += '\n\n<span class="warning">⚠ Template failed validation. Retrying...</span>';
             setStreamingContent(allTextContent);
             toolResults.push({
@@ -902,12 +902,12 @@ export function EditSessionStoreProvider(props: ParentProps) {
       // --- Atomic apply: validate + apply only if ALL tool calls succeeded ---
       if (allPatchesValid) {
         const mergedTemplate = accumulatedSchema as TemplateSchema;
-        console.log('[EditSessionStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
+        console.log('[EditorStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
 
         // Step 1: Structural validation (Zod schema check)
         const structural = validateStructure(mergedTemplate);
         if (!structural.valid) {
-          console.warn(`[EditSessionStore] Structural validation failed (${structural.errors.length} issues):`);
+          console.warn(`[EditorStore] Structural validation failed (${structural.errors.length} issues):`);
           for (const issue of structural.errors) {
             console.warn(`  [${issue.severity}] ${issue.path}: ${issue.message}`);
           }
@@ -922,7 +922,7 @@ export function EditSessionStoreProvider(props: ParentProps) {
             tr.is_error = true;
           }
         } else {
-          console.log('[EditSessionStore] Structural validation passed');
+          console.log('[EditorStore] Structural validation passed');
 
           // Step 2: Semantic validation (component/prop/store checks)
           // Only fail on NEW issues introduced by the patch, not pre-existing ones
@@ -933,13 +933,11 @@ export function EditSessionStoreProvider(props: ParentProps) {
           const isClean = newIssues.length === 0;
 
           if (semantic.errors.length > 0 && newIssues.length === 0) {
-            console.log(
-              `[EditSessionStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`,
-            );
+            console.log(`[EditorStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`);
           }
 
           if (!isClean) {
-            console.warn(`[EditSessionStore] Semantic validation failed (${newIssues.length} new issues):`);
+            console.warn(`[EditorStore] Semantic validation failed (${newIssues.length} new issues):`);
             for (const issue of newIssues) {
               console.warn(`  [${issue.severity}] ${issue.path}: ${issue.message}`);
             }
@@ -954,14 +952,14 @@ export function EditSessionStoreProvider(props: ParentProps) {
               tr.is_error = true;
             }
           } else if (isReadOnly()) {
-            console.log('[EditSessionStore] Semantic validation passed — buffering (read-only template)');
+            console.log('[EditorStore] Semantic validation passed — buffering (read-only template)');
             pushSnapshot();
             setPendingTemplate(stripNodeIds(mergedTemplate) as TemplateSchema);
             for (const tr of toolResults) {
               tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
             }
           } else {
-            console.log('[EditSessionStore] Semantic validation passed — applying to store');
+            console.log('[EditorStore] Semantic validation passed — applying to store');
             pushSnapshot();
             templateStore.updateTemplate({
               ...stripNodeIds(mergedTemplate),
@@ -1141,7 +1139,7 @@ export function EditSessionStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   // Store object
   // ----------------------------------------------------------------
-  const store: EditSessionStore = {
+  const store: EditorStore = {
     // Chat state
     messages,
     isOpen,
@@ -1239,13 +1237,13 @@ export function EditSessionStoreProvider(props: ParentProps) {
     setApiKey,
   };
 
-  return <EditSessionContext.Provider value={store}>{props.children}</EditSessionContext.Provider>;
+  return <EditorContext.Provider value={store}>{props.children}</EditorContext.Provider>;
 }
 
-export function useEditSessionStore(): EditSessionStore {
-  const ctx = useContext(EditSessionContext);
-  if (!ctx) throw new Error('useEditSessionStore must be used within EditSessionStoreProvider');
+export function useEditorStore(): EditorStore {
+  const ctx = useContext(EditorContext);
+  if (!ctx) throw new Error('useEditorStore must be used within EditorStoreProvider');
   return ctx;
 }
 
-export default EditSessionStoreProvider;
+export default EditorStoreProvider;

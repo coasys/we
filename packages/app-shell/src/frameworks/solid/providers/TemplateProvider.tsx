@@ -6,7 +6,7 @@ import { componentRegistry as registry } from '@solid/registries/componentRegist
 import {
   useAppStore,
   useDatasetStore,
-  useEditSessionStore,
+  useEditorStore,
   usePresenceStore,
   useProfileStore,
   useRouteStore,
@@ -35,7 +35,7 @@ export default function TemplateProvider() {
   const sessionStore = useSessionStore();
   const datasetStore = useDatasetStore();
   const profileStore = useProfileStore();
-  const editSessionStore = useEditSessionStore();
+  const editorStore = useEditorStore();
   const appStore = useAppStore();
   const spaceStore = useSpaceStore();
   const themeStore = useThemeStore();
@@ -81,7 +81,7 @@ export default function TemplateProvider() {
     sessionStore,
     datasetStore,
     profileStore,
-    editSessionStore,
+    editorStore,
     appStore,
     spaceStore,
     themeStore,
@@ -156,7 +156,7 @@ export default function TemplateProvider() {
   const [hoveredNodeId, setHoveredNodeId] = createSignal<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | null>(null);
   const nodeRegistry = new Map<string, HTMLElement>();
-  const isVisualMode = () => editSessionStore.contentMode() === 'visual' && editSessionStore.isEditingTemplate();
+  const isVisualMode = () => editorStore.contentMode() === 'visual' && editorStore.isEditingTemplate();
 
   createEffect(() => {
     if (!isVisualMode()) {

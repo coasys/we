@@ -2,7 +2,7 @@ import type { Ad4mModel } from '@coasys/ad4m';
 import type {
   AppStore,
   DatasetStore,
-  EditSessionStore,
+  EditorStore,
   PresenceStore,
   ProfileStore,
   RouteStore,
@@ -52,7 +52,7 @@ export interface Stores extends RendererStores {
   sessionStore: SessionStore;
   datasetStore: DatasetStore;
   profileStore: ProfileStore;
-  editSessionStore: EditSessionStore;
+  editorStore: EditorStore;
   appStore: AppStore;
   spaceStore: SpaceStore;
   themeStore: ThemeStore;

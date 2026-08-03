@@ -1,7 +1,7 @@
 import {
   AppStoreProvider,
   DatasetStoreProvider,
-  EditSessionStoreProvider,
+  EditorStoreProvider,
   PresenceStoreProvider,
   ProfileStoreProvider,
   RouteStoreProvider,
@@ -26,7 +26,7 @@ export default function StoreProvider(props: ParentProps) {
             <ProfileStoreProvider>
               <ThemeStoreProvider>
                 <TemplateStoreProvider>
-                  <EditSessionStoreProvider>
+                  <EditorStoreProvider>
                     <AppStoreProvider>
                       <SpaceStoreProvider>
                         {/* BootController composes the post-unlock load across the stores above —
@@ -45,7 +45,7 @@ export default function StoreProvider(props: ParentProps) {
                         </PresenceStoreProvider>
                       </SpaceStoreProvider>
                     </AppStoreProvider>
-                  </EditSessionStoreProvider>
+                  </EditorStoreProvider>
                 </TemplateStoreProvider>
               </ThemeStoreProvider>
             </ProfileStoreProvider>

@@ -176,7 +176,7 @@ export const storeEntries: StoreEntry[] = [
     ],
   },
   {
-    name: 'editSessionStore',
+    name: 'editorStore',
     state: {
       models: { type: 'array', properties: ['id', 'name'] },
       tasks: { type: 'array', properties: ['id', 'status', 'result'] },
@@ -426,7 +426,7 @@ function generateStoresText(entries: StoreEntry[]): string {
           "(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself",
       },
     },
-    editSessionStore: {
+    editorStore: {
       state: {
         models: 'array of Model objects',
         tasks: 'array of AITask objects',
