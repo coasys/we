@@ -10,8 +10,13 @@
  * boot controller via `onSessionUnlocked` — this store only knows *when* the session becomes
  * usable, not what the app loads into it.
  */
-import { createAd4mAgentSession, createAd4mDatasetLifecycle, createAd4mEphemeralPort } from '@we/backend-ad4m';
-import type { AgentIdentity, AgentSessionPort, DatasetLifecyclePort, EphemeralPort } from '@we/backend-shared';
+import type {
+  AgentIdentity,
+  AgentSessionPort,
+  BackendPorts,
+  DatasetLifecyclePort,
+  EphemeralPort,
+} from '@we/backend-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
@@ -34,6 +39,8 @@ export interface SessionStore {
   agentSession: Accessor<AgentSessionPort | null>;
   /** The dataset-lifecycle port over that client. Null until connected. */
   lifecycle: Accessor<DatasetLifecyclePort | null>;
+  /** The full port bundle the connector supplied. Null until connected. */
+  backendPorts: Accessor<BackendPorts | null>;
   me: Accessor<SessionIdentity | undefined>;
   port: Accessor<number | undefined>;
   token: Accessor<string | undefined>;
@@ -78,7 +85,12 @@ export function SessionStoreProvider(props: ParentProps) {
   const [token, setToken] = createSignal<string | undefined>(undefined);
   const [serverUrl, setServerUrl] = createSignal<string | undefined>(undefined);
 
-  const ephemeralPort = createAd4mEphemeralPort(() => me()?.did);
+  const [backendPorts, setBackendPorts] = createSignal<BackendPorts | null>(null);
+
+  // EphemeralPort is a function (dataset → scope | null), so this stable delegate can exist
+  // before the connector's ports do — pre-connect it reports the capability as absent, which is
+  // the contract's own degradation mode. Consumers hold one reference for the app's lifetime.
+  const ephemeralPort: EphemeralPort = (dataset) => backendPorts()?.ephemeral(dataset) ?? null;
 
   // Start the embed bridge synchronously, BEFORE any async boot work, so REQUEST_AD4M_CONFIG
   // from embedded apps (e.g. Flux) is never dropped — including during the connector's auth
@@ -145,10 +157,9 @@ export function SessionStoreProvider(props: ParentProps) {
       // stays opaque to this store — everything it needs goes through the two ports.
       const c = await backend.connect();
       setClient(c);
-      const ports = backend.ports?.(c) ?? {
-        agentSession: createAd4mAgentSession(c),
-        lifecycle: createAd4mDatasetLifecycle(c),
-      };
+      // The connector supplies the complete backend — the shell names no adapter.
+      const ports = backend.ports(c, { selfId: () => me()?.did });
+      setBackendPorts(ports);
       const session = ports.agentSession;
       setAgentSession(session);
       setLifecycle(ports.lifecycle);
@@ -234,6 +245,7 @@ export function SessionStoreProvider(props: ParentProps) {
     client,
     agentSession,
     lifecycle,
+    backendPorts,
     me,
     port,
     token,

@@ -9,11 +9,12 @@
  * compile path mints its own type flag; models needing the rest stay decorated).
  */
 import type { Ad4mModel, SHACLShape } from '@coasys/ad4m';
+import { getModelPredicates } from '@we/models';
 import { describe, expect, it } from 'vitest';
 
 import { buildModelFromEntry, compileManifest, manifestToEntries } from '../src/manifestCompiler';
 import { buildModelManifest } from '../src/perspectiveHelpers';
-import { getModelPredicates, ROOT_MODELS, SPACE_MODELS } from '../src/sdnaModels';
+import { ROOT_MODELS, SPACE_MODELS } from '../src/sdnaModels';
 
 type Shaped = { generateSHACL: () => { shape: SHACLShape | null } };
 

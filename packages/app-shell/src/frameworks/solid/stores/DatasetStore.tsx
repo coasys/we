@@ -18,24 +18,13 @@
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
-import type { ModelManifestEntry } from '@we/backend-ad4m';
-import {
-  buildModelClasses,
-  buildModelManifest,
-  deduplicateSpaceSdna,
-  getForeignShacl,
-  installModuleSdna,
-  installRootSdna,
-  installSpaceSdna,
-  isModelRegistered,
-  registerDynamicModels,
-} from '@we/backend-ad4m';
-import { AgentSettings, type DatasetProxy, Space } from '@we/models';
+import type { ModelManifestEntry } from '@we/backend-shared';
+import { AgentSettings, type DatasetProxy } from '@we/models';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useSessionStore } from './SessionStore';
 
-export type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-ad4m';
+export type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-shared';
 
 export interface DatasetStore {
   // State
@@ -267,7 +256,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
       if (rootP) {
         // Ensure all models are registered (handles new models added after initial creation)
-        await installRootSdna(rootP);
+        await session.backendPorts()!.schemas.installRoot(rootP);
         setRootDataset(rootP);
 
         const settings = await AgentSettings.findOne(rootP);
@@ -306,7 +295,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       // No root dataset exists — create one
       console.log('DatasetStore: creating root dataset');
       const perspective = (await lifecycle.create('we-root')).handle as DatasetProxy;
-      await installRootSdna(perspective);
+      await session.backendPorts()!.schemas.installRoot(perspective);
       // Model.register resolves before SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -403,13 +392,13 @@ export function DatasetStoreProvider(props: ParentProps) {
       // Only a dataset with no SDNA of any kind — the genuine first-time join
       // race (the perspective-added listener fires before joinSpace reaches
       // installSpaceSdna) — should hit the install path here.
-      let weSpace = await isModelRegistered(perspective, Space);
+      const schemas = session.backendPorts()!.schemas;
+      let weSpace = await schemas.hasCoreSchema(perspective);
       if (!weSpace) {
-        const shapeNames = await perspective.getShaclNames();
-        if (shapeNames.length === 0) {
-          await installSpaceSdna(perspective, moduleRegistry.models());
+        if (!(await schemas.hasAnySchema(perspective))) {
+          await schemas.installSpace(perspective, moduleRegistry.models());
           await new Promise((resolve) => setTimeout(resolve, 500));
-          weSpace = await isModelRegistered(perspective, Space);
+          weSpace = await schemas.hasCoreSchema(perspective);
         }
       } else {
         // An existing WE space skips the install above by design, so a module enabled after the
@@ -417,7 +406,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         // stored for class X" in a dataset that otherwise looks healthy. Module shapes therefore
         // install on every switch; `ensureModelsRegistered` diffs first, so this is a read in the
         // common case.
-        await installModuleSdna(perspective, moduleRegistry.models());
+        await schemas.installModules(perspective, moduleRegistry.models());
       }
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes
@@ -434,23 +423,11 @@ export function DatasetStoreProvider(props: ParentProps) {
       // getForeignShacl's doc comment).
       // Stale guard: if the user navigated away before this resolves, skip updates.
       void (async () => {
-        let foreignShapes: Awaited<ReturnType<typeof getForeignShacl>> = [];
         try {
-          foreignShapes = await getForeignShacl(perspective);
+          const manifest = await schemas.foreignSchemas(perspective);
+          if (currentDataset()?.uuid === uuid) setCurrentDatasetModels(manifest);
         } catch (err) {
-          console.warn('DatasetStore: getForeignShacl failed', err);
-        }
-
-        try {
-          if (currentDataset()?.uuid === uuid) registerDynamicModels(uuid, buildModelClasses(foreignShapes));
-        } catch (err) {
-          console.warn('DatasetStore: registerDynamicModels failed', err);
-        }
-
-        try {
-          if (currentDataset()?.uuid === uuid) setCurrentDatasetModels(buildModelManifest(foreignShapes));
-        } catch (err) {
-          console.warn('DatasetStore: buildModelManifest failed', err);
+          console.warn('DatasetStore: foreignSchemas failed', err);
           if (currentDataset()?.uuid === uuid) setCurrentDatasetModels([]);
         }
       })();
@@ -472,7 +449,9 @@ export function DatasetStoreProvider(props: ParentProps) {
     try {
       const perspective = (await lifecycle.get(targetUuid))?.handle as DatasetProxy | undefined;
       if (!perspective) return '';
-      const { removed, authors } = await deduplicateSpaceSdna(perspective);
+      const dedupe = session.backendPorts()?.schemas.dedupe;
+      if (!dedupe) return '';
+      const { removed, authors } = await dedupe(perspective);
       if (removed === 0) return 'No duplicate SDNA links found.';
       const myDid = session.me()?.did;
       const authorList = authors.map((did) => (did === myDid ? `${did} (you)` : did)).join(', ');

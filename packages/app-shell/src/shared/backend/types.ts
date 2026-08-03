@@ -1,4 +1,4 @@
-import type { AgentSessionPort, DatasetLifecyclePort } from '@we/backend-shared';
+import type { BackendPorts, BackendPortsContext } from '@we/backend-shared';
 
 /**
  * Raw connection details for the running executor, for callers that need to reach it directly
@@ -26,11 +26,10 @@ export interface BackendConnectionDetails {
  */
 export interface BackendConnector {
   /**
-   * Optional: supply the backend's port implementations directly. When absent the shell builds
-   * the AD4M ports over the client — so existing connectors change nothing, while a non-AD4M or
-   * test host can hand the shell a complete backend by implementing two small interfaces.
+   * Supply the backend's complete port bundle over the connected client. The shell consumes only
+   * this contract — which port implementations arrive here is the app's whole choice of backend.
    */
-  ports?(client: unknown): { agentSession: AgentSessionPort; lifecycle: DatasetLifecyclePort };
+  ports(client: unknown, ctx: BackendPortsContext): BackendPorts;
 
   /**
    * Build and return a configured client, opaque to the shell. Called once during boot; the shell

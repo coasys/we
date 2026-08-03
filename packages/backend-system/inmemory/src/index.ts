@@ -128,8 +128,12 @@ export function createInMemoryBackend(config: BackendConfig) {
 
 export {
   createInMemoryAgentSession,
+  createInMemoryBackendPorts,
   createInMemoryLifecycle,
+  createInMemoryProfileDirectory,
+  createInMemorySchemaPort,
   type InMemoryAgentOptions,
+  type InMemoryBackendPortsOptions,
   type InMemoryDatasetSeed,
   type InMemoryLifecycle,
 } from './lifecycle';

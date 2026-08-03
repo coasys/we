@@ -24,7 +24,8 @@
     "@we/app-shell": "workspace:*",
     "graphql": "15.7.2",
     "graphql-ws": "5.12.0",
-    "solid-js": "^1.9.5"
+    "solid-js": "^1.9.5",
+    "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.7.0",

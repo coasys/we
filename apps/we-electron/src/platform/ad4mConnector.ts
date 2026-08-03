@@ -1,5 +1,6 @@
 import type { Ad4mClient } from '@coasys/ad4m';
 import type { BackendConnectionDetails, BackendConnector } from '@we/app-shell/shared';
+import { createAd4mBackendPorts } from '@we/backend-ad4m';
 
 import { buildAd4mClientWithApollo } from '../utils/apolloClient';
 
@@ -31,6 +32,9 @@ export const ad4mConnector: BackendConnector = {
 
     return client;
   },
+
+  // The connector is where the app chooses its backend: hand the shell the complete AD4M bundle.
+  ports: createAd4mBackendPorts,
 
   async connectionDetails(): Promise<BackendConnectionDetails> {
     // Desktop platforms expose connection details for iframe communication

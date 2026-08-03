@@ -20,16 +20,20 @@ export {
 } from './ad4mAdapter';
 export { ad4mEphemeralCapabilities, createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 export * from './agentHelpers';
-export type { ModelManifestEntry, ModelManifestProperty } from './manifestTypes';
+// Compat re-exports — the manifest-entry types now live in the contract, and the model registry
+// lives with the model layer (@we/models); consumers migrate an import at a time.
+export type { ModelManifestEntry, ModelManifestProperty } from '@we/backend-shared';
 export {
   getModel,
   getModelForPerspective,
+  getModelPredicates,
+  getModelTargetClass,
   getRegisteredModelNames,
   type ModelClass,
   registerDynamicModels,
   registerModel,
   unregisterModel,
-} from './modelRegistry';
+} from '@we/models';
 export { type NeutralManifestResult, toNeutralManifest } from './neutralManifest';
 export * from './perspectiveHelpers';
 export * from './sdnaModels';
@@ -42,3 +46,4 @@ export {
   manifestToEntries,
 } from './manifestCompiler';
 export { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
+export { createAd4mBackendPorts, createAd4mProfileDirectory, createAd4mSchemaPort } from './backendPortsAdapter';

@@ -10,10 +10,15 @@
  */
 import type {
   AgentIdentity,
+  AgentProfileSummary,
   AgentSessionPort,
+  BackendPorts,
+  BackendPortsContext,
   DatasetChangeHandlers,
   DatasetLifecyclePort,
   DatasetRef,
+  ProfileDirectoryPort,
+  SchemaPort,
 } from '@we/backend-shared';
 
 export interface InMemoryDatasetSeed {
@@ -165,5 +170,83 @@ export function createInMemoryAgentSession(opts: InMemoryAgentOptions = {}): Age
       if (!unlocked) throw new Error('agent is locked');
       return { id, did: id } as AgentIdentity;
     },
+  };
+}
+
+// ─── Schema + profile ports, and the full bundle ──────────────────────────────
+
+/**
+ * The in-memory schema port: installs are no-ops (there is no schema engine to feed yet — that
+ * arrives when compiled models bridge onto the neutral query engine), presence checks answer
+ * "core schema installed" so the shell treats every dataset as a WE space, and `declare` stores
+ * the manifest verbatim as the payload.
+ */
+export function createInMemorySchemaPort(): SchemaPort {
+  return {
+    installRoot: async () => {},
+    installSpace: async () => {},
+    installModules: async () => {},
+    ensure: async () => {},
+    hasCoreSchema: async () => true,
+    hasAnySchema: async () => true,
+    foreignSchemas: async () => [],
+    declare: (manifest) => ({ ...manifest.entities }),
+  };
+}
+
+/** Map-backed profile directory; uploads echo a retrievable inmemory URL. */
+export function createInMemoryProfileDirectory(ctx: BackendPortsContext): ProfileDirectoryPort {
+  const profiles = new Map<string, AgentProfileSummary>();
+  let uploadCounter = 0;
+
+  const blank = (did: string): AgentProfileSummary => ({ did, firstName: '', lastName: '', handle: '', bio: '' });
+
+  return {
+    async get(id) {
+      return profiles.get(id) ?? blank(id);
+    },
+    async publish(fields) {
+      const id = ctx.selfId();
+      if (!id) throw new Error('publish: no authenticated agent');
+      const current = profiles.get(id) ?? blank(id);
+      const next = { ...current };
+      if ('firstName' in fields) next.firstName = fields.firstName ?? '';
+      if ('lastName' in fields) next.lastName = fields.lastName ?? '';
+      if ('handle' in fields) next.handle = fields.handle ?? '';
+      if ('bio' in fields) next.bio = fields.bio ?? '';
+      if ('avatarExpressionUrl' in fields) next.avatar = fields.avatarExpressionUrl;
+      if ('coverImageExpressionUrl' in fields) next.coverImage = fields.coverImageExpressionUrl;
+      if ('location' in fields) next.location = fields.location ?? undefined;
+      profiles.set(id, next);
+    },
+    async uploadFile() {
+      return `inmemory://file-${++uploadCounter}`;
+    },
+  };
+}
+
+export interface InMemoryBackendPortsOptions {
+  agent?: InMemoryAgentOptions;
+  datasets?: InMemoryDatasetSeed[];
+}
+
+/**
+ * The complete in-memory backend — what a test (or a backend-less demo host) returns from
+ * `BackendConnector.ports()`. Ephemeral reports the capability absent; data bindings expose the
+ * dataset handle (query execution over declared entities arrives with the entity-engine phase).
+ */
+export function createInMemoryBackendPorts(
+  ctx: BackendPortsContext,
+  opts: InMemoryBackendPortsOptions = {},
+): BackendPorts & { lifecycle: InMemoryLifecycle } {
+  const lifecycle = createInMemoryLifecycle(opts.datasets);
+
+  return {
+    agentSession: createInMemoryAgentSession(opts.agent),
+    lifecycle,
+    schemas: createInMemorySchemaPort(),
+    profiles: createInMemoryProfileDirectory(ctx),
+    ephemeral: () => null,
+    dataBindings: (deps) => ({ $currentDataset: deps.currentDataset, $ephemeral: deps.ephemeral }),
   };
 }

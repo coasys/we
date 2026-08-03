@@ -1,6 +1,7 @@
 import type { Ad4mClient } from '@coasys/ad4m';
 import { getAd4mConnect } from '@coasys/ad4m-connect';
 import type { BackendConnectionDetails, BackendConnector } from '@we/app-shell/shared';
+import { createAd4mBackendPorts } from '@we/backend-ad4m';
 
 let ad4mCore: Awaited<ReturnType<typeof getAd4mConnect>>['core'] | null = null;
 
@@ -20,6 +21,9 @@ export const ad4mConnector: BackendConnector = {
     ad4mCore = core;
     return client;
   },
+
+  // The connector is where the app chooses its backend: hand the shell the complete AD4M bundle.
+  ports: createAd4mBackendPorts,
 
   async connectionDetails(): Promise<BackendConnectionDetails> {
     if (!ad4mCore?.token) throw new Error('AD4M not authenticated — call connect() first');

@@ -14,7 +14,8 @@
     "@we/app-shell": "workspace:*",
     "@coasys/ad4m": "0.11.0",
     "@coasys/ad4m-connect": "0.11.0",
-    "solid-js": "^1.9.5"
+    "solid-js": "^1.9.5",
+    "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",

@@ -1,12 +1,14 @@
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
+import {
+  isSpaceSelf,
+  type LocationData,
+  removeSpaceFromParent,
+  spaceSelfWhere,
+  syncSpaceToParent,
+} from '@shared/spaceSync';
 import { deriveSlug } from '@shared/utils';
-import type { AgentProfileSummary } from '@we/backend-ad4m';
-import { getModelForPerspective, registerModel } from '@we/backend-ad4m';
-import { ensureModelRegistered, SPACE_MODELS } from '@we/backend-ad4m';
-import { installSpaceSdna, isSpaceSelf } from '@we/backend-ad4m';
-import { type FluxSubgroupMessage, getFluxSubgroupMessages } from '@we/backend-ad4m';
-import { type LocationData, removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@we/backend-ad4m';
+import type { AgentProfileSummary } from '@we/backend-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import {
   CollectionBlock,
@@ -14,6 +16,7 @@ import {
   type DatasetProxy,
   dataURIToFileData,
   type FileData,
+  getModelForPerspective,
   LocationBlock,
   Signal,
   SignalType,
@@ -46,7 +49,12 @@ export interface SpaceMetaUpdate {
   location?: LocationData | null;
 }
 
-export type { FluxSubgroupMessage } from '@we/backend-ad4m';
+export interface FluxSubgroupMessage {
+  id: string;
+  author: string;
+  timestamp: string;
+  body: string;
+}
 
 // Space.avatar/coverImage are typed as string (resolved data URI on read) but accept FileData on write.
 // This input type reflects the actual write-path contract.
@@ -123,12 +131,6 @@ export interface SpaceStore {
 }
 
 const SpaceContext = createContext<SpaceStore>();
-
-// Register JS classes for $query model resolution (runs once at module load)
-// Use .className (set by @Model decorator) rather than .name — bundlers mangle
-// the native .name property in production builds, breaking registry lookups.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-for (const M of SPACE_MODELS) registerModel((M as any).className, M as any);
 
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
@@ -257,7 +259,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       const spacePerspective = spaceRef.handle as DatasetProxy;
 
       // Register SDNA models (full set, same as switchDataset uses)
-      await installSpaceSdna(spacePerspective, moduleRegistry.models());
+      await session.backendPorts()!.schemas.installSpace(spacePerspective, moduleRegistry.models());
 
       // HACK: Model.register resolves before the SDNA is actually ready
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -301,7 +303,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (discovery === 'listed') {
         const globalP = datasetStore.globalDataset();
         if (globalP) {
-          await syncSpaceToParent(spaceModel, globalP, {
+          await syncSpaceToParent(spaceModel, globalP, session.backendPorts()!.schemas, {
             locationData,
             avatarData,
             coverImageData,
@@ -338,7 +340,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!perspective) throw new Error('SpaceStore: initializeAsWeSpace called with no active dataset');
 
     // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
-    await installSpaceSdna(perspective, moduleRegistry.models());
+    await session.backendPorts()!.schemas.installSpace(perspective, moduleRegistry.models());
     // HACK: Model.register resolves before SDNA is actually ready — same pattern used
     // in switchDataset/createSpace/joinSpace.
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -416,7 +418,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // immediately. installSpaceSdna diffs against the dataset's actual state
       // before writing, so this is safe to call unconditionally even when the space's
       // creator or an earlier joiner already installed it — it won't write a duplicate copy.
-      await installSpaceSdna(joinedP, moduleRegistry.models());
+      await session.backendPorts()!.schemas.installSpace(joinedP, moduleRegistry.models());
       // Give the SDNA write time to settle before reactive queries fire.
       await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -563,7 +565,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       const globalP = datasetStore.globalDataset();
       if (globalP) {
         const imageOpt = field === 'avatar' ? { avatarData: fileData } : { coverImageData: fileData };
-        await syncSpaceToParent(spaceModel, globalP, imageOpt).catch((err) =>
+        await syncSpaceToParent(spaceModel, globalP, session.backendPorts()!.schemas, imageOpt).catch((err) =>
           console.error('SpaceStore: sync image to global failed', err),
         );
       }
@@ -604,7 +606,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         // LocationBlock.update only changes nested triples and doesn't trigger the Space query.
         const [existingLoc] = await LocationBlock.findAll(currentDataset);
         if (existingLoc) await existingLoc.delete();
-        await ensureModelRegistered(currentDataset, LocationBlock);
+        await session.backendPorts()!.schemas.ensure(currentDataset, LocationBlock);
         const newLoc = await LocationBlock.create(currentDataset, {
           latitude: loc.latitude,
           longitude: loc.longitude,
@@ -625,7 +627,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Pass locationData explicitly when location changed — the included spaceModel.location
       // snapshot is stale after our delete+recreate. null signals explicit removal to syncSpaceToParent.
       const syncOpts = updates.location !== undefined ? { locationData: updates.location } : {};
-      await syncSpaceToParent(spaceModel, globalP, syncOpts).catch((err) =>
+      await syncSpaceToParent(spaceModel, globalP, session.backendPorts()!.schemas, syncOpts).catch((err) =>
         console.error('SpaceStore: sync meta to global failed', err),
       );
     } else if (previousDiscovery === 'listed') {
@@ -666,12 +668,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, predicate: 'we://signal' } });
   }
 
-  // Raw backend dialect lives in the adapter — see getFluxSubgroupMessages' doc comment there.
+  // Ecosystem dialect, feature-detected through the connector's interop surface — a backend
+  // without it simply returns nothing.
   async function getSubgroupMessages(subgroupId: string): Promise<FluxSubgroupMessage[]> {
     const p = datasetStore.currentDataset();
-    if (!p) return [];
+    const fetchMessages = session.backendPorts()?.interop?.fluxSubgroupMessages;
+    if (!p || !fetchMessages) return [];
     try {
-      return await getFluxSubgroupMessages(p, subgroupId);
+      return await fetchMessages(p, subgroupId);
     } catch (err) {
       console.error('SpaceStore: getSubgroupMessages failed', err);
       return [];

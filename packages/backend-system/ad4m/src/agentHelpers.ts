@@ -1,41 +1,12 @@
 import { Ad4mClient, Link, LinkExpression, Literal } from '@coasys/ad4m';
+import type { AgentProfileSummary, PublishProfileFields } from '@we/backend-shared';
+
+export { isProfileEmpty } from '@we/backend-shared';
+export type { AgentProfileSummary, PublishProfileFields } from '@we/backend-shared';
 import { FILE_STORAGE_LANGUAGE } from '@we/models';
 
 export const WE_PROFILE_SOURCE = 'we://profile';
 export const WE_LOCATION_SOURCE = 'we://location';
-
-export interface AgentProfileSummary {
-  did: string;
-  firstName: string;
-  lastName: string;
-  handle: string;
-  bio: string;
-  avatar?: string; // resolved data URI
-  coverImage?: string; // resolved data URI
-  location?: {
-    latitude: number;
-    longitude: number;
-    city?: string;
-    country?: string;
-  };
-}
-
-/**
- * Fields that can be partially updated in the public perspective.
- * Only keys that are present (even if undefined) are written — absent keys are left unchanged.
- */
-export interface PublishProfileFields {
-  firstName?: string;
-  lastName?: string;
-  handle?: string;
-  bio?: string;
-  /** Raw expression URL for the avatar image (from FILE_STORAGE_LANGUAGE). undefined = remove. */
-  avatarExpressionUrl?: string;
-  /** Raw expression URL for the cover image (from FILE_STORAGE_LANGUAGE). undefined = remove. */
-  coverImageExpressionUrl?: string;
-  /** Location object to write, or null to remove all location links. Omit to leave unchanged. */
-  location?: { latitude: number; longitude: number; city?: string; country?: string } | null;
-}
 
 function parseLiteralTarget(target: string): string {
   if (target.startsWith('literal:')) {
@@ -61,23 +32,6 @@ async function resolveExpressionToDataUri(url: string, client: Ad4mClient): Prom
   } catch {
     return undefined;
   }
-}
-
-/**
- * True if a profile summary has no actual profile data — either the fetch
- * failed/raced, or the agent genuinely hasn't published a profile yet.
- * Used to decide whether a cached entry is worth retrying.
- */
-export function isProfileEmpty(summary: AgentProfileSummary): boolean {
-  return (
-    !summary.firstName &&
-    !summary.lastName &&
-    !summary.handle &&
-    !summary.bio &&
-    !summary.avatar &&
-    !summary.coverImage &&
-    !summary.location
-  );
 }
 
 /**

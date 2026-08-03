@@ -150,6 +150,9 @@ importers:
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
+      '@we/backend-ad4m':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/ad4m
       electron-context-menu:
         specifier: ^4.1.1
         version: 4.1.2
@@ -220,6 +223,9 @@ importers:
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
+      '@we/backend-ad4m':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/ad4m
       graphql:
         specifier: 15.7.2
         version: 15.7.2
@@ -260,6 +266,9 @@ importers:
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
+      '@we/backend-ad4m':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/ad4m
       solid-js:
         specifier: ^1.9.5
         version: 1.9.14

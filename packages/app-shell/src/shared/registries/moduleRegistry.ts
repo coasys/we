@@ -23,7 +23,7 @@
  * registers. That is exactly what makes `{ $if: { condition: { $store: 'modules.notes' } } }` the
  * supported way for a template to depend on an optional module.
  */
-import { getModelPredicates, type ModelClass, registerModel, unregisterModel } from '@we/backend-ad4m';
+import { getModelPredicates, type ModelClass, registerModel, unregisterModel } from '@we/models';
 import {
   checkModuleCompatibility,
   type ModuleDefinition,

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { queryIRFlag } from '@shared/queryIRFlag';
-import { compileManifest, registerModel } from '@we/backend-ad4m';
+import type { ModelManifest, SchemaPort } from '@we/backend-shared';
 import type { DatasetProxy } from '@we/models';
 import { type Accessor, createEffect, createSignal } from 'solid-js';
 
@@ -13,47 +13,51 @@ import { type Accessor, createEffect, createSignal } from 'solid-js';
 // the relation patterns (count / single projection / include) — the trickiest IR mappings.
 // ---------------------------------------------------------------------------
 
-const testModels = compileManifest(
-  {
-    version: '1',
-    entities: {
-      TestChild: {
-        properties: { label: { type: 'string' }, owner: { type: 'string' } },
-        relations: {},
+const TEST_MANIFEST: ModelManifest = {
+  version: '1',
+  entities: {
+    TestChild: {
+      properties: { label: { type: 'string' }, owner: { type: 'string' } },
+      relations: {},
+    },
+    TestItem: {
+      properties: {
+        name: { type: 'string', required: true },
+        status: { type: 'string' },
+        category: { type: 'string' },
       },
-      TestItem: {
-        properties: {
-          name: { type: 'string', required: true },
-          status: { type: 'string' },
-          category: { type: 'string' },
-        },
-        relations: { children: { target: 'TestChild', cardinality: 'many' } },
-      },
+      relations: { children: { target: 'TestChild', cardinality: 'many' } },
     },
   },
-  {
-    moduleId: 'test',
-    predicates: {
-      'TestChild.label': 'we://test_child_label',
-      'TestChild.owner': 'we://test_child_owner',
-      'TestItem.name': 'we://test_name',
-      'TestItem.status': 'we://test_status',
-      'TestItem.category': 'we://test_category',
-      'TestItem.children': 'we://test_child',
-    },
-  },
-);
+};
 
-export const TestChild = testModels.TestChild;
-export const TestItem = testModels.TestItem;
+const TEST_PREDICATES = {
+  'TestChild.label': 'we://test_child_label',
+  'TestChild.owner': 'we://test_child_owner',
+  'TestItem.name': 'we://test_name',
+  'TestItem.status': 'we://test_status',
+  'TestItem.category': 'we://test_category',
+  'TestItem.children': 'we://test_child',
+};
 
 // ---------------------------------------------------------------------------
 // Store factory — test-oriented signals for integration test template
 // ---------------------------------------------------------------------------
 
-export function createTestStore(testPerspective: Accessor<DatasetProxy | null>) {
-  registerModel('TestItem', TestItem as any);
-  registerModel('TestChild', TestChild as any);
+export function createTestStore(testPerspective: Accessor<DatasetProxy | null>, schemas: () => SchemaPort | null) {
+  // Declared lazily: the schemas port only exists once the backend connects, and every action
+  // here runs post-boot. `declare` compiles the manifest and registers the models queryable.
+  let TestItem: any;
+  let TestChild: any;
+  function ensureModels(): boolean {
+    if (TestItem) return true;
+    const port = schemas();
+    if (!port) return false;
+    const classes = port.declare(TEST_MANIFEST, { moduleId: 'test', predicates: TEST_PREDICATES });
+    TestItem = classes.TestItem;
+    TestChild = classes.TestChild;
+    return true;
+  }
 
   // The "current agent" stand-in for the single-projection (`$myChild`) test's `where: { owner }`.
   const queryOwner = 'owner:me';
@@ -125,7 +129,7 @@ export function createTestStore(testPerspective: Accessor<DatasetProxy | null>) 
 
   async function createTestItem() {
     const p = perspective();
-    if (!p) return;
+    if (!p || !ensureModels()) return;
     createdCount++;
     try {
       await TestItem.create(p, {
@@ -152,7 +156,7 @@ export function createTestStore(testPerspective: Accessor<DatasetProxy | null>) 
   //   Alpha (2 children, 1 mine) · Beta (0 children) · Gamma (1 child, mine)
   async function seedQueryData() {
     const p = perspective();
-    if (!p) return;
+    if (!p || !ensureModels()) return;
     try {
       for (const c of await TestChild.findAll(p)) await TestChild.delete(p, c.id);
       for (const it of await TestItem.findAll(p)) await TestItem.delete(p, it.id);
@@ -182,7 +186,7 @@ export function createTestStore(testPerspective: Accessor<DatasetProxy | null>) 
 
   createEffect(() => {
     const p = testPerspective();
-    if (!p) return;
+    if (!p || !ensureModels()) return;
 
     (async () => {
       try {

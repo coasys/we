@@ -4,13 +4,12 @@
  *
  * This is what the backend contract exists to make possible: boot (already-unlocked and
  * lock→login flows), system-dataset creation, dataset switching, and space create/publish/join/
- * remove all run as vitest tests. The model layer is stubbed (Ad4mModel statics are executor
- * RPC by construction — neutralizing them is the compiler's later phase); everything the ports
- * own runs real.
+ * remove all run as vitest tests. The only stub left is the model layer (Ad4mModel statics are
+ * executor RPC by construction — neutralizing them is the entity-engine phase); every port runs
+ * the real in-memory implementation, supplied through the connector exactly as a host would.
  */
 import { render } from '@solidjs/testing-library';
-import { createInMemoryAgentSession, createInMemoryLifecycle, type InMemoryLifecycle } from '@we/backend-inmemory';
-import type { AgentSessionPort } from '@we/backend-shared';
+import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -18,13 +17,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // helpers are stubbed; the template/theme/route stores (not under test) become minimal fakes.
 
 let lifecycle: InMemoryLifecycle;
-let agentSession: AgentSessionPort;
+let agentOptions: InMemoryAgentOptions;
 
 vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
   usePlatform: () => ({ isDesktop: false, isDevelopment: true }),
   useBackend: () => ({
     connect: async () => ({}),
-    ports: () => ({ agentSession, lifecycle }),
+    // The real in-memory bundle — the same thing a backend-less host would supply.
+    ports: (_client: unknown, ctx: { selfId(): string | undefined }) => {
+      const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions });
+      lifecycle = ports.lifecycle;
+      return ports;
+    },
   }),
 }));
 
@@ -73,26 +77,6 @@ vi.mock('@we/models', async (importOriginal) => {
   };
 });
 
-vi.mock('@we/backend-ad4m', async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  return {
-    ...actual,
-    installRootSdna: vi.fn(async () => {}),
-    installSpaceSdna: vi.fn(async () => {}),
-    installModuleSdna: vi.fn(async () => {}),
-    isModelRegistered: vi.fn(async () => true),
-    getForeignShacl: vi.fn(async () => []),
-    getProfile: vi.fn(async (did: string) => ({ did, firstName: 'Test', lastName: '', handle: '', bio: '' })),
-    publishProfileToPublicPerspective: vi.fn(async () => {}),
-    createFileExpression: vi.fn(async () => 'expr://test'),
-    createAd4mEphemeralPort: () => ({
-      join: async () => () => {},
-      send: async () => {},
-      onMessage: () => () => {},
-    }),
-  };
-});
-
 // ── Harness ───────────────────────────────────────────────────────────────────
 import { BootController } from '../src/frameworks/solid/providers/BootController';
 import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
@@ -138,8 +122,7 @@ function mountShell(): Stores {
 const ready = (stores: Stores) => vi.waitFor(() => expect(stores.session.bootState()).toBe('ready'), { timeout: 5000 });
 
 beforeEach(() => {
-  lifecycle = createInMemoryLifecycle();
-  agentSession = createInMemoryAgentSession({ id: 'did:test:james', unlocked: true });
+  agentOptions = { id: 'did:test:james', unlocked: true };
   navigate.mockClear();
 });
 
@@ -158,7 +141,7 @@ describe('boot', () => {
   });
 
   it('walks the lock → login flow, including a failed password', async () => {
-    agentSession = createInMemoryAgentSession({ unlocked: false, password: 'secret' });
+    agentOptions = { unlocked: false, password: 'secret' };
     const stores = mountShell();
 
     await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
@@ -172,7 +155,7 @@ describe('boot', () => {
   });
 
   it('routes to agent creation when no agent exists', async () => {
-    agentSession = createInMemoryAgentSession({ hasAgent: false });
+    agentOptions = { hasAgent: false };
     const stores = mountShell();
     await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
   });

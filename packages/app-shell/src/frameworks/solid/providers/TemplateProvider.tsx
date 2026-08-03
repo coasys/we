@@ -17,14 +17,13 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
-import { createAd4mDataBindings } from '@we/backend-ad4m';
-import { getModel } from '@we/backend-ad4m';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/models';
+import { getModel } from '@we/models';
 import type { TemplateSchema } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
-import { createEffect, createSignal, onMount, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, onMount, Show } from 'solid-js';
 
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
@@ -102,18 +101,36 @@ export default function TemplateProvider() {
     // Template-facing vocabulary (templates read `$me.did`), as opposed to the renderer-facing
     // bindings below: the renderer never reads `$me` itself, it resolves like any `$store` path.
     $me: sessionStore.me,
-    // Everything the *renderer* needs to read data, from the AD4M adapter — model resolution, the
-    // dataset handle, the identity directory, and the query adapter. One artifact, so another
-    // backend has a single thing to implement and this provider stays about rendering. Composed
-    // explicitly from the owning stores — exactly the four accessors the adapter declares.
-    ...createAd4mDataBindings({
-      currentPerspective: datasetStore.currentDataset,
-      currentPerspectiveModels: datasetStore.currentDatasetModels,
-      agents: profileStore.profiles,
-      fetchAgent: profileStore.fetchProfile,
-      ephemeralPort: sessionStore.ephemeralPort,
-    }),
+    // Everything the *renderer* needs to read data comes from the connector-supplied backend —
+    // model resolution, the dataset handle, the identity directory, and the query adapter. The
+    // bindings can only be built once the connector's ports exist (post-connect), while this bag
+    // is created at provider init — so the known binding keys are getter-delegated onto a memo.
+    // Pre-connect they read as absent, which is each consumer's documented degradation mode.
   };
+
+  const boundBindings = createMemo(() =>
+    sessionStore.backendPorts()?.dataBindings({
+      currentDataset: datasetStore.currentDataset,
+      currentDatasetModels: datasetStore.currentDatasetModels,
+      profiles: profileStore.profiles,
+      fetchProfile: profileStore.fetchProfile,
+      ephemeral: sessionStore.ephemeralPort,
+    }),
+  );
+  const BINDING_KEYS = [
+    '$getModel',
+    '$getModelForPerspective',
+    '$currentDataset',
+    '$identities',
+    '$queryAdapter',
+    '$ephemeral',
+  ] as const;
+  for (const key of BINDING_KEYS) {
+    Object.defineProperty(stores, key, {
+      enumerable: true,
+      get: () => (boundBindings() as Record<string, unknown> | undefined)?.[key],
+    });
+  }
 
   // Resolves a dot-path string like 'datasetStore.rootDataset' against the stores object.
   // Only called at action-dispatch time, so `stores` is always fully initialized.
@@ -126,6 +143,8 @@ export default function TemplateProvider() {
     return typeof val === 'function' ? val() : (val ?? null);
   }
 
+  // Mutations need the raw model class (create/update/delete), not the renderer's read-only
+  // handle — resolved through the model layer's own registry.
   function resolve(modelName: string, opts?: { perspective?: string }) {
     return [getModel(modelName), resolvePerspective(opts?.perspective) ?? datasetStore.currentDataset()!] as const;
   }

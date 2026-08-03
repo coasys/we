@@ -1,4 +1,5 @@
 import { Ad4mModel, type LinkExpression, LinkQuery, Literal, PerspectiveProxy } from '@coasys/ad4m';
+import { getModelTargetClass } from '@we/models';
 import {
   AgentSettings,
   AudioBlock,
@@ -41,30 +42,6 @@ export const ROOT_MODELS = [
   Theme,
   LocationBlock,
 ] as const;
-
-/**
- * Every predicate a model class writes — the `through:` of each declared property and relation.
- *
- * Lives here because only the adapter that understands a model class can read them off it. The rule
- * about *which* predicates a module may mint is backend-neutral and lives in `@we/module-shared`
- * (`modulePredicateViolations`); this supplies the input.
- *
- * Reads the generated SHACL rather than the decorator metadata, because that is the shape actually
- * written to the perspective — if a property is declared but doesn't reach the shape, it isn't a
- * predicate anyone will find data under, and shouldn't be judged as one.
- */
-export function getModelPredicates(m: typeof Ad4mModel): string[] {
-  const shaped = m as unknown as {
-    generateSHACL: () => { shape: { properties?: { path?: string }[] } | null };
-  };
-  const properties = shaped.generateSHACL().shape?.properties ?? [];
-  return properties.map((p) => p.path).filter((p): p is string => typeof p === 'string');
-}
-
-export function getModelTargetClass(m: typeof Ad4mModel): string | undefined {
-  const anyClass = m as unknown as { generateSHACL: () => { shape: { targetClass?: string } | null } };
-  return anyClass.generateSHACL().shape?.targetClass;
-}
 
 /**
  * Checks for the exact `targetClass —rdf://type→ ad4m://SubjectClass` link that ad4m-core's

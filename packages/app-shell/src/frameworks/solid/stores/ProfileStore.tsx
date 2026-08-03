@@ -6,14 +6,7 @@
  * and owns the own-profile write path (text fields, images, location). Identity itself (`me`,
  * the DID) belongs to SessionStore — this store is about the human-facing profile data.
  */
-import {
-  type AgentProfileSummary,
-  createFileExpression,
-  getProfile,
-  isProfileEmpty,
-  type PublishProfileFields,
-  publishProfileToPublicPerspective,
-} from '@we/backend-ad4m';
+import { type AgentProfileSummary, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
 import { compressImageToFileData } from '@we/models';
 import { Accessor, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
@@ -68,10 +61,11 @@ export function ProfileStoreProvider(props: ParentProps) {
     const existing = inflightFetches.get(cleanedDid);
     if (existing) return existing;
 
-    const client = session.client();
-    if (!client) return;
+    const profilePort = session.backendPorts()?.profiles;
+    if (!profilePort) return;
 
-    const promise = getProfile(cleanedDid, client)
+    const promise = profilePort
+      .get(cleanedDid)
       .then((summary) => {
         setProfiles((prev) => {
           const idx = prev.findIndex((a) => a.did === cleanedDid);
@@ -98,14 +92,14 @@ export function ProfileStoreProvider(props: ParentProps) {
    */
   async function updateProfileImage(field: 'avatar' | 'coverImage', imageFile: File): Promise<void> {
     const myDid = session.me()?.did;
-    const client = session.client();
-    if (!myDid || !client) return;
+    const profilePort = session.backendPorts()?.profiles;
+    if (!myDid || !profilePort) return;
 
     const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'profile-image' : 'cover-image');
     // data_base64 from compressImageToFileData is raw base64 (no "data:" prefix) — rebuild the data URI
-    // the same way resolveExpressionToDataUri does when reading it back after a refetch.
+    // the same way the read path does when resolving it back after a refetch.
     const dataUri = `data:${fileData.file_type};base64,${fileData.data_base64}`;
-    const expressionUrl = await createFileExpression(client, JSON.stringify(fileData));
+    const expressionUrl = await profilePort.uploadFile(JSON.stringify(fileData));
 
     setProfiles((prev) => {
       const existing = prev.find((a) => a.did === myDid);
@@ -114,7 +108,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     });
 
     const publishKey = field === 'avatar' ? 'avatarExpressionUrl' : 'coverImageExpressionUrl';
-    await publishProfileToPublicPerspective({ [publishKey]: expressionUrl } as PublishProfileFields, client);
+    await profilePort.publish({ [publishKey]: expressionUrl } as PublishProfileFields);
   }
 
   /**
@@ -129,8 +123,8 @@ export function ProfileStoreProvider(props: ParentProps) {
     countryCode?: string;
   }): Promise<void> {
     const myDid = session.me()?.did;
-    const client = session.client();
-    if (!myDid || !client) return;
+    const profilePort = session.backendPorts()?.profiles;
+    if (!myDid || !profilePort) return;
 
     const existingLoc = profiles().find((a) => a.did === myDid)?.location;
     const lat = update.latitude ?? existingLoc?.latitude;
@@ -150,7 +144,7 @@ export function ProfileStoreProvider(props: ParentProps) {
       return [...prev.filter((a) => a.did !== myDid), { ...agent, location: merged }];
     });
 
-    await publishProfileToPublicPerspective({ location: merged }, client);
+    await profilePort.publish({ location: merged });
   }
 
   /**
@@ -161,8 +155,8 @@ export function ProfileStoreProvider(props: ParentProps) {
     fields: Pick<AgentProfileSummary, 'firstName' | 'lastName' | 'handle' | 'bio'>,
   ): Promise<void> {
     const myDid = session.me()?.did;
-    const client = session.client();
-    if (!myDid || !client) return;
+    const profilePort = session.backendPorts()?.profiles;
+    if (!myDid || !profilePort) return;
 
     setProfiles((prev) => {
       const existing = prev.find((a) => a.did === myDid);
@@ -176,7 +170,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     if ('handle' in fields) publishFields.handle = fields.handle;
     if ('bio' in fields) publishFields.bio = fields.bio;
 
-    await publishProfileToPublicPerspective(publishFields, client);
+    await profilePort.publish(publishFields);
   }
 
   const store: ProfileStore = {

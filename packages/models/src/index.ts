@@ -50,3 +50,4 @@ export { decodeFileAsString, decodeFileAsJson } from './utils/fileTransforms';
 // directly (@coasys imports are confined to this package, backend-ad4m, and ad4m-declaring modules).
 export type { PerspectiveProxy as DatasetProxy } from '@coasys/ad4m';
 export type { Ad4mModel } from '@coasys/ad4m';
+export * from './modelRegistry';

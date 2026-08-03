@@ -105,3 +105,14 @@ export type {
   DatasetLifecyclePort,
   DatasetRef,
 } from './lifecycle';
+export type { ModelManifestEntry, ModelManifestProperty } from './manifestEntry';
+export { isProfileEmpty } from './profileTypes';
+export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
+export type {
+  BackendInterop,
+  BackendPorts,
+  BackendPortsContext,
+  DataBindingDeps,
+  ProfileDirectoryPort,
+  SchemaPort,
+} from './backendPorts';

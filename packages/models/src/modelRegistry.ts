@@ -68,3 +68,24 @@ export function getModelForPerspective(name: string, dataset?: unknown): ModelCl
   }
   return undefined;
 }
+
+// ─── Class introspection (used for predicate enforcement + schema tooling) ────
+
+/**
+ * Every predicate a model class writes — the `through:` of each declared property and relation.
+ * Reads the generated schema rather than the decorator metadata, because that is the shape
+ * actually written to the dataset — if a property is declared but doesn't reach the shape, it
+ * isn't a predicate anyone will find data under, and shouldn't be judged as one.
+ */
+export function getModelPredicates(m: typeof Ad4mModel): string[] {
+  const shaped = m as unknown as {
+    generateSHACL: () => { shape: { properties?: { path?: string }[] } | null };
+  };
+  const properties = shaped.generateSHACL().shape?.properties ?? [];
+  return properties.map((p) => p.path).filter((p): p is string => typeof p === 'string');
+}
+
+export function getModelTargetClass(m: typeof Ad4mModel): string | undefined {
+  const anyClass = m as unknown as { generateSHACL: () => { shape: { targetClass?: string } | null } };
+  return anyClass.generateSHACL().shape?.targetClass;
+}
