@@ -468,6 +468,9 @@ importers:
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../shared
+      '@we/models':
+        specifier: workspace:*
+        version: link:../../models
     devDependencies:
       '@types/node':
         specifier: ^24.10.0

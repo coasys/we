@@ -126,6 +126,7 @@ export function createInMemoryBackend(config: BackendConfig) {
   };
 }
 
+export { compileEntities, type EntityClassLike, type EntityRuntime } from './entities';
 export {
   createInMemoryAgentSession,
   createInMemoryBackendPorts,
