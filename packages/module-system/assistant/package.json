@@ -1,0 +1,34 @@
+{
+  "name": "@we/module-assistant",
+  "version": "0.1.0",
+  "description": "AI-assistant feature module — threads/messages rendered from the dataset, replies written by the backend",
+  "type": "module",
+  "exports": {
+    ".": { "import": "./src/index.ts", "types": "./src/index.ts" }
+  },
+  "scripts": { "test": "vitest run" },
+  "peerDependencies": {
+    "@coasys/ad4m": "*",
+    "@we/components": "workspace:*",
+    "@we/design-utils": "workspace:*",
+    "@we/models": "workspace:*",
+    "@we/module-shared": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "solid-js": "^1.9.5"
+  },
+  "devDependencies": {
+    "@coasys/ad4m": "0.11.0",
+    "@solidjs/testing-library": "^0.8.10",
+    "@types/node": "^24.10.0",
+    "@we/components": "workspace:*",
+    "@we/design-utils": "workspace:*",
+    "@we/models": "workspace:*",
+    "@we/module-shared": "workspace:*",
+    "@we/primitives": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "jsdom": "^27.2.0",
+    "solid-js": "^1.9.5",
+    "vite-plugin-solid": "^2.11.10",
+    "vitest": "^4.0.15"
+  }
+}
