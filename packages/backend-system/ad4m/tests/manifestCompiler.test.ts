@@ -12,7 +12,7 @@ import type { Ad4mModel, SHACLShape } from '@coasys/ad4m';
 import { FILE_STORAGE_LANGUAGE, getModelPredicates } from '@we/models';
 import { describe, expect, it } from 'vitest';
 
-import { buildModelFromEntry, compileManifest, manifestToEntries } from '../src/manifestCompiler';
+import { buildModelFromEntry, compileManifest, CORE_VOCABULARY, manifestToEntries } from '../src/manifestCompiler';
 import { buildModelManifest } from '../src/perspectiveHelpers';
 import { ROOT_MODELS, SPACE_MODELS } from '../src/sdnaModels';
 
@@ -123,17 +123,29 @@ describe('compileManifest — module-declared entities', () => {
     },
   };
 
-  it('mints predicates under the module subtree and reuses core vocabulary', () => {
+  it('mints every predicate inside the module subtree, sharing nothing by accident', () => {
     const entries = manifestToEntries(manifest, { moduleId: 'notes' });
     const note = entries.find((e) => e.name === 'Note')!;
     const byName = Object.fromEntries(note.properties.map((p) => [p.name, p.predicate]));
-    // Core vocabulary reused where the property name matches its meaning…
-    expect(byName.title).toBe('we://title');
-    expect(byName.content).toBe('we://content');
-    // …novel properties mint in the module's subtree, snake_cased.
+
+    // Names that happen to match core vocabulary are NOT quietly bound to it: a module's `title`
+    // is its own until the author says otherwise. Predicates are a one-way door, so inheriting a
+    // shared name by accident is not a trade the compiler gets to make.
+    expect(byName.title).toBe('we://module/notes/title');
+    expect(byName.content).toBe('we://module/notes/content');
     expect(byName.pinned).toBe('we://module/notes/pinned');
     expect(byName.viewCount).toBe('we://module/notes/view_count');
     expect(byName.attachments).toBe('we://module/notes/attachments');
+  });
+
+  it('shares a core predicate when the declaration asks for it', () => {
+    // Opting in is what makes generic UI keyed on `we://name` work against a module's entity.
+    const entries = manifestToEntries(manifest, {
+      moduleId: 'notes',
+      predicates: { 'Note.title': CORE_VOCABULARY.title },
+    });
+    const note = entries.find((e) => e.name === 'Note')!;
+    expect(note.properties.find((p) => p.name === 'title')!.predicate).toBe('we://title');
   });
 
   it('honours explicit predicate overrides', () => {

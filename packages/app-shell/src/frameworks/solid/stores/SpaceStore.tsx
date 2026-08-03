@@ -258,7 +258,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       let publishedSharedId: string | undefined;
 
       // Register SDNA models (full set, same as switchDataset uses)
-      await session.backendPorts()!.schemas.installSpace(spaceHandle, moduleRegistry.models());
+      const schemas = session.backendPorts()!.schemas;
+      await schemas.installSpace(spaceHandle, moduleRegistry.moduleSchemas(schemas));
 
       // If shared, publish — capture the returned URL so it can be stored on the Space model
       // (the dataset handle's own sharedUrl is not updated in-place).
@@ -333,7 +334,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!ds) throw new Error('SpaceStore: initializeAsWeSpace called with no active dataset');
 
     // Additive/idempotent — does not remove or touch the dataset's existing foreign SDNA.
-    await session.backendPorts()!.schemas.installSpace(ds.handle, moduleRegistry.models());
+    const initSchemas = session.backendPorts()!.schemas;
+    await initSchemas.installSpace(ds.handle, moduleRegistry.moduleSchemas(initSchemas));
 
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
@@ -395,7 +397,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       // immediately. installSpace diffs against the dataset's actual state before writing,
       // so this is safe to call unconditionally even when the space's creator or an earlier
       // joiner already installed it — it won't write a duplicate copy.
-      await session.backendPorts()!.schemas.installSpace(joinedHandle, moduleRegistry.models());
+      const joinSchemas = session.backendPorts()!.schemas;
+      await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
 
       // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
       // the seed-configured global/marketplace slots) update with the join.

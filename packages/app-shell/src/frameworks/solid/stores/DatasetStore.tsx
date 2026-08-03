@@ -382,7 +382,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       let weSpace = await schemas.hasCoreSchema(handle);
       if (!weSpace) {
         if (!(await schemas.hasAnySchema(handle))) {
-          await schemas.installSpace(handle, moduleRegistry.models());
+          await schemas.installSpace(handle, moduleRegistry.moduleSchemas(schemas));
           weSpace = await schemas.hasCoreSchema(handle);
         }
       } else {
@@ -391,7 +391,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         // stored for class X" in a dataset that otherwise looks healthy. Module shapes therefore
         // install on every switch; the port diffs before writing, so this is a read in the
         // common case.
-        await schemas.installModules(handle, moduleRegistry.models());
+        await schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas));
       }
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes

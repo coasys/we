@@ -21,16 +21,16 @@
     "build": "we-build",
     "dev": "tsup --watch"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@we/backend-shared": "workspace:*"
+  },
   "peerDependencies": {
     "@we/schema-shared": "workspace:*",
-    "@coasys/ad4m": "*",
     "@we/module-shared": "workspace:*"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/schema-shared": "workspace:*",
-    "@coasys/ad4m": "0.11.0",
     "tsup": "^8.0.0",
     "typescript": "^5.3.3",
     "@we/module-shared": "workspace:*"

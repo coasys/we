@@ -19,10 +19,14 @@ import { FILE_STORAGE_LANGUAGE } from '@we/models';
 import type { ModelManifestEntry } from './manifestTypes';
 
 /**
- * Core predicates a manifest property reuses by name instead of minting its own — the module
- * convention's "reuse core vocabulary where semantics match", made deterministic. A module
- * property called `name` means what `we://name` means; generic UI keyed on the core vocabulary
- * then works on module entities for free.
+ * WE's core vocabulary, for a declaration that genuinely wants to *share* a predicate rather than
+ * mint its own — `predicates: { 'Note.name': CORE_VOCABULARY.name }`.
+ *
+ * Deliberately NOT applied automatically. Reuse is right when the semantics really match (generic
+ * UI keyed on `we://name` then works on the entity for free) and wrong the moment they merely
+ * share a word: a module declaring `text` means *its* text, not `TextBlock`'s. Predicates are how
+ * existing data is found, so an author must not discover they inherited a shared name — the
+ * default mints inside the module's own subtree, and sharing is something you ask for.
  */
 export const CORE_VOCABULARY: Record<string, string> = {
   name: 'we://name',
@@ -125,7 +129,7 @@ export function buildModelFromEntry(
 export function manifestToEntries(manifest: ModelManifest, opts: CompileManifestOptions): ModelManifestEntry[] {
   const prefix = `we://module/${opts.moduleId}/`;
   const resolvePredicate = (entity: string, prop: string): string =>
-    opts.predicates?.[`${entity}.${prop}`] ?? CORE_VOCABULARY[prop] ?? `${prefix}${snakeCase(prop)}`;
+    opts.predicates?.[`${entity}.${prop}`] ?? `${prefix}${snakeCase(prop)}`;
 
   return Object.entries(manifest.entities).map(([name, entity]) => ({
     name,

@@ -21,7 +21,7 @@
  * just components that never update. A module with no framework imports cannot have that problem.
  * Fragments-first is what makes dynamic loading tractable later.
  */
-import type { Activity, DatasetHandle, EphemeralPort, Peer } from '@we/backend-shared';
+import type { Activity, DatasetHandle, EphemeralPort, ModelManifest, Peer } from '@we/backend-shared';
 import type { SchemaNode } from '@we/schema-shared';
 
 /**
@@ -153,6 +153,25 @@ export interface ModuleDefinition {
    * {@link modulePredicateViolations}, which the registry runs at registration.
    */
   models?: unknown[];
+
+  /**
+   * Entity types this module owns, **declared** rather than written against a backend.
+   *
+   * This is what `models` should have been. A manifest states what the entity *is* — its scalar
+   * properties, its typed relations, which of them hold files — and each backend compiles that
+   * into whatever it installs. A module declaring entities this way imports no backend SDK, so it
+   * does not declare `backends` either: it runs wherever the host does.
+   *
+   * Predicates are minted for you under `we://module/<id>/<property>`, with core vocabulary
+   * (`we://name`, `we://title`, …) reused where the property name matches. `predicates` overrides
+   * an individual binding — necessary when adopting a manifest for entities that already have
+   * data written under a different name.
+   */
+  entities?: {
+    manifest: ModelManifest;
+    /** Explicit predicate bindings, keyed `"Entity.property"`. */
+    predicates?: Record<string, string>;
+  };
 
   /**
    * A whole application embedded in an iframe, rather than components and fragments.

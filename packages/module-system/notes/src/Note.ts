@@ -1,56 +1,43 @@
-import { Ad4mModel, Model, Property } from '@coasys/ad4m';
+import type { ModelManifest } from '@we/backend-shared';
 
 /**
- * A note, scoped to whichever space it was written in.
+ * A note, scoped to whichever space it was written in — *declared*, not written against a backend.
  *
  * ## The predicate namespace — a one-way door
  *
- * `we://module/<moduleId>/<property>`, and this is the first module to own entities, so **whatever
- * is chosen here becomes the convention**. It is worth stating the reasoning rather than letting it
- * be inferred:
+ * `we://module/<moduleId>/<property>`, and this is the first module to own entities, so whatever
+ * is chosen here becomes the convention. The reasoning, stated rather than inferred:
  *
  * - **One root for the ecosystem.** Everything WE writes lives under `we://`, so anything asking
- *   "is this WE data?" — tooling, a migration, an agent filtering a perspective — greps one prefix.
- *   A separate `module://` scheme (which this convention briefly used) fragments that for no gain.
+ *   "is this WE data?" — tooling, a migration, an agent filtering a dataset — greps one prefix.
  * - **`module/<id>` is a delegated subtree.** `we://<word>` is core vocabulary, adjudicated by WE;
  *   `we://module/<id>/…` is adjudicated by module-id uniqueness, which the registry already
  *   enforces. The namespace *shape* documents who governs what.
  * - **Mint here, but reuse the core freely.** A module may use `we://name` when its entity really
- *   has a name — that is shared vocabulary working as intended, and generic UI that displays names
- *   gets this entity for free. What a module may not do is *mint* a new name outside its own
- *   subtree, because there is no adjudicator for that.
- * - **Ownership, not status.** These stay `we://module/notes/*` even if notes were later bundled by
- *   default or promoted to core — predicates are identifiers, not documentation. The asymmetry
- *   matters: promoting later is harmless, but something that shipped with core-namespace predicates
- *   and then needed to become optional would have squatted the core namespace permanently. When in
- *   doubt, module namespace.
- * - **Stable forever.** Predicates are how existing data is found. Changing the scheme — even
- *   "improving" it — orphans every note anyone has written, silently, because the links are still
- *   there and simply no longer match. Version the scheme if it ever must change; never edit it in
- *   place.
+ *   has a name — shared vocabulary working as intended, and generic UI that displays names gets
+ *   this entity for free. What it may not do is *mint* a name outside its own subtree.
+ * - **Ownership, not status.** These stay `we://module/notes/*` even if notes were later bundled
+ *   by default: predicates are identifiers, not documentation.
+ * - **Stable forever.** Predicates are how existing data is found. Changing the scheme orphans
+ *   every note anyone has written, silently, because the links are still there and no longer
+ *   match. Version the scheme if it must change; never edit it in place.
  *
- * ## Why this file imports AD4M
- *
- * There is no manifest→SDNA compiler yet: `buildModelClasses` goes SHACL → classes, and
- * `installSpaceSdna` takes decorated classes, so declaring a *new* entity means writing one. That is
- * why the module declares `backends: ['ad4m']` — the escape hatch working as designed, keeping
- * entity-owning modules unblocked while making the coupling visible at install rather than implicit.
- *
- * When the compiler lands, this becomes a neutral declaration and the predicates above become the
- * AD4M adapter's binding table — generated deterministically from exactly this scheme.
+ * The compiler mints exactly this scheme from the manifest below — `text` becomes
+ * `we://module/notes/text` — so the declaration and the convention cannot drift apart. Nothing
+ * here names a backend: the host compiles this through whichever schema port is connected, which
+ * is why this module declares no `backends`.
  */
+export const NOTE_MANIFEST: ModelManifest = {
+  version: '1',
+  entities: {
+    Note: {
+      properties: { text: { type: 'string' } },
+      relations: {},
+    },
+  },
+};
 
-/**
- * The predicates this module owns, named rather than inlined so the scheme is greppable and testable.
- * Generated deterministically as `we://module/<moduleId>/<property>` — the same rule an AD4M adapter
- * would apply once a manifest→SDNA compiler exists.
- */
+/** The predicates this module owns — named so the scheme stays greppable and testable. */
 export const NOTE_PREDICATES = {
   text: 'we://module/notes/text',
 } as const;
-
-@Model({ name: 'Note' })
-export class Note extends Ad4mModel {
-  @Property({ through: NOTE_PREDICATES.text })
-  text: string = '';
-}

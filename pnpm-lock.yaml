@@ -975,10 +975,11 @@ importers:
         version: 1.9.14
 
   packages/module-system/notes:
+    dependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../backend-system/shared
     devDependencies:
-      '@coasys/ad4m':
-        specifier: 0.13.0-test-9
-        version: 0.13.0-test-9
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli

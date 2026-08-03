@@ -29,9 +29,9 @@
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 import { type SchemaNode } from '@we/schema-shared';
 
-import { Note, NOTE_PREDICATES } from './Note';
+import { NOTE_MANIFEST, NOTE_PREDICATES } from './Note';
 
-export { Note, NOTE_PREDICATES };
+export { NOTE_MANIFEST, NOTE_PREDICATES };
 
 /**
  * The docked panel.
@@ -172,13 +172,9 @@ export const notesModule = defineModule({
   // are the two things a user is actually agreeing to.
   capabilities: ['storage', 'slot:dock-right'],
 
-  // Declared because this module owns entities and there is no manifest→SDNA compiler yet. The
-  // coupling is visible at install rather than discovered later.
-  backends: ['ad4m'],
-
   // No `frameworks` — every piece of UI here is a fragment, so this module is framework-agnostic.
 
-  models: [Note],
+  entities: { manifest: NOTE_MANIFEST },
   schemas: { toggleButton },
   slots: [{ anchor: 'dock-right', node: panel, order: 100 }],
 
