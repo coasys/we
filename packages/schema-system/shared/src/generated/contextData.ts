@@ -2086,7 +2086,6 @@ export const contextData: ContextData = {
         shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         operationLoading: { type: 'boolean' },
-        activeShellView: { type: 'string' },
         templateManagementList: {
           type: 'array',
           properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault'],
@@ -2101,8 +2100,6 @@ export const contextData: ContextData = {
         'toggleInstalled',
         'setDefaultTemplate',
         'deleteTemplate',
-        'openShellView',
-        'closeShellView',
       ],
     },
     {
@@ -2203,6 +2200,11 @@ export const contextData: ContextData = {
         'undo',
         'redo',
       ],
+    },
+    {
+      name: 'shellStore',
+      state: { activeShellView: { type: 'string' } },
+      actions: ['openShellView', 'closeShellView', 'scrollToId'],
     },
     {
       name: 'appStore',

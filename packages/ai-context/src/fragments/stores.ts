@@ -96,7 +96,6 @@ export const storeEntries: StoreEntry[] = [
       shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       operationLoading: { type: 'boolean' },
-      activeShellView: { type: 'string' },
       templateManagementList: {
         type: 'array',
         properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault'],
@@ -111,8 +110,6 @@ export const storeEntries: StoreEntry[] = [
       'toggleInstalled',
       'setDefaultTemplate',
       'deleteTemplate',
-      'openShellView',
-      'closeShellView',
     ],
   },
   {
@@ -223,6 +220,13 @@ export const storeEntries: StoreEntry[] = [
       'undo',
       'redo',
     ],
+  },
+  {
+    name: 'shellStore',
+    state: {
+      activeShellView: { type: 'string' },
+    },
+    actions: ['openShellView', 'closeShellView', 'scrollToId'],
   },
   {
     name: 'appStore',
@@ -358,8 +362,6 @@ function generateStoresText(entries: StoreEntry[]): string {
         allTemplates: 'array of TemplateSchema objects — union of built-in + personal + space templates',
         shellTemplates: 'array of TemplateSchema objects (static system pages: profile, settings, tests)',
         currentTemplate: 'TemplateSchema (the active template)',
-        activeShellView:
-          "string | null (id of the currently open shell overlay: 'profile' | 'settings' | 'schema-tests' | 'landing-page' | null)",
         templateManagementList:
           'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)',
         switcherGroups:
@@ -370,9 +372,6 @@ function generateStoresText(entries: StoreEntry[]): string {
         switchTemplate: '(newTemplateId: string): switches to another template',
         removeTemplate: '(): removes the current template',
         saveTemplate: '(name: string): saves the current template',
-        openShellView:
-          "(id: string): opens a shell overlay by id ('profile' | 'settings' | 'schema-tests' | 'landing-page')",
-        closeShellView: '(): closes the currently open shell overlay',
       },
     },
     spaceStore: {
@@ -439,6 +438,17 @@ function generateStoresText(entries: StoreEntry[]): string {
         toggle: '(): toggles the AI chat panel open/closed',
         undo: '(): undoes the last schema edit',
         redo: '(): redoes the last undone schema edit',
+      },
+    },
+    shellStore: {
+      state: {
+        activeShellView:
+          "string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null",
+      },
+      actions: {
+        openShellView: '(id: string): opens a shell overlay by id',
+        closeShellView: '(): closes the currently open shell overlay',
+        scrollToId: '(id: string): smooth-scrolls the element with that DOM id into view',
       },
     },
     appStore: {

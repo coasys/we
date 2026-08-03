@@ -140,7 +140,7 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
 
   // Exit template editing when a shell view (settings, profile, marketplace) opens.
   createEffect(() => {
-    if (stores.templateStore.activeShellView()) stores.editSessionStore.exitTemplateEditing();
+    if (stores.shellStore.activeShellView()) stores.editSessionStore.exitTemplateEditing();
   });
 
   // Scoped space theme — applied to the template content area only.
@@ -208,7 +208,7 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
         <EditorOverlay />
 
         {/* Shell overlay rendered above the template */}
-        <Show when={stores.templateStore.activeShellView()} keyed>
+        <Show when={stores.shellStore.activeShellView()} keyed>
           {(shellViewId) => {
             const view = shellViews[shellViewId];
             if (!view) return null;

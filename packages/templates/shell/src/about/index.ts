@@ -381,7 +381,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
           variant: 'outline',
           // gradient: true,
           // size: 'sm',
-          onClick: { $action: 'templateStore.scrollToId', args: [card.id] },
+          onClick: { $action: 'shellStore.scrollToId', args: [card.id] },
         },
       },
     ],
@@ -1494,7 +1494,7 @@ export const landingPageTemplate: TemplateSchema = {
               props: {
                 text: 'Back to WE',
                 variant: 'secondary',
-                onClick: { $action: 'templateStore.closeShellView', args: [] },
+                onClick: { $action: 'shellStore.closeShellView', args: [] },
               },
             },
           ],

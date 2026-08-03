@@ -23,10 +23,7 @@ export const templateEditor: SchemaNode = {
           type: '$if',
           props: {
             condition: {
-              $and: [
-                { $not: { $store: 'appStore.activeAppId' } },
-                { $not: { $store: 'templateStore.activeShellView' } },
-              ],
+              $and: [{ $not: { $store: 'appStore.activeAppId' } }, { $not: { $store: 'shellStore.activeShellView' } }],
             },
             then: { type: 'DesignToolbar' },
           },

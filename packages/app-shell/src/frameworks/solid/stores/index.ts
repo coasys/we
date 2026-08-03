@@ -8,4 +8,5 @@ export { type RouteStore, useRouteStore, RouteStoreProvider } from './RouteStore
 export { type EditSessionStore, useEditSessionStore, EditSessionStoreProvider } from './EditSessionStore';
 export { type AppStore, useAppStore, AppStoreProvider } from './AppStore';
 export { type PresenceStore, type PresentAgent, usePresenceStore, PresenceStoreProvider } from './PresenceStore';
+export { type ShellStore, useShellStore, ShellStoreProvider } from './ShellStore';
 export { useShellRouteStore, ShellRouteStoreProvider, ShellRouterRoot } from './ShellRouteStore';

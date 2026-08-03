@@ -34,6 +34,7 @@ import { useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
+import { useShellStore } from './ShellStore';
 import { useTemplateStore } from './TemplateStore';
 import { useThemeStore } from './ThemeStore';
 
@@ -140,6 +141,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const routeStore = useRouteStore();
   const templateStore = useTemplateStore();
   const themeStore = useThemeStore();
+  const shellStore = useShellStore();
 
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [creatingSpace, setCreatingSpace] = createSignal(false);
@@ -549,7 +551,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const segs = routeStore.segments();
     const currentView = view ?? (segs[0] === 'space' && segs[2] ? segs[2] : 'about');
     const targetPath = '/space/' + spaceId + '/' + currentView;
-    templateStore.closeShellView();
+    shellStore.closeShellView();
     routeStore.navigate(targetPath);
     // Notify embedded app iframes (e.g. Flux) after the dataset has switched
     broadcastPerspectiveNavigation(spaceId);

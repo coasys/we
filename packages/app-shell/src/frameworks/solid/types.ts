@@ -7,6 +7,7 @@ import type {
   ProfileStore,
   RouteStore,
   SessionStore,
+  ShellStore,
   SpaceStore,
   TemplateStore,
   ThemeStore,
@@ -57,6 +58,7 @@ export interface Stores extends RendererStores {
   themeStore: ThemeStore;
   templateStore: TemplateStore;
   routeStore: RouteStore;
+  shellStore: ShellStore;
   presenceStore: PresenceStore;
   model?: ModelStore;
   /** Neutral identity — the current agent (templates read `$me.did`). Backed by `sessionStore.me`;

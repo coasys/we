@@ -11,6 +11,7 @@ import {
   useProfileStore,
   useRouteStore,
   useSessionStore,
+  useShellStore,
   useSpaceStore,
   useTemplateStore,
   useThemeStore,
@@ -40,6 +41,7 @@ export default function TemplateProvider() {
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
   const routeStore = useRouteStore();
+  const shellStore = useShellStore();
   const presenceStore = usePresenceStore();
 
   // Set CSS custom property on :root so position:fixed elements (e.g. CesiumGlobe canvas)
@@ -85,6 +87,7 @@ export default function TemplateProvider() {
     themeStore,
     templateStore,
     routeStore,
+    shellStore,
     presenceStore,
     // Always present, even with no modules registered: `{ $store: 'modules.x' }` resolves through the
     // single-segment path, which indexes the store object without a guard and would throw on a

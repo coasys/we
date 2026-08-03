@@ -5478,9 +5478,6 @@
         "operationLoading": {
           "type": "boolean"
         },
-        "activeShellView": {
-          "type": "string"
-        },
         "templateManagementList": {
           "type": "array",
           "properties": ["id", "name", "icon", "description", "isBuiltIn", "isInstalled", "isDefault"]
@@ -5497,9 +5494,7 @@
         "saveTemplate",
         "toggleInstalled",
         "setDefaultTemplate",
-        "deleteTemplate",
-        "openShellView",
-        "closeShellView"
+        "deleteTemplate"
       ]
     },
     {
@@ -5683,6 +5678,15 @@
         "undo",
         "redo"
       ]
+    },
+    {
+      "name": "shellStore",
+      "state": {
+        "activeShellView": {
+          "type": "string"
+        }
+      },
+      "actions": ["openShellView", "closeShellView", "scrollToId"]
     },
     {
       "name": "appStore",

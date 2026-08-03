@@ -1375,7 +1375,6 @@ TemplateStore:
   - shellTemplates: array of TemplateSchema objects (static system pages: profile, settings, tests)
   - currentTemplate: TemplateSchema (the active template)
   - operationLoading: unknown
-  - activeShellView: string | null (id of the currently open shell overlay: 'profile' | 'settings' | 'schema-tests' | 'landing-page' | null)
   - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)
   - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.
 - Actions:
@@ -1386,8 +1385,6 @@ TemplateStore:
   - toggleInstalled(): unknown
   - setDefaultTemplate(): unknown
   - deleteTemplate(): unknown
-  - openShellView(id: string): opens a shell overlay by id ('profile' | 'settings' | 'schema-tests' | 'landing-page')
-  - closeShellView(): closes the currently open shell overlay
 
 SpaceStore:
 - State:
@@ -1463,6 +1460,14 @@ EditSessionStore:
   - onSchemaEdit(): unknown
   - undo(): undoes the last schema edit
   - redo(): redoes the last undone schema edit
+
+ShellStore:
+- State:
+  - activeShellView: string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null
+- Actions:
+  - openShellView(id: string): opens a shell overlay by id
+  - closeShellView(): closes the currently open shell overlay
+  - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
 
 AppStore:
 - State:

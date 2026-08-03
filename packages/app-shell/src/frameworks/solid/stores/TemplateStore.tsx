@@ -59,7 +59,6 @@ export interface TemplateStore {
   currentTemplate: TemplateSchema;
   loading: Accessor<boolean>;
   defaultTemplateId: Accessor<string>;
-  activeShellView: Accessor<string | null>;
 
   // Actions
   updateTemplate: (newTemplate: TemplateSchema) => void;
@@ -90,9 +89,6 @@ export interface TemplateStore {
   loadSpaceTemplates: (perspective: PerspectiveProxy) => Promise<void>;
   refreshSpaceTemplates: () => Promise<void>;
   clearSpaceTemplates: () => void;
-  openShellView: (id: string) => void;
-  closeShellView: () => void;
-  scrollToId: (id: string) => void;
 
   // Loading state
   operationLoading: Accessor<string | null>;
@@ -157,7 +153,6 @@ export function TemplateStoreProvider(props: ParentProps) {
   const [currentTemplate, setCurrentTemplate] = createStore<TemplateSchema>(initialTemplate);
   const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
   // Shell overlay: which shell view (if any) is currently shown above the active template
-  const [activeShellView, setActiveShellView] = createSignal<string | null>('landing-page');
 
   const personalTemplates = () => {
     const installed = installedIds();
@@ -501,18 +496,6 @@ export function TemplateStoreProvider(props: ParentProps) {
     } else {
       console.error(`TemplateStore: switchTemplate - Invalid templateId "${newTemplateId}"`);
     }
-  }
-
-  function openShellView(id: string) {
-    setActiveShellView(id);
-  }
-
-  function closeShellView() {
-    setActiveShellView(null);
-  }
-
-  function scrollToId(id: string) {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function removeTemplate() {
@@ -1198,7 +1181,6 @@ export function TemplateStoreProvider(props: ParentProps) {
     currentTemplate,
     loading,
     defaultTemplateId,
-    activeShellView,
 
     // Actions
     updateTemplate,
@@ -1222,9 +1204,6 @@ export function TemplateStoreProvider(props: ParentProps) {
     preloadSpaceTemplates,
     loadSpaceTemplates,
     clearSpaceTemplates,
-    openShellView,
-    closeShellView,
-    scrollToId,
 
     // Loading state
     operationLoading,
