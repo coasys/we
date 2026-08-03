@@ -2,7 +2,6 @@ import { templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, schemaTestsTemplate, settingsTemplate } from '@shared/schemas';
 import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
-import type { DatasetProxy } from '@we/models';
 import type { FileData } from '@we/models';
 import {
   asFileField,
@@ -18,7 +17,7 @@ import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
-import { useDatasetStore } from './DatasetStore';
+import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
 
@@ -85,8 +84,8 @@ export interface TemplateStore {
     screenshots: File[];
   }) => Promise<boolean>;
   persistCurrentTemplate: () => Promise<void>;
-  preloadSpaceTemplates: (perspective: DatasetProxy) => Promise<void>;
-  loadSpaceTemplates: (perspective: DatasetProxy) => Promise<void>;
+  preloadSpaceTemplates: (dataset: AppDataset) => Promise<void>;
+  loadSpaceTemplates: (dataset: AppDataset) => Promise<void>;
   refreshSpaceTemplates: () => Promise<void>;
   clearSpaceTemplates: () => void;
 
@@ -187,7 +186,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   /** Load saved templates from root perspective and merge with built-in */
   async function loadSavedTemplates(): Promise<void> {
     try {
-      const perspective = datasetStore.rootDataset();
+      const perspective = datasetStore.rootDataset()?.handle;
       if (!perspective) return;
 
       const allDbTemplates = await Template.findAll(perspective);
@@ -261,10 +260,10 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   /** Load templates from a space perspective, merge into allTemplates, and populate the cache */
-  async function loadSpaceTemplates(perspective: DatasetProxy): Promise<void> {
+  async function loadSpaceTemplates(dataset: AppDataset): Promise<void> {
     clearSpaceTemplates();
     try {
-      const spaceDbTemplates = await Template.findAll(perspective);
+      const spaceDbTemplates = await Template.findAll(dataset.handle);
       const schemas: TemplateSchema[] = [];
       const models = new Map<string, Template>();
 
@@ -283,7 +282,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       const ids = new Set(schemas.map((t) => t.id || '').filter(Boolean));
 
       // Always cache the result (including empty) so subsequent visits skip the fetch
-      spaceTemplateCache.set(perspective.uuid, { schemas, models, ids });
+      spaceTemplateCache.set(dataset.id, { schemas, models, ids });
 
       if (schemas.length === 0) return;
 
@@ -304,8 +303,8 @@ export function TemplateStoreProvider(props: ParentProps) {
    * Cache hit: restores synchronously from session cache (no AD4M fetch).
    * Cache miss: full async load that also populates the cache.
    */
-  async function preloadSpaceTemplates(perspective: DatasetProxy): Promise<void> {
-    const cached = spaceTemplateCache.get(perspective.uuid);
+  async function preloadSpaceTemplates(dataset: AppDataset): Promise<void> {
+    const cached = spaceTemplateCache.get(dataset.id);
     if (cached) {
       clearSpaceTemplates();
       if (cached.schemas.length > 0) {
@@ -320,7 +319,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       }
       return;
     }
-    await loadSpaceTemplates(perspective);
+    await loadSpaceTemplates(dataset);
   }
 
   // Load saved templates when root perspective becomes available
@@ -339,12 +338,11 @@ export function TemplateStoreProvider(props: ParentProps) {
     spaceLookup = lookup;
   }
 
-  function resolveSpaceFromPerspective(perspective: DatasetProxy) {
-    const sharedCid = perspective.sharedUrl?.replace('neighbourhood://', '');
+  function resolveSpaceFromPerspective(dataset: AppDataset) {
     const allKnownSpaces = spaceLookup();
-    return sharedCid
-      ? allKnownSpaces.find((s) => s.url === sharedCid)
-      : allKnownSpaces.find((s) => s.uuid === perspective.uuid);
+    return dataset.sharedId
+      ? allKnownSpaces.find((s) => s.url === dataset.sharedId)
+      : allKnownSpaces.find((s) => s.uuid === dataset.id);
   }
 
   // On space switch: apply default template.
@@ -358,10 +356,10 @@ export function TemplateStoreProvider(props: ParentProps) {
       lastSpacePerspectiveUuid = null;
       return;
     }
-    if (perspective.uuid === lastSpacePerspectiveUuid) return;
-    lastSpacePerspectiveUuid = perspective.uuid;
+    if (perspective.id === lastSpacePerspectiveUuid) return;
+    lastSpacePerspectiveUuid = perspective.id;
 
-    if (spaceTemplateCache.has(perspective.uuid)) {
+    if (spaceTemplateCache.has(perspective.id)) {
       // Templates were pre-loaded by navigateToSpace — apply synchronously
       const cachedSpace = resolveSpaceFromPerspective(perspective);
       if (cachedSpace?.defaultTemplateId) {
@@ -376,7 +374,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   });
 
-  async function applySpaceTemplate(perspective: DatasetProxy): Promise<void> {
+  async function applySpaceTemplate(perspective: AppDataset): Promise<void> {
     // preloadSpaceTemplates handles cache hit (sync restore) or miss (AD4M fetch)
     await preloadSpaceTemplates(perspective);
 
@@ -386,9 +384,8 @@ export function TemplateStoreProvider(props: ParentProps) {
     const spaceTemplateId = cachedSpace.defaultTemplateId;
 
     // Check per-space preference stored in we-root
-    const sharedCid = perspective.sharedUrl?.replace('neighbourhood://', '');
-    const rootPerspective = datasetStore.rootDataset();
-    const spaceUrl = sharedCid || perspective.uuid;
+    const rootPerspective = datasetStore.rootDataset()?.handle;
+    const spaceUrl = perspective.sharedId || perspective.id;
     let perSpacePref: string | null = null;
     if (rootPerspective) {
       const prefs = await SpaceTemplatePreference.findAll(rootPerspective, {
@@ -406,7 +403,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (!spaceTemplate) return;
 
     // Guard: if the user navigated away before the async work completed, skip
-    if (datasetStore.currentDataset()?.uuid !== perspective.uuid) return;
+    if (datasetStore.currentDataset()?.id !== perspective.id) return;
 
     replaceTemplate(spaceTemplate);
 
@@ -487,7 +484,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       const view = lastViewByTemplate.get(realId) ?? currentView;
       const p = datasetStore.currentDataset();
       if (p) {
-        const spaceId = p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid;
+        const spaceId = p.sharedId ?? p.id;
         routeStore.navigate('/space/' + spaceId + '/' + view);
       } else {
         routeStore.navigate('/');
@@ -598,8 +595,8 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Fetch a template from the marketplace perspective and save it to the user's root perspective */
   async function installFromMarketplace(marketplaceTemplateId: string): Promise<void> {
-    const marketplacePerspective = datasetStore.marketplaceDataset();
-    const rootPerspective = datasetStore.rootDataset();
+    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
+    const rootPerspective = datasetStore.rootDataset()?.handle;
     if (!marketplacePerspective || !rootPerspective) {
       toastService.error('Cannot install: marketplace not connected');
       return;
@@ -683,8 +680,9 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Fetch a template from the marketplace and install it into the current space's perspective */
   async function installToSpace(marketplaceTemplateId: string): Promise<void> {
-    const marketplacePerspective = datasetStore.marketplaceDataset();
-    const spacePerspective = datasetStore.currentDataset();
+    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
+    const spaceDs = datasetStore.currentDataset();
+    const spacePerspective = spaceDs?.handle;
     if (!marketplacePerspective || !spacePerspective) {
       toastService.error('Cannot install: no active space or marketplace not connected');
       return;
@@ -729,7 +727,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         schema: asFileField(schemaBlob),
       });
 
-      await loadSpaceTemplates(spacePerspective);
+      await loadSpaceTemplates(spaceDs!);
       toastService.success(`"${schemaToInstall.meta.name}" installed to space`);
     } catch (error) {
       console.error('TemplateStore: installToSpace error', error);
@@ -745,7 +743,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   }
 
   async function saveTemplate(name: string): Promise<void> {
-    const perspective = datasetStore.rootDataset();
+    const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) {
       console.error('TemplateStore: No root perspective available');
       return;
@@ -814,7 +812,8 @@ export function TemplateStoreProvider(props: ParentProps) {
    */
   async function saveTemplateAs(schema: TemplateSchema, destination: 'root' | 'space' = 'root'): Promise<boolean> {
     const isSpace = destination === 'space';
-    const perspective = isSpace ? datasetStore.currentDataset() : datasetStore.rootDataset();
+    const targetDs = isSpace ? datasetStore.currentDataset() : datasetStore.rootDataset();
+    const perspective = targetDs?.handle;
     if (!perspective) {
       toastService.error(`Cannot save template: no ${isSpace ? 'space' : 'root'} perspective available`);
       return false;
@@ -867,7 +866,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       }
 
       if (isSpace) {
-        await loadSpaceTemplates(perspective);
+        await loadSpaceTemplates(targetDs!);
       } else {
         await loadSavedTemplates();
       }
@@ -889,7 +888,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       setCurrentTemplate(reconcile(deepClone(schemaToSave)));
       const p = datasetStore.currentDataset();
       if (p) {
-        const spaceId = p.sharedUrl ? p.sharedUrl.replace('neighbourhood://', '') : p.uuid;
+        const spaceId = p.sharedId ?? p.id;
         const segs = routeStore.segments();
         const view = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
         routeStore.navigate('/space/' + spaceId + '/' + view);
@@ -912,7 +911,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     const templateId = currentTemplate.id;
     if (!templateId || (!savedTemplateMap.has(templateId) && !spaceTemplateMap.has(templateId))) return;
 
-    const perspective = datasetStore.rootDataset();
+    const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) return;
 
     const cloned = deepClone(currentTemplate);
@@ -965,11 +964,12 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Copy the current template into a specific space perspective */
   async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
-    const perspective = datasetStore.datasets().find((p) => p.uuid === perspectiveUuid);
-    if (!perspective) {
+    const targetDs = datasetStore.datasets().find((d) => d.id === perspectiveUuid);
+    if (!targetDs) {
       toastService.error('Space not found');
       return false;
     }
+    const perspective = targetDs.handle;
 
     const schema = currentTemplate;
     const templateId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
@@ -1010,7 +1010,7 @@ export function TemplateStoreProvider(props: ParentProps) {
 
   /** Publish the current template to the marketplace perspective */
   async function deleteMarketplaceTemplate(templateId: string): Promise<void> {
-    const marketplacePerspective = datasetStore.marketplaceDataset();
+    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
     if (!marketplacePerspective) {
       toastService.error('Marketplace not connected');
       return;
@@ -1039,7 +1039,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     slug?: string;
     screenshots: File[];
   }): Promise<boolean> {
-    const marketplacePerspective = datasetStore.marketplaceDataset();
+    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
     if (!marketplacePerspective) {
       toastService.error('Marketplace not connected');
       return false;

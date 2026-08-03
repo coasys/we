@@ -40,9 +40,12 @@ describe('createInMemoryLifecycle', () => {
   it('publishes a dataset to a joinable URI and joins seeded shared datasets', async () => {
     const lifecycle = createInMemoryLifecycle();
     const created = await lifecycle.create('Shared');
-    const uri = await lifecycle.publish(created.id);
+    const { uri, sharedId } = await lifecycle.publish(created.id);
     expect(uri).toMatch(/^inmemory:\/\//);
-    expect((await lifecycle.get(created.id))?.sharedUri).toBe(uri);
+    expect(sharedId).toBe(created.id);
+    const republished = await lifecycle.get(created.id);
+    expect(republished?.sharedUri).toBe(uri);
+    expect(republished?.sharedId).toBe(created.id);
 
     // A "peer's" published dataset becomes joinable without existing locally.
     lifecycle.seedShared({ id: 'peer-ds', name: 'Peer Space', sharedUri: 'inmemory://peer-ds' });

@@ -309,7 +309,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   const themeModelMap = new Map<string, Theme>();
 
   async function loadSpaceThemes() {
-    const perspective = datasetStore.currentDataset();
+    const perspective = datasetStore.currentDataset()?.handle;
     if (!perspective) {
       setSpaceThemes([]);
       return;
@@ -324,7 +324,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function loadInstalledThemes() {
-    const perspective = datasetStore.rootDataset();
+    const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) return;
     try {
       const models = await Theme.findAll(perspective);
@@ -641,7 +641,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     destination: 'personal' | 'space' = 'personal',
   ): Promise<boolean> {
     const source = sourceId ? allThemes().find((t) => t.id === sourceId) : null;
-    const perspective = destination === 'space' ? datasetStore.currentDataset() : datasetStore.rootDataset();
+    const perspective =
+      destination === 'space' ? datasetStore.currentDataset()?.handle : datasetStore.rootDataset()?.handle;
     if (!perspective) {
       toastService.error(`Cannot save theme: no ${destination} perspective available`);
       return false;
@@ -737,7 +738,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     commitSnapshot();
     const editing = editingTheme();
     if (!editing) return null;
-    const perspective = datasetStore.rootDataset();
+    const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) return null;
 
     try {
@@ -787,7 +788,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   async function saveEditingThemeAs(name: string, icon: string): Promise<ThemeData | null> {
     const editing = editingTheme();
     if (!editing) return null;
-    const perspective = datasetStore.rootDataset();
+    const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) return null;
 
     try {
@@ -842,8 +843,8 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function installFromMarketplace(marketplaceThemeId: string) {
-    const marketplacePerspective = datasetStore.marketplaceDataset();
-    const rootPerspective = datasetStore.rootDataset();
+    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
+    const rootPerspective = datasetStore.rootDataset()?.handle;
     if (!marketplacePerspective || !rootPerspective) return;
 
     setOperationLoading(`marketplace-install:${marketplaceThemeId}`);
@@ -912,7 +913,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function deleteMarketplaceTheme(themeId: string): Promise<void> {
-    const marketplacePerspective = datasetStore.marketplaceDataset();
+    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
     if (!marketplacePerspective) {
       toastService.error('Marketplace not connected');
       return;
@@ -957,7 +958,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     slug?: string;
     screenshots: File[];
   }): Promise<boolean> {
-    const marketplacePerspective = datasetStore.marketplaceDataset();
+    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
     if (!marketplacePerspective) {
       toastService.error('Marketplace not connected');
       return false;
@@ -1033,7 +1034,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
-    const perspective = datasetStore.datasets().find((p) => p.uuid === perspectiveUuid);
+    const perspective = datasetStore.datasets().find((d) => d.id === perspectiveUuid)?.handle;
     if (!perspective) {
       toastService.error('Space not found');
       return false;

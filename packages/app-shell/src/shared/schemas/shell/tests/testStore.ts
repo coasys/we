@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { queryIRFlag } from '@shared/queryIRFlag';
 import type { ModelManifest, SchemaPort } from '@we/backend-shared';
-import type { DatasetProxy } from '@we/models';
 import { type Accessor, createEffect, createSignal } from 'solid-js';
 
 // ---------------------------------------------------------------------------
@@ -44,7 +43,10 @@ const TEST_PREDICATES = {
 // Store factory — test-oriented signals for integration test template
 // ---------------------------------------------------------------------------
 
-export function createTestStore(testPerspective: Accessor<DatasetProxy | null>, schemas: () => SchemaPort | null) {
+export function createTestStore(
+  testPerspective: Accessor<{ handle: unknown } | null>,
+  schemas: () => SchemaPort | null,
+) {
   // Declared lazily: the schemas port only exists once the backend connects, and every action
   // here runs post-boot. `declare` compiles the manifest and registers the models queryable.
   let TestItem: any;
@@ -176,7 +178,7 @@ export function createTestStore(testPerspective: Accessor<DatasetProxy | null>, 
   }
 
   // ---- AD4M perspective (lazy init for $query testing) ----
-  const [perspective, setPerspective] = createSignal<DatasetProxy | null>(null);
+  const [perspective, setPerspective] = createSignal<unknown>(null);
 
   const seedItems = [
     { name: 'Alpha', status: 'active', category: 'A' },
@@ -185,8 +187,10 @@ export function createTestStore(testPerspective: Accessor<DatasetProxy | null>, 
   ];
 
   createEffect(() => {
-    const p = testPerspective();
-    if (!p || !ensureModels()) return;
+    const ref = testPerspective();
+    if (!ref || !ensureModels()) return;
+
+    const p = ref.handle as any;
 
     (async () => {
       try {

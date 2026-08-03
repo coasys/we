@@ -145,13 +145,11 @@ export async function removeSpaceFromParent(spaceUuid: string, targetP: DatasetP
  * Personal (unshared) perspectives have no CID and only ever contain their own
  * creator's Space entity, so `uuid` matching is safe there.
  */
-export function spaceSelfWhere(p: DatasetProxy): { url: string } | { uuid: string } {
-  const cid = p.sharedUrl?.replace('neighbourhood://', '');
-  return cid ? { url: cid } : { uuid: p.uuid };
+export function spaceSelfWhere(ds: { id: string; sharedId?: string }): { url: string } | { uuid: string } {
+  return ds.sharedId ? { url: ds.sharedId } : { uuid: ds.id };
 }
 
 /** Companion predicate for matching an already-fetched Space against a perspective — see spaceSelfWhere. */
-export function isSpaceSelf(space: Pick<Space, 'uuid' | 'url'>, p: DatasetProxy): boolean {
-  const cid = p.sharedUrl?.replace('neighbourhood://', '');
-  return cid ? space.url === cid : space.uuid === p.uuid;
+export function isSpaceSelf(space: Pick<Space, 'uuid' | 'url'>, ds: { id: string; sharedId?: string }): boolean {
+  return ds.sharedId ? space.url === ds.sharedId : space.uuid === ds.id;
 }

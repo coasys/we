@@ -13,11 +13,13 @@ import type {
   DatasetRef,
 } from '@we/backend-shared';
 
+const SCHEME = 'neighbourhood://';
+
 function toRef(p: PerspectiveProxy): DatasetRef {
   return {
     id: p.uuid,
     name: p.name,
-    ...(p.sharedUrl ? { sharedUri: p.sharedUrl } : {}),
+    ...(p.sharedUrl ? { sharedUri: p.sharedUrl, sharedId: p.sharedUrl.replace(SCHEME, '') } : {}),
     handle: p,
   };
 }
@@ -55,10 +57,13 @@ export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifec
       if (!templateAddress) throw new Error('No link language templates available to publish neighbourhood.');
       const templateData = JSON.stringify({ uid, name: `${p.name}-link-language` });
       const linkLanguage = await client.languages.applyTemplateAndPublish(templateAddress, templateData);
-      return client.neighbourhood.publishFromPerspective(id, linkLanguage.address, new Perspective([]));
+      const uri = await client.neighbourhood.publishFromPerspective(id, linkLanguage.address, new Perspective([]));
+      return { uri, sharedId: uri.replace(SCHEME, '') };
     },
 
-    async join(uri) {
+    async join(idOrUri) {
+      // Accept a bare shared id: this backend's URIs carry the neighbourhood scheme.
+      const uri = idOrUri.includes('://') ? idOrUri : SCHEME + idOrUri;
       const handle = await client.neighbourhood.joinFromUrl(uri);
       const joined = await client.perspective.byUUID(handle.uuid);
       if (!joined) throw new Error(`join: no dataset handle after joining ${uri}`);

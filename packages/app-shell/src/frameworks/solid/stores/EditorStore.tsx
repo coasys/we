@@ -360,7 +360,7 @@ export function EditorStoreProvider(props: ParentProps) {
       return;
     }
 
-    const perspective = datasetStore.rootDataset();
+    const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) return;
 
     try {
@@ -404,7 +404,7 @@ export function EditorStoreProvider(props: ParentProps) {
     }
 
     const templateModel = templateStore.getTemplateModel(templateId);
-    const perspective = datasetStore.rootDataset();
+    const perspective = datasetStore.rootDataset()?.handle;
     if (!templateModel || !perspective) return;
 
     try {
@@ -443,7 +443,7 @@ export function EditorStoreProvider(props: ParentProps) {
     if (!templateId) return;
 
     const templateModel = templateStore.getTemplateModel(templateId);
-    const perspective = datasetStore.rootDataset();
+    const perspective = datasetStore.rootDataset()?.handle;
     if (!templateModel || !perspective) return;
 
     try {
@@ -482,7 +482,7 @@ export function EditorStoreProvider(props: ParentProps) {
   async function persistMessage(role: 'user' | 'assistant', content: string) {
     if (!activeSessionModel) return;
 
-    const perspective = datasetStore.rootDataset();
+    const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) return;
 
     try {

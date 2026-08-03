@@ -28,7 +28,7 @@ export interface InMemoryDatasetSeed {
 }
 
 export interface InMemoryLifecycle extends DatasetLifecyclePort {
-  publish(id: string): Promise<string>;
+  publish(id: string): Promise<{ uri: string; sharedId: string }>;
   join(uri: string): Promise<DatasetRef>;
   /** Test helper: make a dataset joinable by URI without it existing locally yet. */
   seedShared(seed: InMemoryDatasetSeed & { sharedUri: string }): void;
@@ -39,18 +39,10 @@ export interface InMemoryLifecycle extends DatasetLifecyclePort {
 let datasetCounter = 0;
 
 export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): InMemoryLifecycle {
-  /**
-   * The handle exposes `uuid`/`sharedUrl` aliases alongside the neutral fields: the shell's
-   * stores still read the proxy-shaped surface off their handles (a documented v1 compromise —
-   * they hold handles, not DatasetRefs). The aliases make an in-memory handle satisfy exactly
-   * what the shell reads.
-   */
   type Entry = {
     id: string;
-    uuid: string;
     name: string;
     sharedUri?: string;
-    sharedUrl?: string;
     tables: Record<string, unknown[]>;
   };
   const datasets = new Map<string, Entry>();
@@ -60,13 +52,13 @@ export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): In
   const toRef = (e: Entry): DatasetRef => ({
     id: e.id,
     name: e.name,
-    ...(e.sharedUri ? { sharedUri: e.sharedUri } : {}),
-    // The handle doubles as the query side's table store — an in-memory "perspective".
+    ...(e.sharedUri ? { sharedUri: e.sharedUri, sharedId: e.sharedUri.replace('inmemory://', '') } : {}),
+    // The handle doubles as the query side's table store — an in-memory "dataset".
     handle: e,
   });
 
   for (const seed of initial) {
-    datasets.set(seed.id, { ...seed, uuid: seed.id, sharedUrl: seed.sharedUri, tables: {} });
+    datasets.set(seed.id, { ...seed, tables: {} });
   }
 
   const emit = (fn: (h: DatasetChangeHandlers) => void) => subscribers.forEach(fn);
@@ -82,8 +74,7 @@ export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): In
     },
 
     async create(name) {
-      const id = `ds-${++datasetCounter}`;
-      const entry: Entry = { id, uuid: id, name, tables: {} };
+      const entry: Entry = { id: `ds-${++datasetCounter}`, name, tables: {} };
       datasets.set(entry.id, entry);
       const ref = toRef(entry);
       emit((h) => h.onAdded?.(ref));
@@ -99,13 +90,13 @@ export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): In
       const e = datasets.get(id);
       if (!e) throw new Error(`publish: no dataset with id ${id}`);
       e.sharedUri = `inmemory://${e.id}`;
-      e.sharedUrl = e.sharedUri;
       joinable.set(e.sharedUri, e);
       emit((h) => h.onUpdated?.(toRef(e)));
-      return e.sharedUri;
+      return { uri: e.sharedUri, sharedId: e.id };
     },
 
-    async join(uri) {
+    async join(idOrUri) {
+      const uri = idOrUri.includes('://') ? idOrUri : `inmemory://${idOrUri}`;
       const e = joinable.get(uri);
       if (!e) throw new Error(`join: nothing published at ${uri}`);
       if (!datasets.has(e.id)) {
@@ -126,7 +117,7 @@ export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): In
     },
 
     seedShared(seed) {
-      joinable.set(seed.sharedUri, { ...seed, uuid: seed.id, sharedUrl: seed.sharedUri, tables: {} });
+      joinable.set(seed.sharedUri, { ...seed, tables: {} });
     },
 
     removeRemotely(id) {

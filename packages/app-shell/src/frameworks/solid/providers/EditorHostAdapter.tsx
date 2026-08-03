@@ -68,13 +68,13 @@ export function EditorHostAdapter(props: ParentProps) {
     // this and the picker degrades to its URL tab.
     images: {
       list: async (limit = 60) => {
-        const perspective = datasetStore.currentDataset();
+        const perspective = datasetStore.currentDataset()?.handle;
         if (!perspective) return [];
         const blocks = await ImageBlock.findAll(perspective, { order: { createdAt: 'DESC' }, limit });
         return blocks.map((b) => ({ id: b.id, src: b.src, altText: b.altText }));
       },
       upload: async (file) => {
-        const perspective = datasetStore.currentDataset();
+        const perspective = datasetStore.currentDataset()?.handle;
         if (!perspective) throw new Error('no dataset to upload into');
         // Standalone in the current perspective — no parent CollectionBlock, so it is reusable by
         // future browse pickers exactly like a post-authored ImageBlock.
