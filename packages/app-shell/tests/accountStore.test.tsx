@@ -120,7 +120,44 @@ describe('the cache — what the screen can draw before IPC answers', () => {
     expect(mount().accounts()).toEqual([]);
   });
 
-  it('moves the active flag to the target when switching', async () => {
+  it('moves the active flag on the click, not on the landing', async () => {
+    // The screen is a function of this list — centre badge is whoever is active, corner is
+    // everyone else — so a target that is still inactive appears in both places at once.
+    const { host } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    const during: Array<string | undefined> = [];
+    host.select = async () => {
+      during.push(store.activeAccount()?.name);
+      during.push(store.accounts().find((a) => !a.active)?.name);
+    };
+
+    await store.switchAccount('/cfg/agents/test-net');
+
+    // Active is the target; the only inactive one left is the account being departed.
+    expect(during).toEqual(['Test Net', 'Main']);
+  });
+
+  it('puts the truth back when the switch fails', async () => {
+    const { host } = stubHost(TWO, {
+      async select() {
+        throw new Error('No such account');
+      },
+    });
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    await store.switchAccount('/cfg/agents/test-net');
+
+    // The flag was moved on the assumption it would land; a refresh restores the host's view.
+    expect(store.activeAccount()?.name).toBe('Main');
+    expect(store.switchingTo()).toBeNull();
+  });
+
+  it('caches the moved flag as well as applying it', async () => {
     // The restart happens before any refresh could run. Caching the list as-is would have the
     // next document draw the account just left as current, and the target as one of the others.
     const { host } = stubHost(TWO);

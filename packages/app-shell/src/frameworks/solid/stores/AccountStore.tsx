@@ -171,9 +171,14 @@ export function AccountStoreProvider(props: ParentProps) {
    * leaving the spinner up while that happens reads as "working", and clearing it first would
    * flash the button back to idle mid-teardown.
    */
-  async function mutateAndRestart<T>(action: () => Promise<T>, beforeRestart?: (result: T) => void): Promise<void> {
+  /**
+   * Returns false when the operation failed, and does not return at all when it succeeded — the
+   * process is gone by then. Callers need the distinction because they apply the outcome to the
+   * list *optimistically*, before the host has confirmed it, and a failure has to be undone.
+   */
+  async function mutateAndRestart<T>(action: () => Promise<T>, beforeRestart?: (result: T) => void): Promise<boolean> {
     const accountHost = host();
-    if (!accountHost) return;
+    if (!accountHost) return false;
 
     setBusy(true);
     setError('');
@@ -181,10 +186,12 @@ export function AccountStoreProvider(props: ParentProps) {
       const result = await action();
       beforeRestart?.(result);
       await accountHost.applySelection();
+      return true;
     } catch (err) {
       console.error('AccountStore: account operation failed', err);
       setError(err instanceof Error ? err.message : String(err));
       setBusy(false);
+      return false;
     }
   }
 
@@ -192,13 +199,19 @@ export function AccountStoreProvider(props: ParentProps) {
     setCreating(true);
     // Cache the created account before the restart, or the reload would draw the account being
     // left behind until the list catches up.
-    await mutateAndRestart(
+    const ok = await mutateAndRestart(
       () => host()!.create(),
-      // The created account is the active one from here; everything else steps down.
-      (account) => writeCachedAccounts([...accounts().map((a) => ({ ...a, active: false })), account]),
+      // The created account is the active one from here; everything else steps down. Applied to
+      // the live list as well as the cache, so the corner drops it the moment it exists.
+      (account) => {
+        const optimistic = [...accounts().map((a) => ({ ...a, active: false })), account];
+        setAccounts(optimistic);
+        writeCachedAccounts(optimistic);
+      },
     );
     // Only reached when it failed — on success the process is already gone.
     setCreating(false);
+    if (!ok) await refresh();
   }
 
   async function syncDisplay(display: { name?: string; avatar?: string }): Promise<void> {
@@ -231,13 +244,24 @@ export function AccountStoreProvider(props: ParentProps) {
     // Set before the await so the boot screen swaps to the target's badge on the click rather
     // than a beat later.
     setSwitchingTo(target);
-    // Written now, not on the next refresh: the restart happens before any refresh could run. The
-    // active flag is moved to the target as well as the list being saved — otherwise the next
-    // document would draw the account just left as current, and the target as one of the others.
-    writeCachedAccounts(accounts().map((a) => ({ ...a, active: a.id === id })));
-    await mutateAndRestart(() => host()!.select(id));
-    // Only reached when the switch failed — on success the process is already gone.
-    setSwitchingTo(null);
+    // Move the active flag now rather than waiting for the switch to land. The screen is a
+    // function of this list: the centre badge is whichever account is active and the corner is
+    // everyone else, so without this the target sits in both places at once until the restart.
+    //
+    // The same list is cached, because the restart happens before any refresh could run — the
+    // next document would otherwise draw the account just left as current.
+    const optimistic = accounts().map((a) => ({ ...a, active: a.id === id }));
+    setAccounts(optimistic);
+    writeCachedAccounts(optimistic);
+
+    const ok = await mutateAndRestart(() => host()!.select(id));
+
+    // Only reached when the switch failed — on success the process is already gone. Put the truth
+    // back, since the flag above was moved on the assumption it would succeed.
+    if (!ok) {
+      setSwitchingTo(null);
+      await refresh();
+    }
   }
 
   function requestRemoval(id: string): void {

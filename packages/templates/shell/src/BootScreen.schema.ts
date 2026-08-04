@@ -87,7 +87,10 @@ const accountError: SchemaNode = {
 function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode {
   const tile = (label: string | SchemaNode | OperatorToken, avatar: SchemaNode, onClick: SchemaProp): SchemaNode => ({
     type: 'we-button',
-    props: { variant: 'ghost', width: '100%', ax: 'start', disabled: { $store: 'accountStore.busy' }, onClick },
+    // Not disabled while a switch is in flight. It faded out and came back at full opacity in the
+    // next document, which is its own flicker — and clicking another account mid-switch is a
+    // reasonable thing to want, which the store handles by simply switching again.
+    props: { variant: 'ghost', width: '100%', ax: 'start', onClick },
     children: [
       {
         type: 'Row',
@@ -352,7 +355,9 @@ export const bootScreen: SchemaNode = {
                       type: '$if',
                       props: {
                         condition: { $store: 'accountStore.switchingTo' },
-                        then: startingState('accountStore.switchingTo'),
+                        // The active flag moves on the click, so both sides of the restart read the same
+                        // accessor and the badge does not change identity when the document does.
+                        then: startingState('accountStore.activeAccount'),
                         else: {
                           type: '$if',
                           props: {
