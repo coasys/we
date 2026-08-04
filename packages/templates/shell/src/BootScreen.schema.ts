@@ -20,64 +20,79 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 /**
  * The signed-in-as chip, the way an OS sign-in screen leads.
  *
- * Shows the cached profile picture when there is one, falling back to initials. The cache exists
- * because this screen renders while the agent is *locked* — the real picture lives inside the
- * encrypted store and cannot be read until after the password. See `Account.avatar`.
+ * Takes a store *path* rather than a name, so the picture and the name always come from the same
+ * account. They were bound separately before — the name from the argument, the picture hardcoded to
+ * `activeAccount` — so switching showed the target's name above the previous account's face until
+ * the reload caught up.
+ *
+ * Shows the cached picture when there is one, falling back to initials. The cache exists because
+ * this screen renders while the agent is *locked*: the real picture lives inside the encrypted
+ * store and cannot be read until after the password.
  */
-function accountBadge(name: SchemaNode | string | OperatorToken): SchemaNode {
+function accountBadge(account: string): SchemaNode {
   return {
     type: 'Column',
-    props: { gap: '300', ax: 'center', mb: '400' },
+    props: { gap: '300', ax: 'center' },
     children: [
       {
         type: 'we-avatar',
         props: {
-          image: { $store: 'accountStore.activeAccount.avatar' },
-          initials: name as SchemaProp,
+          image: { $store: `${account}.avatar` },
+          initials: { $store: `${account}.name` },
           size: 'xxl',
           bg: 'primary-100',
         },
       },
-      // minHeight holds the line open while the name is still loading — without it the text
-      // collapses to nothing and everything below jumps when it arrives.
       {
         type: 'we-text',
         props: { variant: 'heading-sm', fontWeight: 'regular', minHeight: '28px' },
-        children: [name],
+        children: [{ $store: `${account}.name` }],
       },
     ],
   };
 }
 
+/** Shared error line for account operations — one slot, wherever the failure happened. */
+const accountError: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'accountStore.error' },
+    then: {
+      type: 'we-alert',
+      props: { variant: 'danger', maxWidth: '320px' },
+      children: [{ $store: 'accountStore.error' }],
+    },
+  },
+};
+
 /**
- * The other accounts, inline, the way an OS sign-in screen shows them.
+ * The other accounts, pinned to the bottom-left corner.
  *
- * macOS lays every account out as a row of avatars; Windows stacks the others in the corner;
- * GNOME and ChromeOS do the same thing vertically and horizontally. None of them hide the list
- * behind a control — which is what a "switch account" link leading to a separate screen was
- * doing, and what a dropdown would still do. All of them show nothing at all when there is only
- * one account, which falls out here from `$each` over an empty list.
+ * The Windows shape: the account being signed in to owns the centre of the screen and the others
+ * sit in a corner, small and quiet, so the primary action is uncontested. macOS and ChromeOS give
+ * every account equal weight in a centred row instead — which discards the hierarchy this screen
+ * already has, and looks sparse with only one other account.
  *
- * `allowCreate` is false on the setup screen: a "new account" tile beside the form that is
- * itself creating one is incoherent. Switching away stays available there, because a freshly
- * created account boots into an empty directory and lands on setup — without a way back an
- * accidental create traps you on a form for an account you did not want.
+ * Rows rather than columns: a name reads faster beside its picture than under it, and a stack of
+ * rows in a corner grows downward without pushing anything else around.
  *
- * One click here is a real switch: kill the executor, respawn against the other directory,
- * reload. An OS can re-point its login form for free because nothing is bound until you
- * authenticate; ours binds a data path before that. Electron makes it about a second, which is
- * cheap enough to leave as a single click rather than inventing a selected-but-not-committed
- * state that corresponds to nothing underneath.
+ * `allowCreate` is false on the setup screen — offering "new account" beside the form that is
+ * itself creating one is incoherent. Switching away stays, because a freshly created account boots
+ * into an empty directory and lands on setup; without a way back an accidental create traps you
+ * there.
+ *
+ * Rendered at the root, so it is anchored to the window rather than to whatever the centre column
+ * happens to contain.
  */
 function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode {
   const tile = (label: string | SchemaNode | OperatorToken, avatar: SchemaNode, onClick: SchemaProp): SchemaNode => ({
     type: 'we-button',
-    props: { variant: 'ghost', height: '100px', width: '150px', disabled: { $store: 'accountStore.busy' }, onClick },
+    props: { variant: 'ghost', width: '100%', ax: 'start', disabled: { $store: 'accountStore.busy' }, onClick },
     children: [
       {
-        type: 'Column',
-        props: { gap: '200', ax: 'center' },
-        children: [avatar, { type: 'we-text', props: { variant: 'footnote', truncate: true }, children: [label] }],
+        type: 'Row',
+        props: { gap: '250', ay: 'center' },
+        children: [avatar, { type: 'we-text', props: { variant: 'label', truncate: true }, children: [label] }],
       },
     ],
   });
@@ -87,13 +102,16 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
     props: {
       condition: { $store: 'accountStore.canManageAccounts' },
       then: {
-        type: 'Row',
-        props: { gap: '200', ay: 'start', ax: 'center', wrap: true },
+        type: 'Column',
+        props: { position: 'absolute', bottom: '400', left: '400', gap: '100', maxWidth: '240px', zIndex: 1 },
         children: [
+          // Failures from switching or creating surface here, beside the controls that cause them
+          // — there is nowhere else on this screen that account errors belong.
+          accountError,
           {
             type: '$each',
             props: {
-              // Everyone but the account already signed in to — it is the badge above the form.
+              // Everyone but the account already signed in to — that one is the badge in the centre.
               items: { $filter: { items: { $store: 'accountStore.accounts' }, where: { active: false } } },
               as: 'account',
             },
@@ -102,7 +120,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
                 '$account.name',
                 {
                   type: 'we-avatar',
-                  props: { image: '$account.avatar', initials: '$account.name', size: 'lg', bg: 'primary-100' },
+                  props: { image: '$account.avatar', initials: '$account.name', size: 'sm', bg: 'primary-100' },
                 },
                 { $action: 'accountStore.switchAccount', args: ['$account.id'] },
               ),
@@ -110,10 +128,13 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
           },
           ...(allowCreate
             ? [
+                // Straight through, no confirmation. The step it replaced restated the button it
+                // was reached from and asked again, and the action is undone in one click from
+                // this same corner.
                 tile(
-                  'New',
-                  { type: 'we-avatar', props: { icon: 'plus', size: 'md', bg: 'neutral-100' } },
-                  { $setLocal: 'mode', value: 'create' },
+                  'New account',
+                  { type: 'we-avatar', props: { icon: 'plus', size: 'sm', bg: 'neutral-100' } },
+                  { $action: 'accountStore.createAccount' },
                 ),
               ]
             : []),
@@ -149,7 +170,7 @@ function startingState(account: string): SchemaNode {
         type: '$if',
         props: {
           condition: { $store: 'accountStore.canManageAccounts' },
-          then: accountBadge({ $store: `${account}.name` }),
+          then: accountBadge(account),
         },
       },
       {
@@ -164,78 +185,6 @@ function startingState(account: string): SchemaNode {
   };
 }
 
-/** Shared error line for account operations — one slot, wherever the failure happened. */
-const accountError: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $store: 'accountStore.error' },
-    then: {
-      type: 'we-alert',
-      props: { variant: 'danger', maxWidth: '320px' },
-      children: [{ $store: 'accountStore.error' }],
-    },
-  },
-};
-
-/**
- * Confirming a new account. Not a form: the name and password are both collected afterwards, on
- * the setup screen, so that adding an account and a genuine first run reach the *same* single page
- * rather than splitting the same two questions across different places.
- *
- * A confirmation step at all only because the action relaunches the app, which is startling with
- * no warning — not because there is anything to fill in.
- */
-const createAccountConfirm: SchemaNode = {
-  type: 'Column',
-  props: { gap: '400', ax: 'center', maxWidth: '340px' },
-  children: [
-    {
-      type: 'Row',
-      props: { gap: '300', ay: 'center' },
-      children: [
-        { type: 'we-icon', props: { name: 'user-plus', color: 'primary-600' } },
-        {
-          type: 'we-text',
-          props: { variant: 'heading-sm', fontWeight: 'regular' },
-          children: ['Create a new account'],
-        },
-      ],
-    },
-    {
-      type: 'we-text',
-      props: { variant: 'body', color: 'neutral-600', textAlign: 'center' },
-      children: ['WE will restart so you can set it up. Your current account stays as it is.'],
-    },
-    accountError,
-    {
-      type: 'Row',
-      props: { gap: '300', ay: 'center' },
-      children: [
-        {
-          type: 'we-button',
-          props: {
-            height: '36px',
-            text: 'Cancel',
-            variant: 'ghost',
-            onClick: [{ $setLocal: 'mode', value: 'unlock' }, { $action: 'accountStore.clearError' }],
-          },
-        },
-        {
-          type: 'we-button',
-          props: {
-            height: '36px',
-            text: 'Continue',
-            color: 'neutral-0',
-            bg: 'primary-500',
-            loading: { $store: 'accountStore.busy' },
-            onClick: { $action: 'accountStore.createAccount' },
-          },
-        },
-      ],
-    },
-  ],
-};
-
 /** The unlock form: the account you are signing in to, and the password for it. */
 const unlockForm: SchemaNode = {
   type: 'Column',
@@ -247,7 +196,7 @@ const unlockForm: SchemaNode = {
       type: '$if',
       props: {
         condition: { $store: 'accountStore.activeAccount' },
-        then: accountBadge({ $store: 'accountStore.activeAccount.name' }),
+        then: accountBadge('accountStore.activeAccount'),
         else: {
           type: 'Row',
           props: { gap: '300', ay: 'center' },
@@ -328,7 +277,6 @@ const unlockForm: SchemaNode = {
         },
       ],
     },
-    accountSwitcher({ allowCreate: true }),
   ],
 };
 
@@ -390,7 +338,6 @@ export const bootScreen: SchemaNode = {
                       initial: '',
                       validate: [{ rule: 'required', message: 'Password is required' }],
                     },
-                    mode: { type: 'string', initial: 'unlock' },
                   },
                   children: [
                     // Switching runs entirely before the reload — kill the executor, respawn it
@@ -416,14 +363,7 @@ export const bootScreen: SchemaNode = {
                                 { type: 'we-text', props: { color: 'neutral-600' }, children: ['Creating account...'] },
                               ],
                             },
-                            else: {
-                              type: '$if',
-                              props: {
-                                condition: { $eq: [{ $local: 'mode' }, 'create'] },
-                                then: createAccountConfirm,
-                                else: unlockForm,
-                              },
-                            },
+                            else: unlockForm,
                           },
                         },
                       },
@@ -468,155 +408,166 @@ export const bootScreen: SchemaNode = {
                       ],
                     },
                     // One per field rather than one shared: each eye reveals only the input it sits in.
-                    mode: { type: 'string', initial: 'unlock' },
                   },
                   children: [
                     {
-                      type: '$if',
-                      props: {
-                        condition: { $eq: [{ $local: 'mode' }, 'create'] },
-                        then: createAccountConfirm,
-                        else: {
-                          type: 'Column',
-                          props: { gap: '400', ax: 'center' },
+                      type: 'Column',
+                      props: { gap: '400', ax: 'center' },
+                      children: [
+                        {
+                          type: 'Row',
+                          props: { gap: '300', ay: 'center' },
                           children: [
+                            { type: 'we-icon', props: { name: 'user-plus', color: 'primary-600' } },
                             {
-                              type: 'Row',
-                              props: { gap: '300', ay: 'center' },
-                              children: [
-                                { type: 'we-icon', props: { name: 'user-plus', color: 'primary-600' } },
-                                {
-                                  type: 'we-text',
-                                  props: { variant: 'heading-sm', fontWeight: 'regular' },
-                                  children: ['Create account'],
-                                },
-                              ],
+                              type: 'we-text',
+                              props: { variant: 'heading-sm', fontWeight: 'regular' },
+                              children: ['Create account'],
                             },
-                            // Form
-                            {
-                              type: 'Column',
-                              props: { gap: '400' },
-                              children: [
-                                // Picture — optional, and held until an agent exists to upload to.
-                                {
-                                  type: 'EditableImage',
-                                  props: {
-                                    src: { $store: 'profileStore.pendingAvatar' },
-                                    alt: 'Profile picture',
-                                    aspect: 1,
-                                    placeholderIcon: 'user',
-                                    width: '96px',
-                                    height: '96px',
-                                    onImageChange: { $action: 'profileStore.setPendingAvatar', args: ['$arg'] },
-                                  },
-                                },
-                                // The profile's name, not a separate local label. One DID, one
-                                // identity, one thing to type.
-                                {
-                                  type: 'we-form-field',
-                                  props: { label: 'Your name', error: { $error: 'name' } },
-                                  children: [
-                                    {
-                                      type: 'we-input',
-                                      props: {
-                                        placeholder: 'Name...',
-                                        value: { $local: 'name' },
-                                        onInput: { $setLocal: 'name', from: '$event.detail' },
-                                        onBlur: { $touch: 'name' },
-                                      },
-                                    },
-                                  ],
-                                },
-                                // Password + confirm
-                                {
-                                  type: 'we-form-field',
-                                  props: { label: 'Password', error: { $error: 'password' } },
-                                  children: [
-                                    {
-                                      type: 'we-input',
-                                      props: {
-                                        width: '100%',
-                                        type: 'password',
-                                        revealable: true,
-                                        placeholder: 'Password...',
-                                        value: { $local: 'password' },
-                                        onInput: { $setLocal: 'password', from: '$event.detail' },
-                                        onBlur: { $touch: 'password' },
-                                      },
-                                    },
-                                  ],
-                                },
-                                {
-                                  type: 'we-form-field',
-                                  props: {
-                                    label: 'Confirm password',
-                                    error: {
-                                      $if: {
-                                        condition: { $error: 'confirm' },
-                                        then: { $error: 'confirm' },
-                                        else: { $store: 'sessionStore.createAgentError' },
-                                      },
-                                    },
-                                  },
-                                  children: [
-                                    {
-                                      type: 'we-input',
-                                      props: {
-                                        width: '100%',
-                                        type: 'password',
-                                        // Each field's toggle is its own — the primitive keeps the
-                                        // reveal state per instance, so revealing one does not
-                                        // reveal the other.
-                                        revealable: true,
-                                        placeholder: 'Confirm password...',
-                                        value: { $local: 'confirm' },
-                                        onInput: { $setLocal: 'confirm', from: '$event.detail' },
-                                        onBlur: { $touch: 'confirm' },
-                                      },
-                                    },
-                                  ],
-                                },
-                                // The one thing that is not obvious: there is no reset. Every other app
-                                // has taught the user that a forgotten password is recoverable by email.
-                                {
-                                  type: 'we-text',
-                                  props: { variant: 'footnote', color: 'neutral-500', textAlign: 'center' },
-                                  children: ["If you lose this password, the account can't be recovered."],
-                                },
-                              ],
-                            },
-                            {
-                              type: 'we-button',
-                              props: {
-                                text: 'Create account',
-                                color: 'neutral-0',
-                                bg: 'primary-500',
-                                disabled: { $not: { $formValid: '$scope' } },
-                                loading: { $store: 'sessionStore.createAgentLoading' },
-                                // One action rather than a chain: the ordering is load-bearing
-                                // (the profile cannot be published until the agent exists) and the
-                                // failure handling differs per step. See completeAccountSetup.
-                                onClick: [
-                                  { $touch: '$all' },
-                                  {
-                                    $if: {
-                                      condition: { $formValid: '$scope' },
-                                      then: {
-                                        $action: 'profileStore.completeAccountSetup',
-                                        args: [{ $local: 'name' }, { $local: 'password' }],
-                                      },
-                                    },
-                                  },
-                                ],
-                              },
-                            },
-                            accountSwitcher({ allowCreate: false }),
                           ],
                         },
-                      },
+                        // Form
+                        {
+                          type: 'Column',
+                          props: { gap: '400' },
+                          children: [
+                            // Picture — optional, and held until an agent exists to upload to.
+                            {
+                              type: 'EditableImage',
+                              props: {
+                                src: { $store: 'profileStore.pendingAvatar' },
+                                alt: 'Profile picture',
+                                aspect: 1,
+                                placeholderIcon: 'user',
+                                width: '96px',
+                                height: '96px',
+                                onImageChange: { $action: 'profileStore.setPendingAvatar', args: ['$arg'] },
+                              },
+                            },
+                            // The profile's name, not a separate local label. One DID, one
+                            // identity, one thing to type.
+                            {
+                              type: 'we-form-field',
+                              props: { label: 'Your name', error: { $error: 'name' } },
+                              children: [
+                                {
+                                  type: 'we-input',
+                                  props: {
+                                    placeholder: 'Name...',
+                                    value: { $local: 'name' },
+                                    onInput: { $setLocal: 'name', from: '$event.detail' },
+                                    onBlur: { $touch: 'name' },
+                                  },
+                                },
+                              ],
+                            },
+                            // Password + confirm
+                            {
+                              type: 'we-form-field',
+                              props: { label: 'Password', error: { $error: 'password' } },
+                              children: [
+                                {
+                                  type: 'we-input',
+                                  props: {
+                                    width: '100%',
+                                    type: 'password',
+                                    revealable: true,
+                                    placeholder: 'Password...',
+                                    value: { $local: 'password' },
+                                    onInput: { $setLocal: 'password', from: '$event.detail' },
+                                    onBlur: { $touch: 'password' },
+                                  },
+                                },
+                              ],
+                            },
+                            {
+                              type: 'we-form-field',
+                              props: {
+                                label: 'Confirm password',
+                                error: {
+                                  $if: {
+                                    condition: { $error: 'confirm' },
+                                    then: { $error: 'confirm' },
+                                    else: { $store: 'sessionStore.createAgentError' },
+                                  },
+                                },
+                              },
+                              children: [
+                                {
+                                  type: 'we-input',
+                                  props: {
+                                    width: '100%',
+                                    type: 'password',
+                                    // Each field's toggle is its own — the primitive keeps the
+                                    // reveal state per instance, so revealing one does not
+                                    // reveal the other.
+                                    revealable: true,
+                                    placeholder: 'Confirm password...',
+                                    value: { $local: 'confirm' },
+                                    onInput: { $setLocal: 'confirm', from: '$event.detail' },
+                                    onBlur: { $touch: 'confirm' },
+                                  },
+                                },
+                              ],
+                            },
+                            // The one thing that is not obvious: there is no reset. Every other app
+                            // has taught the user that a forgotten password is recoverable by email.
+                            {
+                              type: 'we-text',
+                              props: { variant: 'footnote', color: 'neutral-500', textAlign: 'center' },
+                              children: ["If you lose this password, the account can't be recovered."],
+                            },
+                          ],
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            text: 'Create account',
+                            color: 'neutral-0',
+                            bg: 'primary-500',
+                            disabled: { $not: { $formValid: '$scope' } },
+                            loading: { $store: 'sessionStore.createAgentLoading' },
+                            // One action rather than a chain: the ordering is load-bearing
+                            // (the profile cannot be published until the agent exists) and the
+                            // failure handling differs per step. See completeAccountSetup.
+                            onClick: [
+                              { $touch: '$all' },
+                              {
+                                $if: {
+                                  condition: { $formValid: '$scope' },
+                                  then: {
+                                    $action: 'profileStore.completeAccountSetup',
+                                    args: [{ $local: 'name' }, { $local: 'password' }],
+                                  },
+                                },
+                              },
+                            ],
+                          },
+                        },
+                      ],
                     },
                   ],
                 },
+              },
+            },
+            // The other accounts, anchored to the window rather than to the centre column. Shown on
+            // the two states where a user might want a different account: signing in, and setting
+            // one up. Not while loading or finishing, where the outcome is already decided.
+            //
+            // Create is offered on sign-in only — beside a setup form it would offer to start
+            // over on the thing being started.
+            {
+              type: '$if',
+              props: {
+                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'login'] },
+                then: accountSwitcher({ allowCreate: true }),
+              },
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
+                then: accountSwitcher({ allowCreate: false }),
               },
             },
             // Finishing state — non-interactive. The agent exists and the session is loaded; the name

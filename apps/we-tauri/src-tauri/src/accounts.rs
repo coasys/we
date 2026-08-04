@@ -40,6 +40,9 @@ pub struct AccountEntry {
     /// Cached profile picture as a small data URI. See `Account::avatar`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
+    /// Setup was never finished. See `prune_abandoned`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub provisional: bool,
 }
 
 /// The shape the UI consumes. `id` is the data path — stable, and unique by construction, so
@@ -105,6 +108,7 @@ impl AccountRegistry {
                     name: self.default_name.clone(),
                     path: self.default_path.clone(),
                     avatar: None,
+                    provisional: false,
                 }],
                 selected_path: self.default_path.clone(),
             })
@@ -133,6 +137,44 @@ impl AccountRegistry {
         };
         let _ = self.write(&healed);
         fallback
+    }
+
+    /// Drop accounts whose setup was never finished.
+    ///
+    /// Only ones this app created and never saw completed, and never the selected one — that is
+    /// either mid-setup right now or the account about to be signed in to. Called once at startup,
+    /// so an abandoned account survives exactly as long as the session that abandoned it.
+    pub fn prune_abandoned(&self) {
+        let state = self.read();
+        let active = self.resolve_active_path();
+        let managed = self.managed_root();
+
+        let (abandoned, kept): (Vec<_>, Vec<_>) = state
+            .accounts
+            .into_iter()
+            .partition(|a| a.provisional && a.path != active);
+        if abandoned.is_empty() {
+            return;
+        }
+
+        let _ = self.write(&RegistryState {
+            accounts: kept,
+            selected_path: state.selected_path,
+        });
+
+        for account in &abandoned {
+            // Same shape check as remove(): a registry entry is a path, not proof of what is there.
+            if !account.path.starts_with(&managed) || !account.path.exists() {
+                continue;
+            }
+            if let Err(e) = fs::remove_dir_all(&account.path) {
+                eprintln!("[accounts] Could not delete an abandoned account: {e}");
+            }
+        }
+        println!(
+            "[accounts] Removed {} account(s) whose setup was never finished",
+            abandoned.len()
+        );
     }
 
     pub fn list(&self) -> Vec<Account> {
@@ -178,6 +220,10 @@ impl AccountRegistry {
             name: name.clone(),
             path: path.clone(),
             avatar: None,
+            // Provisional until setup finishes. An account whose setup is abandoned has a
+            // directory, a placeholder name and no identity, and would otherwise sit in the
+            // switcher forever looking real.
+            provisional: true,
         });
         state.selected_path = path.clone();
         self.write(&state)?;
@@ -220,6 +266,8 @@ impl AccountRegistry {
             if account.path == target {
                 if let Some(new_name) = trimmed {
                     account.name = new_name.to_string();
+                    // A name arriving is setup completing: it is written once the agent exists.
+                    account.provisional = false;
                 }
                 if let Some(new_avatar) = cached_avatar {
                     account.avatar = Some(new_avatar.to_string());

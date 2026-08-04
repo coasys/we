@@ -67,6 +67,9 @@ const accounts = createAccountRegistry({
 function resolveAd4mDataPath() {
   const fromEnv = process.env.WE_AD4M_DATA_PATH;
   if (fromEnv) return expandHome(fromEnv);
+  // Before resolving, clear out any account whose setup was abandoned last session — it has a
+  // directory and a placeholder name and no identity, and nothing else will ever tidy it up.
+  accounts.pruneAbandoned();
   return accounts.resolveActivePath();
 }
 

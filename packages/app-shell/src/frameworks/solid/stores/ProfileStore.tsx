@@ -67,6 +67,21 @@ export function ProfileStoreProvider(props: ParentProps) {
 
   // In-flight deduplication for fetchProfile — prevents concurrent fetches for the same DID
   const inflightFetches = new Map<string, Promise<void>>();
+  /**
+   * When each DID was last written locally, so a fetch that started earlier cannot land on top of
+   * a newer local edit.
+   *
+   * The boot sequence fires `fetchProfile(ownDid)` without awaiting it. During first-run setup that
+   * fetch is issued while the profile is still empty, and resolves *after* the setup writes the
+   * name — so it replaced the name with the empty profile it had read. The picture survived only
+   * because it is written later still, which is why this looked like "the name does not save but
+   * the image does".
+   */
+  const lastLocalWrite = new Map<string, number>();
+
+  function markLocallyWritten(did: string): void {
+    lastLocalWrite.set(did, Date.now());
+  }
 
   const ownProfile = createMemo(() => {
     const myDid = session.me()?.did;
@@ -90,9 +105,13 @@ export function ProfileStoreProvider(props: ParentProps) {
     const profilePort = session.backendPorts()?.profiles;
     if (!profilePort) return;
 
+    const startedAt = Date.now();
     const promise = profilePort
       .get(cleanedDid)
       .then((summary) => {
+        // A local edit made since this fetch began is newer than what it read. Dropping the
+        // response is correct: the next fetch will pick up the published value.
+        if ((lastLocalWrite.get(cleanedDid) ?? 0) > startedAt) return;
         setProfiles((prev) => {
           const idx = prev.findIndex((a) => a.did === cleanedDid);
           if (idx === -1) return [...prev, summary];
@@ -127,6 +146,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     const dataUri = `data:${fileData.file_type};base64,${fileData.data_base64}`;
     const expressionUrl = await profilePort.uploadFile(JSON.stringify(fileData));
 
+    markLocallyWritten(myDid);
     setProfiles((prev) => {
       const existing = prev.find((a) => a.did === myDid);
       if (!existing) return prev;
@@ -168,6 +188,7 @@ export function ProfileStoreProvider(props: ParentProps) {
       country: 'country' in update ? update.country : existingLoc?.country,
     };
 
+    markLocallyWritten(myDid);
     setProfiles((prev) => {
       const agent = prev.find((a) => a.did === myDid);
       if (!agent) return prev;
@@ -188,6 +209,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     const profilePort = session.backendPorts()?.profiles;
     if (!myDid || !profilePort) return;
 
+    markLocallyWritten(myDid);
     setProfiles((prev) => {
       const existing = prev.find((a) => a.did === myDid);
       const base: AgentProfileSummary = existing ?? { did: myDid, firstName: '', lastName: '', handle: '', bio: '' };
@@ -247,6 +269,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     const fileData = dataURIToFileData(dataUri, 'profile-image');
     const expressionUrl = await profilePort.uploadFile(JSON.stringify(fileData));
 
+    markLocallyWritten(myDid);
     setProfiles((prev) => {
       const existing = prev.find((a) => a.did === myDid);
       const base: AgentProfileSummary = existing ?? { did: myDid, firstName: '', lastName: '', handle: '', bio: '' };

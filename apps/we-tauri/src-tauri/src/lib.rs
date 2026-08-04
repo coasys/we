@@ -65,6 +65,8 @@ pub fn run() {
 
     // Where the executor keeps its data — the selected account, env-overridable.
     let registry = AccountRegistry::new(config_dir.clone(), default_data_path.clone());
+    // Clear out any account whose setup was abandoned last session before choosing one.
+    registry.prune_abandoned();
     let app_data_path = resolve_ad4m_data_path(&registry, &home);
     println!("AD4M data path: {}", app_data_path.display());
 

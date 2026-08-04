@@ -199,6 +199,50 @@ describe('removing', () => {
   });
 });
 
+describe('pruneAbandoned', () => {
+  it('removes an account whose setup was never finished', () => {
+    const created = registry.create();
+    seedAd4mData(created.id);
+    registry.select(defaultPath);
+
+    registry.pruneAbandoned();
+
+    expect(registry.list().map((a) => a.id)).toEqual([defaultPath]);
+    expect(existsSync(created.id)).toBe(false);
+  });
+
+  it('keeps one whose setup completed — a name means the agent exists', () => {
+    const created = registry.create();
+    registry.setDisplay(created.id, { name: 'Work' });
+    registry.select(defaultPath);
+
+    registry.pruneAbandoned();
+
+    expect(registry.list().map((a) => a.name)).toContain('Work');
+  });
+
+  it('never removes the account being signed in to, even mid-setup', () => {
+    // Created and selected but not yet named: this is exactly the state of a first boot into a
+    // new account, and pruning it would delete the account the user is setting up.
+    const created = registry.create();
+
+    registry.pruneAbandoned();
+
+    expect(registry.list().map((a) => a.id)).toContain(created.id);
+    expect(registry.resolveActivePath()).toBe(created.id);
+  });
+
+  it('leaves adopted accounts alone — they were never provisional', () => {
+    const created = registry.create();
+    registry.setDisplay(created.id, { name: 'Work' });
+
+    registry.pruneAbandoned();
+
+    expect(registry.list().map((a) => a.id)).toContain(defaultPath);
+    expect(existsSync(defaultPath)).toBe(true);
+  });
+});
+
 describe('slugify', () => {
   it('makes a safe directory name', () => {
     expect(slugify('Test Net')).toBe('test-net');

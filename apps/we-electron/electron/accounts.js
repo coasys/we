@@ -113,6 +113,33 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
 
   return {
     /**
+     * Drop accounts whose setup was never finished.
+     *
+     * Only ones this app created and never saw completed, and never the selected one — that is
+     * either mid-setup right now or the account about to be signed in to. Called once at startup,
+     * so an abandoned account survives exactly as long as the session that abandoned it.
+     */
+    pruneAbandoned() {
+      const state = read();
+      const activePath = this.resolveActivePath();
+      const abandoned = state.accounts.filter((a) => a.provisional && a.path !== activePath);
+      if (!abandoned.length) return;
+
+      write({ ...state, accounts: state.accounts.filter((a) => !abandoned.includes(a)) });
+
+      for (const account of abandoned) {
+        // Same shape check as remove(): a registry entry is a path, not proof of what is there.
+        if (!account.path.startsWith(managedRoot) || !existsSync(account.path)) continue;
+        try {
+          rmSync(account.path, { recursive: true, force: true });
+        } catch (e) {
+          console.warn('[accounts] Could not delete an abandoned account:', e.message);
+        }
+      }
+      console.log(`[accounts] Removed ${abandoned.length} account(s) whose setup was never finished`);
+    },
+
+    /**
      * The data path this launch should use. Also self-heals: a registry whose selection points at
      * an account that is no longer listed falls back to the first one rather than starting the
      * executor against a directory nothing knows about.
@@ -161,7 +188,10 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
       if (state.accounts.some((a) => a.path === path)) throw new Error('That account already exists');
 
       mkdirSync(path, { recursive: true });
-      write({ accounts: [...state.accounts, { name, path }], selectedPath: path });
+      // Provisional until setup finishes. An account whose setup is abandoned — switched away
+      // from, or the app closed at the password screen — has a directory and a placeholder name
+      // and no identity in it, and would otherwise sit in the switcher forever looking real.
+      write({ accounts: [...state.accounts, { name, path, provisional: true }], selectedPath: path });
       return { id: path, name, active: true };
     },
 
@@ -189,9 +219,14 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
 
       write({
         ...state,
-        accounts: state.accounts.map((a) =>
-          a.path === id ? { ...a, ...(trimmed ? { name: trimmed } : {}), ...(withinCap ? { avatar } : {}) } : a,
-        ),
+        accounts: state.accounts.map((a) => {
+          if (a.path !== id) return a;
+          const next = { ...a, ...(trimmed ? { name: trimmed } : {}), ...(withinCap ? { avatar } : {}) };
+          // A name arriving is setup completing: it is written once the agent exists, so the
+          // account stops being provisional and survives the next prune.
+          if (trimmed) delete next.provisional;
+          return next;
+        }),
       });
     },
 

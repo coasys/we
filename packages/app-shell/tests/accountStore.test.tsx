@@ -356,6 +356,29 @@ describe('syncDisplay — mirroring the profile onto the account', () => {
   });
 });
 
+describe('creating goes straight through', () => {
+  it('does not wait on a confirmation step', async () => {
+    const { host, calls } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+    calls.length = 0;
+
+    // `creating` is observed mid-flight: in the app the process is gone by the time this
+    // resolves, so the stub reaching the end is an artefact of the harness, not the flow.
+    const seen: boolean[] = [];
+    host.create = async () => {
+      seen.push(store.creating());
+      return { id: '/cfg/agents/new-account', name: 'New account', active: true };
+    };
+
+    await store.createAccount();
+
+    expect(seen).toEqual([true]);
+    expect(calls).toEqual(['apply']);
+  });
+});
+
 describe('removal confirmation', () => {
   it('holds the account awaiting confirmation, and deletes it on confirm', async () => {
     const { host, calls } = stubHost(TWO);
