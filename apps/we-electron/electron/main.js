@@ -440,19 +440,29 @@ ipcMain.handle('accounts-apply', async () => {
 
   if (!mainWindow || mainWindow.isDestroyed()) return;
 
-  // Paint the gap in the app's own colour. A reload repaints the window from its background
-  // colour, which defaults to white — so on a dark theme the switch flashes white for the frames
-  // before the new document paints. Read the real value rather than hard-coding one: themes are
-  // user-installable here, so any constant would be wrong for somebody.
+  // Paint the gap in the app's own colour.
+  //
+  // A reload repaints the window from its background colour, which defaults to white — so on a
+  // dark theme the switch flashes white for the frames before the new document paints.
+  //
+  // Resolved from `--we-color-neutral-0`, the token the boot screen itself uses, via a throwaway
+  // element: the token's authored form varies (hex, hsl parts, whatever a custom theme sets) and
+  // `getComputedStyle` on a real element hands back a resolved `rgb()` string whatever it was.
+  // Reading `document.body`'s own background instead — the first attempt — picked up the browser
+  // default rather than the app's, which is why the flash was a lighter shade than the app.
   try {
     const background = await mainWindow.webContents.executeJavaScript(
       `(() => {
-         const of = (el) => getComputedStyle(el).backgroundColor;
-         const html = of(document.documentElement);
-         const transparent = (c) => !c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)';
-         return transparent(html) ? of(document.body) : html;
+         const probe = document.createElement('div');
+         probe.style.cssText = 'position:absolute;visibility:hidden;background:var(--we-color-neutral-0)';
+         document.body.appendChild(probe);
+         const resolved = getComputedStyle(probe).backgroundColor;
+         probe.remove();
+         return resolved;
        })()`,
     );
+    // Reject transparent: an unset token would otherwise set the window transparent-black, which
+    // paints as the very white this exists to avoid.
     if (background && !background.startsWith('rgba(0, 0, 0, 0')) mainWindow.setBackgroundColor(background);
   } catch {
     // Best effort — a white frame is a blemish, not a reason to abandon the switch.

@@ -366,346 +366,362 @@ export const bootScreen: SchemaNode = {
           type: 'we-image',
           props: { src: '/we-text.svg', alt: 'WE Logo', width: '150px', height: '75px', gradient: 'primary' },
         },
-        // Initialising state
+        // Every state lives inside one reserved box.
+        //
+        // The screen centres its content vertically, so the logo's position is a function of how
+        // tall everything below it is — and each boot state is a different height, with a frame
+        // between them where neither is mounted. That made the logo drift up and settle back on
+        // every transition, most visibly during the moment the badge was still filling in.
+        //
+        // A floor rather than a fixed height: the sign-in form is legitimately taller than this
+        // and should grow, which reads as a deliberate change of screen. What this stops is the
+        // shorter states jittering against each other.
         {
-          type: '$if',
-          props: {
-            condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'initialising'] },
-            then: startingState('accountStore.bootAccount'),
-          },
-        },
-        // Sign-in state — unlock, switch account, or create one. The three are modes of one
-        // screen rather than separate boot states because they share the same question ("who is
-        // using this app") and only one of them involves the session at all.
-        {
-          type: '$if',
-          props: {
-            condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'login'] },
-            then: {
-              type: 'Column',
-              props: { mt: '200', gap: '400', ax: 'center' },
-              $localState: {
-                password: {
-                  type: 'string',
-                  initial: '',
-                  validate: [{ rule: 'required', message: 'Password is required' }],
-                },
-                showPassword: { type: 'boolean', initial: false },
-                mode: { type: 'string', initial: 'unlock' },
+          type: 'Column',
+          props: { minHeight: '240px', width: '100%', ax: 'start', ay: 'center' },
+          children: [
+            // Initialising state
+            {
+              type: '$if',
+              props: {
+                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'initialising'] },
+                then: startingState('accountStore.bootAccount'),
               },
-              children: [
-                // Switching runs entirely before the reload — kill the executor, respawn it
-                // against the other directory, wait for GraphQL — several seconds during which the
-                // old form would otherwise sit there looking merely unresponsive. Rendering the
-                // *target's* badge here, with the same node the post-reload state uses, makes the
-                // whole switch one continuous screen: the identity swaps on the click and nothing
-                // moves again until the password field arrives.
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $store: 'accountStore.switchingTo' },
-                    then: startingState('accountStore.switchingTo'),
-                    else: {
+            },
+            // Sign-in state — unlock, switch account, or create one. The three are modes of one
+            // screen rather than separate boot states because they share the same question ("who is
+            // using this app") and only one of them involves the session at all.
+            {
+              type: '$if',
+              props: {
+                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'login'] },
+                then: {
+                  type: 'Column',
+                  props: { mt: '200', gap: '400', ax: 'center' },
+                  $localState: {
+                    password: {
+                      type: 'string',
+                      initial: '',
+                      validate: [{ rule: 'required', message: 'Password is required' }],
+                    },
+                    showPassword: { type: 'boolean', initial: false },
+                    mode: { type: 'string', initial: 'unlock' },
+                  },
+                  children: [
+                    // Switching runs entirely before the reload — kill the executor, respawn it
+                    // against the other directory, wait for GraphQL — several seconds during which the
+                    // old form would otherwise sit there looking merely unresponsive. Rendering the
+                    // *target's* badge here, with the same node the post-reload state uses, makes the
+                    // whole switch one continuous screen: the identity swaps on the click and nothing
+                    // moves again until the password field arrives.
+                    {
                       type: '$if',
                       props: {
-                        condition: { $store: 'accountStore.creating' },
-                        then: {
-                          type: 'Row',
-                          props: { mt: '200', gap: '300', ay: 'center' },
-                          children: [
-                            { type: 'we-spinner', props: { size: 'sm' } },
-                            { type: 'we-text', props: { color: 'neutral-600' }, children: ['Creating account...'] },
-                          ],
-                        },
+                        condition: { $store: 'accountStore.switchingTo' },
+                        then: startingState('accountStore.switchingTo'),
                         else: {
                           type: '$if',
                           props: {
-                            condition: { $eq: [{ $local: 'mode' }, 'create'] },
-                            then: createAccountConfirm,
-                            else: unlockForm,
+                            condition: { $store: 'accountStore.creating' },
+                            then: {
+                              type: 'Row',
+                              props: { mt: '200', gap: '300', ay: 'center' },
+                              children: [
+                                { type: 'we-spinner', props: { size: 'sm' } },
+                                { type: 'we-text', props: { color: 'neutral-600' }, children: ['Creating account...'] },
+                              ],
+                            },
+                            else: {
+                              type: '$if',
+                              props: {
+                                condition: { $eq: [{ $local: 'mode' }, 'create'] },
+                                then: createAccountConfirm,
+                                else: unlockForm,
+                              },
+                            },
                           },
                         },
                       },
                     },
-                  },
-                },
-              ],
-            },
-          },
-        },
-        // Setup state — this account has no identity yet. Reached on a genuine first run and on
-        // the first boot into a newly created account, and it looks the same either way: name,
-        // then password. The name is committed by renaming the account (seeded as "Main" on first
-        // run, provisional on a created one), which is why it chains through accountStore.
-        {
-          type: '$if',
-          props: {
-            condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
-            then: {
-              type: 'Column',
-              props: { mt: '200', gap: '400', ax: 'center', maxWidth: '380px' },
-              $localState: {
-                name: {
-                  type: 'string',
-                  // Blank, not seeded from the account: this is the name people will see, so
-                  // offering "Main" or "New account" as a starting point invites accepting a
-                  // placeholder as an identity.
-                  initial: '',
-                  validate: [{ rule: 'required', message: 'A name is required' }],
-                },
-                password: {
-                  type: 'string',
-                  initial: '',
-                  // Deliberately only "required": no length or composition rules. Adding them
-                  // later is easy; having them now blocks testing with throwaway passwords.
-                  validate: [{ rule: 'required', message: 'Password is required' }],
-                },
-                confirm: {
-                  type: 'string',
-                  initial: '',
-                  validate: [
-                    { rule: 'required', message: 'Please confirm your password' },
-                    { rule: 'match', field: 'password', message: 'Passwords do not match' },
                   ],
                 },
-                // One per field rather than one shared: each eye reveals only the input it sits in.
-                showPassword: { type: 'boolean', initial: false },
-                showConfirm: { type: 'boolean', initial: false },
-                mode: { type: 'string', initial: 'unlock' },
               },
-              children: [
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $eq: [{ $local: 'mode' }, 'create'] },
-                    then: createAccountConfirm,
-                    else: {
-                      type: 'Column',
-                      props: { gap: '400', ax: 'center' },
-                      children: [
-                        {
-                          type: 'Row',
-                          props: { gap: '300', ay: 'center' },
-                          children: [
-                            { type: 'we-icon', props: { name: 'user-plus', color: 'primary-600' } },
-                            {
-                              type: 'we-text',
-                              props: { variant: 'heading-sm', fontWeight: 'regular' },
-                              children: ['Create account'],
-                            },
-                          ],
-                        },
-                        // Form
-                        {
-                          type: 'Column',
-                          props: { gap: '400' },
-                          children: [
-                            // Picture — optional, and held until an agent exists to upload to.
-                            {
-                              type: 'EditableImage',
-                              props: {
-                                src: { $store: 'profileStore.pendingAvatar' },
-                                alt: 'Profile picture',
-                                aspect: 1,
-                                placeholderIcon: 'user',
-                                width: '96px',
-                                height: '96px',
-                                onImageChange: { $action: 'profileStore.setPendingAvatar', args: ['$arg'] },
-                              },
-                            },
-                            // The profile's name, not a separate local label. One DID, one
-                            // identity, one thing to type.
-                            {
-                              type: 'we-form-field',
-                              props: { label: 'Your name', error: { $error: 'name' } },
-                              children: [
-                                {
-                                  type: 'we-input',
-                                  props: {
-                                    placeholder: 'Name...',
-                                    value: { $local: 'name' },
-                                    onInput: { $setLocal: 'name', from: '$event.detail' },
-                                    onBlur: { $touch: 'name' },
-                                  },
-                                },
-                              ],
-                            },
-                            // Password + confirm
-                            {
-                              type: 'we-form-field',
-                              props: { label: 'Password', error: { $error: 'password' } },
-                              children: [
-                                {
-                                  type: 'Row',
-                                  props: { gap: '300' },
-                                  children: [
-                                    {
-                                      type: 'we-input',
-                                      props: {
-                                        width: '100%',
-                                        placeholder: 'Password...',
-                                        value: { $local: 'password' },
-                                        onInput: { $setLocal: 'password', from: '$event.detail' },
-                                        onBlur: { $touch: 'password' },
-                                        type: {
-                                          $if: {
-                                            condition: { $local: 'showPassword' },
-                                            then: 'text',
-                                            else: 'password',
-                                          },
-                                        },
-                                      },
-                                    },
-                                    {
-                                      type: 'we-button',
-                                      props: {
-                                        bg: 'primary-500',
-                                        onClick: { $toggleLocal: 'showPassword' },
-                                      },
-                                      children: [
-                                        {
-                                          type: 'we-icon',
-                                          props: {
-                                            name: {
-                                              $if: {
-                                                condition: { $local: 'showPassword' },
-                                                then: 'eye',
-                                                else: 'eye-slash',
-                                              },
-                                            },
-                                            color: 'neutral-0',
-                                          },
-                                        },
-                                      ],
-                                    },
-                                  ],
-                                },
-                              ],
-                            },
-                            {
-                              type: 'we-form-field',
-                              props: {
-                                label: 'Confirm password',
-                                error: {
-                                  $if: {
-                                    condition: { $error: 'confirm' },
-                                    then: { $error: 'confirm' },
-                                    else: { $store: 'sessionStore.createAgentError' },
-                                  },
-                                },
-                              },
-                              children: [
-                                {
-                                  type: 'Row',
-                                  props: { gap: '300' },
-                                  children: [
-                                    {
-                                      type: 'we-input',
-                                      props: {
-                                        width: '100%',
-                                        placeholder: 'Confirm password...',
-                                        value: { $local: 'confirm' },
-                                        onInput: { $setLocal: 'confirm', from: '$event.detail' },
-                                        onBlur: { $touch: 'confirm' },
-                                        type: {
-                                          $if: {
-                                            condition: { $local: 'showConfirm' },
-                                            then: 'text',
-                                            else: 'password',
-                                          },
-                                        },
-                                      },
-                                    },
-                                    // Its own state, not the one above. A control sitting
-                                    // inside this field that silently revealed the field above
-                                    // it would be lying about its scope — and revealing only
-                                    // the field you are actively fixing exposes less.
-                                    {
-                                      type: 'we-button',
-                                      props: {
-                                        bg: 'primary-500',
-                                        onClick: { $toggleLocal: 'showConfirm' },
-                                      },
-                                      children: [
-                                        {
-                                          type: 'we-icon',
-                                          props: {
-                                            name: {
-                                              $if: {
-                                                condition: { $local: 'showConfirm' },
-                                                then: 'eye',
-                                                else: 'eye-slash',
-                                              },
-                                            },
-                                            color: 'neutral-0',
-                                          },
-                                        },
-                                      ],
-                                    },
-                                  ],
-                                },
-                              ],
-                            },
-                            // The one thing that is not obvious: there is no reset. Every other app
-                            // has taught the user that a forgotten password is recoverable by email.
-                            {
-                              type: 'we-text',
-                              props: { variant: 'footnote', color: 'neutral-500', textAlign: 'center' },
-                              children: ["If you lose this password, the account can't be recovered."],
-                            },
-                          ],
-                        },
-                        {
-                          type: 'we-button',
-                          props: {
-                            mt: '200',
-                            text: 'Create account',
-                            color: 'neutral-0',
-                            bg: 'primary-500',
-                            disabled: { $not: { $formValid: '$scope' } },
-                            loading: { $store: 'sessionStore.createAgentLoading' },
-                            // One action rather than a chain: the ordering is load-bearing
-                            // (the profile cannot be published until the agent exists) and the
-                            // failure handling differs per step. See completeAccountSetup.
-                            onClick: [
-                              { $touch: '$all' },
-                              {
-                                $if: {
-                                  condition: { $formValid: '$scope' },
-                                  then: {
-                                    $action: 'profileStore.completeAccountSetup',
-                                    args: [{ $local: 'name' }, { $local: 'password' }],
-                                  },
-                                },
-                              },
-                            ],
-                          },
-                        },
-                        accountSwitcher({ allowCreate: false }),
+            },
+            // Setup state — this account has no identity yet. Reached on a genuine first run and on
+            // the first boot into a newly created account, and it looks the same either way: name,
+            // then password. The name is committed by renaming the account (seeded as "Main" on first
+            // run, provisional on a created one), which is why it chains through accountStore.
+            {
+              type: '$if',
+              props: {
+                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
+                then: {
+                  type: 'Column',
+                  props: { mt: '200', gap: '400', ax: 'center', maxWidth: '380px' },
+                  $localState: {
+                    name: {
+                      type: 'string',
+                      // Blank, not seeded from the account: this is the name people will see, so
+                      // offering "Main" or "New account" as a starting point invites accepting a
+                      // placeholder as an identity.
+                      initial: '',
+                      validate: [{ rule: 'required', message: 'A name is required' }],
+                    },
+                    password: {
+                      type: 'string',
+                      initial: '',
+                      // Deliberately only "required": no length or composition rules. Adding them
+                      // later is easy; having them now blocks testing with throwaway passwords.
+                      validate: [{ rule: 'required', message: 'Password is required' }],
+                    },
+                    confirm: {
+                      type: 'string',
+                      initial: '',
+                      validate: [
+                        { rule: 'required', message: 'Please confirm your password' },
+                        { rule: 'match', field: 'password', message: 'Passwords do not match' },
                       ],
                     },
+                    // One per field rather than one shared: each eye reveals only the input it sits in.
+                    showPassword: { type: 'boolean', initial: false },
+                    showConfirm: { type: 'boolean', initial: false },
+                    mode: { type: 'string', initial: 'unlock' },
                   },
+                  children: [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $eq: [{ $local: 'mode' }, 'create'] },
+                        then: createAccountConfirm,
+                        else: {
+                          type: 'Column',
+                          props: { gap: '400', ax: 'center' },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: { gap: '300', ay: 'center' },
+                              children: [
+                                { type: 'we-icon', props: { name: 'user-plus', color: 'primary-600' } },
+                                {
+                                  type: 'we-text',
+                                  props: { variant: 'heading-sm', fontWeight: 'regular' },
+                                  children: ['Create account'],
+                                },
+                              ],
+                            },
+                            // Form
+                            {
+                              type: 'Column',
+                              props: { gap: '400' },
+                              children: [
+                                // Picture — optional, and held until an agent exists to upload to.
+                                {
+                                  type: 'EditableImage',
+                                  props: {
+                                    src: { $store: 'profileStore.pendingAvatar' },
+                                    alt: 'Profile picture',
+                                    aspect: 1,
+                                    placeholderIcon: 'user',
+                                    width: '96px',
+                                    height: '96px',
+                                    onImageChange: { $action: 'profileStore.setPendingAvatar', args: ['$arg'] },
+                                  },
+                                },
+                                // The profile's name, not a separate local label. One DID, one
+                                // identity, one thing to type.
+                                {
+                                  type: 'we-form-field',
+                                  props: { label: 'Your name', error: { $error: 'name' } },
+                                  children: [
+                                    {
+                                      type: 'we-input',
+                                      props: {
+                                        placeholder: 'Name...',
+                                        value: { $local: 'name' },
+                                        onInput: { $setLocal: 'name', from: '$event.detail' },
+                                        onBlur: { $touch: 'name' },
+                                      },
+                                    },
+                                  ],
+                                },
+                                // Password + confirm
+                                {
+                                  type: 'we-form-field',
+                                  props: { label: 'Password', error: { $error: 'password' } },
+                                  children: [
+                                    {
+                                      type: 'Row',
+                                      props: { gap: '300' },
+                                      children: [
+                                        {
+                                          type: 'we-input',
+                                          props: {
+                                            width: '100%',
+                                            placeholder: 'Password...',
+                                            value: { $local: 'password' },
+                                            onInput: { $setLocal: 'password', from: '$event.detail' },
+                                            onBlur: { $touch: 'password' },
+                                            type: {
+                                              $if: {
+                                                condition: { $local: 'showPassword' },
+                                                then: 'text',
+                                                else: 'password',
+                                              },
+                                            },
+                                          },
+                                        },
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            bg: 'primary-500',
+                                            onClick: { $toggleLocal: 'showPassword' },
+                                          },
+                                          children: [
+                                            {
+                                              type: 'we-icon',
+                                              props: {
+                                                name: {
+                                                  $if: {
+                                                    condition: { $local: 'showPassword' },
+                                                    then: 'eye',
+                                                    else: 'eye-slash',
+                                                  },
+                                                },
+                                                color: 'neutral-0',
+                                              },
+                                            },
+                                          ],
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                {
+                                  type: 'we-form-field',
+                                  props: {
+                                    label: 'Confirm password',
+                                    error: {
+                                      $if: {
+                                        condition: { $error: 'confirm' },
+                                        then: { $error: 'confirm' },
+                                        else: { $store: 'sessionStore.createAgentError' },
+                                      },
+                                    },
+                                  },
+                                  children: [
+                                    {
+                                      type: 'Row',
+                                      props: { gap: '300' },
+                                      children: [
+                                        {
+                                          type: 'we-input',
+                                          props: {
+                                            width: '100%',
+                                            placeholder: 'Confirm password...',
+                                            value: { $local: 'confirm' },
+                                            onInput: { $setLocal: 'confirm', from: '$event.detail' },
+                                            onBlur: { $touch: 'confirm' },
+                                            type: {
+                                              $if: {
+                                                condition: { $local: 'showConfirm' },
+                                                then: 'text',
+                                                else: 'password',
+                                              },
+                                            },
+                                          },
+                                        },
+                                        // Its own state, not the one above. A control sitting
+                                        // inside this field that silently revealed the field above
+                                        // it would be lying about its scope — and revealing only
+                                        // the field you are actively fixing exposes less.
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            bg: 'primary-500',
+                                            onClick: { $toggleLocal: 'showConfirm' },
+                                          },
+                                          children: [
+                                            {
+                                              type: 'we-icon',
+                                              props: {
+                                                name: {
+                                                  $if: {
+                                                    condition: { $local: 'showConfirm' },
+                                                    then: 'eye',
+                                                    else: 'eye-slash',
+                                                  },
+                                                },
+                                                color: 'neutral-0',
+                                              },
+                                            },
+                                          ],
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                // The one thing that is not obvious: there is no reset. Every other app
+                                // has taught the user that a forgotten password is recoverable by email.
+                                {
+                                  type: 'we-text',
+                                  props: { variant: 'footnote', color: 'neutral-500', textAlign: 'center' },
+                                  children: ["If you lose this password, the account can't be recovered."],
+                                },
+                              ],
+                            },
+                            {
+                              type: 'we-button',
+                              props: {
+                                mt: '200',
+                                text: 'Create account',
+                                color: 'neutral-0',
+                                bg: 'primary-500',
+                                disabled: { $not: { $formValid: '$scope' } },
+                                loading: { $store: 'sessionStore.createAgentLoading' },
+                                // One action rather than a chain: the ordering is load-bearing
+                                // (the profile cannot be published until the agent exists) and the
+                                // failure handling differs per step. See completeAccountSetup.
+                                onClick: [
+                                  { $touch: '$all' },
+                                  {
+                                    $if: {
+                                      condition: { $formValid: '$scope' },
+                                      then: {
+                                        $action: 'profileStore.completeAccountSetup',
+                                        args: [{ $local: 'name' }, { $local: 'password' }],
+                                      },
+                                    },
+                                  },
+                                ],
+                              },
+                            },
+                            accountSwitcher({ allowCreate: false }),
+                          ],
+                        },
+                      },
+                    },
+                  ],
                 },
-              ],
+              },
             },
-          },
-        },
-        // Finishing state — non-interactive. The agent exists and the session is loaded; the name
-        // and picture collected on the setup screen are being published. Everything was asked for
-        // already, so this is a progress indicator rather than a step.
-        {
-          type: '$if',
-          props: {
-            condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'finishing'] },
-            then: {
-              type: 'Row',
-              props: { mt: '200', gap: '300', ay: 'center' },
-              children: [
-                { type: 'we-spinner', props: { size: 'sm' } },
-                { type: 'we-text', children: ['Setting up your account...'] },
-              ],
+            // Finishing state — non-interactive. The agent exists and the session is loaded; the name
+            // and picture collected on the setup screen are being published. Everything was asked for
+            // already, so this is a progress indicator rather than a step.
+            {
+              type: '$if',
+              props: {
+                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'finishing'] },
+                then: {
+                  type: 'Row',
+                  props: { mt: '200', gap: '300', ay: 'center' },
+                  children: [
+                    { type: 'we-spinner', props: { size: 'sm' } },
+                    { type: 'we-text', children: ['Setting up your account...'] },
+                  ],
+                },
+              },
             },
-          },
+          ],
         },
       ],
     },
