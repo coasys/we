@@ -1,3 +1,4 @@
+import { focusSelector } from '@we/design-utils';
 import type { LitElement } from 'lit';
 
 import { DesignSystemElement } from './design-system-element';
@@ -83,12 +84,15 @@ export abstract class OverlayElement extends DesignSystemElement {
         }
 
         /* Re-apply color-mix + backdrop-filter for state selectors — without this, the DS-generated
-           hover/active/focus rules win due to higher specificity, snapping back to full opacity. */
+           hover/active/focus rules win due to higher specificity, snapping back to full opacity.
+           The focus arm is built from the same shared focusSelector() the DS generator uses, so it
+           cannot drift: if it matched a wider set of states than the rule it exists to override, an
+           overlay would apply its focus background in situations where the DS applies nothing. */
         :host([data-we-overlay]) [part="base"]:hover:not(:disabled):not([aria-disabled='true']) {
           background: color-mix(in srgb, var(${p}hover-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
           backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
         }
-        :host([data-we-overlay]) [part="base"]:focus-within:not(:disabled):not([aria-disabled='true']) {
+        ${focusSelector(`:host([data-we-overlay]) [part="base"]`, `:not(:disabled):not([aria-disabled='true'])`)} {
           background: color-mix(in srgb, var(${p}focus-bg, var(${p}bg, transparent)) calc(var(--we-theme-surface-opacity, 1) * 100%), transparent);
           backdrop-filter: blur(var(--we-theme-surface-blur, 0px));
         }

@@ -130,7 +130,7 @@ Variants set size and weight only — color is always inherited or set explicitl
 |------|------|-------------|
 | hoverProps | Partial\\<DesignSystemProps\\> | Styles on :hover |
 | activeProps | Partial\\<DesignSystemProps\\> | Styles on :active |
-| focusProps | Partial\\<DesignSystemProps\\> | Styles on :focus |
+| focusProps | Partial\\<DesignSystemProps\\> | Styles on keyboard focus (:focus-visible) — deliberately not applied on mouse click. \`we-button\` and \`we-input\` already carry a default focus ring; only set this to override it |
 | disabledProps | Partial\\<DesignSystemProps\\> | Styles when disabled |
 
 ### Additional

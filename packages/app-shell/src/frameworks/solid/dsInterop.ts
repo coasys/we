@@ -1,4 +1,4 @@
-import { joinDeclsCSS, joinStateDeclsCSS } from '@we/design-utils';
+import { focusSelector, joinDeclsCSS, joinStateDeclsCSS } from '@we/design-utils';
 import { INTERACTIVE_SPECS } from '@we/design-utils/solid';
 
 const STYLE_EL_ID = 'we-ds-interop';
@@ -48,17 +48,18 @@ const BG_IMAGE_CSS = `
 }
 `;
 
-// Native :hover/:active/:focus-within for Solid layout primitives, generated from the
-// exact same PropSpec tables (INTERACTIVE_SPECS) that useStateProps emits --we-ds-* vars
-// for — one source of truth, so this stylesheet can never drift out of sync with the JS
-// that populates it. Declaration order below is the precedence order: for equal-
-// specificity selectors, the rule declared later wins when multiple states are true at
-// once (e.g. :hover:active), so :focus-within < :hover < :active reproduces the same
-// active-over-hover-over-focus precedence useStateProps used to compute via JS merge
-// order before this stylesheet existed.
+// Native :hover/:active/focus for Solid layout primitives, generated from the exact same
+// PropSpec tables (INTERACTIVE_SPECS) that useStateProps emits --we-ds-* vars for — one
+// source of truth, so this stylesheet can never drift out of sync with the JS that populates
+// it. The focus selector comes from the shared focusSelector() for the same reason: it is the
+// one place that decides what `focusProps` means, for Lit primitives and Solid layout
+// primitives alike. Declaration order below is the precedence order: for equal-specificity
+// selectors, the rule declared later wins when multiple states are true at once (e.g.
+// :hover:active), so focus < :hover < :active reproduces the same active-over-hover-over-focus
+// precedence useStateProps used to compute via JS merge order before this stylesheet existed.
 function buildInteractiveStateCSS(): string {
   const base = `[data-we-interactive] { ${joinDeclsCSS('--we-ds-', INTERACTIVE_SPECS)} }`;
-  const focus = `[data-we-interactive]:focus-within { ${joinStateDeclsCSS('--we-ds-focus-', '--we-ds-', INTERACTIVE_SPECS)} }`;
+  const focus = `${focusSelector('[data-we-interactive]')} { ${joinStateDeclsCSS('--we-ds-focus-', '--we-ds-', INTERACTIVE_SPECS)} }`;
   const hover = `[data-we-interactive]:hover { ${joinStateDeclsCSS('--we-ds-hover-', '--we-ds-', INTERACTIVE_SPECS)} }`;
   const active = `[data-we-interactive]:active { ${joinStateDeclsCSS('--we-ds-active-', '--we-ds-', INTERACTIVE_SPECS)} }`;
   return [base, focus, hover, active].join('\n');
@@ -67,7 +68,7 @@ function buildInteractiveStateCSS(): string {
 /**
  * The DS interop stylesheet — the escape hatch for the handful of CSS features Solid's
  * inline-style-driven DesignSystemProps model can't express directly: pseudo-elements
- * and native :hover/:active/:focus-within. Not a theme: no [data-we-theme] scoping, no
+ * and native :hover/:active/focus. Not a theme: no [data-we-theme] scoping, no
  * color tokens defined here — purely structural, so it's injected once, unconditionally,
  * regardless of which theme is active.
  */

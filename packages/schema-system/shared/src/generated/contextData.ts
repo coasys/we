@@ -72,7 +72,7 @@ export const contextData: ContextData = {
       ownProps: [
         {
           name: 'variant',
-          type: "'primary' | 'secondary' | 'ghost' | 'danger' | 'outline'",
+          type: "'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare'",
           optional: false,
           default: "'primary'",
         },

@@ -424,6 +424,35 @@ export function joinStateDeclsCSS(statePrefix: string, defaultPrefix: string, sp
 }
 
 /**
+ * Selector list for the `focus` element state, shared by both state-CSS generators — the Lit
+ * adopted stylesheet (@we/primitives shared/helpers.ts) and the Solid DS-interop stylesheet
+ * (@we/app-shell frameworks/solid/dsInterop.ts) — so `focusProps` cannot come to mean two
+ * different things on the two component families.
+ *
+ * Two arms, because the DS has two shapes of focusable element and no single pseudo-class
+ * covers both:
+ *
+ *   - `:focus-visible` — the element itself holds focus AND the browser judged a ring
+ *     warranted (keyboard navigation, not a mouse click). This is the button/link case. It is
+ *     why this is not `:focus` or `:focus-within`: those match on click too, which would leave
+ *     a focus ring stuck on every button the user clicks — the exact problem `:focus-visible`
+ *     was introduced to solve.
+ *
+ *   - `:has(:focus-visible)` — the element is a wrapper around the real control, as with
+ *     we-input's [part='base'] around its inner <input>. A wrapper can never match
+ *     `:focus-visible` itself, so without this arm every text field would silently lose its
+ *     focus ring. Text-entry fields always match `:focus-visible` while focused (browsers
+ *     exempt them from the keyboard-only heuristic), so this preserves the previous
+ *     `:focus-within` behaviour for inputs exactly rather than making it mouse-dependent.
+ *
+ * `suffix` is appended to each arm rather than the list, since a trailing `:not(…)` guard has
+ * to bind to both selectors to take effect.
+ */
+export function focusSelector(target: string, suffix = ''): string {
+  return `${target}:focus-visible${suffix}, ${target}:has(:focus-visible)${suffix}`;
+}
+
+/**
  * Whether bgImage should render via the ::before overlay + custom-property indirection
  * (true) or a plain background-image directly on the host (false). Shared by both
  * renderers' bgImage handling and the Solid getBgImageAttrs gate — single source of

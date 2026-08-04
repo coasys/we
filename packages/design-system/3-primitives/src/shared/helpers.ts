@@ -6,6 +6,7 @@ import {
   BASE_TYPOGRAPHY_SPECS as BASE_TYPOGRAPHY,
   BASE_VISUAL_SPECS as BASE_VISUAL,
   computeBgImageComposite,
+  focusSelector,
   getMarginValues,
   getPaddingValues,
   getRadiusValues,
@@ -528,6 +529,15 @@ export function getStaticDSStyles(
       const sp = `${p}${state}-`;
 
       // Host state — layout props only, no transition (see :host comment above)
+      //
+      // Focus stays :focus-within here, unlike the base below, because there is no selector
+      // that expresses "a shadow descendant is *keyboard*-focused" from the host. :focus-within
+      // is the one thing that crosses the shadow boundary; :focus-visible only ever matches the
+      // focused element itself, and :host(:has(…)) matches the host's *light* tree, so it sees
+      // slotted content rather than the shadow <button>/<input> that actually took focus. The
+      // asymmetry is tolerable because the host layer carries HOST_LAYOUT only (sizing,
+      // position, margin) — focus-driven layout changes are vanishingly rare, and every visual
+      // state prop lands on [part='base'], which is corrected below.
       if (hostSpecs.length > 0) {
         const lines: string[] = [];
         lines.push(joinStateDecls(sp, p, hostSpecs));
@@ -545,7 +555,9 @@ export function getStaticDSStyles(
         const sel =
           state === 'disabled'
             ? `[part='base']:disabled, [part='base'][aria-disabled='true']`
-            : `[part='base']:${state === 'focus' ? 'focus-within' : state}:not(:disabled):not([aria-disabled='true'])`;
+            : state === 'focus'
+              ? focusSelector(`[part='base']`, `:not(:disabled):not([aria-disabled='true'])`)
+              : `[part='base']:${state}:not(:disabled):not([aria-disabled='true'])`;
         styles.push(`${sel} { ${lines.join('\n    ')} }`);
       }
     }

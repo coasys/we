@@ -13,6 +13,14 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   r: '400',
   ax: 'center',
   ay: 'center',
+  // Every variant gets the same keyboard focus ring, including 'bare' — which needs it most,
+  // since it is the one variant with no resting appearance to mark it as interactive. It lives
+  // in DEFAULT_PROPS rather than per-variant for exactly that reason: a focus indicator is not
+  // an emphasis level, and a variant that could opt out of it would be a variant that fails
+  // WCAG 2.4.7. Ring colour follows --we-ring-color (the themeable `ringColor` key) rather than
+  // a fixed token, matching we-input, so a theme restyles both together and we-form-field's
+  // danger-state override reaches buttons nested inside it.
+  focusProps: { ring: '0 0 0 2px var(--we-ring-color)' },
   disabledProps: { cursor: 'default', opacity: 0.5 },
 };
 
@@ -48,6 +56,18 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     hoverProps: { bg: 'neutral-100', color: 'neutral-900', border: '1px solid var(--we-color-neutral-500)' },
     activeProps: { bg: 'neutral-200', color: 'neutral-900', border: '1px solid var(--we-color-neutral-500)' },
   },
+  // The appearance-free member of the scale: button semantics, no chrome. For wrapping arbitrary
+  // content in a real <button> — the styling then lives on the wrapped Column/Card, which is
+  // already DS-driven, instead of on a hand-rolled div with cursor + onClick.
+  //
+  // No hoverProps/activeProps is the point, not an omission: ghost's hover background is ghost's
+  // whole job, and reusing it for a content wrapper paints a rectangle over content that supplies
+  // its own affordance. `color` is deliberately absent too — an unset custom property resolves to
+  // `inherit` for inherited properties (see the PropSpec contract in @we/design-utils), so leaving
+  // it out inherits, whereas a literal 'inherit' would pointlessly enter the colour-token resolver.
+  // `height` and `r` neutralize the size and component defaults; padding, white-space and overflow
+  // are not DS props, so they are unset by the :host([variant='bare']) rules below.
+  bare: { bg: 'transparent', height: 'auto', r: '0' },
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
@@ -147,6 +167,18 @@ const CSS_STYLES = css`
   /* Square buttons are sized purely by component height — suppress all cascade padding */
   :host([square]) [part='base'] {
     padding: 0;
+  }
+
+  /* The three things 'bare' has to unset that are not DS props, so the variant map cannot carry
+     them: padding is CSS-cascaded (see above); white-space: nowrap inherits down into the wrapped
+     content, which is wrong for a wrapper whose child does its own wrapping/truncation; and
+     overflow: hidden exists to clip the gradient overlay, which 'bare' never has. */
+  :host([variant='bare']) {
+    white-space: normal;
+  }
+  :host([variant='bare']) [part='base'] {
+    padding: 0;
+    overflow: visible;
   }
 `;
 
