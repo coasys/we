@@ -324,12 +324,17 @@ export const bootScreen: SchemaNode = {
           type: '$if',
           props: {
             condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'initialising'] },
-            // The account badge, then a spinner where the password field will be. Two reasons
-            // over the old "Initialising AD4M client..." line: it names what is happening in the
-            // user's terms, and the badge is the same node the sign-in form leads with, so
-            // switching accounts no longer blanks the screen and redraws it — the identity stays
-            // put and only the form beneath it swaps in. AccountStore reads from the host, which
-            // needs no executor, so the badge is available before anything has connected.
+            // The account badge, then a spinner where the password field will be. The badge is
+            // the same node the sign-in form leads with, so switching accounts no longer blanks
+            // the screen and redraws it — the identity stays put and only the form beneath it
+            // swaps in. AccountStore reads from the host, which needs no executor, so the badge is
+            // available before anything has connected.
+            //
+            // "Starting", not "Signing in": nobody has signed in at this point, on either the cold
+            // boot or the post-switch path — there has been no password and no button. What is
+            // actually happening is the executor coming up and a connection being made to it, and
+            // the badge above already answers *which account*, so this line only has to explain
+            // the wait.
             then: {
               type: 'Column',
               props: { mt: '200', gap: '400', ax: 'center' },
@@ -346,7 +351,7 @@ export const bootScreen: SchemaNode = {
                   props: { gap: '300', ay: 'center' },
                   children: [
                     { type: 'we-spinner', props: { size: 'sm' } },
-                    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Signing in...'] },
+                    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Starting...'] },
                   ],
                 },
               ],
