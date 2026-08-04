@@ -76,7 +76,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
     children: [
       {
         type: 'Column',
-        props: { gap: '150', ax: 'center' },
+        props: { gap: '200', ax: 'center' },
         children: [avatar, { type: 'we-text', props: { variant: 'footnote', truncate: true }, children: [label] }],
       },
     ],
@@ -102,7 +102,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
                 '$account.name',
                 {
                   type: 'we-avatar',
-                  props: { image: '$account.avatar', initials: '$account.name', size: 'md', bg: 'primary-100' },
+                  props: { image: '$account.avatar', initials: '$account.name', size: 'lg', bg: 'primary-100' },
                 },
                 { $action: 'accountStore.switchAccount', args: ['$account.id'] },
               ),
