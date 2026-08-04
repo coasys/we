@@ -22,7 +22,15 @@ import { Accessor, createContext, createEffect, createSignal, ParentProps, useCo
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
 import { startAppBridge } from '../services/appBridge';
 
-export type BootState = 'initialising' | 'login' | 'createAgent' | 'ready' | 'error';
+/**
+ * Where boot has got to.
+ *
+ * `createAgent` and `onboarding` are the first-run pair: create the identity, then say who you
+ * are. `onboarding` sits *after* the post-unlock load rather than before it, because publishing a
+ * profile needs the loaded session — so the boot screen deliberately stays up over a working app
+ * for one more step instead of the profile prompt becoming a modal nobody would fill in.
+ */
+export type BootState = 'initialising' | 'login' | 'createAgent' | 'onboarding' | 'ready' | 'error';
 
 /** The authenticated identity as the shell holds it — neutral `id` plus the backend's own fields
  * (`did` is template-facing vocabulary: `$me.did`). */
@@ -33,6 +41,9 @@ export interface SessionStore {
   bootState: Accessor<BootState>;
   passwordError: Accessor<boolean>;
   loginLoading: Accessor<boolean>;
+  /** Set when `createAgent` failed; carries the backend's message for display. */
+  createAgentError: Accessor<string>;
+  createAgentLoading: Accessor<boolean>;
   /** The backend client, opaque to the shell — handed to adapter helpers, never inspected. */
   client: Accessor<unknown>;
   /** The agent-session port over that client. Null until connected. */
@@ -55,12 +66,23 @@ export interface SessionStore {
 
   // Actions
   login: (password: string) => Promise<void>;
+  /**
+   * Create the agent under `password` and load the session, exactly as login does. Ends on
+   * `onboarding` rather than `ready` — see {@link BootState}.
+   */
+  createAgent: (password: string) => Promise<void>;
+  /** Leave onboarding for the running app. Called once the profile step is submitted or skipped. */
+  finishOnboarding: () => void;
   logout: () => Promise<void>;
 
   // Boot wiring (used by the boot controller, not by schemas)
   /** Re-fetch `me` from the backend. */
   refreshMe: () => Promise<void>;
-  /** Flip boot state to 'ready' — called by the boot controller once user data is loaded. */
+  /**
+   * The post-unlock load is done. Resolves to 'ready' normally, or to 'onboarding' when this boot
+   * created the agent — the boot controller reports completion, this store decides what completion
+   * means, so the first-run branch needs no special case there.
+   */
   markReady: () => void;
   /** Register the post-unlock loader. Runs on boot when already unlocked, and after login(). */
   onSessionUnlocked: (handler: () => Promise<void>) => void;
@@ -77,6 +99,11 @@ export function SessionStoreProvider(props: ParentProps) {
   const [bootState, setBootState] = createSignal<BootState>('initialising');
   const [passwordError, setPasswordError] = createSignal(false);
   const [loginLoading, setLoginLoading] = createSignal(false);
+  const [createAgentError, setCreateAgentError] = createSignal('');
+  const [createAgentLoading, setCreateAgentLoading] = createSignal(false);
+
+  // Set for the duration of a first run, so markReady() lands on 'onboarding' instead of 'ready'.
+  let onboarding = false;
   const [client, setClient] = createSignal<unknown>(undefined);
   const [agentSession, setAgentSession] = createSignal<AgentSessionPort | null>(null);
   const [lifecycle, setLifecycle] = createSignal<DatasetLifecyclePort | null>(null);
@@ -96,12 +123,16 @@ export function SessionStoreProvider(props: ParentProps) {
   // from embedded apps (e.g. Flux) is never dropped — including during the connector's auth
   // flow on first load, where auth can take many seconds and the embedded app's 30-second
   // timeout would otherwise expire.
+  // The session is usable from the moment the post-unlock load finishes — which is 'onboarding' on
+  // a first run and 'ready' on every other boot. Both mean the executor will answer.
+  const agentUnlocked = () => bootState() === 'ready' || bootState() === 'onboarding';
+
   startAppBridge({
     isDesktop: platform.isDesktop,
     port,
     token,
     serverUrl,
-    bootState,
+    agentUnlocked,
   });
 
   // The post-unlock loader is registered by the boot controller (a child), which mounts during
@@ -202,6 +233,43 @@ export function SessionStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Create the agent, then run the same post-unlock load login does.
+   *
+   * The password is kept as the session password on success for the same reason login keeps it:
+   * `lock()` needs it, and a freshly created agent is already unlocked, so there is no later
+   * unlock to capture it from.
+   */
+  async function createAgent(password: string): Promise<void> {
+    const session = agentSession();
+    if (!session) {
+      console.error('SessionStore: no session available for agent creation');
+      return;
+    }
+
+    setCreateAgentLoading(true);
+    setCreateAgentError('');
+
+    try {
+      await session.generate(password);
+      sessionPassword = password;
+      onboarding = true;
+      await runPostUnlockLoad();
+    } catch (err) {
+      console.error('SessionStore: agent creation failed', err);
+      // Leave bootState on 'createAgent' so the user can retry against the same screen.
+      onboarding = false;
+      setCreateAgentError(err instanceof Error ? err.message : 'Could not create your agent');
+    } finally {
+      setCreateAgentLoading(false);
+    }
+  }
+
+  function finishOnboarding(): void {
+    onboarding = false;
+    setBootState('ready');
+  }
+
   async function logout(): Promise<void> {
     const session = agentSession();
     if (!session) {
@@ -216,6 +284,7 @@ export function SessionStoreProvider(props: ParentProps) {
     } finally {
       setMe(undefined);
       sessionPassword = '';
+      onboarding = false;
       setBootState('login');
     }
   }
@@ -226,6 +295,8 @@ export function SessionStoreProvider(props: ParentProps) {
     bootState,
     passwordError,
     loginLoading,
+    createAgentError,
+    createAgentLoading,
     client,
     agentSession,
     lifecycle,
@@ -238,10 +309,12 @@ export function SessionStoreProvider(props: ParentProps) {
     ephemeralPort,
 
     login,
+    createAgent,
+    finishOnboarding,
     logout,
 
     refreshMe,
-    markReady: () => setBootState('ready'),
+    markReady: () => setBootState(onboarding ? 'onboarding' : 'ready'),
     onSessionUnlocked,
   };
 
