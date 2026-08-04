@@ -11,9 +11,9 @@ declare global {
       getToken: () => Promise<string>;
       getIsDevelopment: () => Promise<boolean>;
       getDesktopSources: () => Promise<unknown[]>;
-      listAccounts: () => Promise<Array<{ id: string; name: string; active: boolean }>>;
+      listAccounts: () => Promise<Array<{ id: string; name: string; avatar?: string; active: boolean }>>;
       createAccount: () => Promise<{ id: string; name: string; active: boolean }>;
-      renameAccount: (id: string, name: string) => Promise<void>;
+      setAccountDisplay: (id: string, display: { name?: string; avatar?: string }) => Promise<void>;
       selectAccount: (id: string) => Promise<void>;
       removeAccount: (id: string) => Promise<void>;
       applyAccountSelection: () => Promise<void>;

@@ -401,7 +401,7 @@ ipcMain.handle('get-is-development', () => {
 
 ipcMain.handle('accounts-list', () => accounts.list());
 ipcMain.handle('accounts-create', () => accounts.create());
-ipcMain.handle('accounts-rename', (_event, id, name) => accounts.rename(id, name));
+ipcMain.handle('accounts-display', (_event, id, display) => accounts.setDisplay(id, display));
 ipcMain.handle('accounts-select', (_event, id) => accounts.select(id));
 ipcMain.handle('accounts-remove', (_event, id) => accounts.remove(id));
 

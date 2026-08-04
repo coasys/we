@@ -46,13 +46,14 @@ export interface AccountStore {
   /** Create an account and relaunch into it. The setup screen names it. Does not return on success. */
   createAccount: () => Promise<void>;
   /**
-   * Rename the account this app is running as. How the setup screen commits the chosen name,
-   * including on a genuine first run where the account was seeded rather than created.
+   * Mirror the profile onto the account this app is running as — the name shown on the sign-in
+   * screen, and a cached copy of the picture the locked screen cannot otherwise read.
    *
-   * Resolves without doing anything when the host manages no accounts (web), so a caller can chain
-   * the agent creation off it unconditionally.
+   * Resolves without doing anything when the host manages no accounts (web) or nothing changed,
+   * so callers need no platform branch. Never throws: an account label failing to update must not
+   * take down the profile edit that triggered it.
    */
-  renameActive: (name: string) => Promise<void>;
+  syncDisplay: (display: { name?: string; avatar?: string }) => Promise<void>;
   /** Switch and relaunch. Does not return on success. */
   switchAccount: (id: string) => Promise<void>;
   removeAccount: (id: string) => Promise<void>;
@@ -112,21 +113,27 @@ export function AccountStoreProvider(props: ParentProps) {
     await mutateAndRestart(() => host()!.create());
   }
 
-  async function renameActive(name: string): Promise<void> {
+  async function syncDisplay(display: { name?: string; avatar?: string }): Promise<void> {
     const accountHost = host();
     const active = activeAccount();
-    const trimmed = name.trim();
-    // No host (web), no active account yet, or nothing changed — all no-ops that still resolve, so
-    // the setup screen can chain unconditionally rather than branching on platform.
-    if (!accountHost || !active || !trimmed || trimmed === active.name) return;
+    if (!accountHost || !active) return;
+
+    const name = display.name?.trim();
+    const changedName = name && name !== active.name ? name : undefined;
+    const changedAvatar = display.avatar && display.avatar !== active.avatar ? display.avatar : undefined;
+    if (!changedName && !changedAvatar) return;
 
     try {
-      await accountHost.rename(active.id, trimmed);
+      await accountHost.setDisplay(active.id, {
+        ...(changedName ? { name: changedName } : {}),
+        ...(changedAvatar ? { avatar: changedAvatar } : {}),
+      });
       await refresh();
     } catch (err) {
-      console.error('AccountStore: could not rename account', err);
-      setError(err instanceof Error ? err.message : String(err));
-      throw err;
+      // Logged, not surfaced and not rethrown. This runs as a side effect of publishing a profile;
+      // a stale label on the sign-in screen is a cosmetic problem, and letting it fail the profile
+      // write — or the account creation chained behind it — would trade a real thing for a label.
+      console.error('AccountStore: could not update the account display', err);
     }
   }
 
@@ -166,7 +173,7 @@ export function AccountStoreProvider(props: ParentProps) {
     error,
     refresh,
     createAccount,
-    renameActive,
+    syncDisplay,
     switchAccount,
     removeAccount,
     clearError: () => setError(''),

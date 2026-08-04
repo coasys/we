@@ -77,25 +77,48 @@ describe('creating', () => {
   });
 });
 
-describe('renaming', () => {
+describe('setDisplay — mirroring the profile onto the account', () => {
   it('commits the name the setup screen collected', () => {
     const created = registry.create();
-    registry.rename(created.id, '  Work  ');
+    registry.setDisplay(created.id, { name: '  Work  ' });
 
-    const renamed = registry.list().find((a) => a.id === created.id);
-    expect(renamed.name).toBe('Work');
+    expect(registry.list().find((a) => a.id === created.id).name).toBe('Work');
     // The directory keeps its original slug — only the label changes.
     expect(created.id).toContain('new-account');
   });
 
-  it('renames the seeded account too, which is what first run does', () => {
-    registry.rename(defaultPath, 'Personal');
+  it('names the seeded account too, which is what first run does', () => {
+    registry.setDisplay(defaultPath, { name: 'Personal' });
     expect(registry.list()[0].name).toBe('Personal');
   });
 
+  it('caches a picture the locked sign-in screen can show', () => {
+    registry.setDisplay(defaultPath, { avatar: 'data:image/png;base64,AAAA' });
+    expect(registry.list()[0].avatar).toBe('data:image/png;base64,AAAA');
+  });
+
+  it('updates one field without clearing the other', () => {
+    registry.setDisplay(defaultPath, { name: 'Personal', avatar: 'data:image/png;base64,AAAA' });
+    registry.setDisplay(defaultPath, { name: 'Work' });
+
+    const account = registry.list()[0];
+    expect(account.name).toBe('Work');
+    expect(account.avatar).toBe('data:image/png;base64,AAAA');
+  });
+
+  it('refuses an oversized picture rather than bloating the registry', () => {
+    const huge = `data:image/png;base64,${'A'.repeat(300_000)}`;
+    registry.setDisplay(defaultPath, { name: 'Kept', avatar: huge });
+
+    const account = registry.list()[0];
+    // The name still lands; only the image is dropped, and the badge falls back to initials.
+    expect(account.name).toBe('Kept');
+    expect(account.avatar).toBeUndefined();
+  });
+
   it('refuses a blank name or an unknown account', () => {
-    expect(() => registry.rename(defaultPath, '   ')).toThrow(/name is required/);
-    expect(() => registry.rename('/nowhere', 'X')).toThrow(/No such account/);
+    expect(() => registry.setDisplay(defaultPath, { name: '   ' })).toThrow(/name is required/);
+    expect(() => registry.setDisplay('/nowhere', { name: 'X' })).toThrow(/No such account/);
   });
 });
 

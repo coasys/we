@@ -25,6 +25,9 @@ import { join } from 'path';
 
 const REGISTRY_FILE = 'we-accounts.json';
 
+/** Ceiling on a cached profile picture, in data-URI characters. ~192 KB, far above an 80px PNG. */
+const MAX_AVATAR_CHARS = 200_000;
+
 /** Expands a leading `~`. Only leading — `~` elsewhere in a path is a literal character. */
 export function expandHome(p) {
   if (p === '~') return homedir();
@@ -102,7 +105,12 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
     list() {
       const state = read();
       const activePath = this.resolveActivePath();
-      return state.accounts.map((a) => ({ id: a.path, name: a.name, active: a.path === activePath }));
+      return state.accounts.map((a) => ({
+        id: a.path,
+        name: a.name,
+        ...(a.avatar ? { avatar: a.avatar } : {}),
+        active: a.path === activePath,
+      }));
     },
 
     /**
@@ -131,16 +139,33 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
       return { id: path, name, active: true };
     },
 
-    /** Rename in place. The directory keeps its original slug — renaming data is not worth it. */
-    rename(id, name) {
+    /**
+     * Mirror the profile's name and picture onto the account, so a locked sign-in screen has
+     * something to show. Both fields optional — an edit to one must not clear the other.
+     *
+     * The directory keeps its original slug whatever the name becomes: renaming a data directory
+     * to match a label buys nothing and risks everything inside it.
+     */
+    setDisplay(id, { name, avatar } = {}) {
       const state = read();
-      const trimmed = (name || '').trim();
-      if (!trimmed) throw new Error('An account name is required');
       if (!state.accounts.some((a) => a.path === id)) throw new Error('No such account');
+
+      const trimmed = typeof name === 'string' ? name.trim() : undefined;
+      if (name !== undefined && !trimmed) throw new Error('An account name is required');
+
+      // Guard the registry against an oversized image. compressImageToFileData already caps the
+      // longest edge at 80px, so this should never fire — but a JSON file the app cannot start
+      // without is the wrong place to find out that an assumption changed upstream.
+      const withinCap = typeof avatar === 'string' && avatar.length <= MAX_AVATAR_CHARS;
+      if (avatar !== undefined && !withinCap) {
+        console.warn('[accounts] Profile picture too large to cache; falling back to initials');
+      }
 
       write({
         ...state,
-        accounts: state.accounts.map((a) => (a.path === id ? { ...a, name: trimmed } : a)),
+        accounts: state.accounts.map((a) =>
+          a.path === id ? { ...a, ...(trimmed ? { name: trimmed } : {}), ...(withinCap ? { avatar } : {}) } : a,
+        ),
       });
     },
 

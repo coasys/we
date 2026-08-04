@@ -17,9 +17,20 @@ pub fn create_account(state: State<'_, AppState>) -> Result<Account, String> {
     registry(&state).create()
 }
 
+/// What an account is shown as. Both fields optional — an edit to one must not clear the other.
+#[derive(serde::Deserialize)]
+pub struct AccountDisplay {
+    pub name: Option<String>,
+    pub avatar: Option<String>,
+}
+
 #[tauri::command]
-pub fn rename_account(id: String, name: String, state: State<'_, AppState>) -> Result<(), String> {
-    registry(&state).rename(&id, &name)
+pub fn set_account_display(
+    id: String,
+    display: AccountDisplay,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    registry(&state).set_display(&id, display.name.as_deref(), display.avatar.as_deref())
 }
 
 #[tauri::command]

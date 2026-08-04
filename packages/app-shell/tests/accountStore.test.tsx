@@ -43,8 +43,8 @@ function stubHost(accounts: Account[], overrides: Partial<AccountHost> = {}) {
       calls.push('create');
       return { id: '/cfg/agents/new-account', name: 'New account', active: true };
     },
-    async rename(id, name) {
-      calls.push(`rename:${id}:${name}`);
+    async setDisplay(id, display) {
+      calls.push(`display:${id}:${display.name ?? ''}:${display.avatar ?? ''}`);
     },
     async select(id) {
       calls.push(`select:${id}`);
@@ -167,40 +167,52 @@ describe('switching and creating always end in applySelection', () => {
   });
 });
 
-describe('renameActive — how the setup screen commits a chosen name', () => {
-  it('renames the running account and reloads', async () => {
+describe('syncDisplay — mirroring the profile onto the account', () => {
+  it('writes the changed fields and reloads', async () => {
     const { host, calls } = stubHost(TWO);
     accountHost = host;
     const store = mount();
     await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
     calls.length = 0;
 
-    await store.renameActive('Personal');
+    await store.syncDisplay({ name: 'Personal', avatar: 'data:image/png;base64,AAA' });
 
-    expect(calls).toEqual(['rename:/home/x/.ad4m:Personal', 'list']);
+    expect(calls).toEqual(['display:/home/x/.ad4m:Personal:data:image/png;base64,AAA', 'list']);
   });
 
-  it('no-ops when the name is unchanged, blank, or there is no host', async () => {
-    // Each of these must still RESOLVE — the setup screen chains agent creation off onSuccess,
-    // so a rejection here would silently stop the account being created at all.
+  it('sends only what changed, so editing one field cannot clear the other', async () => {
     const { host, calls } = stubHost(TWO);
     accountHost = host;
     const store = mount();
     await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
     calls.length = 0;
 
-    await store.renameActive('Main'); // unchanged
-    await store.renameActive('   '); // blank
+    await store.syncDisplay({ name: 'Personal' });
+
+    expect(calls).toEqual(['display:/home/x/.ad4m:Personal:', 'list']);
+  });
+
+  it('no-ops when nothing changed, or there is no host', async () => {
+    const { host, calls } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+    calls.length = 0;
+
+    await store.syncDisplay({ name: 'Main' }); // already the active account's name
+    await store.syncDisplay({}); // nothing at all
     expect(calls).toEqual([]);
 
     accountHost = undefined;
     const webStore = mount();
-    await expect(webStore.renameActive('Anything')).resolves.toBeUndefined();
+    await expect(webStore.syncDisplay({ name: 'Anything' })).resolves.toBeUndefined();
   });
 
-  it('rethrows a failure so the chained agent creation does not run', async () => {
+  it('swallows a failure rather than failing the profile write that triggered it', async () => {
+    // This runs as a side effect of publishing a profile. A stale label on the sign-in screen is
+    // cosmetic; taking down the profile edit over it would trade a real thing for a label.
     const { host } = stubHost(TWO, {
-      async rename() {
+      async setDisplay() {
         throw new Error('No such account');
       },
     });
@@ -208,8 +220,8 @@ describe('renameActive — how the setup screen commits a chosen name', () => {
     const store = mount();
     await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
 
-    await expect(store.renameActive('Personal')).rejects.toThrow('No such account');
-    expect(store.error()).toBe('No such account');
+    await expect(store.syncDisplay({ name: 'Personal' })).resolves.toBeUndefined();
+    expect(store.error()).toBe('');
   });
 });
 

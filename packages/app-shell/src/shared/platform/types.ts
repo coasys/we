@@ -28,6 +28,15 @@ export interface Account {
   /** The data directory. Stable, and unique by construction — no separate id to keep in sync. */
   id: string;
   name: string;
+  /**
+   * A cached copy of the profile picture, as a small data URI.
+   *
+   * Cached rather than read live because the sign-in screen renders while the agent is *locked*,
+   * and the real profile lives inside the encrypted store. Operating systems solve the same
+   * problem the same way — macOS keeps your account picture outside the encrypted volume so the
+   * login window can draw it. Absent until a profile picture has been set.
+   */
+  avatar?: string;
   /** The account this app instance is currently running against. */
   active: boolean;
 }
@@ -57,10 +66,13 @@ export interface AccountHost {
    */
   create(): Promise<Account>;
   /**
-   * Rename an account. How the setup screen commits the name the user chose — including on a
-   * genuine first run, where the account was seeded rather than created.
+   * Set what an account is shown as: its name, its picture, or both.
+   *
+   * The account's identity is the *profile's* identity — same DID, same person — so this is how
+   * the profile is mirrored out to where a locked sign-in screen can reach it. Written at setup,
+   * and again whenever the profile is edited later, so the two never drift.
    */
-  rename(id: string, name: string): Promise<void>;
+  setDisplay(id: string, display: { name?: string; avatar?: string }): Promise<void>;
   select(id: string): Promise<void>;
   /**
    * Forget an account. Refuses the active one — you cannot pull the directory out from under the

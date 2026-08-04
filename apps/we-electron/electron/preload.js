@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('electron', {
   // Account management. Every mutation is registry-only until applyAccountSelection() takes effect.
   listAccounts: () => ipcRenderer.invoke('accounts-list'),
   createAccount: () => ipcRenderer.invoke('accounts-create'),
-  renameAccount: (id, name) => ipcRenderer.invoke('accounts-rename', id, name),
+  setAccountDisplay: (id, display) => ipcRenderer.invoke('accounts-display', id, display),
   selectAccount: (id) => ipcRenderer.invoke('accounts-select', id),
   removeAccount: (id) => ipcRenderer.invoke('accounts-remove', id),
   applyAccountSelection: () => ipcRenderer.invoke('accounts-apply'),

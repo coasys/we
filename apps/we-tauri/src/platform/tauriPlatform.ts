@@ -10,7 +10,8 @@ import portMap from '../generated/seed-port-map.json';
 const accounts: AccountHost = {
   list: () => invoke<Account[]>('list_accounts'),
   create: () => invoke<Account>('create_account'),
-  rename: (id: string, name: string) => invoke<void>('rename_account', { id, name }),
+  setDisplay: (id: string, display: { name?: string; avatar?: string }) =>
+    invoke<void>('set_account_display', { id, display }),
   select: (id: string) => invoke<void>('select_account', { id }),
   remove: (id: string) => invoke<void>('remove_account', { id }),
   applySelection: () => invoke<void>('apply_account_selection'),

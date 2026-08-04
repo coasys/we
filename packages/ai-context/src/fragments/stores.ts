@@ -25,13 +25,13 @@ export const storeEntries: StoreEntry[] = [
     name: 'accountStore',
     state: {
       canManageAccounts: { type: 'boolean' },
-      accounts: { type: 'array', properties: ['id', 'name', 'active'] },
-      activeAccount: { type: 'object', properties: ['id', 'name', 'active'] },
+      accounts: { type: 'array', properties: ['id', 'name', 'avatar', 'active'] },
+      activeAccount: { type: 'object', properties: ['id', 'name', 'avatar', 'active'] },
       hasOtherAccounts: { type: 'boolean' },
       busy: { type: 'boolean' },
       error: { type: 'string' },
     },
-    actions: ['refresh', 'createAccount', 'renameActive', 'switchAccount', 'removeAccount', 'clearError'],
+    actions: ['refresh', 'createAccount', 'syncDisplay', 'switchAccount', 'removeAccount', 'clearError'],
   },
   {
     name: 'runtimeStore',
@@ -91,6 +91,7 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'profileStore',
     state: {
+      pendingAvatar: { type: 'string' },
       profiles: {
         type: 'array',
         properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
@@ -100,7 +101,14 @@ export const storeEntries: StoreEntry[] = [
         properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
     },
-    actions: ['fetchProfile', 'updateOwnProfile', 'updateProfileImage', 'updateOwnLocation'],
+    actions: [
+      'fetchProfile',
+      'updateOwnProfile',
+      'updateProfileImage',
+      'updateOwnLocation',
+      'setPendingAvatar',
+      'completeAccountSetup',
+    ],
   },
   {
     name: 'routeStore',
@@ -341,8 +349,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         refresh: '(): re-reads the account list from the host',
         createAccount:
           '(): creates an account under a provisional name and switches into it — the setup screen names it. Does not return on success',
-        renameActive:
-          '(name: string): renames the running account. How the setup screen commits a chosen name; resolves without doing anything where no host manages accounts',
+        syncDisplay:
+          '({ name?, avatar? }): mirrors the profile onto the running account, so the locked sign-in screen has a name and picture. Never throws',
         switchAccount: '(id: string): switches to another account. Does not return on success',
         removeAccount: '(id: string): forgets an account. Refuses the active one',
         clearError: '(): clears the error slot',
@@ -417,6 +425,10 @@ function generateStoresText(entries: StoreEntry[]): string {
           "AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache)",
       },
       actions: {
+        setPendingAvatar:
+          '(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup',
+        completeAccountSetup:
+          '(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear',
         fetchProfile: "(did: string): fetches and caches an agent's profile from their public dataset",
         updateOwnProfile:
           '(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset',

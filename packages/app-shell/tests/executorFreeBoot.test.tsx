@@ -58,6 +58,7 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 
 // ── Harness ───────────────────────────────────────────────────────────────────
 import { BootController } from '../src/frameworks/solid/providers/BootController';
+import { AccountStoreProvider } from '../src/frameworks/solid/stores/AccountStore';
 import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { ProfileStoreProvider } from '../src/frameworks/solid/stores/ProfileStore';
 import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src/frameworks/solid/stores/SessionStore';
@@ -83,16 +84,20 @@ function mountShell(): Stores {
   }
   render(() => (
     <ShellStoreProvider>
-      <SessionStoreProvider>
-        <DatasetStoreProvider>
-          <ProfileStoreProvider>
-            <SpaceStoreProvider>
-              <BootController />
-              <Capture />
-            </SpaceStoreProvider>
-          </ProfileStoreProvider>
-        </DatasetStoreProvider>
-      </SessionStoreProvider>
+      {/* The mocked platform supplies no `accounts`, so this mounts in its web-degraded form —
+          which is what the profile write-through has to tolerate. */}
+      <AccountStoreProvider>
+        <SessionStoreProvider>
+          <DatasetStoreProvider>
+            <ProfileStoreProvider>
+              <SpaceStoreProvider>
+                <BootController />
+                <Capture />
+              </SpaceStoreProvider>
+            </ProfileStoreProvider>
+          </DatasetStoreProvider>
+        </SessionStoreProvider>
+      </AccountStoreProvider>
     </ShellStoreProvider>
   ));
   return out;
@@ -147,28 +152,28 @@ describe('first run', () => {
     agentOptions = { id: 'did:test:newcomer', hasAgent: false };
   });
 
-  it('creates an agent, loads the session, and lands on onboarding rather than ready', async () => {
+  it('creates an agent, loads the session, and lands on finishing rather than ready', async () => {
     const stores = mountShell();
     await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
 
     await stores.session.createAgent('a-strong-passphrase');
 
-    // Onboarding, not ready: the boot screen stays up for the profile step.
-    await vi.waitFor(() => expect(stores.session.bootState()).toBe('onboarding'));
+    // 'finishing', not ready: the boot screen holds while the profile is published.
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('finishing'));
     // ...but the session is fully loaded behind it — same post-unlock load as login.
     expect(stores.session.me()?.did).toBe('did:test:newcomer');
     const names = (await lifecycle.list()).map((d) => d.name).sort();
     expect(names).toEqual(['we-root', 'we-test']);
   }, 10000);
 
-  it('finishing onboarding reaches ready, and the app is usable from there', async () => {
+  it('finishing setup reaches ready, and the app is usable from there', async () => {
     const stores = mountShell();
     await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
 
     await stores.session.createAgent('a-strong-passphrase');
-    await vi.waitFor(() => expect(stores.session.bootState()).toBe('onboarding'));
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('finishing'));
 
-    stores.session.finishOnboarding();
+    stores.session.finishSetup();
     expect(stores.session.bootState()).toBe('ready');
 
     // A space created by a newly onboarded agent is written like any other.
@@ -194,8 +199,8 @@ describe('first run', () => {
     await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
 
     await stores.session.createAgent('chosen-at-creation');
-    await vi.waitFor(() => expect(stores.session.bootState()).toBe('onboarding'));
-    stores.session.finishOnboarding();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('finishing'));
+    stores.session.finishSetup();
 
     // logout() locks with the password createAgent captured — a wrong one would throw and
     // leave the agent unlocked, so reaching 'login' proves the capture.

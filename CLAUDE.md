@@ -1327,7 +1327,7 @@ AccountStore:
 - Actions:
   - refresh(): re-reads the account list from the host
   - createAccount(): creates an account under a provisional name and switches into it — the setup screen names it. Does not return on success
-  - renameActive(name: string): renames the running account. How the setup screen commits a chosen name; resolves without doing anything where no host manages accounts
+  - syncDisplay({ name?, avatar? }): mirrors the profile onto the running account, so the locked sign-in screen has a name and picture. Never throws
   - switchAccount(id: string): switches to another account. Does not return on success
   - removeAccount(id: string): forgets an account. Refuses the active one
   - clearError(): clears the error slot
@@ -1385,6 +1385,7 @@ DatasetStore:
 
 ProfileStore:
 - State:
+  - pendingAvatar: unknown
   - profiles: AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)
   - ownProfile: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache)
 - Actions:
@@ -1392,6 +1393,8 @@ ProfileStore:
   - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset
   - updateProfileImage(field: "avatar" | "coverImage", imageFile: File): uploads the image and publishes its expression URL to the public dataset
   - updateOwnLocation(update: { latitude?, longitude?, city?, country?, countryCode? }): merges the location update into the cache and publishes to the public dataset
+  - setPendingAvatar(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup
+  - completeAccountSetup(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear
 
 RouteStore:
 - State:

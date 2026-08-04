@@ -27,10 +27,16 @@ use std::path::{Path, PathBuf};
 
 const REGISTRY_FILE: &str = "we-accounts.json";
 
+/// Ceiling on a cached profile picture, in data-URI characters. ~192 KB, far above an 80px PNG.
+const MAX_AVATAR_CHARS: usize = 200_000;
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AccountEntry {
     pub name: String,
     pub path: PathBuf,
+    /// Cached profile picture as a small data URI. See `Account::avatar`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
 }
 
 /// The shape the UI consumes. `id` is the data path — stable, and unique by construction, so
@@ -39,6 +45,12 @@ pub struct AccountEntry {
 pub struct Account {
     pub id: String,
     pub name: String,
+    /// A cached copy of the profile picture, as a small data URI.
+    ///
+    /// Cached rather than read live because the sign-in screen renders while the agent is
+    /// *locked*, and the real profile lives inside the encrypted store.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
     pub active: bool,
 }
 
@@ -84,6 +96,7 @@ impl AccountRegistry {
                 accounts: vec![AccountEntry {
                     name: self.default_name.clone(),
                     path: self.default_path.clone(),
+                    avatar: None,
                 }],
                 selected_path: self.default_path.clone(),
             })
@@ -122,6 +135,7 @@ impl AccountRegistry {
             .map(|entry| Account {
                 id: entry.path.to_string_lossy().to_string(),
                 name: entry.name,
+                avatar: entry.avatar,
                 active: entry.path == active,
             })
             .collect()
@@ -154,6 +168,7 @@ impl AccountRegistry {
         state.accounts.push(AccountEntry {
             name: name.clone(),
             path: path.clone(),
+            avatar: None,
         });
         state.selected_path = path.clone();
         self.write(&state)?;
@@ -161,14 +176,19 @@ impl AccountRegistry {
         Ok(Account {
             id: path.to_string_lossy().to_string(),
             name,
+            avatar: None,
             active: true,
         })
     }
 
-    /// Rename in place. The directory keeps its original slug — renaming data is not worth it.
-    pub fn rename(&self, id: &str, name: &str) -> Result<(), String> {
-        let trimmed = name.trim();
-        if trimmed.is_empty() {
+    /// Mirror the profile's name and picture onto the account, so a locked sign-in screen has
+    /// something to show. Both fields optional — an edit to one must not clear the other.
+    ///
+    /// The directory keeps its original slug whatever the name becomes: renaming a data directory
+    /// to match a label buys nothing and risks everything inside it.
+    pub fn set_display(&self, id: &str, name: Option<&str>, avatar: Option<&str>) -> Result<(), String> {
+        let trimmed = name.map(str::trim);
+        if let Some("") = trimmed {
             return Err("An account name is required".to_string());
         }
 
@@ -178,9 +198,22 @@ impl AccountRegistry {
             return Err("No such account".to_string());
         }
 
+        // Guard the registry against an oversized image. The shell caps the longest edge at 80px
+        // before this is ever called, so it should never fire — but a JSON file the app cannot
+        // start without is the wrong place to discover that an assumption changed upstream.
+        let cached_avatar = avatar.filter(|a| a.len() <= MAX_AVATAR_CHARS);
+        if avatar.is_some() && cached_avatar.is_none() {
+            eprintln!("[accounts] Profile picture too large to cache; falling back to initials");
+        }
+
         for account in state.accounts.iter_mut() {
             if account.path == target {
-                account.name = trimmed.to_string();
+                if let Some(new_name) = trimmed {
+                    account.name = new_name.to_string();
+                }
+                if let Some(new_avatar) = cached_avatar {
+                    account.avatar = Some(new_avatar.to_string());
+                }
             }
         }
         self.write(&state)

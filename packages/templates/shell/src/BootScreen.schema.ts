@@ -5,7 +5,7 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
  *
  * Modelled on an OS sign-in screen, because that is the thing it actually is — pick an account,
  * prove it, or make a new one. `initialising` and `login` are the common paths; `createAgent` and
- * `onboarding` are the first run through a given account.
+ * `finishing` are the first run through a given account.
  *
  * Copy says "account" throughout, never "agent". Internally the two differ (an account is the
  * directory, the agent is the DID inside it), but making a user hold that distinction means they
@@ -17,13 +17,27 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
  * talks to. The unlock form is identical either way, so web loses the switcher and nothing else.
  */
 
-/** The signed-in-as chip: an initial and a name, the way an OS sign-in screen leads. */
+/**
+ * The signed-in-as chip, the way an OS sign-in screen leads.
+ *
+ * Shows the cached profile picture when there is one, falling back to initials. The cache exists
+ * because this screen renders while the agent is *locked* — the real picture lives inside the
+ * encrypted store and cannot be read until after the password. See `Account.avatar`.
+ */
 function accountBadge(name: SchemaNode | string | OperatorToken, size: 'lg' | 'md' = 'lg'): SchemaNode {
   return {
     type: 'Column',
     props: { gap: '300', ax: 'center' },
     children: [
-      { type: 'we-avatar', props: { initials: name as SchemaProp, size, bg: 'primary-100' } },
+      {
+        type: 'we-avatar',
+        props: {
+          image: { $store: 'accountStore.activeAccount.avatar' },
+          initials: name as SchemaProp,
+          size,
+          bg: 'primary-100',
+        },
+      },
       { type: 'we-text', props: { variant: 'heading-sm', fontWeight: 'regular' }, children: [name] },
     ],
   };
@@ -177,7 +191,10 @@ const accountPicker: SchemaNode = {
                   type: 'Row',
                   props: { gap: '300', ay: 'center', width: '100%' },
                   children: [
-                    { type: 'we-avatar', props: { initials: '$account.name', size: 'sm', bg: 'primary-100' } },
+                    {
+                      type: 'we-avatar',
+                      props: { image: '$account.avatar', initials: '$account.name', size: 'sm', bg: 'primary-100' },
+                    },
                     { type: 'we-text', props: { variant: 'label' }, children: ['$account.name'] },
                     {
                       type: '$if',
@@ -408,12 +425,13 @@ export const bootScreen: SchemaNode = {
               type: 'Column',
               props: { mt: '200', gap: '400', ax: 'center', maxWidth: '380px' },
               $localState: {
-                accountName: {
+                name: {
                   type: 'string',
-                  // Seeded from the account being set up, so first run offers "Main" and a created
-                  // account offers its provisional name — both editable, neither blank.
-                  initial: { $store: 'accountStore.activeAccount.name' },
-                  validate: [{ rule: 'required', message: 'An account name is required' }],
+                  // Blank, not seeded from the account: this is the name people will see, so
+                  // offering "Main" or "New account" as a starting point invites accepting a
+                  // placeholder as an identity.
+                  initial: '',
+                  validate: [{ rule: 'required', message: 'A name is required' }],
                 },
                 password: {
                   type: 'string',
@@ -468,18 +486,32 @@ export const bootScreen: SchemaNode = {
                               type: 'Column',
                               props: { gap: '400' },
                               children: [
-                                // Name
+                                // Picture — optional, and held until an agent exists to upload to.
+                                {
+                                  type: 'EditableImage',
+                                  props: {
+                                    src: { $store: 'profileStore.pendingAvatar' },
+                                    alt: 'Profile picture',
+                                    aspect: 1,
+                                    placeholderIcon: 'user',
+                                    width: '96px',
+                                    height: '96px',
+                                    onImageChange: { $action: 'profileStore.setPendingAvatar', args: ['$arg'] },
+                                  },
+                                },
+                                // The profile's name, not a separate local label. One DID, one
+                                // identity, one thing to type.
                                 {
                                   type: 'we-form-field',
-                                  props: { label: 'Account name', error: { $error: 'accountName' } },
+                                  props: { label: 'Your name', error: { $error: 'name' } },
                                   children: [
                                     {
                                       type: 'we-input',
                                       props: {
-                                        placeholder: 'Account name...',
-                                        value: { $local: 'accountName' },
-                                        onInput: { $setLocal: 'accountName', from: '$event.detail' },
-                                        onBlur: { $touch: 'accountName' },
+                                        placeholder: 'Name...',
+                                        value: { $local: 'name' },
+                                        onInput: { $setLocal: 'name', from: '$event.detail' },
+                                        onBlur: { $touch: 'name' },
                                       },
                                     },
                                   ],
@@ -618,23 +650,17 @@ export const bootScreen: SchemaNode = {
                                 bg: 'primary-500',
                                 disabled: { $not: { $formValid: '$scope' } },
                                 loading: { $store: 'sessionStore.createAgentLoading' },
-                                // Name first, identity second: renameActive resolves without doing
-                                // anything where there are no accounts to rename (web), so the
-                                // chain needs no platform branch.
+                                // One action rather than a chain: the ordering is load-bearing
+                                // (the profile cannot be published until the agent exists) and the
+                                // failure handling differs per step. See completeAccountSetup.
                                 onClick: [
                                   { $touch: '$all' },
                                   {
                                     $if: {
                                       condition: { $formValid: '$scope' },
                                       then: {
-                                        $action: 'accountStore.renameActive',
-                                        args: [{ $local: 'accountName' }],
-                                        onSuccess: [
-                                          {
-                                            $action: 'sessionStore.createAgent',
-                                            args: [{ $local: 'password' }],
-                                          },
-                                        ],
+                                        $action: 'profileStore.completeAccountSetup',
+                                        args: [{ $local: 'name' }, { $local: 'password' }],
                                       },
                                     },
                                   },
@@ -652,131 +678,19 @@ export const bootScreen: SchemaNode = {
             },
           },
         },
-        // Onboarding state — the agent exists and the session is loaded; this is the last screen
-        // before the app. Every field is optional: a profile is worth asking for once, at the only
-        // moment the user is definitely looking, but never worth blocking on.
+        // Finishing state — non-interactive. The agent exists and the session is loaded; the name
+        // and picture collected on the setup screen are being published. Everything was asked for
+        // already, so this is a progress indicator rather than a step.
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'onboarding'] },
+            condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'finishing'] },
             then: {
-              type: 'Column',
-              props: { mt: '200', gap: '400', ax: 'center', maxWidth: '380px' },
-              $localState: {
-                handle: { type: 'string', initial: '' },
-                firstName: { type: 'string', initial: '' },
-                lastName: { type: 'string', initial: '' },
-              },
+              type: 'Row',
+              props: { mt: '200', gap: '300', ay: 'center' },
               children: [
-                {
-                  type: 'Row',
-                  props: { gap: '300', ay: 'center' },
-                  children: [
-                    { type: 'we-icon', props: { name: 'user', color: 'primary-600' } },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'heading-sm', fontWeight: 'regular' },
-                      children: ['Introduce yourself'],
-                    },
-                  ],
-                },
-                {
-                  type: 'we-text',
-                  props: { variant: 'body', color: 'neutral-600', textAlign: 'center' },
-                  children: [
-                    'This is how you appear to other people in shared spaces. You can change it, or fill it in later, from your profile.',
-                  ],
-                },
-                {
-                  type: 'we-form-field',
-                  props: { label: 'Handle' },
-                  children: [
-                    {
-                      type: 'we-input',
-                      props: {
-                        height: '36px',
-                        width: '300px',
-                        placeholder: 'handle',
-                        value: { $local: 'handle' },
-                        onInput: { $setLocal: 'handle', from: '$event.detail' },
-                      },
-                    },
-                  ],
-                },
-                {
-                  type: 'Row',
-                  props: { gap: '300' },
-                  children: [
-                    {
-                      type: 'we-form-field',
-                      props: { label: 'First name' },
-                      children: [
-                        {
-                          type: 'we-input',
-                          props: {
-                            height: '36px',
-                            width: '144px',
-                            value: { $local: 'firstName' },
-                            onInput: { $setLocal: 'firstName', from: '$event.detail' },
-                          },
-                        },
-                      ],
-                    },
-                    {
-                      type: 'we-form-field',
-                      props: { label: 'Last name' },
-                      children: [
-                        {
-                          type: 'we-input',
-                          props: {
-                            height: '36px',
-                            width: '144px',
-                            value: { $local: 'lastName' },
-                            onInput: { $setLocal: 'lastName', from: '$event.detail' },
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                },
-                {
-                  type: 'Row',
-                  props: { mt: '200', gap: '300', ay: 'center' },
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: {
-                        height: '36px',
-                        text: 'Skip for now',
-                        variant: 'ghost',
-                        onClick: { $action: 'sessionStore.finishOnboarding' },
-                      },
-                    },
-                    {
-                      type: 'we-button',
-                      props: {
-                        height: '36px',
-                        text: 'Continue',
-                        color: 'neutral-0',
-                        bg: 'primary-500',
-                        // finishOnboarding runs on success rather than alongside: a publish that
-                        // fails should leave the user on this screen, able to try again, instead
-                        // of dropping them into the app with a profile that silently never saved.
-                        onClick: {
-                          $action: 'profileStore.updateOwnProfile',
-                          args: [
-                            {
-                              handle: { $local: 'handle' },
-                              firstName: { $local: 'firstName' },
-                              lastName: { $local: 'lastName' },
-                            },
-                          ],
-                          onSuccess: [{ $action: 'sessionStore.finishOnboarding' }],
-                        },
-                      },
-                    },
-                  ],
-                },
+                { type: 'we-spinner', props: { size: 'sm' } },
+                { type: 'we-text', children: ['Setting up your account...'] },
               ],
             },
           },
