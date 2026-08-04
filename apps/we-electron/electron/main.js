@@ -375,14 +375,15 @@ function createWindow() {
     return allowedPermissions.includes(permission);
   });
 
-  // In development, load from Vite dev server
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    // mainWindow.webContents.openDevTools();
-  } else {
-    // In production, load from HTTP server (same protocol as iframe)
-    mainWindow.loadURL('http://localhost:9080');
-  }
+  mainWindow.loadURL(appUrl());
+}
+
+/**
+ * Where the app is served from. Vite in development; the bundled express server in production,
+ * over HTTP rather than file:// so it shares a protocol with the app iframes.
+ */
+function appUrl() {
+  return process.env.VITE_DEV_SERVER_URL || 'http://localhost:9080';
 }
 
 // IPC handlers for AD4M connection details
@@ -471,7 +472,13 @@ ipcMain.handle('accounts-apply', async () => {
     // Best effort — a white frame is a blemish, not a reason to abandon the switch.
   }
 
-  mainWindow.webContents.reload();
+  // Load the app root rather than reloading the current URL. Two reasons, and the second is why
+  // this is more than tidiness: after a switch the previous URL belongs to the account being left
+  // — a deep link into one of *its* spaces, which need not exist in the account now being opened.
+  // And in a packaged build a reload re-requests that deep path from the express server, where
+  // anything the static middleware cannot match falls through to a catch-all; that is the shape of
+  // the NotFoundError seen when creating an account from a built app.
+  mainWindow.loadURL(appUrl());
 });
 
 ipcMain.handle('get-desktop-sources', async () => {
