@@ -346,7 +346,7 @@ Read tokens:
 { "$formValid": "$scope" } — true if ALL validated fields in the current $localState scope pass.
 
 Action tokens:
-{ "$touch": "fieldName" } — marks a single field as touched (use in onBlur).
+{ "$touch": "fieldName" } — marks a single field as touched (in onBlur; opt-in, see below).
 { "$touch": "$all" } — marks all fields in scope as touched (use before submit guard).
 { "$resetLocal": "$scope" } — resets all fields to initial values and clears touched state.
 
@@ -355,9 +355,12 @@ Handler arrays (compose multiple actions on one event):
 Array entries execute sequentially. Non-function entries (e.g. $if with false condition) are skipped.
 Prefer onSuccess over a bare $setLocal before the $action — the bare form closes the modal immediately (losing the loading spinner); onSuccess waits for the Promise to resolve.
 
-Typical form pattern:
+Typical form pattern — validate on submit:
 {
-  "$localState": { "name": { "type": "string", "initial": "", "validate": [{ "rule": "required" }] } },
+  "$localState": {
+    "name": { "type": "string", "initial": "", "validate": [{ "rule": "required" }] },
+    "submitting": { "type": "boolean", "initial": false }
+  },
   "children": [
     {
       "type": "we-form-field",
@@ -366,15 +369,15 @@ Typical form pattern:
         "type": "we-input",
         "props": {
           "value": { "$local": "name" },
-          "onInput": { "$setLocal": "name", "from": "$event.detail" },
-          "onBlur": { "$touch": "name" }
+          "onInput": { "$setLocal": "name", "from": "$event.detail" }
         }
       }]
     },
     {
       "type": "we-button",
       "props": {
-        "disabled": { "$not": { "$formValid": "$scope" } },
+        "loading": { "$local": "submitting" },
+        "disabled": { "$local": "submitting" },
         "onClick": [
           { "$touch": "$all" },
           { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.save", "args": [{ "$local": "name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
@@ -384,6 +387,30 @@ Typical form pattern:
     }
   ]
 }
+
+The submit button is disabled only while the request is in flight — NOT on { "$not": { "$formValid": "$scope" } }.
+Those two are mutually exclusive. A button disabled while the form is invalid can never be clicked in the one
+state where { "$touch": "$all" } would reveal something, so the guard chain becomes dead code and blur is left
+as the user's only feedback path. Choose one shape:
+  - Validate on submit (above). The button is always clickable and the errors appear on the click that was
+    refused, which is where the user asked the question.
+  - Hard gate: "disabled": { "$not": { "$formValid": "$scope" } }, and then drop { "$touch": "$all" } as dead
+    and wire "onBlur": { "$touch": "fieldName" } per field — otherwise no error is ever reachable.
+
+"onBlur": { "$touch": "fieldName" } is an opt-in, not boilerplate. It earns its place on long multi-field forms
+where a field is worth judging the moment it is left — a "match" rule on a confirm-password field, say. On a
+short form it fires an error at someone who merely clicked through a field they had not filled in yet.
+
+No validation, just a precondition (sign-in, search, any single-field submit):
+When nothing about the value is locally judgeable — a password is only wrong once the backend says so — skip the
+validation machinery and gate on the value itself:
+{
+  "$localState": { "password": { "type": "string", "initial": "" } },
+  ...
+  "disabled": { "$not": { "$local": "password" } }
+}
+A "required" rule here would exist only to drive "disabled", and its message is then one stray { "$touch": … }
+away from telling the user "Password is required" about a field they simply have not typed into yet.
 
 ## Block-level Dynamic Structures
 

@@ -19,7 +19,7 @@ export const storeEntries: StoreEntry[] = [
       createAgentError: { type: 'string' },
       createAgentLoading: { type: 'boolean' },
     },
-    actions: ['login', 'createAgent', 'finishOnboarding', 'logout'],
+    actions: ['login', 'createAgent', 'clearPasswordError', 'finishSetup', 'logout'],
   },
   {
     name: 'accountStore',
@@ -335,7 +335,7 @@ function generateStoresText(entries: StoreEntry[]): string {
       state: {
         client: 'the backend client handle | undefined',
         me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
-        bootState: "string — 'initialising' | 'login' | 'createAgent' | 'onboarding' | 'ready' | 'error'",
+        bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
         passwordError: 'boolean — true after a failed unlock attempt',
         loginLoading: 'boolean',
         createAgentError: 'string — the backend message from a failed agent creation, or empty',
@@ -344,8 +344,10 @@ function generateStoresText(entries: StoreEntry[]): string {
       actions: {
         login: '(password: string): unlocks the agent and loads user data',
         createAgent:
-          "(password: string): creates the agent, loads user data, and lands on the 'onboarding' boot state (not 'ready')",
-        finishOnboarding: "(): leaves onboarding for the running app — sets bootState to 'ready'",
+          "(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')",
+        clearPasswordError:
+          '(): clears the failed-unlock flag. Chain it after the password field\'s $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction',
+        finishSetup: "(): leaves 'finishing' for the running app — sets bootState to 'ready'",
         logout: '(): locks the agent and returns to the login screen',
       },
     },

@@ -2012,7 +2012,7 @@ export const contextData: ContextData = {
         createAgentError: { type: 'string' },
         createAgentLoading: { type: 'boolean' },
       },
-      actions: ['login', 'createAgent', 'finishOnboarding', 'logout'],
+      actions: ['login', 'createAgent', 'clearPasswordError', 'finishSetup', 'logout'],
     },
     {
       name: 'accountStore',
