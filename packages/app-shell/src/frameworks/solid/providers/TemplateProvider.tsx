@@ -9,6 +9,7 @@ import {
   usePresenceStore,
   useProfileStore,
   useRouteStore,
+  useRuntimeStore,
   useSessionStore,
   useShellStore,
   useSpaceStore,
@@ -32,6 +33,7 @@ import { buildRoutes } from '../utils/buildRoutes';
 export default function TemplateProvider() {
   // Stores
   const sessionStore = useSessionStore();
+  const runtimeStore = useRuntimeStore();
   const datasetStore = useDatasetStore();
   const profileStore = useProfileStore();
   const editorStore = useEditorStore();
@@ -78,6 +80,7 @@ export default function TemplateProvider() {
 
   const stores: Stores = {
     sessionStore,
+    runtimeStore,
     datasetStore,
     profileStore,
     editorStore,
