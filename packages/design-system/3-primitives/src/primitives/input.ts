@@ -1,7 +1,7 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { css, html, nothing } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
@@ -81,6 +81,30 @@ const styles = css`
   [part='input']::placeholder {
     color: var(--we-color-neutral-400);
   }
+
+  /* The reveal toggle sits in the field's own flex row, so it needs no absolute positioning and
+     the input's padding does not have to be adjusted to keep text clear of it. */
+  [part='reveal'] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+    color: var(--we-color-neutral-500);
+    cursor: pointer;
+  }
+
+  [part='reveal']:hover {
+    color: var(--we-color-neutral-700);
+  }
+
+  [part='reveal']:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 `;
 
 @customElement('we-input')
@@ -102,8 +126,22 @@ export default class Input extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) required = false;
   @property({ type: Boolean, reflect: true }) readonly = false;
   @property({ type: String, reflect: true }) type = 'text';
+  /**
+   * Show a reveal toggle inside the field, for password inputs.
+   *
+   * The component owns the whole pattern — the icon, the pressed state, the rendered type, and the
+   * accessible labelling — because assembling it per form is four chances to get it slightly
+   * different, and the one thing every caller wants is the same thing.
+   *
+   * `type` stays whatever the caller declared: revealing swaps only what is *rendered*, so the
+   * declared intent and the DOM never disagree about what this field is.
+   */
+  @property({ type: Boolean, reflect: true }) revealable = false;
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
+
+  /** Reveal is transient UI state, never reflected — a revealed field must not persist as one. */
+  @state() private _revealed = false;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -160,6 +198,20 @@ export default class Input extends DesignSystemElement {
     e.stopPropagation();
   }
 
+  private _toggleReveal() {
+    this._revealed = !this._revealed;
+  }
+
+  /**
+   * Keep focus in the field when the toggle is clicked.
+   *
+   * Without this the button takes focus on mousedown, so revealing mid-typing moves the caret out
+   * of the input and the next keystroke goes nowhere.
+   */
+  private _keepFocus(e: MouseEvent) {
+    e.preventDefault();
+  }
+
   render() {
     const inline = this.styles || {};
     return html`
@@ -168,7 +220,7 @@ export default class Input extends DesignSystemElement {
         <input
           part="input"
           .value=${this.value}
-          .type=${this.type}
+          .type=${this.revealable && this._revealed ? 'text' : this.type}
           .max=${this.max}
           .min=${this.min}
           .step=${this.step}
@@ -189,6 +241,24 @@ export default class Input extends DesignSystemElement {
           @beforeinput=${this.handleBeforeInput}
           @paste=${this.handlePaste}
         />
+        ${
+          this.revealable
+            ? html`
+                <button
+                  part="reveal"
+                  type="button"
+                  tabindex="-1"
+                  ?disabled=${this.disabled}
+                  aria-pressed=${this._revealed ? 'true' : 'false'}
+                  aria-label=${this._revealed ? 'Hide password' : 'Show password'}
+                  @mousedown=${this._keepFocus}
+                  @click=${this._toggleReveal}
+                >
+                  <we-icon name=${this._revealed ? 'eye' : 'eye-slash'}></we-icon>
+                </button>
+              `
+            : nothing
+        }
         <slot name="end"></slot>
       </div>
     `;

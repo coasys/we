@@ -24,17 +24,17 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
  * because this screen renders while the agent is *locked* — the real picture lives inside the
  * encrypted store and cannot be read until after the password. See `Account.avatar`.
  */
-function accountBadge(name: SchemaNode | string | OperatorToken, size: 'lg' | 'md' = 'lg'): SchemaNode {
+function accountBadge(name: SchemaNode | string | OperatorToken): SchemaNode {
   return {
     type: 'Column',
-    props: { gap: '300', ax: 'center' },
+    props: { gap: '300', ax: 'center', mb: '400' },
     children: [
       {
         type: 'we-avatar',
         props: {
           image: { $store: 'accountStore.activeAccount.avatar' },
           initials: name as SchemaProp,
-          size,
+          size: 'xxl',
           bg: 'primary-100',
         },
       },
@@ -88,7 +88,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
       condition: { $store: 'accountStore.canManageAccounts' },
       then: {
         type: 'Row',
-        props: { gap: '200', ay: 'start', ax: 'center', wrap: true, mt: '400' },
+        props: { gap: '200', ay: 'start', ax: 'center', wrap: true },
         children: [
           {
             type: '$each',
@@ -139,7 +139,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
 function startingState(account: string): SchemaNode {
   return {
     type: 'Column',
-    props: { mt: '200', gap: '400', ax: 'center' },
+    props: { gap: '400', ax: 'center' },
     children: [
       // Gated on `canManageAccounts` — known synchronously from the platform adapter — rather than
       // on the account itself, which arrives over IPC a few frames later. Gating on the account
@@ -280,15 +280,21 @@ const unlockForm: SchemaNode = {
         },
       },
       children: [
+        // Field and submit on one row — the shape an OS sign-in uses when there is exactly one
+        // thing to type and one thing to do with it. The setup screen keeps a full-width button
+        // instead, because its submit applies to three fields rather than the one beside it.
         {
           type: 'Row',
-          props: { gap: '300' },
+          props: { gap: '200', ay: 'center' },
           children: [
             {
               type: 'we-input',
               props: {
                 height: '36px',
-                width: '200px',
+                width: '220px',
+                type: 'password',
+                // The reveal toggle is the input's own, not a button assembled beside it.
+                revealable: true,
                 placeholder: 'Password...',
                 value: { $local: 'password' },
                 onInput: { $setLocal: 'password', from: '$event.detail' },
@@ -299,45 +305,32 @@ const unlockForm: SchemaNode = {
                     then: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
                   },
                 },
-                type: { $if: { condition: { $local: 'showPassword' }, then: 'text', else: 'password' } },
               },
             },
             {
               type: 'we-button',
-              props: { bg: 'primary-500', height: '36px', onClick: { $toggleLocal: 'showPassword' } },
-              children: [
-                {
-                  type: 'we-icon',
-                  props: {
-                    name: { $if: { condition: { $local: 'showPassword' }, then: 'eye', else: 'eye-slash' } },
-                    color: 'neutral-0',
+              props: {
+                square: true,
+                height: '36px',
+                color: 'neutral-0',
+                bg: 'primary-500',
+                disabled: { $not: { $formValid: '$scope' } },
+                loading: { $store: 'sessionStore.loginLoading' },
+                onClick: [
+                  { $touch: '$all' },
+                  {
+                    $if: {
+                      condition: { $formValid: '$scope' },
+                      then: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
+                    },
                   },
-                },
-              ],
+                ],
+              },
+              children: [{ type: 'we-icon', props: { name: 'arrow-right' } }],
             },
           ],
         },
       ],
-    },
-    {
-      type: 'we-button',
-      props: {
-        height: '36px',
-        text: 'Sign in',
-        color: 'neutral-0',
-        bg: 'primary-500',
-        disabled: { $not: { $formValid: '$scope' } },
-        loading: { $store: 'sessionStore.loginLoading' },
-        onClick: [
-          { $touch: '$all' },
-          {
-            $if: {
-              condition: { $formValid: '$scope' },
-              then: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
-            },
-          },
-        ],
-      },
     },
     accountSwitcher({ allowCreate: true }),
   ],
@@ -364,26 +357,18 @@ export const bootScreen: SchemaNode = {
         // WE Logo
         {
           type: 'we-image',
-          props: { src: '/we-text.svg', alt: 'WE Logo', width: '150px', height: '75px', gradient: 'primary' },
+          props: {
+            src: '/we-text.svg',
+            alt: 'WE Logo',
+            width: '150px',
+            height: '75px',
+            gradient: 'primary',
+            mb: '600',
+          },
         },
-        // Every state lives inside one reserved box.
-        //
-        // The screen centres its content vertically, so the logo's position is a function of how
-        // tall everything below it is — and each boot state is a different height, with a frame
-        // between them where neither is mounted. That made the logo drift up and settle back on
-        // every transition, most visibly during the moment the badge was still filling in.
-        //
-        // A floor rather than a fixed height: the sign-in form is legitimately taller than this
-        // and should grow, which reads as a deliberate change of screen. What this stops is the
-        // shorter states jittering against each other.
         {
           type: 'Column',
-          // `ax` is the horizontal axis and `ay` the vertical, whatever the direction — for a
-          // Column that means ax → align-items, ay → justify-content. So: centred across, and
-          // pinned to the TOP of the reserved box. Centring it vertically instead would reserve
-          // the height and then float the content inside it, which moves the top edge as the
-          // content changes size — the very drift this is here to stop.
-          props: { minHeight: '240px', width: '100%', ax: 'center', ay: 'start' },
+          props: { width: '100%', ax: 'center', ay: 'start' },
           children: [
             // Initialising state
             {
@@ -402,14 +387,13 @@ export const bootScreen: SchemaNode = {
                 condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'login'] },
                 then: {
                   type: 'Column',
-                  props: { mt: '200', gap: '400', ax: 'center' },
+                  props: { gap: '400', ax: 'center' },
                   $localState: {
                     password: {
                       type: 'string',
                       initial: '',
                       validate: [{ rule: 'required', message: 'Password is required' }],
                     },
-                    showPassword: { type: 'boolean', initial: false },
                     mode: { type: 'string', initial: 'unlock' },
                   },
                   children: [
@@ -430,7 +414,7 @@ export const bootScreen: SchemaNode = {
                             condition: { $store: 'accountStore.creating' },
                             then: {
                               type: 'Row',
-                              props: { mt: '200', gap: '300', ay: 'center' },
+                              props: { gap: '300', ay: 'center' },
                               children: [
                                 { type: 'we-spinner', props: { size: 'sm' } },
                                 { type: 'we-text', props: { color: 'neutral-600' }, children: ['Creating account...'] },
@@ -462,7 +446,7 @@ export const bootScreen: SchemaNode = {
                 condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
                 then: {
                   type: 'Column',
-                  props: { mt: '200', gap: '400', ax: 'center', maxWidth: '380px' },
+                  props: { gap: '400', ax: 'center', maxWidth: '380px' },
                   $localState: {
                     name: {
                       type: 'string',
@@ -488,8 +472,6 @@ export const bootScreen: SchemaNode = {
                       ],
                     },
                     // One per field rather than one shared: each eye reveals only the input it sits in.
-                    showPassword: { type: 'boolean', initial: false },
-                    showConfirm: { type: 'boolean', initial: false },
                     mode: { type: 'string', initial: 'unlock' },
                   },
                   children: [
@@ -555,49 +537,16 @@ export const bootScreen: SchemaNode = {
                                   props: { label: 'Password', error: { $error: 'password' } },
                                   children: [
                                     {
-                                      type: 'Row',
-                                      props: { gap: '300' },
-                                      children: [
-                                        {
-                                          type: 'we-input',
-                                          props: {
-                                            width: '100%',
-                                            placeholder: 'Password...',
-                                            value: { $local: 'password' },
-                                            onInput: { $setLocal: 'password', from: '$event.detail' },
-                                            onBlur: { $touch: 'password' },
-                                            type: {
-                                              $if: {
-                                                condition: { $local: 'showPassword' },
-                                                then: 'text',
-                                                else: 'password',
-                                              },
-                                            },
-                                          },
-                                        },
-                                        {
-                                          type: 'we-button',
-                                          props: {
-                                            bg: 'primary-500',
-                                            onClick: { $toggleLocal: 'showPassword' },
-                                          },
-                                          children: [
-                                            {
-                                              type: 'we-icon',
-                                              props: {
-                                                name: {
-                                                  $if: {
-                                                    condition: { $local: 'showPassword' },
-                                                    then: 'eye',
-                                                    else: 'eye-slash',
-                                                  },
-                                                },
-                                                color: 'neutral-0',
-                                              },
-                                            },
-                                          ],
-                                        },
-                                      ],
+                                      type: 'we-input',
+                                      props: {
+                                        width: '100%',
+                                        type: 'password',
+                                        revealable: true,
+                                        placeholder: 'Password...',
+                                        value: { $local: 'password' },
+                                        onInput: { $setLocal: 'password', from: '$event.detail' },
+                                        onBlur: { $touch: 'password' },
+                                      },
                                     },
                                   ],
                                 },
@@ -615,53 +564,19 @@ export const bootScreen: SchemaNode = {
                                   },
                                   children: [
                                     {
-                                      type: 'Row',
-                                      props: { gap: '300' },
-                                      children: [
-                                        {
-                                          type: 'we-input',
-                                          props: {
-                                            width: '100%',
-                                            placeholder: 'Confirm password...',
-                                            value: { $local: 'confirm' },
-                                            onInput: { $setLocal: 'confirm', from: '$event.detail' },
-                                            onBlur: { $touch: 'confirm' },
-                                            type: {
-                                              $if: {
-                                                condition: { $local: 'showConfirm' },
-                                                then: 'text',
-                                                else: 'password',
-                                              },
-                                            },
-                                          },
-                                        },
-                                        // Its own state, not the one above. A control sitting
-                                        // inside this field that silently revealed the field above
-                                        // it would be lying about its scope — and revealing only
-                                        // the field you are actively fixing exposes less.
-                                        {
-                                          type: 'we-button',
-                                          props: {
-                                            bg: 'primary-500',
-                                            onClick: { $toggleLocal: 'showConfirm' },
-                                          },
-                                          children: [
-                                            {
-                                              type: 'we-icon',
-                                              props: {
-                                                name: {
-                                                  $if: {
-                                                    condition: { $local: 'showConfirm' },
-                                                    then: 'eye',
-                                                    else: 'eye-slash',
-                                                  },
-                                                },
-                                                color: 'neutral-0',
-                                              },
-                                            },
-                                          ],
-                                        },
-                                      ],
+                                      type: 'we-input',
+                                      props: {
+                                        width: '100%',
+                                        type: 'password',
+                                        // Each field's toggle is its own — the primitive keeps the
+                                        // reveal state per instance, so revealing one does not
+                                        // reveal the other.
+                                        revealable: true,
+                                        placeholder: 'Confirm password...',
+                                        value: { $local: 'confirm' },
+                                        onInput: { $setLocal: 'confirm', from: '$event.detail' },
+                                        onBlur: { $touch: 'confirm' },
+                                      },
                                     },
                                   ],
                                 },
@@ -677,7 +592,6 @@ export const bootScreen: SchemaNode = {
                             {
                               type: 'we-button',
                               props: {
-                                mt: '200',
                                 text: 'Create account',
                                 color: 'neutral-0',
                                 bg: 'primary-500',
@@ -718,7 +632,7 @@ export const bootScreen: SchemaNode = {
                 condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'finishing'] },
                 then: {
                   type: 'Row',
-                  props: { mt: '200', gap: '300', ay: 'center' },
+                  props: { gap: '300', ay: 'center' },
                   children: [
                     { type: 'we-spinner', props: { size: 'sm' } },
                     { type: 'we-text', children: ['Setting up your account...'] },

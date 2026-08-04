@@ -664,7 +664,7 @@ fragment; it is sanitized before rendering so XSS payloads are stripped.
 - we-image (LayoutVisualElement)
   Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = '', objectPosition: string = ''
 - we-input (DesignSystemElement)
-  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', revealable: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', download: string = '', disabled: boolean = false
 - we-location-picker (DesignSystemElement)

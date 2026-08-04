@@ -684,6 +684,12 @@
           "default": "'text'"
         },
         {
+          "name": "revealable",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
           "name": "size",
           "type": "'xs' | 'sm' | 'md' | 'lg' | 'xl'",
           "optional": false,

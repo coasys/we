@@ -261,6 +261,7 @@ export const contextData: ContextData = {
         { name: 'required', type: 'boolean', optional: false, default: 'false' },
         { name: 'readonly', type: 'boolean', optional: false, default: 'false' },
         { name: 'type', type: 'string', optional: false, default: "'text'" },
+        { name: 'revealable', type: 'boolean', optional: false, default: 'false' },
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],
     },
