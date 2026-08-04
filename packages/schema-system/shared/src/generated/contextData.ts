@@ -2023,7 +2023,7 @@ export const contextData: ContextData = {
         busy: { type: 'boolean' },
         error: { type: 'string' },
       },
-      actions: ['refresh', 'createAccount', 'switchAccount', 'removeAccount', 'clearError'],
+      actions: ['refresh', 'createAccount', 'renameActive', 'switchAccount', 'removeAccount', 'clearError'],
     },
     {
       name: 'runtimeStore',

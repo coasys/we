@@ -3,9 +3,14 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 /**
  * The boot screen: the four states a session can be in before the app is usable.
  *
- * Modelled on an OS sign-in screen, because that is the thing it actually is — pick an identity,
+ * Modelled on an OS sign-in screen, because that is the thing it actually is — pick an account,
  * prove it, or make a new one. `initialising` and `login` are the common paths; `createAgent` and
  * `onboarding` are the first run through a given account.
+ *
+ * Copy says "account" throughout, never "agent". Internally the two differ (an account is the
+ * directory, the agent is the DID inside it), but making a user hold that distinction means they
+ * create an account and are then asked to set up its agent — two words for one act. "Agent" is
+ * kept for AD4M protocol objects that genuinely are not accounts, like a peer in the trusted list.
  *
  * Account controls are gated on `accountStore.canManageAccounts`, which is false on web: a browser
  * tab has no directories to keep accounts in, and ad4m-connect already owns which executor it
@@ -39,10 +44,9 @@ function linkButton(text: string, icon: string, onClick: SchemaProp): SchemaNode
 /**
  * Switch-account and create-account, shown wherever a user could otherwise be stranded.
  *
- * That includes the create-agent screen. A freshly created account boots into an empty directory
- * and lands there — without a way back, creating an account by mistake traps you on a passphrase
- * form for an identity you did not want, with the app you were using one restart away and no route
- * to it.
+ * That includes the setup screen. A freshly created account boots into an empty directory and
+ * lands there — without a way back, creating an account by mistake traps you on a setup form for
+ * an account you did not want, with the one you were using a restart away and no route to it.
  */
 function accountActions(showSwitch: boolean): SchemaNode {
   return {
@@ -85,11 +89,14 @@ const accountError: SchemaNode = {
 };
 
 /**
- * The create-account form. Registers a directory and restarts into it; the agent inside it is
- * created by the create-agent state on the way back up, so there is one first-run flow rather
- * than two.
+ * Confirming a new account. Not a form: the name and password are both collected afterwards, on
+ * the setup screen, so that adding an account and a genuine first run reach the *same* single page
+ * rather than splitting the same two questions across different places.
+ *
+ * A confirmation step at all only because the action relaunches the app, which is startling with
+ * no warning — not because there is anything to fill in.
  */
-const createAccountForm: SchemaNode = {
+const createAccountConfirm: SchemaNode = {
   type: 'Column',
   props: { gap: '400', ax: 'center', maxWidth: '340px' },
   children: [
@@ -108,21 +115,9 @@ const createAccountForm: SchemaNode = {
     {
       type: 'we-text',
       props: { variant: 'body', color: 'neutral-600', textAlign: 'center' },
-      children: [
-        'A separate identity with its own spaces and data, kept apart from your others. WE will restart to set it up.',
-      ],
+      children: ['WE will restart so you can set it up. Your current account stays as it is.'],
     },
     accountError,
-    {
-      type: 'we-input',
-      props: {
-        height: '36px',
-        width: '260px',
-        placeholder: 'Account name...',
-        value: { $local: 'newAccountName' },
-        onInput: { $setLocal: 'newAccountName', from: '$event.detail' },
-      },
-    },
     {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
@@ -140,12 +135,11 @@ const createAccountForm: SchemaNode = {
           type: 'we-button',
           props: {
             height: '36px',
-            text: 'Create',
+            text: 'Continue',
             color: 'neutral-0',
             bg: 'primary-500',
-            disabled: { $not: { $local: 'newAccountName' } },
             loading: { $store: 'accountStore.busy' },
-            onClick: { $action: 'accountStore.createAccount', args: [{ $local: 'newAccountName' }] },
+            onClick: { $action: 'accountStore.createAccount' },
           },
         },
       ],
@@ -213,7 +207,7 @@ const accountPicker: SchemaNode = {
   ],
 };
 
-/** The unlock form: the account you are signing in to, and the passphrase for it. */
+/** The unlock form: the account you are signing in to, and the password for it. */
 const unlockForm: SchemaNode = {
   type: 'Column',
   props: { gap: '400', ax: 'center' },
@@ -233,7 +227,7 @@ const unlockForm: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'heading-sm', fontWeight: 'regular' },
-              children: ['Unlock your agent'],
+              children: ['Sign in'],
             },
           ],
         },
@@ -376,7 +370,6 @@ export const bootScreen: SchemaNode = {
                 },
                 showPassword: { type: 'boolean', initial: false },
                 mode: { type: 'string', initial: 'unlock' },
-                newAccountName: { type: 'string', initial: '' },
               },
               children: [
                 {
@@ -391,7 +384,7 @@ export const bootScreen: SchemaNode = {
                       type: '$if',
                       props: {
                         condition: { $eq: [{ $local: 'mode' }, 'create'] },
-                        then: createAccountForm,
+                        then: createAccountConfirm,
                         else: unlockForm,
                       },
                     },
@@ -401,8 +394,10 @@ export const bootScreen: SchemaNode = {
             },
           },
         },
-        // Create-agent state — this account has no agent yet. Reached on a genuine first run, and
-        // on the first boot into a newly created account.
+        // Setup state — this account has no identity yet. Reached on a genuine first run and on
+        // the first boot into a newly created account, and it looks the same either way: name,
+        // then password. The name is committed by renaming the account (seeded as "Main" on first
+        // run, provisional on a created one), which is why it chains through accountStore.
         {
           type: '$if',
           props: {
@@ -411,11 +406,18 @@ export const bootScreen: SchemaNode = {
               type: 'Column',
               props: { mt: '200', gap: '400', ax: 'center', maxWidth: '380px' },
               $localState: {
-                passphrase: {
+                accountName: {
+                  type: 'string',
+                  // Seeded from the account being set up, so first run offers "Main" and a created
+                  // account offers its provisional name — both editable, neither blank.
+                  initial: { $store: 'accountStore.activeAccount.name' },
+                  validate: [{ rule: 'required', message: 'An account name is required' }],
+                },
+                password: {
                   type: 'string',
                   initial: '',
                   validate: [
-                    { rule: 'required', message: 'Passphrase is required' },
+                    { rule: 'required', message: 'Password is required' },
                     { rule: 'minLength', value: 10, message: 'Use at least 10 characters' },
                   ],
                 },
@@ -423,13 +425,12 @@ export const bootScreen: SchemaNode = {
                   type: 'string',
                   initial: '',
                   validate: [
-                    { rule: 'required', message: 'Please confirm your passphrase' },
-                    { rule: 'match', field: 'passphrase', message: 'Passphrases do not match' },
+                    { rule: 'required', message: 'Please confirm your password' },
+                    { rule: 'match', field: 'password', message: 'Passwords do not match' },
                   ],
                 },
-                showPassphrase: { type: 'boolean', initial: false },
+                showPassword: { type: 'boolean', initial: false },
                 mode: { type: 'string', initial: 'unlock' },
-                newAccountName: { type: 'string', initial: '' },
               },
               children: [
                 {
@@ -442,7 +443,7 @@ export const bootScreen: SchemaNode = {
                       type: '$if',
                       props: {
                         condition: { $eq: [{ $local: 'mode' }, 'create'] },
-                        then: createAccountForm,
+                        then: createAccountConfirm,
                         else: {
                           type: 'Column',
                           props: { gap: '400', ax: 'center' },
@@ -455,32 +456,31 @@ export const bootScreen: SchemaNode = {
                                 {
                                   type: 'we-text',
                                   props: { variant: 'heading-sm', fontWeight: 'regular' },
-                                  children: ['Set up your agent'],
+                                  children: ['Set up your account'],
                                 },
                               ],
                             },
-                            // Which account this is for — only meaningful once more than one exists.
-                            {
-                              type: '$if',
-                              props: {
-                                condition: { $store: 'accountStore.hasOtherAccounts' },
-                                then: {
-                                  type: 'we-text',
-                                  props: { variant: 'footnote', color: 'neutral-500' },
-                                  children: [{ $concat: ['for ', { $store: 'accountStore.activeAccount.name' }] }],
-                                },
-                              },
-                            },
-                            {
-                              type: 'we-text',
-                              props: { variant: 'body', color: 'neutral-600', textAlign: 'center' },
-                              children: [
-                                'Your keys are generated here, on this device. Choose a passphrase to encrypt them — it cannot be recovered or reset, so store it somewhere safe.',
-                              ],
-                            },
+                            // Name
                             {
                               type: 'we-form-field',
-                              props: { error: { $error: 'passphrase' } },
+                              props: { label: 'Account name', error: { $error: 'accountName' } },
+                              children: [
+                                {
+                                  type: 'we-input',
+                                  props: {
+                                    height: '36px',
+                                    width: '300px',
+                                    value: { $local: 'accountName' },
+                                    onInput: { $setLocal: 'accountName', from: '$event.detail' },
+                                    onBlur: { $touch: 'accountName' },
+                                  },
+                                },
+                              ],
+                            },
+                            // Password + confirm
+                            {
+                              type: 'we-form-field',
+                              props: { label: 'Password', error: { $error: 'password' } },
                               children: [
                                 {
                                   type: 'Row',
@@ -490,14 +490,13 @@ export const bootScreen: SchemaNode = {
                                       type: 'we-input',
                                       props: {
                                         height: '36px',
-                                        width: '260px',
-                                        placeholder: 'Passphrase...',
-                                        value: { $local: 'passphrase' },
-                                        onInput: { $setLocal: 'passphrase', from: '$event.detail' },
-                                        onBlur: { $touch: 'passphrase' },
+                                        width: '256px',
+                                        value: { $local: 'password' },
+                                        onInput: { $setLocal: 'password', from: '$event.detail' },
+                                        onBlur: { $touch: 'password' },
                                         type: {
                                           $if: {
-                                            condition: { $local: 'showPassphrase' },
+                                            condition: { $local: 'showPassword' },
                                             then: 'text',
                                             else: 'password',
                                           },
@@ -509,7 +508,7 @@ export const bootScreen: SchemaNode = {
                                       props: {
                                         bg: 'primary-500',
                                         height: '36px',
-                                        onClick: { $toggleLocal: 'showPassphrase' },
+                                        onClick: { $toggleLocal: 'showPassword' },
                                       },
                                       children: [
                                         {
@@ -517,7 +516,7 @@ export const bootScreen: SchemaNode = {
                                           props: {
                                             name: {
                                               $if: {
-                                                condition: { $local: 'showPassphrase' },
+                                                condition: { $local: 'showPassword' },
                                                 then: 'eye',
                                                 else: 'eye-slash',
                                               },
@@ -547,14 +546,14 @@ export const bootScreen: SchemaNode = {
                                   type: 'we-input',
                                   props: {
                                     height: '36px',
-                                    width: '260px',
-                                    placeholder: 'Confirm passphrase...',
+                                    width: '300px',
+                                    placeholder: 'Confirm password...',
                                     value: { $local: 'confirm' },
                                     onInput: { $setLocal: 'confirm', from: '$event.detail' },
                                     onBlur: { $touch: 'confirm' },
                                     type: {
                                       $if: {
-                                        condition: { $local: 'showPassphrase' },
+                                        condition: { $local: 'showPassword' },
                                         then: 'text',
                                         else: 'password',
                                       },
@@ -563,24 +562,40 @@ export const bootScreen: SchemaNode = {
                                 },
                               ],
                             },
+                            // The one thing that is not obvious: there is no reset. Every other app
+                            // has taught the user that a forgotten password is recoverable by email.
+                            {
+                              type: 'we-text',
+                              props: { variant: 'footnote', color: 'neutral-500', textAlign: 'center' },
+                              children: ["At least 10 characters. If you lose it, this account can't be recovered."],
+                            },
                             {
                               type: 'we-button',
                               props: {
                                 mt: '200',
                                 height: '36px',
-                                text: 'Create agent',
+                                text: 'Create account',
                                 color: 'neutral-0',
                                 bg: 'primary-500',
                                 disabled: { $not: { $formValid: '$scope' } },
                                 loading: { $store: 'sessionStore.createAgentLoading' },
+                                // Name first, identity second: renameActive resolves without doing
+                                // anything where there are no accounts to rename (web), so the
+                                // chain needs no platform branch.
                                 onClick: [
                                   { $touch: '$all' },
                                   {
                                     $if: {
                                       condition: { $formValid: '$scope' },
                                       then: {
-                                        $action: 'sessionStore.createAgent',
-                                        args: [{ $local: 'passphrase' }],
+                                        $action: 'accountStore.renameActive',
+                                        args: [{ $local: 'accountName' }],
+                                        onSuccess: [
+                                          {
+                                            $action: 'sessionStore.createAgent',
+                                            args: [{ $local: 'password' }],
+                                          },
+                                        ],
                                       },
                                     },
                                   },

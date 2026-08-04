@@ -389,7 +389,8 @@ ipcMain.handle('get-is-development', () => {
 // executor is configured with one data path at startup and holds it for its lifetime.
 
 ipcMain.handle('accounts-list', () => accounts.list());
-ipcMain.handle('accounts-create', (_event, name) => accounts.create(name));
+ipcMain.handle('accounts-create', () => accounts.create());
+ipcMain.handle('accounts-rename', (_event, id, name) => accounts.rename(id, name));
 ipcMain.handle('accounts-select', (_event, id) => accounts.select(id));
 ipcMain.handle('accounts-remove', (_event, id) => accounts.remove(id));
 

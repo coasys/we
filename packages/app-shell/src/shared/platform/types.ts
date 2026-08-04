@@ -15,10 +15,14 @@ export interface AppConfig {
 /**
  * One local account: a directory holding one agent's keys and data.
  *
- * "Account" rather than "agent" deliberately. An agent is an identity — a DID, the thing
- * `sessionStore.me` describes. An account is the *container* it lives in, and the two are not the
- * same: an account exists before any agent has been created inside it, which is precisely the state
- * the create-account flow passes through.
+ * Internally an account is the *container* and an agent is the identity (a DID) inside it — they
+ * are not the same thing, since an account exists before any agent has been created in it, which
+ * is exactly the state first-run setup passes through.
+ *
+ * **The UI never exposes that split.** To a user, an account is the thing they sign in to, full
+ * stop; making them hold "create an account, then set up its agent" is two words for one act.
+ * User-facing copy says "account" throughout, and "agent" is reserved for AD4M protocol objects
+ * that genuinely are agents rather than accounts — a peer's DID in the trusted-agents list.
  */
 export interface Account {
   /** The data directory. Stable, and unique by construction — no separate id to keep in sync. */
@@ -44,10 +48,19 @@ export interface AccountHost {
   list(): Promise<Account[]>;
   /**
    * Register a new account and make it active. Creates the directory but no agent — the agent is
-   * created on the next boot, by the create-agent flow, in the same empty directory a genuine
-   * first run would see. Caller restarts to get there.
+   * created on the next boot, by the setup screen, in the same empty directory a genuine first run
+   * would see. Caller restarts to get there.
+   *
+   * Takes no name: the setup screen asks for one *after* the restart, so that first run and
+   * adding an account reach the same single page rather than collecting the name in two different
+   * places. The host assigns a provisional name until then.
    */
-  create(name: string): Promise<Account>;
+  create(): Promise<Account>;
+  /**
+   * Rename an account. How the setup screen commits the name the user chose — including on a
+   * genuine first run, where the account was seeded rather than created.
+   */
+  rename(id: string, name: string): Promise<void>;
   select(id: string): Promise<void>;
   /**
    * Forget an account. Refuses the active one — you cannot pull the directory out from under the

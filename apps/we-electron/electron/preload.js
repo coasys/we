@@ -10,7 +10,8 @@ contextBridge.exposeInMainWorld('electron', {
 
   // Account management. Every mutation is registry-only until restartApp() relaunches.
   listAccounts: () => ipcRenderer.invoke('accounts-list'),
-  createAccount: (name) => ipcRenderer.invoke('accounts-create', name),
+  createAccount: () => ipcRenderer.invoke('accounts-create'),
+  renameAccount: (id, name) => ipcRenderer.invoke('accounts-rename', id, name),
   selectAccount: (id) => ipcRenderer.invoke('accounts-select', id),
   removeAccount: (id) => ipcRenderer.invoke('accounts-remove', id),
   restartApp: () => ipcRenderer.invoke('accounts-restart'),

@@ -1,9 +1,10 @@
 /**
  * The account registry: which agent directories exist, and which one this app runs against.
  *
- * An "account" is a data directory. The agent inside it is created on first boot into it, by the
- * same create-agent flow a genuine first run uses — registering an account deliberately does not
- * create an agent, because doing so would need a passphrase the user has not been asked for yet.
+ * An "account" is a data directory. The identity inside it is created on first boot into it, by
+ * the setup screen — registering an account deliberately does not create one, because that needs a
+ * password the user has not been asked for yet. They are asked once, after the restart, on the
+ * same page whether this is a genuine first run or an account being added.
  *
  * ## Where the registry lives, and why not where the launcher puts it
  *
@@ -52,6 +53,14 @@ export function slugify(name, taken = []) {
   return `${base}-${n}`;
 }
 
+/** `base`, or `base 2`, `base 3`… — so two abandoned setups are still tellable apart in the list. */
+export function uniqueName(base, taken = []) {
+  if (!taken.includes(base)) return base;
+  let n = 2;
+  while (taken.includes(`${base} ${n}`)) n++;
+  return `${base} ${n}`;
+}
+
 export function createAccountRegistry({ configDir, defaultPath, defaultName = 'Main' }) {
   const registryPath = join(configDir, REGISTRY_FILE);
   /** Accounts WE created live here; only these are safe to erase on removal. */
@@ -96,22 +105,43 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
       return state.accounts.map((a) => ({ id: a.path, name: a.name, active: a.path === activePath }));
     },
 
-    create(name) {
+    /**
+     * Register a new account under a provisional name and select it.
+     *
+     * The real name is collected by the setup screen after the restart, so that first run and
+     * adding an account reach the same page. Until then the account still needs *a* name — it is
+     * listed in the switcher, and a user who abandons setup must be able to tell it apart.
+     */
+    create() {
       const state = read();
-      const trimmed = (name || '').trim();
-      if (!trimmed) throw new Error('An account name is required');
+      const name = uniqueName(
+        'New account',
+        state.accounts.map((a) => a.name),
+      );
 
       const takenSlugs = state.accounts
         .filter((a) => a.path.startsWith(managedRoot))
         .map((a) => a.path.slice(managedRoot.length + 1));
-      const path = join(managedRoot, slugify(trimmed, takenSlugs));
+      const path = join(managedRoot, slugify(name, takenSlugs));
 
       if (state.accounts.some((a) => a.path === path)) throw new Error('That account already exists');
 
       mkdirSync(path, { recursive: true });
-      const account = { name: trimmed, path };
-      write({ accounts: [...state.accounts, account], selectedPath: path });
-      return { id: path, name: trimmed, active: true };
+      write({ accounts: [...state.accounts, { name, path }], selectedPath: path });
+      return { id: path, name, active: true };
+    },
+
+    /** Rename in place. The directory keeps its original slug — renaming data is not worth it. */
+    rename(id, name) {
+      const state = read();
+      const trimmed = (name || '').trim();
+      if (!trimmed) throw new Error('An account name is required');
+      if (!state.accounts.some((a) => a.path === id)) throw new Error('No such account');
+
+      write({
+        ...state,
+        accounts: state.accounts.map((a) => (a.path === id ? { ...a, name: trimmed } : a)),
+      });
     },
 
     select(id) {

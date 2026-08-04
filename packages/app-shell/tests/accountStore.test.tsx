@@ -39,9 +39,12 @@ function stubHost(accounts: Account[], overrides: Partial<AccountHost> = {}) {
       calls.push('list');
       return accounts;
     },
-    async create(name) {
-      calls.push(`create:${name}`);
-      return { id: `/cfg/agents/${name}`, name, active: true };
+    async create() {
+      calls.push('create');
+      return { id: '/cfg/agents/new-account', name: 'New account', active: true };
+    },
+    async rename(id, name) {
+      calls.push(`rename:${id}:${name}`);
     },
     async select(id) {
       calls.push(`select:${id}`);
@@ -77,7 +80,7 @@ describe('when the host cannot manage accounts (web)', () => {
 
   it('mutations no-op rather than throwing, so a mis-gated boot screen cannot crash', async () => {
     const store = mount();
-    await store.createAccount('Anything');
+    await store.createAccount();
     await store.switchAccount('/somewhere');
     await store.removeAccount('/somewhere');
     expect(store.error()).toBe('');
@@ -118,16 +121,18 @@ describe('switching and creating always end in a restart', () => {
     expect(calls).toEqual(['select:/cfg/agents/test-net', 'restart']);
   });
 
-  it('creates, then restarts — the agent inside it is made after the relaunch', async () => {
+  it('creates, then restarts — the name and identity are collected after the relaunch', async () => {
     const { host, calls } = stubHost(TWO);
     accountHost = host;
     const store = mount();
     await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
     calls.length = 0;
 
-    await store.createAccount('Work');
+    await store.createAccount();
 
-    expect(calls).toEqual(['create:Work', 'restart']);
+    // No name is passed: the setup screen asks for it after the restart, so that first run and
+    // adding an account reach the same page.
+    expect(calls).toEqual(['create', 'restart']);
   });
 
   it('does not restart when switching to the account already running', async () => {
@@ -160,18 +165,51 @@ describe('switching and creating always end in a restart', () => {
     // Cleared on failure so the button returns to idle — on success the process is going away.
     expect(store.busy()).toBe(false);
   });
+});
 
-  it('rejects a blank name without calling the host', async () => {
+describe('renameActive — how the setup screen commits a chosen name', () => {
+  it('renames the running account and reloads', async () => {
     const { host, calls } = stubHost(TWO);
     accountHost = host;
     const store = mount();
     await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
     calls.length = 0;
 
-    await store.createAccount('   ');
+    await store.renameActive('Personal');
 
+    expect(calls).toEqual(['rename:/home/x/.ad4m:Personal', 'list']);
+  });
+
+  it('no-ops when the name is unchanged, blank, or there is no host', async () => {
+    // Each of these must still RESOLVE — the setup screen chains agent creation off onSuccess,
+    // so a rejection here would silently stop the account being created at all.
+    const { host, calls } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+    calls.length = 0;
+
+    await store.renameActive('Main'); // unchanged
+    await store.renameActive('   '); // blank
     expect(calls).toEqual([]);
-    expect(store.error()).toBe('An account name is required');
+
+    accountHost = undefined;
+    const webStore = mount();
+    await expect(webStore.renameActive('Anything')).resolves.toBeUndefined();
+  });
+
+  it('rethrows a failure so the chained agent creation does not run', async () => {
+    const { host } = stubHost(TWO, {
+      async rename() {
+        throw new Error('No such account');
+      },
+    });
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    await expect(store.renameActive('Personal')).rejects.toThrow('No such account');
+    expect(store.error()).toBe('No such account');
   });
 });
 

@@ -10,7 +10,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { createAccountRegistry, expandHome, slugify } from './accounts.js';
+import { createAccountRegistry, expandHome, slugify, uniqueName } from './accounts.js';
 
 let root;
 let configDir;
@@ -45,44 +45,63 @@ describe('seeding', () => {
   });
 
   it('falls back when the selection points at an account no longer listed', () => {
-    const created = registry.create('Test Net');
+    const created = registry.create();
     registry.remove(defaultPath); /* not selected, so allowed */
     expect(registry.resolveActivePath()).toBe(created.id);
   });
 });
 
 describe('creating', () => {
-  it('creates the directory but no agent, and makes it active', () => {
-    const account = registry.create('Test Net');
+  it('creates the directory but no identity, under a provisional name, and makes it active', () => {
+    const account = registry.create();
 
-    expect(account.name).toBe('Test Net');
+    // No name is asked for here: the setup screen collects it after the restart, so first run and
+    // adding an account reach the same page.
+    expect(account.name).toBe('New account');
     expect(existsSync(account.id)).toBe(true);
-    // Empty — the agent is created on the next boot, by the create-agent flow.
     expect(registry.resolveActivePath()).toBe(account.id);
   });
 
-  it('keeps created accounts inside the managed root, whatever the name', () => {
+  it('keeps created accounts inside the managed root', () => {
     const managed = join(configDir, 'agents');
-    expect(registry.create('Test Net').id.startsWith(managed)).toBe(true);
-    // A separator in the name must not escape the parent — the launcher's `.${name}` mapping does.
-    expect(registry.create('../../etc').id.startsWith(managed)).toBe(true);
+    expect(registry.create().id.startsWith(managed)).toBe(true);
   });
 
-  it('gives same-named accounts distinct directories', () => {
-    const a = registry.create('Test');
-    const b = registry.create('Test');
+  it('distinguishes repeated creations, in both name and directory', () => {
+    const a = registry.create();
+    const b = registry.create();
     expect(a.id).not.toBe(b.id);
+    // A user who abandons setup twice must be able to tell the two apart in the switcher.
+    expect(b.name).toBe('New account 2');
     expect(registry.list()).toHaveLength(3);
   });
+});
 
-  it('refuses a blank name', () => {
-    expect(() => registry.create('   ')).toThrow(/name is required/);
+describe('renaming', () => {
+  it('commits the name the setup screen collected', () => {
+    const created = registry.create();
+    registry.rename(created.id, '  Work  ');
+
+    const renamed = registry.list().find((a) => a.id === created.id);
+    expect(renamed.name).toBe('Work');
+    // The directory keeps its original slug — only the label changes.
+    expect(created.id).toContain('new-account');
+  });
+
+  it('renames the seeded account too, which is what first run does', () => {
+    registry.rename(defaultPath, 'Personal');
+    expect(registry.list()[0].name).toBe('Personal');
+  });
+
+  it('refuses a blank name or an unknown account', () => {
+    expect(() => registry.rename(defaultPath, '   ')).toThrow(/name is required/);
+    expect(() => registry.rename('/nowhere', 'X')).toThrow(/No such account/);
   });
 });
 
 describe('selecting', () => {
   it('changes which account resolves as active', () => {
-    const created = registry.create('Test Net');
+    const created = registry.create();
     registry.select(defaultPath);
     expect(registry.resolveActivePath()).toBe(defaultPath);
 
@@ -101,7 +120,7 @@ describe('removing', () => {
   });
 
   it('erases the data of an account it created', () => {
-    const created = registry.create('Doomed');
+    const created = registry.create();
     registry.select(defaultPath);
 
     registry.remove(created.id);
@@ -113,7 +132,7 @@ describe('removing', () => {
   it('forgets an adopted account without deleting its data', () => {
     // `~/.ad4m` is shared with the ADAM launcher and Flux. Removing it from WE's list must not
     // destroy their agent — "remove account" is not a licence to delete another app's data.
-    const created = registry.create('Test Net');
+    const created = registry.create();
     expect(registry.resolveActivePath()).toBe(created.id);
 
     registry.remove(defaultPath);
@@ -133,6 +152,14 @@ describe('slugify', () => {
   it('disambiguates against names already taken', () => {
     expect(slugify('Test', ['test'])).toBe('test-2');
     expect(slugify('Test', ['test', 'test-2'])).toBe('test-3');
+  });
+});
+
+describe('uniqueName', () => {
+  it('numbers repeats so abandoned setups stay tellable apart', () => {
+    expect(uniqueName('New account', [])).toBe('New account');
+    expect(uniqueName('New account', ['New account'])).toBe('New account 2');
+    expect(uniqueName('New account', ['New account', 'New account 2'])).toBe('New account 3');
   });
 });
 

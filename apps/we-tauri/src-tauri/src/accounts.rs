@@ -1,8 +1,9 @@
 //! The account registry: which agent directories exist, and which one this app runs against.
 //!
-//! An "account" is a data directory. The agent inside it is created on first boot into it, by the
-//! same create-agent flow a genuine first run uses — registering an account deliberately does not
-//! create an agent, because doing so would need a passphrase the user has not been asked for yet.
+//! An "account" is a data directory. The identity inside it is created on first boot into it, by
+//! the setup screen — registering an account deliberately does not create one, because that needs
+//! a password the user has not been asked for yet. They are asked once, after the restart, on the
+//! same page whether this is a genuine first run or an account being added.
 //!
 //! ## Where the registry lives, and why not where the launcher puts it
 //!
@@ -126,13 +127,16 @@ impl AccountRegistry {
             .collect()
     }
 
-    pub fn create(&self, name: &str) -> Result<Account, String> {
-        let trimmed = name.trim();
-        if trimmed.is_empty() {
-            return Err("An account name is required".to_string());
-        }
-
+    /// Register a new account under a provisional name and select it.
+    ///
+    /// The real name is collected by the setup screen after the restart, so that first run and
+    /// adding an account reach the same page. Until then the account still needs *a* name — it is
+    /// listed in the switcher, and a user who abandons setup must be able to tell it apart.
+    pub fn create(&self) -> Result<Account, String> {
         let mut state = self.read();
+        let existing_names: Vec<String> = state.accounts.iter().map(|a| a.name.clone()).collect();
+        let name = unique_name("New account", &existing_names);
+
         let managed = self.managed_root();
         let taken: Vec<String> = state
             .accounts
@@ -141,14 +145,14 @@ impl AccountRegistry {
             .map(|rest| rest.to_string_lossy().to_string())
             .collect();
 
-        let path = managed.join(slugify(trimmed, &taken));
+        let path = managed.join(slugify(&name, &taken));
         if state.accounts.iter().any(|a| a.path == path) {
             return Err("That account already exists".to_string());
         }
 
         fs::create_dir_all(&path).map_err(|e| e.to_string())?;
         state.accounts.push(AccountEntry {
-            name: trimmed.to_string(),
+            name: name.clone(),
             path: path.clone(),
         });
         state.selected_path = path.clone();
@@ -156,9 +160,30 @@ impl AccountRegistry {
 
         Ok(Account {
             id: path.to_string_lossy().to_string(),
-            name: trimmed.to_string(),
+            name,
             active: true,
         })
+    }
+
+    /// Rename in place. The directory keeps its original slug — renaming data is not worth it.
+    pub fn rename(&self, id: &str, name: &str) -> Result<(), String> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err("An account name is required".to_string());
+        }
+
+        let mut state = self.read();
+        let target = PathBuf::from(id);
+        if !state.accounts.iter().any(|a| a.path == target) {
+            return Err("No such account".to_string());
+        }
+
+        for account in state.accounts.iter_mut() {
+            if account.path == target {
+                account.name = trimmed.to_string();
+            }
+        }
+        self.write(&state)
     }
 
     pub fn select(&self, id: &str) -> Result<(), String> {
@@ -231,6 +256,21 @@ pub fn slugify(name: &str, taken: &[String]) -> String {
     }
 }
 
+/// `base`, or `base 2`, `base 3`… — so two abandoned setups are still tellable apart in the list.
+pub fn unique_name(base: &str, taken: &[String]) -> String {
+    if !taken.iter().any(|n| n == base) {
+        return base.to_string();
+    }
+    let mut n = 2;
+    loop {
+        let candidate = format!("{base} {n}");
+        if !taken.iter().any(|name| name == &candidate) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
 /// Expands a leading `~`. Only leading — `~` elsewhere in a path is a literal character.
 pub fn expand_home(path: &str, home: &Path) -> PathBuf {
     if path == "~" {
@@ -253,6 +293,15 @@ mod tests {
         // A separator must not let the directory escape its parent.
         assert_eq!(slugify("../../etc", &[]), "etc");
         assert_eq!(slugify("!!!", &[]), "account");
+    }
+
+    #[test]
+    fn unique_name_disambiguates_provisional_names() {
+        assert_eq!(unique_name("New account", &[]), "New account");
+        assert_eq!(
+            unique_name("New account", &["New account".to_string()]),
+            "New account 2"
+        );
     }
 
     #[test]

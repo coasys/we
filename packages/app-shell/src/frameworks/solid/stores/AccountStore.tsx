@@ -6,11 +6,14 @@
  * executor is running. That is the point — the boot screen needs it while the session is still
  * locked, which is exactly when no backend question can be answered.
  *
- * Every mutation ends in a restart. The executor is configured with one data path at startup and
- * holds it for its lifetime, so "switch account" cannot mean anything else; the ADAM launcher
- * quits the app for the same reason. Creating an account deliberately does not create an agent —
- * it makes an empty directory and restarts into it, where the create-agent boot state takes over
- * and the user chooses a passphrase. One first-run flow, not two.
+ * Switching and creating end in a restart. The executor is configured with one data path at
+ * startup and holds it for its lifetime, so "switch account" cannot mean anything else; the ADAM
+ * launcher quits the app for the same reason.
+ *
+ * Creating deliberately collects no name. It makes an empty directory under a provisional name and
+ * restarts into it, where the setup screen asks for the name *and* the password together — the
+ * same single page a genuine first run sees. Collecting the name before the restart and the
+ * password after would give the one act two shapes depending on how it was reached.
  *
  * Absent on web, where `accounts` is undefined: `canManageAccounts` stays false and the boot
  * screen renders no account controls.
@@ -40,8 +43,16 @@ export interface AccountStore {
   error: Accessor<string>;
 
   refresh: () => Promise<void>;
-  /** Create an account and relaunch into it. Does not return on success. */
-  createAccount: (name: string) => Promise<void>;
+  /** Create an account and relaunch into it. The setup screen names it. Does not return on success. */
+  createAccount: () => Promise<void>;
+  /**
+   * Rename the account this app is running as. How the setup screen commits the chosen name,
+   * including on a genuine first run where the account was seeded rather than created.
+   *
+   * Resolves without doing anything when the host manages no accounts (web), so a caller can chain
+   * the agent creation off it unconditionally.
+   */
+  renameActive: (name: string) => Promise<void>;
   /** Switch and relaunch. Does not return on success. */
   switchAccount: (id: string) => Promise<void>;
   removeAccount: (id: string) => Promise<void>;
@@ -96,13 +107,26 @@ export function AccountStoreProvider(props: ParentProps) {
     }
   }
 
-  async function createAccount(name: string): Promise<void> {
+  async function createAccount(): Promise<void> {
+    await mutateAndRestart(() => host()!.create());
+  }
+
+  async function renameActive(name: string): Promise<void> {
+    const accountHost = host();
+    const active = activeAccount();
     const trimmed = name.trim();
-    if (!trimmed) {
-      setError('An account name is required');
-      return;
+    // No host (web), no active account yet, or nothing changed — all no-ops that still resolve, so
+    // the setup screen can chain unconditionally rather than branching on platform.
+    if (!accountHost || !active || !trimmed || trimmed === active.name) return;
+
+    try {
+      await accountHost.rename(active.id, trimmed);
+      await refresh();
+    } catch (err) {
+      console.error('AccountStore: could not rename account', err);
+      setError(err instanceof Error ? err.message : String(err));
+      throw err;
     }
-    await mutateAndRestart(() => host()!.create(trimmed));
   }
 
   async function switchAccount(id: string): Promise<void> {
@@ -141,6 +165,7 @@ export function AccountStoreProvider(props: ParentProps) {
     error,
     refresh,
     createAccount,
+    renameActive,
     switchAccount,
     removeAccount,
     clearError: () => setError(''),

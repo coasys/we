@@ -13,7 +13,8 @@ const isDevelopmentCache: boolean = import.meta.env.DEV;
  */
 const accounts: AccountHost = {
   list: () => window.electron.listAccounts(),
-  create: (name: string) => window.electron.createAccount(name) as Promise<Account>,
+  create: () => window.electron.createAccount() as Promise<Account>,
+  rename: (id: string, name: string) => window.electron.renameAccount(id, name),
   select: (id: string) => window.electron.selectAccount(id),
   remove: (id: string) => window.electron.removeAccount(id),
   restart: () => window.electron.restartApp(),

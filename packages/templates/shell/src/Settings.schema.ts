@@ -36,7 +36,8 @@ export const settingsTemplate: TemplateSchema = {
           type: 'Column',
           props: { gap: '300' },
           children: [
-            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Agent'] },
+            // "Account" to match the sign-in screen; the DID row below carries the protocol term.
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Account'] },
             {
               type: 'Card',
               props: { bg: 'neutral-100' },

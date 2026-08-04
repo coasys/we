@@ -13,8 +13,13 @@ pub fn list_accounts(state: State<'_, AppState>) -> Vec<Account> {
 }
 
 #[tauri::command]
-pub fn create_account(name: String, state: State<'_, AppState>) -> Result<Account, String> {
-    registry(&state).create(&name)
+pub fn create_account(state: State<'_, AppState>) -> Result<Account, String> {
+    registry(&state).create()
+}
+
+#[tauri::command]
+pub fn rename_account(id: String, name: String, state: State<'_, AppState>) -> Result<(), String> {
+    registry(&state).rename(&id, &name)
 }
 
 #[tauri::command]
