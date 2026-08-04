@@ -21,7 +21,8 @@
     "noEmit": true
   },
   "include": [
-    "src"
+    "src",
+    "../shell/src/global.d.ts"
   ],
   "exclude": [
     "node_modules",

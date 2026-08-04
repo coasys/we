@@ -20,5 +20,8 @@
     "@types/node": "^24.10.0",
     "cesium": "^1.136.0",
     "solid-js": "^1.9.5"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
   }
 }

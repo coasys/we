@@ -4,8 +4,8 @@ import { createSignal, JSX, Show } from 'solid-js';
 
 import { AiPanel } from '../ai/AiPanel';
 import { useEditorHost } from '../host';
+import { panelResizing, RAIL_STRIP_WIDTH, setPanelResizing, THEME_RAIL_WIDTH, TOTAL_RAIL_WIDTH } from '../panelLayout';
 import { useEditorSurface } from '../surface';
-import { panelResizing, RAIL_STRIP_WIDTH, setPanelResizing, THEME_RAIL_WIDTH } from '../panelLayout';
 import { CodePanel } from './CodePanel';
 import { InspectorPanel } from './InspectorPanel';
 import { ThemePanel } from './ThemePanel';
