@@ -4,22 +4,13 @@ import { createSignal, JSX, Show } from 'solid-js';
 
 import { AiPanel } from '../ai/AiPanel';
 import { useEditorHost } from '../host';
+import { panelResizing, RAIL_STRIP_WIDTH, setPanelResizing, TOTAL_RAIL_WIDTH } from '../panelLayout';
 import { useEditorSurface } from '../surface';
 import { CodePanel } from './CodePanel';
 import { InspectorPanel } from './InspectorPanel';
 import { ThemePanel } from './ThemePanel';
 
-export const RAIL_STRIP_WIDTH = 32; // px per strip
-export const TOTAL_RAIL_WIDTH = RAIL_STRIP_WIDTH * 3; // all three strips (used by TemplateLayout)
-export const TEMPLATE_RAILS_WIDTH = RAIL_STRIP_WIDTH * 2; // code + AI strips only
-export const THEME_RAIL_WIDTH = RAIL_STRIP_WIDTH; // theme strip only
-
-/**
- * True while any panel rail is being dragged to resize. Module-level so
- * TemplateLayout and DesignToolbar can disable their CSS transitions during
- * drag, keeping the canvas edge in sync with the panel edge.
- */
-export const [panelResizing, setPanelResizing] = createSignal(false);
+export * from '../panelLayout';
 
 /** Minimum pixel movement before a mousedown is treated as a drag rather than a click. */
 const DRAG_THRESHOLD_PX = 5;

@@ -30,36 +30,7 @@
  * Doesn't: shell slots (the globe is a route, not chrome — the host-slot migration covers those), and
  * the ephemeral port.
  */
-import {
-  countryOutlinesLayer,
-  h3HexagonsLayer,
-  type LayerFactory,
-  pointLocationsLayer,
-  proceduralStarsLayer,
-  skyboxLayer,
-  solarSystemLayer,
-} from '@we/globe-layers';
 import { defineModule } from '@we/module-shared';
-
-/**
- * The layer set this module ships — a **module-private registry**, nested inside the module system.
- *
- * Worth noting as a shape: a module may own a plugin system of its own without the host needing a
- * generic "sub-registry" concept. Third-party layers do not need to live in this package either, since
- * `CesiumGlobe` resolves layers through an injected `Record<string, LayerFactory>` — an external layer
- * is just a package exporting a factory.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
-  // Planet layers
-  pointLocationsLayer,
-  countryOutlinesLayer,
-  h3HexagonsLayer,
-  // Background layers
-  skyboxLayer,
-  proceduralStarsLayer,
-  solarSystemLayer,
-};
 
 /**
  * Build the module definition.

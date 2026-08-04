@@ -9,7 +9,8 @@
  * be asserted here is the part that actually moved — that the layer set resolves identically from its
  * new owner, and that the module declares itself honestly.
  */
-import { createGlobeModule, layerFactoryRegistry } from '@we/module-globe';
+import { createGlobeModule } from '@we/module-globe';
+import { layerFactoryRegistry } from '@we/module-globe/layers';
 import { checkModuleCompatibility } from '@we/module-shared';
 import { describe, expect, it } from 'vitest';
 

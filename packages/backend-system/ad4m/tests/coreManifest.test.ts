@@ -7,9 +7,9 @@
  * same type marker. A wrong predicate here would not error anywhere; it would silently write data
  * where nothing looks for it, which is why the comparison is exhaustive rather than a spot check.
  */
-import type { Ad4mModel, SHACLShape } from '@coasys/ad4m';
-import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
+import type { SHACLShape } from '@coasys/ad4m';
 import * as Classes from '@we/models/classes';
+import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
 import { describe, expect, it } from 'vitest';
 
 import { compileManifest } from '../src/manifestCompiler';

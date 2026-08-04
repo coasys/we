@@ -9,11 +9,21 @@
  * are unaffected. Keep it free of Solid and store imports so that boundary stays real.
  */
 import { chatSystemPreamble } from '@shared/prompts/chatSystemPrompt';
-import { schemaContext } from '@we/ai-context';
 import type { ModelManifestEntry } from '@we/backend-shared';
 
-/** The full system prompt for schema-editing chat. */
-export const chatSystemPrompt = chatSystemPreamble + schemaContext;
+/**
+ * The full system prompt for schema-editing chat.
+ *
+ * The schema reference it embeds is ~117 KB of generated text, and it is needed only when a
+ * request is actually sent. As a module-level constant it was in the first bytes every visitor
+ * downloaded, whether or not they ever opened the assistant. Resolved once, then cached.
+ */
+let promptLoad: Promise<string> | undefined;
+
+export function chatSystemPrompt(): Promise<string> {
+  promptLoad ??= import('@we/ai-context').then(({ schemaContext }) => chatSystemPreamble + schemaContext);
+  return promptLoad;
+}
 
 /** Tool definition for schema mutations (ID-based patching). */
 export const updateSchemaTool = {
@@ -240,7 +250,7 @@ export async function sendClaudeRequest(
         system: [
           {
             type: 'text',
-            text: chatSystemPrompt,
+            text: await chatSystemPrompt(),
             cache_control: { type: 'ephemeral' },
           },
         ],

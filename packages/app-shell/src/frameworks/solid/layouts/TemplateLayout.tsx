@@ -36,10 +36,12 @@ import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@s
 import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
-import { EditorOverlay } from '@we/editor';
-import { panelResizing, RAIL_STRIP_WIDTH, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from '@we/editor';
+import { panelResizing, RAIL_STRIP_WIDTH, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from '@we/editor/runtime';
 import type { TemplateSchema } from '@we/schema-shared';
 import { themeToStyle } from '@we/schema-shared';
+import { lazy } from 'solid-js';
+
+const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
 import { RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
 import { createEffect, createMemo, Show } from 'solid-js';
@@ -207,7 +209,9 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           </div>
         </Column>
 
-        {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11) */}
+        {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11).
+            Fetched with the rest of the editing surface, so a session that never edits never
+            downloads it. */}
         <EditorOverlay />
 
         {/* Shell overlay rendered above the template */}

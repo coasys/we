@@ -1,18 +1,22 @@
-import { css } from '@codemirror/lang-css';
-import { json } from '@codemirror/lang-json';
-import { syntaxHighlighting } from '@codemirror/language';
-import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
-import { classHighlighter } from '@lezer/highlight';
-import { basicSetup } from 'codemirror';
+/**
+ * CodeMirror arrives when an editor is actually mounted.
+ *
+ * This component lives in the same bundle as every layout primitive, so a static import put a full
+ * code editor — CodeMirror's view, state, language modes and highlighter, around 270 KB — into any
+ * page that used a `Column`. Type-only imports below cost nothing; the runtime pieces are fetched
+ * in `onMount`, which is the first moment one is genuinely needed.
+ *
+ * The theme is a plain object rather than `EditorView.theme(...)` for the same reason: calling into
+ * CodeMirror at module scope would defeat the deferral.
+ */
+import type { Compartment, EditorState } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
 import { createEffect, onCleanup, onMount } from 'solid-js';
 
 export type * from './CodeEditor.types';
 import type { CodeEditorProps } from './CodeEditor.types';
 
-const readOnlyCompartment = new Compartment();
-
-const baseTheme = EditorView.theme({
+const baseThemeSpec: Record<string, Record<string, string>> = {
   '&': {
     height: '100%',
     fontSize: 'var(--we-font-size-100)',
@@ -142,27 +146,47 @@ const baseTheme = EditorView.theme({
   '.tok-color': { color: 'var(--we-color-success-600)' },
   '.tok-operator, .tok-punctuation': { color: 'var(--we-color-neutral-500)' },
   '.tok-invalid': { color: 'var(--we-color-danger-600)', textDecoration: 'underline' },
-});
+};
 
 export function CodeEditor(props: CodeEditorProps) {
   let containerRef!: HTMLDivElement;
   let view: EditorView | undefined;
+  // Captured from the loaded module so the effects below can reconfigure without importing again.
+  let readOnlyCompartment: Compartment | undefined;
+  let state: typeof EditorState | undefined;
 
-  onMount(() => {
-    view = new EditorView({
+  onMount(async () => {
+    const [langCss, langJson, language, cmState, cmView, highlight, cm] = await Promise.all([
+      import('@codemirror/lang-css'),
+      import('@codemirror/lang-json'),
+      import('@codemirror/language'),
+      import('@codemirror/state'),
+      import('@codemirror/view'),
+      import('@lezer/highlight'),
+      import('codemirror'),
+    ]);
+
+    // The component can unmount while the editor is still loading; without this the view mounts
+    // into a detached node and is never cleaned up.
+    if (!containerRef.isConnected) return;
+
+    readOnlyCompartment = new cmState.Compartment();
+    state = cmState.EditorState;
+
+    view = new cmView.EditorView({
       doc: props.code ?? '',
       extensions: [
-        basicSetup,
-        syntaxHighlighting(classHighlighter),
-        props.language === 'css' ? css() : json(),
-        readOnlyCompartment.of(EditorState.readOnly.of(props.readOnly ?? false)),
-        EditorView.updateListener.of((update) => {
+        cm.basicSetup,
+        language.syntaxHighlighting(highlight.classHighlighter),
+        props.language === 'css' ? langCss.css() : langJson.json(),
+        readOnlyCompartment.of(cmState.EditorState.readOnly.of(props.readOnly ?? false)),
+        cmView.EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             const value = update.state.doc.toString();
             props.onChange?.(value);
           }
         }),
-        baseTheme,
+        cmView.EditorView.theme(baseThemeSpec),
       ],
       parent: containerRef,
       root: containerRef.ownerDocument,
@@ -183,9 +207,10 @@ export function CodeEditor(props: CodeEditorProps) {
 
   // Sync readOnly changes
   createEffect(() => {
-    if (!view) return;
+    const readOnly = props.readOnly ?? false;
+    if (!view || !readOnlyCompartment || !state) return;
     view.dispatch({
-      effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(props.readOnly ?? false)),
+      effects: readOnlyCompartment.reconfigure(state.readOnly.of(readOnly)),
     });
   });
 

@@ -41,22 +41,40 @@ import {
   Timeline,
   ToastContainer,
 } from '@we/components/solid';
-import { DesignToolbar } from '@we/editor';
-import { RightPanelContainer } from '@we/editor';
-import { TemplateCard } from '@we/editor';
-import { AiPanel } from '@we/editor/ai';
-import { CesiumGlobe } from '@we/globe-widget';
-import { layerFactoryRegistry } from '@we/module-globe';
 import type { ComponentRegistry } from '@we/schema-solid';
 import { CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSidebarWidget } from '@we/widgets/solid';
-
-import WeCube from '../components/3d/WeCube';
+import { lazy } from 'solid-js';
 
 /**
- * The globe's layer set moved to `@we/module-globe` — the module owns it now. Re-exported so existing
- * importers keep working.
+ * Components fetched when something first renders them, rather than before anything renders at all.
+ *
+ * Each of these carries a dependency far larger than the app around it, and each serves a mode most
+ * sessions never enter. Loading them eagerly put that weight in front of first paint for everyone.
+ *
+ * This is code-splitting inside one build, not loading separately-built bundles: Rollup still gives
+ * every chunk the same `solid-js`, so the single-instance guarantee the module system depends on is
+ * untouched — see the note in `bundledModules.ts`, which is about the other thing.
  */
-export { layerFactoryRegistry };
+
+/** Cesium, three, and the layer stack — several times the size of the rest of the app. */
+const CesiumGlobeOnDemand = lazy(async () => {
+  const [{ CesiumGlobe }, { layerFactoryRegistry }] = await Promise.all([
+    import('@we/globe-widget'),
+    import('@we/module-globe/layers'),
+  ]);
+  return {
+    default: (props: Record<string, unknown>) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
+  };
+});
+
+/** One decorative component, and `three` behind it. */
+const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
+
+/** The editing surface — CodeMirror and Prism arrive with it, once a template is being edited. */
+const DesignToolbar = lazy(() => import('@we/editor').then((m) => ({ default: m.DesignToolbar })));
+const RightPanelContainer = lazy(() => import('@we/editor').then((m) => ({ default: m.RightPanelContainer })));
+const TemplateCard = lazy(() => import('@we/editor').then((m) => ({ default: m.TemplateCard })));
+const AiPanel = lazy(() => import('@we/editor/ai').then((m) => ({ default: m.AiPanel })));
 
 export const componentRegistry: ComponentRegistry = {
   // @we/components
@@ -92,7 +110,7 @@ export const componentRegistry: ComponentRegistry = {
   // Contributed by @we/module-globe — registered here rather than injected by the module registry so
   // the static registry stays the single source for what a template may name. When modules become
   // installable this entry comes from moduleRegistry.components() instead.
-  CesiumGlobe: (props) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
+  CesiumGlobe: CesiumGlobeOnDemand,
   GraphWidget: (props) => <GraphWidget {...props} data={props.data || mockGraphData} />,
   SignalControl,
 
@@ -122,5 +140,5 @@ export const componentRegistry: ComponentRegistry = {
   RerenderLog,
 
   // 3D
-  WeCube,
+  WeCube: WeCubeOnDemand,
 };

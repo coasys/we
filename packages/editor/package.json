@@ -11,6 +11,10 @@
     "./ai": {
       "import": "./src/ai/index.ts",
       "types": "./src/ai/index.ts"
+    },
+    "./runtime": {
+      "import": "./src/runtime.ts",
+      "types": "./src/runtime.ts"
     }
   },
   "dependencies": {
@@ -32,6 +36,7 @@
     "vitest": "^4.0.15"
   },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   }
 }
