@@ -88,36 +88,41 @@ describe('when the host cannot manage accounts (web)', () => {
   });
 });
 
-describe('bootAccount — what the boot screen can draw before IPC answers', () => {
-  it('falls back to the last-known account, then yields to the real one', async () => {
-    // The badge is bound to this. Bound to `activeAccount` it rendered a fallback user icon for
-    // the frames before the list arrived, then swapped — the flicker a reload makes visible.
-    localStorage.setItem(
-      'we:lastAccount',
-      JSON.stringify({ id: '/home/x/.ad4m', name: 'Main', avatar: 'data:image/png;base64,AAA' }),
-    );
+describe('the cache — what the screen can draw before IPC answers', () => {
+  const cached = () => JSON.parse(localStorage.getItem('we:accounts') ?? '[]');
+
+  it('seeds the list synchronously, so the whole screen paints on the first frame', () => {
+    // The corner switcher reads `accounts` and the badge reads `activeAccount`. Both were empty
+    // until the host answered, several frames after first paint — which is why the corner
+    // disappeared and came back on every switch.
+    localStorage.setItem('we:accounts', JSON.stringify(TWO));
     const { host } = stubHost(TWO);
     accountHost = host;
 
     const store = mount();
-    // Synchronously, before the host has answered anything.
-    expect(store.bootAccount()?.name).toBe('Main');
-    expect(store.bootAccount()?.avatar).toBe('data:image/png;base64,AAA');
 
-    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
-    expect(store.bootAccount()?.id).toBe('/home/x/.ad4m');
+    expect(store.accounts()).toHaveLength(2);
+    expect(store.activeAccount()?.name).toBe('Main');
+    expect(store.hasOtherAccounts()).toBe(true);
   });
 
-  it('is undefined with no cache and nothing loaded, rather than throwing', () => {
+  it('starts empty with no cache, rather than throwing', () => {
     const { host } = stubHost(TWO);
     accountHost = host;
     const store = mount();
-    expect(store.bootAccount()).toBeUndefined();
+    expect(store.activeAccount()).toBeUndefined();
   });
 
-  it('caches the account being switched TO, not the one being left', async () => {
-    // The reload happens before any refresh could run, so caching on refresh alone would leave
-    // the new renderer drawing the account just switched away from.
+  it('ignores a corrupt cache', () => {
+    localStorage.setItem('we:accounts', 'not json');
+    const { host } = stubHost(TWO);
+    accountHost = host;
+    expect(mount().accounts()).toEqual([]);
+  });
+
+  it('moves the active flag to the target when switching', async () => {
+    // The restart happens before any refresh could run. Caching the list as-is would have the
+    // next document draw the account just left as current, and the target as one of the others.
     const { host } = stubHost(TWO);
     accountHost = host;
     const store = mount();
@@ -125,21 +130,32 @@ describe('bootAccount — what the boot screen can draw before IPC answers', () 
 
     await store.switchAccount('/cfg/agents/test-net');
 
-    expect(JSON.parse(localStorage.getItem('we:lastAccount')).name).toBe('Test Net');
+    expect(cached().find((a: { active: boolean }) => a.active).name).toBe('Test Net');
   });
 
-  it('keeps the cache current as the profile changes it', async () => {
+  it('makes a created account the active one in the cache', async () => {
     const { host } = stubHost(TWO);
     accountHost = host;
     const store = mount();
     await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
 
-    expect(JSON.parse(localStorage.getItem('we:lastAccount')).name).toBe('Main');
+    await store.createAccount();
+
+    const active = cached().filter((a: { active: boolean }) => a.active);
+    expect(active).toHaveLength(1);
+    expect(active[0].name).toBe('New account');
+  });
+
+  it('stays current as the profile changes it', async () => {
+    const { host } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
 
     host.list = async () => [{ ...TWO[0], name: 'Renamed' }, TWO[1]];
     await store.refresh();
 
-    expect(JSON.parse(localStorage.getItem('we:lastAccount')).name).toBe('Renamed');
+    expect(cached().find((a: { active: boolean }) => a.active).name).toBe('Renamed');
   });
 });
 

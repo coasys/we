@@ -5340,10 +5340,6 @@
           "type": "object",
           "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
         },
-        "bootAccount": {
-          "type": "object",
-          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
-        },
         "pendingRemoval": {
           "type": "object",
           "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]

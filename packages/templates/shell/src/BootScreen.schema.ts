@@ -322,7 +322,7 @@ export const bootScreen: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'initialising'] },
-                then: startingState('accountStore.bootAccount'),
+                then: startingState('accountStore.activeAccount'),
               },
             },
             // Sign-in state — unlock, switch account, or create one. The three are modes of one

@@ -27,7 +27,6 @@ export const storeEntries: StoreEntry[] = [
       canManageAccounts: { type: 'boolean' },
       accounts: { type: 'array', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
       activeAccount: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
-      bootAccount: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
       pendingRemoval: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
       switchingTo: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
       creating: { type: 'boolean' },
@@ -356,9 +355,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         canManageAccounts:
           'boolean — the host can manage local accounts (false on web). Gate every account control on this',
         accounts: 'Account[] — local accounts (id, name, active). id is the data directory',
-        activeAccount: 'Account | undefined — the account this app instance is running against',
-        bootAccount:
-          'Account | undefined — what the boot screen draws: the active account once loaded, the last-known one before that. Correct from the first frame, unlike activeAccount which waits on IPC',
+        activeAccount:
+          'Account | undefined — the account this app instance is running against. Correct at first paint: the list is seeded from a synchronous cache',
         hasOtherAccounts: 'boolean — true when there is somewhere else to switch to',
         busy: 'boolean — a mutation is in flight; a successful one ends in a relaunch',
         error: 'string — the last account error, for display',

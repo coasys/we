@@ -31,30 +31,37 @@ import {
 } from 'solid-js';
 
 /**
- * Where the last-known active account is kept so the boot screen can draw it before any IPC has
- * answered. See {@link AccountStore.bootAccount}.
+ * The last-known account list, so the sign-in screen can draw itself before any IPC has answered.
+ *
+ * Switching tears the document down and rebuilds it, and the real list arrives over IPC several
+ * frames after first paint. Anything bound to it renders empty and then pops in — which is exactly
+ * why the corner switcher vanished and came back on every switch while the centre badge did not:
+ * the badge already read a cache, and the corner did not.
+ *
+ * `localStorage` because it is synchronous, and because it works on both desktop hosts — Tauri's
+ * `invoke` is async-only, so a sync-IPC version would leave one host still popping.
+ *
+ * Staleness is bounded to a few frames: the real list replaces this as soon as it lands.
  */
-const CACHE_KEY = 'we:lastAccount';
+const CACHE_KEY = 'we:accounts';
 
-function readCachedAccount(): Account | null {
+function readCachedAccounts(): Account[] {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
+    if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return parsed?.name ? { id: parsed.id ?? '', name: parsed.name, avatar: parsed.avatar, active: true } : null;
+    return Array.isArray(parsed) ? parsed.filter((a) => a?.id && a?.name) : [];
   } catch {
-    // Unavailable or corrupt — the badge simply starts empty, which is where it was before.
-    return null;
+    // Unavailable or corrupt — the screen simply starts empty, which is where it was before.
+    return [];
   }
 }
 
-function writeCachedAccount(account: Account | null): void {
+function writeCachedAccounts(accounts: Account[]): void {
   try {
-    if (!account) localStorage.removeItem(CACHE_KEY);
-    else
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ id: account.id, name: account.name, avatar: account.avatar }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify(accounts));
   } catch {
-    // Best effort. A stale or missing cache costs a frame of blank badge, nothing more.
+    // Best effort. A stale or missing cache costs a frame of empty screen, nothing more.
   }
 }
 
@@ -62,19 +69,13 @@ export interface AccountStore {
   /** True when the host can manage accounts at all. Gate every account control on this. */
   canManageAccounts: Accessor<boolean>;
   accounts: Accessor<Account[]>;
-  /** The account this app instance is running against, once the list has loaded. */
-  activeAccount: Accessor<Account | undefined>;
   /**
-   * What the boot screen should draw: the real active account once loaded, the last-known one
-   * before that.
+   * The account this app instance is running against.
    *
-   * The account list arrives over IPC, which is several frames after first paint — so a badge
-   * bound to `activeAccount` renders its fallback user icon and then swaps to the real picture,
-   * which is exactly the flicker a reload makes visible. `localStorage` is synchronous, so this
-   * is correct from the first frame. It holds a name and a thumbnail already written to the
-   * registry on disk, so nothing is exposed that was not already there.
+   * Correct at first paint, not merely once the host has answered: the list is seeded from a
+   * synchronous cache. See the cache notes at the top of this file.
    */
-  bootAccount: Accessor<Account | undefined>;
+  activeAccount: Accessor<Account | undefined>;
   /** True when there is somewhere else to switch to. */
   hasOtherAccounts: Accessor<boolean>;
   /** True while a mutation is in flight — note that a successful one ends in a relaunch. */
@@ -127,7 +128,8 @@ const AccountContext = createContext<AccountStore>();
 export function AccountStoreProvider(props: ParentProps) {
   const platform = usePlatform();
 
-  const [accounts, setAccounts] = createSignal<Account[]>([]);
+  // Seeded synchronously, before the first paint — see the cache notes above.
+  const [accounts, setAccounts] = createSignal<Account[]>(readCachedAccounts());
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal('');
   const [pendingRemovalId, setPendingRemovalId] = createSignal<string | null>(null);
@@ -137,12 +139,10 @@ export function AccountStoreProvider(props: ParentProps) {
   const [switchingTo, setSwitchingTo] = createSignal<Account | null>(null);
   const [creating, setCreating] = createSignal(false);
   // Read once, synchronously, at construction — before the first paint.
-  const [cachedAccount] = createSignal<Account | null>(readCachedAccount());
 
   const host = () => platform.accounts;
   const canManageAccounts = createMemo(() => !!host());
   const activeAccount = createMemo(() => accounts().find((a) => a.active));
-  const bootAccount = createMemo(() => activeAccount() ?? cachedAccount() ?? undefined);
   // Derived from the list rather than stored, so a request cannot outlive the account it names —
   // a refresh that drops it (removed in another window, say) closes the dialog by itself.
   const pendingRemoval = createMemo(() => accounts().find((a) => a.id === pendingRemovalId()) ?? null);
@@ -154,9 +154,9 @@ export function AccountStoreProvider(props: ParentProps) {
     try {
       const loaded = await accountHost.list();
       setAccounts(loaded);
-      // Keep the cache current, so the next boot draws the right badge immediately — including
-      // after a profile edit, which changes the name and picture this holds.
-      writeCachedAccount(loaded.find((a) => a.active) ?? null);
+      // Keep the cache current, so the next boot draws immediately — including after a profile
+      // edit, which changes the name and picture this holds.
+      writeCachedAccounts(loaded);
     } catch (err) {
       console.error('AccountStore: could not list accounts', err);
       setError(err instanceof Error ? err.message : String(err));
@@ -194,7 +194,8 @@ export function AccountStoreProvider(props: ParentProps) {
     // left behind until the list catches up.
     await mutateAndRestart(
       () => host()!.create(),
-      (account) => writeCachedAccount(account),
+      // The created account is the active one from here; everything else steps down.
+      (account) => writeCachedAccounts([...accounts().map((a) => ({ ...a, active: false })), account]),
     );
     // Only reached when it failed — on success the process is already gone.
     setCreating(false);
@@ -230,9 +231,10 @@ export function AccountStoreProvider(props: ParentProps) {
     // Set before the await so the boot screen swaps to the target's badge on the click rather
     // than a beat later.
     setSwitchingTo(target);
-    // Written now, not on the next refresh: the reload happens before any refresh could run, so
-    // without this the new renderer would draw the account being switched *away* from.
-    writeCachedAccount(target);
+    // Written now, not on the next refresh: the restart happens before any refresh could run. The
+    // active flag is moved to the target as well as the list being saved — otherwise the next
+    // document would draw the account just left as current, and the target as one of the others.
+    writeCachedAccounts(accounts().map((a) => ({ ...a, active: a.id === id })));
     await mutateAndRestart(() => host()!.select(id));
     // Only reached when the switch failed — on success the process is already gone.
     setSwitchingTo(null);
@@ -282,7 +284,6 @@ export function AccountStoreProvider(props: ParentProps) {
     canManageAccounts,
     accounts,
     activeAccount,
-    bootAccount,
     hasOtherAccounts,
     busy,
     switchingTo,
