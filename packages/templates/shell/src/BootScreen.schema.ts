@@ -72,11 +72,11 @@ function accountBadge(name: SchemaNode | string | OperatorToken, size: 'lg' | 'm
 function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode {
   const tile = (label: string | SchemaNode | OperatorToken, avatar: SchemaNode, onClick: SchemaProp): SchemaNode => ({
     type: 'we-button',
-    props: { variant: 'ghost', disabled: { $store: 'accountStore.busy' }, onClick },
+    props: { variant: 'ghost', height: '100px', width: '150px', disabled: { $store: 'accountStore.busy' }, onClick },
     children: [
       {
         type: 'Column',
-        props: { gap: '150', ax: 'center', width: '72px' },
+        props: { gap: '150', ax: 'center' },
         children: [avatar, { type: 'we-text', props: { variant: 'footnote', truncate: true }, children: [label] }],
       },
     ],
@@ -132,7 +132,9 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
  * both sides render this — so the reload becomes invisible instead of a second loading step with
  * different words and a badge popping in.
  *
- * "Starting", not "Signing in": no password has been entered on either path.
+ * "Loading account", not "Signing in": no password has been entered on either path, and not
+ * "Starting", which sounds like it is talking about the app rather than the thing being waited on.
+ * The badge above already says *which* account, so this only has to explain the wait.
  */
 function startingState(account: string): SchemaNode {
   return {
@@ -155,7 +157,7 @@ function startingState(account: string): SchemaNode {
         props: { gap: '300', ay: 'center' },
         children: [
           { type: 'we-spinner', props: { size: 'sm' } },
-          { type: 'we-text', props: { color: 'neutral-600' }, children: ['Starting...'] },
+          { type: 'we-text', props: { color: 'neutral-600' }, children: ['Loading account...'] },
         ],
       },
     ],
@@ -369,7 +371,7 @@ export const bootScreen: SchemaNode = {
           type: '$if',
           props: {
             condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'initialising'] },
-            then: startingState('accountStore.activeAccount'),
+            then: startingState('accountStore.bootAccount'),
           },
         },
         // Sign-in state — unlock, switch account, or create one. The three are modes of one

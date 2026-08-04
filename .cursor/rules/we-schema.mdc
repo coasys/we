@@ -1321,6 +1321,7 @@ AccountStore:
   - canManageAccounts: boolean — the host can manage local accounts (false on web). Gate every account control on this
   - accounts: Account[] — local accounts (id, name, active). id is the data directory
   - activeAccount: Account | undefined — the account this app instance is running against
+  - bootAccount: Account | undefined — what the boot screen draws: the active account once loaded, the last-known one before that. Correct from the first frame, unlike activeAccount which waits on IPC
   - pendingRemoval: Account | null — the account a removal was requested for, awaiting confirmation
   - switchingTo: Account | null — the account being switched to, from the click until the process goes away
   - creating: boolean — true from the moment a create is requested until the process goes away

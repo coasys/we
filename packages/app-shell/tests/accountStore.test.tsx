@@ -67,6 +67,7 @@ const TWO: Account[] = [
 
 beforeEach(() => {
   accountHost = undefined;
+  localStorage.clear();
 });
 
 describe('when the host cannot manage accounts (web)', () => {
@@ -84,6 +85,61 @@ describe('when the host cannot manage accounts (web)', () => {
     await store.switchAccount('/somewhere');
     await store.removeAccount('/somewhere');
     expect(store.error()).toBe('');
+  });
+});
+
+describe('bootAccount — what the boot screen can draw before IPC answers', () => {
+  it('falls back to the last-known account, then yields to the real one', async () => {
+    // The badge is bound to this. Bound to `activeAccount` it rendered a fallback user icon for
+    // the frames before the list arrived, then swapped — the flicker a reload makes visible.
+    localStorage.setItem(
+      'we:lastAccount',
+      JSON.stringify({ id: '/home/x/.ad4m', name: 'Main', avatar: 'data:image/png;base64,AAA' }),
+    );
+    const { host } = stubHost(TWO);
+    accountHost = host;
+
+    const store = mount();
+    // Synchronously, before the host has answered anything.
+    expect(store.bootAccount()?.name).toBe('Main');
+    expect(store.bootAccount()?.avatar).toBe('data:image/png;base64,AAA');
+
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+    expect(store.bootAccount()?.id).toBe('/home/x/.ad4m');
+  });
+
+  it('is undefined with no cache and nothing loaded, rather than throwing', () => {
+    const { host } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    expect(store.bootAccount()).toBeUndefined();
+  });
+
+  it('caches the account being switched TO, not the one being left', async () => {
+    // The reload happens before any refresh could run, so caching on refresh alone would leave
+    // the new renderer drawing the account just switched away from.
+    const { host } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    await store.switchAccount('/cfg/agents/test-net');
+
+    expect(JSON.parse(localStorage.getItem('we:lastAccount')).name).toBe('Test Net');
+  });
+
+  it('keeps the cache current as the profile changes it', async () => {
+    const { host } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    expect(JSON.parse(localStorage.getItem('we:lastAccount')).name).toBe('Main');
+
+    host.list = async () => [{ ...TWO[0], name: 'Renamed' }, TWO[1]];
+    await store.refresh();
+
+    expect(JSON.parse(localStorage.getItem('we:lastAccount')).name).toBe('Renamed');
   });
 });
 
@@ -135,7 +191,7 @@ describe('switching and creating always end in applySelection', () => {
     const store = mount();
     await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
 
-    const held = [];
+    const held: unknown[] = [];
     host.select = async () => {
       host.list = async () => [];
       await store.refresh();
@@ -153,7 +209,7 @@ describe('switching and creating always end in applySelection', () => {
     const store = mount();
     await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
 
-    const seen = [];
+    const seen: unknown[] = [];
     host.create = async () => {
       seen.push(store.creating(), store.switchingTo());
       return { id: '/cfg/agents/new-account', name: 'New account', active: true };
