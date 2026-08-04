@@ -558,7 +558,11 @@ export const bootScreen: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'login'] },
+                // Including `initialising` is the whole point of rendering this at the root.
+                // Gated on `login` alone it was absent for the first phase of every boot — so on
+                // a switch it vanished and returned even though its data was there the whole
+                // time, which read as the data being late rather than the node being unmounted.
+                condition: { $in: [{ $store: 'sessionStore.bootState' }, ['initialising', 'login']] },
                 then: accountSwitcher({ allowCreate: true }),
               },
             },
