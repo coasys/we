@@ -46,32 +46,17 @@ import { CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSidebarWidget } fr
 import { lazy } from 'solid-js';
 
 /**
- * The globe arrives on demand.
+ * Components fetched when something first renders them, rather than before anything renders at all.
  *
- * Cesium, three, and the layer stack behind them are the largest thing this app can load — several
- * times the rest of the bundle put together — and a template only needs them once it renders a
- * globe, which most sessions never do. Importing them here would put that cost in front of first
- * paint for everyone.
+ * Each of these carries a dependency far larger than the app around it, and each serves a mode most
+ * sessions never enter. Loading them eagerly put that weight in front of first paint for everyone.
  *
- * This is code-splitting within one build, not loading a separately-built bundle: Rollup still
- * gives every chunk the same `solid-js`, so the single-instance guarantee the module system relies
- * on is untouched.
+ * This is code-splitting inside one build, not loading separately-built bundles: Rollup still gives
+ * every chunk the same `solid-js`, so the single-instance guarantee the module system depends on is
+ * untouched — see the note in `bundledModules.ts`, which is about the other thing.
  */
-/**
- * The editing surface, and the code editor inside it.
- *
- * CodeMirror, Prism and the editor's own components are only reachable once a template is being
- * edited — a mode most sessions never enter — so they are fetched when the editor chrome first
- * renders rather than before anything does.
- */
-const DesignToolbar = lazy(() => import('@we/editor').then((m) => ({ default: m.DesignToolbar })));
-const RightPanelContainer = lazy(() => import('@we/editor').then((m) => ({ default: m.RightPanelContainer })));
-const TemplateCard = lazy(() => import('@we/editor').then((m) => ({ default: m.TemplateCard })));
-const AiPanel = lazy(() => import('@we/editor/ai').then((m) => ({ default: m.AiPanel })));
 
-/** Same reasoning as the globe: one decorative component, and `three` behind it. */
-const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
-
+/** Cesium, three, and the layer stack — several times the size of the rest of the app. */
 const CesiumGlobeOnDemand = lazy(async () => {
   const [{ CesiumGlobe }, { layerFactoryRegistry }] = await Promise.all([
     import('@we/globe-widget'),
@@ -81,6 +66,15 @@ const CesiumGlobeOnDemand = lazy(async () => {
     default: (props: Record<string, unknown>) => <CesiumGlobe {...props} layerFactoryRegistry={layerFactoryRegistry} />,
   };
 });
+
+/** One decorative component, and `three` behind it. */
+const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
+
+/** The editing surface — CodeMirror and Prism arrive with it, once a template is being edited. */
+const DesignToolbar = lazy(() => import('@we/editor').then((m) => ({ default: m.DesignToolbar })));
+const RightPanelContainer = lazy(() => import('@we/editor').then((m) => ({ default: m.RightPanelContainer })));
+const TemplateCard = lazy(() => import('@we/editor').then((m) => ({ default: m.TemplateCard })));
+const AiPanel = lazy(() => import('@we/editor/ai').then((m) => ({ default: m.AiPanel })));
 
 export const componentRegistry: ComponentRegistry = {
   // @we/components

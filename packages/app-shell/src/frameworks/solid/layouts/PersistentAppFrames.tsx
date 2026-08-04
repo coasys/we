@@ -14,7 +14,7 @@
  */
 import type { Stores } from '@solid/types';
 import { Column } from '@we/components/solid';
-import { panelResizing } from '@we/editor';
+import { panelResizing } from '@we/editor/runtime';
 import { For } from 'solid-js';
 
 import { computeRightOffset, SHELL_SIDEBAR_WIDTH } from './TemplateLayout';

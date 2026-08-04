@@ -1,5 +1,4 @@
-import type { EditorHost } from '@we/editor';
-import { EditorHostProvider } from '@we/editor';
+import { type EditorHost, EditorHostProvider } from '@we/editor/runtime';
 import { compressImageToFileData, ImageBlock } from '@we/models';
 import type { ParentProps } from 'solid-js';
 
