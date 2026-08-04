@@ -5328,11 +5328,11 @@
         },
         "accounts": {
           "type": "array",
-          "properties": ["id", "name", "active"]
+          "properties": ["id", "name", "avatar", "active"]
         },
         "activeAccount": {
           "type": "object",
-          "properties": ["id", "name", "active"]
+          "properties": ["id", "name", "avatar", "active"]
         },
         "hasOtherAccounts": {
           "type": "boolean"
@@ -5344,7 +5344,7 @@
           "type": "string"
         }
       },
-      "actions": ["refresh", "createAccount", "renameActive", "switchAccount", "removeAccount", "clearError"]
+      "actions": ["refresh", "createAccount", "syncDisplay", "switchAccount", "removeAccount", "clearError"]
     },
     {
       "name": "runtimeStore",
@@ -5461,6 +5461,9 @@
     {
       "name": "profileStore",
       "state": {
+        "pendingAvatar": {
+          "type": "string"
+        },
         "profiles": {
           "type": "array",
           "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
@@ -5470,7 +5473,14 @@
           "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
         }
       },
-      "actions": ["fetchProfile", "updateOwnProfile", "updateProfileImage", "updateOwnLocation"]
+      "actions": [
+        "fetchProfile",
+        "updateOwnProfile",
+        "updateProfileImage",
+        "updateOwnLocation",
+        "setPendingAvatar",
+        "completeAccountSetup"
+      ]
     },
     {
       "name": "routeStore",

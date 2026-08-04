@@ -2017,13 +2017,13 @@ export const contextData: ContextData = {
       name: 'accountStore',
       state: {
         canManageAccounts: { type: 'boolean' },
-        accounts: { type: 'array', properties: ['id', 'name', 'active'] },
-        activeAccount: { type: 'object', properties: ['id', 'name', 'active'] },
+        accounts: { type: 'array', properties: ['id', 'name', 'avatar', 'active'] },
+        activeAccount: { type: 'object', properties: ['id', 'name', 'avatar', 'active'] },
         hasOtherAccounts: { type: 'boolean' },
         busy: { type: 'boolean' },
         error: { type: 'string' },
       },
-      actions: ['refresh', 'createAccount', 'renameActive', 'switchAccount', 'removeAccount', 'clearError'],
+      actions: ['refresh', 'createAccount', 'syncDisplay', 'switchAccount', 'removeAccount', 'clearError'],
     },
     {
       name: 'runtimeStore',
@@ -2083,6 +2083,7 @@ export const contextData: ContextData = {
     {
       name: 'profileStore',
       state: {
+        pendingAvatar: { type: 'string' },
         profiles: {
           type: 'array',
           properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
@@ -2092,7 +2093,14 @@ export const contextData: ContextData = {
           properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
         },
       },
-      actions: ['fetchProfile', 'updateOwnProfile', 'updateProfileImage', 'updateOwnLocation'],
+      actions: [
+        'fetchProfile',
+        'updateOwnProfile',
+        'updateProfileImage',
+        'updateOwnLocation',
+        'setPendingAvatar',
+        'completeAccountSetup',
+      ],
     },
     {
       name: 'routeStore',
