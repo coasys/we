@@ -16,7 +16,7 @@ const styles = css`
   [part='base'] {
     text-decoration: underline;
     text-underline-offset: 2px;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--we-transition-200, 150ms) ease;
   }
 
   [part='base']:hover {

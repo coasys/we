@@ -38,7 +38,7 @@ const styles = css`
   [part='fill'] {
     height: 100%;
     border-radius: inherit;
-    transition: width 0.3s ease;
+    transition: width var(--we-transition-300, 250ms) ease;
   }
 `;
 

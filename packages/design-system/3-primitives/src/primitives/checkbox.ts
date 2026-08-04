@@ -35,7 +35,7 @@ const styles = css`
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s ease;
+    transition: all var(--we-transition-200, 150ms) ease;
     flex-shrink: 0;
   }
 

@@ -100,7 +100,7 @@ const styles = css`
     padding: 0 var(--we-space-300);
     cursor: pointer;
     white-space: nowrap;
-    transition: border-color 0.15s ease;
+    transition: border-color var(--we-transition-200, 150ms) ease;
     width: 100%;
     box-sizing: border-box;
   }
@@ -179,8 +179,8 @@ const styles = css`
     font-weight: 500;
     color: var(--we-color-neutral-500);
     transition:
-      background 0.1s ease,
-      color 0.1s ease;
+      background var(--we-transition-200, 150ms) ease,
+      color var(--we-transition-200, 150ms) ease;
   }
 
   [part='tab']:hover {
@@ -205,7 +205,7 @@ const styles = css`
     font-size: var(--we-font-size-300);
     background: var(--we-color-neutral-0);
     color: var(--we-color-neutral-900);
-    transition: border-color 0.15s ease;
+    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='search']:focus {
@@ -238,8 +238,8 @@ const styles = css`
     cursor: pointer;
     border: 1px solid transparent;
     transition:
-      background 0.1s ease,
-      border-color 0.1s ease;
+      background var(--we-transition-200, 150ms) ease,
+      border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='icon-btn']:hover {
@@ -264,7 +264,7 @@ const styles = css`
     color: var(--we-color-primary-500);
     cursor: pointer;
     border-radius: var(--we-radius-300);
-    transition: background 0.1s ease;
+    transition: background var(--we-transition-200, 150ms) ease;
   }
 
   [part='load-more']:hover {
@@ -298,8 +298,8 @@ const styles = css`
     font-size: 1.2em;
     line-height: 1;
     transition:
-      background 0.1s ease,
-      border-color 0.1s ease;
+      background var(--we-transition-200, 150ms) ease,
+      border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='emoji-btn']:hover {
@@ -330,7 +330,7 @@ const styles = css`
     text-align: center;
     background: var(--we-color-neutral-0);
     color: var(--we-color-neutral-900);
-    transition: border-color 0.15s ease;
+    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='emoji-input']:focus {

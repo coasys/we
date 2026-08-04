@@ -32,7 +32,7 @@ const styles = css`
     cursor: pointer;
     width: 100%;
     box-sizing: border-box;
-    transition: border-color 0.15s ease;
+    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='trigger']:hover:not([disabled]) {
@@ -115,7 +115,7 @@ const styles = css`
     font-weight: 500;
     padding: var(--we-space-200) var(--we-space-400);
     border-radius: var(--we-radius-400);
-    transition: background 0.15s ease;
+    transition: background var(--we-transition-200, 150ms) ease;
   }
 
   [part='confirm']:hover {

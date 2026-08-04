@@ -19,7 +19,7 @@ const styles = css`
     border-radius: var(--we-radius-400);
     border: 2px solid var(--we-color-neutral-200);
     cursor: pointer;
-    transition: border-color 0.15s ease;
+    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='preview']:hover {
@@ -52,7 +52,7 @@ const styles = css`
     border-radius: var(--we-radius-300);
     cursor: pointer;
     border: 2px solid transparent;
-    transition: border-color 0.15s ease;
+    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='swatch']:hover {

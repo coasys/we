@@ -119,7 +119,13 @@ const CSS_STYLES = css`
     border-radius: inherit;
     background: var(--we-button-gradient, none);
     opacity: 1;
-    transition: opacity var(--we-button-transition, 0.2s);
+    /* No component-scoped override var here. --we-button-transition was consumed at this one
+       site and set nowhere, and it sat in the --we-<component>-<prop> namespace, which the cascade
+       reserves for an explicit DS prop on the instance — there is no transition prop for it to
+       carry. Its only effect was a hardcoded fallback that opted every button out of the theme's
+       animationSpeed setting. Per-component motion overrides are not something the theme layer
+       has: animationSpeed is global, and every other theme key is global or group-level. */
+    transition: opacity var(--we-transition-200, 150ms);
     pointer-events: none;
   }
 

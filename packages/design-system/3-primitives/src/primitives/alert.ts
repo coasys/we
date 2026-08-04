@@ -48,7 +48,7 @@ const styles = css`
     cursor: pointer;
     margin-left: auto;
     opacity: 0.6;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--we-transition-200, 150ms) ease;
     flex-shrink: 0;
   }
 

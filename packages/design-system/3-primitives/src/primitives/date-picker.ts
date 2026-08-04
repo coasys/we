@@ -40,7 +40,7 @@ const styles = css`
     background: var(--we-color-neutral-0);
     padding: 0 var(--we-space-300);
     cursor: pointer;
-    transition: border-color 0.15s ease;
+    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='input-wrapper']:focus-within {
@@ -112,7 +112,7 @@ const styles = css`
     width: 32px;
     height: 32px;
     border-radius: var(--we-radius-400);
-    transition: background 0.1s ease;
+    transition: background var(--we-transition-200, 150ms) ease;
   }
 
   [part='day']:hover {
