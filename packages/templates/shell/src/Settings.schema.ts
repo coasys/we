@@ -6,6 +6,7 @@
 
 import type { TemplateSchema } from '@we/schema-shared';
 
+import { accountSettings } from './AccountSettings.schema.ts';
 import { createSpaceModal } from './CreateSpaceModal.ts';
 import { runtimeSettings } from './RuntimeSettings.schema.ts';
 
@@ -60,6 +61,7 @@ export const settingsTemplate: TemplateSchema = {
                 },
               ],
             },
+            accountSettings,
           ],
         },
 

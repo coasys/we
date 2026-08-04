@@ -56,7 +56,20 @@ export interface AccountStore {
   syncDisplay: (display: { name?: string; avatar?: string }) => Promise<void>;
   /** Switch and relaunch. Does not return on success. */
   switchAccount: (id: string) => Promise<void>;
+  /**
+   * The account a removal has been requested for, awaiting confirmation. Null when none is.
+   *
+   * Held here rather than in schema local state because the request originates inside an `$each`
+   * over the account list, where per-row local state does not exist — and because what needs
+   * confirming is a whole account, not an id the dialog would then have to look up again.
+   */
+  pendingRemoval: Accessor<Account | null>;
+  /** Delete an account outright. `confirmRemoval` is the confirmed path the UI uses. */
   removeAccount: (id: string) => Promise<void>;
+  requestRemoval: (id: string) => void;
+  cancelRemoval: () => void;
+  /** Delete the account awaiting confirmation, along with its data. */
+  confirmRemoval: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -68,10 +81,14 @@ export function AccountStoreProvider(props: ParentProps) {
   const [accounts, setAccounts] = createSignal<Account[]>([]);
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal('');
+  const [pendingRemovalId, setPendingRemovalId] = createSignal<string | null>(null);
 
   const host = () => platform.accounts;
   const canManageAccounts = createMemo(() => !!host());
   const activeAccount = createMemo(() => accounts().find((a) => a.active));
+  // Derived from the list rather than stored, so a request cannot outlive the account it names —
+  // a refresh that drops it (removed in another window, say) closes the dialog by itself.
+  const pendingRemoval = createMemo(() => accounts().find((a) => a.id === pendingRemovalId()) ?? null);
   const hasOtherAccounts = createMemo(() => accounts().length > 1);
 
   async function refresh(): Promise<void> {
@@ -142,6 +159,24 @@ export function AccountStoreProvider(props: ParentProps) {
     await mutateAndRestart(() => host()!.select(id));
   }
 
+  function requestRemoval(id: string): void {
+    setError('');
+    setPendingRemovalId(id);
+  }
+
+  function cancelRemoval(): void {
+    setPendingRemovalId(null);
+  }
+
+  async function confirmRemoval(): Promise<void> {
+    const target = pendingRemoval();
+    if (!target) return;
+    await removeAccount(target.id);
+    // Closed regardless of outcome: on success there is nothing left to confirm, and on failure
+    // the error is rendered on the settings page behind it rather than inside the dialog.
+    setPendingRemovalId(null);
+  }
+
   /** Removal does not restart — the account being removed is by definition not the running one. */
   async function removeAccount(id: string): Promise<void> {
     const accountHost = host();
@@ -171,11 +206,15 @@ export function AccountStoreProvider(props: ParentProps) {
     hasOtherAccounts,
     busy,
     error,
+    pendingRemoval,
     refresh,
     createAccount,
     syncDisplay,
     switchAccount,
     removeAccount,
+    requestRemoval,
+    cancelRemoval,
+    confirmRemoval,
     clearError: () => setError(''),
   };
 

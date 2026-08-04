@@ -39,6 +39,12 @@ export interface Account {
   avatar?: string;
   /** The account this app instance is currently running against. */
   active: boolean;
+  /**
+   * The ADAM launcher keeps its own registry — its list of every agent it knows about — inside
+   * this account's directory. Deleting it therefore also erases the launcher's record of its
+   * other agents, which is a consequence worth naming in a confirmation.
+   */
+  sharedWithLauncher?: boolean;
 }
 
 /**
@@ -75,10 +81,13 @@ export interface AccountHost {
   setDisplay(id: string, display: { name?: string; avatar?: string }): Promise<void>;
   select(id: string): Promise<void>;
   /**
-   * Forget an account. Refuses the active one — you cannot pull the directory out from under the
-   * running executor. Whether the data is erased is the host's call: an account WE created is
-   * removed with its directory, one it merely adopted (a pre-existing `~/.ad4m`, shared with the
-   * ADAM launcher) is only forgotten. Deleting data another app owns is not ours to do.
+   * Delete an account and its data. Refuses the active one — you cannot pull the directory out
+   * from under the running executor.
+   *
+   * Any AD4M account, whichever app created it: `~/.ad4m` is not "Flux's account", it is the
+   * user's account that Flux also uses. The host's own guard is on *shape*, not provenance — it
+   * confirms the directory actually holds an agent before erasing anything, because a registry
+   * entry is a path and a path is not proof that AD4M data is there.
    */
   remove(id: string): Promise<void>;
   /**

@@ -225,6 +225,55 @@ describe('syncDisplay — mirroring the profile onto the account', () => {
   });
 });
 
+describe('removal confirmation', () => {
+  it('holds the account awaiting confirmation, and deletes it on confirm', async () => {
+    const { host, calls } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+    calls.length = 0;
+
+    store.requestRemoval('/cfg/agents/test-net');
+    expect(store.pendingRemoval()?.name).toBe('Test Net');
+
+    await store.confirmRemoval();
+
+    expect(calls).toEqual(['remove:/cfg/agents/test-net', 'list']);
+    expect(store.pendingRemoval()).toBeNull();
+  });
+
+  it('cancelling deletes nothing', async () => {
+    const { host, calls } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+    calls.length = 0;
+
+    store.requestRemoval('/cfg/agents/test-net');
+    store.cancelRemoval();
+
+    expect(store.pendingRemoval()).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it('closes when the account disappears underneath it', async () => {
+    // Derived from the list rather than stored, so a request cannot outlive what it names —
+    // removed in another window, say.
+    const { host } = stubHost([...TWO]);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    store.requestRemoval('/cfg/agents/test-net');
+    expect(store.pendingRemoval()).not.toBeNull();
+
+    host.list = async () => [TWO[0]];
+    await store.refresh();
+
+    expect(store.pendingRemoval()).toBeNull();
+  });
+});
+
 describe('removing', () => {
   it('removes and reloads the list, without applying', async () => {
     const { host, calls } = stubHost(TWO);

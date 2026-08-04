@@ -5328,11 +5328,15 @@
         },
         "accounts": {
           "type": "array",
-          "properties": ["id", "name", "avatar", "active"]
+          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
         },
         "activeAccount": {
           "type": "object",
-          "properties": ["id", "name", "avatar", "active"]
+          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
+        },
+        "pendingRemoval": {
+          "type": "object",
+          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
         },
         "hasOtherAccounts": {
           "type": "boolean"
@@ -5344,7 +5348,17 @@
           "type": "string"
         }
       },
-      "actions": ["refresh", "createAccount", "syncDisplay", "switchAccount", "removeAccount", "clearError"]
+      "actions": [
+        "refresh",
+        "createAccount",
+        "syncDisplay",
+        "switchAccount",
+        "removeAccount",
+        "requestRemoval",
+        "cancelRemoval",
+        "confirmRemoval",
+        "clearError"
+      ]
     },
     {
       "name": "runtimeStore",

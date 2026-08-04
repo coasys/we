@@ -27,7 +27,15 @@
  */
 import type { SlotAnchor, SlotContribution } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
-import { bootScreen, consentPrompt, consentSecret, moduleRail, sidebar, templateEditor } from '@we/template-shell';
+import {
+  bootScreen,
+  consentPrompt,
+  consentSecret,
+  moduleRail,
+  removeAccountModal,
+  sidebar,
+  templateEditor,
+} from '@we/template-shell';
 
 export interface SlotEntry extends SlotContribution {
   /** Unique. `core:*` for host chrome, otherwise the contributing module's id. */
@@ -101,6 +109,9 @@ export function registerCoreSlots(): void {
   // of the very session it needs in order to be answered.
   slotRegistry.register({ id: 'core:consentPrompt', anchor: 'overlay', node: consentPrompt, order: 1 });
   slotRegistry.register({ id: 'core:consentSecret', anchor: 'overlay', node: consentSecret, order: 2 });
+  // Chrome rather than part of the settings page: it is a modal over whatever is behind it, and
+  // the settings page is itself an overlay.
+  slotRegistry.register({ id: 'core:removeAccount', anchor: 'overlay', node: removeAccountModal, order: 3 });
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
   // The one place feature modules are opened from. Core rather than a module contribution, because

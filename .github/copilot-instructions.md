@@ -1321,6 +1321,7 @@ AccountStore:
   - canManageAccounts: boolean — the host can manage local accounts (false on web). Gate every account control on this
   - accounts: Account[] — local accounts (id, name, active). id is the data directory
   - activeAccount: Account | undefined — the account this app instance is running against
+  - pendingRemoval: Account | null — the account a removal was requested for, awaiting confirmation
   - hasOtherAccounts: boolean — true when there is somewhere else to switch to
   - busy: boolean — a mutation is in flight; a successful one ends in a relaunch
   - error: string — the last account error, for display
@@ -1329,7 +1330,10 @@ AccountStore:
   - createAccount(): creates an account under a provisional name and switches into it — the setup screen names it. Does not return on success
   - syncDisplay({ name?, avatar? }): mirrors the profile onto the running account, so the locked sign-in screen has a name and picture. Never throws
   - switchAccount(id: string): switches to another account. Does not return on success
-  - removeAccount(id: string): forgets an account. Refuses the active one
+  - removeAccount(id: string): deletes an account and its data. Refuses the active one
+  - requestRemoval(id: string): opens the removal confirmation for that account
+  - cancelRemoval(): closes the removal confirmation without deleting
+  - confirmRemoval(): deletes the account awaiting confirmation
   - clearError(): clears the error slot
 
 RuntimeStore:

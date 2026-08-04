@@ -12,6 +12,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createAccountRegistry, expandHome, slugify, uniqueName } from './accounts.js';
 
+/** Make a directory look like an AD4M data dir, which is what deletion checks for. */
+function seedAd4mData(path) {
+  mkdirSync(path, { recursive: true });
+  writeFileSync(join(path, 'mainnet_seed.seed'), '{}', 'utf8');
+}
+
 let root;
 let configDir;
 let defaultPath;
@@ -144,6 +150,7 @@ describe('removing', () => {
 
   it('erases the data of an account it created', () => {
     const created = registry.create();
+    seedAd4mData(created.id);
     registry.select(defaultPath);
 
     registry.remove(created.id);
@@ -152,16 +159,43 @@ describe('removing', () => {
     expect(existsSync(created.id)).toBe(false);
   });
 
-  it('forgets an adopted account without deleting its data', () => {
-    // `~/.ad4m` is shared with the ADAM launcher and Flux. Removing it from WE's list must not
-    // destroy their agent — "remove account" is not a licence to delete another app's data.
+  it('erases an account another app created too — provenance is not the guard', () => {
+    // `~/.ad4m` is not "Flux's account", it is the user's account that Flux also uses, and WE is
+    // as much an AD4M client as the launcher is.
+    seedAd4mData(defaultPath);
     const created = registry.create();
     expect(registry.resolveActivePath()).toBe(created.id);
 
     registry.remove(defaultPath);
 
     expect(registry.list().map((a) => a.id)).toEqual([created.id]);
-    expect(existsSync(defaultPath)).toBe(true);
+    expect(existsSync(defaultPath)).toBe(false);
+  });
+
+  it('forgets, but does not delete, a path holding no AD4M data', () => {
+    // The registry holds arbitrary paths. A mistyped seed dataPath or a corrupted registry must
+    // not turn "remove account" into a recursive delete of something unrelated. defaultPath has
+    // no AD4M markers here — it stands in for whatever a bad path might point at.
+    writeFileSync(join(defaultPath, 'important.txt'), 'keep me', 'utf8');
+
+    const created = registry.create();
+    registry.select(created.id);
+
+    registry.remove(defaultPath);
+
+    // Dropped from the list...
+    expect(registry.list().map((a) => a.id)).toEqual([created.id]);
+    // ...but nothing on disk was touched.
+    expect(existsSync(join(defaultPath, 'important.txt'))).toBe(true);
+  });
+
+  it('reports which account holds the launcher registry, so removal can warn about it', () => {
+    writeFileSync(join(defaultPath, 'launcher-state.json'), '{}', 'utf8');
+    const created = registry.create();
+
+    const accounts = registry.list();
+    expect(accounts.find((a) => a.id === defaultPath).sharedWithLauncher).toBe(true);
+    expect(accounts.find((a) => a.id === created.id).sharedWithLauncher).toBe(false);
   });
 });
 

@@ -60,6 +60,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:bootScreen',
       'core:consentPrompt',
       'core:consentSecret',
+      'core:removeAccount',
       'core:sidebar',
       'core:templateEditor',
       'core:moduleRail',

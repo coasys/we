@@ -324,12 +324,31 @@ export const bootScreen: SchemaNode = {
           type: '$if',
           props: {
             condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'initialising'] },
+            // The account badge, then a spinner where the password field will be. Two reasons
+            // over the old "Initialising AD4M client..." line: it names what is happening in the
+            // user's terms, and the badge is the same node the sign-in form leads with, so
+            // switching accounts no longer blanks the screen and redraws it — the identity stays
+            // put and only the form beneath it swaps in. AccountStore reads from the host, which
+            // needs no executor, so the badge is available before anything has connected.
             then: {
-              type: 'Row',
-              props: { mt: '200', gap: '300', ay: 'center' },
+              type: 'Column',
+              props: { mt: '200', gap: '400', ax: 'center' },
               children: [
-                { type: 'we-spinner', props: { size: 'sm' } },
-                { type: 'we-text', children: ['Initialising AD4M client...'] },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $store: 'accountStore.activeAccount' },
+                    then: accountBadge({ $store: 'accountStore.activeAccount.name' }),
+                  },
+                },
+                {
+                  type: 'Row',
+                  props: { gap: '300', ay: 'center' },
+                  children: [
+                    { type: 'we-spinner', props: { size: 'sm' } },
+                    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Signing in...'] },
+                  ],
+                },
               ],
             },
           },
@@ -354,12 +373,29 @@ export const bootScreen: SchemaNode = {
                 mode: { type: 'string', initial: 'unlock' },
               },
               children: [
+                // Switching runs entirely before the reload — kill the executor, respawn it
+                // against the other directory, wait for GraphQL — and that is several seconds
+                // during which the old form would otherwise sit there looking merely unresponsive.
                 {
                   type: '$if',
                   props: {
-                    condition: { $eq: [{ $local: 'mode' }, 'create'] },
-                    then: createAccountConfirm,
-                    else: unlockForm,
+                    condition: { $store: 'accountStore.busy' },
+                    then: {
+                      type: 'Row',
+                      props: { gap: '300', ay: 'center' },
+                      children: [
+                        { type: 'we-spinner', props: { size: 'sm' } },
+                        { type: 'we-text', props: { color: 'neutral-600' }, children: ['Switching account...'] },
+                      ],
+                    },
+                    else: {
+                      type: '$if',
+                      props: {
+                        condition: { $eq: [{ $local: 'mode' }, 'create'] },
+                        then: createAccountConfirm,
+                        else: unlockForm,
+                      },
+                    },
                   },
                 },
               ],

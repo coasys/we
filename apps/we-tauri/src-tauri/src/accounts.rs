@@ -11,12 +11,15 @@
 //! agent's own data directory. Clearing that agent destroys the list of every *other* agent along
 //! with it. This one lives in the app's config directory, which no agent owns.
 //!
-//! ## Deleting is not symmetrical
+//! ## Deleting checks shape, not provenance
 //!
-//! An account WE created lives under `agents/` here and is removed with its data. An account WE
-//! merely adopted — the pre-existing `~/.ad4m`, which is also the launcher's and Flux's — is only
-//! forgotten. Erasing it would destroy another app's agent from a screen that says "remove
-//! account".
+//! Any AD4M account can be deleted, whichever app created it — `~/.ad4m` is not "Flux's account",
+//! it is the user's account that Flux also uses, and WE is as much an AD4M client as the launcher.
+//!
+//! What is checked instead is that the directory actually *is* an AD4M data directory. The
+//! registry holds arbitrary paths; a mistyped seed `dataPath` or a corrupted registry would
+//! otherwise turn "remove account" into a recursive delete of whatever that string happens to
+//! say.
 //!
 //! Mirrors `apps/we-electron/electron/accounts.js`. The two hosts keep separate registries in
 //! their own config directories, so an account created in one is not listed by the other.
@@ -42,6 +45,9 @@ pub struct AccountEntry {
 /// The shape the UI consumes. `id` is the data path — stable, and unique by construction, so
 /// there is no separate identifier to keep in sync with the directory.
 #[derive(Serialize, Clone, Debug)]
+// The shell consumes this as JSON; without this the multi-word field would arrive snake_case
+// while the TypeScript contract asks for camelCase, and would silently read as undefined.
+#[serde(rename_all = "camelCase")]
 pub struct Account {
     pub id: String,
     pub name: String,
@@ -52,6 +58,8 @@ pub struct Account {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
     pub active: bool,
+    /// The ADAM launcher keeps its own registry inside this account. See `holds_launcher_state`.
+    pub shared_with_launcher: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -79,7 +87,7 @@ impl AccountRegistry {
         self.config_dir.join(REGISTRY_FILE)
     }
 
-    /// Accounts this app created. Only these are safe to erase on removal.
+    /// Where accounts this app creates are put. Not a deletion guard — see the module header.
     fn managed_root(&self) -> PathBuf {
         self.config_dir.join("agents")
     }
@@ -134,6 +142,7 @@ impl AccountRegistry {
             .into_iter()
             .map(|entry| Account {
                 id: entry.path.to_string_lossy().to_string(),
+                shared_with_launcher: holds_launcher_state(&entry.path),
                 name: entry.name,
                 avatar: entry.avatar,
                 active: entry.path == active,
@@ -178,6 +187,7 @@ impl AccountRegistry {
             name,
             avatar: None,
             active: true,
+            shared_with_launcher: false,
         })
     }
 
@@ -243,11 +253,17 @@ impl AccountRegistry {
         state.accounts.retain(|a| a.path != target);
         self.write(&state)?;
 
-        // Only erase what we created. See the module header.
-        if target.starts_with(self.managed_root()) && target.exists() {
-            if let Err(e) = fs::remove_dir_all(&target) {
-                eprintln!("[accounts] Account forgotten but its data could not be deleted: {e}");
-            }
+        // Erase the data — for any account, whoever created it — but only once the directory has
+        // been confirmed to hold an agent. See the module header.
+        if !looks_like_ad4m_data(&target) {
+            eprintln!(
+                "[accounts] Account forgotten; its path holds no AD4M data, so nothing deleted: {}",
+                target.display()
+            );
+            return Ok(());
+        }
+        if let Err(e) = fs::remove_dir_all(&target) {
+            eprintln!("[accounts] Account forgotten but its data could not be deleted: {e}");
         }
 
         Ok(())
@@ -287,6 +303,24 @@ pub fn slugify(name: &str, taken: &[String]) -> String {
         }
         n += 1;
     }
+}
+
+/// Whether a path holds an AD4M agent, by the markers `init` writes.
+///
+/// The guard on deletion: a registry entry is a path, and a path is not proof that anything of
+/// AD4M's is there.
+pub fn looks_like_ad4m_data(path: &Path) -> bool {
+    path.join("mainnet_seed.seed").exists() || path.join("ad4m").exists()
+}
+
+/// Whether the ADAM launcher keeps its own registry inside this account.
+///
+/// The launcher stores `launcher-state.json` — its list of every agent it knows about — inside
+/// `~/.ad4m`, which is also one of its agents. Deleting that directory therefore erases the
+/// launcher's record of all its *other* agents too. That is the launcher's design rather than
+/// something fixable from here, but it is a consequence nobody would predict, so removal names it.
+pub fn holds_launcher_state(path: &Path) -> bool {
+    path.join("launcher-state.json").exists()
 }
 
 /// `base`, or `base 2`, `base 3`… — so two abandoned setups are still tellable apart in the list.

@@ -12,12 +12,15 @@
  * agent's own data directory. That means clearing that agent destroys the list of every *other*
  * agent along with it. This one lives in the app's config directory, which no agent owns.
  *
- * ## Deleting is not symmetrical
+ * ## Deleting checks shape, not provenance
  *
- * An account WE created lives under `agents/` here and is removed with its data. An account WE
- * merely adopted — the pre-existing `~/.ad4m`, which is also the launcher's and Flux's — is only
- * forgotten. Erasing it would destroy another app's agent, from a screen that says "remove
- * account".
+ * Any AD4M account can be deleted, whichever app created it — `~/.ad4m` is not "Flux's account",
+ * it is the user's account that Flux also uses, and WE is as much an AD4M client as the launcher.
+ *
+ * What is checked instead is that the directory actually *is* an AD4M data directory. The registry
+ * holds arbitrary paths; a mistyped seed `dataPath` or a corrupted registry would otherwise turn
+ * "remove account" into `rm -rf` on whatever that string happens to say. The markers are the ones
+ * `init` writes, the same ones the executor's own startup keys on.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
@@ -64,9 +67,31 @@ export function uniqueName(base, taken = []) {
   return `${base} ${n}`;
 }
 
+/**
+ * Whether a path holds an AD4M agent, by the markers `init` writes.
+ *
+ * The guard on deletion: a registry entry is a path, and a path is not proof that anything of
+ * AD4M's is there.
+ */
+export function looksLikeAd4mData(path) {
+  return existsSync(join(path, 'mainnet_seed.seed')) || existsSync(join(path, 'ad4m'));
+}
+
+/**
+ * Whether the ADAM launcher keeps its own registry inside this account.
+ *
+ * The launcher stores `launcher-state.json` — its list of every agent it knows about — inside
+ * `~/.ad4m`, which is also one of its agents. So deleting that directory erases the launcher's
+ * record of all its *other* agents too. That is the launcher's design, not something WE can fix
+ * from here, but it is a consequence nobody would predict, so removal names it.
+ */
+export function holdsLauncherState(path) {
+  return existsSync(join(path, 'launcher-state.json'));
+}
+
 export function createAccountRegistry({ configDir, defaultPath, defaultName = 'Main' }) {
   const registryPath = join(configDir, REGISTRY_FILE);
-  /** Accounts WE created live here; only these are safe to erase on removal. */
+  /** Where accounts WE create are put. Not a deletion guard — see the file header. */
   const managedRoot = join(configDir, 'agents');
 
   function read() {
@@ -110,6 +135,7 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
         name: a.name,
         ...(a.avatar ? { avatar: a.avatar } : {}),
         active: a.path === activePath,
+        sharedWithLauncher: holdsLauncherState(a.path),
       }));
     },
 
@@ -182,13 +208,16 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
 
       write({ ...state, accounts: state.accounts.filter((a) => a.path !== id) });
 
-      // Only erase what we created. See the file header.
-      if (id.startsWith(managedRoot) && existsSync(id)) {
-        try {
-          rmSync(id, { recursive: true, force: true });
-        } catch (e) {
-          console.warn('[accounts] Account forgotten but its data could not be deleted:', e.message);
-        }
+      // Erase the data — for any account, whoever created it — but only once the directory has
+      // been confirmed to hold an agent. See the file header.
+      if (!looksLikeAd4mData(id)) {
+        console.warn('[accounts] Account forgotten; its path holds no AD4M data, so nothing deleted:', id);
+        return;
+      }
+      try {
+        rmSync(id, { recursive: true, force: true });
+      } catch (e) {
+        console.warn('[accounts] Account forgotten but its data could not be deleted:', e.message);
       }
     },
   };
