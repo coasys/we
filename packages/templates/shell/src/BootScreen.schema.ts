@@ -285,12 +285,11 @@ const unlockForm: SchemaNode = {
         // instead, because its submit applies to three fields rather than the one beside it.
         {
           type: 'Row',
-          props: { gap: '200', ay: 'center' },
+          props: { gap: '300', ay: 'center' },
           children: [
             {
               type: 'we-input',
               props: {
-                height: '36px',
                 width: '220px',
                 type: 'password',
                 // The reveal toggle is the input's own, not a button assembled beside it.
@@ -310,10 +309,7 @@ const unlockForm: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                square: true,
-                height: '36px',
-                color: 'neutral-0',
-                bg: 'primary-500',
+                variant: 'primary',
                 disabled: { $not: { $formValid: '$scope' } },
                 loading: { $store: 'sessionStore.loginLoading' },
                 onClick: [
@@ -326,7 +322,7 @@ const unlockForm: SchemaNode = {
                   },
                 ],
               },
-              children: [{ type: 'we-icon', props: { name: 'arrow-right' } }],
+              children: ['Login'],
             },
           ],
         },

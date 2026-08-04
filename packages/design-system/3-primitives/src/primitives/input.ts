@@ -1,6 +1,7 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing } from 'lit';
+import { animation } from '@we/tokens';
+import { css, html, nothing, unsafeCSS } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -95,6 +96,12 @@ const styles = css`
     background: transparent;
     color: var(--we-color-neutral-500);
     cursor: pointer;
+    /* Read from the token rather than a CSS variable: the animation scale is only defined in TS,
+       with no --we-animation-* emitted anywhere, so the token is where the source of truth lives.
+       Step 300 is the scale's own "standard transitions" value. */
+    transition:
+      color ${unsafeCSS(animation.transition['300'])} ease,
+      opacity ${unsafeCSS(animation.transition['300'])} ease;
   }
 
   [part='reveal']:hover {
