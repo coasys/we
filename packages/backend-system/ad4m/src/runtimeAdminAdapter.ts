@@ -13,7 +13,7 @@
  * (see `RuntimeHost` in the follow-up), not a port over the client.
  */
 import { type Ad4mClient, type Apps, capSentence, ExceptionType } from '@coasys/ad4m';
-import type { AuthorizedApp, ConsentRequest, RuntimeAdminPort } from '@we/backend-shared';
+import type { AuthorizedApp, RuntimeAdminPort } from '@we/backend-shared';
 
 /** AD4M's `Apps` record, flattened into the contract's shape with capabilities pre-rendered. */
 function toAuthorizedApp(app: Apps): AuthorizedApp {
