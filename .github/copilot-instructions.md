@@ -1322,7 +1322,8 @@ AccountStore:
   - accounts: Account[] — local accounts (id, name, active). id is the data directory
   - activeAccount: Account | undefined — the account this app instance is running against
   - pendingRemoval: Account | null — the account a removal was requested for, awaiting confirmation
-  - switchingTo: Account | null — the account being switched to, from the click until the process goes away. Null during a create
+  - switchingTo: Account | null — the account being switched to, from the click until the process goes away
+  - creating: boolean — true from the moment a create is requested until the process goes away
   - hasOtherAccounts: boolean — true when there is somewhere else to switch to
   - busy: boolean — a mutation is in flight; a successful one ends in a relaunch
   - error: string — the last account error, for display

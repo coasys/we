@@ -29,6 +29,7 @@ export const storeEntries: StoreEntry[] = [
       activeAccount: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
       pendingRemoval: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
       switchingTo: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
+      creating: { type: 'boolean' },
       hasOtherAccounts: { type: 'boolean' },
       busy: { type: 'boolean' },
       error: { type: 'string' },
@@ -357,8 +358,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         busy: 'boolean — a mutation is in flight; a successful one ends in a relaunch',
         error: 'string — the last account error, for display',
         pendingRemoval: 'Account | null — the account a removal was requested for, awaiting confirmation',
-        switchingTo:
-          'Account | null — the account being switched to, from the click until the process goes away. Null during a create',
+        switchingTo: 'Account | null — the account being switched to, from the click until the process goes away',
+        creating: 'boolean — true from the moment a create is requested until the process goes away',
       },
       actions: {
         refresh: '(): re-reads the account list from the host',

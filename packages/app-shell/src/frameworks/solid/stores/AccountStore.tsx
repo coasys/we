@@ -41,14 +41,15 @@ export interface AccountStore {
   /** True while a mutation is in flight — note that a successful one ends in a relaunch. */
   busy: Accessor<boolean>;
   /**
-   * The account being switched to, from the click until the process goes away. Null when idle,
-   * and null during a *create* — there is no target account to name yet.
+   * The account being switched to, from the click until the process goes away.
    *
    * Exists so the boot screen can show the target's badge immediately rather than the account
    * being left behind. Switching tears the renderer down and rebuilds it, so without this the
    * screen shows the old identity, then blanks, then shows the new one.
    */
   switchingTo: Accessor<Account | null>;
+  /** True from the moment a create is requested until the process goes away. */
+  creating: Accessor<boolean>;
   error: Accessor<string>;
 
   refresh: () => Promise<void>;
@@ -91,7 +92,11 @@ export function AccountStoreProvider(props: ParentProps) {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal('');
   const [pendingRemovalId, setPendingRemovalId] = createSignal<string | null>(null);
-  const [switchingToId, setSwitchingToId] = createSignal<string | null>(null);
+  // Held as the account itself, NOT derived from `accounts()`. A memo over the list evaporates
+  // the moment the list is empty or reloading — which is exactly what happens mid-switch — and
+  // the boot screen would fall through to a state that infers "no target, so this is a create".
+  const [switchingTo, setSwitchingTo] = createSignal<Account | null>(null);
+  const [creating, setCreating] = createSignal(false);
 
   const host = () => platform.accounts;
   const canManageAccounts = createMemo(() => !!host());
@@ -99,7 +104,6 @@ export function AccountStoreProvider(props: ParentProps) {
   // Derived from the list rather than stored, so a request cannot outlive the account it names —
   // a refresh that drops it (removed in another window, say) closes the dialog by itself.
   const pendingRemoval = createMemo(() => accounts().find((a) => a.id === pendingRemovalId()) ?? null);
-  const switchingTo = createMemo(() => accounts().find((a) => a.id === switchingToId()) ?? null);
   const hasOtherAccounts = createMemo(() => accounts().length > 1);
 
   async function refresh(): Promise<void> {
@@ -138,7 +142,10 @@ export function AccountStoreProvider(props: ParentProps) {
   }
 
   async function createAccount(): Promise<void> {
+    setCreating(true);
     await mutateAndRestart(() => host()!.create());
+    // Only reached when it failed — on success the process is already gone.
+    setCreating(false);
   }
 
   async function syncDisplay(display: { name?: string; avatar?: string }): Promise<void> {
@@ -166,13 +173,14 @@ export function AccountStoreProvider(props: ParentProps) {
   }
 
   async function switchAccount(id: string): Promise<void> {
-    if (id === activeAccount()?.id) return;
+    const target = accounts().find((a) => a.id === id);
+    if (!target || target.active) return;
     // Set before the await so the boot screen swaps to the target's badge on the click rather
     // than a beat later.
-    setSwitchingToId(id);
+    setSwitchingTo(target);
     await mutateAndRestart(() => host()!.select(id));
     // Only reached when the switch failed — on success the process is already gone.
-    setSwitchingToId(null);
+    setSwitchingTo(null);
   }
 
   function requestRemoval(id: string): void {
@@ -222,6 +230,7 @@ export function AccountStoreProvider(props: ParentProps) {
     hasOtherAccounts,
     busy,
     switchingTo,
+    creating,
     error,
     pendingRemoval,
     refresh,

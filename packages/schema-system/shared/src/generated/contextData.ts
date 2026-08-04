@@ -2021,6 +2021,7 @@ export const contextData: ContextData = {
         activeAccount: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
         pendingRemoval: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
         switchingTo: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
+        creating: { type: 'boolean' },
         hasOtherAccounts: { type: 'boolean' },
         busy: { type: 'boolean' },
         error: { type: 'string' },

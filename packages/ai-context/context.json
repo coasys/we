@@ -5342,6 +5342,9 @@
           "type": "object",
           "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
         },
+        "creating": {
+          "type": "boolean"
+        },
         "hasOtherAccounts": {
           "type": "boolean"
         },

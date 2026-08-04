@@ -439,6 +439,25 @@ ipcMain.handle('accounts-apply', async () => {
   }
 
   if (!mainWindow || mainWindow.isDestroyed()) return;
+
+  // Paint the gap in the app's own colour. A reload repaints the window from its background
+  // colour, which defaults to white — so on a dark theme the switch flashes white for the frames
+  // before the new document paints. Read the real value rather than hard-coding one: themes are
+  // user-installable here, so any constant would be wrong for somebody.
+  try {
+    const background = await mainWindow.webContents.executeJavaScript(
+      `(() => {
+         const of = (el) => getComputedStyle(el).backgroundColor;
+         const html = of(document.documentElement);
+         const transparent = (c) => !c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)';
+         return transparent(html) ? of(document.body) : html;
+       })()`,
+    );
+    if (background && !background.startsWith('rgba(0, 0, 0, 0')) mainWindow.setBackgroundColor(background);
+  } catch {
+    // Best effort — a white frame is a blemish, not a reason to abandon the switch.
+  }
+
   mainWindow.webContents.reload();
 });
 

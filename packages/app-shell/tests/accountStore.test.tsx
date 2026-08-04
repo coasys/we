@@ -126,6 +126,44 @@ describe('switching and creating always end in applySelection', () => {
     await store.switchAccount('/cfg/agents/test-net');
   });
 
+  it('holds the target even when the account list empties underneath it', async () => {
+    // The target is stored, not derived from `accounts()`. Derived, it evaporated whenever the
+    // list was empty or reloading — which is precisely what happens mid-switch — and the boot
+    // screen fell through to the branch that means "a create is in progress".
+    const { host } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    const held = [];
+    host.select = async () => {
+      host.list = async () => [];
+      await store.refresh();
+      held.push(store.switchingTo()?.name, store.creating());
+    };
+
+    await store.switchAccount('/cfg/agents/test-net');
+
+    expect(held).toEqual(['Test Net', false]);
+  });
+
+  it('distinguishes creating from switching, rather than inferring it from a missing target', async () => {
+    const { host } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    const seen = [];
+    host.create = async () => {
+      seen.push(store.creating(), store.switchingTo());
+      return { id: '/cfg/agents/new-account', name: 'New account', active: true };
+    };
+
+    await store.createAccount();
+
+    expect(seen).toEqual([true, null]);
+  });
+
   it('clears the target when the switch fails, so the screen returns to the form', async () => {
     const { host } = stubHost(TWO, {
       async select() {
@@ -191,10 +229,14 @@ describe('switching and creating always end in applySelection', () => {
     await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
     calls.length = 0;
 
-    await store.switchAccount('/gone');
+    // A listed account whose select rejects — the store now refuses an *unlisted* id before the
+    // host sees it, so an unknown id would no longer exercise this path at all.
+    await store.switchAccount('/cfg/agents/test-net');
 
-    expect(calls).toEqual([]);
+    // The override replaces the recording `select`, so the point is what did NOT happen.
+    expect(calls).not.toContain('apply');
     expect(store.error()).toBe('No such account');
+    expect(store.switchingTo()).toBeNull();
     // Cleared on failure so the button returns to idle — on success the JS context is going away.
     expect(store.busy()).toBe(false);
   });

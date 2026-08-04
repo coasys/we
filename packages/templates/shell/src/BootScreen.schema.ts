@@ -38,7 +38,13 @@ function accountBadge(name: SchemaNode | string | OperatorToken, size: 'lg' | 'm
           bg: 'primary-100',
         },
       },
-      { type: 'we-text', props: { variant: 'heading-sm', fontWeight: 'regular' }, children: [name] },
+      // minHeight holds the line open while the name is still loading — without it the text
+      // collapses to nothing and everything below jumps when it arrives.
+      {
+        type: 'we-text',
+        props: { variant: 'heading-sm', fontWeight: 'regular', minHeight: '28px' },
+        children: [name],
+      },
     ],
   };
 }
@@ -133,10 +139,14 @@ function startingState(account: string): SchemaNode {
     type: 'Column',
     props: { mt: '200', gap: '400', ax: 'center' },
     children: [
+      // Gated on `canManageAccounts` — known synchronously from the platform adapter — rather than
+      // on the account itself, which arrives over IPC a few frames later. Gating on the account
+      // meant the badge was absent on the first frames after a reload and then appeared, resizing
+      // everything under it. Here the slot exists from the start and only its contents fill in.
       {
         type: '$if',
         props: {
-          condition: { $store: account },
+          condition: { $store: 'accountStore.canManageAccounts' },
           then: accountBadge({ $store: `${account}.name` }),
         },
       },
@@ -396,8 +406,7 @@ export const bootScreen: SchemaNode = {
                     else: {
                       type: '$if',
                       props: {
-                        // Busy without a target is a create — there is no account to name yet.
-                        condition: { $store: 'accountStore.busy' },
+                        condition: { $store: 'accountStore.creating' },
                         then: {
                           type: 'Row',
                           props: { mt: '200', gap: '300', ay: 'center' },
