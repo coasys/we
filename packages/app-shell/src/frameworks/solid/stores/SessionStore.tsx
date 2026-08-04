@@ -72,6 +72,12 @@ export interface SessionStore {
    * profile before the app appears. Orchestrated by `profileStore.completeAccountSetup`.
    */
   createAgent: (password: string) => Promise<void>;
+  /**
+   * Clear the failed-unlock flag. Wired to the password field's input event: the verdict was on
+   * the password that was submitted, so it stops being true the moment that password is edited.
+   * Leaving it up means a stale "Incorrect password" sits over a field the user is fixing.
+   */
+  clearPasswordError: () => void;
   /** Leave `finishing` for the running app, once the profile has been published (or failed to). */
   finishSetup: () => void;
   logout: () => Promise<void>;
@@ -234,6 +240,10 @@ export function SessionStoreProvider(props: ParentProps) {
     }
   }
 
+  function clearPasswordError() {
+    setPasswordError(false);
+  }
+
   /**
    * Create the agent, then run the same post-unlock load login does.
    *
@@ -311,6 +321,7 @@ export function SessionStoreProvider(props: ParentProps) {
 
     login,
     createAgent,
+    clearPasswordError,
     finishSetup,
     logout,
 

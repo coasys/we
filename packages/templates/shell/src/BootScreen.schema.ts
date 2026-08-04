@@ -214,17 +214,17 @@ const unlockForm: SchemaNode = {
     {
       type: 'we-form-field',
       props: {
+        // One message, because there is only one thing that can be wrong. A password cannot be
+        // judged locally — it is right or wrong only once the executor has tried it — so this
+        // field carries no validation rules and the slot holds the executor's answer alone.
+        // It deliberately says nothing about an empty field: the greyed-out button beside a
+        // visibly empty input already explains itself, and an error there would be scolding
+        // someone for a field they simply have not typed into yet.
         error: {
           $if: {
-            condition: { $error: 'password' },
-            then: { $error: 'password' },
-            else: {
-              $if: {
-                condition: { $store: 'sessionStore.passwordError' },
-                then: 'Incorrect password',
-                else: '',
-              },
-            },
+            condition: { $store: 'sessionStore.passwordError' },
+            then: 'Incorrect password',
+            else: '',
           },
         },
       },
@@ -245,11 +245,19 @@ const unlockForm: SchemaNode = {
                 revealable: true,
                 placeholder: 'Password...',
                 value: { $local: 'password' },
-                onInput: { $setLocal: 'password', from: '$event.detail' },
-                onBlur: { $touch: 'password' },
+                // Editing the password retracts the verdict on it. "Incorrect password" is about
+                // the string that was submitted, so it has nothing to say about the one being
+                // typed to replace it — left up, it reads as a running judgement of the new one.
+                onInput: [
+                  { $setLocal: 'password', from: '$event.detail' },
+                  { $action: 'sessionStore.clearPasswordError' },
+                ],
+                // Enter carries the same precondition as the button, or an empty field would
+                // reach the executor, fail to unlock, and come back as "Incorrect password" —
+                // the wrong diagnosis for a password that was never typed.
                 onKeyDown: {
                   $if: {
-                    condition: { $eq: ['$arg.detail.key', 'Enter'] },
+                    condition: { $and: [{ $eq: ['$arg.detail.key', 'Enter'] }, { $local: 'password' }] },
                     then: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
                   },
                 },
@@ -259,17 +267,12 @@ const unlockForm: SchemaNode = {
               type: 'we-button',
               props: {
                 variant: 'primary',
-                disabled: { $not: { $formValid: '$scope' } },
+                // Gated on the value, not on a validation rule. There is nothing to submit until
+                // something is typed, which is a precondition rather than a judgement — and the
+                // OS sign-in screens this follows all hold the button until there is.
+                disabled: { $not: { $local: 'password' } },
                 loading: { $store: 'sessionStore.loginLoading' },
-                onClick: [
-                  { $touch: '$all' },
-                  {
-                    $if: {
-                      condition: { $formValid: '$scope' },
-                      then: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
-                    },
-                  },
-                ],
+                onClick: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
               },
               children: ['Login'],
             },
@@ -332,12 +335,11 @@ export const bootScreen: SchemaNode = {
                 then: {
                   type: 'Column',
                   props: { gap: '400', ax: 'center' },
+                  // No validation rules: signing in is not a form to be checked, it is a lock to
+                  // be tried. The setup screen below does declare rules, because a name and a
+                  // confirmation field genuinely can be judged before anything is submitted.
                   $localState: {
-                    password: {
-                      type: 'string',
-                      initial: '',
-                      validate: [{ rule: 'required', message: 'Password is required' }],
-                    },
+                    password: { type: 'string', initial: '' },
                   },
                   children: [
                     // Switching runs entirely before the reload — kill the executor, respawn it
@@ -525,23 +527,20 @@ export const bootScreen: SchemaNode = {
                             text: 'Create account',
                             color: 'neutral-0',
                             bg: 'primary-500',
+                            // A hard gate, paired with the per-field onBlur touches above: this
+                            // form is filled in sequence and its rules are worth answering as
+                            // each field is left, so the errors are already reachable without a
+                            // submit-time $touch. A { $touch: '$all' } here would be dead — the
+                            // button cannot be clicked in the state that would reveal anything.
                             disabled: { $not: { $formValid: '$scope' } },
                             loading: { $store: 'sessionStore.createAgentLoading' },
                             // One action rather than a chain: the ordering is load-bearing
                             // (the profile cannot be published until the agent exists) and the
                             // failure handling differs per step. See completeAccountSetup.
-                            onClick: [
-                              { $touch: '$all' },
-                              {
-                                $if: {
-                                  condition: { $formValid: '$scope' },
-                                  then: {
-                                    $action: 'profileStore.completeAccountSetup',
-                                    args: [{ $local: 'name' }, { $local: 'password' }],
-                                  },
-                                },
-                              },
-                            ],
+                            onClick: {
+                              $action: 'profileStore.completeAccountSetup',
+                              args: [{ $local: 'name' }, { $local: 'password' }],
+                            },
                           },
                         },
                       ],
