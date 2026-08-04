@@ -365,14 +365,28 @@ export const runtimeSettings: SchemaNode = {
                           'Share these records with a peer who cannot find you, and paste theirs below. Only needed when automatic discovery fails.',
                         ],
                       },
+                      // One block per record rather than the whole array as children: the array
+                      // would stringify, and each record is separately copyable this way.
                       {
                         type: 'we-scroll-area',
                         props: { maxHeight: '120px' },
                         children: [
                           {
-                            type: 'we-code',
-                            props: { block: true },
-                            children: [{ $store: 'runtimeStore.peerInfos' }],
+                            type: 'Column',
+                            props: { gap: '200' },
+                            children: [
+                              {
+                                type: '$each',
+                                props: { items: { $store: 'runtimeStore.peerInfos' }, as: 'info' },
+                                children: [
+                                  {
+                                    type: 'we-code',
+                                    props: { block: true, styles: { 'word-break': 'break-all' } },
+                                    children: ['$info'],
+                                  },
+                                ],
+                              },
+                            ],
                           },
                         ],
                       },
