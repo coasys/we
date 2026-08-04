@@ -56,6 +56,34 @@ function resolveAd4mDataPath() {
   return join(homedir(), '.ad4m');
 }
 
+/**
+ * Scaffold the data directory if the executor has never run against it.
+ *
+ * `ad4m-executor run` does NOT initialise — `init` is a separate subcommand, and Run's code path
+ * never calls it. Until now that was invisible: the path was hardcoded to `~/.ad4m`, which the
+ * launcher had almost always already initialised. Making the path configurable makes an
+ * uninitialised directory easy to reach, and an executor started against one comes up without its
+ * bootstrap seed rather than failing loudly.
+ *
+ * Tauri does not need this — its lib.rs calls `rust_executor::init::init` directly before running.
+ *
+ * `mainnet_seed.seed` is the marker because it is what `init` writes for the executor to consume
+ * at runtime; a directory holding it has been through initialisation.
+ */
+function ensureDataPathInitialised(executorPath, dataPath) {
+  if (existsSync(join(dataPath, 'mainnet_seed.seed'))) return;
+
+  console.log('[main] Data path not initialised, running executor init:', dataPath);
+  try {
+    execSync(`"${executorPath}" init --data-path "${dataPath}"`, { stdio: 'inherit' });
+    console.log('[main] Executor init complete');
+  } catch (e) {
+    // Surfaced rather than thrown: the executor may still start, and a hard failure here would
+    // turn a recoverable state into an app that will not open at all.
+    console.error('[main] Executor init failed — the executor may not start correctly:', e.message);
+  }
+}
+
 /** Expands a leading `~`. Only leading — `~` elsewhere in a path is a literal character. */
 function expandHome(p) {
   if (p === '~') return homedir();
@@ -191,6 +219,8 @@ async function startExecutor() {
       : join(__dirname, '..', '..', '..', '..', 'ad4m', 'target', 'release', 'ad4m-executor');
 
     console.log('Executor path:', executorPath);
+
+    ensureDataPathInitialised(executorPath, ad4mDataPath);
 
     // Start the executor process
     executorProcess = spawn(
