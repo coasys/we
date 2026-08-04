@@ -12,6 +12,12 @@ function isReactiveAccessor(value: unknown): value is () => unknown {
  * resolves and dispatches each item in sequence when invoked. This keeps the memo return
  * type as "function | value" rather than "array", avoiding issues with reactive systems
  * that may not handle array memo results well (e.g. SolidJS createMemo outside a root).
+ *
+ * Dispatch mirrors the handler-array path in the dispatcher: a nested `$if` without `$arg`
+ * resolves to a reactive accessor *wrapping* the action, so it has to be unwrapped before
+ * being called. Calling the accessor directly only returned the inner action — which is why
+ * a guard like `then: [{ $touch: '$all' }, { $if: { condition: { $formValid: '$scope' }, … } }]`
+ * silently did nothing.
  */
 function wrapArrayBranch(
   branch: unknown,
@@ -23,8 +29,15 @@ function wrapArrayBranch(
   if (!Array.isArray(branch)) return branch;
   return (...callArgs: unknown[]) => {
     for (const item of branch) {
-      const fn = resolvePropFn(item, stores, context, memo);
-      if (typeof fn === 'function') (fn as (...a: unknown[]) => unknown)(...callArgs);
+      let fn = resolvePropFn(item, stores, context, memo);
+      if (isReactiveAccessor(fn)) fn = fn();
+      if (Array.isArray(fn)) {
+        for (const subFn of fn) {
+          if (typeof subFn === 'function') (subFn as (...a: unknown[]) => unknown)(...callArgs);
+        }
+      } else if (typeof fn === 'function') {
+        (fn as (...a: unknown[]) => unknown)(...callArgs);
+      }
     }
   };
 }
