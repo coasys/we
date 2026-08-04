@@ -37,10 +37,10 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | maxWidth | string | Maximum width |
 | maxHeight | string | Maximum height |
 | position | "relative" \\| "absolute" \\| "fixed" \\| "sticky" | CSS position |
-| top | string | Top offset |
-| right | string | Right offset |
-| bottom | string | Bottom offset |
-| left | string | Left offset |
+| top | SpaceValue | Top offset — space token or CSS length |
+| right | SpaceValue | Right offset — space token or CSS length |
+| bottom | SpaceValue | Bottom offset — space token or CSS length |
+| left | SpaceValue | Left offset — space token or CSS length |
 | zIndex | number | Stack order |
 | display | "flex" \\| "block" \\| "inline" \\| "inline-block" \\| "grid" \\| "inline-flex" | Display mode |
 | flex | string | Flex shorthand (e.g. "1", "0 0 auto", "none") — controls grow/shrink/basis |

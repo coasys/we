@@ -162,6 +162,10 @@ function isRawCSSValue(value: string): boolean {
   // multi-value shorthands (number followed by space, e.g. "0 0 2px 2px ..."),
   // and CSS keywords (transparent, currentColor, inherit, initial, unset, revert, auto, none).
   if (/^(transparent|currentcolor|inherit|initial|unset|revert|auto|none)$/i.test(value)) return true;
+  // Math functions are raw CSS too. Without this they fall through to the token branch and come
+  // back as `var(--we-space-calc(100% - 8px))` — a variable name built out of an expression,
+  // which resolves to nothing. Applies to every token-resolved prop, not just offsets.
+  if (/^(calc|min|max|clamp|env)\(/i.test(value)) return true;
   return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|\s))/.test(value);
 }
 
@@ -662,10 +666,15 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   if (props.scrollbarGutter) style['scrollbar-gutter'] = props.scrollbarGutter;
   if (props.zIndex !== undefined) style['z-index'] = zIndexVar(props.zIndex);
   if (props.position) style.position = props.position;
-  if (props.top) style.top = props.top;
-  if (props.right) style.right = props.right;
-  if (props.bottom) style.bottom = props.bottom;
-  if (props.left) style.left = props.left;
+  // Offsets resolve space tokens, like margin and padding do. They were raw passthrough, which
+  // made `bottom: '400'` emit an unitless `bottom: 400` — invalid, silently dropped by the
+  // browser, and indistinguishable from a typo at author time since the prop is typed `string`.
+  // tokenVar discriminates by shape, so '400' becomes var(--we-space-400) while '400px', '50%',
+  // 'calc(...)' and '-8px' still pass through untouched.
+  if (props.top) style.top = tokenVar('space', props.top);
+  if (props.right) style.right = tokenVar('space', props.right);
+  if (props.bottom) style.bottom = tokenVar('space', props.bottom);
+  if (props.left) style.left = tokenVar('space', props.left);
 
   // Margin
   const margin = getMarginValues(props);
