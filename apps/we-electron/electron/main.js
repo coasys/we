@@ -10,6 +10,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 
+import { createAccountRegistry, expandHome } from './accounts.js';
 import { setupSeedServers } from './seed-servers.js';
 
 // Enable right-click context menu with inspect element in dev mode
@@ -30,21 +31,13 @@ let ad4mToken = null;
 let executorProcess = null;
 
 /**
- * Where the executor keeps its data: the agent's keys, datasets and settings.
+ * The seed's data path — the deployment default, and the account the registry seeds itself with.
  *
- * Precedence is env → seed → `~/.ad4m`. The env var is the ad-hoc override — testing the
- * first-run flow means starting against an empty directory, and doing that by moving the real
- * `~/.ad4m` aside risks the agent you actually use. The seed value is the deployment default,
- * generated into `seed-runtime.json` at build time because the main process needs it before any
- * window exists.
- *
- * The default is the launcher's own directory, so out of the box WE desktop, Flux and ADAM share
- * one agent. Changing it is a data migration rather than a preference — see `SeedConfig.ad4m`.
+ * Generated into `seed-runtime.json` at build time because the main process needs it before any
+ * window exists. Defaults to the launcher's own directory, so out of the box WE desktop, Flux and
+ * ADAM share one agent. See `SeedConfig.ad4m`.
  */
-function resolveAd4mDataPath() {
-  const fromEnv = process.env.WE_AD4M_DATA_PATH;
-  if (fromEnv) return expandHome(fromEnv);
-
+function seedDataPath() {
   try {
     const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
     if (runtime.ad4mDataPath) return expandHome(runtime.ad4mDataPath);
@@ -52,8 +45,27 @@ function resolveAd4mDataPath() {
     // Generated file missing or unreadable — fall through. Refusing to start over a config file
     // would be a worse failure than quietly using the location every install already uses.
   }
-
   return join(homedir(), '.ad4m');
+}
+
+// The registry needs the app's config directory, which is available before `ready`.
+const accounts = createAccountRegistry({
+  configDir: app.getPath('userData'),
+  defaultPath: seedDataPath(),
+});
+
+/**
+ * Where the executor keeps its data this launch.
+ *
+ * Precedence is env → the selected account → the seed default (via the registry, which seeds
+ * itself from it). The env var wins outright and bypasses the registry: it is the ad-hoc override
+ * for testing a first run against a throwaway directory, and having that quietly register itself
+ * as a permanent account would be a surprise.
+ */
+function resolveAd4mDataPath() {
+  const fromEnv = process.env.WE_AD4M_DATA_PATH;
+  if (fromEnv) return expandHome(fromEnv);
+  return accounts.resolveActivePath();
 }
 
 /**
@@ -82,13 +94,6 @@ function ensureDataPathInitialised(executorPath, dataPath) {
     // turn a recoverable state into an app that will not open at all.
     console.error('[main] Executor init failed — the executor may not start correctly:', e.message);
   }
-}
-
-/** Expands a leading `~`. Only leading — `~` elsewhere in a path is a literal character. */
-function expandHome(p) {
-  if (p === '~') return homedir();
-  if (p.startsWith('~/')) return join(homedir(), p.slice(2));
-  return p;
 }
 
 // Find a free port in the given range
@@ -377,6 +382,24 @@ ipcMain.handle('get-token', () => {
 
 ipcMain.handle('get-is-development', () => {
   return !!process.env.VITE_DEV_SERVER_URL;
+});
+
+// ── Account management ───────────────────────────────────────────────────────
+// Every mutation is registry-only; nothing takes effect until the app relaunches, because the
+// executor is configured with one data path at startup and holds it for its lifetime.
+
+ipcMain.handle('accounts-list', () => accounts.list());
+ipcMain.handle('accounts-create', (_event, name) => accounts.create(name));
+ipcMain.handle('accounts-select', (_event, id) => accounts.select(id));
+ipcMain.handle('accounts-remove', (_event, id) => accounts.remove(id));
+
+ipcMain.handle('accounts-restart', () => {
+  // `app.exit()` skips `before-quit`, so the executor must be killed explicitly. It is spawned
+  // detached into its own process group, so relaunching without this leaves the old one holding
+  // the lair socket and RocksDB locks and the new launch fails against its own data.
+  killExecutor();
+  app.relaunch();
+  app.exit(0);
 });
 
 ipcMain.handle('get-desktop-sources', async () => {

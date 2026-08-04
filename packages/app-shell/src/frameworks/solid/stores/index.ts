@@ -1,3 +1,4 @@
+export { type AccountStore, useAccountStore, AccountStoreProvider } from './AccountStore';
 export { type SessionStore, type BootState, useSessionStore, SessionStoreProvider } from './SessionStore';
 export { type DatasetStore, useDatasetStore, DatasetStoreProvider } from './DatasetStore';
 export { type ProfileStore, useProfileStore, ProfileStoreProvider } from './ProfileStore';

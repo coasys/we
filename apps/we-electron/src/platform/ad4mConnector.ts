@@ -11,6 +11,11 @@ declare global {
       getToken: () => Promise<string>;
       getIsDevelopment: () => Promise<boolean>;
       getDesktopSources: () => Promise<unknown[]>;
+      listAccounts: () => Promise<Array<{ id: string; name: string; active: boolean }>>;
+      createAccount: (name: string) => Promise<{ id: string; name: string; active: boolean }>;
+      selectAccount: (id: string) => Promise<void>;
+      removeAccount: (id: string) => Promise<void>;
+      restartApp: () => Promise<void>;
     };
   }
 }

@@ -2014,6 +2014,18 @@ export const contextData: ContextData = {
       actions: ['login', 'createAgent', 'finishOnboarding', 'logout'],
     },
     {
+      name: 'accountStore',
+      state: {
+        canManageAccounts: { type: 'boolean' },
+        accounts: { type: 'array', properties: ['id', 'name', 'active'] },
+        activeAccount: { type: 'object', properties: ['id', 'name', 'active'] },
+        hasOtherAccounts: { type: 'boolean' },
+        busy: { type: 'boolean' },
+        error: { type: 'string' },
+      },
+      actions: ['refresh', 'createAccount', 'switchAccount', 'removeAccount', 'clearError'],
+    },
+    {
       name: 'runtimeStore',
       state: {
         canAdminister: { type: 'boolean' },

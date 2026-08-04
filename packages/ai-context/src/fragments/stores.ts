@@ -22,6 +22,18 @@ export const storeEntries: StoreEntry[] = [
     actions: ['login', 'createAgent', 'finishOnboarding', 'logout'],
   },
   {
+    name: 'accountStore',
+    state: {
+      canManageAccounts: { type: 'boolean' },
+      accounts: { type: 'array', properties: ['id', 'name', 'active'] },
+      activeAccount: { type: 'object', properties: ['id', 'name', 'active'] },
+      hasOtherAccounts: { type: 'boolean' },
+      busy: { type: 'boolean' },
+      error: { type: 'string' },
+    },
+    actions: ['refresh', 'createAccount', 'switchAccount', 'removeAccount', 'clearError'],
+  },
+  {
     name: 'runtimeStore',
     state: {
       canAdminister: { type: 'boolean' },
@@ -313,6 +325,24 @@ function generateStoresText(entries: StoreEntry[]): string {
           "(password: string): creates the agent, loads user data, and lands on the 'onboarding' boot state (not 'ready')",
         finishOnboarding: "(): leaves onboarding for the running app — sets bootState to 'ready'",
         logout: '(): locks the agent and returns to the login screen',
+      },
+    },
+    accountStore: {
+      state: {
+        canManageAccounts:
+          'boolean — the host can manage local accounts (false on web). Gate every account control on this',
+        accounts: 'Account[] — local accounts (id, name, active). id is the data directory',
+        activeAccount: 'Account | undefined — the account this app instance is running against',
+        hasOtherAccounts: 'boolean — true when there is somewhere else to switch to',
+        busy: 'boolean — a mutation is in flight; a successful one ends in a relaunch',
+        error: 'string — the last account error, for display',
+      },
+      actions: {
+        refresh: '(): re-reads the account list from the host',
+        createAccount: '(name: string): creates an account and relaunches into it. Does not return on success',
+        switchAccount: '(id: string): switches and relaunches. Does not return on success',
+        removeAccount: '(id: string): forgets an account. Refuses the active one',
+        clearError: '(): clears the error slot',
       },
     },
     runtimeStore: {

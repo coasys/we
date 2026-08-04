@@ -1316,6 +1316,21 @@ SessionStore:
   - finishOnboarding(): leaves onboarding for the running app — sets bootState to 'ready'
   - logout(): locks the agent and returns to the login screen
 
+AccountStore:
+- State:
+  - canManageAccounts: boolean — the host can manage local accounts (false on web). Gate every account control on this
+  - accounts: Account[] — local accounts (id, name, active). id is the data directory
+  - activeAccount: Account | undefined — the account this app instance is running against
+  - hasOtherAccounts: boolean — true when there is somewhere else to switch to
+  - busy: boolean — a mutation is in flight; a successful one ends in a relaunch
+  - error: string — the last account error, for display
+- Actions:
+  - refresh(): re-reads the account list from the host
+  - createAccount(name: string): creates an account and relaunches into it. Does not return on success
+  - switchAccount(id: string): switches and relaunches. Does not return on success
+  - removeAccount(id: string): forgets an account. Refuses the active one
+  - clearError(): clears the error slot
+
 RuntimeStore:
 - State:
   - canAdminister: boolean — this backend exposes runtime administration at all

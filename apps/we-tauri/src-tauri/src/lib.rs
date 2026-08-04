@@ -1,3 +1,4 @@
+mod accounts;
 mod app_state;
 mod commands;
 mod app_server;
@@ -8,6 +9,7 @@ mod generated;
 #[path = "generated/seed_runtime.rs"]
 mod seed_runtime;
 
+use accounts::{expand_home, AccountRegistry};
 use app_state::AppState;
 use rust_executor::utils::find_port;
 use rust_executor::Ad4mConfig;
@@ -15,35 +17,37 @@ use std::path::PathBuf;
 use tauri::Manager;
 use uuid::Uuid;
 
-/// Where the executor keeps its data: the agent's keys, datasets and settings.
+/// The seed's data path — the deployment default, and the account the registry seeds itself with.
 ///
-/// Precedence is env → seed → `~/.ad4m`. The env var is the ad-hoc override — testing the
-/// first-run flow means starting against an empty directory, and doing that by moving the real
-/// `~/.ad4m` aside risks the agent you actually use. The seed value is the deployment default,
-/// baked in at build time by `scripts/generate-seed-config.cjs`.
-///
-/// The default is the launcher's own directory, so out of the box WE desktop, Flux and ADAM share
-/// one agent. Changing it is a data migration rather than a preference — see `SeedConfig.ad4m`.
-fn resolve_ad4m_data_path() -> PathBuf {
-    let home = dirs::home_dir().expect("Failed to get home directory");
-
-    let configured = std::env::var("WE_AD4M_DATA_PATH")
-        .ok()
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| seed_runtime::AD4M_DATA_PATH.to_string());
-
-    expand_home(&configured, &home)
+/// Baked in at build time by `scripts/generate-seed-config.cjs`. Defaults to the launcher's own
+/// directory, so out of the box WE desktop, Flux and ADAM share one agent. See `SeedConfig.ad4m`.
+fn seed_data_path(home: &std::path::Path) -> PathBuf {
+    expand_home(seed_runtime::AD4M_DATA_PATH, home)
 }
 
-/// Expands a leading `~`. Only leading — `~` elsewhere in a path is a literal character.
-fn expand_home(path: &str, home: &std::path::Path) -> PathBuf {
-    if path == "~" {
-        return home.to_path_buf();
+/// This app's own configuration directory — the account registry, and the directories of accounts
+/// it created. Not inside any agent's data, so clearing an agent cannot destroy the list of the
+/// others (which is exactly what the ADAM launcher's layout does).
+fn config_dir() -> PathBuf {
+    dirs::config_dir()
+        .expect("Failed to get config directory")
+        .join("we")
+}
+
+/// Where the executor keeps its data this launch.
+///
+/// Precedence is env → the selected account → the seed default (via the registry, which seeds
+/// itself from it). The env var wins outright and bypasses the registry: it is the ad-hoc override
+/// for testing a first run against a throwaway directory, and having that quietly register itself
+/// as a permanent account would be a surprise.
+fn resolve_ad4m_data_path(registry: &AccountRegistry, home: &std::path::Path) -> PathBuf {
+    if let Some(from_env) = std::env::var("WE_AD4M_DATA_PATH")
+        .ok()
+        .filter(|value| !value.is_empty())
+    {
+        return expand_home(&from_env, home);
     }
-    match path.strip_prefix("~/") {
-        Some(rest) => home.join(rest),
-        None => PathBuf::from(path),
-    }
+    registry.resolve_active_path()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -55,22 +59,30 @@ pub fn run() {
     // Generate a credential token
     let req_credential = Uuid::new_v4().to_string();
     
-    // Where the executor keeps its data — seed-configured, env-overridable.
-    let app_data_path = resolve_ad4m_data_path();
+    let home = dirs::home_dir().expect("Failed to get home directory");
+    let config_dir = config_dir();
+    let default_data_path = seed_data_path(&home);
+
+    // Where the executor keeps its data — the selected account, env-overridable.
+    let registry = AccountRegistry::new(config_dir.clone(), default_data_path.clone());
+    let app_data_path = resolve_ad4m_data_path(&registry, &home);
     println!("AD4M data path: {}", app_data_path.display());
-    
+
     std::fs::create_dir_all(&app_data_path)
         .expect("Failed to create app data directory");
-    
-    // Initialize AD4M
+
+    // Initialize AD4M. Scaffolds the directory when it has never been used — which is now a
+    // reachable state, since a newly created account starts as an empty directory.
     rust_executor::init::init(
         Some(app_data_path.to_str().unwrap().to_string()),
-        None, // No bootstrap path needed - languages are in ~/.ad4m
+        None, // No bootstrap seed override — the account uses mainnet.
     ).expect("Failed to initialize AD4M");
-    
+
     let state = AppState {
         graphql_port,
         req_credential: req_credential.clone(),
+        config_dir,
+        default_data_path,
     };
 
     tauri::Builder::default()
@@ -78,7 +90,12 @@ pub fn run() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::state::get_port,
-            commands::state::request_credential
+            commands::state::request_credential,
+            commands::accounts::list_accounts,
+            commands::accounts::create_account,
+            commands::accounts::select_account,
+            commands::accounts::remove_account,
+            commands::accounts::restart_app
         ])
         .setup(move |app| {
             // Start embedded app HTTP servers (in production only)

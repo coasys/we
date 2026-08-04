@@ -3,6 +3,7 @@ import { moduleStores } from '@shared/registries/moduleRegistry';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
+  useAccountStore,
   useAppStore,
   useDatasetStore,
   useEditorStore,
@@ -33,6 +34,7 @@ import { buildRoutes } from '../utils/buildRoutes';
 export default function TemplateProvider() {
   // Stores
   const sessionStore = useSessionStore();
+  const accountStore = useAccountStore();
   const runtimeStore = useRuntimeStore();
   const datasetStore = useDatasetStore();
   const profileStore = useProfileStore();
@@ -80,6 +82,7 @@ export default function TemplateProvider() {
 
   const stores: Stores = {
     sessionStore,
+    accountStore,
     runtimeStore,
     datasetStore,
     profileStore,
