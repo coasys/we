@@ -5310,9 +5310,73 @@
         },
         "loginLoading": {
           "type": "boolean"
+        },
+        "createAgentError": {
+          "type": "string"
+        },
+        "createAgentLoading": {
+          "type": "boolean"
         }
       },
-      "actions": ["login", "logout"]
+      "actions": ["login", "createAgent", "finishOnboarding", "logout"]
+    },
+    {
+      "name": "runtimeStore",
+      "state": {
+        "canAdminister": {
+          "type": "boolean"
+        },
+        "canManageTrust": {
+          "type": "boolean"
+        },
+        "canManageNetwork": {
+          "type": "boolean"
+        },
+        "canManageApps": {
+          "type": "boolean"
+        },
+        "trustedAgents": {
+          "type": "array"
+        },
+        "authorizedApps": {
+          "type": "array",
+          "properties": ["id", "name", "description", "url", "iconUrl", "capabilities", "revoked"]
+        },
+        "networkMetrics": {
+          "type": "string"
+        },
+        "peerInfos": {
+          "type": "array"
+        },
+        "loading": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        },
+        "pendingConsent": {
+          "type": "object",
+          "properties": ["kind", "title", "message", "app", "peerId"]
+        },
+        "consentSecret": {
+          "type": "string"
+        }
+      },
+      "actions": [
+        "loadTrustedAgents",
+        "trustAgent",
+        "untrustAgent",
+        "loadAuthorizedApps",
+        "revokeApp",
+        "removeApp",
+        "loadNetworkMetrics",
+        "restartNetwork",
+        "loadPeerInfos",
+        "addPeerInfos",
+        "approveConsent",
+        "denyConsent",
+        "dismissConsentSecret"
+      ]
     },
     {
       "name": "datasetStore",

@@ -7,6 +7,7 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
 import { createSpaceModal } from './CreateSpaceModal.ts';
+import { runtimeSettings } from './RuntimeSettings.schema.ts';
 
 export const settingsTemplate: TemplateSchema = {
   meta: { name: 'Settings', description: 'Account settings', icon: 'gear' },
@@ -752,6 +753,10 @@ export const settingsTemplate: TemplateSchema = {
           type: '$if',
           props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal },
         },
+
+        // Last, and self-gating: a backend that administers nothing renders nothing here, so the
+        // section's absence costs the page no layout. See RuntimeSettings.schema.ts.
+        runtimeSettings,
       ],
     },
   ],

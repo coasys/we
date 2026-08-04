@@ -41,21 +41,25 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
   it('renders the original three host slots in the order the old hardcoded array produced', () => {
     // Was: [shellRegistry.bootScreen, shellRegistry.sidebar, shellRegistry.templateEditor]
     //
-    // `core:moduleRail` was added afterwards and sorts last, so the original three keep their exact
-    // relative order — which is the property this test exists to protect. Asserted as a prefix rather
-    // than the whole list so adding host chrome stays possible without weakening it.
+    // The property this test protects is the *relative* order of those three, not their position.
+    // It used to assert a prefix, which conflated the two and broke the moment host chrome was
+    // added ahead of `core:sidebar` (the consent overlays). Filtering to the three keeps the real
+    // invariant and stops the test objecting to new chrome it has no opinion about.
+    const ORIGINAL = ['core:bootScreen', 'core:sidebar', 'core:templateEditor'];
     expect(
       slotRegistry
         .ordered()
         .map((e) => e.id)
-        .slice(0, 3),
-    ).toEqual(['core:bootScreen', 'core:sidebar', 'core:templateEditor']);
+        .filter((id) => ORIGINAL.includes(id)),
+    ).toEqual(ORIGINAL);
   });
 
   it('keeps host chrome first when a module contributes to a later anchor', () => {
     slotRegistry.register({ id: 'call', anchor: 'dock-bottom', node: { type: 'Column' } });
     expect(slotRegistry.ordered().map((e) => e.id)).toEqual([
       'core:bootScreen',
+      'core:consentPrompt',
+      'core:consentSecret',
       'core:sidebar',
       'core:templateEditor',
       'core:moduleRail',

@@ -5,9 +5,10 @@
  * exist: both are things the ADAM launcher used to do on WE's behalf, and both stopped happening
  * when the desktop hosts started bundling the executor instead of shelling out to it.
  *
- * **Settings** — trust, peer network, authorized apps. Loaded on demand rather than at boot: a
- * user who never opens settings should not pay three round trips for them, and the data is stale
- * the moment it lands anyway.
+ * **Settings** — trust, peer network, authorized apps. Loaded when the settings overlay opens
+ * rather than at boot: a user who never opens settings should not pay round trips for them, and
+ * the data is stale the moment it lands anyway. Network metrics stay strictly manual — it is a
+ * diagnostic, and fetching one nobody asked for is the same mistake one level down.
  *
  * **Consent** — capability and trust requests, raised by the backend while the app runs. Unlike
  * the settings these are *not* optional to handle. An embedded app (Flux in a `we-iframe`) asking
@@ -20,6 +21,7 @@
  * The in-memory backend supplies no runtime port at all, which is the case that keeps this honest.
  */
 import { useSessionStore } from '@solid/stores/SessionStore';
+import { useShellStore } from '@solid/stores/ShellStore';
 import type { AuthorizedApp, ConsentRequest } from '@we/backend-shared';
 import {
   type Accessor,
@@ -75,6 +77,7 @@ const RuntimeContext = createContext<RuntimeStore>();
 
 export function RuntimeStoreProvider(props: ParentProps) {
   const session = useSessionStore();
+  const shell = useShellStore();
 
   const [trustedAgents, setTrustedAgents] = createSignal<string[]>([]);
   const [authorizedApps, setAuthorizedApps] = createSignal<AuthorizedApp[]>([]);
@@ -127,6 +130,17 @@ export function RuntimeStoreProvider(props: ParentProps) {
       setConsentQueue((queue) => [...queue, request]);
     });
     onCleanup(unsubscribe);
+  });
+
+  // ── On-demand loading ────────────────────────────────────────────────────────
+  // The schema language has no mount hook, and the alternatives are both worse than this: loading
+  // at boot spends round trips on data most sessions never look at, while a "Load" button in each
+  // section makes the page start empty and asks the user to do the app's job. Opening the settings
+  // overlay is the actual demand signal, and it is already reactive state.
+  createEffect(() => {
+    if (shell.activeShellView() !== 'settings') return;
+    if (canManageTrust()) void loadTrustedAgents();
+    if (canManageApps()) void loadAuthorizedApps();
   });
 
   function dropHead() {

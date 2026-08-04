@@ -1305,12 +1305,45 @@ SessionStore:
 - State:
   - client: the backend client handle | undefined
   - me: Agent | undefined — the authenticated identity; prefer the $me token in schemas
-  - bootState: string — 'initialising' | 'login' | 'createAgent' | 'ready' | 'error'
+  - bootState: string — 'initialising' | 'login' | 'createAgent' | 'onboarding' | 'ready' | 'error'
   - passwordError: boolean — true after a failed unlock attempt
   - loginLoading: boolean
+  - createAgentError: string — the backend message from a failed agent creation, or empty
+  - createAgentLoading: boolean
 - Actions:
   - login(password: string): unlocks the agent and loads user data
+  - createAgent(password: string): creates the agent, loads user data, and lands on the 'onboarding' boot state (not 'ready')
+  - finishOnboarding(): leaves onboarding for the running app — sets bootState to 'ready'
   - logout(): locks the agent and returns to the login screen
+
+RuntimeStore:
+- State:
+  - canAdminister: boolean — this backend exposes runtime administration at all
+  - canManageTrust: boolean — gate the trusted-agents section on this
+  - canManageNetwork: boolean — gate the peer-network section on this
+  - canManageApps: boolean — gate the authorized-apps section on this
+  - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
+  - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
+  - networkMetrics: string — backend diagnostic blob, displayed verbatim. Empty until requested
+  - peerInfos: string[] — this node peer-discovery records, for out-of-band exchange
+  - loading: boolean — true while any runtime call is in flight
+  - error: string — the last runtime error, for display
+  - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
+  - consentSecret: string — a code an approval returned, to be relayed to the asking app
+- Actions:
+  - loadTrustedAgents(): fetches the trusted-agent list
+  - trustAgent(id: string): trusts a peer, then reloads the list
+  - untrustAgent(id: string): untrusts a peer, then reloads the list
+  - loadAuthorizedApps(): fetches apps holding credentials against this agent
+  - revokeApp(id: string): invalidates an app's tokens, keeping the grant listed
+  - removeApp(id: string): forgets the grant entirely
+  - loadNetworkMetrics(): fetches the diagnostic blob
+  - restartNetwork(): restarts the peer-networking layer
+  - loadPeerInfos(): fetches this node peer-discovery records
+  - addPeerInfos(text: string): adds pasted peer records (JSON array or one per line)
+  - approveConsent(): grants the pending request
+  - denyConsent(): declines the pending request
+  - dismissConsentSecret(): clears the confirmation code display
 
 DatasetStore:
 - State:

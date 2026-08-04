@@ -20,6 +20,13 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({ backendPorts: () => ports }),
 }));
 
+// Never 'settings', so the on-demand load effect stays dormant and each test drives the store
+// explicitly. The load-on-open behaviour is asserted separately below.
+let activeShellView: string | null = null;
+vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
+  useShellStore: () => ({ activeShellView: () => activeShellView }),
+}));
+
 import {
   parsePeerInfos,
   type RuntimeStore,
@@ -96,6 +103,7 @@ const trustRequest: ConsentRequest = {
 
 beforeEach(() => {
   ports = null;
+  activeShellView = null;
 });
 
 describe('degrading when the backend administers nothing', () => {
@@ -258,6 +266,63 @@ describe('the consent queue', () => {
     // The adapter's unsubscribe is a flag flip rather than a real teardown (AD4M's exception
     // callback has no removal API), so this is the assertion that keeps that honest.
     expect(store.pendingConsent()).toBeNull();
+  });
+});
+
+describe('loading on demand', () => {
+  it('loads nothing while the settings overlay is closed', async () => {
+    const { port, calls } = stubRuntime();
+    ports = { runtime: port };
+
+    const store = mount();
+    await vi.waitFor(() => expect(store.canManageTrust()).toBe(true));
+
+    expect(calls).toEqual([]);
+  });
+
+  it('loads trust and apps when the settings overlay is open', async () => {
+    activeShellView = 'settings';
+    const { port, calls } = stubRuntime();
+    ports = { runtime: port };
+
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.trustedAgents()).toEqual(['did:peer:one']));
+    expect([...calls].sort()).toEqual(['authorizedApps', 'trustedAgents']);
+  });
+
+  it('asks for nothing the backend cannot answer', async () => {
+    activeShellView = 'settings';
+    const calls: string[] = [];
+    // Trust only — the apps load must not be attempted.
+    ports = {
+      runtime: {
+        trustedAgents: async () => {
+          calls.push('trustedAgents');
+          return [];
+        },
+      },
+    };
+
+    mount();
+    await vi.waitFor(() => expect(calls).toEqual(['trustedAgents']));
+  });
+
+  // Network metrics stay manual: a diagnostic blob nobody asked for is the same mistake as
+  // loading everything at boot, one level down.
+  it('never fetches network metrics on open', async () => {
+    activeShellView = 'settings';
+    const { port, calls } = stubRuntime({
+      networkMetrics: async () => {
+        calls.push('networkMetrics');
+        return '{}';
+      },
+    });
+    ports = { runtime: port };
+
+    mount();
+    await vi.waitFor(() => expect(calls).toContain('trustedAgents'));
+    expect(calls).not.toContain('networkMetrics');
   });
 });
 

@@ -27,7 +27,7 @@
  */
 import type { SlotAnchor, SlotContribution } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
-import { bootScreen, moduleRail, sidebar, templateEditor } from '@we/template-shell';
+import { bootScreen, consentPrompt, consentSecret, moduleRail, sidebar, templateEditor } from '@we/template-shell';
 
 export interface SlotEntry extends SlotContribution {
   /** Unique. `core:*` for host chrome, otherwise the contributing module's id. */
@@ -96,6 +96,11 @@ export const slotRegistry = {
  */
 export function registerCoreSlots(): void {
   slotRegistry.register({ id: 'core:bootScreen', anchor: 'overlay', node: bootScreen, order: 0 });
+  // Above the boot screen in DOM order but below it in z-index, which is deliberate: a consent
+  // request can arrive while the user is still unlocking, and it must not cover the password field
+  // of the very session it needs in order to be answered.
+  slotRegistry.register({ id: 'core:consentPrompt', anchor: 'overlay', node: consentPrompt, order: 1 });
+  slotRegistry.register({ id: 'core:consentSecret', anchor: 'overlay', node: consentSecret, order: 2 });
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
   // The one place feature modules are opened from. Core rather than a module contribution, because

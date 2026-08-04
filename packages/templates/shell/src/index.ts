@@ -7,10 +7,12 @@
  * schema system stays honest because WE's own UI is its heaviest consumer.
  */
 export { bootScreen } from './BootScreen.schema';
+export { consentPrompt, consentSecret } from './ConsentPrompt.schema';
 export { landingPageTemplate } from './about';
 export { marketplaceTemplate } from './marketplace';
 export { MODULE_RAIL_WIDTH, moduleRail } from './ModuleRail.schema';
 export { profileTemplate } from './Profile.schema';
+export { runtimeSettings } from './RuntimeSettings.schema';
 export { settingsTemplate } from './Settings.schema';
 export { sidebar } from './Sidebar.schema';
 export { templateEditor } from './TemplateEditor.schema';
