@@ -8,11 +8,11 @@ contextBridge.exposeInMainWorld('electron', {
   getIsDevelopment: () => ipcRenderer.invoke('get-is-development'),
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
 
-  // Account management. Every mutation is registry-only until restartApp() relaunches.
+  // Account management. Every mutation is registry-only until applyAccountSelection() takes effect.
   listAccounts: () => ipcRenderer.invoke('accounts-list'),
   createAccount: () => ipcRenderer.invoke('accounts-create'),
   renameAccount: (id, name) => ipcRenderer.invoke('accounts-rename', id, name),
   selectAccount: (id) => ipcRenderer.invoke('accounts-select', id),
   removeAccount: (id) => ipcRenderer.invoke('accounts-remove', id),
-  restartApp: () => ipcRenderer.invoke('accounts-restart'),
+  applyAccountSelection: () => ipcRenderer.invoke('accounts-apply'),
 });

@@ -29,6 +29,8 @@ let mainWindow;
 let ad4mPort = null;
 let ad4mToken = null;
 let executorProcess = null;
+/** Set while an account switch is tearing the executor down on purpose. */
+let switchingAccount = false;
 
 /**
  * The seed's data path — the deployment default, and the account the registry seeds itself with.
@@ -272,10 +274,19 @@ async function startExecutor() {
     });
 
     executorProcess.on('exit', (code, signal) => {
+      // Expected during an account switch — we killed it on purpose and are about to respawn.
+      if (switchingAccount) return;
+
       const msg = `[main] Executor exited — code: ${code}, signal: ${signal}`;
       console.log(msg);
-      // Notify the renderer so it shows in DevTools even in packaged builds
-      mainWindow?.webContents.executeJavaScript(`console.error(${JSON.stringify(msg)})`).catch(() => {});
+      // Notify the renderer so it shows in DevTools even in packaged builds.
+      //
+      // `mainWindow?.` only guards against null, not against a *destroyed* window: on quit the
+      // reference survives its BrowserWindow, and killing the executor makes this handler fire
+      // right afterwards — reaching webContents then throws "Object has been destroyed" as an
+      // uncaught exception, on the way out, where it looks like a crash.
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.webContents.executeJavaScript(`console.error(${JSON.stringify(msg)})`).catch(() => {});
     });
 
     console.log('AD4M executor process started, waiting for GraphQL server...');
@@ -394,13 +405,41 @@ ipcMain.handle('accounts-rename', (_event, id, name) => accounts.rename(id, name
 ipcMain.handle('accounts-select', (_event, id) => accounts.select(id));
 ipcMain.handle('accounts-remove', (_event, id) => accounts.remove(id));
 
-ipcMain.handle('accounts-restart', () => {
-  // `app.exit()` skips `before-quit`, so the executor must be killed explicitly. It is spawned
-  // detached into its own process group, so relaunching without this leaves the old one holding
-  // the lair socket and RocksDB locks and the new launch fails against its own data.
-  killExecutor();
-  app.relaunch();
-  app.exit(0);
+/**
+ * Make the newly selected account take effect.
+ *
+ * The executor binds one data path for its lifetime, so the old one has to go — but only the
+ * *executor*, not the app. Electron spawns it as a child process, so it can be killed and
+ * respawned against the new path while the window stays put; relaunching the whole app (which is
+ * what this used to do, and what the ADAM launcher does) closes and reopens the window for no
+ * reason beyond it being the easier thing to write.
+ *
+ * The renderer is reloaded rather than reset in place. Every store holds agent-scoped state —
+ * session, datasets, spaces, profiles, presence, themes, templates, the editor — and clearing them
+ * individually means any one that forgets leaks the previous account's data into the next session.
+ * That is a privacy bug, not a glitch. A reload is a guaranteed clean slate and costs a few
+ * hundred milliseconds, which is why it is the design rather than a shortcut.
+ *
+ * Tauri cannot do this: it runs the executor in-process, and the executor's own graceful shutdown
+ * ends in `std::process::exit`, so stopping it takes the app with it. That host still relaunches.
+ */
+ipcMain.handle('accounts-apply', async () => {
+  switchingAccount = true;
+  try {
+    killExecutor();
+    // startExecutor picks up the new path, waits for GraphQL, and refreshes port/token — which the
+    // reloaded renderer asks for again over IPC, so it never sees the old credentials.
+    await startExecutor();
+  } catch (err) {
+    console.error('[main] Could not start the executor for the selected account:', err);
+    // Fall through to the reload anyway: the renderer's boot will surface a connection failure,
+    // which is a screen the user can act on. Leaving them on a spinner is not.
+  } finally {
+    switchingAccount = false;
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.reload();
 });
 
 ipcMain.handle('get-desktop-sources', async () => {

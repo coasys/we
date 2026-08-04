@@ -340,10 +340,10 @@ function generateStoresText(entries: StoreEntry[]): string {
       actions: {
         refresh: '(): re-reads the account list from the host',
         createAccount:
-          '(): creates an account under a provisional name and relaunches into it — the setup screen names it. Does not return on success',
+          '(): creates an account under a provisional name and switches into it — the setup screen names it. Does not return on success',
         renameActive:
           '(name: string): renames the running account. How the setup screen commits a chosen name; resolves without doing anything where no host manages accounts',
-        switchAccount: '(id: string): switches and relaunches. Does not return on success',
+        switchAccount: '(id: string): switches to another account. Does not return on success',
         removeAccount: '(id: string): forgets an account. Refuses the active one',
         clearError: '(): clears the error slot',
       },

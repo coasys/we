@@ -1,8 +1,8 @@
 /**
  * AccountStore: degradation on web, and the restart contract.
  *
- * The property that matters most is that every successful mutation ends in `restart()`. Switching
- * without relaunching would leave the UI claiming one account while the executor holds another's
+ * The property that matters most is that every successful mutation ends in `applySelection()`.
+ * Switching without it would leave the UI claiming one account while the executor holds another's
  * data open — the kind of divergence that looks like data loss to the person it happens to.
  */
 import type { Account, AccountHost } from '@shared/platform/types';
@@ -52,8 +52,8 @@ function stubHost(accounts: Account[], overrides: Partial<AccountHost> = {}) {
     async remove(id) {
       calls.push(`remove:${id}`);
     },
-    async restart() {
-      calls.push('restart');
+    async applySelection() {
+      calls.push('apply');
     },
     ...overrides,
   };
@@ -108,8 +108,8 @@ describe('listing', () => {
   });
 });
 
-describe('switching and creating always end in a restart', () => {
-  it('selects, then restarts — in that order', async () => {
+describe('switching and creating always end in applySelection', () => {
+  it('selects, then applies — in that order', async () => {
     const { host, calls } = stubHost(TWO);
     accountHost = host;
     const store = mount();
@@ -118,7 +118,7 @@ describe('switching and creating always end in a restart', () => {
 
     await store.switchAccount('/cfg/agents/test-net');
 
-    expect(calls).toEqual(['select:/cfg/agents/test-net', 'restart']);
+    expect(calls).toEqual(['select:/cfg/agents/test-net', 'apply']);
   });
 
   it('creates, then restarts — the name and identity are collected after the relaunch', async () => {
@@ -132,10 +132,10 @@ describe('switching and creating always end in a restart', () => {
 
     // No name is passed: the setup screen asks for it after the restart, so that first run and
     // adding an account reach the same page.
-    expect(calls).toEqual(['create', 'restart']);
+    expect(calls).toEqual(['create', 'apply']);
   });
 
-  it('does not restart when switching to the account already running', async () => {
+  it('does not apply when switching to the account already running', async () => {
     const { host, calls } = stubHost(TWO);
     accountHost = host;
     const store = mount();
@@ -147,7 +147,7 @@ describe('switching and creating always end in a restart', () => {
     expect(calls).toEqual([]);
   });
 
-  it('does not restart when the mutation failed', async () => {
+  it('does not apply when the mutation failed', async () => {
     const { host, calls } = stubHost(TWO, {
       async select() {
         throw new Error('No such account');
@@ -162,7 +162,7 @@ describe('switching and creating always end in a restart', () => {
 
     expect(calls).toEqual([]);
     expect(store.error()).toBe('No such account');
-    // Cleared on failure so the button returns to idle — on success the process is going away.
+    // Cleared on failure so the button returns to idle — on success the JS context is going away.
     expect(store.busy()).toBe(false);
   });
 });
@@ -214,7 +214,7 @@ describe('renameActive — how the setup screen commits a chosen name', () => {
 });
 
 describe('removing', () => {
-  it('removes and reloads the list, without restarting', async () => {
+  it('removes and reloads the list, without applying', async () => {
     const { host, calls } = stubHost(TWO);
     accountHost = host;
     const store = mount();
@@ -223,7 +223,7 @@ describe('removing', () => {
 
     await store.removeAccount('/cfg/agents/test-net');
 
-    // No restart: the account removed is by definition not the one running.
+    // No apply: the account removed is by definition not the one running.
     expect(calls).toEqual(['remove:/cfg/agents/test-net', 'list']);
   });
 

@@ -13,7 +13,7 @@ const accounts: AccountHost = {
   rename: (id: string, name: string) => invoke<void>('rename_account', { id, name }),
   select: (id: string) => invoke<void>('select_account', { id }),
   remove: (id: string) => invoke<void>('remove_account', { id }),
-  restart: () => invoke<void>('restart_app'),
+  applySelection: () => invoke<void>('apply_account_selection'),
 };
 
 export const tauriPlatform: PlatformAdapter = {

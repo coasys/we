@@ -35,13 +35,13 @@ export interface Account {
 /**
  * Switching which account the app runs as.
  *
- * A host capability, not a backend one: it manipulates directories on disk and relaunches the
- * process. No amount of talking to a running executor achieves it, because the executor is
+ * A host capability, not a backend one: it manipulates directories on disk and restarts the
+ * backend. No amount of talking to a running executor achieves it, because the executor is
  * configured with one data path at startup and holds it for its lifetime — which is why every
- * mutation here ends with the caller invoking {@link restart}.
+ * mutation here ends with the caller invoking {@link applySelection}.
  *
  * Optional on {@link PlatformAdapter}. The web host omits it: a browser tab has no filesystem to
- * keep accounts in and nothing to relaunch, and `ad4m-connect` already owns which executor it
+ * keep accounts in and nothing to restart, and `ad4m-connect` already owns which executor it
  * talks to.
  */
 export interface AccountHost {
@@ -49,9 +49,9 @@ export interface AccountHost {
   /**
    * Register a new account and make it active. Creates the directory but no agent — the agent is
    * created on the next boot, by the setup screen, in the same empty directory a genuine first run
-   * would see. Caller restarts to get there.
+   * would see. Caller calls {@link applySelection} to get there.
    *
-   * Takes no name: the setup screen asks for one *after* the restart, so that first run and
+   * Takes no name: the setup screen asks for one *afterwards*, so that first run and
    * adding an account reach the same single page rather than collecting the name in two different
    * places. The host assigns a provisional name until then.
    */
@@ -69,8 +69,15 @@ export interface AccountHost {
    * ADAM launcher) is only forgotten. Deleting data another app owns is not ours to do.
    */
   remove(id: string): Promise<void>;
-  /** Relaunch, so the executor comes up against whichever account is now selected. */
-  restart(): Promise<void>;
+  /**
+   * Make the selected account take effect.
+   *
+   * Deliberately named for the intent, not the mechanism: Electron respawns the executor and
+   * reloads the window, Tauri relaunches the app. Both are correct for their host, and a caller
+   * that knew which would be reaching past the contract. Does not return — the JS context this
+   * was called from is gone either way.
+   */
+  applySelection(): Promise<void>;
 }
 
 /**

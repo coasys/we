@@ -96,7 +96,7 @@ pub fn run() {
             commands::accounts::rename_account,
             commands::accounts::select_account,
             commands::accounts::remove_account,
-            commands::accounts::restart_app
+            commands::accounts::apply_account_selection
         ])
         .setup(move |app| {
             // Start embedded app HTTP servers (in production only)

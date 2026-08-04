@@ -16,7 +16,7 @@ declare global {
       renameAccount: (id: string, name: string) => Promise<void>;
       selectAccount: (id: string) => Promise<void>;
       removeAccount: (id: string) => Promise<void>;
-      restartApp: () => Promise<void>;
+      applyAccountSelection: () => Promise<void>;
     };
   }
 }

@@ -85,11 +85,12 @@ export function AccountStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Mutate, then relaunch.
+   * Mutate, then hand over to the host to make it take effect.
    *
-   * On success this does not return — the host tears the process down. So `busy` is only ever
-   * cleared on failure, which is correct: leaving the spinner up while the window closes reads as
-   * "working", and clearing it first would flash the button back to idle mid-teardown.
+   * On success this does not return — the JS context is torn down, by a window reload or an app
+   * relaunch depending on the host. So `busy` is only ever cleared on failure, which is correct:
+   * leaving the spinner up while that happens reads as "working", and clearing it first would
+   * flash the button back to idle mid-teardown.
    */
   async function mutateAndRestart(action: () => Promise<unknown>): Promise<void> {
     const accountHost = host();
@@ -99,7 +100,7 @@ export function AccountStoreProvider(props: ParentProps) {
     setError('');
     try {
       await action();
-      await accountHost.restart();
+      await accountHost.applySelection();
     } catch (err) {
       console.error('AccountStore: account operation failed', err);
       setError(err instanceof Error ? err.message : String(err));

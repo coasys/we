@@ -32,10 +32,15 @@ pub fn remove_account(id: String, state: State<'_, AppState>) -> Result<(), Stri
     registry(&state).remove(&id)
 }
 
+/// Make the selected account take effect.
+///
+/// A full relaunch, unlike Electron — which respawns just the executor and reloads its window.
+/// The executor runs in-process here, and its own graceful shutdown ends in `std::process::exit`,
+/// so there is no way to stop it that does not take this app with it. Narrowing this to a reload
+/// needs an upstream change: a shutdown that returns instead of exiting, and a `run()` that can be
+/// called a second time against fresh global state.
 #[tauri::command]
-pub fn restart_app(app_handle: tauri::AppHandle) {
-    // The executor runs in-process here (unlike Electron, which spawns a binary and must kill it
-    // first), so a plain restart is enough — the process going away takes it with it.
+pub fn apply_account_selection(app_handle: tauri::AppHandle) {
     app_handle.restart();
 }
 

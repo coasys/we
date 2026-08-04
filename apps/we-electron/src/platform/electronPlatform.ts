@@ -17,7 +17,7 @@ const accounts: AccountHost = {
   rename: (id: string, name: string) => window.electron.renameAccount(id, name),
   select: (id: string) => window.electron.selectAccount(id),
   remove: (id: string) => window.electron.removeAccount(id),
-  restart: () => window.electron.restartApp(),
+  applySelection: () => window.electron.applyAccountSelection(),
 };
 
 export const electronPlatform: PlatformAdapter = {
