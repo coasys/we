@@ -378,7 +378,12 @@ export const bootScreen: SchemaNode = {
         // shorter states jittering against each other.
         {
           type: 'Column',
-          props: { minHeight: '240px', width: '100%', ax: 'start', ay: 'center' },
+          // `ax` is the horizontal axis and `ay` the vertical, whatever the direction — for a
+          // Column that means ax → align-items, ay → justify-content. So: centred across, and
+          // pinned to the TOP of the reserved box. Centring it vertically instead would reserve
+          // the height and then float the content inside it, which moves the top edge as the
+          // content changes size — the very drift this is here to stop.
+          props: { minHeight: '240px', width: '100%', ax: 'center', ay: 'start' },
           children: [
             // Initialising state
             {
