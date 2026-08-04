@@ -79,12 +79,22 @@ export interface AgentSessionStatus {
 }
 
 /**
- * The agent session — whether the backend's identity is present and usable, and the unlock/lock
- * operations around it. Connection *establishment* stays with the host-supplied connector (it is
- * platform-specific); this port is what the shell needs once a connection exists.
+ * The agent session — whether the backend's identity is present and usable, and the create/unlock/
+ * lock operations around it. Connection *establishment* stays with the host-supplied connector (it
+ * is platform-specific); this port is what the shell needs once a connection exists.
  */
 export interface AgentSessionPort {
   status(): Promise<AgentSessionStatus>;
+  /**
+   * Create this backend's identity, encrypted under `password`, and leave it unlocked.
+   *
+   * The other half of `status().hasAgent === false`: without it the shell can detect a first run
+   * but not resolve one, which is what left the desktop hosts stranded on a boot screen with no
+   * way forward once the launcher stopped being in the picture. Every backend has some notion of
+   * "no identity yet, make one", so it belongs beside unlock rather than in an adapter-specific
+   * side channel.
+   */
+  generate(password: string): Promise<void>;
   unlock(password: string): Promise<void>;
   lock(password: string): Promise<void>;
   me(): Promise<AgentIdentity>;

@@ -143,13 +143,26 @@ export interface InMemoryAgentOptions {
 
 export function createInMemoryAgentSession(opts: InMemoryAgentOptions = {}): AgentSessionPort {
   const id = opts.id ?? 'did:test:me';
-  const password = opts.password ?? 'password';
-  const hasAgent = opts.hasAgent ?? true;
+  let password = opts.password ?? 'password';
+  let hasAgent = opts.hasAgent ?? true;
   let unlocked = opts.unlocked ?? false;
 
   return {
     async status() {
       return { hasAgent, unlocked };
+    },
+
+    /**
+     * Creating an identity takes over the passphrase from that point on, so a test can generate
+     * with one password and then lock/unlock with it — the same lifecycle a real agent has.
+     * Refusing when one already exists mirrors the executor, where `generate` on a live agent is
+     * a caller error rather than a silent key replacement.
+     */
+    async generate(pw) {
+      if (hasAgent) throw new Error('an agent already exists');
+      password = pw;
+      hasAgent = true;
+      unlocked = true;
     },
 
     async unlock(pw) {

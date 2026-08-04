@@ -143,6 +143,15 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
       return { hasAgent: !!status.did, unlocked: !!status.isUnlocked };
     },
 
+    /**
+     * `agent.generate` returns an already-unlocked status, so there is no unlock step after it —
+     * the executor holds the freshly derived keys in memory. Holochain is started as part of the
+     * same call, matching what `unlock(password, true)` does on the returning-agent path.
+     */
+    async generate(password) {
+      await client.agent.generate(password);
+    },
+
     async unlock(password) {
       await client.agent.unlock(password, true);
     },
